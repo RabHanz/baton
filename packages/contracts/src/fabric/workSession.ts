@@ -35,6 +35,7 @@ import {
 import { RepositoryIdentity } from "../environment.ts";
 import { ModelSelection, ProviderInteractionMode, RuntimeMode } from "../orchestration.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "../providerInstance.ts";
+import { WorkSessionSynopsis } from "./synopsis.ts";
 
 export const FABRIC_WS_METHODS = {
   workSessionList: "fabric.workSession.list",
@@ -47,6 +48,7 @@ export const FABRIC_WS_METHODS = {
   workSessionUnsettle: "fabric.workSession.unsettle",
   workSessionArchive: "fabric.workSession.archive",
   workSessionUnarchive: "fabric.workSession.unarchive",
+  fleetGet: "fabric.fleet.get",
   subscribeWorkSessions: "fabric.subscribeWorkSessions",
 } as const;
 
@@ -126,6 +128,12 @@ export const WorkSession = Schema.Struct({
   activeThreadId: Schema.NullOr(ThreadId),
   /** Oldest first. The §5.4 timeline. */
   providerSessions: Schema.Array(WorkSessionProviderSession),
+  /**
+   * The Working Synopsis (§11), updated deterministically from events. Null
+   * until something has happened. Optional on the wire so a client from before
+   * Phase 4 still decodes a Phase 4 server's payloads.
+   */
+  synopsis: Schema.optional(Schema.NullOr(WorkSessionSynopsis)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   settledAt: Schema.NullOr(IsoDateTime),
@@ -333,6 +341,14 @@ export const WorkSessionStreamItem = Schema.Union([
     kind: Schema.Literal("fabric.workSession.providerDetached"),
     workSession: WorkSession,
     providerSession: WorkSessionProviderSession,
+  }),
+  // §28's synopsis family. Separate from `.updated` because a synopsis moves
+  // far more often than the work session's own fields, and a surface showing
+  // only the synopsis should not repaint for a title change.
+  Schema.Struct({
+    kind: Schema.Literal("fabric.synopsis.updated"),
+    workSessionId: WorkSessionId,
+    synopsis: WorkSessionSynopsis,
   }),
 ]);
 export type WorkSessionStreamItem = typeof WorkSessionStreamItem.Type;

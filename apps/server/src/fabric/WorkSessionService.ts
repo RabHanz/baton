@@ -16,10 +16,12 @@
  * rows. `docs/fabric/DECISIONS.md` D11 explains why Fabric keeps its events out
  * of T3's orchestration event store.
  */
+import { applySynopsisSignals, type SynopsisSignal } from "@t3tools/shared/fabricSynopsis";
 import {
   DEFAULT_WORK_SESSION_PRIORITY,
   DEFAULT_WORK_SESSION_PROVIDER_ROLE,
   DEFAULT_WORK_SESSION_RISK_CLASS,
+  EMPTY_SYNOPSIS,
   resolveWorkSessionStatus,
   WorkSessionNotFoundError,
   WorkSessionStorageError,
@@ -36,7 +38,9 @@ import {
   type WorkSessionProviderSession,
   type WorkSessionRefInput,
   type WorkSessionStreamItem,
+  type WorkSessionSynopsis,
   type WorkSessionUpdateInput,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -91,6 +95,7 @@ export const assembleWorkSession = (
   priority: row.priority,
   activeThreadId: row.activeThreadId,
   providerSessions: threads.map(toProviderSession),
+  synopsis: row.synopsis,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   settledAt: row.settledAt,
@@ -124,6 +129,24 @@ export class WorkSessionService extends Context.Service<
     readonly detachThread: (
       input: WorkSessionDetachThreadInput,
     ) => Effect.Effect<WorkSession, WorkSessionError>;
+    /**
+     * Fold signals into the work session's synopsis and persist the result.
+     *
+     * Returns the synopsis rather than the work session because the caller is
+     * an event reactor, not a user action: nothing else about the work
+     * changed, and `updatedAt` on the record deliberately does not move for a
+     * synopsis update. A work session that has only been watched is not a work
+     * session that has been worked on, and the fleet's recency ordering has to
+     * keep telling those apart.
+     */
+    readonly applySynopsis: (input: {
+      readonly workSessionId: WorkSessionId;
+      readonly signals: ReadonlyArray<SynopsisSignal>;
+    }) => Effect.Effect<WorkSessionSynopsis | null, WorkSessionError>;
+    /** The work session holding a live attachment for this thread, if any. */
+    readonly findForThread: (
+      threadId: ThreadId,
+    ) => Effect.Effect<WorkSessionId | null, WorkSessionError>;
     readonly settle: (input: WorkSessionRefInput) => Effect.Effect<WorkSession, WorkSessionError>;
     readonly unsettle: (input: WorkSessionRefInput) => Effect.Effect<WorkSession, WorkSessionError>;
     readonly archive: (input: WorkSessionRefInput) => Effect.Effect<WorkSession, WorkSessionError>;
@@ -206,6 +229,9 @@ export const make = Effect.gen(function* () {
           updatedAt: timestamp,
           settledAt: null,
           archivedAt: null,
+          // Nothing has happened yet; a synopsis with no observation behind it
+          // would be a blank card pretending to be a report.
+          synopsis: null,
         };
         const inserted = yield* repository
           .insert(row)
@@ -350,6 +376,50 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  const applySynopsis: WorkSessionService["Service"]["applySynopsis"] = ({
+    workSessionId,
+    signals,
+  }) =>
+    signals.length === 0
+      ? Effect.succeed(null)
+      : Semaphore.withPermit(
+          mutations,
+          Effect.gen(function* () {
+            const current = yield* repository
+              .get(workSessionId)
+              .pipe(Effect.mapError(storageFailure("get")));
+            // A reactor can outlive the work session it was following. That is
+            // not an error; there is simply nothing to write.
+            if (current === null) return null;
+            const base = current.synopsis ?? EMPTY_SYNOPSIS(signals[0]?.at ?? (yield* nowIso));
+            const next = applySynopsisSignals(base, signals);
+            // Nothing moved: writing anyway would refresh the staleness clock
+            // for an update that said nothing, which §11 warns against
+            // specifically. Identity is the right test — the reducer returns
+            // its input unchanged for a signal that carried nothing, and
+            // comparing timestamps instead would swallow a first update whose
+            // signal happens to share the empty record's instant.
+            if (next === base) return current.synopsis;
+            // `updatedAt` on the row is deliberately preserved: see the
+            // interface comment.
+            yield* repository
+              .update({ ...current, synopsis: next })
+              .pipe(Effect.mapError(storageFailure("update")));
+            yield* publish({
+              kind: "fabric.synopsis.updated",
+              workSessionId,
+              synopsis: next,
+            });
+            return next;
+          }),
+        );
+
+  const findForThread: WorkSessionService["Service"]["findForThread"] = (threadId) =>
+    repository.findLiveAttachment(threadId).pipe(
+      Effect.mapError(storageFailure("findLiveAttachment")),
+      Effect.map((attachment) => attachment?.workSessionId ?? null),
+    );
+
   const settle: WorkSessionService["Service"]["settle"] = ({ id }) =>
     changeStatus(id, (row, timestamp) => ({ ...row, settledAt: row.settledAt ?? timestamp }));
 
@@ -371,6 +441,8 @@ export const make = Effect.gen(function* () {
     update,
     attachThread,
     detachThread,
+    applySynopsis,
+    findForThread,
     settle,
     unsettle,
     archive,

@@ -289,6 +289,76 @@ layer("WorkSessionService", (it) => {
     }),
   );
 
+  it.effect("folds synopsis signals and leaves the record's own timestamp alone", () =>
+    Effect.gen(function* () {
+      const service = yield* WorkSessionService;
+      const created = yield* create();
+      assert.isNull(created.synopsis ?? null);
+
+      const synopsis = yield* service.applySynopsis({
+        workSessionId: created.id,
+        signals: [
+          { kind: "turn-started", at: "2026-09-18T04:00:00.000Z", prompt: "Find the race" },
+          { kind: "files-changed", at: "2026-09-18T04:01:00.000Z", paths: ["src/scheduler.ts"] },
+        ],
+      });
+      assert.strictEqual(synopsis?.currentAction, "Find the race");
+      assert.deepStrictEqual(synopsis?.changedFiles, ["src/scheduler.ts"]);
+
+      const reloaded = yield* service.get(created.id);
+      assert.strictEqual(reloaded.synopsis?.updatedAt, "2026-09-18T04:01:00.000Z");
+      // Watching a work session is not working on it. The record's own
+      // timestamp is what the fleet's recency ordering falls back to, so a
+      // synopsis write must not fake activity on it.
+      assert.strictEqual(reloaded.updatedAt, created.updatedAt);
+    }),
+  );
+
+  it.effect("does nothing for an empty signal list or a work session that is gone", () =>
+    Effect.gen(function* () {
+      const service = yield* WorkSessionService;
+      const created = yield* create();
+      assert.isNull(yield* service.applySynopsis({ workSessionId: created.id, signals: [] }));
+      // A reactor can outlive the work it was following; that is not an error.
+      assert.isNull(
+        yield* service.applySynopsis({
+          workSessionId: WorkSessionId.make("never-created"),
+          signals: [{ kind: "turn-completed", at: "2026-09-18T04:00:00.000Z" }],
+        }),
+      );
+    }),
+  );
+
+  it.effect("finds the work session holding a thread, and nothing once it is detached", () =>
+    Effect.gen(function* () {
+      const service = yield* WorkSessionService;
+      const created = yield* create();
+      const threadId = ThreadId.make(`${created.id}-thread-a`);
+      assert.isNull(yield* service.findForThread(threadId));
+      yield* service.attachThread({ id: created.id, threadId, providerInstanceId: claudeA });
+      assert.strictEqual(yield* service.findForThread(threadId), created.id);
+      yield* service.detachThread({ id: created.id, threadId });
+      assert.isNull(yield* service.findForThread(threadId));
+    }),
+  );
+
+  it.effect("announces a synopsis update on its own event, not as a work-session update", () =>
+    Effect.gen(function* () {
+      const service = yield* WorkSessionService;
+      const created = yield* create();
+      const subscription = yield* service.subscribe;
+      yield* service.applySynopsis({
+        workSessionId: created.id,
+        signals: [{ kind: "turn-completed", at: "2026-09-18T04:00:00.000Z" }],
+      });
+      const events = yield* Stream.fromSubscription(subscription).pipe(
+        Stream.take(1),
+        Stream.runCollect,
+      );
+      assert.strictEqual(events[0]?.kind, "fabric.synopsis.updated");
+    }),
+  );
+
   it.effect("subscribers receive a snapshot and then the events they caused", () =>
     Effect.gen(function* () {
       const service = yield* WorkSessionService;

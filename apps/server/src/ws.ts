@@ -88,6 +88,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
+import * as FleetQuery from "./fabric/FleetQuery.ts";
 import * as WorkSessionService from "./fabric/WorkSessionService.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -3785,6 +3786,12 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             FABRIC_WS_METHODS.workSessionUnarchive,
             Effect.map(workSessions.unarchive(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.fleetGet]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.fleetGet,
+            Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet })),
             { "rpc.aggregate": "fabric" },
           ),
         [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>

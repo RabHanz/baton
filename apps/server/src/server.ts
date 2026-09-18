@@ -21,6 +21,7 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
+import * as FabricSynopsisReactor from "./fabric/SynopsisReactor.ts";
 import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import {
   otlpTracesProxyRouteLayer,
@@ -255,6 +256,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(PullRequestSyncReactor.layer),
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
+  Layer.provideMerge(FabricSynopsisReactor.layer),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 

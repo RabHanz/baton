@@ -9,9 +9,9 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | ---------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
 | 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9` |
 | 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                        |
-| 2 — WorkSession domain                         | **done**                  | the table below; 31 new tests, migration and rollback rehearsed on real data                 |
-| 3 — provider/account handoff                   | not started               | —                                                                                            |
-| 4 — working synopsis + fleet status            | not started               | —                                                                                            |
+| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider        |
+| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                   |
+| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider   |
 | 9 — orchestration                              | not started               | —                                                                                            |
 | 5 — desktop voice service                      | not started               | —                                                                                            |
 | 6 — VS Code + browser + system dictation       | not started               | —                                                                                            |
@@ -137,13 +137,102 @@ Proven twice: as a unit case over the domain (`WorkSessionService.test.ts`, "the
 its provider thread ending"), and on a snapshot of the developer's real database across two separate
 OS processes.
 
+### Both Phase 2 gaps, closed
+
+The two things this page called unproven when Phase 2 shipped have since been done.
+
+**The Work block, in a real browser.** The built web client, served by a real server on the snapshot
+database, paired with Playwright at 1440×900, the client setting on. Frames in `frames/phase-2/`,
+described in `frames/README.md`. What it renders, read off the page:
+
+```text
+Fabric proof scratch
+Production deploy check
+  Claude · signzart-prod · Approval needed
+
+VentureOS
+Scheduler reconnect race
+  signzart-prod · No provider
+```
+
+Project, then work, then account · host · state. The second row is a work session whose provider
+threads have all ended — still present, still naming the account that ran it. No console errors.
+
+**`startThread` against a real provider.** Over the real WebSocket, against the box's own Claude Max
+subscription (`claudeAgent`, status `ready`, authenticated as a Claude Max account):
+
+```text
+provider claudeAgent: status=ready auth={"status":"authenticated","type":"Claude Max", …}
+startThread: Scheduler reconnect race [active] active=live-thread-1789705575850
+             timeline=…,claudeAgent/created/implementation:live
+turn dispatched; waiting for the provider to answer...
+assistant answered: ready
+```
+
+One turn, seven seconds, on a scratch git repository — never the developer's live checkout, because a
+thread takes checkpoints as hidden refs in whatever workspace it runs in. `origin: created` on the
+timeline is what distinguishes a thread Fabric started from one it adopted.
+
 ### Not proven
 
-- **No browser walk.** The Work block's logic is unit-tested and the whole web package typechecks,
-  but nothing here rendered it in a real client. The box was at load 47 with 5.5 GB free when this
-  phase finished, and a dev server plus a browser is the one thing that could not be squeezed in.
-- **`startThread` has not started a real provider.** It dispatches the same `thread.create` command a
-  client would, through the same engine, so it cannot diverge from the sidebar's path — but that is
-  an argument, not a test.
 - **Multi-account handoff is Phase 3** and still blocked on a second Claude login (see Phase 1
   above).
+- **Two UI observations from the frames, neither cropped out:** sidebar headings truncate at 256 px,
+  and the Fleet and Work blocks read as two similar lists at that width. Both are in
+  `frames/README.md`.
+
+## Phase 4 — Working Synopsis and fleet status
+
+| Item                                                            | State                      | Where it is proven                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FabricSessionState`, all ten values, derived deterministically | done                       | `packages/contracts/src/fabric/sessionState.ts` + `sessionState.test.ts`. Reachability outranks everything; approvals and questions outrank a running session; a failure outranks lingering background liveness; an exhausted account reads `limited` rather than `idle` so the reason is not hidden |
+| The §10 source ladder, with no model anywhere                   | done                       | the derivation reads `hasPendingApprovals`, `hasPendingUserInput`, `session.status`, `session.lastError`, `backgroundLiveness`, `latestTurn`, and the provider's own quota report — nothing else, and no transcript                                                                                  |
+| Work-session state from its threads                             | done                       | `deriveWorkSessionState`: the most demanding live thread wins, so an implementation session working beside a review session waiting for approval reads as needing the user                                                                                                                           |
+| `WorkSession.synopsis`, persisted                               | done                       | migration 055 (additive, one nullable column), `WorkSessionRepository`                                                                                                                                                                                                                               |
+| Deterministic synopsis updates from events (§11.1)              | done                       | `packages/shared/src/fabricSynopsis.ts` + test: turn started/completed/failed, tool started, files changed, validation started/finished, approval requested/resolved, question asked/answered, plan step, PR opened, background changed                                                              |
+| The event→signal mapping                                        | done                       | `apps/server/src/fabric/SynopsisReactor.ts` + test. An unknown activity kind returns null rather than guessing                                                                                                                                                                                       |
+| Staleness                                                       | done                       | `SYNOPSIS_STALE_AFTER_MS`, `isSynopsisStale`; the Fleet row renders "(stale)" and the spoken answer says how old it is                                                                                                                                                                               |
+| Semantic summarisation at milestones                            | **not done, deliberately** | `DECISIONS.md` D16                                                                                                                                                                                                                                                                                   |
+| `fabric.fleet.get` + `needsUserOnly`                            | done                       | `apps/server/src/fabric/FleetQuery.ts`, `packages/shared/src/fabricFleet.ts` + test                                                                                                                                                                                                                  |
+| `fabric.synopsis.updated` (§28)                                 | done                       | on the existing subscription; `WorkSessionService.test.ts` asserts it is its own event, not a work-session update                                                                                                                                                                                    |
+| Fleet view in `apps/web`, §33 shape                             | done                       | `FabricFleetSection.tsx`, logic in `fabricFleetView.ts` + test; frames in `frames/phase-4/`                                                                                                                                                                                                          |
+| "Needs me" as a top-level filter                                | done                       | one always-visible control; the browser walk clicked it and the list reduced to the blocked row                                                                                                                                                                                                      |
+| §20 spoken status as a pure function                            | done                       | `packages/shared/src/fabricSpokenStatus.ts` + test, including the specification's own example sentence                                                                                                                                                                                               |
+
+### The Phase 4 exit criterion, against two threads in different states
+
+> The fleet view answers what is running, where, under which account, what needs the user, what
+> recently completed.
+
+Two work sessions were started on the real provider: one asked for a word, one asked for a file
+under `approval-required` so it would stop and wait. `fabric.fleet.get` then answered:
+
+```text
+fleet: Production deploy check    [needs_approval] needsUser=true
+       threads=claudeAgent:needs_approval
+       synopsis="Waiting for approval: File-change approval requested"
+fleet: Scheduler reconnect race   [done_unseen]    needsUser=false
+       threads=claudeAgent:done_unseen
+needs me: Production deploy check
+```
+
+What is running and what recently completed: the two states. Where: the environment that answered.
+Under which account: `claudeAgent`. What needs the user: the `needsUserOnly` read returned exactly
+one entry. The synopsis line was written by the reactor from the approval event — nothing asked the
+agent what it was doing.
+
+The same two rows in the browser are `frames/phase-4/01-fleet.png`, ordered with the blocked one
+first, and `02-needs-me-filter.png` after the filter was clicked.
+
+### Not proven in Phase 4
+
+- **No model-generated synopsis.** The deterministic path is complete; the milestone summariser is
+  not built, and D16 says why rather than leaving a gap to be discovered.
+- **`done_unseen` is coarser on the server than in a client.** The environment does not know when
+  this user last opened a thread, so its `done_unseen` means "completed and nothing since". A client
+  passing its own last-visited time gets the stricter answer, and the fleet builder takes that as an
+  input. D17.
+- **No mobile surface.** The fleet RPC and every derivation are shared code, but nothing in
+  `apps/mobile` renders them yet; that is Phase 7.
+- **`limited` has not been seen in the wild.** It is unit-tested against a reported quota window at
+  100%, but no account was exhausted to watch it happen.

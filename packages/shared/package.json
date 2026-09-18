@@ -39,6 +39,18 @@
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"
     },
+    "./fabricFleet": {
+      "types": "./src/fabricFleet.ts",
+      "import": "./src/fabricFleet.ts"
+    },
+    "./fabricSynopsis": {
+      "types": "./src/fabricSynopsis.ts",
+      "import": "./src/fabricSynopsis.ts"
+    },
+    "./fabricSpokenStatus": {
+      "types": "./src/fabricSpokenStatus.ts",
+      "import": "./src/fabricSpokenStatus.ts"
+    },
     "./git": {
       "types": "./src/git.ts",
       "import": "./src/git.ts"

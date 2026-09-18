@@ -33,6 +33,7 @@ import {
   resolveEnvironmentMachineKind,
   type EnvironmentId,
   type EnvironmentMachineKind,
+  type FabricFleetEntry,
   type ProjectIconOverride,
   type ScopedThreadRef,
   type ThreadId,
@@ -235,6 +236,7 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
+import { FabricFleetSection } from "./sidebar/FabricFleetSection";
 import { FabricWorkSessionSection } from "./sidebar/FabricWorkSessionSection";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
@@ -2880,6 +2882,17 @@ export default function Sidebar() {
     },
     [navigateToThread],
   );
+  // A fleet row opens the thread the user is working through. With none live —
+  // the work is between providers — there is nothing to navigate to, and the
+  // row stays put rather than bouncing the route somewhere arbitrary.
+  const selectFabricFleetEntry = useCallback(
+    (environmentId: EnvironmentId, entry: FabricFleetEntry) => {
+      const threadId = entry.activeThreadId ?? entry.threads[0]?.threadId ?? null;
+      if (threadId === null) return;
+      void navigateToThread(scopeThreadRef(environmentId, threadId));
+    },
+    [navigateToThread],
+  );
 
   // Dropping files on a row opens that thread and attaches the files there.
   // The composer only accepts drops for its OWN thread, so when the row is
@@ -4641,6 +4654,19 @@ export default function Sidebar() {
                 No threads found
               </p>
             )
+          ) : null}
+          {!isSearchingThreads ? (
+            <FabricFleetSection
+              environmentIds={fabricWorkSessionEnvironmentIds}
+              resolveEnvironmentLabel={(environmentId) =>
+                environmentLabelById.get(environmentId) ?? null
+              }
+              resolveProviderLabel={resolveFabricProviderLabel}
+              resolveProjectLabel={(environmentId, projectId) =>
+                projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
+              }
+              onSelectWorkSession={selectFabricFleetEntry}
+            />
           ) : null}
           {!isSearchingThreads ? (
             <FabricWorkSessionSection

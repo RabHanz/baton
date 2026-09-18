@@ -183,6 +183,7 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [FABRIC_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 

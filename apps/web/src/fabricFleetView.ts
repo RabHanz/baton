@@ -1,0 +1,115 @@
+/**
+ * Presentation logic for the Fleet view.
+ *
+ * The §33 shape:
+ *
+ * ```text
+ * ● VentureOS / Scheduler     Working
+ * ! Production / Deploy       Approval needed
+ * ◐ Spotler / Reviewer        Reviewing
+ * ✓ Margin / Search           Done
+ * ```
+ *
+ * Glyph, then project and work, then the state — and, secondary, which account
+ * and which host. Pure, so the wording and the ordering can be asserted without
+ * rendering anything.
+ */
+import {
+  FABRIC_STATE_GLYPHS,
+  FABRIC_STATE_LABELS,
+  isSynopsisStale,
+  type EnvironmentId,
+  type FabricFleetEntry,
+  type FabricSessionState,
+  type ProjectId,
+  type WorkSessionId,
+} from "@t3tools/contracts";
+
+export interface FleetRow {
+  readonly key: string;
+  readonly environmentId: EnvironmentId;
+  readonly workSessionId: WorkSessionId;
+  readonly glyph: string;
+  /** "VentureOS / Scheduler reconnect race" */
+  readonly heading: string;
+  readonly stateLabel: string;
+  readonly state: FabricSessionState;
+  readonly needsUser: boolean;
+  /** "Claude B · home-linux", or null when nothing is attached. */
+  readonly attribution: string | null;
+  /** The synopsis line, or null when there is nothing recorded yet. */
+  readonly detail: string | null;
+  /** True when the detail is older than the staleness window. */
+  readonly detailStale: boolean;
+}
+
+export interface FleetRowInput {
+  readonly entries: ReadonlyArray<{
+    readonly environmentId: EnvironmentId;
+    readonly entry: FabricFleetEntry;
+  }>;
+  readonly resolveProjectLabel: (
+    environmentId: EnvironmentId,
+    projectId: ProjectId,
+  ) => string | null;
+  readonly resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
+  readonly resolveProviderLabel: (
+    environmentId: EnvironmentId,
+    providerInstanceId: string,
+  ) => string | null;
+  readonly now: number;
+}
+
+export function buildFleetRows(input: FleetRowInput): readonly FleetRow[] {
+  return input.entries.map(({ environmentId, entry }) => {
+    const projectLabel = input.resolveProjectLabel(environmentId, entry.projectId);
+    // The active thread is the one the user is working through; with none, the
+    // first live thread still answers "under which account".
+    const attributed =
+      entry.threads.find((thread) => thread.threadId === entry.activeThreadId) ??
+      entry.threads[0] ??
+      null;
+    const providerLabel =
+      attributed?.providerInstanceId == null
+        ? null
+        : input.resolveProviderLabel(environmentId, attributed.providerInstanceId);
+    const hostLabel = input.resolveEnvironmentLabel(environmentId);
+    const synopsis = entry.synopsis;
+
+    return {
+      key: `${environmentId}:${entry.workSessionId}`,
+      environmentId,
+      workSessionId: entry.workSessionId,
+      glyph: FABRIC_STATE_GLYPHS[entry.state],
+      heading: projectLabel === null ? entry.title : `${projectLabel} / ${entry.title}`,
+      stateLabel: FABRIC_STATE_LABELS[entry.state],
+      state: entry.state,
+      needsUser: entry.needsUser,
+      attribution: joinDot([providerLabel, hostLabel]),
+      detail: synopsis?.currentAction ?? null,
+      detailStale: synopsis !== null && isSynopsisStale(synopsis, input.now),
+    };
+  });
+}
+
+const joinDot = (parts: ReadonlyArray<string | null>): string | null => {
+  const kept = parts.filter((part): part is string => part !== null && part.trim().length > 0);
+  return kept.length === 0 ? null : kept.join(" · ");
+};
+
+/**
+ * The §33 "Needs me" filter, as a top-level control rather than a search: one
+ * action shows every session that needs approval or input.
+ */
+export const filterFleetRows = (
+  rows: readonly FleetRow[],
+  needsUserOnly: boolean,
+): readonly FleetRow[] => (needsUserOnly ? rows.filter((row) => row.needsUser) : rows);
+
+/** Counts for the filter chip, so it can say what it would hide. */
+export const countFleetRows = (
+  rows: readonly FleetRow[],
+): { readonly total: number; readonly needsUser: number } => ({
+  total: rows.length,
+  needsUser: rows.filter((row) => row.needsUser).length,
+});
