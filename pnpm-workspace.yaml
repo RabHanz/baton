@@ -15,7 +15,12 @@ allowBuilds:
   electron: true
   electron-winstaller: false
   esbuild: true
-  msgpackr-extract: set this to true or false
+  # Upstream committed the literal string "set this to true or false" here
+  # (it arrived with the 2026-09-18 sync). pnpm tolerates it; the release
+  # archive's schema does not, so a release cannot be built from an upstream
+  # tree until this is a boolean. `true` is what the fork point had and what
+  # every archive so far was built with. Drop this patch when upstream fixes it.
+  msgpackr-extract: true
   msw: false
   node-pty: true
   sharp: true

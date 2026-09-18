@@ -54,12 +54,37 @@ const rowsFor = (entries: readonly FabricFleetEntry[]) =>
     entries: entries.map((value) => ({ environmentId, entry: value })),
     resolveProjectLabel: () => "VentureOS",
     resolveEnvironmentLabel: () => "home-linux",
-    resolveProviderLabel: (_environmentId, instanceId) =>
-      instanceId === "claude-b" ? "Claude B" : instanceId === "codex" ? "Codex" : null,
+    resolveProviderAccount: (_environmentId: string, instanceId: string) =>
+      instanceId === "claude-b"
+        ? { label: "Claude B", email: "b@example.com" }
+        : instanceId === "codex"
+          ? { label: "Codex", email: null }
+          : null,
     now: NOW,
   });
 
 describe("buildFleetRows", () => {
+  it("says which account is running the work, by name and by address", () => {
+    // "The mechanism runs, nothing puts it in front of you" was the honest gap
+    // after D52. A row already said "Claude B"; which *login* that is, is the
+    // thing that goes wrong silently when two config directories end up
+    // sharing credentials.
+    const rows = rowsFor([
+      entry({ id: "a", title: "A", state: "working", instanceId: "claude-b" }),
+    ]);
+
+    expect(rows[0]?.account).toEqual({ label: "Claude B", email: "b@example.com" });
+    // The attribution line is unchanged: the address renders separately, and
+    // redacted, because a sidebar is the thing people screenshot.
+    expect(rows[0]?.attribution).toBe("Claude B · home-linux");
+  });
+
+  it("carries no account for a provider that reports no address", () => {
+    const rows = rowsFor([entry({ id: "a", title: "A", state: "working", instanceId: "codex" })]);
+
+    expect(rows[0]?.account).toEqual({ label: "Codex", email: null });
+  });
+
   it("renders the §33 line: glyph, project and work, then the state", () => {
     const [row] = rowsFor([
       entry({
@@ -124,7 +149,7 @@ describe("buildFleetRows", () => {
       entries: [{ environmentId, entry: entry({ id: "a", title: "A", state: "idle" }) }],
       resolveProjectLabel: () => null,
       resolveEnvironmentLabel: () => null,
-      resolveProviderLabel: () => null,
+      resolveProviderAccount: () => null,
       now: NOW,
     });
     expect(rows[0]?.heading).toBe("A");

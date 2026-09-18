@@ -46,10 +46,24 @@ export interface FleetRow {
   readonly needsUser: boolean;
   /** "Claude B · home-linux", or null when nothing is attached. */
   readonly attribution: string | null;
+  /**
+   * Which account is running this work, by name and by address.
+   *
+   * The name is what its owner called it and the address is which login it
+   * actually is — two accounts that have quietly ended up on one set of
+   * credentials look identical until you can see both. Null when no thread is
+   * attached, and the address is null when the provider has not reported one.
+   */
+  readonly account: FleetAccount | null;
   /** The synopsis line, or null when there is nothing recorded yet. */
   readonly detail: string | null;
   /** True when the detail is older than the staleness window. */
   readonly detailStale: boolean;
+}
+
+export interface FleetAccount {
+  readonly label: string;
+  readonly email: string | null;
 }
 
 export interface FleetRowInput {
@@ -62,10 +76,10 @@ export interface FleetRowInput {
     projectId: ProjectId,
   ) => string | null;
   readonly resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
-  readonly resolveProviderLabel: (
+  readonly resolveProviderAccount: (
     environmentId: EnvironmentId,
     providerInstanceId: string,
-  ) => string | null;
+  ) => FleetAccount | null;
   readonly now: number;
 }
 
@@ -78,10 +92,10 @@ export function buildFleetRows(input: FleetRowInput): readonly FleetRow[] {
       entry.threads.find((thread) => thread.threadId === entry.activeThreadId) ??
       entry.threads[0] ??
       null;
-    const providerLabel =
+    const account =
       attributed?.providerInstanceId == null
         ? null
-        : input.resolveProviderLabel(environmentId, attributed.providerInstanceId);
+        : input.resolveProviderAccount(environmentId, attributed.providerInstanceId);
     const hostLabel = input.resolveEnvironmentLabel(environmentId);
     const synopsis = entry.synopsis;
 
@@ -94,7 +108,8 @@ export function buildFleetRows(input: FleetRowInput): readonly FleetRow[] {
       stateLabel: FABRIC_STATE_LABELS[entry.state],
       state: entry.state,
       needsUser: entry.needsUser,
-      attribution: joinDot([providerLabel, hostLabel]),
+      attribution: joinDot([account?.label ?? null, hostLabel]),
+      account,
       detail: synopsis?.currentAction ?? null,
       detailStale: synopsis !== null && isSynopsisStale(synopsis, input.now),
     };

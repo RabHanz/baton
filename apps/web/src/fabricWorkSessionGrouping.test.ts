@@ -99,8 +99,11 @@ const grouping = (input: {
     workSessions: [{ environmentId, workSession: input.workSession }],
     threads: input.threads,
     resolveEnvironmentLabel: () => "home-linux",
-    resolveProviderLabel: (_environmentId, instanceId) =>
-      instanceId === "claude-b" ? "Claude B" : instanceId === "claude-a" ? "Claude A" : null,
+    resolveProviderAccount: (_environmentId: string, instanceId: string) => {
+      const label =
+        instanceId === "claude-b" ? "Claude B" : instanceId === "claude-a" ? "Claude A" : null;
+      return label === null ? null : { label, email: null };
+    },
   });
 
 describe("buildWorkSessionGrouping", () => {

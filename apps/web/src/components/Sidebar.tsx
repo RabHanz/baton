@@ -2355,9 +2355,18 @@ export default function Sidebar() {
         : [],
     [environments, fabricWorkSessionsEnabled, serverConfigs],
   );
-  const resolveFabricProviderLabel = useCallback(
-    (environmentId: EnvironmentId, providerInstanceId: string) =>
-      providerEntriesByEnvironment.get(environmentId)?.get(providerInstanceId)?.displayName ?? null,
+  const resolveFabricProviderAccount = useCallback(
+    (environmentId: EnvironmentId, providerInstanceId: string) => {
+      const entry = providerEntriesByEnvironment.get(environmentId)?.get(providerInstanceId);
+      if (entry === undefined) return null;
+      const label = entry.displayName?.trim();
+      if (label === undefined || label.length === 0) return null;
+      // The address is redacted where it renders, the same treatment the
+      // settings card gives it: a sidebar is the thing people screenshot.
+      // The live snapshot carries the signed-in address; the entry itself is a
+      // projection of it.
+      return { label, email: entry.snapshot.auth.email?.trim() || null };
+    },
     [providerEntriesByEnvironment],
   );
   // A sentence that is refused changes nothing on the work-session stream, and
@@ -4684,7 +4693,7 @@ export default function Sidebar() {
               resolveEnvironmentLabel={(environmentId) =>
                 environmentLabelById.get(environmentId) ?? null
               }
-              resolveProviderLabel={resolveFabricProviderLabel}
+              resolveProviderAccount={resolveFabricProviderAccount}
               resolveProjectLabel={(environmentId, projectId) =>
                 projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
               }
@@ -4701,7 +4710,7 @@ export default function Sidebar() {
               resolveEnvironmentLabel={(environmentId) =>
                 environmentLabelById.get(environmentId) ?? null
               }
-              resolveProviderLabel={resolveFabricProviderLabel}
+              resolveProviderAccount={resolveFabricProviderAccount}
               resolveProjectLabel={resolveFabricProjectLabel}
               resolveThreadStatusLabel={(thread) =>
                 SIDEBAR_THREAD_STATUS_LABELS[resolveSidebarThreadStatus(thread)]

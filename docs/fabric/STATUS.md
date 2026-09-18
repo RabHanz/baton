@@ -47,8 +47,8 @@ it yet"). The runbook is `DEPLOY.md`; this is the state.
 
 | Machine       | Runtime                                   | Verified                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| signzart-prod | `0.0.43-fabric.1` (fork), beside `0.0.42` | service active, `http://127.0.0.1:3773` → 200; migrations 054–059 applied to the live `userdata` and seven `fabric_*` tables present; `projection_projects` still carries VentureOS; T3 Connect reconciled and the tunnel re-registered; Tailscale Serve returns 200 from another tailnet device; OOM shield re-applied; frames in `frames/deploy-2026-09-18/`                                                                                                                                                                                                                                                                                                                 |
-| the local box | `0.0.43-fabric.1` (fork), beside `0.0.42` | service active, `http://127.0.0.1:3773` → 200; migrations 054–059 and the seven `fabric_*` tables; row counts identical either side of the switch (nothing to lose — that environment has no projects or threads, it is the paired second one); T3 Connect reconciled on the first restart and four tunnel connections registered; the fork's client chunk carrying the intent surface is installed and served, and the stock client has no such string. **Not applied there: the OOM shield** — `sudo` on that box wants a password and a user unit cannot lower `OOMScoreAdjust` below the manager's `DefaultOOMScoreAdjust=200`, which is what the stock release ran at too |
+| signzart-prod | `0.0.43-fabric.4` (fork), beside `0.0.42` | service active, `http://127.0.0.1:3773` → 200; migrations 054–059 applied to the live `userdata` and seven `fabric_*` tables present; `projection_projects` still carries VentureOS; T3 Connect reconciled and the tunnel re-registered; Tailscale Serve returns 200 from another tailnet device; OOM shield re-applied; frames in `frames/deploy-2026-09-18/`                                                                                                                                                                                                                                                                                                                 |
+| the local box | `0.0.43-fabric.4` (fork), beside `0.0.42` | service active, `http://127.0.0.1:3773` → 200; migrations 054–059 and the seven `fabric_*` tables; row counts identical either side of the switch (nothing to lose — that environment has no projects or threads, it is the paired second one); T3 Connect reconciled on the first restart and four tunnel connections registered; the fork's client chunk carrying the intent surface is installed and served, and the stock client has no such string. **Not applied there: the OOM shield** — `sudo` on that box wants a password and a user unit cannot lower `OOMScoreAdjust` below the manager's `DefaultOOMScoreAdjust=200`, which is what the stock release ran at too |
 
 What the deploy changed in the fork itself: `fabricWorkSessionsEnabled` now
 defaults **on** (`DECISIONS.md` D45), because a build where the user must find a
@@ -90,6 +90,50 @@ prompt told the model "low confidence is always safe" and it believed that, hedg
 with one obvious target. The first synopsis described the request instead of the work, because the
 two output fields reached the CLI's JSON schema with no descriptions. Both were prompt faults found
 by running the thing, and neither would have been found by any test.
+
+### The second deploy (0.0.43-fabric.4)
+
+Built from fork `main` after six merges, deployed signzart first and then the
+local box. Both machines now run the same build, and every line of `DEPLOY.md`'s
+checklist was re-run on each:
+
+| Check                          | signzart                                                                                                                         | local box                                                                                                                                      |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| version, `127.0.0.1:3773`      | `0.0.43-fabric.4`, 200                                                                                                           | `0.0.43-fabric.4`, 200                                                                                                                         |
+| migrations                     | `fabric_sql_migrations` 1–7; upstream's high-water back to **53**; **zero** Fabric rows left in upstream's table                 | the same                                                                                                                                       |
+| the repair, in its own words   | `reclaimed: ['54','55','56','57','58','59']` then `migrations: ['7_IntentLearning']` — the six **adopted**, only the new one run | the same                                                                                                                                       |
+| T3 Connect                     | reconciled on startup                                                                                                            | reconciled on startup                                                                                                                          |
+| relay transport                | connector running                                                                                                                | four connections, all `protocol=http2`                                                                                                         |
+| Tailscale Serve                | **200 from the local box** over the tailnet                                                                                      | n/a                                                                                                                                            |
+| "Could not read limits"        | all three accounts read limits                                                                                                   | **gone** — `claudeAgent` reads `session 19%`, `weekly 83%`                                                                                     |
+| accounts resolve to themselves | optimapacifist / signzartco / rabeehanzla, each with its own usage                                                               | `claudeAgent` yes; the two claude-swap accounts report no address and `unsupported` — **their refresh tokens are dead**, which only he can fix |
+| the model path, live           | `what's cooking` → _"Check overall fleet status"_ (10.1s)                                                                        | → _"What is the fleet working on overall"_ (10.0s)                                                                                             |
+| nothing ran                    | intent log rows: 0 — `resolve` records nothing, only `run` does                                                                  | the same                                                                                                                                       |
+
+**Two defects this deploy found**, both in the model path and both invisible to
+every test because they are about which account gets picked on a machine with
+several:
+
+1. The interpreter chose a **claude-swap account whose refresh token had
+   expired**. It reports enabled, installed and `authenticated` — the CLI still
+   knows whose account it is — so `available` was true. The call failed on the
+   spot and the sentence came back as the grammar's refusal in 215 ms, which is
+   indistinguishable from "no model configured".
+2. With that fixed, it chose **Codex**, which is signed in and first in the
+   list, and whose driver does not implement the one-shot at all (D50 made it
+   optional per driver on purpose).
+
+So the rule was never "any available account": it is _an account on a driver
+that can do this, preferring one that has actually proven a login_. Both are
+pinned by tests shaped like the live box. The first cost a second deploy to
+diagnose because the failure logged `cause: [Object]`; it now logs the message.
+
+**One more thing this deploy could not do at all**: `pnpm-workspace.yaml` on
+upstream `main` contains the literal string `msgpackr-extract: set this to true
+or false`. pnpm tolerates it; the release archive's schema does not, so **no
+release can be built from an upstream tree until it is a boolean**. The fork
+pins it back to `true` with a comment, and that patch should be dropped when
+upstream fixes it.
 
 ### What running it on his boxes found
 

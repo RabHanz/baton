@@ -45,7 +45,7 @@ const model = (
     entries: entries.map((candidate) => ({ environmentId, entry: candidate })),
     resolveProjectLabel: () => "VentureOS",
     resolveEnvironmentLabel: () => "hetzner",
-    resolveProviderLabel: () => "Claude A",
+    resolveProviderAccount: () => ({ label: "Claude A", email: null }),
     now: Date.parse("2026-09-18T07:01:00.000Z"),
     needsUserOnly,
   });

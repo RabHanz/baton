@@ -43,17 +43,21 @@ const vocabulary: IntentVocabulary = {
   providers: [
     {
       instanceId: "claude-signzart",
+      driver: "claudeAgent",
       aliases: ["Claude · signzart", "signzart"],
       label: "Claude · signzart",
       model: "claude-fable-5-1",
       available: true,
+      signedIn: true,
     },
     {
       instanceId: "claude-rabee",
+      driver: "claudeAgent",
       aliases: ["Claude · rabee", "rabee"],
       label: "Claude · rabee",
       model: "claude-fable-5-1",
       available: false,
+      signedIn: false,
     },
   ],
   openGates: [

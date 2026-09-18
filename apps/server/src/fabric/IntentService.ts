@@ -207,6 +207,7 @@ export const make = Effect.gen(function* () {
 
     return candidates.map((candidate): IntentProvider => ({
       instanceId: candidate.provider.instanceId,
+      driver: candidate.provider.driver,
       label: candidate.display,
       aliases: candidate.aliases.filter((alias) => counts.get(alias.toLowerCase()) === 1),
       model: candidate.provider.models[0]?.slug ?? null,
@@ -214,6 +215,11 @@ export const make = Effect.gen(function* () {
         candidate.provider.enabled &&
         candidate.provider.installed &&
         isProviderAvailable(candidate.provider),
+      // An address is the only thing in the snapshot that says a login actually
+      // resolved. `status: "authenticated"` survives an expired refresh token.
+      signedIn:
+        candidate.provider.auth.status === "authenticated" &&
+        (candidate.provider.auth.email ?? "").trim().length > 0,
     }));
   });
 
