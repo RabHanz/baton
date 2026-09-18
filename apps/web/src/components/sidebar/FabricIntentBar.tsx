@@ -31,6 +31,19 @@ import { useAtomCommand } from "../../state/use-atom-command";
 /** Long enough that typing does not round-trip per keystroke. */
 const PREVIEW_DEBOUNCE_MS = 400;
 
+/**
+ * Grammar refusals a model is allowed to read a second time (D50).
+ *
+ * The same list the environment enforces; it is repeated here only so the
+ * client knows when to offer the second reading, and a client that gets it
+ * wrong is refused by the server rather than obeyed.
+ */
+const OPEN_TO_MODEL: ReadonlySet<string> = new Set([
+  "unrecognised",
+  "rule_not_understood",
+  "unknown_target",
+]);
+
 export interface FabricIntentBarProps {
   readonly environmentId: EnvironmentId;
   /** §14 rung 3: what the user is looking at, when the client knows. */
@@ -50,6 +63,16 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
   } | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  /**
+   * A model's reading of the current sentence, once it has been asked for.
+   * Carries its own text for the same reason the grammar preview does: a
+   * reading of a sentence the user has since changed must never be what runs.
+   */
+  const [modelReading, setModelReading] = useState<{
+    readonly text: string;
+    readonly resolution: FabricIntentResolution;
+  } | null>(null);
+  const [reading, setReading] = useState(false);
   /** §12.3's mode. While it is on, ordinary words are text, not instructions. */
   const [dictating, setDictating] = useState(false);
   const resolveIntent = useAtomCommand(fabricWorkSessions.intentResolve, { reportFailure: false });
@@ -112,6 +135,39 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
       return;
     }
 
+    const grammar = resolution?.text === trimmed ? resolution.resolution : null;
+    const alreadyRead = modelReading?.text === trimmed ? modelReading.resolution : null;
+
+    // First Enter on a sentence the grammar could not place: ask a model to
+    // read it, and show what it understood. Nothing runs yet — the reading is
+    // the confirmation step, and it is the whole reason a model on this path is
+    // safe rather than a shortcut.
+    if (
+      alreadyRead === null &&
+      !reading &&
+      grammar !== null &&
+      grammar.outcome === "refused" &&
+      OPEN_TO_MODEL.has(grammar.refusal.reason)
+    ) {
+      setReading(true);
+      void resolveIntent({
+        environmentId: props.environmentId,
+        input: {
+          text: trimmed,
+          focusedWorkSessionId: props.focusedWorkSessionId as never,
+          allowModel: true,
+        },
+      }).then((result) => {
+        setReading(false);
+        if (result._tag !== "Success") {
+          setReply("That could not be read.");
+          return;
+        }
+        setModelReading({ text: trimmed, resolution: result.value.resolution });
+      });
+      return;
+    }
+
     setRunning(true);
     void runIntent({
       environmentId: props.environmentId,
@@ -124,6 +180,7 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
       if (result._tag === "Success") {
         setReply(result.value.reply);
         setResolution(null);
+        setModelReading(null);
         setText("");
         props.onRan();
         return;
@@ -134,13 +191,32 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
     });
   };
 
-  const preview =
-    resolution === null || resolution.text !== text.trim()
-      ? null
-      : previewResolution(resolution.resolution);
+  // A model's reading of these exact words wins over the grammar's refusal of
+  // them: it is newer, it is what the next Enter will run, and it is what the
+  // user asked for by pressing Enter once already.
+  const trimmedText = text.trim();
+  const shown =
+    modelReading !== null && modelReading.text === trimmedText
+      ? modelReading.resolution
+      : resolution !== null && resolution.text === trimmedText
+        ? resolution.resolution
+        : null;
+  const preview = shown === null ? null : previewResolution(shown);
+  const awaitingSecondEnter =
+    modelReading !== null && modelReading.text === trimmedText && shown?.outcome === "resolved";
 
   return (
     <div className="px-2 pb-1 pt-1">
+      {reading ? (
+        <p
+          data-testid="sidebar-intent-reading"
+          className="pb-0.5 text-[11px] leading-4 text-sidebar-muted-foreground"
+        >
+          {/* A model read takes seconds, not milliseconds. Saying so beats an
+              input that looks like it ignored the keypress. */}
+          Reading that…
+        </p>
+      ) : null}
       {dictating ? (
         <p
           data-testid="sidebar-intent-dictating"
@@ -161,6 +237,10 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
         onChange={(event) => {
           setText(event.target.value);
           setReply(null);
+          // A reading belongs to the words it read. Changing them discards it,
+          // so the next Enter asks again rather than running something the user
+          // is no longer looking at.
+          setModelReading(null);
         }}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
@@ -180,7 +260,9 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
             preview.weighty && "text-sidebar-foreground",
           )}
         >
-          {preview.tone === "will" ? `↵ ${preview.line}` : preview.line}
+          {preview.tone === "will"
+            ? `${awaitingSecondEnter ? "↵ again to run" : "↵"} ${preview.line}`
+            : preview.line}
         </p>
       )}
       {preview?.unplaced === null || preview === null ? null : (

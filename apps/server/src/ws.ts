@@ -3884,6 +3884,9 @@ const makeWsRpcLayer = (
               intents.resolve({
                 text: input.text,
                 focusedWorkSessionId: input.focusedWorkSessionId ?? null,
+                // Absent means no: a preview that fires on every pause in
+                // typing must not spend a model call each time (D50).
+                allowModel: input.allowModel ?? false,
               }),
               (resolution) => ({ resolution }),
             ),

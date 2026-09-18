@@ -139,6 +139,7 @@ import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationE
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
@@ -569,6 +570,17 @@ const fabricServicesTestLayer = Layer.mergeAll(
   }),
   FabricIntentService.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
+    // No model read here: these routes are tested for what they carry, not for
+    // what a model would say, and a stock install has no `interpretFabricIntent`
+    // either (D50 makes it optional per driver).
+    Layer.provide(
+      Layer.succeed(TextGeneration.TextGeneration, {
+        generateCommitMessage: () => Effect.die("not used"),
+        generatePrContent: () => Effect.die("not used"),
+        generateBranchName: () => Effect.die("not used"),
+        generateThreadTitle: () => Effect.die("not used"),
+      } as unknown as TextGeneration.TextGeneration["Service"]),
+    ),
     Layer.provide(
       Layer.succeed(FabricIntentService.FabricIntentExecutor, {
         execute: () => Effect.succeed({ reply: "Done.", workSessionId: null, failed: false }),

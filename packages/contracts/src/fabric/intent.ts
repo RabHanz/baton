@@ -11,11 +11,14 @@
  * Three properties hold, and they are the whole reason this is a contract
  * rather than a prompt:
  *
- *   1. **Deterministic first, and in V1 only** (§13: "do not feed every
+ *   1. **Deterministic first, and deterministic last** (§13: "do not feed every
  *      transcript blindly into an LLM"). A grammar decides what a sentence
- *      means. There is no model in the path, so the same words always produce
- *      the same command, and the user can be told exactly what will happen
- *      before it happens.
+ *      means whenever it can, instantly and identically every time. A sentence
+ *      the grammar cannot place is read by a model (D50), which must answer in
+ *      *this* schema — naming ids that exist — and whose answer is checked by
+ *      the same deterministic rules on the way out. The user is still told
+ *      exactly what will happen before it happens; that read-back is now the
+ *      thing that makes a model on this path safe rather than a shortcut.
  *   2. **A refusal names the words it could not place.** Guessing is the one
  *      behaviour that makes a voice surface untrustworthy: a misheard sentence
  *      that starts a provider session is worse than one that does nothing.
@@ -25,6 +28,7 @@
  *
  * @module fabric/intent
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, ProjectId, TrimmedNonEmptyString, TrimmedString } from "../baseSchemas.ts";
@@ -179,6 +183,26 @@ export const FabricIntentResolution = Schema.Union([
 ]);
 export type FabricIntentResolution = typeof FabricIntentResolution.Type;
 
+/**
+ * Who read the sentence.
+ *
+ * Three answers, and the difference is the first thing anybody wants when a
+ * sentence did something surprising:
+ *
+ *   - `grammar` — the deterministic parser matched. Instant, free, identical
+ *     every time.
+ *   - `learned` — the grammar did not match, but this exact phrasing has been
+ *     resolved before and acted on, so the stored command answered it. Also
+ *     instant and free, and still not a model call.
+ *   - `model` — a model read it, in the schema above, against ids that exist,
+ *     and the answer passed the same §24.1 check the grammar applies.
+ *
+ * Defaulted rather than required: every row written before D50 was the grammar,
+ * and a default keeps that true without a backfill that invents history.
+ */
+export const FabricIntentSource = Schema.Literals(["grammar", "learned", "model"]);
+export type FabricIntentSource = typeof FabricIntentSource.Type;
+
 export const FabricIntentOutcome = Schema.Literals(["resolved", "refused", "failed"]);
 export type FabricIntentOutcome = typeof FabricIntentOutcome.Type;
 
@@ -201,6 +225,11 @@ export const FabricIntentRecord = Schema.Struct({
   risk: FabricIntentRisk,
   refusalReason: Schema.NullOr(FabricIntentRefusalReason),
   at: IsoDateTime,
+  source: FabricIntentSource.pipe(Schema.withDecodingDefault(Effect.succeed("grammar" as const))),
+  /** The model that read it, when one did. Null for the grammar and for a learned phrasing. */
+  model: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
 });
 export type FabricIntentRecord = typeof FabricIntentRecord.Type;
 
@@ -243,6 +272,16 @@ export const FabricIntentInput = Schema.Struct({
    * then from what moved most recently".
    */
   focusedWorkSessionId: Schema.optionalKey(Schema.NullOr(WorkSessionId)),
+  /**
+   * May a model read this sentence when the grammar cannot place it (D50)?
+   *
+   * Absent means no, which is what a live preview wants: it runs on every
+   * pause in typing, and a model call per pause would spend the user's own
+   * quota to describe a half-typed sentence. The client asks for a model
+   * reading deliberately — on the first Enter — and the reading it is shown is
+   * the one the second Enter runs.
+   */
+  allowModel: Schema.optionalKey(Schema.Boolean),
 });
 export type FabricIntentInput = typeof FabricIntentInput.Type;
 

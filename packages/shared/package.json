@@ -79,6 +79,10 @@
       "types": "./src/fabricIntentParser.ts",
       "import": "./src/fabricIntentParser.ts"
     },
+    "./fabricIntentModel": {
+      "types": "./src/fabricIntentModel.ts",
+      "import": "./src/fabricIntentModel.ts"
+    },
     "./fabricRuleParser": {
       "types": "./src/fabricRuleParser.ts",
       "import": "./src/fabricRuleParser.ts"

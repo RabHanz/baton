@@ -35,6 +35,7 @@ import Migration0003 from "./Migrations/Fabric/003_OrchestrationRules.ts";
 import Migration0004 from "./Migrations/Fabric/004_Intents.ts";
 import Migration0005 from "./Migrations/Fabric/005_WorkSessionObservedState.ts";
 import Migration0006 from "./Migrations/Fabric/006_AdoptedSessions.ts";
+import Migration0007 from "./Migrations/Fabric/007_IntentLearning.ts";
 
 /**
  * Fabric's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -49,6 +50,7 @@ const fabricMigrationEntries = [
   [4, "Intents", Migration0004],
   [5, "WorkSessionObservedState", Migration0005],
   [6, "AdoptedSessions", Migration0006],
+  [7, "IntentLearning", Migration0007],
 ] as const;
 
 export const fabricMigrationManifest = fabricMigrationEntries.map(

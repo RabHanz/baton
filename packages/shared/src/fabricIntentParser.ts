@@ -544,6 +544,36 @@ const stripAnswerFiller = (text: string): string => {
  * can match them as an instruction, and the phases that do not exist are named
  * before the grammar can mistake them for something it does handle.
  */
+/**
+ * §24.1's HIGH list, as a predicate other code can reuse.
+ *
+ * Exported because the model path has to apply the same test to what a model
+ * *produced*, not only to what the user said (D50): a model asked to be helpful
+ * is exactly the component that would paraphrase a refused request into wording
+ * that no longer matches. One list, two call sites, no drift.
+ *
+ * Returns the subject to name in the refusal, or null.
+ */
+/**
+ * The canonical form of a sentence: lower case, straight quotes, single spaces,
+ * no trailing punctuation.
+ *
+ * Exported because the learned-vocabulary table keys on it (D50), and a second
+ * implementation there would mean "what needs me?" and "What needs me" hit
+ * different rows in the memory and the same branch in the grammar.
+ */
+export function normaliseIntentText(text: string): string {
+  return stripTerminator(normalise(text));
+}
+
+export function highRiskSubject(text: string): string | null {
+  const raw = stripTerminator(normalise(text));
+  for (const entry of HIGH_RISK) {
+    if (entry.pattern.test(raw)) return entry.subject;
+  }
+  return null;
+}
+
 export function resolveFabricIntent(
   sentence: string,
   vocabulary: IntentVocabulary,

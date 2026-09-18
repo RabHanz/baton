@@ -1186,3 +1186,70 @@ file list when the merge conflicts rather than guessing.
 
 **Consequence:** the distance from upstream is a number somebody can read on demand, and a sync that
 would touch a file Fabric depends on says so before the merge rather than during it.
+
+---
+
+## D50 — A model reads the sentences the grammar cannot, and the grammar checks its work
+
+**Decided** 2026-09-18 by the Director, reversing D24 ("no model on the intent path") in his own
+words: _"don't dumb it down by generic grammar! what the hell even is the point of this if it isn't
+smart or sentient!"_
+
+D24 was right about the danger and wrong about the remedy. The danger is a probabilistic parser
+doing something the user did not ask for; the remedy D24 chose was to refuse everything the grammar
+could not place, which in practice means refusing the way people actually talk. Ten sentences
+written the way he speaks — "what's cooking", "get the radar one moving again", "tell the scheduler
+one to stop what it's doing" — are all refused by the shipped grammar. A surface that answers only
+sentences shaped like its own regexes is not an assistant.
+
+**The path is now three steps, in this order:**
+
+1. **The grammar**, unchanged. Instant, free, identical every time, and still the only thing that
+   runs on a sentence it can place.
+2. **A phrasing the user has already confirmed**, replayed from `fabric_intent_vocabulary`. Still
+   no model, still instant.
+3. **A model**, running as one of the user's own accounts through the same `TextGeneration` path
+   that writes thread titles — subscription, not API, and the cheapest tier that can classify
+   (`claude-haiku-4-5`).
+
+**What did not move, and this is the whole of the safety argument:**
+
+- **§24.1 is matched before the model.** A high-risk sentence is refused by the grammar and never
+  reaches it. `high_risk`, `not_available_yet` and `nothing_to_confirm` refusals are final.
+- **§24.1 is matched again after the model**, against the effectful text it produced — the message
+  an agent would receive, the title new work would carry. A model asked to be helpful is exactly
+  the component that would turn a vague sentence into "deploy to production" inside a message.
+  Deliberately _not_ against the description, which quotes names this environment already holds:
+  work called "Production deploy check" is the user naming their work, not asking for a deploy.
+- **Every id is checked against the same vocabulary the grammar uses.** An id that is not in the
+  list is a refusal naming what the model said, never a nearest match.
+- **`ambiguous_target` stays final.** When the grammar found _several_ matches and asked which, a
+  model picking one is precisely the "never guess a target" rule this surface is built on (§14
+  rung 9). A model may read an _unplaced_ name; it may not choose between two placed ones.
+- **Low confidence is a question.** The model's own question becomes the refusal message.
+
+**Two structural consequences that took a real run to find.**
+
+The first: **the live preview must not call a model.** It fires on every pause in typing, and a
+model call per pause spends the user's quota to describe a half-typed sentence. So `resolve`
+carries `allowModel`, absent meaning no. The first Enter on an unplaceable sentence asks for a
+reading and _shows_ it; the second Enter runs it. That two-step is not friction added for its own
+sake — it is what makes the read-back load-bearing on the one path where the reading might be
+wrong.
+
+The second: **the reading a user was shown must be the reading that runs.** Without a short-lived
+cache of readings keyed by the normalised sentence, the second Enter would ask again and could get
+a different answer, and the line the user approved would describe a command that never executed.
+
+**What it cost, honestly.** The first real run read **0 of 10**: the model answered `none` for
+phrasings it plainly understood and `low` confidence for sentences with one obvious target, because
+the prompt told it "low confidence is always safe" and it believed that. Rewriting the prompt with
+the kinds spelled out, an example sentence per kind, and a confidence rule that names when _not_ to
+hedge took it to **8 of 10**. The last two were `status_fleet` readings where the model wrote a
+sentence into an enum field; a deterministic fallback to `everything` — the superset of the four
+status questions, all of which are reads, with no target involved — took it to **10 of 10**.
+
+**Consequence:** every intent row carries `source` (`grammar` | `learned` | `model`) and the model
+that read it, so "why did that happen?" has an answer with a name in it. A model reading that runs
+and does not fail is learned, and the next identical sentence is answered by step 2 — the model's
+job is to teach the grammar the user's vocabulary, not to stay in the path forever.

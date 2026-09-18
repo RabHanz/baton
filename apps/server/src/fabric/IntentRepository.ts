@@ -10,6 +10,7 @@ import {
   FabricIntentOutcome,
   FabricIntentRefusalReason,
   FabricIntentRisk,
+  FabricIntentSource,
   IsoDateTime,
   TrimmedNonEmptyString,
   TrimmedString,
@@ -35,6 +36,10 @@ export const FabricIntentRow = Schema.Struct({
   risk: FabricIntentRisk,
   refusalReason: Schema.NullOr(FabricIntentRefusalReason),
   at: IsoDateTime,
+  /** Who read the sentence: the grammar, a learned phrasing, or a model. */
+  source: FabricIntentSource,
+  /** The model that read it, when one did. */
+  model: Schema.NullOr(TrimmedNonEmptyString),
 });
 export type FabricIntentRow = typeof FabricIntentRow.Type;
 
@@ -79,7 +84,9 @@ export const make = Effect.gen(function* () {
         reply,
         risk,
         refusal_reason AS "refusalReason",
-        at
+        at,
+        source,
+        model
       FROM fabric_intents
       ORDER BY at DESC, id DESC
       LIMIT ${limit}
@@ -100,7 +107,9 @@ export const make = Effect.gen(function* () {
         reply,
         risk,
         refusal_reason AS "refusalReason",
-        at
+        at,
+        source,
+        model
       FROM fabric_intents
       WHERE work_session_id = ${workSessionId}
       ORDER BY at DESC, id DESC
@@ -120,10 +129,11 @@ export const make = Effect.gen(function* () {
     sql`
       INSERT INTO fabric_intents (
         id, text, outcome, command_kind, work_session_id,
-        description, reply, risk, refusal_reason, at
+        description, reply, risk, refusal_reason, at, source, model
       ) VALUES (
         ${row.id}, ${row.text}, ${row.outcome}, ${row.commandKind}, ${row.workSessionId},
-        ${row.description}, ${row.reply}, ${row.risk}, ${row.refusalReason}, ${row.at}
+        ${row.description}, ${row.reply}, ${row.risk}, ${row.refusalReason}, ${row.at},
+        ${row.source}, ${row.model}
       )
     `.pipe(Effect.mapError(fail("FabricIntentRepository.insert")), Effect.asVoid);
 

@@ -217,7 +217,7 @@ it.effect("asks for rate limits without the local transcript scan", () =>
     yield* probeClaudeCapabilities(decodeClaudeSettings({ binaryPath: "claude" }));
 
     assert.deepEqual(usageOptions, { skipBehaviors: true });
-  }).pipe(Effect.scoped),
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.effect("preserves initialized capabilities when optional usage times out", () =>
