@@ -36,6 +36,20 @@ export const FabricFleetThread = Schema.Struct({
 });
 export type FabricFleetThread = typeof FabricFleetThread.Type;
 
+/**
+ * One adopted session under a work session. Thin on purpose: the fleet needs
+ * to say it exists, what it is doing, and that it is not one of ours.
+ */
+export const FabricFleetAdopted = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  runtime: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  state: FabricSessionState,
+  /** True when Fabric may type into it — §9's declared capability, on the row. */
+  canSendInput: Schema.Boolean,
+});
+export type FabricFleetAdopted = typeof FabricFleetAdopted.Type;
+
 export const FabricFleetEntry = Schema.Struct({
   workSessionId: WorkSessionId,
   title: TrimmedNonEmptyString,
@@ -47,6 +61,16 @@ export const FabricFleetEntry = Schema.Struct({
   needsUser: Schema.Boolean,
   activeThreadId: Schema.NullOr(ThreadId),
   threads: Schema.Array(FabricFleetThread),
+  /**
+   * Sessions Fabric adopted rather than started (§9): a Herdr pane, a terminal
+   * somebody else opened. They carry a state like any other row and a declared
+   * set of things Fabric cannot do to them.
+   *
+   * Optional with a default so a client from before Phase 8 decodes an entry
+   * that has them, and a server from before Phase 8 decodes into a client that
+   * expects them.
+   */
+  adopted: Schema.Array(FabricFleetAdopted).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   synopsis: Schema.NullOr(WorkSessionSynopsis),
   updatedAt: IsoDateTime,
 });

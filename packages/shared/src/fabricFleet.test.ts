@@ -4,6 +4,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   WorkSessionId,
+  type FabricFleetAdopted,
   type WorkSession,
   type WorkSessionProviderSession,
 } from "@t3tools/contracts";
@@ -80,6 +81,7 @@ const build = (input: {
   environmentOnline?: boolean;
   exhausted?: readonly string[];
   lastVisitedAt?: (threadId: string) => string | null;
+  adopted?: ReadonlyMap<string, ReadonlyArray<FabricFleetAdopted>>;
 }) =>
   buildFabricFleet({
     workSessions: input.workSessions,
@@ -88,6 +90,7 @@ const build = (input: {
     exhaustedProviderInstanceIds: new Set(input.exhausted ?? []),
     lastVisitedAt: input.lastVisitedAt ?? (() => null),
     observedAt: OBSERVED,
+    ...(input.adopted === undefined ? {} : { adopted: input.adopted }),
   });
 
 describe("buildFabricFleet", () => {
@@ -290,5 +293,49 @@ describe("filterFleetNeedsUser", () => {
     expect(filterFleetNeedsUser(fleet).entries.map((entry) => entry.workSessionId)).toEqual([
       "blocked",
     ]);
+  });
+});
+
+describe("adopted sessions in the fleet", () => {
+  const adoptedRow = (state: FabricFleetAdopted["state"]): FabricFleetAdopted => ({
+    id: "herdr:ops:hermes",
+    runtime: "herdr",
+    label: "hermes",
+    state,
+    canSendInput: true,
+  });
+
+  it("puts a terminal Fabric did not start on the work it belongs to", () => {
+    const fleet = build({
+      workSessions: [workSession({ id: "ws-1", title: "Scheduler", providerSessions: [] })],
+      threads: [],
+      adopted: new Map([["ws-1", [adoptedRow("working")]]]),
+    });
+    const entry = fleet.entries[0];
+    expect(entry?.adopted).toHaveLength(1);
+    expect(entry?.adopted[0]?.label).toBe("hermes");
+    // The work session has no thread of its own; the adopted pane is what it
+    // is doing, and the fleet says so rather than calling the work idle.
+    expect(entry?.state).toBe("working");
+  });
+
+  it("lets an adopted terminal make the work need the user", () => {
+    // A session Fabric cannot control still tells the truth about what the
+    // work is waiting for.
+    const fleet = build({
+      workSessions: [workSession({ id: "ws-1", title: "Scheduler", providerSessions: [] })],
+      threads: [],
+      adopted: new Map([["ws-1", [adoptedRow("needs_input")]]]),
+    });
+    expect(fleet.entries[0]?.state).toBe("needs_input");
+    expect(fleet.entries[0]?.needsUser).toBe(true);
+  });
+
+  it("is an empty list on every environment without one", () => {
+    const fleet = build({
+      workSessions: [workSession({ id: "ws-1", title: "Scheduler", providerSessions: [] })],
+      threads: [],
+    });
+    expect(fleet.entries[0]?.adopted).toEqual([]);
   });
 });

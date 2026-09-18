@@ -165,6 +165,20 @@ import {
 } from "./project.ts";
 import { FabricFleetInput, FabricFleetResult } from "./fabric/fleet.ts";
 import {
+  FABRIC_ADOPTED_WS_METHODS,
+  AdoptedDiscoverInput,
+  AdoptedDiscoverResult,
+  AdoptedListInput,
+  AdoptedRefInput,
+  AdoptedRefreshInput,
+  AdoptedRegisterInput,
+  AdoptedSendInputInput,
+  AdoptedSendInputResult,
+  AdoptedSessionError,
+  AdoptedSessionListResult,
+  AdoptedSessionResult,
+} from "./fabric/adoptedSession.ts";
+import {
   FABRIC_INTENT_WS_METHODS,
   FabricIntentError,
   FabricIntentInput,
@@ -1533,6 +1547,45 @@ const WsFabricIntentListRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentList, {
   error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
 });
 
+// Sessions Fabric adopted rather than started (§9). Discovery reads; the rest
+// change what an external runtime is doing, or what Fabric believes about it.
+
+const WsFabricAdoptedDiscoverRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedDiscover, {
+  payload: AdoptedDiscoverInput,
+  success: AdoptedDiscoverResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAdoptedRegisterRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedRegister, {
+  payload: AdoptedRegisterInput,
+  success: AdoptedSessionResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAdoptedListRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedList, {
+  payload: AdoptedListInput,
+  success: AdoptedSessionListResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAdoptedRefreshRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedRefresh, {
+  payload: AdoptedRefreshInput,
+  success: AdoptedSessionResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAdoptedDetachRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedDetach, {
+  payload: AdoptedRefInput,
+  success: AdoptedSessionResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAdoptedSendInputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, {
+  payload: AdoptedSendInputInput,
+  success: AdoptedSendInputResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
 const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
@@ -1702,5 +1755,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricIntentResolveRpc,
   WsFabricIntentRunRpc,
   WsFabricIntentListRpc,
+  WsFabricAdoptedDiscoverRpc,
+  WsFabricAdoptedRegisterRpc,
+  WsFabricAdoptedListRpc,
+  WsFabricAdoptedRefreshRpc,
+  WsFabricAdoptedDetachRpc,
+  WsFabricAdoptedSendInputRpc,
   WsFabricSubscribeWorkSessionsRpc,
 );

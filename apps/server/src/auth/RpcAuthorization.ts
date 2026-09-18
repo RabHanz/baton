@@ -6,6 +6,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  FABRIC_ADOPTED_WS_METHODS,
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
@@ -203,6 +204,15 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_INTENT_WS_METHODS.intentResolve]: AuthOrchestrationReadScope,
   [FABRIC_INTENT_WS_METHODS.intentRun]: AuthOrchestrationOperateScope,
   [FABRIC_INTENT_WS_METHODS.intentList]: AuthOrchestrationReadScope,
+  // Adopting a terminal is an operate act even though discovery is a read:
+  // registering one puts it in the fleet, and typing into it types into
+  // somebody's live session.
+  [FABRIC_ADOPTED_WS_METHODS.adoptedDiscover]: AuthOrchestrationReadScope,
+  [FABRIC_ADOPTED_WS_METHODS.adoptedList]: AuthOrchestrationReadScope,
+  [FABRIC_ADOPTED_WS_METHODS.adoptedRegister]: AuthOrchestrationOperateScope,
+  [FABRIC_ADOPTED_WS_METHODS.adoptedRefresh]: AuthOrchestrationOperateScope,
+  [FABRIC_ADOPTED_WS_METHODS.adoptedDetach]: AuthOrchestrationOperateScope,
+  [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: AuthOrchestrationOperateScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

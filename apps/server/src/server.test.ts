@@ -108,6 +108,7 @@ const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unk
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts";
 import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
@@ -534,9 +535,33 @@ const fabricWorkSessionTestLayer = FabricWorkSessionService.layer.pipe(
 const fabricRuleTestLayer = FabricOrchestrationRuleService.layer.pipe(
   Layer.provide(SqlitePersistenceMemory),
 );
+/**
+ * Adopted sessions (§9) with a runtime that is not there: every answer is the
+ * refusal a machine without Herdr gives, which is what these route tests
+ * should see.
+ */
+const fabricAdoptedTestLayer = FabricAdoptedSessionService.layer.pipe(
+  Layer.provide(SqlitePersistenceMemory),
+  Layer.provide(
+    Layer.succeed(FabricAdoptedSessionService.AdoptedRuntimeAdapter, {
+      discover: Effect.succeed({
+        available: false,
+        reason: "herdr is not installed on this environment.",
+        candidates: [],
+      }),
+      sendInput: () =>
+        Effect.succeed({
+          delivered: false,
+          detail: "herdr is not installed on this environment.",
+        }),
+    }),
+  ),
+);
+
 const fabricServicesTestLayer = Layer.mergeAll(
   fabricWorkSessionTestLayer,
   fabricRuleTestLayer,
+  fabricAdoptedTestLayer,
   Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
     start: () => Effect.void,
     drain: Effect.void,
@@ -549,7 +574,9 @@ const fabricServicesTestLayer = Layer.mergeAll(
         execute: () => Effect.succeed({ reply: "Done.", workSessionId: null, failed: false }),
       }),
     ),
-    Layer.provide(Layer.mergeAll(fabricWorkSessionTestLayer, fabricRuleTestLayer)),
+    Layer.provide(
+      Layer.mergeAll(fabricWorkSessionTestLayer, fabricRuleTestLayer, fabricAdoptedTestLayer),
+    ),
     // Its own projection and registry stubs rather than the app's: this block
     // is provided last in the chain, so it cannot borrow from mocks declared
     // earlier. An empty fleet is the right shape here anyway — these tests are

@@ -33,6 +33,7 @@ import {
   type DiscoveredLocalServerList,
   EventId,
   type EditorId,
+  FABRIC_ADOPTED_WS_METHODS,
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
@@ -92,6 +93,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as FleetQuery from "./fabric/FleetQuery.ts";
+import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts";
 import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
@@ -579,6 +581,7 @@ const makeWsRpcLayer = (
       const orchestrationRules = yield* OrchestrationRuleService.OrchestrationRuleService;
       const orchestrationReactor = yield* FabricOrchestrationReactor.FabricOrchestrationReactor;
       const intents = yield* FabricIntentService.FabricIntentService;
+      const adopted = yield* FabricAdoptedSessionService.AdoptedSessionService;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
@@ -3907,6 +3910,41 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "fabric" },
           ),
+        // §9's adopted sessions: terminals Fabric did not start. Discovery
+        // refuses by name on a machine without the runtime, rather than
+        // returning an empty list that reads as "nothing is running".
+        [FABRIC_ADOPTED_WS_METHODS.adoptedDiscover]: (_input) =>
+          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedDiscover, adopted.discover, {
+            "rpc.aggregate": "fabric",
+          }),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedRegister]: (input) =>
+          observeRpcEffect(
+            FABRIC_ADOPTED_WS_METHODS.adoptedRegister,
+            Effect.map(adopted.register(input), (session) => ({ session })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedList]: (input) =>
+          observeRpcEffect(
+            FABRIC_ADOPTED_WS_METHODS.adoptedList,
+            Effect.map(adopted.list(input), (sessions) => ({ sessions })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedRefresh]: (input) =>
+          observeRpcEffect(
+            FABRIC_ADOPTED_WS_METHODS.adoptedRefresh,
+            Effect.map(adopted.refresh(input), (session) => ({ session })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedDetach]: (input) =>
+          observeRpcEffect(
+            FABRIC_ADOPTED_WS_METHODS.adoptedDetach,
+            Effect.map(adopted.detach(input.id), (session) => ({ session })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: (input) =>
+          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, adopted.sendInput(input), {
+            "rpc.aggregate": "fabric",
+          }),
         [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>
           observeRpcStream(
             FABRIC_WS_METHODS.subscribeWorkSessions,
