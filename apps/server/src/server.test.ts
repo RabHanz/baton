@@ -32,6 +32,7 @@ import {
   type PreviewEvent,
   ProjectId,
   type ProviderAuthState,
+  FabricAccountPoolUnavailableError,
   ProviderDriverKind,
   ProviderInstanceId,
   type ProviderInstallState,
@@ -113,6 +114,7 @@ import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts"
 import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
+import * as FabricAccountPoolService from "./fabric/AccountPoolService.ts";
 import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
 import {
@@ -560,7 +562,32 @@ const fabricAdoptedTestLayer = FabricAdoptedSessionService.layer.pipe(
   ),
 );
 
+/**
+ * No account switcher in a route test: every read is the answer a machine
+ * without one gives, which is what these tests should see.
+ */
+const fabricAccountPoolTestLayer = Layer.succeed(
+  FabricAccountPoolService.AccountPoolService,
+  FabricAccountPoolService.AccountPoolService.of({
+    read: (driver) =>
+      Effect.fail(
+        new FabricAccountPoolUnavailableError({
+          driver,
+          detail: "no account switcher is installed here (cswap)",
+        }),
+      ),
+    activate: (input) =>
+      Effect.fail(
+        new FabricAccountPoolUnavailableError({
+          driver: input.driver,
+          detail: "no account switcher is installed here (cswap)",
+        }),
+      ),
+  }),
+);
+
 const fabricServicesTestLayer = Layer.mergeAll(
+  fabricAccountPoolTestLayer,
   fabricWorkSessionTestLayer,
   fabricRuleTestLayer,
   fabricAdoptedTestLayer,

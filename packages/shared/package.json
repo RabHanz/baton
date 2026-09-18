@@ -63,6 +63,10 @@
       "types": "./src/fabricDictation.ts",
       "import": "./src/fabricDictation.ts"
     },
+    "./fabricAccountRotation": {
+      "types": "./src/fabricAccountRotation.ts",
+      "import": "./src/fabricAccountRotation.ts"
+    },
     "./fabricFleet": {
       "types": "./src/fabricFleet.ts",
       "import": "./src/fabricFleet.ts"
@@ -70,6 +74,10 @@
     "./fabricFleetView": {
       "types": "./src/fabricFleetView.ts",
       "import": "./src/fabricFleetView.ts"
+    },
+    "./fabricHandoff": {
+      "types": "./src/fabricHandoff.ts",
+      "import": "./src/fabricHandoff.ts"
     },
     "./fabricInjection": {
       "types": "./src/fabricInjection.ts",

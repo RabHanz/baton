@@ -33,9 +33,11 @@ import {
   type DiscoveredLocalServerList,
   EventId,
   type EditorId,
+  ProviderDriverKind,
   FABRIC_ADOPTED_WS_METHODS,
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
+  FABRIC_ACCOUNT_WS_METHODS,
   FABRIC_WS_METHODS,
   OrchestrationFiringNotFoundError,
   type FileManagerRevealKind,
@@ -153,6 +155,10 @@ import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
+import * as AccountPoolService from "./fabric/AccountPoolService.ts";
+
+/** Only Claude keeps several accounts behind one config directory today. */
+const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
 import { importAgentThread, importRecentAgentThreads } from "./project/AgentSessionImporter.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
@@ -578,6 +584,7 @@ const makeWsRpcLayer = (
       const providerAuth = yield* ProviderAuthService;
       const providerInstances = yield* ProviderInstanceRegistry;
       const workSessions = yield* WorkSessionService.WorkSessionService;
+      const accountPool = yield* AccountPoolService.AccountPoolService;
       const orchestrationRules = yield* OrchestrationRuleService.OrchestrationRuleService;
       const orchestrationReactor = yield* FabricOrchestrationReactor.FabricOrchestrationReactor;
       const intents = yield* FabricIntentService.FabricIntentService;
@@ -3732,6 +3739,23 @@ const makeWsRpcLayer = (
         // Fabric work sessions. Thin by design: the domain lives in
         // `fabric/WorkSessionService`, and the only handler with logic of its
         // own is `startThread`, which has to reach the orchestration engine.
+        [FABRIC_ACCOUNT_WS_METHODS.accountPool]: (input) =>
+          observeRpcEffect(
+            FABRIC_ACCOUNT_WS_METHODS.accountPool,
+            accountPool.read(input.driver ?? DEFAULT_ROTATION_DRIVER),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ACCOUNT_WS_METHODS.accountUse]: (input) =>
+          observeRpcEffect(
+            FABRIC_ACCOUNT_WS_METHODS.accountUse,
+            accountPool.activate({
+              driver: input.driver ?? DEFAULT_ROTATION_DRIVER,
+              key: input.key,
+              reason: input.reason ?? "manual",
+              workSessionId: input.workSessionId ?? null,
+            }),
+            { "rpc.aggregate": "fabric" },
+          ),
         [FABRIC_WS_METHODS.workSessionList]: (input) =>
           observeRpcEffect(
             FABRIC_WS_METHODS.workSessionList,

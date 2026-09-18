@@ -1517,3 +1517,80 @@ that_:
 Both are reachable from Settings → Environments (per machine, including this one) and from the
 project's own page (narrowed to its directory), behind an
 `agentSessionConversationImport` capability so an older server is not probed.
+
+---
+
+## D55 — A turn asked the CLI to change to the mode it already had, and a resumed session refused
+
+**Decided** 2026-09-18, after the Director's _"When can I move all of my sessions to T3 code?"_ —
+where the difference between **imported** and **moved** is whether the thread can take a turn.
+
+The 420 MB conversation imported cleanly and then could not answer. The projection said:
+
+```
+session=error   turn/setPermissionMode failed
+```
+
+and nothing else. The provider log said more:
+
+```
+session.started     resume: 735f333a-898c-479e-9370-26be44c409c3
+session.configured  cwd=/home/onnyx/VentureOS
+claude/result/success   session_id=735f333a-…   num_turns=0   result=""
+```
+
+**So the resume worked.** The CLI restored a four-day-old session, reported back its own session id,
+and then the turn died before the prompt reached it.
+
+**The request that killed it was a request for the mode already in effect.** `sendTurn` applies the
+thread's interaction mode by calling `setPermissionMode`, and for `interactionMode: "default"` — what
+every ordinary turn carries — the target is `basePermissionMode`, which is _the mode the session was
+started with_. On a fresh session that is a no-op the CLI tolerates. On a resumed one it is refused,
+and the refusal takes the turn with it.
+
+The fix is the obvious one and would be right whatever the CLI did: **track the mode in effect and
+call only on a change.** A control request whose success would change nothing is work that can only
+fail.
+
+**Two things this cost, both recorded:**
+
+- The first attempt left `turn/setPermissionMode failed` and no cause at all. `toRequestError` now
+  carries the rejection's own message — the same lesson `cause: [Object]` taught the intent path in
+  D50, learned twice in three days.
+- Two authorised turns on his account: one to reproduce with the cause visible, one to prove the
+  fix. The second answered with what that session was doing on 14 September.
+
+**Consequence:** an imported conversation is a conversation he can continue, not an archive he can
+read. That is the whole difference between this feature and a transcript viewer.
+
+---
+
+## D56 — The amendment: continuity is the product, and voice is the point
+
+**Decided** 2026-09-18. The specification never says this, and he called that a flaw in
+the document. The document is not the authority; he is. Verbatim:
+
+"I want all of my projects and the active sessions within those projects that I am
+managing to work on to be in the T3 code, or whatever UI the Fabric should have,
+beautifully and functionally in threads there. If it is working and any kind of provider
+reaches limits, it should automatically or manually swap seamlessly to the other
+provider, and the coding and work mustn't ever stop unless it is stopped manually. That
+was my hands-off vision for development and coding, but it is just a part, a small part
+of the grand scheme of things, because what I envision is a completely hands-off computer
+control using my voice. That is what Fabric was brought to life for, across my devices,
+across my agents, across my projects, and across platforms."
+
+Three things follow, and they outrank the phase list:
+
+1. **A limit is an event Fabric absorbs, not an interruption he sees.** "The coding and work
+   mustn't ever stop unless it is stopped manually" is the acceptance test for account
+   rotation — not "a handoff exists", but that the work continued and he did not have to do
+   anything. Same thread, same transcript, credential swapped underneath at a turn boundary.
+2. **"Any kind of provider."** In-place rotation covers accounts behind one config directory;
+   the §6.1 capsule covers a different directory or a different provider. Which mechanism ran
+   is a detail he should never have to think about: one action, one policy, and the only place
+   the difference is named is the timeline.
+3. **Voice is the grand scheme; development is one slice.** Everything else is scaffolding for
+   "completely hands-off computer control using my voice… across my devices, across my agents,
+   across my projects, and across platforms." The reconciliation table judges every phase
+   against that sentence rather than against the document's own list.

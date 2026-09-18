@@ -9,6 +9,7 @@ import {
   FABRIC_ADOPTED_WS_METHODS,
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
+  FABRIC_ACCOUNT_WS_METHODS,
   FABRIC_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
@@ -178,6 +179,8 @@ export const RPC_REQUIRED_SCOPES = {
   // orchestration scopes rather than introducing a parallel permission axis.
   // Starting a thread inside a work session dispatches an ordinary
   // orchestration command underneath, which is why it needs the operate scope.
+  [FABRIC_ACCOUNT_WS_METHODS.accountPool]: AuthOrchestrationReadScope,
+  [FABRIC_ACCOUNT_WS_METHODS.accountUse]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
   [FABRIC_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
