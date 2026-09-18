@@ -116,6 +116,7 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  InfoIcon,
   MessageCircleIcon,
   Minimize2Icon,
   MousePointerClickIcon,
@@ -1717,6 +1718,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "message" && row.message.role === "reasoning" ? (
         <ReasoningTimelineRow row={row} />
       ) : null}
+      {row.kind === "message" && row.message.role === "system" ? (
+        <SystemTimelineRow row={row} />
+      ) : null}
       {row.kind === "assistant-meta" ? <AssistantMetaTimelineRow row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
@@ -1850,6 +1854,23 @@ function QueuedMessageTimelineRow({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A line the app says about the conversation, not a turn in it: today, that a
+ * long history was imported from its end while the agent kept all of it. It
+ * reads as a note between messages rather than as anybody's message.
+ */
+function SystemTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  return (
+    <div
+      data-testid="chat-system-note"
+      className="mx-auto flex w-full max-w-3xl items-start gap-2 py-1 text-muted-foreground text-xs"
+    >
+      <InfoIcon aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+      <p className="min-w-0 flex-1 text-pretty leading-5">{row.message.text}</p>
     </div>
   );
 }

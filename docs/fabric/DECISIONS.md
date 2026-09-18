@@ -1432,3 +1432,88 @@ remaining 4 s comes down, and pointless while it does not.
 understood" is about five seconds on this transport, and a sentence the grammar or the memory can
 place is instant. The gap between those two is now the reason to teach the grammar, and the learned
 table is what does it.
+
+---
+
+## D54 — A conversation is imported from its end, and the door to it is permanent
+
+**Decided** 2026-09-18, on the Director's words: _"it imports the projects but not the latest sessions
+to resume with all transcripts!! SOLVE THIS! it is the whole point to pivot to this from vscode and
+claude remote!"_ and, before that, _"I don't see any sessions I can import, I need to know how to
+resume this one and my others!"_
+
+Two defects, one feature, one file.
+
+### The transcript read was forwards, and his sessions are enormous
+
+signzart's boot log after his wizard run, three times:
+
+```
+WARN Could not read imported transcript
+  cause: TranscriptJsonLimitError: Transcript selected history exceeds the 32 MiB memory budget
+```
+
+His real sessions in `/home/dev/.claude/projects/-home-onnyx-VentureOS/` are **171 MB** and
+**420 MB**. The importer read forwards from byte 0 and held every retained record, so the budget was
+a verdict on the file rather than on the work: **the conversations most worth resuming were exactly
+the ones that could not be**.
+
+The last 200 records of either file are about **0.4 MB**. So the read now walks **backwards from the
+end**, joins chunks at record boundaries, keeps only records that become visible messages, and folds
+the rest into five fields. The budget is on what is **read** (16 MiB backwards, 4 MiB forwards for
+what only a file's head knows), never on what the file holds.
+
+Consequences that follow from reading the end rather than the whole:
+
+- **The record limit stopped being a verdict.** A 100,000-record transcript imports its newest
+  messages instead of being skipped. Two tests that asserted the old refusal now assert the import,
+  and say in their names what they now guard.
+- **One enormous record cannot hide a session.** Past 8 MiB a single record's bytes are dropped
+  rather than held, so the messages on the other side of it are still reachable; and when the end of
+  a file is one such record, the head is read for the conversation instead.
+- **The session id still resumes everything.** `--resume <session id>` carries the provider's own
+  history regardless of how much of it T3 shows. That is what makes showing a tail honest, and the
+  imported thread says so in its first line: _"Showing the last N messages of this conversation. The
+  agent has the whole thing."_ `thread.history.import` gained `system` as a role for it — the
+  projection already had one, nothing rendered it, and now the timeline does.
+- **`AgentSessionJson.ts` is deleted.** Its streaming field-selecting reader existed to bound a
+  forward whole-file read. Nothing reads forwards through a whole file any more.
+
+### A session continued after compaction was invisible to the scan
+
+`6bf22e2d…`'s first records are `history-suppression`, `ai-title`, `agent-name`, `mode` and
+`permission-mode` — no `cwd`. Its first `cwd` sits at **byte 952,129**, record 23 of 35,814: inside
+the 1 MiB forward budget by **96 KB**. A slightly longer compaction summary would have dropped that
+session from the scan without a word, and a session the scan never lists is a session nothing can
+import.
+
+Claude writes `cwd` on **every** record, so when the head does not answer within its budget, the end
+of the file answers in one 256 KB read. The forward pass is unchanged for the normal case, where the
+first record names the directory.
+
+The direction matters for which answer is kept: **the earliest `cwd` wins** — a session belongs to
+the directory it started in, whatever a later record says — while **title and model take the newest**.
+A backwards walk sees the newest first, so the code says which it wants rather than relying on order.
+
+### The import surface is permanent, and it lists conversations
+
+Upstream's only import surface is the first-run `WelcomeWizard`, which every returning user has
+already passed. The machinery underneath it — `agentSessions.scan`, `agentSessions.import`,
+`AgentSessionImporter` — was reachable exactly once per install.
+
+Two new methods, because the wizard's shape answers the wrong question. Its scan answers _which
+folders have history_; somebody looking for a session they remember is asking _which conversation was
+that_:
+
+- `agentSessions.threads` lists recent conversations across **every configured provider instance's
+  home** — so the cswap profiles' sessions appear — with the project path, the account, the last
+  activity, the size, a preview of the first thing he typed, and whether it is already here. 50 at a
+  time, 30-day window, and it says "scan limit reached" when it cut the list.
+- `agentSessions.importThread` imports **exactly one**. The project-wide import takes everything
+  recent in a directory, which is right for onboarding and wrong for "resume that one": a folder can
+  hold a transcript being written right now, and importing it beside the wanted one puts a second
+  writer one click away.
+
+Both are reachable from Settings → Environments (per machine, including this one) and from the
+project's own page (narrowed to its directory), behind an
+`agentSessionConversationImport` capability so an older server is not probed.

@@ -163,6 +163,48 @@ measured and it works — and it is deliberately not shipped: it buys ~1 s of
 ~5.4 s and costs a conversation that accumulates history, which is the one thing
 this path must not have.
 
+### Importing a conversation (D54)
+
+His own sessions could not be imported at all. signzart's log, three times after
+his wizard run:
+
+```
+WARN Could not read imported transcript
+  cause: TranscriptJsonLimitError: Transcript selected history exceeds the 32 MiB memory budget
+```
+
+The importer read a transcript forwards from byte 0 and held its selected
+history, so a long conversation was refused for being long. It now reads
+**backwards from the end**, and the budget is on what is read rather than on
+what the file holds.
+
+Measured on his real transcripts, on signzart, through the scanner's own code:
+
+|                          |                                                                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `735f333a…`              | **419.9 MB**, 103 messages recovered, last active 2026-09-14                                                                            |
+| `6bf22e2d…`              | **172.6 MB**, 164 messages recovered, last active 2026-09-18                                                                            |
+| both, listed together    | **2.6 s**                                                                                                                               |
+| the scan that finds them | 9.9 s over 224 project directories (truncated: there are more than 5,000 transcripts in that home, and the newest 5,000 are considered) |
+
+Both refused outright before this change.
+
+**The conversation is not truncated — the view is.** `--resume <session id>`
+carries the provider's own history whatever T3 shows, and the imported thread
+says so in its first line rather than leaving the user to guess.
+
+**Where the action lives.** Settings → Environments, per machine (including this
+one), and on a project's own page narrowed to its directory. Upstream's only
+import surface is the first-run wizard, which every returning user has already
+passed.
+
+**A session that is still running is shown and not offered**, because resuming it
+would put a second writer on the only file that holds it. The signal is the
+transcript's modification time, which is honest but weak: on this box the live
+orchestrator session writes in bursts, and a fifteen-minute gap between bursts
+reads as quiet. The import refuses within five minutes of a write; past that it
+is the user's judgement.
+
 ### What running it on his boxes found
 
 Three defects, none of which any test would have caught, because each needed a

@@ -8,9 +8,9 @@ import {
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { type EnvironmentId, type ProjectIconOverride } from "@t3tools/contracts";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
-import { Trash2Icon } from "lucide-react";
+import { MessagesSquareIcon, Trash2Icon } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
@@ -39,6 +39,7 @@ import {
   ProjectFaviconPickerDialog,
 } from "./ProjectFaviconPickerDialog";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
+import { ImportConversationsDialog } from "./ImportConversationsDialog";
 import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
 import { useSettingsProjectGroups } from "./useSettingsProjectGroups";
 
@@ -176,6 +177,13 @@ function ProjectDetail({
   const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
   const deleteProject = useAtomCommand(projectEnvironment.delete, { reportFailure: false });
   const projectNameEditedRef = useRef(false);
+
+  const router = useRouter();
+  const [importOpen, setImportOpen] = useState(false);
+  const representativeEnvironment = environmentById.get(representative.environmentId);
+  const supportsConversationImport =
+    representativeEnvironment?.serverConfig?.environment.capabilities
+      .agentSessionConversationImport === true;
 
   const faviconPath = representative.faviconPath ?? null;
   const projectIcon = representative.projectIcon ?? null;
@@ -480,6 +488,20 @@ function ProjectDetail({
             }
           />
         </SettingsSection>
+        {supportsConversationImport ? (
+          <SettingsSection title="Conversations">
+            <SettingsRow
+              title="Import from Claude Code or Codex"
+              description={`Sessions those CLIs already ran in ${representative.workspaceRoot}. Importing one opens it here and resumes it where it left off.`}
+              control={
+                <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                  <MessagesSquareIcon />
+                  Find conversations
+                </Button>
+              }
+            />
+          </SettingsSection>
+        ) : null}
         <ProjectActionsSettings />
         {hasMultipleCheckouts ? checkoutChoices : null}
         <SettingsSection title="Danger">
@@ -516,6 +538,21 @@ function ProjectDetail({
         </SettingsSection>
       </SettingsPageContainer>
 
+      {importOpen ? (
+        <ImportConversationsDialog
+          open
+          onOpenChange={setImportOpen}
+          environmentId={representative.environmentId}
+          environmentLabel={representative.environmentLabel ?? "this machine"}
+          workspaceRoot={representative.workspaceRoot}
+          onOpenThread={(environmentId, threadId) => {
+            void router.navigate({
+              to: "/$environmentId/$threadId",
+              params: { environmentId, threadId },
+            });
+          }}
+        />
+      ) : null}
       <ProjectFaviconPickerDialog
         key={`${representative.environmentId}:${representative.workspaceRoot}:${faviconPickerOpen}`}
         cwd={representative.workspaceRoot}

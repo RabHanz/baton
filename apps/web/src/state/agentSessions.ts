@@ -23,3 +23,23 @@ export const agentSessionImport = createEnvironmentRpcCommand(connectionAtomRunt
   label: "environment-data:agent-sessions:import",
   tag: WS_METHODS.agentSessionsImport,
 });
+
+/**
+ * The conversations an environment's agents have left on disk, newest first.
+ *
+ * The scan above answers "which folders have history" — the shape onboarding
+ * needs. This answers "which conversation was that", which is what somebody
+ * looking for a session they remember is actually asking, and it is reachable
+ * from Settings and from a project rather than only from the first run.
+ */
+export const agentSessionThreads = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  label: "environment-data:agent-sessions:threads",
+  tag: WS_METHODS.agentSessionsThreads,
+  staleTimeMs: 30_000,
+  idleTtlMs: 5 * 60_000,
+});
+
+export const agentSessionImportThread = createEnvironmentRpcCommand(connectionAtomRuntime, {
+  label: "environment-data:agent-sessions:import-thread",
+  tag: WS_METHODS.agentSessionsImportThread,
+});
