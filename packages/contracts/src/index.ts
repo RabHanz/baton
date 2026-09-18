@@ -50,5 +50,6 @@ export * from "./fabric/orchestrationRule.ts";
 export * from "./fabric/intent.ts";
 export * from "./fabric/context.ts";
 export * from "./fabric/adoptedSession.ts";
+export * from "./fabric/capability.ts";
 export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";

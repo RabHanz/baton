@@ -39,7 +39,19 @@ extends.
 | Client-runtime exports | `packages/client-runtime/package.json`                                                      | one subpath export                                                                                                                                                                                                                      | 2     |
 | Sidebar                | `apps/web/src/components/Sidebar.tsx`                                                       | two memos, one callback, one status-label map, one flagged block above the thread list. The thread list itself is untouched — `DECISIONS.md` D12                                                                                        | 2     |
 | Migrations             | `apps/server/src/persistence/Migrations.ts`                                                 | one import and one manifest row                                                                                                                                                                                                         | 2     |
-| Route test wiring      | `apps/server/src/server.test.ts`                                                            | the routes gained a dependency, so the test that builds them by hand provides it                                                                                                                                                        | 2     |
+| Shared exports         | `packages/shared/package.json`                                                              | one export entry per shared Fabric module — the fleet view, the grammars, the policies                                                                                                                                                  | 4–10  |
+| Desktop IPC            | `apps/desktop/src/ipc/channels.ts`, `DesktopIpcHandlers.ts`, `preload.ts`                   | one channel, one registration, one preload binding: what this machine can type into (§18). The renderer cannot see the display server                                                                                                   | 6     |
+| Desktop bridge type    | `packages/contracts/src/ipc.ts`                                                             | one optional method on `DesktopBridge`, so a build predating it still typechecks                                                                                                                                                        | 6     |
+| Mobile navigation      | `apps/mobile/src/Stack.tsx`, `features/home/HomeHeader.tsx`, `HomeRouteScreen.tsx`          | one route, one header button, one prop. A screen nothing links to is a screen nobody has                                                                                                                                                | 7     |
+| Upstream reactor       | `apps/server/src/orchestration/Layers/OrchestrationReactor.ts` and its test                 | the synopsis and rule reactors subscribe to the same domain events; the change is the subscription, not the reactor's own behaviour                                                                                                     | 4, 9  |
+| Integration harness    | `apps/server/integration/OrchestrationEngineHarness.integration.ts`                         | the harness builds the engine by hand and gained the same dependency the routes did                                                                                                                                                     | 9     |
+
+| Route test wiring | `apps/server/src/server.test.ts` | the routes gained a dependency, so the test that builds them by hand provides it | 2 |
+
+**Checked at Phase 10.** The table above was regenerated from
+`git diff --name-only <fork-point> HEAD`, filtered to files Fabric _edits_ rather than adds. Every
+upstream file this fork touches is in it; everything else Fabric contributes is a new file under a
+`fabric` name, which cannot conflict with anything upstream writes.
 
 ## Remotes and rebasing
 

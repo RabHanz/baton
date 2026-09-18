@@ -942,3 +942,92 @@ The alternative — counting only sessions Fabric controls — would produce a f
 that says "idle" about work that is visibly stuck, which is the specific failure
 §29 Phase 4's exit criterion was written against. A session Fabric cannot
 control still tells the truth about what the work is waiting for.
+
+---
+
+## D41 — The capability plane is the abstraction, not the capabilities
+
+**Decided** 2026-09-18, during Phase 10. **Follows** §23's own instruction.
+
+§23 lists twelve provider-neutral capabilities and then says plainly: _do not
+implement every capability during the first Fabric milestone; build the
+registration/policy abstraction first, then migrate tools incrementally._
+
+So Phase 10 ships the registry and the policy and **none of the capabilities**.
+What that buys before a single tool moves is the thing §23 is actually after:
+one place where "may this happen here?" has an answer, computed from what the
+environment is for and what class the action is, instead of each provider's tool
+configuration deciding privately and nobody being able to say what the system as
+a whole permits.
+
+**Consequence:** `evaluateCapability` is a pure function over a policy, three
+templates exist (development, supervised, production), and a capability nobody
+declared is refused rather than defaulted. Migrating a real tool onto the plane
+is a later phase's work and will not need this decided again.
+
+---
+
+## D42 — Production turns high-risk capabilities off rather than gating them
+
+**Decided** 2026-09-18, during Phase 10. **Stricter than** §24.2.
+
+§24.2 allows a high-risk operation through an explicit confirmation surface. The
+production template does not use one: deployment, databases and email are
+`enabled: false` with a reason, and turning one on is a visible edit to the
+policy.
+
+The reason is where the confirmation would appear. Fabric's surfaces are a
+sidebar, a phone and a spoken sentence; a production deploy confirmed by a tap
+on a phone in a taxi is not a confirmation, it is a formality with a witness.
+Making it an edit to the policy puts the decision somewhere it can be read
+afterwards.
+
+Two details that keep this honest rather than merely strict:
+
+- **Medium risk still asks on supervised and production environments**, because
+  somebody else is watching those, and an ask is cheap.
+- **A narrowly scoped preauthorisation lifts a confirmation and never a
+  refusal** (§24.2's own exception, kept narrow). A capability the policy
+  switched off stays off however the caller asks.
+
+---
+
+## D43 — Retention runs where the log grows, not on a timer
+
+**Decided** 2026-09-18, during Phase 10. **Implements** §26 for Fabric's own
+records.
+
+The intent log only grows when somebody says something, so pruning on write runs
+exactly as often as it needs to and never on an idle machine. A scheduler would
+be a second lifecycle to keep honest — started, stopped, tested — for a job with
+no deadline.
+
+The horizon itself is the shared `expiredRecords`, so the rule cannot drift
+between the policy and the SQL: the server reads the candidate rows, the tested
+function decides, and only ids are deleted.
+
+Two rules inside it, both from §26's spirit rather than its letter:
+
+- **Refusals are kept** when the policy says so, and it says so by default. A
+  log that keeps only what worked cannot show a grammar its own blind spots.
+- **A row whose timestamp will not parse is kept.** Deleting something because
+  its date was unreadable is the wrong way round.
+
+---
+
+## D44 — The audit trail is a view, never a fourth table
+
+**Decided** 2026-09-18, during Phase 10.
+
+"What happened to this work, and who asked?" is answered from three records that
+already exist — intents, firings, provider sessions — merged in time order by a
+pure function.
+
+Writing a fourth table alongside them would drift from them, and the drift would
+be discovered by somebody trying to work out what went wrong. A view cannot
+drift: if it is wrong, the records it reads are wrong, which is the thing you
+wanted to know anyway.
+
+**Consequence:** a person's sentence sorts above the rule it set off at the same
+instant, so cause reads above effect rather than in whatever order the tables
+came back.
