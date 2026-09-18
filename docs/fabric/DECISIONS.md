@@ -1119,3 +1119,70 @@ it unset disables relay-client tracing.
 **Consequence:** "T3 Connect works" is a deploy check with a log line to look for
 (`T3 Connect desired link reconciled on startup`) and a process to see
 (`cloudflared tunnel run`), not an assumption.
+
+## D48 — Fabric's migrations leave upstream's number space alone
+
+**Decided** 2026-09-18, on the Director's instruction to fix the collision before the first upstream
+merge rather than after it.
+
+Phases 2–10 numbered Fabric's six migrations 054–059 inside upstream's single ascending manifest.
+That was always borrowed time. Upstream's migrator runs exactly the entries whose id is greater than
+the highest id recorded in the tracking table, so the moment upstream publishes its own 054 one of
+two things happens:
+
+- merged into our manifest, two entries claim 54 and the migrator fails with `Duplicates` — loud,
+  survivable;
+- renumbered around ours, upstream's migration sits below our high-water mark of 59 and **never
+  runs**. No error, no log line. The first symptom is a query against a column that was never added,
+  on somebody's machine, weeks later.
+
+The second is the one that decides this. A fork cannot hold a veto over upstream's numbering.
+
+**What ships:** `apps/server/src/persistence/FabricMigrations.ts`, a second manifest numbered from 1
+with `table: "fabric_sql_migrations"` — `MigratorOptions.table` is upstream's own parameter, so
+nothing in their migrator was reshaped. `Migrations.ts` is byte-identical to upstream's again, which
+takes the file they touch on _every_ schema change off the conflicts table.
+
+**Databases that already ran the old numbering are repaired, not re-migrated.** Both of the
+Director's machines carry rows 54–59 today. On the next boot `reclaimUpstreamMigrationIds` moves
+that record across — each legacy row is written into Fabric's table under its new id and deleted
+from upstream's — so the high-water mark drops back to upstream's real latest.
+
+The tempting alternative was to drop the rows and let Fabric's migrator re-run 1–6 over tables that
+already exist, on the grounds that every `CREATE TABLE` says `IF NOT EXISTS`. That is wrong, and the
+test found it before a machine did: `002_WorkSessionSynopsis` adds a column, and SQLite has no
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Re-running fails the boot with
+`duplicate column name: synopsis_json` on precisely the machines the repair exists for. Adoption is
+also simply truer — those migrations did run.
+
+**Consequence:** the repair runs _before_ upstream's migrator, not after, so a machine upgrading
+into a release that already contains upstream's 054 runs it on that boot rather than the next one.
+A half-migrated database adopts what it applied and runs the rest; a database that never saw the old
+numbering reclaims nothing. All four cases are tested against a real SQLite database, including an
+upstream migration at 054 proven to run after the repair and proven to be skipped before it.
+
+---
+
+## D49 — The fork absorbs upstream, and the sync is a script rather than a habit
+
+**Decided** 2026-09-18, replacing the rebase plan written at Phase 0.
+
+`UPSTREAM.md` originally said the fork's `main` would stay a fast-forward mirror of upstream's and
+Fabric would live on `fabric/*` branches rebased on top. That stopped being true the moment Fabric
+merged into the fork's `main`, which is where it belongs now that the fork is what runs on the
+Director's machines. Keeping the old policy would mean rewriting every Fabric commit on every sync:
+"what did the fork change" would have no stable answer, and every open branch would need a force
+push.
+
+So the fork **absorbs** upstream through merge commits, and legibility comes from the conflicts
+table instead — every upstream file Fabric edits, listed with the reason, everything else a new file
+under a `fabric` name.
+
+`scripts/fabric/upstream-sync.sh` does it: fetch, report the new commits, intersect upstream's
+changed files with the fork's, flag every hit against the conflicts table (read out of `UPSTREAM.md`
+itself, so the document stays the source of that list), merge onto a dated branch and open the PR
+with the report as its body. It refuses a dirty tree, never pushes to `main`, and stops with the
+file list when the merge conflicts rather than guessing.
+
+**Consequence:** the distance from upstream is a number somebody can read on demand, and a sync that
+would touch a file Fabric depends on says so before the merge rather than during it.

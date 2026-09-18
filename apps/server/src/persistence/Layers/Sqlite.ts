@@ -6,6 +6,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 
 import { runMigrations } from "../Migrations.ts";
+import { reclaimUpstreamMigrationIds, runFabricMigrations } from "../FabricMigrations.ts";
 import { ServerConfig } from "../../config.ts";
 
 const setup = Layer.effectDiscard(
@@ -15,7 +16,14 @@ const setup = Layer.effectDiscard(
     yield* sql`PRAGMA busy_timeout = 5000;`;
     yield* sql`PRAGMA foreign_keys = ON;`;
     yield* sql`PRAGMA journal_mode = WAL;`;
+    // Fabric's migrations live in their own manifest and their own tracking
+    // table, so upstream's number space stays upstream's (D48). Three calls in
+    // this order and no other: the reclaim first, so a database still carrying
+    // Fabric's old 054-059 rows gives those ids back *before* upstream's runner
+    // reads its high-water mark and skips its own migration at that number.
+    yield* reclaimUpstreamMigrationIds();
     yield* runMigrations();
+    yield* runFabricMigrations();
   }),
 );
 
