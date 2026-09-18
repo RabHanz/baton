@@ -88,10 +88,26 @@ const MAX_LISTED_THREADS = 50;
 
 /** First-user-message preview, long enough to recognize a conversation by. */
 const THREAD_PREVIEW_CHARS = 240;
+
+/**
+ * How recently a transcript must have been written to count as a session that
+ * is still running.
+ *
+ * Resuming a running session puts a second writer on the one file that holds
+ * the conversation, so the listing shows it and declines to offer it. Nothing
+ * on disk says "this process is alive", so this is a judgement: an agent writes
+ * a record on every tool call and every message, and five minutes is longer
+ * than any gap between those and shorter than any session somebody has really
+ * finished with. Measured on this author's own machine, a two-minute window
+ * called a session that was mid-work "quiet" — the gap between two of its tool
+ * calls was 155 seconds.
+ */
+export const STILL_WRITING_WINDOW_MS = 5 * 60 * 1000;
+
 /**
  * Large tool results (especially screenshots) can make an otherwise ordinary
- * Codex transcript several GiB. Streaming field selection avoids allocating
- * those payloads. Raw I/O and selected history have separate budgets.
+ * Codex transcript several GiB. Raw I/O and retained history have separate
+ * budgets.
  */
 const MAX_IMPORTED_TRANSCRIPT_BYTES = 4 * 1024 * 1024 * 1024;
 const MAX_IMPORTED_MESSAGES = 200;
@@ -1937,6 +1953,8 @@ export const make = Effect.gen(function* () {
       projectsByRoot.set(yield* directoryIdentity(projectRoot), project);
     }
     const existingThreadIds = new Set(shellSnapshot.threads.map((thread) => thread.id));
+    const stillWritingAfterMs =
+      DateTime.toEpochMillis(yield* DateTime.now) - STILL_WRITING_WINDOW_MS;
 
     const threads: Array<AgentSessionThreadSummary> = [];
     for (const outcome of listed) {
@@ -1959,6 +1977,7 @@ export const make = Effect.gen(function* () {
         startedAt: outcome.thread.createdAt,
         lastActiveAt: outcome.thread.updatedAt,
         alreadyImported: existingThreadIds.has(threadId),
+        stillWriting: (outcome.source.mtimeMs ?? 0) > stillWritingAfterMs,
       });
     }
 

@@ -150,6 +150,13 @@ export const AgentSessionThreadSummary = Schema.Struct({
   startedAt: IsoDateTime,
   lastActiveAt: IsoDateTime,
   alreadyImported: Schema.Boolean,
+  /**
+   * The transcript was written to minutes ago, so that session may still be
+   * running. Resuming it would put a second writer on one file, and that file
+   * is the only record of the conversation — so the listing says so and waits
+   * rather than offering it.
+   */
+  stillWriting: Schema.Boolean,
 });
 export type AgentSessionThreadSummary = typeof AgentSessionThreadSummary.Type;
 
@@ -193,7 +200,7 @@ export class AgentSessionImportThreadError extends Schema.TaggedError<AgentSessi
   "AgentSessionImportThreadError",
   {
     providerSessionId: TrimmedNonEmptyString,
-    reason: Schema.Literals(["not-found", "unresumable", "changed"]),
+    reason: Schema.Literals(["not-found", "unresumable", "changed", "still-writing"]),
   },
 ) {
   override get message(): string {
@@ -204,6 +211,8 @@ export class AgentSessionImportThreadError extends Schema.TaggedError<AgentSessi
         return `Conversation '${this.providerSessionId}' has no session id its CLI can resume.`;
       case "changed":
         return `Conversation '${this.providerSessionId}' changed while it was importing.`;
+      case "still-writing":
+        return `Conversation '${this.providerSessionId}' was written to in the last few minutes, so it is probably still running. Importing it now would put a second writer on the only file that holds it — close that session and try again.`;
     }
   }
 }

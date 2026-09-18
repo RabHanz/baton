@@ -1621,6 +1621,9 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           [sessionTwo, "claude-second", otherWorkspace, "Draft the launch note", false],
           [sessionOne, "claudeAgent", workspace, "Rebuild the deploy script", false],
         ]);
+        // Both were last written a minute ago on the test clock, which is what
+        // a session still being written looks like.
+        expect(listed.threads.map((thread) => thread.stillWriting)).toEqual([true, true]);
         expect(listed.threads.every((thread) => thread.sizeBytes > 0)).toBe(true);
         expect(listed.threads.map((thread) => thread.threadId)).toEqual([
           `import:claude-second:${sessionTwo}`,

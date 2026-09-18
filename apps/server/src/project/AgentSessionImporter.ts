@@ -23,6 +23,7 @@ import {
 } from "@t3tools/contracts";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -32,6 +33,7 @@ import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEng
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderSessionDirectory from "../provider/Services/ProviderSessionDirectory.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
+import { STILL_WRITING_WINDOW_MS } from "./AgentSessionScanner.ts";
 
 const CLAUDE_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -338,6 +340,17 @@ export const importAgentThread = Effect.fn("importAgentThread")(function* (
     return yield* new AgentSessionImportThreadError({
       providerSessionId: input.providerSessionId,
       reason: "not-found",
+    });
+  }
+  // A transcript written to seconds ago belongs to a session that is still
+  // running, and resuming that puts a second writer on the one file holding the
+  // conversation. The listing already declines to offer it; this is the rule
+  // rather than the courtesy, because the method is callable on its own.
+  const quietSinceMs = DateTime.toEpochMillis(yield* DateTime.now) - STILL_WRITING_WINDOW_MS;
+  if ((found.source.mtimeMs ?? 0) > quietSinceMs) {
+    return yield* new AgentSessionImportThreadError({
+      providerSessionId: input.providerSessionId,
+      reason: "still-writing",
     });
   }
 

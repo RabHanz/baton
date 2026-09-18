@@ -179,8 +179,9 @@ const makeSnapshotsLayer = (input: {
     getImportedAgentSessionSources: () => Effect.succeed([]),
     getThreadDetailById: (threadId) => Effect.succeed(input.getThread?.(threadId) ?? Option.none()),
     // Picking one conversation asks whether that thread is already here before
-    // it reads anything from disk.
-    getThreadShellById: (threadId) => Effect.succeed(input.getThread?.(threadId) ?? Option.none()),
+    // it reads anything from disk. These cases are all first imports, so the
+    // shell lookup finds nothing and the read goes ahead.
+    getThreadShellById: () => Effect.succeedNone,
   });
 
 const runImport = (input: {
@@ -251,6 +252,7 @@ it.layer(NodeServices.layer)("AgentSessionImporter", (it) => {
     // one puts a second writer one click away.
     it.effect("imports only the conversation that was picked", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-08-24T12:00:00.000Z"));
         const commands: Array<OrchestrationCommand> = [];
         const bindings: Array<ProviderSessionDirectory.ProviderRuntimeBinding> = [];
         const other = makeThread("claudeAgent");
@@ -286,6 +288,42 @@ it.layer(NodeServices.layer)("AgentSessionImporter", (it) => {
       }),
     );
 
+    // The transcript is the only record of the conversation. Resuming a session
+    // that is still writing to it puts a second writer on that file, so the
+    // import refuses until it goes quiet — the listing declines to offer it,
+    // and this is the rule underneath that courtesy.
+    it.effect("refuses a conversation whose session is still writing", () =>
+      Effect.gen(function* () {
+        const now = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(now);
+        const thread = makeThread("claudeAgent");
+        const live = {
+          ...makeThreadOutcome(thread),
+          source: { ...makeThreadOutcome(thread).source, mtimeMs: now - 5_000 },
+        } satisfies AgentSessionScanner.AgentSessionRecentThread;
+        const scanner = AgentSessionScanner.AgentSessionScanner.of({
+          scan: Effect.die("unused"),
+          recentThreadSummaries: () => Effect.die("unused"),
+          recentThreads: () => Stream.make(live),
+        });
+        const commands: Array<OrchestrationCommand> = [];
+
+        const error = yield* runImportThread({
+          scanner,
+          engine: makeStubEngine(commands),
+          directory: makeStubDirectory([]),
+          snapshots: makeSnapshotsLayer({ project: makeProject() }),
+          providerSessionId: thread.providerSessionId,
+        }).pipe(Effect.flip);
+
+        expect(error).toMatchObject({
+          _tag: "AgentSessionImportThreadError",
+          reason: "still-writing",
+        });
+        expect(commands).toEqual([]);
+      }),
+    );
+
     it.effect("says so when the conversation is no longer on disk", () =>
       Effect.gen(function* () {
         const scanner = AgentSessionScanner.AgentSessionScanner.of({
@@ -313,6 +351,7 @@ it.layer(NodeServices.layer)("AgentSessionImporter", (it) => {
     // left guessing whether the agent lost the rest of it — it did not.
     it.effect("opens a tailed import with what it is showing and what the agent has", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-08-24T12:00:00.000Z"));
         const commands: Array<OrchestrationCommand> = [];
         const thread: AgentSessionScanner.AgentSessionThread = {
           ...makeThread("claudeAgent"),

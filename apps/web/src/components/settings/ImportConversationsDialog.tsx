@@ -244,7 +244,7 @@ export function ImportConversationsDialog({
                   <button
                     key={thread.threadId}
                     type="button"
-                    disabled={thread.alreadyImported || isImporting}
+                    disabled={thread.alreadyImported || thread.stillWriting || isImporting}
                     aria-pressed={isSelected}
                     onClick={() => toggle(thread)}
                     className={cn(
@@ -288,6 +288,13 @@ export function ImportConversationsDialog({
                           <>
                             <span aria-hidden>·</span>
                             <span className="shrink-0">already here</span>
+                          </>
+                        ) : thread.stillWriting ? (
+                          <>
+                            <span aria-hidden>·</span>
+                            {/* Two writers on one transcript would corrupt the
+                                only record of the conversation. */}
+                            <span className="shrink-0">still running — wait for it to stop</span>
                           </>
                         ) : null}
                       </span>
