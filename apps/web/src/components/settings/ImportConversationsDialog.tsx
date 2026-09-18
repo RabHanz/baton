@@ -24,6 +24,12 @@ import { formatEnvironmentQueryError } from "../../state/query";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import {
+  canImportConversation,
+  conversationUnavailableReason,
+  formatConversationSize,
+  workspaceRootTitle,
+} from "./ImportConversationsDialog.logic";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -37,24 +43,6 @@ import {
 import { Spinner } from "../ui/spinner";
 
 const PROVIDER_LABELS = { claudeAgent: "Claude Code", codex: "Codex" } as const;
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"] as const;
-  let value = bytes;
-  let unit = -1;
-  do {
-    value /= 1024;
-    unit += 1;
-  } while (value >= 1024 && unit < units.length - 1);
-  return `${value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
-}
-
-/** A folder's own name, which is what a project is called when it has no other. */
-function workspaceRootTitle(workspaceRoot: string): string {
-  const segments = workspaceRoot.split(/[\\/]/).filter(Boolean);
-  return segments[segments.length - 1] ?? workspaceRoot;
-}
 
 /**
  * The account that ran a conversation, named the way the fleet rows name it:
@@ -240,11 +228,14 @@ export function ImportConversationsDialog({
                 const accountLabel =
                   account?.displayName?.trim() || PROVIDER_LABELS[thread.provider];
                 const isSelected = selected.has(thread.threadId);
+                // Two writers on one transcript would damage the only record of
+                // the conversation, so that row says so instead of offering it.
+                const unavailable = conversationUnavailableReason(thread);
                 return (
                   <button
                     key={thread.threadId}
                     type="button"
-                    disabled={thread.alreadyImported || thread.stillWriting || isImporting}
+                    disabled={!canImportConversation(thread) || isImporting}
                     aria-pressed={isSelected}
                     onClick={() => toggle(thread)}
                     className={cn(
@@ -283,18 +274,15 @@ export function ImportConversationsDialog({
                         <span aria-hidden>·</span>
                         <span className="shrink-0">{thread.messageCount} messages</span>
                         <span aria-hidden>·</span>
-                        <span className="shrink-0">{formatSize(thread.sizeBytes)}</span>
-                        {thread.alreadyImported ? (
+                        <span className="shrink-0">{formatConversationSize(thread.sizeBytes)}</span>
+                        {unavailable !== null ? (
                           <>
                             <span aria-hidden>·</span>
-                            <span className="shrink-0">already here</span>
-                          </>
-                        ) : thread.stillWriting ? (
-                          <>
-                            <span aria-hidden>·</span>
-                            {/* Two writers on one transcript would corrupt the
-                                only record of the conversation. */}
-                            <span className="shrink-0">still running — wait for it to stop</span>
+                            <span className="shrink-0">
+                              {unavailable === "already-here"
+                                ? "already here"
+                                : "still running — wait for it to stop"}
+                            </span>
                           </>
                         ) : null}
                       </span>
