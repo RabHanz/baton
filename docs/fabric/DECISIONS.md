@@ -1594,3 +1594,49 @@ Three things follow, and they outrank the phase list:
    "completely hands-off computer control using my voice… across my devices, across my agents,
    across my projects, and across platforms." The reconciliation table judges every phase
    against that sentence rather than against the document's own list.
+
+---
+
+## D57 — One Claude instance, not three: the credential lives in the default config directory
+
+**Decided** 2026-09-18, after the Director signed the second account back in and the
+credential did not land where two of his three configured instances were pointing.
+
+Measured on signzart, read-only, immediately after that sign-in:
+
+```
+/home/dev/.claude
+  credentials file: present (2048 bytes, modified 19:06)
+  loggedIn: true, authMethod: claude.ai
+
+/home/dev/.local/share/claude-swap/sessions/1-signzartco_gmail.com
+  credentials file: ABSENT            loggedIn: false, authMethod: none
+
+/home/dev/.local/share/claude-swap/sessions/2-rabeehanzla_gmail.com
+  credentials file: ABSENT            loggedIn: false, authMethod: none
+```
+
+**That is cswap's actual model.** One config directory holds the live credential, and the
+store swaps the account underneath it — its log reads `Backed up account 3 / Wrote target
+credentials / Updated config file / Switched from account 3 to 1`, and its own comment on
+the publish step is "nothing can fail after the file is published". The
+`sessions/<n>-<email>` directories are materialised for `cswap run`, which is a
+this-terminal-only affordance; one of them held a credential file at 15:16 and cswap had
+removed it by 19:06 (`Invalidated session credentials for account 1`).
+
+**So three provider instances was the wrong shape, and the reason is not preference.** Two
+of them pointed at directories with no credential, which is why they reported themselves
+authenticated with no address and unreadable limits — the state that reads identically to
+an expired login and sent this author looking in the wrong place twice. Worse, a separate
+config directory is precisely the thing that **cannot** continue another directory's
+threads: upstream refuses a resume across instances whose continuation identity differs.
+Three instances would have made rotation impossible by construction.
+
+**The correct shape is one Claude instance on the default config directory, with Fabric
+rotating the account under it.** That is what `fabric.account.use` does, and it is why the
+same thread, session id, transcript and working directory survive a switch.
+
+**Done:** both instances removed from `~/.t3/userdata/settings.json` on signzart and on
+onnyx, each with a timestamped backup of the file beside it, and both servers restarted
+and answering. The default `claudeAgent` instance remains, and it is the one the pool
+rotates.
