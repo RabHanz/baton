@@ -91,6 +91,10 @@
       "types": "./src/fabricSynopsis.ts",
       "import": "./src/fabricSynopsis.ts"
     },
+    "./fabricSynopsisModel": {
+      "types": "./src/fabricSynopsisModel.ts",
+      "import": "./src/fabricSynopsisModel.ts"
+    },
     "./fabricSpokenStatus": {
       "types": "./src/fabricSpokenStatus.ts",
       "import": "./src/fabricSpokenStatus.ts"

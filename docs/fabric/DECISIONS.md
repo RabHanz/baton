@@ -1253,3 +1253,68 @@ status questions, all of which are reads, with no target involved — took it to
 that read it, so "why did that happen?" has an answer with a name in it. A model reading that runs
 and does not fail is learned, and the next identical sentence is answered by step 2 — the model's
 job is to teach the grammar the user's vocabulary, not to stay in the path forever.
+
+---
+
+## D51 — The synopsis is written at a milestone, not only assembled
+
+**Decided** 2026-09-18 by the Director, in the same breath as D50, reversing D16 ("no model
+summariser").
+
+D16 declined §11's semantic summarisation because the fork had no model on any path and adding one
+for a convenience was the wrong first use. D50 put one there. What the assembled synopsis produces
+at the moment somebody most wants to read it — a completed turn — is this:
+
+```
+currentAction: (none)
+next:          (none)
+```
+
+That is correct and useless. The provider stopped, so there is no current action; no rule fired, so
+there is no next step. Somebody who stepped away and came back learns nothing.
+
+What a model produces from the same thread's own turns, measured on the snapshot with
+`claude-sonnet-5`, in 3.1 seconds:
+
+> The review is complete: the branch was found to contain only a one-line README with no code, and
+> the reviewer gave it LGTM.
+>
+> Merge can proceed; optionally clean up the placeholder commit message and author email first if
+> the repo will be long-lived.
+
+**What the model may write:** `currentAction` and `next`, one sentence each, and `source` becomes
+`"model"` so a reader always knows which kind they are looking at.
+
+**What it may not touch, enforced in `applyModelSynopsis` rather than asked for in a prompt:**
+
+- **`needsUser`.** Whether the fleet interrupts a person stays derived from events. A model
+  guessing "needs approval" is a model deciding whether to interrupt somebody, which is not a
+  summarisation task.
+- **`changedFiles`, `validation`, `recentFindings`.** These are observations, and they keep coming
+  from the events that observed them. A model that "remembers" a file nobody touched is worse than
+  no synopsis at all.
+
+**One milestone, once.** Only a completed turn is written about, and each turn id at most once —
+the Director's "cache by turn id so a synopsis is written at most once per trigger", taken
+literally. Tool events and activity appends keep updating the assembled record for free, as they
+did.
+
+**It arrives as a signal**, `{ kind: "written", currentAction, next }`, folded by the same reducer
+as every other signal. Not a second service method: one write path means one staleness rule and one
+file to read when a synopsis looks wrong.
+
+**Every failure is silent and leaves the plain synopsis standing** — no account, a driver without
+the capability, a model that does not answer. The assembled version is never wrong about the facts,
+which makes it the right thing to fall back to.
+
+**What it cost, honestly.** The first real run produced _"Wrote a two-sentence status update for the
+'Reconnect fix review' work based on the recent turns provided."_ — the model narrating the request
+instead of the work. Two causes, both in this fork: the two output fields reached the CLI's JSON
+schema with no descriptions, so the only guidance was prose several paragraphs earlier; and nothing
+in the prompt said "do not describe this request". Annotating the fields and adding that rule fixed
+it on the next call.
+
+**Consequence:** the synopsis is now the most expensive thing Fabric does per turn, at one Sonnet
+call. It is bounded by the turn rate of work the user is actually running, and it is the line they
+read to decide whether to look — which is the one place in this product where a sentence is worth
+more than a label.

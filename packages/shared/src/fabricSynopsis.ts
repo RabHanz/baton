@@ -23,12 +23,26 @@ import {
   type WorkSessionSynopsis,
 } from "@t3tools/contracts";
 
+import { applyModelSynopsis } from "./fabricSynopsisModel.ts";
+
 /**
  * The §11.1 list, normalised. One variant per thing the specification names as
- * a deterministic trigger; nothing else may update a synopsis without a model
- * and an explicit milestone.
+ * a deterministic trigger, plus `written` — the one milestone where a model is
+ * allowed to say it better (D51).
  */
 export type SynopsisSignal =
+  /**
+   * Two sentences from a model, at a completed turn. It arrives as a signal
+   * rather than through a second service method so there stays exactly one
+   * write path, with one staleness rule and one place to read when a synopsis
+   * looks wrong.
+   */
+  | {
+      readonly kind: "written";
+      readonly at: string;
+      readonly currentAction: string;
+      readonly next: string;
+    }
   | { readonly kind: "turn-started"; readonly at: string; readonly prompt: string | null }
   | { readonly kind: "turn-completed"; readonly at: string }
   | { readonly kind: "turn-failed"; readonly at: string; readonly reason: string | null }
@@ -100,6 +114,14 @@ export function applySynopsisSignal(
   });
 
   switch (signal.kind) {
+    case "written":
+      // Delegated so the rule about what a model may and may not change lives
+      // in one file, next to the prompt that asks for it.
+      return applyModelSynopsis(synopsis, {
+        currentAction: signal.currentAction,
+        next: signal.next,
+        at: signal.at,
+      });
     case "turn-started": {
       const prompt = signal.prompt === null ? null : nonEmpty(signal.prompt);
       return touched({

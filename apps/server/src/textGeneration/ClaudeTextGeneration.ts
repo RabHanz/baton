@@ -462,8 +462,17 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     TextGeneration.TextGeneration["Service"]["writeFabricSynopsis"]
   > = Effect.fn("ClaudeTextGeneration.writeFabricSynopsis")(function* (input) {
     const outputSchema = Schema.Struct({
-      currentAction: Schema.String,
-      next: Schema.String,
+      // The descriptions are the instruction the model actually follows: the
+      // first real run answered "Wrote a two-sentence status update for …",
+      // narrating the request, because these two fields arrived unannotated.
+      currentAction: Schema.String.annotate({
+        description:
+          "One sentence about where this WORK is now. Never about this request, this summary, or yourself.",
+      }),
+      next: Schema.String.annotate({
+        description:
+          "One sentence about what is needed next for this WORK. Never about this request or yourself.",
+      }),
     });
 
     return yield* runClaudeJson({
