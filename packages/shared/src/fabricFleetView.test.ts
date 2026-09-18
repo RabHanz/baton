@@ -10,7 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildFleetRows, countFleetRows, filterFleetRows } from "./fabricFleetView";
+import { buildFleetRows, countFleetRows, filterFleetRows } from "./fabricFleetView.ts";
 
 const environmentId = EnvironmentId.make("home-linux");
 const projectId = ProjectId.make("ventureos");

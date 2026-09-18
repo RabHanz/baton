@@ -796,3 +796,67 @@ that will fail.
 desktop exposes the report over its existing local IPC (§15's "local
 authenticated IPC interface, not a public network API"), and the client's
 dictation refusal quotes the host's own reason.
+
+---
+
+## D34 — One fleet-row builder, in `shared`, for every client
+
+**Decided** 2026-09-18, during Phase 7.
+
+The §33 fleet row — glyph, project and work, state, then the account and host —
+was written in `apps/web`. Phase 7 needs the same row on the phone, and the
+choice was to copy it or to move it.
+
+Copying loses, and the reason is specific rather than aesthetic: the two copies
+would drift, and **the drift would be silent**. The desktop would say a session
+needs you and the phone would not, and the phone is the surface the Director
+glances at while walking away from the desk — the one place the disagreement
+would be discovered last.
+
+**Consequence:** `packages/shared/src/fabricFleetView.ts` is the only builder;
+the web sidebar and the mobile screen both import it; its tests moved with it and
+still pin the wording. A client may style a row however it likes and may not
+decide what it says.
+
+---
+
+## D35 — The phone ships no microphone of its own
+
+**Decided** 2026-09-18, during Phase 7. **Follows** D24, and narrows §29 Phase 7's
+"mic button" and "iOS App Intents".
+
+§19.1 already rules out a background always-listening service on iOS and points at
+the supported entry points: an in-app button, App Intents, Shortcuts, the Action
+Button. Every one of those needs Xcode, a signing identity and a device — none of
+which exist on this box — and by D24 the fork contains no speech pipeline anyway.
+
+What it does contain is the field. **iOS's own keyboard has a dictation key**, and
+the Director already uses it: he taps it, speaks, and the text lands in the input.
+That sentence then goes through the same deterministic grammar as one typed on a
+laptop, which is the property D24 exists to protect — a phone and a keyboard mean
+the same thing to the environment.
+
+**Consequence:** the phone's Fabric screen is a text field, three quick-action
+sentences and the fleet. App Intents, the Action Button and any custom audio are
+listed as blocked on a device and a mac, not as design work that is pending.
+
+---
+
+## D36 — The phone names what it cannot do, where it cannot do it
+
+**Decided** 2026-09-18, during Phase 7.
+
+§29 Phase 7's exit criteria include handing a work session to another provider
+account. Phase 3 has not built handoff, and this deployment has one Claude
+account logged in, so the honest phone shows a sentence saying so rather than a
+button that fails when pressed.
+
+That is a sharper rule on a phone than on a desktop, and worth writing down: the
+user is usually **away from the machine that could fix it**. A desktop user who
+presses a dead button can go and look; a phone user gets a spinner and a guess.
+So the refusal travels with its reason, in the place the action would have been.
+
+**Consequence:** `handoffAvailability` and `fabricAvailability` return a reason
+rather than a boolean, the screen renders the reason, and both are unit-tested —
+including the case where an environment is simply too old to know what a work
+session is.

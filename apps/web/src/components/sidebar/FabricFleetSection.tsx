@@ -17,7 +17,7 @@ import {
   countFleetRows,
   filterFleetRows,
   type FleetRow,
-} from "../../fabricFleetView";
+} from "@t3tools/shared/fabricFleetView";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { focusedWorkSessionFromThreads } from "../../fabricContextView";
 import { useFleet } from "../../state/fabricWorkSessions";
