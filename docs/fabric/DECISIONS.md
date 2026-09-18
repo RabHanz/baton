@@ -521,3 +521,33 @@ has to add a method, and that shows up as a diff somebody reviews.
 own, because there is no method for it. The notification action writes to the work session's synopsis
 rather than inventing a second delivery mechanism, so a rule's message reaches the fleet and the
 spoken status through the path those already read.
+
+---
+
+## D23 — `after(rule)` is built; `after(time)` is not
+
+**Decided** 2026-09-18, during Phase 9. **Deviates from** the Phase 9 brief, which names the trigger
+set as `on_done, on_needs_user, on_failed, after(rule|time)`.
+
+The three event triggers and `after_rule` ship. A time trigger does not, and the gap is deliberate
+rather than forgotten.
+
+Everything else in this phase is a **reactor**: something happened, a state was recomputed from
+recorded facts, a rule was asked whether it may fire. A time trigger is a **scheduler**, and it does
+not fit any of the three safety properties as they are written:
+
+- `shouldFire` is arithmetic over recorded facts. A clock is not a recorded fact, so a time trigger
+  needs the clock injected and the decision stops being replayable from the database alone.
+- The loop check compares the changed thread against the threads a rule's own firings produced. A
+  timer changes no thread, so that check has nothing to read and a timed rule would need a different
+  guard against re-entry.
+- The reactor only wakes on domain events. A timed rule needs its own wake-up, which is a durable
+  timer surviving restart — real work with its own failure modes, and not something to bolt on
+  unnoticed inside a phase about not running away.
+
+None of §22's own sentences — the ones this phase's parser must handle, including the specification's
+worked example — uses a time. Building a scheduler with no caller, in the phase whose entire subject
+is "rules must terminate", is the wrong trade.
+
+**Consequence:** `after(time)` is named in `STATUS.md`'s not-built list and stays there until a
+sentence needs it. When it arrives it gets its own guard, not a share of `after_rule`'s.
