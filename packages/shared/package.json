@@ -75,6 +75,10 @@
       "types": "./src/fabricInjection.ts",
       "import": "./src/fabricInjection.ts"
     },
+    "./fabricProviderAccounts": {
+      "types": "./src/fabricProviderAccounts.ts",
+      "import": "./src/fabricProviderAccounts.ts"
+    },
     "./fabricIntentParser": {
       "types": "./src/fabricIntentParser.ts",
       "import": "./src/fabricIntentParser.ts"

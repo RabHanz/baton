@@ -1318,3 +1318,62 @@ it on the next call.
 call. It is bounded by the turn rate of work the user is actually running, and it is the line they
 read to decide whether to look — which is the one place in this product where a sentence is worth
 more than a label.
+
+---
+
+## D52 — A provider account is a login, not a second copy of everything
+
+**Decided** 2026-09-18 by the Director: _"any new profile I add picks up the same config"_, with the
+coordinator's clarification that "profile" means a **provider account** — a second or third Claude
+login, and Codex accounts when they exist — not anything Fabric-specific.
+
+The shape, for both providers: the account directory holds **only that account's credentials**, and
+`settings.json` (which carries `hooks`), `CLAUDE.md`, `skills/`, `agents/`, `commands/`, `plugins/`
+and the `projects/` memory tree are the primary's, shared by symlink.
+
+**Upstream already does this for Codex, and Fabric does not reinvent it.**
+`CodexHomeLayout.ts` implements a _shadow home_: `auth.json` private, every other entry in the
+shared home symlinked in, re-materialised on every session start. Fabric's account plan simply
+names the shadow home and the setting that turns it on. Proven with upstream's own materializer
+against the real `~/.codex`: `config.toml`, the caches, the session stores and the rest linked,
+`auth.json` absent until somebody logs in.
+
+**Claude had no equivalent**, which is the gap this closes. `ClaudeHome.ts` sets
+`CLAUDE_CONFIG_DIR` and nothing else, so a second Claude account got an empty directory: no skills,
+no agents, no instructions, no memory. `ClaudeAccountHome.ts` is the Codex mechanism applied to
+Claude, deliberately built the same way so there is one idea here rather than two.
+
+**On the question the Director actually asked — do symlinks survive the CLI's writes?** The honest
+answer is that it could not be forced to write one on demand (2.1.263 has no `config set`; settings
+are written in-session), so the design does not depend on the answer: the layout is
+**re-materialised before every session**, a link that has drifted is repaired, and the two ways this
+could silently fork are both named errors instead —
+
+- a shared entry that has become a **real file** stops the layout rather than deleting somebody's
+  data;
+- a private entry (`.credentials.json`, `.claude.json`) that has become a **link** stops it too,
+  because two "accounts" sharing one login is the failure the whole thing exists to prevent.
+
+**Only the named entries are shared.** The first version linked everything in the primary that was
+not obviously private, and the first real run produced thirty-odd links including `history.jsonl`,
+`stats-cache.json`, `telemetry/` and three stale `settings.json` backups. Two accounts writing one
+cache is a contention bug waiting to be blamed on something else, and none of it is what "the same
+config" means.
+
+**claude-swap is preferred when it is there.** The Director already runs `cswap`, which keeps a
+per-account directory under `~/.local/share/claude-swap/sessions/<n>-<email>`. Adding an account it
+already manages **reuses that directory** — a second home for one login is how somebody ends up
+wondering which of them a rate limit belongs to — and adds the links cswap does not make.
+
+**Adopting an existing directory keeps the original.** cswap creates `plugins/` and `projects/` as
+real directories per account, so six of the eight shared entries linked and two refused. Refusing is
+right by default; a session starting must never move somebody's data. So there is an explicit
+`adoptExisting` mode that renames the original to `<name>.account-local-<timestamp>` beside the new
+link. Nothing is ever deleted. Run against both of his real accounts, both now see the primary's 33
+skills and 210-entry memory tree, both keep their own credentials, and both keep their previous
+copies next to the links.
+
+**Consequence:** "add a provider account" is a plan before it is a mkdir —
+`planProviderAccount` decides the directory, the instance id and the one command to run, and returns
+it for a person to read. The surface that shows that plan to the Director is not built yet; the
+mechanism underneath it is, and it is exercised on every Claude session start.
