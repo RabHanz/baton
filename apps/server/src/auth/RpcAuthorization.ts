@@ -6,6 +6,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  FABRIC_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
@@ -167,6 +168,22 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeServerLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeAuthAccess]: AuthAccessReadScope,
   [WS_METHODS.subscribeBackgroundPolicy]: AuthOrchestrationReadScope,
+  // Fabric work sessions sit above provider threads and are read and mutated
+  // by the same people who read and operate threads, so they reuse the
+  // orchestration scopes rather than introducing a parallel permission axis.
+  // Starting a thread inside a work session dispatches an ordinary
+  // orchestration command underneath, which is why it needs the operate scope.
+  [FABRIC_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
+  [FABRIC_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionAttachThread]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionDetachThread]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionStartThread]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
+  [FABRIC_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

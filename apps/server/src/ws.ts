@@ -29,9 +29,11 @@ import {
   ClientSurface,
   ClientWebDeployment,
   CommandId,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
   type DiscoveredLocalServerList,
   EventId,
   type EditorId,
+  FABRIC_WS_METHODS,
   type FileManagerRevealKind,
   type OrchestrationClientOrigin,
   type OrchestrationCommand,
@@ -86,6 +88,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
+import * as WorkSessionService from "./fabric/WorkSessionService.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -565,6 +568,7 @@ const makeWsRpcLayer = (
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerAuth = yield* ProviderAuthService;
       const providerInstances = yield* ProviderInstanceRegistry;
+      const workSessions = yield* WorkSessionService.WorkSessionService;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
@@ -3683,6 +3687,111 @@ const makeWsRpcLayer = (
               ),
             ),
             { "rpc.aggregate": "server" },
+          ),
+
+        // Fabric work sessions. Thin by design: the domain lives in
+        // `fabric/WorkSessionService`, and the only handler with logic of its
+        // own is `startThread`, which has to reach the orchestration engine.
+        [FABRIC_WS_METHODS.workSessionList]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionList,
+            Effect.map(workSessions.list(input), (sessions) => ({ workSessions: sessions })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionCreate]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionCreate,
+            Effect.map(workSessions.create(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionUpdate]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionUpdate,
+            Effect.map(workSessions.update(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionAttachThread]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionAttachThread,
+            Effect.map(workSessions.attachThread(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionDetachThread]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionDetachThread,
+            Effect.map(workSessions.detachThread(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionStartThread]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionStartThread,
+            Effect.gen(function* () {
+              const workSession = yield* workSessions.get(input.id);
+              // One thread-creation path. This dispatches the same command a
+              // client would have sent, through the same engine, so worktree
+              // bootstrap, checkpoint baselines and analytics all behave
+              // identically to a thread started from the sidebar.
+              const command = yield* normalizeDispatchCommand({
+                type: "thread.create",
+                commandId: yield* serverCommandId("fabric-work-session-thread"),
+                threadId: input.threadId,
+                projectId: workSession.projectId,
+                title: input.title,
+                modelSelection: input.modelSelection,
+                runtimeMode: input.runtimeMode,
+                interactionMode: input.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
+                // Defaulting to the work session's own checkout is what keeps
+                // sequential providers working on the same branch.
+                branch: input.branch ?? workSession.baseBranch,
+                worktreePath: input.worktreePath ?? workSession.primaryWorktreePath,
+                createdAt: yield* nowIso,
+              }).pipe(Effect.provideContext(normalizerContext));
+              yield* dispatchNormalizedCommand(command);
+              yield* recordClientCommandAnalytics(command);
+              const instance = yield* providerInstances.getInstance(
+                input.modelSelection.instanceId,
+              );
+              const attached = yield* workSessions.attachThread({
+                id: input.id,
+                threadId: input.threadId,
+                providerInstanceId: input.modelSelection.instanceId,
+                providerDriver: instance?.driverKind ?? null,
+                origin: "created",
+                ...(input.role === undefined ? {} : { role: input.role }),
+              });
+              return { workSession: attached };
+            }),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionSettle]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionSettle,
+            Effect.map(workSessions.settle(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionUnsettle]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionUnsettle,
+            Effect.map(workSessions.unsettle(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionArchive]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionArchive,
+            Effect.map(workSessions.archive(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.workSessionUnarchive]: (input) =>
+          observeRpcEffect(
+            FABRIC_WS_METHODS.workSessionUnarchive,
+            Effect.map(workSessions.unarchive(input), (workSession) => ({ workSession })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>
+          observeRpcStream(
+            FABRIC_WS_METHODS.subscribeWorkSessions,
+            WorkSessionService.workSessionStream(workSessions),
+            { "rpc.aggregate": "fabric" },
           ),
       });
     }),

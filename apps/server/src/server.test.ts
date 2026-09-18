@@ -108,6 +108,7 @@ const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unk
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
 import {
   isThreadDetailEvent,
@@ -1213,7 +1214,15 @@ const buildAppUnderTest = (options?: {
       }),
       Layer.provideMerge(makeAuthTestLayer()),
       Layer.provideMerge(ServerSecretStore.layer),
-      Layer.provide(workspaceAndProjectServicesLayer),
+      Layer.provide(
+        Layer.mergeAll(
+          workspaceAndProjectServicesLayer,
+          // The real work-session service on its own in-memory database. Not a
+          // mock: this file exercises the routes, and a mocked service would
+          // prove nothing about whether they are wired.
+          FabricWorkSessionService.layer.pipe(Layer.provide(SqlitePersistenceMemory)),
+        ),
+      ),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(GitHubCli.layer.pipe(Layer.provideMerge(VcsProcess.layer))),
       Layer.provide(layerConfig),

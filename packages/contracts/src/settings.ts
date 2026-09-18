@@ -356,6 +356,15 @@ export const ClientSettingsSchema = Schema.Struct({
   dismissedProviderUpdateNotificationKeys: Schema.Array(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
+  /**
+   * Group the sidebar by Fabric work session — the user's work — instead of
+   * listing provider threads flat. Off by default while Fabric is being built.
+   * It is a client preference rather than an environment setting because what
+   * it changes is this client's navigation, and an environment that does not
+   * understand `fabric.*` is handled separately: the sidebar checks the
+   * server's `fabricWorkSessions` capability before calling anything.
+   */
+  fabricWorkSessionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),

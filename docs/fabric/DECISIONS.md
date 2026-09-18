@@ -57,7 +57,7 @@ sessions apart — stops being necessary.
 capability is "register the existing preview toolkit", not "implement". The limitation to record and
 surface honestly: the desktop app must be running, because it hosts the webview; web and mobile
 clients cannot host one. Fabric's machine registry (§5.6) therefore carries
-`browser-computer-use` as a capability of a *machine with a desktop client attached*, not of every
+`browser-computer-use` as a capability of a _machine with a desktop client attached_, not of every
 environment.
 
 ---
@@ -72,15 +72,15 @@ device fingerprint; those want the operator's own browser on his own machine.
 
 So there are two browser surfaces with a clear rule between them:
 
-| Flow | Surface |
-| --- | --- |
-| agent research, scraping, checking a page an agent just built, recorded walkthroughs | T3 preview browser (D2) |
-| sign-ups, logins to sensitive accounts, anything judged on IP or device fingerprint | the operator's own browser |
+| Flow                                                                                 | Surface                    |
+| ------------------------------------------------------------------------------------ | -------------------------- |
+| agent research, scraping, checking a page an agent just built, recorded walkthroughs | T3 preview browser (D2)    |
+| sign-ups, logins to sensitive accounts, anything judged on IP or device fingerprint  | the operator's own browser |
 
 Fabric's job is to make the second reachable from a WorkSession rather than replacing it. The
 mechanism is deferred to Phase 6 or later: a bridge that exposes the operator's real browser to a
 thread as a second MCP toolkit, alongside `preview_*`, with a different name so an agent cannot
-confuse them. Nothing is built for this before Phase 6, and it is explicitly *not* on the V1 path.
+confuse them. Nothing is built for this before Phase 6, and it is explicitly _not_ on the V1 path.
 
 ---
 
@@ -164,7 +164,7 @@ convenience.
 1. every Fabric migration is additive — new tables, new nullable columns, new indexes. No column is
    dropped, renamed, or retyped; no existing row is rewritten except by an explicitly reviewed
    backfill;
-2. a server built *before* the migration must still open a database the migration has touched. That
+2. a server built _before_ the migration must still open a database the migration has touched. That
    is what additive buys, and it is the actual rollback path: reinstall the older build;
 3. each migration ships with a rehearsal recorded in the PR — a `VACUUM INTO` snapshot of a
    realistic database, the migration applied to the snapshot, the row counts before and after, and
@@ -176,7 +176,7 @@ convenience.
 
 ## D8 — Fabric ships behind two flags, both of them upstream's
 
-**Decided** 2026-09-18.
+**Decided** 2026-09-18. **Superseded by D14** the same day, once it was built.
 
 Upstream already solves "a new client is talking to an old server". `ExecutionEnvironmentCapabilities`
 in `packages/contracts/src/environment.ts` is a struct of optional booleans the server advertises in
@@ -214,7 +214,7 @@ every machine's work.
 
 **Consequence in V1:** a WorkSession is persisted by one environment and holds the provider sessions
 running on it. `environmentAffinity` is retained in the schema with its §5.4 meaning narrowed to
-"environments this work is *intended* for", which is what handoff and machine-capability routing
+"environments this work is _intended_ for", which is what handoff and machine-capability routing
 need it for; it does not imply distributed ownership.
 
 The fleet view the Director actually wants — everything, everywhere, in one list — is assembled
@@ -243,3 +243,104 @@ changed?" available as a single diff against `upstream/main`.
 The clone is a blobless partial clone (`--filter=blob:none`): full commit history, blobs fetched on
 demand, `.git` under 100 MB instead of several hundred. Operations that need old file contents
 (`git log -p`, `git blame`, checking out an old tree) need network.
+
+---
+
+## D11 — Fabric events are a live broadcast; they do not go in T3's event store
+
+**Decided** 2026-09-18, during Phase 2.
+
+§28 asks for `fabric.workSession.created`, `.updated`, `.statusChanged`, `.providerAttached` and the
+handoff pair. The obvious home is T3's orchestration event log, which is the durable source of truth
+for everything else in the domain. That would be wrong here, for two reasons.
+
+**It would make a downgrade fatal.** `docs/internals/overview.md`: persisted events must remain
+decodable on replay, and a schema change affects old environments at startup as well as live traffic.
+`providers.md` records the precedent — file attachments introduced a replay compatibility limit where
+an image-only server _failed the entire environment's startup_ replaying one such event. A stock T3
+binary replaying a log containing `fabric.*` events would hit exactly that. Since Fabric's rollback
+story is "run an older build against the same database" (D7), poisoning the shared event log would
+remove the rollback.
+
+**Nothing would read it back.** The durable timeline is the attachment rows: who ran the work, from
+when, until when. An event log beside them would duplicate that and be read by nothing, which is a
+stub with extra steps.
+
+**Consequence:** `fabric.subscribeWorkSessions` streams a snapshot followed by events from an
+in-process `PubSub`. Clients apply them without a refetch because each event carries the whole
+record. The durable truth is `fabric_work_sessions` and `fabric_work_session_threads`, and a client
+that reconnects gets a fresh snapshot rather than replaying anything.
+
+If a durable Fabric audit trail is later needed — Phase 10 lists one — it gets its own append-only
+table, not a place in `orchestration_events`.
+
+---
+
+## D12 — Phase 2's sidebar grouping is an additive Work block, not a re-parented thread list
+
+**Decided** 2026-09-18. **Narrows** §29 Phase 2's "display WorkSession in sidebar/navigation".
+
+The sidebar's thread list is not a list. It is a drag-and-drop sortable with pinned, active, snoozed
+and settled sections, placeholder markers, a measured order key driving the motion pass, and drop
+targets resolved against that exact item sequence (`Sidebar.logic.ts`). Threading work-session groups
+through it means teaching every one of those about a new kind of row, and getting it wrong breaks
+reordering in ways no unit test would catch.
+
+So Phase 2 renders a **Work block above the thread list**: project, work, then account · host ·
+status, behind the flag. The thread list underneath is untouched, and a thread appears in both. The
+block is also the only place that can show what the thread list cannot — a work session whose
+provider thread has ended, which is the entire point of the object.
+
+Folding the thread list itself under work sessions is deferred, and it needs the sortable's item
+model to grow a group concept first. This is recorded as a narrowing rather than done quietly,
+because "the sidebar groups by work session" would otherwise read as more than what shipped.
+
+---
+
+## D13 — The attachment table is keyed on a surrogate, not on (work session, thread, attached_at)
+
+**Decided** 2026-09-18, after a test failed.
+
+The first cut of migration 054 keyed `fabric_work_session_threads` on
+`(work_session_id, thread_id, attached_at)`, so that a thread detached and re-attached later kept
+both stretches. The unit test covering that case failed with `UNIQUE constraint failed`: detach and
+re-attach happen inside the same millisecond, and `DateTime.now` has millisecond resolution.
+
+That is not a test artifact. A handoff is two RPCs in a row, not two seconds apart, so the natural
+key would have rejected real work. The key is now a surrogate `id INTEGER PRIMARY KEY`, the timeline
+orders by `(attached_at, id)` so equal timestamps order by insert, and the "one live attachment per
+thread" rule stays where it was: a partial unique index on `thread_id WHERE detached_at IS NULL`.
+
+Migration 054 was edited rather than superseded because it had never been applied outside this
+worktree's throwaway database. Once a Fabric migration ships, D7's additive rule applies and a
+correction is a new migration.
+
+---
+
+## D14 — Supersedes D8: the capability states what the server understands; the flag is a client setting
+
+**Decided** 2026-09-18, during Phase 2.
+
+D8 said Fabric would ship behind an environment capability _plus_ a server setting, with the
+capability advertised only when the operator enabled the feature. Building it showed that is the
+wrong shape on both counts.
+
+Upstream capabilities are statements of fact about the build, not switches: every comment in
+`ExecutionEnvironmentCapabilities` reads "server understands X", and clients use them to avoid
+calling an RPC an older server does not have. Making one conditional on an operator toggle would
+change what the field means for everybody reading it.
+
+The server setting was also unbuildable as specified. `ServerEnvironment` is layered _beneath_
+`ServerSettings` — settings may depend on the environment, not the other way round — so the
+descriptor cannot read a setting without inverting that graph for a development flag.
+
+**Consequence:**
+
+- `capabilities.fabricWorkSessions` is `true` on any build that has these RPCs. A client that does
+  not see it renders the stock sidebar and calls nothing `fabric.*`;
+- the on/off switch is `ClientSettings.fabricWorkSessionsEnabled`, default false. What it gates is
+  this client's navigation, which is what `docs/internals/overview.md` says a client preference is
+  for.
+
+The two gates answer different questions and both are needed: the capability answers "would this call
+even work", the setting answers "does this user want it".
