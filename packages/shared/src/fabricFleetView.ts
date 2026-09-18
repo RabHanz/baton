@@ -13,6 +13,15 @@
  * Glyph, then project and work, then the state — and, secondary, which account
  * and which host. Pure, so the wording and the ordering can be asserted without
  * rendering anything.
+ *
+ * It lives in `shared` rather than in a client because **both** clients render
+ * this list, and the phone is where getting it wrong matters most: §29 Phase 7
+ * wants the fleet on a screen the user glances at while walking away from the
+ * desk. Two implementations of "what does this row say" would drift, and the
+ * drift would be silent — the web would say a session needs you and the phone
+ * would not.
+ *
+ * @module fabricFleetView
  */
 import {
   FABRIC_STATE_GLYPHS,

@@ -37,6 +37,7 @@ import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
+import { FabricRouteScreen } from "./features/fabric/FabricRouteScreen";
 import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
 import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
@@ -575,6 +576,17 @@ export const RootStack = createNativeStackNavigator({
     headerShown: false,
   },
   screens: {
+    // The fleet on the phone (§29 Phase 7). `fabric/:environmentId/:workSessionId`
+    // is what a notification about work whose thread has ended links to — the
+    // thread route cannot express that, and the work outliving its thread is
+    // the whole point of the object.
+    Fabric: createNativeStackScreen({
+      screen: FabricRouteScreen,
+      linking: "fabric/:environmentId?/:workSessionId?",
+      options: {
+        title: "Fabric",
+      },
+    }),
     Home: createNativeStackScreen({
       screen: HomeRouteScreen,
       linking: "",

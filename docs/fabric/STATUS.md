@@ -15,7 +15,7 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped                                                                                 |
 | 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it      |
 | 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have |
-| 7 — mobile voice + quick actions               | not started               | —                                                                                                                                                                                   |
+| 7 — mobile voice + quick actions               | **partial**               | the Phase 7 table below: the fleet, the status questions and the deep links are built and typecheck; the mic, App Intents and handoff are blocked on a device, a mac and Phase 3    |
 | 8 — Herdr adoption                             | not started               | —                                                                                                                                                                                   |
 | 10 — capability plane + hardening              | not started               | —                                                                                                                                                                                   |
 
@@ -508,3 +508,53 @@ to (`apps/web/src/fabricContextView.ts`, and the fleet section passes it).
   environment: the context bus, the injection report and the dictation pass are
   client-local by design (D31, D32), so a server proof would prove nothing about
   them.
+
+## Phase 7 — the phone
+
+§29 Phase 7 wants the phone to become a supervisor and a voice remote: a mobile
+work-session UI, a mic button, status query, voice message, provider handoff, iOS
+App Intents, an Action Button shortcut, a quick "What needs me?", and notification
+deep links.
+
+Four are built. Four are blocked on a device, a mac, or a phase that does not
+exist yet — and the phone says which, where the action would have been.
+
+| Item                                | State                                                           | Where it is proven, or what blocks it                                                                                                                                                                                   |
+| ----------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mobile WorkSession UI               | done                                                            | `apps/mobile/src/features/fabric/FabricRouteScreen.tsx`, reachable from the home header and by deep link; rows come from the same builder the desktop uses (D34)                                                        |
+| Status query                        | done                                                            | the three §20 questions as one-tap sentences, answered by `fabric.intent.run`; `fabricFleetScreenModel.test.ts`                                                                                                         |
+| Voice message / send an instruction | done                                                            | the same field and the same grammar. The phone has no microphone of its own: iOS's keyboard dictation key fills the field, which is the whole of D24 applied to a phone (D35)                                           |
+| Quick "What needs me?"              | done                                                            | `FABRIC_QUICK_ACTIONS` — sentences, not special-cased buttons, so a button cannot drift from what the same words do typed out                                                                                           |
+| Notification deep links             | done                                                            | `fabricNotificationLink.ts`: a live thread opens the thread, and work whose thread has ended opens the Fabric screen focused on it — the case upstream's thread links cannot express, and the one the object exists for |
+| See all active work                 | done                                                            | the fleet list, with §33's "Needs me" as a top-level filter                                                                                                                                                             |
+| Open the relevant WorkSession       | done                                                            | the deep link, and the row                                                                                                                                                                                              |
+| Approve / respond                   | **already upstream**                                            | T3's mobile client answers approvals and questions today (Phase 1's table); Fabric adds the route to the right thread rather than a second approval surface                                                             |
+| Mic button                          | **blocked**: no device, no mac                                  | and by D24 the fork contains no speech pipeline; the keyboard's dictation key is the microphone (D35)                                                                                                                   |
+| iOS App Intents                     | **blocked**: no Xcode, no signing identity, no device           | §19.1's supported entry points all need a native target                                                                                                                                                                 |
+| Action Button shortcut              | **blocked**: same                                               |                                                                                                                                                                                                                         |
+| Provider handoff action             | **blocked**: Phase 3 is not built, and one account is logged in | the phone renders the reason where the button would be (D36)                                                                                                                                                            |
+
+### The exit criteria
+
+> From iPhone the user can: see all active work; ask what is happening; send an
+> instruction; approve/respond; hand off account; open the relevant WorkSession.
+
+Five of the six are built; **hand off account** is not, and cannot be until Phase
+3 exists and a second subscription is logged in. None of the six has been
+exercised on a phone: this box has no simulator and no device, so what is proven
+is that the code typechecks, the view models are unit-tested, and the screen is
+wired to routes and to the same RPC the desktop uses.
+
+### Not proven in Phase 7
+
+- **The app has never been run.** No simulator, no device, no mac. `@t3tools/mobile`
+  typechecks with its dependencies installed and its view models are tested; no
+  screen has been rendered.
+- **No App Intents, Action Button, or custom audio**, by D35 and for want of a
+  native toolchain.
+- **Handoff**, by Phase 3 and the second account.
+- **Background → foreground behaviour (E3)** is untested: it needs a phone that
+  can be backgrounded.
+- **No live run against the snapshot.** The phone's screen calls the same
+  `fabric.*` RPCs Phases 4 and 5 already proved against it; nothing new crosses
+  the wire, so a second live run would prove nothing the earlier ones did not.

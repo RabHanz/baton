@@ -44,6 +44,8 @@ export function HomeHeader(props: {
   readonly onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
   readonly onOpenEnvironments: () => void;
   readonly onOpenSettings: () => void;
+  /** The fleet: what every environment is doing, in one glance (§29 Phase 7). */
+  readonly onOpenFabric: () => void;
   readonly onStartNewTask: () => void;
 }) {
   if (Platform.OS === "android") {
@@ -369,6 +371,11 @@ function IosHomeHeader(props: HomeHeaderProps) {
             )}
           </NativeHeaderToolbar.Menu>
           <NativeHeaderToolbar.Spacer flexible />
+          <NativeHeaderToolbar.Button
+            accessibilityLabel="Fabric"
+            icon="list.bullet.rectangle"
+            onPress={props.onOpenFabric}
+          />
           <NativeHeaderToolbar.Button
             accessibilityLabel="New task"
             icon="square.and.pencil"
