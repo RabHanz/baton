@@ -11,8 +11,75 @@ export const SHOWCASE_PROJECT_ID = "t3code";
 export const SHOWCASE_THREAD_ID = "remote-command-center";
 export const SHOWCASE_TERMINAL_ID = "term-1";
 
-export const SHOWCASE_SCENES = ["threads", "thread", "terminal", "review", "environments"] as const;
+/**
+ * `fleet` is this fork's own scene: the §33 fleet on the phone, which is the
+ * screen Fabric exists to put in a pocket. It is last because the harness
+ * captures in order and this is the one a reviewer should end on.
+ */
+export const SHOWCASE_SCENES = [
+  "threads",
+  "thread",
+  "terminal",
+  "review",
+  "environments",
+  "fleet",
+] as const;
 export type ShowcaseScene = (typeof SHOWCASE_SCENES)[number];
+
+/**
+ * The work the fleet scene shows.
+ *
+ * Deliberately attached to threads the showcase already seeds: `fabric.fleet`
+ * derives state from the shell snapshot, so the work session pointed at
+ * `pocket-command-center` (which the showcase leaves waiting on an approval)
+ * renders as needing the user, and the one on `buttery-suspense` renders as
+ * running — neither state is written here, which is the whole point of the
+ * §10 ladder.
+ *
+ * The third has no live thread at all. That row is why WorkSession exists: the
+ * work outlives the provider thread, and a thread list cannot show it.
+ */
+export const SHOWCASE_WORK_SESSIONS = [
+  {
+    id: "ws-pocket-command-center",
+    projectId: "t3code",
+    title: "Put the command center in your pocket",
+    objective: "One continuous session across desktop, phone and tablet.",
+    threadId: "pocket-command-center",
+    branch: "feat/pocket-command-center",
+    priority: "high" as const,
+    risk: "medium" as const,
+    minutesAgo: 21,
+    currentAction: "Waiting for approval on the handoff motion",
+    next: ["Ship the motion treatment", "Hand the thread back to review"],
+  },
+  {
+    id: "ws-buttery-suspense",
+    projectId: "react",
+    title: "Make Suspense transitions buttery",
+    objective: "No dropped frames in nested Suspense transitions.",
+    threadId: "buttery-suspense",
+    branch: "perf/buttery-suspense",
+    priority: "normal" as const,
+    risk: "low" as const,
+    minutesAgo: 12,
+    currentAction: "Tracing the last dropped frames",
+    next: ["Re-run the frame trace"],
+  },
+  {
+    id: "ws-scheduler-reconnect",
+    projectId: "t3code",
+    title: "Scheduler reconnect race",
+    objective: "A reconnect must not double-schedule the queue.",
+    threadId: null,
+    branch: "fix/scheduler-reconnect",
+    priority: "normal" as const,
+    risk: "high" as const,
+    minutesAgo: 140,
+    currentAction: null,
+    next: ["Pick a provider and resume"],
+  },
+] as const;
 
 const PROJECTOR_NAMES = [
   "projection.projects",
@@ -420,7 +487,73 @@ function insertThread(
     .run(input.id, isWorking ? "running" : "ready", isWorking ? turnId : null, updatedAt);
 }
 
+/**
+ * Fabric's own rows. Kept out of `seedDatabase`'s body only so that function
+ * stays readable; it runs inside the same transaction.
+ */
+function seedWorkSessions(
+  database: NodeSqlite.DatabaseSync,
+  projects: ReadonlyArray<(typeof SHOWCASE_PROJECTS)[number]>,
+  now: number,
+): void {
+  const projectIds = new Set(projects.map((project) => project.id));
+  const insertWorkSession = database.prepare(
+    `INSERT INTO fabric_work_sessions (
+        id, project_id, title, objective, constraints_json, acceptance_criteria_json,
+        environment_affinity_json, repository_identity_json, primary_worktree_path,
+        base_branch, risk_class, priority, active_thread_id,
+        created_at, updated_at, settled_at, archived_at, synopsis_json
+      ) VALUES (?, ?, ?, ?, '[]', '[]', '[]', NULL, NULL, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+  );
+  const insertWorkSessionThread = database.prepare(
+    `INSERT INTO fabric_work_session_threads (
+        work_session_id, thread_id, provider_instance_id, provider_driver,
+        role, origin, attached_at, detached_at
+      ) VALUES (?, ?, 'codex', 'codexAppServer', 'implementation', 'created', ?, NULL)`,
+  );
+
+  for (const workSession of SHOWCASE_WORK_SESSIONS) {
+    if (!projectIds.has(workSession.projectId)) continue;
+    const updatedAt = minutesBefore(now, workSession.minutesAgo);
+    const synopsis = JSON.stringify({
+      currentAction: workSession.currentAction,
+      goal: workSession.objective,
+      recentFindings: [],
+      changedFiles: [],
+      validation: [],
+      next: [...workSession.next],
+      // Derived by the fleet from the shell snapshot; mirrored here only
+      // because §20's spoken answer reads the synopsis alone.
+      needsUser: false,
+      updatedAt,
+      updatedBy: "showcase.seed",
+      source: "events",
+    });
+    insertWorkSession.run(
+      workSession.id,
+      workSession.projectId,
+      workSession.title,
+      workSession.objective,
+      workSession.branch,
+      workSession.risk,
+      workSession.priority,
+      workSession.threadId,
+      minutesBefore(now, workSession.minutesAgo + 180),
+      updatedAt,
+      synopsis,
+    );
+    if (workSession.threadId !== null) {
+      insertWorkSessionThread.run(workSession.id, workSession.threadId, updatedAt);
+    }
+  }
+}
+
 const SEEDED_PROJECTION_TABLES = [
+  // Fabric's tables are seeded and cleared with the rest: the fleet scene is
+  // only the fleet if it has work in it, and a stale work session left behind
+  // by a previous run would show up in the next capture.
+  "fabric_work_session_threads",
+  "fabric_work_sessions",
   "projection_pending_approvals",
   "projection_thread_proposed_plans",
   "projection_thread_activities",
@@ -602,6 +735,8 @@ function seedDatabase(
       3,
       minutesBefore(now, 4),
     );
+
+    seedWorkSessions(database, projects, now);
 
     for (const [index, projector] of PROJECTOR_NAMES.entries()) {
       database
