@@ -708,3 +708,91 @@ Concretely, in migration 058 and `shouldFire`:
 what it should — the last line of defence. `maxFirings` 3 now bounds three genuine finishes rather
 than three arbitrary evaluations, and D29's `skipRuleId` remains as the narrower, explicit guard on
 the one path that re-evaluates as a direct result of a user's answer.
+
+---
+
+## D31 — Dictated words never reach an environment
+
+**Decided** 2026-09-18, during Phase 6. **Reads together with** §12.3, §18 and §26.
+
+"Dictate: thanks, I'll send the revised contract tomorrow" is an email to
+somebody else. It is not work, it is not a prompt, and a Fabric environment has
+no business receiving it, resolving it, or keeping it in an intent log that
+outlives the sentence.
+
+So dictation is classified **on the client, before anything is sent**
+(`packages/shared/src/fabricDictation.ts`), and only what is left travels. The
+environment's own grammar still recognises a dictation sentence, and refuses it
+with that reason rather than "not built yet" — a refusal that names the boundary
+is the only way a user finds out the boundary exists.
+
+This is a stronger guarantee than handling the words carefully once they arrive.
+Careful handling is a promise about code; not receiving them is a property of the
+architecture.
+
+**Consequence:** the mode lives in the client, `staysLocal` is the one gate that
+decides, and the environment's intent log contains no dictated text. When the
+browser and VS Code producers land, they insert locally too — the words go from
+the microphone to the field without passing through a work session.
+
+---
+
+## D32 — The extension hosts are blocked; what they must satisfy is not
+
+**Decided** 2026-09-18, during Phase 6.
+
+§29 Phase 6 asks for a VS Code extension and a browser extension. Neither can be
+loaded, run or proven from this box: there is no desktop session, no VS Code, and
+no browser with an extension host. The honest options were to ship two skeletons
+that nobody can execute, or to ship the **contract they must satisfy** and say
+plainly that the hosts are not built.
+
+Skeletons lose. This repository already carries the lesson that code wired to
+nothing is worse than an admitted gap: it reads as progress, it rots against a
+host nobody ran it on, and the next person cannot tell the difference between
+"tested" and "compiled".
+
+**What ships instead**, and it is not nothing:
+
+- `packages/contracts/src/fabric/context.ts` — exactly what a VS Code window
+  (§16) and a browser tab (§17) may report, including the privacy line: origins
+  and field types, never page content, and a field label only under an explicit
+  capability.
+- `packages/shared/src/fabricContextBus.ts` — the bus that routes their
+  snapshots, today, with tests that drive `vscode` and `browser` producers
+  through §14's ladder. When the extensions land they publish into a bus whose
+  behaviour is already pinned.
+- The refusals: a sentence that needs a producer nobody is running is refused by
+  name, rather than resolving against a stale fact.
+
+**Consequence:** `STATUS.md` lists both extensions as blocked with the blocker
+named — a device this box does not have — and the matrix rows I8 and I9 stay
+open rather than being marked done against untested code.
+
+---
+
+## D33 — Injection capability is computed from the host's facts, never assumed
+
+**Decided** 2026-09-18, during Phase 6. **Implements** §18's "surface capability
+must be reported honestly in the UI".
+
+Dictation that silently does nothing is worse than dictation that refuses,
+because the user learns about it by discovering their sentence went nowhere —
+usually after saying something they would rather not repeat.
+
+So the capability report is derived from what the machine actually is: platform,
+display server (`XDG_SESSION_TYPE`, then the Wayland and X sockets), whether the
+OS granted accessibility, whether an application integration is connected,
+whether the user turned simulated keystrokes on. Every unavailable method carries
+a reason a person can act on, and the report is produced in the desktop main
+process because the renderer cannot see any of those facts.
+
+The Linux case is the one the specification calls out and the one this repository
+runs on: **under Wayland a process cannot type into another application's
+window**, and the report says so in those words rather than offering a method
+that will fail.
+
+**Consequence:** `describeInjectionCapabilities` never returns a bare "no", the
+desktop exposes the report over its existing local IPC (§15's "local
+authenticated IPC interface, not a public network API"), and the client's
+dictation refusal quotes the host's own reason.

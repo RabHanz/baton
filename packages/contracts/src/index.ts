@@ -48,5 +48,6 @@ export * from "./fabric/workSession.ts";
 export * from "./fabric/fleet.ts";
 export * from "./fabric/orchestrationRule.ts";
 export * from "./fabric/intent.ts";
+export * from "./fabric/context.ts";
 export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";

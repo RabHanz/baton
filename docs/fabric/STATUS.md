@@ -5,19 +5,19 @@ What actually works, as opposed to what is planned. Updated at the end of every 
 Phase order: **0 → 2 → 3 → 4 → 9 → 5 → 6 → 7 → 8 → 10**. Phase 1 is already done; the reasoning
 for moving 9 ahead of 5 is in `DECISIONS.md`.
 
-| Phase                                          | State                     | Evidence                                                                                                                                                                       |
-| ---------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`                                                                                   |
-| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                                                                                                          |
-| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider                                                                                          |
-| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                                                                                                     |
-| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider                                                                                     |
-| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped                                                                            |
-| 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it |
-| 6 — VS Code + browser + system dictation       | not started               | —                                                                                                                                                                              |
-| 7 — mobile voice + quick actions               | not started               | —                                                                                                                                                                              |
-| 8 — Herdr adoption                             | not started               | —                                                                                                                                                                              |
-| 10 — capability plane + hardening              | not started               | —                                                                                                                                                                              |
+| Phase                                          | State                     | Evidence                                                                                                                                                                            |
+| ---------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`                                                                                        |
+| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                                                                                                               |
+| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider                                                                                               |
+| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                                                                                                          |
+| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider                                                                                          |
+| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped                                                                                 |
+| 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it      |
+| 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have |
+| 7 — mobile voice + quick actions               | not started               | —                                                                                                                                                                                   |
+| 8 — Herdr adoption                             | not started               | —                                                                                                                                                                                   |
+| 10 — capability plane + hardening              | not started               | —                                                                                                                                                                                   |
 
 Nothing in this repository implements Fabric beyond what the Phase 2 section below claims.
 
@@ -434,3 +434,77 @@ asked. `DECISIONS.md` D29, which also records the general case that is still ope
 Not proven: no live run. The behaviour is a refusal that leaves no trace — the evidence for it is
 firings that **do not** happen — so the reactor test, which drives the real services and moves the
 work session between states, is the stronger proof. A live run would show the same absence.
+
+## Phase 6 — context, dictation, and the boundaries this box has
+
+§29 Phase 6 wants voice to become an input transport beyond T3: a desktop context
+bus, a VS Code extension, a browser extension, an OS foreground-app adapter,
+text-injection adapters, an explicit dictation mode, and deterministic context
+routing.
+
+Four of those seven are built and proven here. Two need a host this box does not
+have and are blocked with that blocker named. One is partial, and the part that
+is missing is missing because the operating system forbids it — which the code
+now says out loud rather than discovering at runtime.
+
+| Item                                | State                                                       | Where it is proven, or what blocks it                                                                                                                                                                                                                                     |
+| ----------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop context bus (§15)           | done                                                        | `packages/contracts/src/fabric/context.ts` for the shape, `packages/shared/src/fabricContextBus.ts` for the behaviour: one slot per producer, late arrivals dropped, facts that expire. Client-local by construction — nothing here crosses to an environment             |
+| Deterministic context routing (§14) | done                                                        | `fabricContextBus.test.ts` walks every rung an environment-free client can honestly climb, and stops rather than reaching §14's rung 8, which is a model                                                                                                                  |
+| Text-injection adapters (§18)       | done                                                        | `packages/shared/src/fabricInjection.ts` — the interface, the preference order applied in order rather than in registration order, and a capability report where every "no" carries a reason                                                                              |
+| Explicit dictation mode (§12.3)     | done                                                        | `packages/shared/src/fabricDictation.ts` and the intent bar. Classified on the client; **the words never reach an environment** (D31)                                                                                                                                     |
+| OS foreground-app adapter           | partial                                                     | `apps/desktop/src/fabric/DesktopInjectionCapability.ts` reports platform, display server and permission from the machine's own facts. Reading _another_ application's window under Wayland is not possible, and the report refuses it by name instead of pretending (D33) |
+| VS Code extension (§16)             | **blocked** — no VS Code and no desktop session on this box | the contract it must satisfy is built, and the bus routes its snapshots today: `fabricContextBus.test.ts` drives a `vscode` producer through the ladder, linked and unlinked. D32                                                                                         |
+| Browser extension (§17)             | **blocked** — no browser with an extension host             | same: the `browser` producer's shape is pinned, including the privacy line (origin and field type, never page content), and dictation into a reported field is routed and refused correctly today. D32                                                                    |
+
+### The exit criterion
+
+> The mic can be used both for agent messages and ordinary text entry without a
+> keyboard press.
+
+**Not met, and it cannot be met from this repository alone.** There is no
+microphone on this box, no desktop session, no VS Code and no browser extension
+host. What is proven is everything up to those boundaries, and each boundary
+refuses by name rather than failing quietly:
+
+```text
+dictation, no producer running
+  → "I can only type into a field something has told me about.
+     Nothing is reporting one right now."
+
+dictation, a field reported but not writable
+  → "Gmail compose cannot take dictated text from here."
+
+this box, asked what it can type into
+  → accessibility: unavailable — "Wayland does not let one application type
+     into another. Use the browser or VS Code integration instead."
+    keystrokes:    unavailable — "Wayland does not allow synthetic input from
+     another process."
+    application:   unavailable — "no application integration is connected."
+
+the environment, sent a dictation sentence
+  → refused: "Dictated words stay on your own device — the client handles them
+     and never sends them here."
+```
+
+### What changed for the user today
+
+§14's rung 3 finally has a producer. Until this phase the intent bar sent
+`focusedWorkSessionId: null`, so "tell it to run the tests" always fell through
+to whatever moved last; now the thread on screen resolves to the work it belongs
+to (`apps/web/src/fabricContextView.ts`, and the fleet section passes it).
+
+### Not proven in Phase 6
+
+- **No microphone anywhere in the loop.** The phase's own exit criterion needs
+  one, and by D24 the fork does not contain speech at all.
+- **Neither extension has been loaded.** Both are blocked on a host; the contract
+  and the routing are proven, the hosts are not written.
+- **No desktop run.** `DesktopInjectionCapability` is unit-tested against
+  fabricated environments, and `apps/desktop` typechecks with its dependencies
+  installed, but the Electron app was not started — there is no desktop session
+  on this box to start it in.
+- **No live run against the snapshot.** Nothing in this phase talks to an
+  environment: the context bus, the injection report and the dictation pass are
+  client-local by design (D31, D32), so a server proof would prove nothing about
+  them.

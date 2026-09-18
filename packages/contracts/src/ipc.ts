@@ -89,6 +89,7 @@ import type {
 } from "./orchestration.ts";
 import { SnapShotSource } from "./orchestration.ts";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import type { FabricInjectionReport } from "./fabric/context.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -1226,6 +1227,16 @@ export interface DesktopBridge {
    * regardless of OS settings.
    */
   getSystemLocale?: () => string | null;
+  /**
+   * What this machine can type into, for §18's "capability must be reported
+   * honestly". The renderer supplies what it knows — whether it has a field of
+   * its own — and the main process supplies what the OS knows. Absent on
+   * desktop builds predating Fabric's dictation work.
+   */
+  getFabricInjectionReport?: (request: {
+    readonly applicationIntegrationConnected: boolean;
+    readonly keystrokeSimulationAllowed: boolean;
+  }) => Promise<FabricInjectionReport>;
   // One bootstrap per pool instance currently registered with bootstrap
   // info (omits instances whose backend hasn't produced a config yet).
   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.

@@ -222,7 +222,11 @@ const NOT_YET: ReadonlyArray<{
   {
     pattern: /^dictate\b|\bdictate:/,
     subject: "dictation",
-    detail: "Dictation into a focused field is the system-dictation phase, not this one.",
+    // Not "not yet": dictation is built, and it is built on the client on
+    // purpose. An environment has no business receiving the contents of
+    // somebody's email, so the words never arrive here to be understood.
+    detail:
+      "Dictated words stay on your own device — the client handles them and never sends them here.",
   },
   {
     pattern:

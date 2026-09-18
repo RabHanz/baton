@@ -11,11 +11,19 @@
  * fed by dictation mishears, and the difference between a useful assistant and
  * a dangerous one is whether "Tell Claude on Scheduler: run the migration
  * tests" can be read and stopped before it happens.
+ *
+ * One sentence never leaves this component: dictation. "Dictate: thanks, I'll
+ * send the revised contract tomorrow" is an email to somebody else, not work,
+ * and an environment has no business receiving it or writing it to an intent
+ * log. The client classifies it first and refuses by name when there is
+ * nowhere to put the words (§12.3, §18).
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { EnvironmentId, FabricIntentResolution } from "@t3tools/contracts";
+import { classifyDictation } from "@t3tools/shared/fabricDictation";
 
 import { cn } from "~/lib/utils";
+import { dictationModeLabel, dictationRefusal } from "../../fabricContextView";
 import { previewResolution } from "../../fabricIntentView";
 import { fabricWorkSessions } from "../../state/fabricWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -42,6 +50,8 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
   } | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  /** §12.3's mode. While it is on, ordinary words are text, not instructions. */
+  const [dictating, setDictating] = useState(false);
   const resolveIntent = useAtomCommand(fabricWorkSessions.intentResolve, { reportFailure: false });
   const runIntent = useAtomCommand(fabricWorkSessions.intentRun, { reportFailure: false });
   const latest = useRef(0);
@@ -74,6 +84,34 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
   const submit = (): void => {
     const trimmed = text.trim();
     if (trimmed.length === 0 || running) return;
+
+    // Dictation first, and it stops here. Nothing about these words reaches an
+    // environment — not the text, not the fact that they were said.
+    const dictation = classifyDictation(trimmed, { dictating });
+    if (dictation.kind === "stop") {
+      setDictating(false);
+      setText("");
+      setResolution(null);
+      setReply("Stopped dictating.");
+      return;
+    }
+    if (dictation.kind === "start" || dictation.kind === "text") {
+      setDictating(dictation.kind === "start");
+      setText("");
+      setResolution(null);
+      // This client has no field of its own to type into and cannot reach
+      // another application's. Saying so by name is the whole of §18's
+      // honesty requirement; saying nothing is the failure it is written
+      // against.
+      setReply(
+        dictationRefusal({
+          report: null,
+          targetReason: "This client cannot type into another application from here.",
+        }),
+      );
+      return;
+    }
+
     setRunning(true);
     void runIntent({
       environmentId: props.environmentId,
@@ -103,6 +141,16 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
 
   return (
     <div className="px-2 pb-1 pt-1">
+      {dictating ? (
+        <p
+          data-testid="sidebar-intent-dictating"
+          className="pb-0.5 text-[11px] leading-4 text-sidebar-foreground"
+        >
+          {/* The mode is never invisible: dictation the user has forgotten is
+              on is how a sentence meant for an agent ends up in an email. */}
+          {dictationModeLabel(null)}
+        </p>
+      ) : null}
       <input
         type="text"
         data-testid="sidebar-intent-input"
