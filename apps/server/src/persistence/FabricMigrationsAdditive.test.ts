@@ -16,12 +16,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
+import { fabricMigrationManifest } from "./FabricMigrations.ts";
 import { migrationManifest } from "./Migrations.ts";
 
-const MIGRATIONS_DIR = NodePath.join(import.meta.dirname, "Migrations");
+const MIGRATIONS_DIR = NodePath.join(import.meta.dirname, "Migrations", "Fabric");
 
 /** The migrations this fork added. Upstream's are upstream's business. */
-const FABRIC_MIGRATIONS = migrationManifest.filter(([, name]) => name.startsWith("Fabric"));
+const FABRIC_MIGRATIONS = fabricMigrationManifest;
 
 const sourceOf = (id: number, name: string): string => {
   const file = `${String(id).padStart(3, "0")}_${name}.ts`;
@@ -75,8 +76,18 @@ describe("every Fabric migration is additive", () => {
   });
 
   it("is registered in order, with no gaps or repeats", () => {
-    const ids = migrationManifest.map(([id]) => id);
+    const ids = FABRIC_MIGRATIONS.map(([id]) => id);
     expect(ids).toEqual([...ids].sort((left, right) => left - right));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("leaves upstream's manifest entirely to upstream", () => {
+    // The point of D48: `Migrations.ts` is byte-identical to upstream's, so the
+    // file they touch on every migration is not a file we touch at all. If a
+    // Fabric entry ever reappears there, the number spaces have merged again
+    // and upstream's next migration is one release away from being skipped.
+    expect(migrationManifest.filter(([, name]) => name.toLowerCase().includes("fabric"))).toEqual(
+      [],
+    );
   });
 });

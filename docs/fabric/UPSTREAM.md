@@ -38,7 +38,7 @@ extends.
 | Client RPC tags        | `packages/client-runtime/src/rpc/client.ts`                                                 | one member added to `EnvironmentSubscriptionRpcTag`                                                                                                                                                                                     | 2     |
 | Client-runtime exports | `packages/client-runtime/package.json`                                                      | one subpath export                                                                                                                                                                                                                      | 2     |
 | Sidebar                | `apps/web/src/components/Sidebar.tsx`                                                       | two memos, one callback, one status-label map, one flagged block above the thread list. The thread list itself is untouched — `DECISIONS.md` D12                                                                                        | 2     |
-| Migrations             | `apps/server/src/persistence/Migrations.ts`                                                 | one import and one manifest row                                                                                                                                                                                                         | 2     |
+| Migrations             | `apps/server/src/persistence/Layers/Sqlite.ts`                                              | two calls in the startup layer. Fabric's migrations have their own manifest and their own tracking table, so upstream's `Migrations.ts` — the file they touch on every schema change — is byte-identical to theirs. `DECISIONS.md` D48  | 2     |
 | Shared exports         | `packages/shared/package.json`                                                              | one export entry per shared Fabric module — the fleet view, the grammars, the policies                                                                                                                                                  | 4–10  |
 | Desktop IPC            | `apps/desktop/src/ipc/channels.ts`, `DesktopIpcHandlers.ts`, `preload.ts`                   | one channel, one registration, one preload binding: what this machine can type into (§18). The renderer cannot see the display server                                                                                                   | 6     |
 | Desktop bridge type    | `packages/contracts/src/ipc.ts`                                                             | one optional method on `DesktopBridge`, so a build predating it still typechecks                                                                                                                                                        | 6     |
@@ -68,22 +68,36 @@ git remote -v
 To take upstream changes:
 
 ```sh
-git fetch upstream main
-git checkout main
-git merge --ff-only upstream/main      # fork main stays a mirror of upstream main
-git push origin main
-git checkout fabric/<phase>
-git rebase main
+scripts/fabric/upstream-sync.sh --report-only   # what upstream did, and what it will touch
+scripts/fabric/upstream-sync.sh                 # merge it onto a branch and open the PR
 ```
 
-Fork `main` is kept as a fast-forward mirror of upstream `main`. Fabric work never lands on it
-directly; it lands on `fabric/*` branches whose PRs target the fork's `main` only when a phase is
-being frozen, and is rebased on top of upstream between phases. That ordering keeps the Fabric diff
-readable as a patch series against upstream, which is what `docs/internals` compatibility advice in
-upstream's own repo asks for (`docs/internals/overview.md`, "Remote servers can outlive several
-client releases").
+The script fetches both remotes, lists upstream's new commits, intersects the files they changed
+with the files this fork changed, flags every hit against the conflicts table above (read out of
+this document, so the table stays the one source of that list), then merges `upstream/main` into a
+branch off the fork's `main` and opens the pull request with that report as the body. It refuses a
+dirty tree, never pushes to `main`, and when the merge conflicts it stops with the list of files
+rather than guessing.
 
-After a rebase, re-run this page's fork-point table and the conflicts table.
+**The fork absorbs upstream; it is not rebased onto it.** The original plan here was the opposite —
+keep `main` a fast-forward mirror and rebase `fabric/*` on top — and that stopped being possible
+the moment Fabric work merged into the fork's `main`, which is where it belongs now that the fork
+is what runs on the Director's machines. Rebasing would rewrite every Fabric commit on every sync,
+so "what did the fork change" would have no stable answer, and every open branch would need
+force-pushing. Merge commits on the fork's `main` are therefore expected and fine.
+
+What keeps the Fabric diff legible instead is the conflicts table: every upstream file the fork
+edits is listed with the reason, and everything else Fabric contributes is a new file under a
+`fabric` name. `git diff <fork-point>..main -- ':!*fabric*'` is still the patch series against
+upstream.
+
+**The number space is not shared.** Fabric's migrations used to sit at 054–059 inside upstream's
+manifest, one upstream release away from either a duplicate-id failure or — worse, because it is
+silent — upstream's own migration being skipped forever. They now have their own manifest and their
+own `fabric_sql_migrations` table, and databases carrying the old numbering are repaired on boot.
+`DECISIONS.md` D48.
+
+After a sync, re-run this page's fork-point table and the conflicts table.
 
 ## Package map
 
