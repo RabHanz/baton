@@ -110,6 +110,15 @@ includes an Axiom ingest token. That one is a credential and it is upstream's;
 leaving it unset disables relay-client tracing, which is the right default for a
 fork.
 
+### Before the first build from a fresh upstream tree
+
+`pnpm-workspace.yaml` on upstream `main` currently contains the literal string
+`msgpackr-extract: set this to true or false`. pnpm tolerates it; the release
+archive's schema does not, and `build-cli-archive.ts` fails with a decode error
+at `["allowBuilds"]["msgpackr-extract"]` that says nothing about where it came
+from. The fork pins it back to `true`. If a sync brings the placeholder back,
+that is what to look for — and drop the pin when upstream fixes it.
+
 ## 5. Restart and verify
 
 ```bash
@@ -118,15 +127,17 @@ systemctl --user daemon-reload && systemctl --user restart t3code.service
 
 Then check, in this order, because each one can pass while the next fails:
 
-| Check              | How                                                                                                                                                                                                                                                                                                          |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The service is up  | `systemctl --user is-active t3code.service`, `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:3773/`                                                                                                                                                                                                    |
-| It is the fork     | `t3 --version` reports the fork version; `ExecStart` in `systemctl --user show` points at it                                                                                                                                                                                                                 |
-| Migrations applied | `fabric_sql_migrations` in `userdata/state.sqlite` holds 1–6 and the seven `fabric_*` tables exist. On a machine deployed before D48 the six sit at 054–059 in `effect_sql_migrations` instead, and the first boot of a build carrying D48 moves them across — `Reclaimed upstream migration ids` in the log |
-| Projects survived  | `projection_projects` still has the rows it had before                                                                                                                                                                                                                                                       |
-| T3 Connect is back | `T3 Connect desired link reconciled on startup` in `userdata/logs/boot-service.log`, and a `cloudflared tunnel run` process exists                                                                                                                                                                           |
-| Tailscale Serve    | `tailscale serve status` still maps the HTTPS port to `127.0.0.1:3773`, and **another tailnet device** gets 200 from it (a same-host probe fails the TLS handshake on SNI and proves nothing)                                                                                                                |
-| The OOM shield     | `choom -n -900 -p <launcher pid>` and `<server pid>`; a restart resets it, so it is re-applied every time                                                                                                                                                                                                    |
+| Check                   | How                                                                                                                                                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The service is up       | `systemctl --user is-active t3code.service`, `curl -o /dev/null -w '%{http_code}' http://127.0.0.1:3773/`                                                                                                                                                                                                    |
+| It is the fork          | `t3 --version` reports the fork version; `ExecStart` in `systemctl --user show` points at it                                                                                                                                                                                                                 |
+| Migrations applied      | `fabric_sql_migrations` in `userdata/state.sqlite` holds 1–6 and the seven `fabric_*` tables exist. On a machine deployed before D48 the six sit at 054–059 in `effect_sql_migrations` instead, and the first boot of a build carrying D48 moves them across — `Reclaimed upstream migration ids` in the log |
+| Projects survived       | `projection_projects` still has the rows it had before                                                                                                                                                                                                                                                       |
+| T3 Connect is back      | `T3 Connect desired link reconciled on startup` in `userdata/logs/boot-service.log`, and a `cloudflared tunnel run` process exists                                                                                                                                                                           |
+| Tailscale Serve         | `tailscale serve status` still maps the HTTPS port to `127.0.0.1:3773`, and **another tailnet device** gets 200 from it (a same-host probe fails the TLS handshake on SNI and proves nothing)                                                                                                                |
+| Accounts are themselves | each Claude instance's cache under `~/.t3/caches/<instance>.json` names **its own** `auth.email` and reads its own limits. An instance with no address and `unsupported` limits has stored credentials that have expired — nothing in a deploy fixes that, only a fresh `claude auth login`                  |
+| The model path          | one sentence the grammar refuses, resolved with `allowModel: true`, comes back as a reading rather than a refusal. `t3 auth session issue --token-only` gives the bearer; the RPC is at `ws://127.0.0.1:3773/ws`                                                                                             |
+| The OOM shield          | `choom -n -900 -p <launcher pid>` and `<server pid>`; a restart resets it, so it is re-applied every time                                                                                                                                                                                                    |
 
 ### When the relay keeps reconnecting
 

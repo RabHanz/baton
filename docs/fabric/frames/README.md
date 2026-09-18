@@ -51,6 +51,30 @@ What they do not show: a populated fleet. That would mean writing invented work
 sessions into his real environment, so it was not done; `phase-2/` and
 `phase-4/` are the populated views, from the snapshot.
 
+## Deploy 2026-09-18, second round — the account, and a model reading a sentence
+
+Four frames. The first two are the snapshot, because the live box has no work on
+it yet and therefore no fleet rows to carry an account; the last two are the
+Director's own live server.
+
+| Frame                                                     | View                             | What is on screen                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy-2026-09-18-account/01-fleet-account-redacted.png` | The fleet, cropped               | Ten rows, and under each attribution line a redacted address. The account a row runs as is now on the row: name from the instance, address from the login. Redacted by default, the same treatment the provider settings card gives it — a sidebar is the thing people screenshot. |
+| `deploy-2026-09-18-account/02-fleet-account-revealed.png` | The same, one address revealed   | `optimapacifist@gmail.com` under the first row. One click reveals one address, and the click does not also select the work session.                                                                                                                                                |
+| `deploy-2026-09-18-account/03-live-grammar-refuses.png`   | The live server, sentence typed  | `what's cooking`, and the grammar's refusal: _"I could not place …"_. This is what the preview shows while typing, and it costs nothing — the live preview never calls a model.                                                                                                    |
+| `deploy-2026-09-18-account/04-live-model-read-it.png`     | The live server, one Enter later | `↵ again to run Check overall status of…`. A model read the sentence through his own account and the reading is shown. **Nothing ran**: the second Enter is his.                                                                                                                   |
+
+Both live frames were taken on `0.0.43-fabric.2`. The build that ended up
+deployed is `0.0.43-fabric.4` — two defects found by this deploy and fixed in
+between — and its model path was re-proven on both machines over the RPC rather
+than re-photographed, which is why the report quotes text rather than showing a
+fifth frame.
+
+**What they also show, unprompted:** at 256 px the `↵ again to run` marker and
+the description do not both fit, so the description truncates. The marker earns
+its place — it is the difference between "this will run" and "this is what I
+think you said" — but the line needs work before this is a daily surface.
+
 ## What the frames also show, and what they cost
 
 Two honest observations a reader would make anyway:
