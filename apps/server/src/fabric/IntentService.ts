@@ -207,6 +207,7 @@ export const make = Effect.gen(function* () {
 
     return candidates.map((candidate): IntentProvider => ({
       instanceId: candidate.provider.instanceId,
+      driver: candidate.provider.driver,
       label: candidate.display,
       aliases: candidate.aliases.filter((alias) => counts.get(alias.toLowerCase()) === 1),
       model: candidate.provider.models[0]?.slug ?? null,

@@ -174,10 +174,17 @@ export const make = Effect.gen(function* () {
     const providers = yield* providerRegistry.getProviders.pipe(
       Effect.catchCause(() => Effect.succeed([])),
     );
-    const available = providers.find(
+    // Same rule as the intent path: a driver that can write one, and an account
+    // that has actually proven a login. A configured instance with an expired
+    // token still reports itself authenticated (D50's live finding).
+    const capable = providers.filter(
       (provider) => provider.enabled && provider.installed && provider.driver === "claudeAgent",
     );
-    return available?.instanceId ?? null;
+    const signedIn = capable.find(
+      (provider) =>
+        provider.auth.status === "authenticated" && (provider.auth.email ?? "").trim().length > 0,
+    );
+    return (signedIn ?? capable[0])?.instanceId ?? null;
   });
 
   const recentTurns = (threadId: ThreadId) =>

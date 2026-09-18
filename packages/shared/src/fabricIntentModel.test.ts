@@ -43,6 +43,7 @@ const vocabulary: IntentVocabulary = {
   providers: [
     {
       instanceId: "claude-signzart",
+      driver: "claudeAgent",
       aliases: ["Claude · signzart", "signzart"],
       label: "Claude · signzart",
       model: "claude-fable-5-1",
@@ -51,6 +52,7 @@ const vocabulary: IntentVocabulary = {
     },
     {
       instanceId: "claude-rabee",
+      driver: "claudeAgent",
       aliases: ["Claude · rabee", "rabee"],
       label: "Claude · rabee",
       model: "claude-fable-5-1",

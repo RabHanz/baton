@@ -53,6 +53,8 @@ export interface IntentProject {
 
 export interface IntentProvider {
   readonly instanceId: string;
+  /** The driver kind, so a caller can ask what this account can actually do. */
+  readonly driver: string;
   /** How the user refers to it: "Claude", "Claude B", "Codex", the driver kind. */
   readonly aliases: ReadonlyArray<string>;
   /** Display name for the read-back. */

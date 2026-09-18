@@ -49,6 +49,20 @@ import { TextGeneration } from "../textGeneration/TextGeneration.ts";
  */
 export const INTENT_MODEL_SLUG = "claude-haiku-4-5";
 
+/**
+ * The drivers that can read a sentence into a command.
+ *
+ * `interpretFabricIntent` is optional on the TextGeneration service — a driver
+ * that cannot do it is a refusal by name rather than a build that will not
+ * compile (D50) — so the caller has to know which ones can, or it spends a
+ * round trip learning that Codex does not. Found by deploying: on the
+ * Director's local box the first signed-in account is Codex, and every sentence
+ * came back as the grammar's refusal because of it.
+ *
+ * Codex's own structured one-shot is the obvious next entry here.
+ */
+export const INTENT_CAPABLE_DRIVERS: ReadonlySet<string> = new Set(["claudeAgent"]);
+
 export interface IntentInterpretation {
   readonly resolution: FabricIntentResolution;
   /** The model that read it, for the record. */
@@ -95,9 +109,10 @@ export class FabricIntentInterpreter extends Context.Service<
 export const chooseInterpreterInstance = (
   vocabulary: IntentVocabulary,
 ): { readonly instanceId: string; readonly model: string } | null => {
-  const chosen =
-    vocabulary.providers.find((provider) => provider.available && provider.signedIn) ??
-    vocabulary.providers.find((provider) => provider.available);
+  const capable = vocabulary.providers.filter(
+    (provider) => provider.available && INTENT_CAPABLE_DRIVERS.has(provider.driver),
+  );
+  const chosen = capable.find((provider) => provider.signedIn) ?? capable[0];
   if (chosen === undefined) return null;
   return { instanceId: chosen.instanceId, model: INTENT_MODEL_SLUG };
 };

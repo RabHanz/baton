@@ -18,6 +18,7 @@ const provider = (
   overrides: Partial<IntentProvider> & { readonly instanceId: string },
 ): IntentProvider => ({
   aliases: [overrides.instanceId],
+  driver: "claudeAgent",
   label: overrides.instanceId,
   model: "claude-fable-5-1",
   available: true,
@@ -60,6 +61,27 @@ describe("choosing the account that reads a sentence", () => {
     // Stable and predictable: not "the one with most quota", because the
     // account is what the call is billed to.
     expect(chosen?.instanceId).toBe("claude-signzart");
+  });
+
+  it("skips a signed-in account whose driver cannot read a sentence", () => {
+    // The second live finding, from the same box: Codex is available, signed in
+    // and first in the list, and only the Claude driver implements the one-shot
+    // (D50 made it optional per driver). Choosing it spent a round trip to be
+    // told so, and the sentence came back as the grammar's refusal.
+    const chosen = chooseInterpreterInstance(
+      vocabularyOf([
+        provider({ instanceId: "codex", driver: "codex" }),
+        provider({ instanceId: "claudeAgent" }),
+      ]),
+    );
+
+    expect(chosen).toEqual({ instanceId: "claudeAgent", model: INTENT_MODEL_SLUG });
+  });
+
+  it("has nothing to choose when the only accounts are on drivers that cannot", () => {
+    expect(
+      chooseInterpreterInstance(vocabularyOf([provider({ instanceId: "codex", driver: "codex" })])),
+    ).toBeNull();
   });
 
   it("still tries an available account that publishes no address", () => {
