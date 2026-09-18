@@ -1186,3 +1186,194 @@ file list when the merge conflicts rather than guessing.
 
 **Consequence:** the distance from upstream is a number somebody can read on demand, and a sync that
 would touch a file Fabric depends on says so before the merge rather than during it.
+
+---
+
+## D50 — A model reads the sentences the grammar cannot, and the grammar checks its work
+
+**Decided** 2026-09-18 by the Director, reversing D24 ("no model on the intent path") in his own
+words: _"don't dumb it down by generic grammar! what the hell even is the point of this if it isn't
+smart or sentient!"_
+
+D24 was right about the danger and wrong about the remedy. The danger is a probabilistic parser
+doing something the user did not ask for; the remedy D24 chose was to refuse everything the grammar
+could not place, which in practice means refusing the way people actually talk. Ten sentences
+written the way he speaks — "what's cooking", "get the radar one moving again", "tell the scheduler
+one to stop what it's doing" — are all refused by the shipped grammar. A surface that answers only
+sentences shaped like its own regexes is not an assistant.
+
+**The path is now three steps, in this order:**
+
+1. **The grammar**, unchanged. Instant, free, identical every time, and still the only thing that
+   runs on a sentence it can place.
+2. **A phrasing the user has already confirmed**, replayed from `fabric_intent_vocabulary`. Still
+   no model, still instant.
+3. **A model**, running as one of the user's own accounts through the same `TextGeneration` path
+   that writes thread titles — subscription, not API, and the cheapest tier that can classify
+   (`claude-haiku-4-5`).
+
+**What did not move, and this is the whole of the safety argument:**
+
+- **§24.1 is matched before the model.** A high-risk sentence is refused by the grammar and never
+  reaches it. `high_risk`, `not_available_yet` and `nothing_to_confirm` refusals are final.
+- **§24.1 is matched again after the model**, against the effectful text it produced — the message
+  an agent would receive, the title new work would carry. A model asked to be helpful is exactly
+  the component that would turn a vague sentence into "deploy to production" inside a message.
+  Deliberately _not_ against the description, which quotes names this environment already holds:
+  work called "Production deploy check" is the user naming their work, not asking for a deploy.
+- **Every id is checked against the same vocabulary the grammar uses.** An id that is not in the
+  list is a refusal naming what the model said, never a nearest match.
+- **`ambiguous_target` stays final.** When the grammar found _several_ matches and asked which, a
+  model picking one is precisely the "never guess a target" rule this surface is built on (§14
+  rung 9). A model may read an _unplaced_ name; it may not choose between two placed ones.
+- **Low confidence is a question.** The model's own question becomes the refusal message.
+
+**Two structural consequences that took a real run to find.**
+
+The first: **the live preview must not call a model.** It fires on every pause in typing, and a
+model call per pause spends the user's quota to describe a half-typed sentence. So `resolve`
+carries `allowModel`, absent meaning no. The first Enter on an unplaceable sentence asks for a
+reading and _shows_ it; the second Enter runs it. That two-step is not friction added for its own
+sake — it is what makes the read-back load-bearing on the one path where the reading might be
+wrong.
+
+The second: **the reading a user was shown must be the reading that runs.** Without a short-lived
+cache of readings keyed by the normalised sentence, the second Enter would ask again and could get
+a different answer, and the line the user approved would describe a command that never executed.
+
+**What it cost, honestly.** The first real run read **0 of 10**: the model answered `none` for
+phrasings it plainly understood and `low` confidence for sentences with one obvious target, because
+the prompt told it "low confidence is always safe" and it believed that. Rewriting the prompt with
+the kinds spelled out, an example sentence per kind, and a confidence rule that names when _not_ to
+hedge took it to **8 of 10**. The last two were `status_fleet` readings where the model wrote a
+sentence into an enum field; a deterministic fallback to `everything` — the superset of the four
+status questions, all of which are reads, with no target involved — took it to **10 of 10**.
+
+**Consequence:** every intent row carries `source` (`grammar` | `learned` | `model`) and the model
+that read it, so "why did that happen?" has an answer with a name in it. A model reading that runs
+and does not fail is learned, and the next identical sentence is answered by step 2 — the model's
+job is to teach the grammar the user's vocabulary, not to stay in the path forever.
+
+---
+
+## D51 — The synopsis is written at a milestone, not only assembled
+
+**Decided** 2026-09-18 by the Director, in the same breath as D50, reversing D16 ("no model
+summariser").
+
+D16 declined §11's semantic summarisation because the fork had no model on any path and adding one
+for a convenience was the wrong first use. D50 put one there. What the assembled synopsis produces
+at the moment somebody most wants to read it — a completed turn — is this:
+
+```
+currentAction: (none)
+next:          (none)
+```
+
+That is correct and useless. The provider stopped, so there is no current action; no rule fired, so
+there is no next step. Somebody who stepped away and came back learns nothing.
+
+What a model produces from the same thread's own turns, measured on the snapshot with
+`claude-sonnet-5`, in 3.1 seconds:
+
+> The review is complete: the branch was found to contain only a one-line README with no code, and
+> the reviewer gave it LGTM.
+>
+> Merge can proceed; optionally clean up the placeholder commit message and author email first if
+> the repo will be long-lived.
+
+**What the model may write:** `currentAction` and `next`, one sentence each, and `source` becomes
+`"model"` so a reader always knows which kind they are looking at.
+
+**What it may not touch, enforced in `applyModelSynopsis` rather than asked for in a prompt:**
+
+- **`needsUser`.** Whether the fleet interrupts a person stays derived from events. A model
+  guessing "needs approval" is a model deciding whether to interrupt somebody, which is not a
+  summarisation task.
+- **`changedFiles`, `validation`, `recentFindings`.** These are observations, and they keep coming
+  from the events that observed them. A model that "remembers" a file nobody touched is worse than
+  no synopsis at all.
+
+**One milestone, once.** Only a completed turn is written about, and each turn id at most once —
+the Director's "cache by turn id so a synopsis is written at most once per trigger", taken
+literally. Tool events and activity appends keep updating the assembled record for free, as they
+did.
+
+**It arrives as a signal**, `{ kind: "written", currentAction, next }`, folded by the same reducer
+as every other signal. Not a second service method: one write path means one staleness rule and one
+file to read when a synopsis looks wrong.
+
+**Every failure is silent and leaves the plain synopsis standing** — no account, a driver without
+the capability, a model that does not answer. The assembled version is never wrong about the facts,
+which makes it the right thing to fall back to.
+
+**What it cost, honestly.** The first real run produced _"Wrote a two-sentence status update for the
+'Reconnect fix review' work based on the recent turns provided."_ — the model narrating the request
+instead of the work. Two causes, both in this fork: the two output fields reached the CLI's JSON
+schema with no descriptions, so the only guidance was prose several paragraphs earlier; and nothing
+in the prompt said "do not describe this request". Annotating the fields and adding that rule fixed
+it on the next call.
+
+**Consequence:** the synopsis is now the most expensive thing Fabric does per turn, at one Sonnet
+call. It is bounded by the turn rate of work the user is actually running, and it is the line they
+read to decide whether to look — which is the one place in this product where a sentence is worth
+more than a label.
+
+---
+
+## D52 — A provider account is a login, not a second copy of everything
+
+**Decided** 2026-09-18 by the Director: _"any new profile I add picks up the same config"_, with the
+coordinator's clarification that "profile" means a **provider account** — a second or third Claude
+login, and Codex accounts when they exist — not anything Fabric-specific.
+
+The shape, for both providers: the account directory holds **only that account's credentials**, and
+`settings.json` (which carries `hooks`), `CLAUDE.md`, `skills/`, `agents/`, `commands/`, `plugins/`
+and the `projects/` memory tree are the primary's, shared by symlink.
+
+**Upstream already does this for Codex, and Fabric does not reinvent it.**
+`CodexHomeLayout.ts` implements a _shadow home_: `auth.json` private, every other entry in the
+shared home symlinked in, re-materialised on every session start. Fabric's account plan simply
+names the shadow home and the setting that turns it on. Proven with upstream's own materializer
+against the real `~/.codex`: `config.toml`, the caches, the session stores and the rest linked,
+`auth.json` absent until somebody logs in.
+
+**Claude had no equivalent**, which is the gap this closes. `ClaudeHome.ts` sets
+`CLAUDE_CONFIG_DIR` and nothing else, so a second Claude account got an empty directory: no skills,
+no agents, no instructions, no memory. `ClaudeAccountHome.ts` is the Codex mechanism applied to
+Claude, deliberately built the same way so there is one idea here rather than two.
+
+**On the question the Director actually asked — do symlinks survive the CLI's writes?** The honest
+answer is that it could not be forced to write one on demand (2.1.263 has no `config set`; settings
+are written in-session), so the design does not depend on the answer: the layout is
+**re-materialised before every session**, a link that has drifted is repaired, and the two ways this
+could silently fork are both named errors instead —
+
+- a shared entry that has become a **real file** stops the layout rather than deleting somebody's
+  data;
+- a private entry (`.credentials.json`, `.claude.json`) that has become a **link** stops it too,
+  because two "accounts" sharing one login is the failure the whole thing exists to prevent.
+
+**Only the named entries are shared.** The first version linked everything in the primary that was
+not obviously private, and the first real run produced thirty-odd links including `history.jsonl`,
+`stats-cache.json`, `telemetry/` and three stale `settings.json` backups. Two accounts writing one
+cache is a contention bug waiting to be blamed on something else, and none of it is what "the same
+config" means.
+
+**claude-swap is preferred when it is there.** The Director already runs `cswap`, which keeps a
+per-account directory under `~/.local/share/claude-swap/sessions/<n>-<email>`. Adding an account it
+already manages **reuses that directory** — a second home for one login is how somebody ends up
+wondering which of them a rate limit belongs to — and adds the links cswap does not make.
+
+**Adopting an existing directory keeps the original.** cswap creates `plugins/` and `projects/` as
+real directories per account, so six of the eight shared entries linked and two refused. Refusing is
+right by default; a session starting must never move somebody's data. So there is an explicit
+`adoptExisting` mode that renames the original to `<name>.account-local-<timestamp>` beside the new
+link. Nothing is ever deleted. Run against both of his real accounts, both now see the primary's 33
+skills and 210-entry memory tree, both keep their own credentials, and both keep their previous
+copies next to the links.
+
+**Consequence:** "add a provider account" is a plan before it is a mkdir —
+`planProviderAccount` decides the directory, the instance id and the one command to run, and returns
+it for a person to read. The surface that shows that plan to the Director is not built yet; the
+mechanism underneath it is, and it is exercised on every Claude session start.

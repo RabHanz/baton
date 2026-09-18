@@ -77,6 +77,50 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface FabricIntentInterpretationInput {
+  /** The sentence, verbatim. */
+  readonly sentence: string;
+  /** Everything the model is allowed to know: names and ids, no thread contents. */
+  readonly prompt: string;
+  /** What model and provider to use. Fabric picks the cheapest tier that classifies. */
+  readonly modelSelection: ModelSelection;
+}
+
+/**
+ * The model's answer, flat and nullable.
+ *
+ * Deliberately `unknown`-free but also deliberately unvalidated here: the
+ * driver's only job is to get a shaped answer back. Whether the ids in it exist
+ * is Fabric's question, and `@t3tools/shared/fabricIntentModel` answers it.
+ */
+export interface FabricIntentInterpretationResult {
+  readonly kind: string;
+  readonly statusQuestion: string | null;
+  readonly workSessionId: string | null;
+  readonly projectId: string | null;
+  readonly providerInstanceId: string | null;
+  readonly title: string | null;
+  readonly message: string | null;
+  readonly firingId: string | null;
+  readonly confirmed: boolean | null;
+  readonly description: string;
+  readonly confidence: string;
+  readonly question: string | null;
+}
+
+export interface FabricSynopsisInput {
+  /** Recent turns from the thread, oldest first, already trimmed by the caller. */
+  readonly prompt: string;
+  readonly modelSelection: ModelSelection;
+}
+
+export interface FabricSynopsisResult {
+  /** What it is doing right now, one short sentence. */
+  readonly currentAction: string;
+  /** What happens next, one short sentence. */
+  readonly next: string;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -108,6 +152,23 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /**
+     * Read one sentence into one Fabric command (`DECISIONS.md` D50).
+     *
+     * Optional on purpose. Only the drivers that can run a cheap structured
+     * one-shot implement it, and Fabric refuses by name when the chosen account
+     * cannot — which is a better answer than a build that will not compile
+     * because a provider nobody uses for this lacks a method.
+     */
+    readonly interpretFabricIntent?: (
+      input: FabricIntentInterpretationInput,
+    ) => Effect.Effect<FabricIntentInterpretationResult, TextGenerationError>;
+
+    /** Write the two sentences of a §11 synopsis from a thread's recent turns (D51). */
+    readonly writeFabricSynopsis?: (
+      input: FabricSynopsisInput,
+    ) => Effect.Effect<FabricSynopsisResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -115,7 +176,9 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "interpretFabricIntent"
+  | "writeFabricSynopsis";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -166,6 +229,32 @@ export const make = Effect.gen(function* () {
               ));
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
+        ),
+      ),
+    interpretFabricIntent: (input) =>
+      resolveInstance(registry, "interpretFabricIntent", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) =>
+          textGeneration.interpretFabricIntent
+            ? textGeneration.interpretFabricIntent(input)
+            : Effect.fail(
+                new TextGenerationError({
+                  operation: "interpretFabricIntent",
+                  detail: `Provider instance '${input.modelSelection.instanceId}' cannot read a sentence into a command.`,
+                }),
+              ),
+        ),
+      ),
+    writeFabricSynopsis: (input) =>
+      resolveInstance(registry, "writeFabricSynopsis", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) =>
+          textGeneration.writeFabricSynopsis
+            ? textGeneration.writeFabricSynopsis(input)
+            : Effect.fail(
+                new TextGenerationError({
+                  operation: "writeFabricSynopsis",
+                  detail: `Provider instance '${input.modelSelection.instanceId}' cannot write a synopsis.`,
+                }),
+              ),
         ),
       ),
   });

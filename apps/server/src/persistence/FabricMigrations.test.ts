@@ -110,7 +110,11 @@ describe("Fabric migrations own their number space", () => {
 
         yield* runMigrations();
         const upstreamLatest = yield* latestUpstreamId;
-        yield* runFabricMigrations();
+        // Exactly the state an earlier build of this fork left: the six that
+        // existed then, and no more. Running the whole manifest here would
+        // simulate a database that cannot exist — one that applied migrations
+        // added *after* the old numbering while still carrying it.
+        yield* runFabricMigrations({ toMigrationInclusive: LEGACY_ROWS.length });
         yield* pretendLegacyNumbering(LEGACY_ROWS.map(([, name]) => name));
         // A row of real data, so "the repair kept the tables" is not a claim
         // about empty ones.
@@ -123,11 +127,16 @@ describe("Fabric migrations own their number space", () => {
         assert.strictEqual(yield* latestUpstreamId, 59);
 
         const reclaimed = yield* reclaimUpstreamMigrationIds();
-        // Nothing re-runs: the record moved, the SQL did not. Re-running is not
-        // merely wasteful — `002_WorkSessionSynopsis` adds a column, and a
-        // second `ALTER TABLE ... ADD COLUMN` fails with `duplicate column
-        // name`.
-        assert.deepStrictEqual(yield* runFabricMigrations(), []);
+        // Nothing that was adopted re-runs: the record moved, the SQL did not.
+        // Re-running is not merely wasteful — `002_WorkSessionSynopsis` adds a
+        // column, and a second `ALTER TABLE ... ADD COLUMN` fails with
+        // `duplicate column name`. Anything Fabric added *after* the old
+        // numbering (7 and up) is genuinely pending and does run.
+        const adopted = LEGACY_ROWS.length;
+        assert.deepStrictEqual(
+          (yield* runFabricMigrations()).map(([id]) => id),
+          fabricMigrationManifest.map(([id]) => id).filter((id) => id > adopted),
+        );
 
         assert.deepStrictEqual(
           [...reclaimed].sort((left, right) => left - right),
@@ -197,11 +206,11 @@ describe("Fabric migrations own their number space", () => {
         yield* reclaimUpstreamMigrationIds();
         const executed = yield* runFabricMigrations();
 
-        // 1 was adopted, 2-6 ran. Had 1 re-run instead, the column it adds
-        // would have collided and the boot would have failed.
+        // 1 was adopted, everything after it ran. Had 1 re-run instead, the
+        // column it adds would have collided and the boot would have failed.
         assert.deepStrictEqual(
           executed.map(([id]) => id),
-          [2, 3, 4, 5, 6],
+          fabricMigrationManifest.map(([id]) => id).filter((id) => id > 1),
         );
         assert.ok(yield* tableExists("fabric_adopted_sessions"));
       }),

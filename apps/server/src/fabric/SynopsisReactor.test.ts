@@ -70,6 +70,10 @@ describe("synopsisSignalsForEvent", () => {
     } as unknown as OrchestrationEvent;
     expect(synopsisSignalsForEvent(event)).toEqual({
       threadId,
+      // The turn's id travels with the signals: a completed turn is the one
+      // milestone a model writes about, and "at most once per turn" needs the
+      // turn's identity to mean anything (D51).
+      completedTurnId: TurnId.make("turn-1"),
       signals: [
         {
           kind: "files-changed",

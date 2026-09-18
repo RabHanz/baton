@@ -9,11 +9,22 @@
  *      machine's own names. The grammar resolves against facts, so "Codex"
  *      means this environment's Codex and "the scheduler" means a work session
  *      that exists — or the sentence is refused.
- *   2. **Resolve, deterministically.** `resolveFabricIntent` is a pure
- *      function of the sentence and that vocabulary. No model, no clock, no
- *      network. The same words on the same fleet always produce the same
- *      command, which is what makes the read-back before execution worth
- *      anything.
+ *   2. **Resolve — deterministically first, and deterministically last.**
+ *      `resolveFabricIntent` is a pure function of the sentence and that
+ *      vocabulary: no model, no clock, no network, the same command every
+ *      time. When it cannot place a sentence, two more things are tried in
+ *      order, and only in this order (D50):
+ *
+ *        - **a phrasing the user has already confirmed**, replayed from the
+ *          vocabulary table. Still no model, still instant, still identical.
+ *        - **a model**, running as one of the user's own accounts, answering in
+ *          the same schema and naming ids it was shown. Everything it returns
+ *          is then checked by the same deterministic rules — the ids have to
+ *          exist, §24.1 is matched again on what it produced, and low
+ *          confidence becomes a question rather than an action.
+ *
+ *      The read-back before execution is what makes that safe, and it is now
+ *      load-bearing rather than merely polite.
  *   3. **Record what happened, including the refusals.** A log that keeps only
  *      what worked cannot show a grammar its own blind spots, and on a surface
  *      fed by dictation the interesting question is usually "what did it think
@@ -24,6 +35,7 @@
  * told about, or "tell it to stop" means one thing on screen and another here.
  */
 import {
+  FabricIntentCommand as FabricIntentCommandSchema,
   DEFAULT_INTENT_LIST_LIMIT,
   DEFAULT_RETENTION,
   FabricIntentExecutionError,
@@ -39,6 +51,7 @@ import {
 } from "@t3tools/contracts";
 import { expiredRecords } from "@t3tools/shared/fabricRetention";
 import {
+  normaliseIntentText,
   resolveFabricIntent,
   type IntentGate,
   type IntentProvider,
@@ -49,7 +62,9 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -61,6 +76,11 @@ import {
   type FabricIntentRow,
 } from "./IntentRepository.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
+import { FabricIntentInterpreter, layer as intentInterpreterLayer } from "./IntentInterpreter.ts";
+import {
+  FabricIntentVocabularyRepository,
+  layer as intentVocabularyRepositoryLayer,
+} from "./IntentVocabularyRepository.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -94,6 +114,8 @@ export class FabricIntentService extends Context.Service<
     readonly resolve: (input: {
       readonly text: string;
       readonly focusedWorkSessionId: WorkSessionId | null;
+      /** Absent or false: grammar and learned phrasings only, never a model. */
+      readonly allowModel?: boolean | undefined;
     }) => Effect.Effect<FabricIntentResolution, FabricIntentError>;
     readonly run: (input: {
       readonly text: string;
@@ -116,11 +138,15 @@ export class FabricIntentService extends Context.Service<
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
+const encodeLearnedCommand = Schema.encodeEffect(Schema.fromJsonString(FabricIntentCommandSchema));
+
 const firstWord = (text: string): string => text.trim().split(/\s+/)[0] ?? text;
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const repository = yield* FabricIntentRepository;
+  const vocabularyMemory = yield* FabricIntentVocabularyRepository;
+  const interpreter = yield* FabricIntentInterpreter;
   const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const rules = yield* OrchestrationRuleService;
@@ -245,10 +271,147 @@ export const make = Effect.gen(function* () {
       return vocabulary;
     });
 
-  const resolve: FabricIntentService["Service"]["resolve"] = ({ text, focusedWorkSessionId }) =>
-    Effect.map(buildVocabulary(focusedWorkSessionId), (vocabulary) =>
-      resolveFabricIntent(text, vocabulary),
-    );
+  /** How many confirmed phrasings the prompt carries as examples. */
+  const LEARNED_EXAMPLES = 8;
+
+  /**
+   * Readings shown to the user but not yet acted on.
+   *
+   * Small and short-lived on purpose: this is the gap between "here is what I
+   * think you said" and "yes, do that", which is seconds. Anything longer
+   * belongs in the learned table, and gets there by being run.
+   */
+  const RECENT_READING_LIMIT = 16;
+  const recentReadings = new Map<
+    string,
+    { readonly resolution: FabricIntentResolution; readonly model: string }
+  >();
+  const rememberReading = (
+    normalised: string,
+    reading: { readonly resolution: FabricIntentResolution; readonly model: string },
+  ): void => {
+    recentReadings.set(normalised, reading);
+    while (recentReadings.size > RECENT_READING_LIMIT) {
+      const oldest = recentReadings.keys().next();
+      if (oldest.done === true) break;
+      recentReadings.delete(oldest.value);
+    }
+  };
+
+  const decodeLearnedCommand = Schema.decodeUnknownOption(
+    Schema.fromJsonString(FabricIntentCommandSchema),
+  );
+
+  /**
+   * Resolve, and say which of the three answered.
+   *
+   * Everything downstream needs that: the record keeps it, the learning step
+   * only fires for a model reading, and a reader asking "why did that happen?"
+   * gets "the grammar did", "you have said that before", or "a model read it,
+   * and here is which one".
+   */
+  const resolveWithSource = ({
+    text,
+    focusedWorkSessionId,
+    allowModel,
+  }: {
+    readonly text: string;
+    readonly focusedWorkSessionId: WorkSessionId | null;
+    readonly allowModel?: boolean | undefined;
+  }) =>
+    Effect.gen(function* () {
+      const vocabulary = yield* buildVocabulary(focusedWorkSessionId);
+      const grammar = resolveFabricIntent(text, vocabulary);
+
+      // Which refusals get a second reader, and which are final.
+      //
+      // Open: the grammar could not parse the shape (`unrecognised`), could not
+      // parse a rule (`rule_not_understood`), or parsed a shape and could not
+      // place the name in it (`unknown_target` — "the scheduler one" is a
+      // target a model reads easily and the grammar cannot).
+      //
+      // Closed, and deliberately:
+      //   - `high_risk`: §24.1 is matched before the model, and a sentence that
+      //     asks for a production deploy does not get a second opinion.
+      //   - `not_available_yet`: a fact about this build, not a reading.
+      //   - `nothing_to_confirm`: a fact about the world — nothing is parked.
+      //   - `ambiguous_target`: the grammar found *several* matches and asked
+      //     which. Letting a model pick is precisely the "never guess a target"
+      //     rule this surface is built on (§14 rung 9).
+      const openToModel =
+        grammar.outcome === "refused" &&
+        (grammar.refusal.reason === "unrecognised" ||
+          grammar.refusal.reason === "rule_not_understood" ||
+          grammar.refusal.reason === "unknown_target");
+      if (!openToModel) {
+        return { resolution: grammar, source: "grammar" as const, model: null, normalised: null };
+      }
+
+      const normalised = normaliseIntentText(text);
+      const learned = yield* vocabularyMemory
+        .find(normalised)
+        .pipe(Effect.catchCause(() => Effect.succeed(null)));
+      if (learned !== null) {
+        const command = decodeLearnedCommand(learned.commandJson);
+        if (Option.isSome(command)) {
+          return {
+            resolution: {
+              outcome: "resolved",
+              command: command.value,
+              description: learned.description,
+              risk: learned.risk,
+              workSessionId: learned.workSessionId,
+            } satisfies FabricIntentResolution,
+            source: "learned" as const,
+            model: null,
+            normalised,
+          };
+        }
+      }
+
+      // A reading the user was just shown is the reading that runs. Without
+      // this the same sentence could be read differently on the second call,
+      // and the line they approved would describe a command that never
+      // executed.
+      const remembered = recentReadings.get(normalised);
+      if (remembered !== undefined) {
+        return {
+          resolution: remembered.resolution,
+          source: "model" as const,
+          model: remembered.model,
+          normalised,
+        };
+      }
+
+      if (allowModel !== true) {
+        return { resolution: grammar, source: "grammar" as const, model: null, normalised };
+      }
+
+      const examples = yield* vocabularyMemory
+        .list(LEARNED_EXAMPLES)
+        .pipe(Effect.catchCause(() => Effect.succeed([])));
+      const read = yield* interpreter.interpret({
+        sentence: text.trim(),
+        vocabulary,
+        learned: examples.map((entry) => ({
+          text: entry.text,
+          description: entry.description,
+        })),
+      });
+      if (read === null) {
+        return { resolution: grammar, source: "grammar" as const, model: null, normalised };
+      }
+      rememberReading(normalised, { resolution: read.resolution, model: read.model });
+      return {
+        resolution: read.resolution,
+        source: "model" as const,
+        model: read.model,
+        normalised,
+      };
+    });
+
+  const resolve: FabricIntentService["Service"]["resolve"] = (input) =>
+    Effect.map(resolveWithSource(input), (read) => read.resolution);
 
   const record = (row: FabricIntentRow) =>
     repository
@@ -262,7 +425,8 @@ export const make = Effect.gen(function* () {
       const trimmed = text.trim();
       yield* publish({ kind: "fabric.intent.received", id, text: trimmed, at });
 
-      const resolution = yield* resolve({ text, focusedWorkSessionId });
+      const read = yield* resolveWithSource({ text, focusedWorkSessionId, allowModel: true });
+      const resolution = read.resolution;
 
       if (resolution.outcome === "refused") {
         const row = yield* record({
@@ -278,6 +442,8 @@ export const make = Effect.gen(function* () {
           risk: "low",
           refusalReason: resolution.refusal.reason,
           at,
+          source: read.source,
+          model: read.model,
         });
         yield* publish({ kind: "fabric.intent.refused", record: row });
         return { resolution, reply: resolution.refusal.message, record: row };
@@ -295,8 +461,11 @@ export const make = Effect.gen(function* () {
         risk: resolution.risk,
         refusalReason: null,
         at,
+        source: read.source,
+        model: read.model,
       });
       yield* publish({ kind: "fabric.intent.resolved", record: row });
+      yield* learnFromReading({ read, text: trimmed, resolution, failed: execution.failed, at });
       yield* prune;
       if (execution.failed) {
         // Recorded first, then raised: the caller gets an error, and the log
@@ -308,6 +477,54 @@ export const make = Effect.gen(function* () {
       }
       return { resolution, reply: execution.reply, record: row };
     });
+
+  /**
+   * Remember a phrasing the user actually meant.
+   *
+   * Only on a model reading that *ran* and did not fail: a resolution the user
+   * previewed and walked away from is the closest thing to a "no" this surface
+   * gets, and a failed execution says nothing about whether the reading was
+   * right. A learned phrasing that was already there has its use count bumped
+   * instead, which is what makes "used once" and "used daily" distinguishable
+   * later.
+   */
+  const learnFromReading = ({
+    read,
+    text,
+    resolution,
+    failed,
+    at,
+  }: {
+    readonly read: {
+      readonly source: string;
+      readonly model: string | null;
+      readonly normalised: string | null;
+    };
+    readonly text: string;
+    readonly resolution: FabricIntentResolution;
+    readonly failed: boolean;
+    readonly at: string;
+  }) =>
+    Effect.gen(function* () {
+      if (read.normalised !== null) recentReadings.delete(read.normalised);
+      if (read.normalised === null || resolution.outcome !== "resolved") return;
+      if (read.source === "learned") {
+        yield* vocabularyMemory.markUsed({ normalisedText: read.normalised, at });
+        return;
+      }
+      if (read.source !== "model" || read.model === null || failed) return;
+      const commandJson = yield* encodeLearnedCommand(resolution.command);
+      yield* vocabularyMemory.learn({
+        normalisedText: read.normalised,
+        text,
+        commandJson,
+        description: resolution.description,
+        risk: resolution.risk,
+        workSessionId: resolution.workSessionId,
+        model: read.model,
+        learnedAt: at,
+      });
+    }).pipe(Effect.ignoreCause({ log: true }));
 
   /**
    * §26's horizon, applied where the log grows rather than on a timer.
@@ -349,4 +566,9 @@ export const make = Effect.gen(function* () {
 
 export const layer = Layer.effect(FabricIntentService, make).pipe(
   Layer.provideMerge(intentRepositoryLayer),
+  Layer.provideMerge(intentVocabularyRepositoryLayer),
+  // The interpreter is provided here rather than merged: nothing else needs it,
+  // and leaving it in the requirement channel would push a Fabric detail into
+  // every place that builds the routes.
+  Layer.provide(intentInterpreterLayer),
 );

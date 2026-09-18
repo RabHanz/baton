@@ -68,6 +68,29 @@ change moves each machine's record across and logs
 numbering, which is harmless — it only matters once upstream publishes a
 migration at 054, and the repair ships in the same binary that would meet it.
 
+### The model is in the loop now (D50, D51, D52)
+
+The Director, 2026-09-18: _"don't dumb it down by generic grammar! what the hell even is the point
+of this if it isn't smart or sentient!"_ That overrules D24 (no model on the intent path) and D16
+(no model summariser). His rule 2 still holds, so every model call runs as a Claude turn through the
+environment's own provider instance — subscription, never an API key.
+
+| Piece                                    | State                         | Proven                                                                                                                                                                                                                                              |
+| ---------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Model-backed intent (D50)                | **done**                      | ten sentences the grammar refuses today, **10/10** read correctly by `claude-haiku-4-5` on his own account; 17 rail tests for the ways a model can be wrong; five service tests including "a stock install with no model behaves exactly as before" |
+| Learned vocabulary                       | **done**                      | a model reading that runs is remembered; the same sentence next time is answered with no model call, proven in `IntentService.test.ts`                                                                                                              |
+| Two-step Enter for a model reading       | **done**                      | the live preview never calls a model (it fires on every pause in typing); the first Enter reads and shows, the second runs the reading it showed                                                                                                    |
+| Model synopsis (D51)                     | **done**                      | on the snapshot, `claude-sonnet-5` turned `currentAction: (none) / next: (none)` into two sentences that say where the work is and what is needed, in 3.1s                                                                                          |
+| What the model may not decide            | **done**                      | `needsUser`, `changedFiles`, `validation` and `recentFindings` stay derived from events; four tests assert exactly that                                                                                                                             |
+| Provider accounts share the config (D52) | **done for Claude and Codex** | both of his real Claude accounts now see the primary's 33 skills and 210-entry memory tree while keeping their own credentials; Codex proven with upstream's own shadow-home materializer                                                           |
+| "Add a provider account" as a surface    | **not built**                 | the plan is computed and tested (`planProviderAccount`), the layout is materialised on every session start; nothing shows it to him yet                                                                                                             |
+
+What this cost, because it is the interesting part: the **first** real intent run read 0 of 10. The
+prompt told the model "low confidence is always safe" and it believed that, hedging on sentences
+with one obvious target. The first synopsis described the request instead of the work, because the
+two output fields reached the CLI's JSON schema with no descriptions. Both were prompt faults found
+by running the thing, and neither would have been found by any test.
+
 ### What running it on his boxes found
 
 Three defects, none of which any test would have caught, because each needed a

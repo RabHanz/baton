@@ -28,6 +28,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
+import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -123,8 +124,36 @@ const harness = Effect.gen(function* () {
   return { sent, started, effects };
 });
 
-const baseLayer = (effects: Layer.Layer<OrchestrationEffectsService>) =>
+/**
+ * What the model would answer, when a test wants one.
+ *
+ * `null` means "this environment has no model read" — the shape of a stock
+ * install, and the state every pre-D50 test in this file assumes. A reply means
+ * the grammar's refusal gets a second reader, exactly as it does on a real
+ * machine with an account configured.
+ */
+type ModelReply = Record<string, unknown> | null;
+
+const textGenerationLayer = (reply: ModelReply, calls: Ref.Ref<ReadonlyArray<string>>) =>
+  Layer.succeed(TextGeneration, {
+    generateCommitMessage: () => Effect.die("not used"),
+    generatePrContent: () => Effect.die("not used"),
+    generateBranchName: () => Effect.die("not used"),
+    generateThreadTitle: () => Effect.die("not used"),
+    ...(reply === null
+      ? {}
+      : {
+          interpretFabricIntent: (input: { readonly prompt: string }) =>
+            Ref.update(calls, (all) => [...all, input.prompt]).pipe(Effect.as(reply as never)),
+        }),
+  } as unknown as TextGeneration["Service"]);
+
+const baseLayer = (
+  effects: Layer.Layer<OrchestrationEffectsService>,
+  model: { readonly reply: ModelReply; readonly calls: Ref.Ref<ReadonlyArray<string>> },
+) =>
   intentServiceLayer.pipe(
+    Layer.provide(textGenerationLayer(model.reply, model.calls)),
     Layer.provideMerge(intentExecutorLayer),
     Layer.provide(effects),
     Layer.provide(
@@ -204,12 +233,157 @@ const givenWork = Effect.gen(function* () {
 const run = <A, E>(
   body: (context: {
     readonly sent: Ref.Ref<ReadonlyArray<Sent>>;
+    readonly modelPrompts: Ref.Ref<ReadonlyArray<string>>;
   }) => Effect.Effect<A, E, FabricIntentService | WorkSessionService | OrchestrationRuleService>,
+  modelReply: ModelReply = null,
 ) =>
   Effect.gen(function* () {
     const { sent, effects } = yield* harness;
-    return yield* body({ sent }).pipe(Effect.provide(baseLayer(effects)));
+    const calls = yield* Ref.make<ReadonlyArray<string>>([]);
+    return yield* body({ sent, modelPrompts: calls }).pipe(
+      Effect.provide(baseLayer(effects, { reply: modelReply, calls })),
+    );
   });
+
+describe("a sentence the grammar cannot place (D50)", () => {
+  /** What a model would answer for "poke the scheduler and ask where it got to". */
+  const pokeReply = {
+    kind: "message_work_session",
+    statusQuestion: null,
+    workSessionId: "ws-scheduler",
+    projectId: null,
+    providerInstanceId: null,
+    title: null,
+    message: "where did you get to?",
+    firingId: null,
+    confirmed: null,
+    description: "Tell Scheduler reconnect race: where did you get to?",
+    confidence: "high",
+    question: null,
+  };
+
+  it.effect("is refused, exactly as before, when the environment has no model read", () =>
+    run(({ modelPrompts }) =>
+      Effect.gen(function* () {
+        yield* givenWork;
+        const intents = yield* FabricIntentService;
+        const resolution = yield* intents.resolve({
+          text: "poke the scheduler and ask where it got to",
+          focusedWorkSessionId: null,
+        });
+
+        assert.strictEqual(resolution.outcome, "refused");
+        // Nothing was asked of anything: the grammar's own refusal stands, and
+        // a stock install behaves exactly as it did before D50.
+        assert.deepStrictEqual(yield* Ref.get(modelPrompts), []);
+      }),
+    ),
+  );
+
+  it.effect("is read by a model, and the reading is recorded as the model's", () =>
+    run(
+      ({ sent, modelPrompts }) =>
+        Effect.gen(function* () {
+          yield* givenWork;
+          const intents = yield* FabricIntentService;
+          const result = yield* intents.run({
+            text: "poke the scheduler and ask where it got to",
+            focusedWorkSessionId: null,
+          });
+
+          assert.strictEqual(result.resolution.outcome, "resolved");
+          assert.strictEqual(result.record.commandKind, "message_work_session");
+          assert.strictEqual(result.record.source, "model");
+          assert.strictEqual(result.record.model, "claude-haiku-4-5");
+
+          // The user's words reached the thread, not a paraphrase of them.
+          assert.deepStrictEqual(yield* Ref.get(sent), [
+            { threadId: implThreadId, text: "where did you get to?" },
+          ]);
+
+          // The prompt carried the ids it was allowed to use, and no thread
+          // contents.
+          const prompts = yield* Ref.get(modelPrompts);
+          assert.strictEqual(prompts.length, 1);
+          assert.include(prompts[0] ?? "", "ws-scheduler");
+          assert.include(prompts[0] ?? "", "claude-a");
+        }),
+      pokeReply,
+    ),
+  );
+
+  it.effect("remembers the phrasing, and answers it next time without a model", () =>
+    run(
+      ({ modelPrompts }) =>
+        Effect.gen(function* () {
+          yield* givenWork;
+          const intents = yield* FabricIntentService;
+          yield* intents.run({
+            text: "poke the scheduler and ask where it got to",
+            focusedWorkSessionId: null,
+          });
+          const second = yield* intents.run({
+            text: "Poke the scheduler and ask where it got to.",
+            focusedWorkSessionId: null,
+          });
+
+          // Same meaning, different capitalisation and a full stop — one entry
+          // in the memory, because the key is the normalised sentence.
+          assert.strictEqual(second.record.source, "learned");
+          assert.strictEqual(second.record.model, null);
+          assert.strictEqual(second.record.commandKind, "message_work_session");
+          // And the model was asked exactly once, for the first one.
+          assert.strictEqual((yield* Ref.get(modelPrompts)).length, 1);
+        }),
+      pokeReply,
+    ),
+  );
+
+  it.effect("never re-reads a high-risk sentence, whatever a model would say", () =>
+    run(
+      ({ sent, modelPrompts }) =>
+        Effect.gen(function* () {
+          yield* givenWork;
+          const intents = yield* FabricIntentService;
+          const result = yield* intents.run({
+            text: "deploy the scheduler to production",
+            focusedWorkSessionId: null,
+          });
+
+          assert.strictEqual(result.resolution.outcome, "refused");
+          assert.strictEqual(result.record.refusalReason, "high_risk");
+          assert.strictEqual(result.record.source, "grammar");
+          // §24.1 before the model: the sentence never reached it, and nothing
+          // was sent anywhere.
+          assert.deepStrictEqual(yield* Ref.get(modelPrompts), []);
+          assert.deepStrictEqual(yield* Ref.get(sent), []);
+        }),
+      pokeReply,
+    ),
+  );
+
+  it.effect("refuses a model reading that names work this environment does not have", () =>
+    run(
+      ({ sent }) =>
+        Effect.gen(function* () {
+          yield* givenWork;
+          const intents = yield* FabricIntentService;
+          const result = yield* intents.run({
+            text: "poke the other scheduler",
+            focusedWorkSessionId: null,
+          });
+
+          assert.strictEqual(result.resolution.outcome, "refused");
+          assert.strictEqual(result.record.refusalReason, "unknown_target");
+          // The refusal is recorded as the model's reading, because that is
+          // what happened, and nothing was sent.
+          assert.strictEqual(result.record.source, "model");
+          assert.deepStrictEqual(yield* Ref.get(sent), []);
+        }),
+      { ...pokeReply, workSessionId: "ws-invented", message: "hello" },
+    ),
+  );
+});
 
 describe("the intent surface", () => {
   it.effect("answers §20's question from the fleet, and records that it did", () =>

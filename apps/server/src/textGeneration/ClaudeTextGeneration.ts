@@ -102,7 +102,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "interpretFabricIntent"
+      | "writeFabricSynopsis",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -132,7 +134,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "interpretFabricIntent"
+      | "writeFabricSynopsis";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -187,7 +191,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
-        operation === "generateThreadTitle"
+        operation === "generateThreadTitle" ||
+        operation === "interpretFabricIntent" ||
+        operation === "writeFabricSynopsis"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
@@ -410,10 +416,80 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  /**
+   * D50: one sentence to one command, when the grammar could not place it.
+   *
+   * The prompt arrives built — Fabric owns what the model is allowed to know,
+   * and this driver owns only how to ask. Every field is required in the schema
+   * so a partial answer is a decode failure rather than a silent default, and
+   * every field is checked against the environment's real ids afterwards.
+   */
+  const interpretFabricIntent: NonNullable<
+    TextGeneration.TextGeneration["Service"]["interpretFabricIntent"]
+  > = Effect.fn("ClaudeTextGeneration.interpretFabricIntent")(function* (input) {
+    const outputSchema = Schema.Struct({
+      kind: Schema.String,
+      statusQuestion: Schema.NullOr(Schema.String),
+      workSessionId: Schema.NullOr(Schema.String),
+      projectId: Schema.NullOr(Schema.String),
+      providerInstanceId: Schema.NullOr(Schema.String),
+      title: Schema.NullOr(Schema.String),
+      message: Schema.NullOr(Schema.String),
+      firingId: Schema.NullOr(Schema.String),
+      confirmed: Schema.NullOr(Schema.Boolean),
+      description: Schema.String,
+      confidence: Schema.String,
+      question: Schema.NullOr(Schema.String),
+    });
+
+    return yield* runClaudeJson({
+      operation: "interpretFabricIntent",
+      cwd: process.cwd(),
+      prompt: input.prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+  });
+
+  /**
+   * D51: the §11 synopsis, written rather than assembled.
+   *
+   * Two sentences and nothing else. The state field is not asked for: it stays
+   * derived from events, because a model guessing "needs approval" is a model
+   * deciding whether to interrupt someone.
+   */
+  const writeFabricSynopsis: NonNullable<
+    TextGeneration.TextGeneration["Service"]["writeFabricSynopsis"]
+  > = Effect.fn("ClaudeTextGeneration.writeFabricSynopsis")(function* (input) {
+    const outputSchema = Schema.Struct({
+      // The descriptions are the instruction the model actually follows: the
+      // first real run answered "Wrote a two-sentence status update for …",
+      // narrating the request, because these two fields arrived unannotated.
+      currentAction: Schema.String.annotate({
+        description:
+          "One sentence about where this WORK is now. Never about this request, this summary, or yourself.",
+      }),
+      next: Schema.String.annotate({
+        description:
+          "One sentence about what is needed next for this WORK. Never about this request or yourself.",
+      }),
+    });
+
+    return yield* runClaudeJson({
+      operation: "writeFabricSynopsis",
+      cwd: process.cwd(),
+      prompt: input.prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    interpretFabricIntent,
+    writeFabricSynopsis,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

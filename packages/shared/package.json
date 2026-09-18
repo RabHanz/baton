@@ -75,9 +75,17 @@
       "types": "./src/fabricInjection.ts",
       "import": "./src/fabricInjection.ts"
     },
+    "./fabricProviderAccounts": {
+      "types": "./src/fabricProviderAccounts.ts",
+      "import": "./src/fabricProviderAccounts.ts"
+    },
     "./fabricIntentParser": {
       "types": "./src/fabricIntentParser.ts",
       "import": "./src/fabricIntentParser.ts"
+    },
+    "./fabricIntentModel": {
+      "types": "./src/fabricIntentModel.ts",
+      "import": "./src/fabricIntentModel.ts"
     },
     "./fabricRuleParser": {
       "types": "./src/fabricRuleParser.ts",
@@ -86,6 +94,10 @@
     "./fabricSynopsis": {
       "types": "./src/fabricSynopsis.ts",
       "import": "./src/fabricSynopsis.ts"
+    },
+    "./fabricSynopsisModel": {
+      "types": "./src/fabricSynopsisModel.ts",
+      "import": "./src/fabricSynopsisModel.ts"
     },
     "./fabricSpokenStatus": {
       "types": "./src/fabricSpokenStatus.ts",

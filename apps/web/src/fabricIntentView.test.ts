@@ -21,6 +21,10 @@ const record = (overrides?: Partial<FabricIntentRecord>): FabricIntentRecord => 
   risk: "low",
   refusalReason: null,
   at: "2026-09-18T06:00:00.000Z",
+  // Who read it. Every row in this file is the grammar's, which is what these
+  // views were written against and still the common case (D50).
+  source: "grammar",
+  model: null,
   ...overrides,
 });
 

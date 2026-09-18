@@ -91,6 +91,10 @@ import { ServerConfig } from "../../config.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
+import {
+  materializeClaudeAccountHome,
+  resolveClaudeAccountHomeLayout,
+} from "../Drivers/ClaudeAccountHome.ts";
 import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
@@ -2077,6 +2081,30 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const serverConfig = yield* ServerConfig;
   const crypto = yield* Crypto.Crypto;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  // A second account's config directory holds its credentials and links to the
+  // primary's skills, agents, commands, plugins, memory tree and settings
+  // (D52). Re-materialised here, before every session, so a link the CLI
+  // replaced is repaired rather than assumed to have held — the same shape and
+  // the same reason as Codex's shadow home.
+  //
+  // A failure is logged and not raised: a provider that will not start because
+  // a symlink could not be refreshed is a worse outcome than one running with
+  // the layout it already had.
+  yield* resolveClaudeAccountHomeLayout(claudeSettings).pipe(
+    Effect.provideService(Path.Path, path),
+    Effect.flatMap((layout) =>
+      materializeClaudeAccountHome(layout).pipe(
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+      ),
+    ),
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not prepare this Claude account's configuration", {
+        instanceId: boundInstanceId,
+        cause,
+      }),
+    ),
+  );
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
   );
