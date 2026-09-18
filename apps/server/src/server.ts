@@ -21,6 +21,8 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
+import * as FabricIntentExecutor from "./fabric/IntentExecutorLive.ts";
+import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationEffects from "./fabric/OrchestrationEffectsLive.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
@@ -260,6 +262,13 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(FabricSynopsisReactor.layer),
+  // Sits here, before the orchestration layer, because later entries provide to
+  // earlier ones: the intent surface consumes the reactor, the rule service and
+  // the same narrow effects a rule uses, rather than reaching the engine on its
+  // own. One sentence and one rule cause work through the same door.
+  Layer.provideMerge(
+    FabricIntentService.layer.pipe(Layer.provideMerge(FabricIntentExecutor.layer)),
+  ),
   // The orchestration reactor is the only thing that starts work nobody asked
   // for in the moment, so what it is allowed to do is a named, separate layer
   // rather than ambient access to the engine.

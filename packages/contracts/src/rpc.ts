@@ -165,6 +165,15 @@ import {
 } from "./project.ts";
 import { FabricFleetInput, FabricFleetResult } from "./fabric/fleet.ts";
 import {
+  FABRIC_INTENT_WS_METHODS,
+  FabricIntentError,
+  FabricIntentInput,
+  FabricIntentListInput,
+  FabricIntentListResult,
+  FabricIntentResolveResult,
+  FabricIntentRunResult,
+} from "./fabric/intent.ts";
+import {
   FABRIC_ORCHESTRATION_WS_METHODS,
   OrchestrationConfirmInput,
   OrchestrationRuleCreateInput,
@@ -1502,6 +1511,28 @@ const WsFabricOrchestrationRuleConfirmRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_MET
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
+// The intent surface. `resolve` reads and `run` writes, and they are separate
+// methods so the scope map can say so: previewing what a sentence would do must
+// not need permission to do it.
+
+const WsFabricIntentResolveRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentResolve, {
+  payload: FabricIntentInput,
+  success: FabricIntentResolveResult,
+  error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricIntentRunRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentRun, {
+  payload: FabricIntentInput,
+  success: FabricIntentRunResult,
+  error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricIntentListRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentList, {
+  payload: FabricIntentListInput,
+  success: FabricIntentListResult,
+  error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
+});
+
 const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
@@ -1668,5 +1699,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricOrchestrationRuleDisableRpc,
   WsFabricOrchestrationRuleEnableRpc,
   WsFabricOrchestrationRuleConfirmRpc,
+  WsFabricIntentResolveRpc,
+  WsFabricIntentRunRpc,
+  WsFabricIntentListRpc,
   WsFabricSubscribeWorkSessionsRpc,
 );

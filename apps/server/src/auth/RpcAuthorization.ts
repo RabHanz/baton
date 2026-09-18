@@ -6,6 +6,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
@@ -194,6 +195,14 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable]: AuthOrchestrationOperateScope,
   [FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable]: AuthOrchestrationOperateScope,
   [FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm]: AuthOrchestrationOperateScope,
+  // Resolving a sentence reads the fleet and decides what it would mean; it
+  // starts nothing. Running it can message a session, start one, or create a
+  // rule, so it is an operate act whatever the sentence turns out to say — the
+  // scope cannot depend on the words, or a read-only client would be one
+  // phrasing away from an operate-level effect.
+  [FABRIC_INTENT_WS_METHODS.intentResolve]: AuthOrchestrationReadScope,
+  [FABRIC_INTENT_WS_METHODS.intentRun]: AuthOrchestrationOperateScope,
+  [FABRIC_INTENT_WS_METHODS.intentList]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

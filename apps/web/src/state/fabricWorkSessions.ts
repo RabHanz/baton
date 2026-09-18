@@ -15,6 +15,7 @@ import { createFabricWorkSessionAtoms } from "@t3tools/client-runtime/state/fabr
 import type {
   EnvironmentId,
   FabricFleetEntry,
+  FabricIntentRecord,
   OrchestrationRuleWithFirings,
   WorkSession,
 } from "@t3tools/contracts";
@@ -147,4 +148,56 @@ export function useOrchestrationRules(environmentId: EnvironmentId | null): {
 
   if (environmentId === null || signature === "") return { rules: NO_RULES };
   return { rules };
+}
+
+const NO_INTENTS: ReadonlyArray<FabricIntentRecord> = [];
+
+/**
+ * The sentences this environment was asked to act on, newest first.
+ *
+ * Read on the same trigger as the rules, plus a nudge after the user runs one:
+ * an intent that starts a session changes the work-session stream, but one that
+ * is refused changes nothing, and a refusal is exactly what the user needs to
+ * see.
+ */
+export function useIntents(
+  environmentId: EnvironmentId | null,
+  revision: number,
+): { readonly intents: ReadonlyArray<FabricIntentRecord> } {
+  const { workSessions } = useWorkSessions(environmentId);
+  const [intents, setIntents] = useState<ReadonlyArray<FabricIntentRecord>>(NO_INTENTS);
+  const readIntents = useAtomCommand(fabricWorkSessions.intents, { reportFailure: false });
+  const signature = useMemo(
+    () => workSessions.map((entry) => `${entry.id}:${entry.updatedAt}`).join("|"),
+    [workSessions],
+  );
+
+  useEffect(() => {
+    if (environmentId === null) return;
+    let cancelled = false;
+    void readIntents({ environmentId, input: {} }).then((result) => {
+      if (cancelled) return;
+      setIntents(result._tag === "Success" ? result.value.intents : NO_INTENTS);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentId, readIntents, signature, revision]);
+
+  if (environmentId === null) return { intents: NO_INTENTS };
+  return { intents };
+}
+
+/** Recent intents keyed by the work they touched. */
+export function intentsByWorkSession(
+  records: ReadonlyArray<FabricIntentRecord>,
+): ReadonlyMap<string, readonly FabricIntentRecord[]> {
+  const grouped = new Map<string, FabricIntentRecord[]>();
+  for (const record of records) {
+    if (record.workSessionId === null) continue;
+    const existing = grouped.get(record.workSessionId);
+    if (existing === undefined) grouped.set(record.workSessionId, [record]);
+    else existing.push(record);
+  }
+  return grouped;
 }

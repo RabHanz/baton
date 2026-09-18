@@ -2360,6 +2360,10 @@ export default function Sidebar() {
       providerEntriesByEnvironment.get(environmentId)?.get(providerInstanceId)?.displayName ?? null,
     [providerEntriesByEnvironment],
   );
+  // A sentence that is refused changes nothing on the work-session stream, and
+  // a refusal is exactly what the user needs to see. This is the nudge that
+  // re-reads the intent log when the stream has no reason to fire.
+  const [fabricIntentRevision, setFabricIntentRevision] = useState(0);
   // Rows read the project record for its icon and cwd. Group labels can include
   // a repository owner or a different title, so they travel separately.
   const projectByKey = useMemo(
@@ -4666,11 +4670,13 @@ export default function Sidebar() {
                 projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
               }
               onSelectWorkSession={selectFabricFleetEntry}
+              onIntentRan={() => setFabricIntentRevision((revision) => revision + 1)}
             />
           ) : null}
           {!isSearchingThreads ? (
             <FabricWorkSessionSection
               environmentIds={fabricWorkSessionEnvironmentIds}
+              intentRevision={fabricIntentRevision}
               threads={threads}
               resolveEnvironmentLabel={(environmentId) =>
                 environmentLabelById.get(environmentId) ?? null
