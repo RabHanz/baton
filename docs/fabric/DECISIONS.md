@@ -677,6 +677,40 @@ migration, not something to bolt on at the end of this one. It is in `STATUS.md`
 
 ---
 
+## D30 — A trigger names a transition, not a condition
+
+**Decided** 2026-09-18. **Closes** the general case D29 left open, and completes the argument D20
+started.
+
+`on_done` means "when this finishes". It does not mean "while this is finished". Until now the
+reactor asked the second question: every evaluation in a matching state fired every matching rule,
+so a work session sitting idle re-fired its `on_done` rules on each unrelated thread event until the
+bound stopped them. Nothing ran away — that is what the bound is for — but D20 already named this
+shape and rejected it: **a bound is a safety net, not a schedule.** The same reasoning that made a
+sequenced rule fire once per predecessor _completion_ makes a state-triggered rule fire once per
+_entry_ into the state.
+
+Concretely, in migration 058 and `shouldFire`:
+
+- The reactor records the state it last saw each work session in, one row per work session, before
+  anything fires. Durable rather than in memory for the reason the firing count is durable: a
+  restart would otherwise call every already-matched state a fresh transition, and a restart is when
+  a runaway does the most damage.
+- A state-triggered rule fires when the work session **entered** the matching state. While the state
+  persists it is refused with `state_unchanged`.
+- **One exception, and it is deliberate:** a rule that has never fired may act on a state it finds
+  already true. "When this finishes, have it reviewed", said about work that has just finished, has
+  to do something; only its second firing waits for a new transition.
+- `after_rule` is untouched. Sequenced rules are released by their predecessor completing (D20), not
+  by a state change, and nothing here changes that.
+
+**Consequence:** the bound stops meaning "how many times this will happen" and goes back to meaning
+what it should — the last line of defence. `maxFirings` 3 now bounds three genuine finishes rather
+than three arbitrary evaluations, and D29's `skipRuleId` remains as the narrower, explicit guard on
+the one path that re-evaluates as a direct result of a user's answer.
+
+---
+
 ## D31 — Dictated words never reach an environment
 
 **Decided** 2026-09-18, during Phase 6. **Reads together with** §12.3, §18 and §26.

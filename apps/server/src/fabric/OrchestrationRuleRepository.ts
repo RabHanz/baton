@@ -7,6 +7,7 @@
  * which is exactly when it would do the most damage.
  */
 import {
+  FabricSessionState,
   IsoDateTime,
   OrchestrationAction,
   OrchestrationFiringId,
@@ -113,6 +114,19 @@ export class OrchestrationRuleRepository extends Context.Service<
     readonly listFiringsForWorkSession: (
       workSessionId: WorkSessionId,
     ) => Effect.Effect<ReadonlyArray<OrchestrationFiringRow>, ProjectionRepositoryError>;
+    /**
+     * The state this work session was last seen in, or null when it has never
+     * been evaluated. A trigger names a transition, so the reactor has to know
+     * where the work session was before it can decide that it has arrived.
+     */
+    readonly getObservedState: (
+      workSessionId: WorkSessionId,
+    ) => Effect.Effect<FabricSessionState | null, ProjectionRepositoryError>;
+    readonly setObservedState: (input: {
+      readonly workSessionId: WorkSessionId;
+      readonly state: FabricSessionState;
+      readonly observedAt: string;
+    }) => Effect.Effect<void, ProjectionRepositoryError>;
   }
 >()("t3/fabric/OrchestrationRuleRepository") {}
 
@@ -270,6 +284,16 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  const selectObservedState = SqlSchema.findOneOption({
+    Request: WorkSessionRefRow,
+    Result: Schema.Struct({ state: FabricSessionState }),
+    execute: ({ workSessionId }) => sql`
+      SELECT state
+      FROM fabric_work_session_observed_state
+      WHERE work_session_id = ${workSessionId}
+    `,
+  });
+
   const fail = (operation: string) => toPersistenceSqlError(operation);
 
   const getRule: OrchestrationRuleRepository["Service"]["getRule"] = (id) =>
@@ -372,6 +396,23 @@ export const make = Effect.gen(function* () {
         Effect.mapError(fail("OrchestrationRuleRepository.listFiringsForWorkSession")),
       );
 
+  const getObservedState: OrchestrationRuleRepository["Service"]["getObservedState"] = (
+    workSessionId,
+  ) =>
+    selectObservedState({ workSessionId }).pipe(
+      Effect.map((row) => (Option.isSome(row) ? row.value.state : null)),
+      Effect.mapError(fail("OrchestrationRuleRepository.getObservedState")),
+    );
+
+  const setObservedState: OrchestrationRuleRepository["Service"]["setObservedState"] = (input) =>
+    sql`
+      INSERT INTO fabric_work_session_observed_state (work_session_id, state, observed_at)
+      VALUES (${input.workSessionId}, ${input.state}, ${input.observedAt})
+      ON CONFLICT(work_session_id) DO UPDATE SET
+        state = excluded.state,
+        observed_at = excluded.observed_at
+    `.pipe(Effect.mapError(fail("OrchestrationRuleRepository.setObservedState")), Effect.asVoid);
+
   return {
     insertRule,
     updateRule,
@@ -383,6 +424,8 @@ export const make = Effect.gen(function* () {
     getFiring,
     listFiringsForRule,
     listFiringsForWorkSession,
+    getObservedState,
+    setObservedState,
   } satisfies OrchestrationRuleRepository["Service"];
 });
 

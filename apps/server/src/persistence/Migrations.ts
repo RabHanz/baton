@@ -69,6 +69,7 @@ import Migration0054 from "./Migrations/054_FabricWorkSessions.ts";
 import Migration0055 from "./Migrations/055_FabricWorkSessionSynopsis.ts";
 import Migration0056 from "./Migrations/056_FabricOrchestrationRules.ts";
 import Migration0057 from "./Migrations/057_FabricIntents.ts";
+import Migration0058 from "./Migrations/058_FabricWorkSessionObservedState.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -138,6 +139,7 @@ const migrationEntries = [
   [55, "FabricWorkSessionSynopsis", Migration0055],
   [56, "FabricOrchestrationRules", Migration0056],
   [57, "FabricIntents", Migration0057],
+  [58, "FabricWorkSessionObservedState", Migration0058],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

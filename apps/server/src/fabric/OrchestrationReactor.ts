@@ -225,10 +225,19 @@ export const make = Effect.gen(function* () {
         .candidatesFor(workSessionId)
         .pipe(Effect.catchCause(() => Effect.succeed({ rules: [], firings: [] })));
 
+      // Read the previous state and record this one, in that order and before
+      // anything fires. A trigger names a transition, so what matters is where
+      // the work session *was*; recording first means an action that crashes
+      // cannot leave the same transition lying around to be found again.
+      const previousState = yield* rules
+        .observeState({ workSessionId, state })
+        .pipe(Effect.catchCause(() => Effect.succeed(null)));
+      const stateChanged = previousState !== state;
+
       const fired: OrchestrationFiring[] = [];
       for (const rule of candidates) {
         if (skipRuleId !== undefined && skipRuleId !== null && rule.id === skipRuleId) continue;
-        const decision = shouldFire({ rule, state, changedThreadId, firings });
+        const decision = shouldFire({ rule, state, changedThreadId, firings, stateChanged });
         if (!decision.fire) continue;
 
         // Recorded before the action runs: a rule whose action reliably fails

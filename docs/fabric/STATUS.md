@@ -412,10 +412,28 @@ asked. `DECISIONS.md` D29, which also records the general case that is still ope
 - **`start_work_session` was not run live.** The grammar and the executor are tested, and the live
   run deliberately did not start a provider session, because this phase was not authorised to spend
   a turn.
-- **A state-triggered rule still fires on a state that persists**, not only on the transition into
-  it — bounded by `maxFirings`, and the fix needs a per-work-session observed-state record. D29.
+- ~~**A state-triggered rule still fires on a state that persists**~~ — **closed** by the Phase 9
+  transition amendment below: migration 058, and a rule now fires on entering a state rather than
+  while it holds. D30.
 - **No second account**, so "continue this with Claude B" resolves against one Claude. The mechanism
   is there; the second subscription is still Phase 1's open item.
+
+## Phase 9 amendment — a trigger is a transition
+
+| Item                                                                 | State | Where it is proven                                                                                                                         |
+| -------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| The reactor remembers the state it last saw each work session in     | done  | migration 058, one additive table, one row per work session; `OrchestrationRuleRepository.getObservedState` / `setObservedState`           |
+| Durable, so a restart is not a fresh transition                      | done  | the row is in the database, for the reason the firing count is: a restart is when a runaway does the most damage                           |
+| A rule fires on **entering** a matching state, not while it holds    | done  | `OrchestrationRuleService.test.ts`, "fires on entering a state, not while it stays true" — `state_unchanged` is a named refusal            |
+| A rule that has never fired may act on a state it finds already true | done  | `OrchestrationRuleService.test.ts` — "when this finishes, have it reviewed" said about work that has just finished must still do something |
+| A persisting state produces one firing; a re-entry produces a second | done  | `OrchestrationReactor.test.ts` — four evaluations in the same state fire once; out to `working` and back to `done_unseen` fires again      |
+| The bound still stops a rule that really does finish repeatedly      | done  | `OrchestrationReactor.test.ts` — six genuine finishes, two firings, then `exhausted`                                                       |
+| `after_rule` unchanged                                               | done  | sequenced rules are released by their predecessor completing (D20); the transition check does not apply to them                            |
+| Migration rehearsed                                                  | done  | 058 applied to the snapshot, then builds pinned to 57 and to 53 each ran 0 migrations and read the same `projects=2 threads=14`            |
+
+Not proven: no live run. The behaviour is a refusal that leaves no trace — the evidence for it is
+firings that **do not** happen — so the reactor test, which drives the real services and moves the
+work session between states, is the stronger proof. A live run would show the same absence.
 
 ## Phase 6 — context, dictation, and the boundaries this box has
 
