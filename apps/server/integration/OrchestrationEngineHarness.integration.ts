@@ -39,6 +39,7 @@ import { ProviderAdapterRegistry } from "../src/provider/Services/ProviderAdapte
 import { makeProviderRegistryLayer } from "../src/provider/testUtils/providerRegistryMock.ts";
 import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSessionDirectory.ts";
 import { ServerSettingsService } from "../src/serverSettings.ts";
+import * as FabricSynopsisReactor from "../src/fabric/SynopsisReactor.ts";
 import * as StorageCleanup from "../src/storageCleanup.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
 import { makeCodexAdapter } from "../src/provider/Layers/CodexAdapter.ts";
@@ -387,6 +388,14 @@ export const makeOrchestrationIntegrationHarness = (
     const orchestrationReactorLayer = OrchestrationReactorLive.pipe(
       Layer.provideMerge(
         Layer.succeed(StorageCleanup.StorageCleanup, {
+          start: () => Effect.void,
+          drain: Effect.void,
+        }),
+      ),
+      // This harness exercises orchestration, not Fabric. An inert synopsis
+      // reactor keeps it out of the drains these tests wait on.
+      Layer.provideMerge(
+        Layer.succeed(FabricSynopsisReactor.FabricSynopsisReactor, {
           start: () => Effect.void,
           drain: Effect.void,
         }),

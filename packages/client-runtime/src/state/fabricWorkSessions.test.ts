@@ -1,4 +1,5 @@
 import {
+  EMPTY_SYNOPSIS,
   ProjectId,
   ThreadId,
   WorkSessionId,
@@ -101,6 +102,32 @@ describe("applyWorkSessionStreamItem", () => {
     });
     expect(after.map((entry) => entry.id)).toEqual(["a"]);
     expect(after[0]?.status).toBe("settled");
+  });
+
+  it("applies a synopsis update in place, without reordering the list", () => {
+    // The synopsis moves far more often than the work does. Letting it
+    // reshuffle would make the list unreadable while anything is running.
+    const before = [workSession({ id: "a" }), workSession({ id: "b" })];
+    const after = applyWorkSessionStreamItem(before, {
+      kind: "fabric.synopsis.updated",
+      workSessionId: WorkSessionId.make("b"),
+      synopsis: {
+        ...EMPTY_SYNOPSIS("2026-09-18T04:09:00.000Z"),
+        currentAction: "Running the reconnect tests",
+      },
+    });
+    expect(after.map((entry) => entry.id)).toEqual(["a", "b"]);
+    expect(after[1]?.synopsis?.currentAction).toBe("Running the reconnect tests");
+  });
+
+  it("ignores a synopsis update for a work session it does not hold", () => {
+    const before = [workSession({ id: "a" })];
+    const after = applyWorkSessionStreamItem(before, {
+      kind: "fabric.synopsis.updated",
+      workSessionId: WorkSessionId.make("absent"),
+      synopsis: EMPTY_SYNOPSIS("2026-09-18T04:09:00.000Z"),
+    });
+    expect(after).toEqual(before);
   });
 
   it("carries the whole record on a provider attachment, so no follow-up read is needed", () => {

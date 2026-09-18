@@ -1,0 +1,144 @@
+import {
+  EMPTY_SYNOPSIS,
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  WorkSessionId,
+  type FabricFleetEntry,
+  type WorkSessionSynopsis,
+} from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import { buildFleetRows, countFleetRows, filterFleetRows } from "./fabricFleetView";
+
+const environmentId = EnvironmentId.make("home-linux");
+const projectId = ProjectId.make("ventureos");
+const NOW = Date.parse("2026-09-18T04:10:00.000Z");
+
+const entry = (input: {
+  id: string;
+  title: string;
+  state: FabricFleetEntry["state"];
+  needsUser?: boolean;
+  instanceId?: string;
+  synopsis?: WorkSessionSynopsis | null;
+}): FabricFleetEntry => ({
+  workSessionId: WorkSessionId.make(input.id),
+  title: input.title,
+  projectId,
+  lifecycle: "active",
+  state: input.state,
+  needsUser: input.needsUser ?? false,
+  activeThreadId: ThreadId.make(`${input.id}-thread`),
+  threads: [
+    {
+      threadId: ThreadId.make(`${input.id}-thread`),
+      title: "Reconnect reproduction",
+      state: input.state,
+      providerInstanceId:
+        input.instanceId === undefined ? null : ProviderInstanceId.make(input.instanceId),
+      providerDriver: null,
+      branch: "main",
+      worktreePath: null,
+      lastActivityAt: "2026-09-18T04:05:00.000Z",
+    },
+  ],
+  synopsis: input.synopsis ?? null,
+  updatedAt: "2026-09-18T04:05:00.000Z",
+});
+
+const rowsFor = (entries: readonly FabricFleetEntry[]) =>
+  buildFleetRows({
+    entries: entries.map((value) => ({ environmentId, entry: value })),
+    resolveProjectLabel: () => "VentureOS",
+    resolveEnvironmentLabel: () => "home-linux",
+    resolveProviderLabel: (_environmentId, instanceId) =>
+      instanceId === "claude-b" ? "Claude B" : instanceId === "codex" ? "Codex" : null,
+    now: NOW,
+  });
+
+describe("buildFleetRows", () => {
+  it("renders the §33 line: glyph, project and work, then the state", () => {
+    const [row] = rowsFor([
+      entry({
+        id: "scheduler",
+        title: "Scheduler reconnect race",
+        state: "working",
+        instanceId: "claude-b",
+      }),
+    ]);
+    expect(row?.glyph).toBe("●");
+    expect(row?.heading).toBe("VentureOS / Scheduler reconnect race");
+    expect(row?.stateLabel).toBe("Working");
+    expect(row?.attribution).toBe("Claude B · home-linux");
+  });
+
+  it("marks what needs the user with the attention glyph", () => {
+    const [row] = rowsFor([
+      entry({ id: "deploy", title: "Deploy", state: "needs_approval", needsUser: true }),
+    ]);
+    expect(row?.glyph).toBe("!");
+    expect(row?.stateLabel).toBe("Approval needed");
+    expect(row?.needsUser).toBe(true);
+  });
+
+  it("shows a finished session with the done glyph", () => {
+    const [row] = rowsFor([entry({ id: "search", title: "Search", state: "done_unseen" })]);
+    expect(row?.glyph).toBe("✓");
+    expect(row?.stateLabel).toBe("Done");
+  });
+
+  it("carries the synopsis line and flags it once it is stale", () => {
+    const fresh = rowsFor([
+      entry({
+        id: "a",
+        title: "A",
+        state: "working",
+        synopsis: {
+          ...EMPTY_SYNOPSIS("2026-09-18T04:09:45.000Z"),
+          currentAction: "Running the reconnect tests",
+        },
+      }),
+    ])[0];
+    expect(fresh?.detail).toBe("Running the reconnect tests");
+    expect(fresh?.detailStale).toBe(false);
+
+    const stale = rowsFor([
+      entry({
+        id: "b",
+        title: "B",
+        state: "working",
+        synopsis: {
+          ...EMPTY_SYNOPSIS("2026-09-18T04:00:00.000Z"),
+          currentAction: "Running the reconnect tests",
+        },
+      }),
+    ])[0];
+    expect(stale?.detailStale).toBe(true);
+  });
+
+  it("omits the project prefix when the project has no label", () => {
+    const rows = buildFleetRows({
+      entries: [{ environmentId, entry: entry({ id: "a", title: "A", state: "idle" }) }],
+      resolveProjectLabel: () => null,
+      resolveEnvironmentLabel: () => null,
+      resolveProviderLabel: () => null,
+      now: NOW,
+    });
+    expect(rows[0]?.heading).toBe("A");
+    expect(rows[0]?.attribution).toBeNull();
+  });
+});
+
+describe("filterFleetRows", () => {
+  it("is the top-level Needs me filter, and counts what it would hide", () => {
+    const rows = rowsFor([
+      entry({ id: "deploy", title: "Deploy", state: "needs_approval", needsUser: true }),
+      entry({ id: "scheduler", title: "Scheduler", state: "working" }),
+    ]);
+    expect(countFleetRows(rows)).toEqual({ total: 2, needsUser: 1 });
+    expect(filterFleetRows(rows, true).map((row) => row.heading)).toEqual(["VentureOS / Deploy"]);
+    expect(filterFleetRows(rows, false)).toHaveLength(2);
+  });
+});

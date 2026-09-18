@@ -344,3 +344,99 @@ descriptor cannot read a setting without inverting that graph for a development 
 
 The two gates answer different questions and both are needed: the capability answers "would this call
 even work", the setting answers "does this user want it".
+
+---
+
+## D15 — `limited` comes from the provider's own quota report, and only when nothing is running
+
+**Decided** 2026-09-18, during Phase 4.
+
+§10 lists "explicit provider usage-limit responses" as the third source of state, and §31 Scenario E
+wants an exhausted account to read as `limited` so the user is offered a handoff. Two questions had
+to be settled to build that without guessing.
+
+**What counts as exhausted.** Only a window the provider itself published at 100%
+(`ServerProviderUsageLimits.windows[].usedPercent`). Not a failed turn, not an error message shaped
+like a rate limit, not a heuristic on timing. An account that cannot report windows at all — an API
+key, Bedrock — reports `unavailable` and so never reads `limited`, which is correct: we do not know.
+
+**Whether a busy thread can be limited.** No. Quota is reported per _account_, and one account runs
+several threads; a window at 100% while this thread's session is running means a sibling spent it.
+So `limited` applies only when the provider is not busy. Getting this wrong would paint a working
+session as blocked every time another thread used up the window.
+
+`limited` sits below `failed` — a failure needs attention first — and above `idle`, because "idle"
+would hide the reason the work stopped, and the reason is what tells the user a handoff is available.
+
+---
+
+## D16 — No model-generated synopsis in Phase 4, and what it would take
+
+**Decided** 2026-09-18. **Narrows** §11.1 and the Phase 4 brief.
+
+§11.1 permits semantic summarisation at milestones — after a turn settles, on handoff, after
+substantial change — using the provider the session runs on. It is buildable: every provider instance
+already exposes `textGeneration`, which is how T3 generates thread titles. It is not built, for two
+reasons.
+
+**It spends the Director's subscription on a cadence.** A summary per settled turn, across a fleet, is
+a recurring cost on the thing his work depends on. His standing rule is bare-minimum spend without his
+word, and a feature that quietly consumes quota while he is not looking is the wrong default even when
+each call is cheap.
+
+**The deterministic path already carries the load.** `currentAction`, changed files, validation
+outcomes, findings from runtime errors, approvals and questions all come from events and cannot
+hallucinate. What a model would add is a _nicer sentence_, and §11's own warning is that the synopsis
+must never become authoritative over provider reality — so the nicer sentence is precisely the part
+with the worst risk-to-value ratio.
+
+**What is already in place for it.** `SynopsisSource` is `"events" | "model"` on both the record and
+each finding, so generated text is distinguishable the moment it exists, and `SynopsisSignal` has a
+`finding` variant that accepts `source: "model"`. Turning it on is a reactor that, on
+`thread.turn-diff-completed`, calls the instance's `textGeneration` and feeds one `finding` signal —
+plus a minimum interval and a setting, default off.
+
+Recorded as a deviation rather than done quietly, because "the synopsis updates from events" would
+otherwise read as the whole of §11.
+
+---
+
+## D17 — `done_unseen` is client knowledge, so the fleet takes it as an input
+
+**Decided** 2026-09-18, during Phase 4.
+
+"Finished, and you have not looked" needs to know when _this user_ last opened the thread. That is
+client state: the environment was never told, and a server that guessed would be inventing.
+
+The fleet builder therefore takes `lastVisitedAt` as a function. The server passes null, so its
+`done_unseen` means "a turn completed and nothing has happened since". A client passes its own
+last-visited store and gets the stricter, truer answer.
+
+**Consequence:** the two can legitimately disagree, and only in one direction — the server may call
+something unseen that this client has already seen, never the reverse. The alternative, teaching the
+environment about per-user read state, is a new durable concept and a new privacy surface for a single
+UI nicety. The same shared builder serves both, so nothing else about the two answers can drift.
+
+---
+
+## D18 — A synopsis write does not touch the work session's own `updatedAt`
+
+**Decided** 2026-09-18, during Phase 4.
+
+The synopsis moves on every tool call. A work session's `updatedAt` moves when the user changes the
+work — renames it, attaches a thread, settles it. Letting a synopsis write bump the record's timestamp
+would make "recently touched" meaningless, because whatever is running would always be the most
+recently touched thing.
+
+**Consequence:** `applySynopsis` writes the synopsis column and leaves `updated_at` alone, and it
+publishes `fabric.synopsis.updated` rather than `fabric.workSession.updated`. The fleet orders by the
+synopsis timestamp where there is one and falls back to the record's, so a running work session sorts
+by activity and one nobody has run sorts by when it was last changed.
+
+The client reducer follows: a synopsis event updates the record in place and does **not** move it to
+the front. A list that reshuffles on every tool call is unreadable while anything is running.
+
+A related trap, caught by a test: the "nothing moved, do not write" guard first compared timestamps,
+which swallowed the opening update of a fresh synopsis whenever the signal's instant matched the empty
+record's. Identity is the right test, because the reducer returns its input unchanged for a signal
+that carried nothing.

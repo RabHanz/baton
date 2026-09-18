@@ -163,6 +163,7 @@ import {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project.ts";
+import { FabricFleetInput, FabricFleetResult } from "./fabric/fleet.ts";
 import {
   FABRIC_WS_METHODS,
   WorkSessionAttachThreadInput,
@@ -1455,6 +1456,12 @@ const WsFabricWorkSessionUnarchiveRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUn
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
+const WsFabricFleetGetRpc = Rpc.make(FABRIC_WS_METHODS.fleetGet, {
+  payload: FabricFleetInput,
+  success: FabricFleetResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
 const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
@@ -1615,5 +1622,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricWorkSessionUnsettleRpc,
   WsFabricWorkSessionArchiveRpc,
   WsFabricWorkSessionUnarchiveRpc,
+  WsFabricFleetGetRpc,
   WsFabricSubscribeWorkSessionsRpc,
 );

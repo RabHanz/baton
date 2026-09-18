@@ -43,6 +43,15 @@ export const applyWorkSessionStreamItem = (
   item: WorkSessionStreamItem,
 ): ReadonlyArray<WorkSession> => {
   if (item.kind === "snapshot") return item.workSessions;
+  // A synopsis update touches one field of a record already in the list, and
+  // must not reorder it: the synopsis moves far more often than the work does,
+  // and letting it reshuffle the list would make it unreadable while anything
+  // is running.
+  if (item.kind === "fabric.synopsis.updated") {
+    return current.map((existing) =>
+      existing.id === item.workSessionId ? { ...existing, synopsis: item.synopsis } : existing,
+    );
+  }
   const { workSession } = item;
   const without = current.filter((existing) => existing.id !== workSession.id);
   return workSession.archivedAt !== null ? without : [workSession, ...without];
@@ -70,6 +79,17 @@ export function createFabricWorkSessionAtoms<R, E>(
     list: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:work-session-list",
       tag: FABRIC_WS_METHODS.workSessionList,
+    }),
+    /**
+     * The environment's own fleet. Read from the server rather than derived
+     * locally so every surface — web, mobile, and a later phase's spoken
+     * answers — gets the same states from the same rules. Refreshed on the
+     * work-session stream rather than on a timer: a polled fleet is wrong
+     * between polls and expensive while it is right.
+     */
+    fleet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:fleet",
+      tag: FABRIC_WS_METHODS.fleetGet,
     }),
     create: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:work-session-create",

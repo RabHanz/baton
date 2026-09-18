@@ -25,6 +25,7 @@ import {
   WorkSessionProviderOrigin,
   WorkSessionProviderRole,
   WorkSessionRiskClass,
+  WorkSessionSynopsis,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -56,6 +57,8 @@ export const WorkSessionRow = Schema.Struct({
   updatedAt: IsoDateTime,
   settledAt: Schema.NullOr(IsoDateTime),
   archivedAt: Schema.NullOr(IsoDateTime),
+  /** Null until the first event moves it; see migration 055. */
+  synopsis: Schema.NullOr(WorkSessionSynopsis),
 });
 export type WorkSessionRow = typeof WorkSessionRow.Type;
 
@@ -78,6 +81,7 @@ const WorkSessionDbRow = WorkSessionRow.mapFields(
     acceptanceCriteria: Schema.fromJsonString(Schema.Array(TrimmedNonEmptyString)),
     environmentAffinity: Schema.fromJsonString(Schema.Array(EnvironmentId)),
     repositoryIdentity: Schema.NullOr(Schema.fromJsonString(RepositoryIdentity)),
+    synopsis: Schema.NullOr(Schema.fromJsonString(WorkSessionSynopsis)),
   }),
 );
 
@@ -88,6 +92,7 @@ const encodeStringList = Schema.encodeSync(
 );
 const encodeEnvironmentList = Schema.encodeSync(Schema.fromJsonString(Schema.Array(EnvironmentId)));
 const encodeRepositoryIdentity = Schema.encodeSync(Schema.fromJsonString(RepositoryIdentity));
+const encodeSynopsis = Schema.encodeSync(Schema.fromJsonString(WorkSessionSynopsis));
 
 const WorkSessionRefRow = Schema.Struct({ id: WorkSessionId });
 const ThreadRefRow = Schema.Struct({ threadId: ThreadId });
@@ -153,7 +158,8 @@ export const make = Effect.gen(function* () {
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         settled_at AS "settledAt",
-        archived_at AS "archivedAt"
+        archived_at AS "archivedAt",
+        synopsis_json AS "synopsis"
       FROM fabric_work_sessions
       WHERE id = ${id}
     `,
@@ -180,7 +186,8 @@ export const make = Effect.gen(function* () {
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         settled_at AS "settledAt",
-        archived_at AS "archivedAt"
+        archived_at AS "archivedAt",
+        synopsis_json AS "synopsis"
       FROM fabric_work_sessions
       WHERE archived_at IS NULL
       ORDER BY updated_at DESC, id ASC
@@ -208,7 +215,8 @@ export const make = Effect.gen(function* () {
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         settled_at AS "settledAt",
-        archived_at AS "archivedAt"
+        archived_at AS "archivedAt",
+        synopsis_json AS "synopsis"
       FROM fabric_work_sessions
       ORDER BY updated_at DESC, id ASC
     `,
@@ -272,7 +280,7 @@ export const make = Effect.gen(function* () {
           constraints_json, acceptance_criteria_json, environment_affinity_json,
           repository_identity_json, primary_worktree_path, base_branch,
           risk_class, priority, active_thread_id,
-          created_at, updated_at, settled_at, archived_at
+          created_at, updated_at, settled_at, archived_at, synopsis_json
         ) VALUES (
           ${row.id}, ${row.projectId}, ${row.title}, ${row.objective},
           ${encodeStringList(row.constraints)},
@@ -281,7 +289,8 @@ export const make = Effect.gen(function* () {
           ${row.repositoryIdentity === null ? null : encodeRepositoryIdentity(row.repositoryIdentity)},
           ${row.primaryWorktreePath}, ${row.baseBranch},
           ${row.riskClass}, ${row.priority}, ${row.activeThreadId},
-          ${row.createdAt}, ${row.updatedAt}, ${row.settledAt}, ${row.archivedAt}
+          ${row.createdAt}, ${row.updatedAt}, ${row.settledAt}, ${row.archivedAt},
+          ${row.synopsis === null ? null : encodeSynopsis(row.synopsis)}
         )
       `.pipe(Effect.mapError(asStorageError("WorkSessionRepository.insert")));
       return row;
@@ -306,7 +315,8 @@ export const make = Effect.gen(function* () {
         active_thread_id = ${row.activeThreadId},
         updated_at = ${row.updatedAt},
         settled_at = ${row.settledAt},
-        archived_at = ${row.archivedAt}
+        archived_at = ${row.archivedAt},
+        synopsis_json = ${row.synopsis === null ? null : encodeSynopsis(row.synopsis)}
       WHERE id = ${row.id}
     `.pipe(Effect.mapError(asStorageError("WorkSessionRepository.update")), Effect.asVoid);
 
