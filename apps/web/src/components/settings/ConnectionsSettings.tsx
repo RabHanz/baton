@@ -1,6 +1,7 @@
 import {
   ChevronsLeftRightEllipsisIcon,
   EllipsisIcon,
+  MessagesSquareIcon,
   PlusIcon,
   QrCodeIcon,
   TerminalIcon,
@@ -1452,6 +1453,51 @@ function useOpenImportedThread() {
       });
     },
     [router],
+  );
+}
+
+/**
+ * The import action as a row rather than a menu item.
+ *
+ * A browser paired to this server sees the administrative-access section, which
+ * has no row menu at all — so the machine's own conversations were reachable
+ * from the desktop app and from another machine's row, and not from the client
+ * he actually had open. Same action, second door.
+ */
+function ImportConversationsRow({
+  environmentId,
+  environmentLabel,
+  serverConfig,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly environmentLabel: string;
+  readonly serverConfig: ServerConfig | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const openImportedThread = useOpenImportedThread();
+  if (!supportsConversationImport(serverConfig)) return null;
+  return (
+    <>
+      <SettingsRow
+        title="Conversations"
+        description="Import a Claude Code or Codex session this machine has already had, and carry on with it."
+        control={
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            <MessagesSquareIcon />
+            Find conversations
+          </Button>
+        }
+      />
+      {open ? (
+        <ImportConversationsDialog
+          open
+          onOpenChange={setOpen}
+          environmentId={environmentId}
+          environmentLabel={environmentLabel}
+          onOpenThread={openImportedThread}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -3359,6 +3405,13 @@ export function ConnectionsSettings() {
             }
           >
             <LocalEnvironmentSetting />
+            {primaryEnvironmentId !== null ? (
+              <ImportConversationsRow
+                environmentId={primaryEnvironmentId}
+                environmentLabel={primaryEnvironment?.label ?? "this machine"}
+                serverConfig={primaryServerConfig}
+              />
+            ) : null}
             {canManageLocalBackend ? (
               <SettingsRow
                 title="Version"
@@ -3725,6 +3778,13 @@ export function ConnectionsSettings() {
             title="Administrative access"
             description="Pairing links and client-session management require the access:write scope for this backend."
           />
+          {primaryEnvironmentId !== null ? (
+            <ImportConversationsRow
+              environmentId={primaryEnvironmentId}
+              environmentLabel={primaryEnvironment?.label ?? "this machine"}
+              serverConfig={primaryServerConfig}
+            />
+          ) : null}
           <CloudLinkRow canManageRelay={canManageRelay} />
         </SettingsSection>
       )}
