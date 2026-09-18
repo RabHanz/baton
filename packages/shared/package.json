@@ -39,9 +39,21 @@
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"
     },
+    "./fabricContextBus": {
+      "types": "./src/fabricContextBus.ts",
+      "import": "./src/fabricContextBus.ts"
+    },
+    "./fabricDictation": {
+      "types": "./src/fabricDictation.ts",
+      "import": "./src/fabricDictation.ts"
+    },
     "./fabricFleet": {
       "types": "./src/fabricFleet.ts",
       "import": "./src/fabricFleet.ts"
+    },
+    "./fabricInjection": {
+      "types": "./src/fabricInjection.ts",
+      "import": "./src/fabricInjection.ts"
     },
     "./fabricIntentParser": {
       "types": "./src/fabricIntentParser.ts",

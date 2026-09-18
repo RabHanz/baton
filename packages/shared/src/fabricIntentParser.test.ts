@@ -464,6 +464,17 @@ describe("resolveFabricIntent — what it will not do", () => {
     }
   });
 
+  it("keeps dictation on the client, and says so rather than calling it unbuilt", () => {
+    // The words are an email to somebody else. The environment refuses to
+    // receive them at all, which is a stronger guarantee than handling them
+    // carefully once they arrive.
+    const result = resolve("Dictate: thanks, I'll send the revised version tomorrow");
+    expect(result.outcome).toBe("refused");
+    if (result.outcome !== "refused") return;
+    expect(result.refusal.reason).toBe("not_available_yet");
+    expect(result.refusal.message).toContain("never sends them here");
+  });
+
   it("refuses an unrecognised sentence with the sentence in it", () => {
     const result = resolve("Sort out the thing with the stuff");
     expect(result.outcome).toBe("refused");

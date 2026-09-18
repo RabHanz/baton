@@ -19,6 +19,7 @@ import {
   type FleetRow,
 } from "../../fabricFleetView";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { focusedWorkSessionFromThreads } from "../../fabricContextView";
 import { useFleet } from "../../state/fabricWorkSessions";
 import { FabricIntentBar } from "./FabricIntentBar";
 
@@ -37,6 +38,8 @@ export interface FabricFleetSectionProps {
   readonly onSelectWorkSession: (environmentId: EnvironmentId, entry: FabricFleetEntry) => void;
   /** Bumped after a sentence runs, so the intent log re-reads. */
   readonly onIntentRan: () => void;
+  /** The thread the route has open, as `<environmentId>:<threadId>`. */
+  readonly activeThreadKey: string | null;
 }
 
 export function FabricFleetSection(props: FabricFleetSectionProps): ReactNode {
@@ -90,7 +93,14 @@ function EnvironmentFleet(
           same surface as the list they act on. */}
       <FabricIntentBar
         environmentId={props.environmentId}
-        focusedWorkSessionId={null}
+        // §14 rung 3, with a producer at last: the work the open thread
+        // belongs to. Until this, "tell it to stop" always fell through to
+        // whatever moved last.
+        focusedWorkSessionId={focusedWorkSessionFromThreads(
+          entries,
+          props.environmentId,
+          props.activeThreadKey,
+        )}
         onRan={props.onIntentRan}
       />
       {/* No work yet still gets the input: "start work on X" is exactly the

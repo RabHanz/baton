@@ -4671,6 +4671,7 @@ export default function Sidebar() {
               }
               onSelectWorkSession={selectFabricFleetEntry}
               onIntentRan={() => setFabricIntentRevision((revision) => revision + 1)}
+              activeThreadKey={routeThreadKey}
             />
           ) : null}
           {!isSearchingThreads ? (
