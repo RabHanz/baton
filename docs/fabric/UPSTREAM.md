@@ -21,11 +21,10 @@ The fork carried no Fabric code at that point; it was a clean mirror of upstream
 
 ### Conflicts carried
 
-None yet. Each phase that diverges from upstream in a way that will conflict on rebase adds a row
-here with the file, the reason, and the upstream construct it extends.
-
-Files Fabric edits rather than adds. Each is a small, localized insertion chosen so a rebase
-conflicts in one place rather than across a rewrite.
+Files Fabric edits rather than adds — everything else it contributes is a new file. Each edit is a
+small, localized insertion chosen so a rebase conflicts in one place rather than across a rewrite.
+Each phase that diverges further adds a row with the file, the reason, and the upstream construct it
+extends.
 
 | Area                   | Upstream file touched                                                                       | Why                                                                                                                                                                                                                                     | Phase |
 | ---------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
