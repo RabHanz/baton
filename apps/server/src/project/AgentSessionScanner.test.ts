@@ -1704,10 +1704,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         const path = yield* Path.Path;
         const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
         yield* TestClock.setTime(nowMs);
+        const fileSystem = yield* FileSystem.FileSystem;
         const claudeHomePath = yield* makeTempDir("t3code-nested-claude-");
         const codexHomePath = yield* makeTempDir("t3code-nested-codex-");
         const workspace = yield* makeTempDir("t3code-nested-workspace-");
         const worktree = path.join(workspace, ".worktrees", "agent-a1");
+        // The worktree exists on disk: a conversation whose directory has been
+        // deleted is deliberately not listed, so a fixture that never created
+        // one would be testing the wrong thing.
+        yield* fileSystem.makeDirectory(worktree, { recursive: true });
         const rootSession = "11111111-2222-4333-8444-555555555555";
         const nestedSession = "66666666-7777-4888-8999-aaaaaaaaaaaa";
         const claudeTranscript = (cwd: string, sessionId: string, text: string) =>
@@ -1759,10 +1764,12 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         const path = yield* Path.Path;
         const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
         yield* TestClock.setTime(nowMs);
+        const fileSystem = yield* FileSystem.FileSystem;
         const claudeHomePath = yield* makeTempDir("t3code-nearest-claude-");
         const codexHomePath = yield* makeTempDir("t3code-nearest-codex-");
         const outer = yield* makeTempDir("t3code-nearest-outer-");
         const inner = path.join(outer, "packages", "inner");
+        yield* fileSystem.makeDirectory(path.join(inner, "src"), { recursive: true });
         const session = "11111111-2222-4333-8444-555555555555";
 
         yield* writeTranscript({
@@ -1801,6 +1808,7 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         const codexHomePath = yield* makeTempDir("t3code-pinned-codex-");
         const workspace = yield* makeTempDir("t3code-pinned-workspace-");
         const worktree = path.join(workspace, ".worktrees", "agent-a1");
+        yield* (yield* FileSystem.FileSystem).makeDirectory(worktree, { recursive: true });
         const rootSession = "11111111-2222-4333-8444-555555555555";
         const nestedSession = "66666666-7777-4888-8999-aaaaaaaaaaaa";
         const line = (cwd: string, sessionId: string, text: string) =>

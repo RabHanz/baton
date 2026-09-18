@@ -1823,6 +1823,13 @@ export const make = Effect.gen(function* () {
       const relation = yield* rootRelation(resolved);
       if (relation === "outside") continue;
       if (relation === "unscoped" && isExcludedProjectPath(resolved)) continue;
+      // A conversation whose directory is gone cannot be carried on there, and
+      // the machine accumulates them: this box's own test fixtures had put
+      // thirty deleted `t3code-claude-title-*` directories into the listing,
+      // each looking like a project waiting to be made. The project scan has
+      // refused missing directories all along; the listing now agrees with it.
+      const directoryStats = yield* statOption(resolved);
+      if (Option.isNone(directoryStats) || directoryStats.value.type !== "Directory") continue;
       const entryNested = relation === "nested";
 
       for (const transcript of candidate.transcripts) {

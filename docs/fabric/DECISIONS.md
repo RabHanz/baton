@@ -1640,3 +1640,58 @@ same thread, session id, transcript and working directory survive a switch.
 onnyx, each with a timestamped backup of the file beside it, and both servers restarted
 and answering. The default `claudeAgent` instance remains, and it is the one the pool
 rotates.
+
+---
+
+## D58 — Ghostty does not replace tmux, and T3's terminal is already Ghostty
+
+**Asked** 2026-09-18: "we need to replace tmux with Herdr and Ghostty if it is good enough
+or in the vision." §8.2 says the raw terminal is secondary, to use T3's terminal where it is
+sufficient, to evaluate `libghostty` later only if a stronger embedded terminal is materially
+useful, and not to block V1 on it. This answers the question directly rather than deferring
+it again.
+
+**Ghostty is a terminal emulator that runs on his laptop. tmux's job is keeping a process
+alive on the server after the client goes away.** Those are different layers, and no
+emulator can do the second one: it is not on the machine where the work runs. Closing the
+window still kills what is inside it. So Ghostty cannot replace tmux, however good it is —
+and it is good.
+
+**What replaces tmux is Herdr plus T3's own terminal surface**, and the mechanism was
+measured on this box tonight rather than assumed:
+
+```
+herdr server (pid 1393201, its own systemd-independent process)
+  └── /bin/bash (1393244)        ← the pane
+        └── claude (1762158)     ← the agent, reported as blocked → needs_input
+```
+
+No client, no ssh session and no editor appears in that chain. The agent outlived the shell
+that started it, which is the whole property tmux is kept around for.
+
+**The part that is already decided: T3's terminal _is_ Ghostty.** `apps/web/src/terminal/
+ghostty/` is the browser adapter for the official `libghostty-vt` C ABI, pinned at
+`native/libghostty-vt/`, and `apps/mobile/modules/t3-terminal/` uses the same ABI. The VT
+engine question §8.2 left open is answered in the affirmative and shipped; what is _not_
+embedded is Ghostty's own GPU renderer and desktop app, and nothing here needs them. (All 89
+tests under `apps/web/src/terminal/ghostty` pass in this worktree under both `vitest` and
+`vp test`; the three failures reported to this lane did not reproduce.)
+
+**What T3's terminal is still missing for him to live in it.** Three gaps, each read out of
+the code rather than guessed:
+
+1. **It dies with the server.** A terminal is a PTY owned by the T3 server process, so a
+   deploy, an update or an OOM takes every terminal with it. History is persisted and
+   replayed; the running process is not, and cannot be. A Herdr pane survives all three,
+   because Herdr is a separate supervisor.
+2. **Every terminal belongs to a thread.** `TerminalOpenInput` is keyed by `threadId` +
+   `terminalId`, so there is no terminal that is simply "this project" or "this machine" —
+   which is most of what tmux gets used for.
+3. **A terminal opened outside T3 is only ever an adopted pane.** Adoption gives pane text
+   and input; `HERDR_CAPABILITIES` deliberately leaves `readConversation`, `approvals` and
+   `diffs` false, because a pane has no structured conversation to read.
+
+**`libghostty` closes none of the three.** They are process-lifecycle and scoping problems;
+the VT engine is a renderer, and we already have it. So §8.2's "evaluate later" resolves to:
+nothing further to embed, and the work that matters is routing T3's terminal at a Herdr pane
+so it inherits that survival, which is queued rather than pretended.
