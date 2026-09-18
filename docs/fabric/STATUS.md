@@ -60,6 +60,14 @@ fork build carries **none of T3 Connect's public config**, so the cloud link is
 skipped and the environment quietly stops being reachable from t3.codes while
 every local check still passes (D47).
 
+Both machines were deployed while Fabric's migrations were still numbered
+054–059 inside upstream's manifest. D48 moved them into their own manifest and
+their own `fabric_sql_migrations` table; the first boot of a build carrying that
+change moves each machine's record across and logs
+`Reclaimed upstream migration ids`. Until they are redeployed they keep the old
+numbering, which is harmless — it only matters once upstream publishes a
+migration at 054, and the repair ships in the same binary that would meet it.
+
 ### §30's V1 definition of done, honestly
 
 | #   | Criterion                                                           | State                                                                                           |
