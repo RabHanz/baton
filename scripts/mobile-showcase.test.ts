@@ -13,7 +13,9 @@ import showcaseConfig, {
 import {
   SHOWCASE_ENVIRONMENTS,
   SHOWCASE_PROJECTS,
+  SHOWCASE_SCENES,
   SHOWCASE_THREADS,
+  SHOWCASE_WORK_SESSIONS,
 } from "./mobile-showcase-environment.ts";
 import {
   encodeAndroidPairingUrls,
@@ -26,6 +28,7 @@ import {
   resolveAndroidSdkRoot,
   selectLanIpv4Address,
   showcaseCaptureDirectory,
+  showcaseSceneUrl,
   validateStoreAsset,
   validateStoreAssetCount,
 } from "./mobile-showcase.ts";
@@ -367,4 +370,52 @@ it("encodes Android pairing URLs without shell-sensitive JSON quotes", () => {
   assert.equal(encoded.startsWith("json-uri:"), true);
   assert.deepStrictEqual(JSON.parse(decodeURIComponent(encoded.slice("json-uri:".length))), urls);
   assert.equal(encoded.includes('"'), false);
+});
+
+it("opens the fleet scene on the environment rather than on one work session", () => {
+  // `fabric/:environmentId?/:workSessionId?` — with no work session named the
+  // screen opens on the list, which is the view worth photographing. The id is
+  // encoded because an environment id is opaque and has contained a colon.
+  assert.equal(showcaseSceneUrl("fleet", "env-1"), "t3code://fabric/env-1");
+  assert.equal(showcaseSceneUrl("fleet", "env/two"), "t3code://fabric/env%2Ftwo");
+  assert.equal(SHOWCASE_SCENES.includes("fleet"), true);
+  // Every configured device captures it: the fleet is what this fork adds, so
+  // a walk that skips it walks past the point.
+  for (const device of showcaseConfig.devices) {
+    assert.equal(device.scenes.includes("fleet"), true, `${device.id} does not capture the fleet`);
+  }
+});
+
+it("seeds work the fleet can derive three different states from", () => {
+  assert.equal(SHOWCASE_WORK_SESSIONS.length, 3);
+  const threadIds = SHOWCASE_WORK_SESSIONS.map((workSession) => workSession.threadId);
+  // Two live threads and one work session whose thread has ended. That last row
+  // is the reason WorkSession exists, and a thread list cannot show it.
+  assert.equal(threadIds.filter((threadId) => threadId === null).length, 1);
+  for (const threadId of threadIds) {
+    if (threadId === null) continue;
+    assert.equal(
+      SHOWCASE_THREADS.some((thread) => thread.id === threadId),
+      true,
+      `${threadId} is not a seeded showcase thread`,
+    );
+  }
+  // Attached to threads the showcase already puts in different states, so the
+  // fleet derives "needs you" and "running" instead of being told them.
+  const attached = SHOWCASE_WORK_SESSIONS.flatMap((workSession) =>
+    workSession.threadId === null
+      ? []
+      : SHOWCASE_THREADS.filter((thread) => thread.id === workSession.threadId),
+  );
+  assert.deepStrictEqual(
+    attached.map((thread) => ("state" in thread ? thread.state : null)),
+    ["approval", "working"],
+  );
+  for (const workSession of SHOWCASE_WORK_SESSIONS) {
+    assert.equal(
+      SHOWCASE_PROJECTS.some((project) => project.id === workSession.projectId),
+      true,
+      `${workSession.id} names an unseeded project`,
+    );
+  }
 });

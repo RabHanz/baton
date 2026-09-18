@@ -1,0 +1,175 @@
+## Codemagic CI for this fork's mobile app.
+##
+## One workflow, and deliberately only one:
+##   ios-fabric-walk  → build apps/mobile for the iOS Simulator on a Mac,
+##                      walk the screens including Fabric's fleet, and upload
+##                      the frames as artifacts. Nothing is published.
+##
+## Why it exists: the Director's Codemagic account is the only Mac this
+## programme has. Phase 7 built the fleet screen, the §20 status questions and
+## the deep links, and every one of them is unrun — `docs/fabric/STATUS.md`
+## records that the mobile app has never been started. This workflow is the
+## cheapest way to turn "typechecks" into "here is what it looks like".
+##
+## What it deliberately does NOT do, and must not be edited to do:
+##   - no `publishing:` block. No App Store Connect, no TestFlight, no Play.
+##   - no `integrations:` and no shared env-var group. This repository has no
+##     signing identity, no ASC key and no keystore, and it must not borrow
+##     another product's `margin_app_secrets`: those credentials belong to a
+##     different company's app and nothing here needs them. A simulator build
+##     is unsigned by definition.
+##   - no automatic trigger. There is no `triggering:` block, so builds start
+##     only when a person asks for one. Mac minutes are the scarce resource.
+##
+## What the Director must do in the Codemagic UI, once:
+##   1. Applications → Add application → connect `RabHanz/t3code` (GitHub App
+##      or personal token; the repo is private, so read access is required).
+##      Codemagic finds this file at the repository root on its own.
+##   2. Nothing else. No environment-variable group, no code-signing identity,
+##      no App Store Connect integration, no Google Play service account. If
+##      the UI asks which workflow to run, it is `ios-fabric-walk`.
+##   3. Start a build manually: Start new build → branch `main` → workflow
+##      `iOS Fabric Walk (simulator, no publish)`.
+##   4. When it finishes, the screenshots are under Artifacts. They are also
+##      what gets committed to `docs/fabric/frames/` once somebody has looked
+##      at them.
+##
+## Two optional variables, both unset by default and neither a secret:
+##   T3_FABRIC_WALK_DEVICE    a device id from `scripts/mobile-showcase.config.ts`
+##                            (default `iphone-6.9`). More devices means more
+##                            minutes; the walk needs one.
+##   T3_FABRIC_WALK_SCENES    space-separated scene names, e.g. `fleet thread`.
+##                            Unset captures every scene the device configures
+##                            (the five upstream ones plus `fleet`); setting it
+##                            to `fleet` alone is the cheapest useful run.
+##
+## The structure below — anchored script definitions, a pinned pnpm, install
+## from the repository root, verify before spending build minutes — is adapted
+## from a proven Codemagic setup for another Expo monorepo on the same plan.
+## What is different here is documented where it appears: this repo drives
+## pnpm through Vite+ rather than a global install, its Node is pinned in
+## `package.json` `engines`, and its walk is upstream's own showcase harness
+## rather than a bespoke script.
+
+definitions:
+  scripts:
+    - &expose_pnpm
+      name: Expose the pnpm this repository pins
+      script: |
+        set -euo pipefail
+        cd "$CM_BUILD_DIR"
+        # The version comes from `packageManager` rather than a literal, so this
+        # file cannot drift from the repository the way a hard-coded pnpm@9
+        # would. `npm install -g --force` because Codemagic's macOS image ships
+        # a pnpm already and a plain global install fails EEXIST; corepack is
+        # bypassed on purpose, its bundled trust keys reject current releases.
+        pnpm_version="$(node --print "require('./package.json').packageManager.split('@').pop()")"
+        npm install -g "pnpm@${pnpm_version}" --force
+        pnpm --version
+
+    - &install
+      name: Install from the repository root
+      script: |
+        set -euo pipefail
+        cd "$CM_BUILD_DIR"
+        # From the ROOT, and filtered: the walk drives the mobile app, the
+        # scripts workspace and the server (it starts a real T3 environment from
+        # source and seeds it), and nothing else. Installing the whole monorepo
+        # would pull the desktop and marketing trees for no reason.
+        pnpm install --frozen-lockfile --prefer-offline \
+          --filter=@t3tools/mobile... \
+          --filter=t3... \
+          --filter=@t3tools/shared... \
+          --filter=@t3tools/contracts...
+
+    - &verify
+      name: Verify before spending build minutes
+      script: |
+        set -euo pipefail
+        cd "$CM_BUILD_DIR"
+        # A Mac minute is the scarcest thing on this plan, and a typecheck
+        # failure costs one either way — so it happens before the native build
+        # rather than after it.
+        pnpm --filter @t3tools/mobile typecheck
+        # The showcase harness is host-side code that only ever runs here; its
+        # own tests are the only gate it gets.
+        pnpm exec vp test scripts/mobile-showcase.test.ts
+
+workflows:
+  ios-fabric-walk:
+    name: iOS Fabric Walk (simulator, no publish)
+    # Prebuild + xcodebuild + a simulator boot per device. Sixty minutes is
+    # generous for one device and stops a wedged simulator burning the plan.
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      # No `groups:`. See the header — this workflow has no secrets and must
+      # not acquire any.
+      vars:
+        # Overridable in the UI without editing this file.
+        T3_FABRIC_WALK_DEVICE: iphone-6.9
+      node: 24.13.1
+      xcode: latest
+      cocoapods: default
+
+    # No `triggering:` block: builds are started by hand.
+
+    scripts:
+      - *expose_pnpm
+      - *install
+      - *verify
+
+      - name: Walk the screens on the simulator
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR"
+          # Upstream's own harness, not a bespoke driver. It prebuilds ios/,
+          # builds the app for the simulator with xcodebuild, starts a real T3
+          # environment from source, seeds it, pairs the app to it, then walks
+          # each scene by deep link and captures a frame.
+          #
+          # `fleet` is this fork's scene: `t3code://fabric/<environmentId>`, the
+          # §33 fleet with the seeded work — one row waiting on an approval, one
+          # running, and one whose provider thread has ended, which is the row a
+          # thread list cannot show.
+          scene_args=""
+          for scene in ${T3_FABRIC_WALK_SCENES:-}; do
+            scene_args="$scene_args --scene $scene"
+          done
+          # shellcheck disable=SC2086 # scene_args is a deliberate word split.
+          pnpm screenshots:mobile \
+            --platform ios \
+            --device "$T3_FABRIC_WALK_DEVICE" \
+            --appearance dark \
+            --theme t3-code \
+            $scene_args
+
+      - name: Say what was captured
+        script: |
+          set -uo pipefail
+          cd "$CM_BUILD_DIR"
+          # A build that silently captured nothing looks identical to a build
+          # that captured everything, in a log this long.
+          found=$(find artifacts/app-store/screenshots -name '*.png' | wc -l | tr -d ' ')
+          echo "Captured ${found} frames:"
+          find artifacts/app-store/screenshots -name '*.png' | sort
+          if [ "$found" -eq 0 ]; then
+            echo "::error:: the walk produced no frames"
+            exit 1
+          fi
+          case " ${T3_FABRIC_WALK_SCENES:-fleet} " in
+            *" fleet "*)
+              if ! find artifacts/app-store/screenshots -name '*fleet*' | grep -q .; then
+                echo "::error:: no fleet frame — the one screen this workflow exists for"
+                exit 1
+              fi
+              ;;
+          esac
+
+    artifacts:
+      - artifacts/app-store/screenshots/**/*.png
+      # xcodebuild's own log, which is the only useful thing when a native
+      # build fails on a machine nobody can open.
+      - /tmp/xcodebuild_logs/*.log
+      - apps/mobile/.showcase/**/*.log

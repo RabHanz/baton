@@ -671,6 +671,9 @@ function buildShowcasePairingUrl(host: string, port: number, credential: string)
 export function showcaseSceneUrl(scene: ShowcaseScene, environmentId: string): string {
   if (scene === "threads") return `${APP_SCHEME}://`;
   if (scene === "environments") return `${APP_SCHEME}://settings/environments`;
+  // The fleet screen takes the environment alone: with no work session named it
+  // opens on the list, which is the view worth photographing.
+  if (scene === "fleet") return `${APP_SCHEME}://fabric/${encodeURIComponent(environmentId)}`;
   const threadPath = `threads/${encodeURIComponent(environmentId)}/${SHOWCASE_THREAD_ID}`;
   if (scene === "thread") return `${APP_SCHEME}://${threadPath}`;
   if (scene === "terminal") {
