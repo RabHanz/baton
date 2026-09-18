@@ -10,6 +10,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
+import { ModelPickerAccountLine } from "./ModelPickerAccountLine";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { getProviderStatusMessage, hasProviderSetup } from "./ProviderStatusBanner";
 import {
@@ -882,6 +883,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               showSidebar && "border-l border-border/70",
             )}
           >
+            {/* Which account this runs as, before the model is even chosen. */}
+            <ModelPickerAccountLine
+              entry={
+                selectedInstanceId === "favorites"
+                  ? undefined
+                  : entryByInstanceId.get(selectedInstanceId)
+              }
+            />
             {/* Search bar */}
             <div className="px-2 pt-2">
               <div className="border-b border-border/70 pb-2.5 transition-colors focus-within:border-ring">

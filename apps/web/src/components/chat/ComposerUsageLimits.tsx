@@ -84,7 +84,13 @@ function UsageLimitsBannerBody({
           const resetCreditInput =
             account.resetCreditInput ??
             (account.instanceId ? { instanceId: account.instanceId } : undefined);
-          const notice = limitsNotice(account.limits);
+          // The account's own identity decides whether "no limits" is a
+          // fact about the driver or an expired login with a one-line fix.
+          const notice = limitsNotice(account.limits, {
+            driver: account.driver,
+            email: account.email,
+            displayName: account.displayName,
+          });
           return (
             <div key={account.id} className="flex min-w-0 flex-col gap-1">
               {report.accounts.length > 1 ? (

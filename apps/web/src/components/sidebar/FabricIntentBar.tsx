@@ -230,10 +230,22 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
       <input
         type="text"
         data-testid="sidebar-intent-input"
+        // What arms this field from a hotkey, a mic button, or an external
+        // dictation tool that types into whatever has focus.
+        data-fabric-intent-input="true"
         value={text}
         disabled={running}
         placeholder="What needs me?"
         aria-label="Say what you want"
+        // A phone keyboard says "go" rather than "return", and a spoken
+        // sentence is a sentence: capitalised, spell-checked, not autocompleted
+        // against a form history it has no business in.
+        enterKeyHint="go"
+        inputMode="text"
+        autoCapitalize="sentences"
+        autoComplete="off"
+        autoCorrect="on"
+        spellCheck
         onChange={(event) => {
           setText(event.target.value);
           setReply(null);

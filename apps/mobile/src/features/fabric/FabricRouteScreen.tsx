@@ -69,11 +69,17 @@ export function FabricRouteScreen() {
 
 function FabricEnvironmentFleet(props: { readonly environmentId: EnvironmentId }) {
   const { entries, loaded } = useFleet(props.environmentId);
-  const { run } = useFabricIntent();
+  const { resolve, run } = useFabricIntent();
   const [needsUserOnly, setNeedsUserOnly] = useState(false);
   const [text, setText] = useState("");
   const [reply, setReply] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The reading of the sentence now in the field, shown before it can run. */
+  const [reading, setReading] = useState<{
+    readonly sentence: string;
+    readonly line: string;
+    readonly refused: boolean;
+  } | null>(null);
   const serverConfigs = useServerConfigs();
   // Staleness is a clock, and a clock read during render freezes at whatever
   // moment the row last rendered — a synopsis would then never *become* stale
@@ -104,10 +110,15 @@ function FabricEnvironmentFleet(props: { readonly environmentId: EnvironmentId }
       .length ?? 0;
   const handoff = handoffAvailability({ handoffImplemented: false, accountCount });
 
-  const say = (sentence: string): void => {
+  /**
+   * A quick action is a button whose words the user did not speak, so there is
+   * nothing to mishear and nothing to read back.
+   */
+  const runDirectly = (sentence: string): void => {
     if (busy || sentence.trim().length === 0) return;
     setBusy(true);
     setReply(null);
+    setReading(null);
     void run({
       environmentId: props.environmentId,
       text: sentence.trim(),
@@ -119,15 +130,61 @@ function FabricEnvironmentFleet(props: { readonly environmentId: EnvironmentId }
     });
   };
 
+  /**
+   * First submit reads the sentence back; second submit runs it.
+   *
+   * The desktop bar has worked this way since the model joined the path, and
+   * the phone — the surface most likely to mishear a dictated sentence — was
+   * the one that acted on the first try.
+   */
+  const say = (sentence: string): void => {
+    const trimmed = sentence.trim();
+    if (busy || trimmed.length === 0) return;
+    if (reading === null || reading.sentence !== trimmed || reading.refused) {
+      setBusy(true);
+      setReply(null);
+      void resolve({
+        environmentId: props.environmentId,
+        text: trimmed,
+        focusedWorkSessionId: null,
+      }).then((result) => {
+        setBusy(false);
+        setReading({ sentence: trimmed, line: result.line, refused: result.refused });
+      });
+      return;
+    }
+    setBusy(true);
+    setReply(null);
+    void run({
+      environmentId: props.environmentId,
+      text: trimmed,
+      focusedWorkSessionId: null,
+    }).then((result) => {
+      setBusy(false);
+      setReply(result.reply);
+      setReading(null);
+      setText("");
+    });
+  };
+
   return (
     <ScrollView contentContainerClassName="pb-12">
       <View className="flex-row items-center gap-2 px-4 pb-2 pt-3">
         <TextInput
           value={text}
-          onChangeText={setText}
+          onChangeText={(next) => {
+            setText(next);
+            // A reading belongs to the words it read.
+            setReading(null);
+          }}
           editable={!busy}
           placeholder="What needs me?"
           returnKeyType="send"
+          // A dictated sentence is a sentence, and the field has to survive the
+          // first submit so the second one can run it.
+          autoCapitalize="sentences"
+          autoCorrect
+          blurOnSubmit={false}
           onSubmitEditing={() => say(text)}
           className="flex-1 rounded-lg bg-muted px-3 py-2 text-base text-foreground"
           accessibilityLabel="Say what you want"
@@ -139,13 +196,25 @@ function FabricEnvironmentFleet(props: { readonly environmentId: EnvironmentId }
         {FABRIC_QUICK_ACTIONS.map((action) => (
           <Pressable
             key={action.sentence}
-            onPress={() => say(action.sentence)}
+            onPress={() => runDirectly(action.sentence)}
             className="rounded-full bg-muted px-3 py-1.5"
           >
             <Text className="text-xs text-foreground">{action.label}</Text>
           </Pressable>
         ))}
       </View>
+
+      {reading === null ? null : (
+        <View className="px-4 pb-2">
+          <Text
+            className={
+              reading.refused ? "text-sm text-destructive" : "text-sm text-muted-foreground"
+            }
+          >
+            {reading.refused ? reading.line : `Send again to run: ${reading.line}`}
+          </Text>
+        </View>
+      )}
 
       {reply === null ? null : (
         <View className="px-4 pb-3">

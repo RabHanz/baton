@@ -391,13 +391,38 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
   return pools.sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind]);
 }
 
-/** The one-line status under a provider heading when there are no bars to draw. */
-export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
+/**
+ * The one-line status under a provider heading when there are no bars to draw.
+ *
+ * Where the reason is something the user can act on, it says what to do. A
+ * Claude instance that reports no limits *and* no address is not a driver
+ * without a limits API — it is a login that has expired, and the difference
+ * between those two is the difference between "this is how it is" and "one
+ * command fixes this". Both were rendered as the same sentence, and the second
+ * one cost this author an afternoon of looking in the wrong place.
+ */
+export function limitsNotice(
+  limits: ServerProviderUsageLimits,
+  account?: {
+    readonly driver?: ServerProvider["driver"] | undefined;
+    readonly email?: string | undefined;
+    readonly displayName?: string | null | undefined;
+  },
+): string | null {
   if (limits.unavailable?.reason === "unsupported") {
-    return limits.unavailable.message ?? "This account has no subscription limits.";
+    if (limits.unavailable.message) return limits.unavailable.message;
+    if (account?.driver === "claudeAgent" && !account.email?.trim()) {
+      return `Signed out, or the stored login expired. Run \`claude auth login\` with CLAUDE_CONFIG_DIR set to${
+        account.displayName ? ` ${account.displayName}'s` : " this instance's"
+      } home, then reconnect.`;
+    }
+    return "This account has no subscription limits.";
   }
   if (limits.unavailable?.reason === "probeFailed") {
-    return limits.unavailable.message ?? "Could not read limits.";
+    return (
+      limits.unavailable.message ??
+      "Could not read limits. If it keeps failing, check the provider CLI is on the PATH the server itself runs with."
+    );
   }
   return limits.windows.length === 0 ? "No limits reported." : null;
 }

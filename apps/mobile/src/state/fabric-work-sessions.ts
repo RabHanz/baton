@@ -85,15 +85,51 @@ export function useFleet(environmentId: EnvironmentId | null): {
   return read;
 }
 
-/** Say something to an environment, and get the spoken reply back. */
+/**
+ * Say something to an environment — first what it heard, then, if the words are
+ * right, the thing itself.
+ *
+ * `resolve` is a read: it decides what the words mean and changes nothing, so
+ * the phone can show the reading before anything acts on a sentence it may have
+ * misheard.
+ */
 export function useFabricIntent(): {
+  readonly resolve: (input: {
+    readonly environmentId: EnvironmentId;
+    readonly text: string;
+    readonly focusedWorkSessionId: string | null;
+  }) => Promise<{ readonly line: string; readonly refused: boolean }>;
   readonly run: (input: {
     readonly environmentId: EnvironmentId;
     readonly text: string;
     readonly focusedWorkSessionId: string | null;
   }) => Promise<{ readonly reply: string; readonly ok: boolean }>;
 } {
+  const resolveIntent = useAtomCommand(fabricWorkSessions.intentResolve, { reportFailure: false });
   const runIntent = useAtomCommand(fabricWorkSessions.intentRun, { reportFailure: false });
+  const resolve = async (input: {
+    readonly environmentId: EnvironmentId;
+    readonly text: string;
+    readonly focusedWorkSessionId: string | null;
+  }): Promise<{ readonly line: string; readonly refused: boolean }> => {
+    const result = await resolveIntent({
+      environmentId: input.environmentId,
+      input: {
+        text: input.text,
+        focusedWorkSessionId: input.focusedWorkSessionId as never,
+        // A sentence the grammar cannot place is read by a model rather than
+        // refused, which is the whole point of pressing send once.
+        allowModel: true,
+      },
+    });
+    if (result._tag !== "Success") {
+      return { line: "That could not be read. Nothing has run.", refused: true };
+    }
+    const resolution = result.value.resolution;
+    return resolution.outcome === "resolved"
+      ? { line: resolution.description, refused: false }
+      : { line: resolution.refusal.message, refused: true };
+  };
   const run = async (input: {
     readonly environmentId: EnvironmentId;
     readonly text: string;
@@ -112,5 +148,5 @@ export function useFabricIntent(): {
         // empty screen that looks like it worked.
         { reply: "That could not be done. Nothing changed.", ok: false };
   };
-  return { run };
+  return { resolve, run };
 }

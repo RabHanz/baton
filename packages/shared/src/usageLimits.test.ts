@@ -93,6 +93,43 @@ describe("limitsNotice", () => {
       }),
     ).toBe("Codex timed out.");
   });
+
+  // On the author's own machine two Claude instances reported exactly this and
+  // meant "your stored login expired" — which no part of the sentence said.
+  it("tells a signed-out Claude account the one command that fixes it", () => {
+    const checkedAt = "2026-09-03T11:00:00.000Z";
+    const expired = { checkedAt, windows: [], unavailable: { reason: "unsupported" } } as const;
+
+    const notice = limitsNotice(expired, {
+      driver: ProviderDriverKind.make("claudeAgent"),
+      email: undefined,
+      displayName: "claude-rabee",
+    });
+    expect(notice).toContain("claude auth login");
+    expect(notice).toContain("claude-rabee");
+
+    // A signed-in account that reports no limits is a fact about the driver.
+    expect(
+      limitsNotice(expired, {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        email: "someone@example.com",
+      }),
+    ).toBe("This account has no subscription limits.");
+    // And so is any other driver.
+    expect(limitsNotice(expired, { driver: ProviderDriverKind.make("cursor") })).toBe(
+      "This account has no subscription limits.",
+    );
+  });
+
+  it("points a failed probe at the PATH the server runs with", () => {
+    const notice = limitsNotice({
+      checkedAt: "2026-09-03T11:00:00.000Z",
+      windows: [],
+      unavailable: { reason: "probeFailed" },
+    });
+    expect(notice).toContain("Could not read limits.");
+    expect(notice).toContain("PATH");
+  });
 });
 
 describe("providersWithLimits", () => {
@@ -728,7 +765,9 @@ describe("collectLimitNotices", () => {
       ],
     ]);
     expect(collectLimitNotices(one)).toEqual([
-      "Claude Max: Could not read limits.",
+      // The remedy travels with the notice: a diagnostics list that says only
+      // "could not read limits" sends the reader to the wrong place.
+      "Claude Max: Could not read limits. If it keeps failing, check the provider CLI is on the PATH the server itself runs with.",
       "codex: No limits reported.",
       "hub: No accounts reported.",
       "down: ECONNREFUSED",
@@ -738,7 +777,9 @@ describe("collectLimitNotices", () => {
       entry: { target: { label: "Desktop" } },
       serverConfig: { providers: [], usageLimitSources: [] },
     });
-    expect(collectLimitNotices(one)[0]).toBe("Laptop · Claude Max: Could not read limits.");
+    expect(collectLimitNotices(one)[0]).toBe(
+      "Laptop · Claude Max: Could not read limits. If it keeps failing, check the provider CLI is on the PATH the server itself runs with.",
+    );
   });
 });
 
