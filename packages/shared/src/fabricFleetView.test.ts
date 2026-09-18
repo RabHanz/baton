@@ -29,6 +29,7 @@ const entry = (input: {
   projectId,
   lifecycle: "active",
   state: input.state,
+  adopted: [],
   needsUser: input.needsUser ?? false,
   activeThreadId: ThreadId.make(`${input.id}-thread`),
   threads: [

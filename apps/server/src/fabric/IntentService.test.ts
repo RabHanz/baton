@@ -31,6 +31,7 @@ import { OrchestrationEngineService } from "../orchestration/Services/Orchestrat
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { AdoptedRuntimeAdapter, layer as adoptedSessionLayer } from "./AdoptedSessionService.ts";
 import { layer as intentExecutorLayer } from "./IntentExecutorLive.ts";
 import { FabricIntentService, layer as intentServiceLayer } from "./IntentService.ts";
 import { FabricOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
@@ -133,7 +134,31 @@ const baseLayer = (effects: Layer.Layer<OrchestrationEffectsService>) =>
         evaluate: () => Effect.succeed([]),
       }),
     ),
-    Layer.provideMerge(Layer.mergeAll(workSessionLayer, ruleServiceLayer)),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        workSessionLayer,
+        ruleServiceLayer,
+        // The fleet now includes adopted sessions (§9). None is registered
+        // here, and the runtime is not installed, so every answer is the
+        // refusal a machine without Herdr gives.
+        adoptedSessionLayer.pipe(
+          Layer.provide(
+            Layer.succeed(AdoptedRuntimeAdapter, {
+              discover: Effect.succeed({
+                available: false,
+                reason: "herdr is not installed on this environment.",
+                candidates: [],
+              }),
+              sendInput: () =>
+                Effect.succeed({
+                  delivered: false,
+                  detail: "herdr is not installed on this environment.",
+                }),
+            }),
+          ),
+        ),
+      ),
+    ),
     Layer.provide(
       Layer.mock(ProjectionSnapshotQuery)({
         getProjectShells: () => Effect.succeed([project]),

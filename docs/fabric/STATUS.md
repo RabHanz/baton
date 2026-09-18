@@ -16,8 +16,7 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it      |
 | 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have |
 | 7 — mobile voice + quick actions               | **partial**               | the Phase 7 table below: the fleet, the status questions and the deep links are built and typecheck; the mic, App Intents and handoff are blocked on a device, a mac and Phase 3    |
-| 8 — Herdr adoption                             | not started               | —                                                                                                                                                                                   |
-| 10 — capability plane + hardening              | not started               | —                                                                                                                                                                                   |
+| 8 — Herdr adoption                             | **partial**               | the Phase 8 table below: the domain, the mapping, the fleet and every refusal are proven on the snapshot; discovery and send-input are blocked on Herdr not being installed here    | \n  | 10 — capability plane + hardening | not started | —   |
 
 Nothing in this repository implements Fabric beyond what the Phase 2 section below claims.
 
@@ -558,3 +557,73 @@ wired to routes and to the same RPC the desktop uses.
 - **No live run against the snapshot.** The phone's screen calls the same
   `fabric.*` RPCs Phases 4 and 5 already proved against it; nothing new crosses
   the wire, so a second live run would prove nothing the earlier ones did not.
+
+## Phase 8 — adopted sessions
+
+§29 Phase 8 brings terminals Fabric did not start into the same fleet: a Herdr
+adapter, discovery, state mapping, an `AdoptedSession`, attachment to a work
+session, a raw terminal surface, "show X", and a safe send-input capability.
+
+The domain is built and proven against the snapshot. The parts that need the
+runtime itself are **blocked on Herdr not being installed on this box** — and
+that absence is what makes their refusals provable rather than hypothetical.
+
+| Item                                  | State                                                               | Where it is proven, or what blocks it                                                                                                                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Herdr adapter                         | done, as a **port**                                                 | `AdoptedRuntimeAdapter` + `HerdrAdapterLive.ts`: the only file that knows the runtime exists. Herdr is AGPL and is integrated, never vendored (D37)                                                    |
+| Discover server/workspaces/panes      | **partial**                                                         | the shape and the line parser are proven (`HerdrAdapterLive.test.ts`); on a machine without Herdr discovery refuses **by name** rather than returning an empty list that reads as "nothing is running" |
+| Map semantic agent state              | done                                                                | `packages/shared/src/fabricAdoptedSession.ts` — §9's four rows, and a word Fabric does not know is refused rather than called idle (D38)                                                               |
+| Create an AdoptedSession              | done                                                                | migration 059, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                                               |
+| Attach to a WorkSession               | done                                                                | the work session id is on the row, and the fleet groups by it                                                                                                                                          |
+| Appear in the fleet                   | done                                                                | `fabricFleet.test.ts` and the live run: an adopted pane that reports `blocked` makes the _work_ say it needs the user (D40)                                                                            |
+| Declared capability limits            | done                                                                | every adopted session carries what Fabric may not do to it, and each refusal says why (D39)                                                                                                            |
+| Safe send-input                       | done as a gate, **blocked** as an action                            | the capability check, the released-session check and the runtime's own refusal are proven; nothing has been typed into a real pane                                                                     |
+| Raw terminal attach surface, "show X" | **blocked**: no Herdr, and no desktop session to show a terminal in | the capability is declared and carried on the row; the surface is the desktop's, which Phase 6 already lists as blocked                                                                                |
+
+### The Phase 8 exit criterion
+
+> A Claude/Codex/Hermes CLI running persistently in Herdr can appear in the
+> Fabric fleet and be surfaced/controlled with declared capability limits.
+
+Against the snapshot, with the server on it and Herdr absent:
+
+```text
+discover: available=false candidates=0
+  reason: herdr is not installed on this environment. Install it where the
+          terminals are, or adopt sessions by hand.
+
+adopted herdr:ops:hermes-1: state=working runtime=herdr
+  capabilities: readConversation=false sendInput=true approvals=false
+                diffs=false stop=true showTerminal=true
+
+fleet:
+  with a working pane:        work state=working    needsUser=false threads=0 adopted=hermes:working
+  after herdr says blocked:   work state=needs_input needsUser=true  threads=0 adopted=hermes:needs_input
+
+sendInput: delivered=false
+  detail: herdr is not installed on this environment. …
+
+unknown state: refused
+  after the refusal: work state=needs_input needsUser=true adopted=hermes:needs_input
+```
+
+So: **appearing in the fleet with declared capability limits is proven**, and
+with a work session that has no thread of Fabric's own — the adopted terminal is
+the only thing running, and the fleet says what it is doing. What is not proven
+is the half that needs the runtime: a real Herdr pane, discovered rather than
+registered by hand, and input actually delivered to it.
+
+### Not proven in Phase 8
+
+- **Herdr is not installed on this box**, so nothing has been discovered from a
+  real runtime and nothing has been typed into a real pane. Both paths end in a
+  refusal that names the missing runtime, which is the honest answer and is
+  itself proven.
+- **No raw terminal surface.** Showing a terminal is a desktop client's job, and
+  Phase 6 already lists the desktop pieces as blocked on a session this box does
+  not have.
+- **One runtime.** `AdoptedRuntime` has a single member; a second is a contract
+  change rather than a value somebody invents.
+- **No UI.** The fleet carries adopted sessions and the entry's state accounts
+  for them, so they already move the "Needs me" count on both clients; neither
+  client renders an adopted row of its own yet.

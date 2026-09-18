@@ -35,6 +35,7 @@ import * as Layer from "effect/Layer";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import { getFleet } from "./FleetQuery.ts";
+import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { FabricIntentExecutor, type IntentExecution } from "./IntentService.ts";
 import { FabricOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
@@ -65,6 +66,7 @@ export const make = Effect.gen(function* () {
   // here and takes the requirement channel of every caller with it.
   const fleetContext = yield* Effect.context<
     | WorkSessionService
+    | AdoptedSessionService
     | ProjectionSnapshotQuery.ProjectionSnapshotQuery
     | ProviderRegistry.ProviderRegistry
   >();

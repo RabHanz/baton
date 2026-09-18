@@ -860,3 +860,85 @@ So the refusal travels with its reason, in the place the action would have been.
 rather than a boolean, the screen renders the reason, and both are unit-tested —
 including the case where an environment is simply too old to know what a work
 session is.
+
+---
+
+## D37 — Herdr is integrated, never vendored
+
+**Decided** 2026-09-18, during Phase 8. **Implements** §9 and the fork's own
+licence boundary.
+
+Herdr is AGPL and is a separate program. Fabric adopts sessions _from_ it by
+speaking to its control surface from the outside, the way a person at a prompt
+would, and this repository contains none of its code.
+
+The practical shape that forces: `AdoptedRuntimeAdapter` is a **port** with two
+methods, and `HerdrAdapterLive` is the only file that knows the runtime exists.
+Swapping in a second runtime later is a new adapter, not a change to the domain,
+and nothing in `packages/` links against Herdr at all.
+
+**Consequence:** a machine without Herdr still gets the whole adopted-session
+domain — registering, listing, the fleet, the refusals — and every call that
+would have reached the runtime answers with the reason it could not.
+
+---
+
+## D38 — A state Fabric cannot map is refused, never called idle
+
+**Decided** 2026-09-18, during Phase 8.
+
+§9 gives four mappings: blocked, working, done, idle. A runtime that says
+anything else — "compacting", a version Fabric has not met — could be mapped to
+`idle` and forgotten about.
+
+It is refused instead, by name, and the session keeps whatever state it had.
+The reason is the fleet's ordering: `idle` sorts to the bottom and `needs_input`
+sorts to the top, so a wrong `idle` on a terminal that is actually waiting for a
+human is the one mapping error that hides exactly the thing the fleet exists to
+surface.
+
+Two smaller decisions inside the same table:
+
+- **`blocked` maps to `needs_input`, not `needs_approval`.** Herdr can tell that
+  a pane is waiting for a human; it cannot tell whether what it wants is an
+  answer or permission. Claiming the stronger one would put an approval badge on
+  a session nobody can approve from Fabric.
+- **A discovered pane whose state is unknown is still shown**, with a null
+  state. Hiding it would be worse; it simply cannot be adopted until the mapping
+  learns the word.
+
+---
+
+## D39 — An adopted session declares what Fabric may not do to it
+
+**Decided** 2026-09-18, during Phase 8. **Implements** §9 principle 5.
+
+A terminal somebody else started has no structured conversation, no approval
+requests Fabric can answer, and no diffs — those belong to a thread T3 owns.
+Rather than discovering that by trying, an adopted session carries a capability
+record, and a runtime that claims nothing gets `ADOPTED_MINIMUM_CAPABILITIES`:
+everything false except showing the terminal.
+
+Every refusal names the capability _and_ why it is missing — "approvals belong to
+a provider session Fabric started; an adopted terminal has none to answer" —
+because a bare "not supported" tells the user nothing about whether a different
+setup would help.
+
+**Consequence:** the fleet row carries `canSendInput`, so a client can render
+what it may offer rather than offering everything and apologising afterwards.
+
+---
+
+## D40 — An adopted terminal can make the work need you
+
+**Decided** 2026-09-18, during Phase 8.
+
+The fleet's state for a work session is the most demanding of its live sessions.
+Adopted sessions are counted in that, so a Herdr pane that reports `blocked`
+makes the _work_ say it needs the user — even though Fabric cannot answer it,
+and even when the work has no thread of Fabric's own.
+
+The alternative — counting only sessions Fabric controls — would produce a fleet
+that says "idle" about work that is visibly stuck, which is the specific failure
+§29 Phase 4's exit criterion was written against. A session Fabric cannot
+control still tells the truth about what the work is waiting for.

@@ -58,6 +58,7 @@ import {
   layer as intentRepositoryLayer,
   type FabricIntentRow,
 } from "./IntentRepository.ts";
+import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -129,6 +130,7 @@ export const make = Effect.gen(function* () {
   // turns into three hundred errors in `server.test.ts`.
   const fleetContext = yield* Effect.context<
     | WorkSessionService
+    | AdoptedSessionService
     | ProjectionSnapshotQuery.ProjectionSnapshotQuery
     | ProviderRegistry.ProviderRegistry
   >();

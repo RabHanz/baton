@@ -21,6 +21,8 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
+import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts";
+import * as FabricHerdrAdapter from "./fabric/HerdrAdapterLive.ts";
 import * as FabricIntentExecutor from "./fabric/IntentExecutorLive.ts";
 import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationEffects from "./fabric/OrchestrationEffectsLive.ts";
@@ -364,6 +366,17 @@ const PullRequestServiceLive = PullRequestService.layer.pipe(
 /** Fabric work sessions. Needs only the SQL client. */
 const FabricWorkSessionServiceLive = FabricWorkSessionService.layer;
 
+/**
+ * Adopted sessions (§9), and the external runtime they come from.
+ *
+ * The adapter is provided here rather than inside the service so the one place
+ * that talks to another program stays visible — and so a machine without that
+ * program still gets a service whose every answer is a refusal by name.
+ */
+const FabricAdoptedSessionServiceLive = FabricAdoptedSessionService.layer.pipe(
+  Layer.provide(FabricHerdrAdapter.layer),
+);
+
 const GitManagerLayerLive = GitManager.layer.pipe(
   Layer.provideMerge(ProjectSetupScriptRunner.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
   Layer.provideMerge(WorktreeSetupTracker.layer),
@@ -538,6 +551,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
       PreviewLayerLive,
       DeviceLayerLive,
       FabricWorkSessionServiceLive,
+      FabricAdoptedSessionServiceLive,
     ),
   ),
   Layer.provideMerge(PersistenceLayerLive),

@@ -12,7 +12,7 @@
  * building the same fleet locally passes its real value and gets the stricter
  * answer. See `docs/fabric/DECISIONS.md` D17.
  */
-import { type FabricFleet } from "@t3tools/contracts";
+import { type FabricFleet, type FabricFleetAdopted } from "@t3tools/contracts";
 import {
   buildFabricFleet,
   filterFleetNeedsUser,
@@ -23,6 +23,7 @@ import * as Effect from "effect/Effect";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 /** A provider window at 100% is the account saying it is out, not a guess. */
@@ -35,6 +36,7 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
   const workSessions = yield* WorkSessionService;
   const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+  const adoptedSessions = yield* AdoptedSessionService;
 
   const sessions = yield* workSessions.list(
     input.includeArchived === undefined ? {} : { includeArchived: input.includeArchived },
@@ -73,6 +75,28 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     }
   }
 
+  // §9's adopted sessions: terminals Fabric did not start. They belong in the
+  // fleet for the same reason a thread does — the user asked "what is
+  // everything doing" — and the entry's state takes them into account, so a
+  // blocked Herdr pane makes the *work* say it needs you.
+  const adoptedRows = yield* adoptedSessions
+    .list({})
+    .pipe(Effect.catchCause(() => Effect.succeed([])));
+  const adopted = new Map<string, FabricFleetAdopted[]>();
+  for (const session of adoptedRows) {
+    if (session.workSessionId === null) continue;
+    const existing = adopted.get(session.workSessionId);
+    const row: FabricFleetAdopted = {
+      id: session.id,
+      runtime: session.runtime,
+      label: session.label,
+      state: session.state,
+      canSendInput: session.capabilities.sendInput,
+    };
+    if (existing === undefined) adopted.set(session.workSessionId, [row]);
+    else existing.push(row);
+  }
+
   const fleet = buildFabricFleet({
     workSessions: sessions,
     threads,
@@ -80,6 +104,7 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     environmentOnline: true,
     exhaustedProviderInstanceIds: exhausted,
     lastVisitedAt: () => null,
+    adopted,
     observedAt: DateTime.formatIso(yield* DateTime.now),
   });
 

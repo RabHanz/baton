@@ -22,6 +22,7 @@ import {
   fabricStateNeedsUser,
   type FabricFleet,
   type FabricFleetEntry,
+  type FabricFleetAdopted,
   type FabricFleetThread,
   type FabricSessionState,
   type WorkSession,
@@ -60,6 +61,11 @@ export interface FleetInput {
   readonly exhaustedProviderInstanceIds: ReadonlySet<string>;
   /** When this client last opened a thread. Null everywhere on a server. */
   readonly lastVisitedAt: (threadId: string) => string | null;
+  /**
+   * Adopted sessions (§9) by work session id. Absent means none, which is the
+   * answer on every environment without an external runtime.
+   */
+  readonly adopted?: ReadonlyMap<string, ReadonlyArray<FabricFleetAdopted>> | undefined;
   readonly observedAt: string;
 }
 
@@ -101,8 +107,15 @@ export function buildFabricFleet(input: FleetInput): FabricFleet {
       });
     }
 
+    const adopted = input.adopted?.get(workSession.id) ?? [];
+    // An adopted terminal that is blocked makes the *work* need the user, the
+    // same as one of ours would. A session Fabric cannot control still tells
+    // the truth about what the work is waiting for.
     const state = input.environmentOnline
-      ? deriveWorkSessionState(threads.map((thread) => thread.state))
+      ? deriveWorkSessionState([
+          ...threads.map((thread) => thread.state),
+          ...adopted.map((session) => session.state),
+        ])
       : "offline";
 
     entries.push({
@@ -114,6 +127,7 @@ export function buildFabricFleet(input: FleetInput): FabricFleet {
       needsUser: fabricStateNeedsUser(state),
       activeThreadId: workSession.activeThreadId,
       threads,
+      adopted,
       synopsis: workSession.synopsis ?? null,
       // The synopsis moves far more often than the record, so it is what
       // "recently" means for ordering. Falling back to the record's own
