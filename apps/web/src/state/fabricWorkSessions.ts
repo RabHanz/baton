@@ -12,7 +12,12 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { createFabricWorkSessionAtoms } from "@t3tools/client-runtime/state/fabric-work-sessions";
-import type { EnvironmentId, FabricFleetEntry, WorkSession } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  FabricFleetEntry,
+  OrchestrationRuleWithFirings,
+  WorkSession,
+} from "@t3tools/contracts";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { useEnvironmentQuery } from "./query";
@@ -99,4 +104,47 @@ export function useFleet(environmentId: EnvironmentId | null): {
   if (environmentId === null) return { entries: NO_FLEET_ENTRIES, loaded: false };
   if (signature === "") return { entries: NO_FLEET_ENTRIES, loaded: true };
   return read;
+}
+
+const NO_RULES: ReadonlyArray<OrchestrationRuleWithFirings> = [];
+
+/**
+ * One environment's orchestration rules, on the same refresh trigger as the
+ * fleet.
+ *
+ * A firing changes the work session it belongs to — it starts a thread or
+ * writes a synopsis finding — so the work-session stream already signals "a
+ * rule may have done something", and a second subscription would only add a
+ * way for the two to disagree.
+ */
+export function useOrchestrationRules(environmentId: EnvironmentId | null): {
+  readonly rules: ReadonlyArray<OrchestrationRuleWithFirings>;
+} {
+  const { workSessions } = useWorkSessions(environmentId);
+  const [rules, setRules] = useState<ReadonlyArray<OrchestrationRuleWithFirings>>(NO_RULES);
+  const readRules = useAtomCommand(fabricWorkSessions.rules, { reportFailure: false });
+  const signature = useMemo(
+    () =>
+      workSessions
+        .map((entry) => `${entry.id}:${entry.updatedAt}:${entry.synopsis?.updatedAt ?? ""}`)
+        .join("|"),
+    [workSessions],
+  );
+
+  useEffect(() => {
+    if (environmentId === null || signature === "") return;
+    let cancelled = false;
+    // Disabled rules are included on purpose: a rule the user switched off
+    // should stay visible, or turning it back on means remembering it existed.
+    void readRules({ environmentId, input: { includeDisabled: true } }).then((result) => {
+      if (cancelled) return;
+      setRules(result._tag === "Success" ? result.value.rules : NO_RULES);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [environmentId, readRules, signature]);
+
+  if (environmentId === null || signature === "") return { rules: NO_RULES };
+  return { rules };
 }

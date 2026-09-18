@@ -6,6 +6,7 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
+  FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
@@ -185,6 +186,14 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [FABRIC_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
+  // A rule starts provider sessions and messages threads when it fires, so
+  // creating or re-enabling one is an operate-level act even though the RPC
+  // itself only writes a row. Reading the rules is a read.
+  [FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate]: AuthOrchestrationOperateScope,
+  [FABRIC_ORCHESTRATION_WS_METHODS.ruleList]: AuthOrchestrationReadScope,
+  [FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable]: AuthOrchestrationOperateScope,
+  [FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable]: AuthOrchestrationOperateScope,
+  [FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm]: AuthOrchestrationOperateScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

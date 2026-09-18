@@ -1,0 +1,301 @@
+/**
+ * Evaluates orchestration rules, on the same events Phase 4's state derivation
+ * reads.
+ *
+ * The reactor's only judgement is arithmetic: it computes the work session's
+ * `FabricSessionState` with the shared derivation, asks `shouldFire` whether a
+ * rule may run, and runs it. **No model decides that anything finished.** That
+ * matters more here than anywhere else in Fabric, because a wrong "it's done"
+ * starts a provider session and spends a subscription.
+ *
+ * Two ordering choices worth naming:
+ *
+ *   - **The state is recomputed, not taken from the event.** A single thread
+ *     event does not tell you what the *work* is doing when two threads are
+ *     live, and a rule that fired on one thread finishing while its sibling
+ *     was still failing would be firing on the wrong fact.
+ *   - **A firing is recorded before its action runs.** If the action crashes,
+ *     the bound has still been spent. The alternative — record on success —
+ *     lets a rule whose action reliably fails retry forever, which is the loop
+ *     wearing a different hat.
+ */
+import {
+  deriveFabricSessionState,
+  deriveWorkSessionState,
+  type FabricSessionState,
+  type OrchestrationAction,
+  type OrchestrationFiring,
+  type OrchestrationRule,
+  type ThreadId,
+  type WorkSessionId,
+} from "@t3tools/contracts";
+import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import type * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
+
+import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { forkParked } from "../serverActivation.ts";
+import { shouldFire } from "./OrchestrationRuleService.ts";
+import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
+import { WorkSessionService } from "./WorkSessionService.ts";
+
+/**
+ * What a rule's action needs from the rest of the server. Injected rather than
+ * imported so the reactor can be tested without an orchestration engine, and
+ * so the one place that creates threads stays visible.
+ */
+export interface OrchestrationEffects {
+  readonly startProviderSession: (input: {
+    readonly workSessionId: WorkSessionId;
+    readonly action: Extract<OrchestrationAction, { kind: "start_provider_session" }>;
+  }) => Effect.Effect<ThreadId | null>;
+  readonly messageThread: (input: {
+    readonly threadId: ThreadId;
+    readonly text: string;
+  }) => Effect.Effect<boolean>;
+  readonly notify: (input: {
+    readonly workSessionId: WorkSessionId;
+    readonly message: string;
+  }) => Effect.Effect<void>;
+}
+
+export class FabricOrchestrationReactor extends Context.Service<
+  FabricOrchestrationReactor,
+  {
+    readonly start: () => Effect.Effect<void, never, Scope.Scope>;
+    readonly drain: Effect.Effect<void>;
+    /** Evaluate one work session now. The reactor's own unit of work. */
+    readonly evaluate: (input: {
+      readonly workSessionId: WorkSessionId;
+      readonly changedThreadId: ThreadId | null;
+    }) => Effect.Effect<ReadonlyArray<OrchestrationFiring>>;
+  }
+>()("t3/fabric/OrchestrationReactor/FabricOrchestrationReactor") {}
+
+export class OrchestrationEffectsService extends Context.Service<
+  OrchestrationEffectsService,
+  OrchestrationEffects
+>()("t3/fabric/OrchestrationReactor/OrchestrationEffectsService") {}
+
+interface Pending {
+  readonly workSessionId: WorkSessionId;
+  readonly changedThreadId: ThreadId | null;
+}
+
+/** @public Service construction is part of the canonical Effect module API. */
+export const make = Effect.gen(function* () {
+  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const workSessions = yield* WorkSessionService;
+  const rules = yield* OrchestrationRuleService;
+  const effects = yield* OrchestrationEffectsService;
+
+  /**
+   * The work session's state, recomputed from its live threads. Deliberately
+   * the same derivation the fleet uses: two answers to "is this done?" would
+   * be one answer too many.
+   */
+  const currentState = (workSessionId: WorkSessionId) =>
+    Effect.gen(function* () {
+      const workSession = yield* workSessions
+        .get(workSessionId)
+        .pipe(Effect.catchCause(() => Effect.succeed(null)));
+      if (workSession === null) return null;
+      const live = workSession.providerSessions.filter((session) => session.detachedAt === null);
+      const states: FabricSessionState[] = [];
+      for (const providerSession of live) {
+        const shell = yield* snapshotQuery
+          .getThreadShellById(providerSession.threadId)
+          .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
+        const thread = Option.getOrNull(shell);
+        // The attachment outlived the thread. That is the domain's core
+        // invariant, not an error, and it contributes no state.
+        if (thread === null) continue;
+        states.push(
+          deriveFabricSessionState({
+            environmentOnline: true,
+            hasPendingApprovals: thread.hasPendingApprovals,
+            hasPendingUserInput: thread.hasPendingUserInput,
+            sessionStatus: thread.session?.status ?? null,
+            sessionLastError: thread.session?.lastError ?? null,
+            backgroundLiveness: thread.backgroundLiveness ?? null,
+            latestTurnState: thread.latestTurn?.state ?? null,
+            latestTurnCompletedAt: thread.latestTurn?.completedAt ?? null,
+            // The environment does not know when the user last looked; the
+            // rule only needs "a turn ended", which `done_unseen` gives.
+            lastVisitedAt: null,
+            providerQuotaExhausted: false,
+          }),
+        );
+      }
+      return deriveWorkSessionState(states);
+    });
+
+  const runAction = (input: {
+    readonly rule: OrchestrationRule;
+    readonly firing: OrchestrationFiring;
+  }) =>
+    Effect.gen(function* () {
+      const action = input.rule.action;
+      switch (action.kind) {
+        case "start_provider_session": {
+          const threadId = yield* effects.startProviderSession({
+            workSessionId: input.rule.workSessionId,
+            action,
+          });
+          return threadId === null
+            ? {
+                // Not "failed": most often the named account is not installed
+                // or is switched off on this environment, which is a correct
+                // reason to do nothing rather than a fault to alarm about.
+                outcome: "skipped" as const,
+                threadId: null,
+                detail: `${action.providerInstanceId} is not available on this environment.`,
+              }
+            : {
+                outcome: "completed" as const,
+                threadId,
+                detail: `Started ${action.providerInstanceId} as ${action.role}.`,
+              };
+        }
+        case "message_active_implementation_session": {
+          const workSession = yield* workSessions
+            .get(input.rule.workSessionId)
+            .pipe(Effect.catchCause(() => Effect.succeed(null)));
+          const target = workSession?.activeThreadId ?? null;
+          if (target === null) {
+            return {
+              outcome: "skipped" as const,
+              threadId: null,
+              detail: "No active implementation session to message.",
+            };
+          }
+          const sent = yield* effects.messageThread({ threadId: target, text: action.prompt });
+          return sent
+            ? {
+                outcome: "completed" as const,
+                threadId: target,
+                detail: "Messaged the implementer.",
+              }
+            : { outcome: "failed" as const, threadId: null, detail: "Could not send the message." };
+        }
+        case "notify": {
+          yield* effects.notify({
+            workSessionId: input.rule.workSessionId,
+            message: action.message,
+          });
+          return { outcome: "completed" as const, threadId: null, detail: action.message };
+        }
+        case "confirmation_gate":
+          // Park. Nothing downstream runs until a human answers, which is the
+          // entire point of the step existing.
+          return {
+            outcome: "awaiting_confirmation" as const,
+            threadId: null,
+            detail: action.question,
+          };
+      }
+    });
+
+  const evaluate: FabricOrchestrationReactor["Service"]["evaluate"] = ({
+    workSessionId,
+    changedThreadId,
+  }) =>
+    Effect.gen(function* () {
+      const state = yield* currentState(workSessionId);
+      if (state === null) return [];
+      const { rules: candidates, firings } = yield* rules
+        .candidatesFor(workSessionId)
+        .pipe(Effect.catchCause(() => Effect.succeed({ rules: [], firings: [] })));
+
+      const fired: OrchestrationFiring[] = [];
+      for (const rule of candidates) {
+        const decision = shouldFire({ rule, state, changedThreadId, firings });
+        if (!decision.fire) continue;
+
+        // Recorded before the action runs: a rule whose action reliably fails
+        // must still spend its bound, or it retries forever.
+        const firing = yield* rules
+          .beginFiring({ rule, triggeredBy: `${rule.trigger.kind}:${state}` })
+          .pipe(Effect.catchCause(() => Effect.succeed(null)));
+        if (firing === null) continue;
+
+        const result = yield* runAction({ rule, firing }).pipe(
+          Effect.catchCause(() =>
+            Effect.succeed({
+              outcome: "failed" as const,
+              threadId: null,
+              detail: "The action raised.",
+            }),
+          ),
+        );
+        const completed = yield* rules
+          .completeFiring({
+            firingId: firing.id,
+            outcome: result.outcome,
+            producedThreadId: result.threadId,
+            detail: result.detail,
+          })
+          .pipe(Effect.catchCause(() => Effect.succeed(null)));
+        fired.push(completed ?? firing);
+      }
+      return fired;
+    });
+
+  const worker = yield* makeDrainableWorker((pending: Pending) =>
+    evaluate(pending).pipe(
+      // Orchestration is a convenience layered on the work. A failure here must
+      // never take down the event loop that carries the work itself.
+      Effect.ignoreCause({ log: true }),
+      Effect.asVoid,
+    ),
+  );
+
+  const start: FabricOrchestrationReactor["Service"]["start"] = Effect.fn(
+    "FabricOrchestrationReactor.start",
+  )(function* () {
+    const events = yield* engine.subscribeDomainEvents;
+    yield* forkParked(
+      Stream.runForEach(events, (event) => {
+        const threadId = threadIdForEvent(event);
+        if (threadId === null) return Effect.void;
+        return workSessions.findForThread(threadId).pipe(
+          Effect.catchCause(() => Effect.succeed(null)),
+          Effect.flatMap((workSessionId) =>
+            workSessionId === null
+              ? Effect.void
+              : worker.enqueue({ workSessionId, changedThreadId: threadId }),
+          ),
+        );
+      }),
+    );
+  });
+
+  return { start, drain: worker.drain, evaluate } satisfies FabricOrchestrationReactor["Service"];
+});
+
+/**
+ * The events that can change what a work session is doing. Deliberately the
+ * same set Phase 4's state derivation reads from, because a rule must not fire
+ * on a fact the fleet cannot see.
+ */
+export function threadIdForEvent(event: { type: string; payload?: unknown }): ThreadId | null {
+  switch (event.type) {
+    case "thread.turn-diff-completed":
+    case "thread.session-set":
+    case "thread.activity-appended":
+    case "thread.message-sent": {
+      const payload = event.payload as { threadId?: ThreadId } | undefined;
+      return payload?.threadId ?? null;
+    }
+    default:
+      return null;
+  }
+}
+
+export const layer = Layer.effect(FabricOrchestrationReactor, make);

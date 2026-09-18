@@ -165,6 +165,16 @@ import {
 } from "./project.ts";
 import { FabricFleetInput, FabricFleetResult } from "./fabric/fleet.ts";
 import {
+  FABRIC_ORCHESTRATION_WS_METHODS,
+  OrchestrationConfirmInput,
+  OrchestrationRuleCreateInput,
+  OrchestrationRuleError,
+  OrchestrationRuleListInput,
+  OrchestrationRuleListResult,
+  OrchestrationRuleRefInput,
+  OrchestrationRuleResult,
+} from "./fabric/orchestrationRule.ts";
+import {
   FABRIC_WS_METHODS,
   WorkSessionAttachThreadInput,
   WorkSessionCreateInput,
@@ -1462,6 +1472,36 @@ const WsFabricFleetGetRpc = Rpc.make(FABRIC_WS_METHODS.fleetGet, {
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
+const WsFabricOrchestrationRuleCreateRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate, {
+  payload: OrchestrationRuleCreateInput,
+  success: OrchestrationRuleResult,
+  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricOrchestrationRuleListRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleList, {
+  payload: OrchestrationRuleListInput,
+  success: OrchestrationRuleListResult,
+  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricOrchestrationRuleDisableRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable, {
+  payload: OrchestrationRuleRefInput,
+  success: OrchestrationRuleResult,
+  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricOrchestrationRuleEnableRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable, {
+  payload: OrchestrationRuleRefInput,
+  success: OrchestrationRuleResult,
+  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricOrchestrationRuleConfirmRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm, {
+  payload: OrchestrationConfirmInput,
+  success: OrchestrationRuleListResult,
+  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
+});
+
 const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
@@ -1623,5 +1663,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricWorkSessionArchiveRpc,
   WsFabricWorkSessionUnarchiveRpc,
   WsFabricFleetGetRpc,
+  WsFabricOrchestrationRuleCreateRpc,
+  WsFabricOrchestrationRuleListRpc,
+  WsFabricOrchestrationRuleDisableRpc,
+  WsFabricOrchestrationRuleEnableRpc,
+  WsFabricOrchestrationRuleConfirmRpc,
   WsFabricSubscribeWorkSessionsRpc,
 );

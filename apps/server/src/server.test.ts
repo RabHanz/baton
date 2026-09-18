@@ -108,6 +108,8 @@ const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unk
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
+import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
 import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
 import {
@@ -1217,10 +1219,18 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mergeAll(
           workspaceAndProjectServicesLayer,
-          // The real work-session service on its own in-memory database. Not a
-          // mock: this file exercises the routes, and a mocked service would
-          // prove nothing about whether they are wired.
+          // The real work-session and rule services, each on its own in-memory
+          // database. Not mocks: this file exercises the routes, and a mocked
+          // service would prove nothing about whether they are wired.
           FabricWorkSessionService.layer.pipe(Layer.provide(SqlitePersistenceMemory)),
+          FabricOrchestrationRuleService.layer.pipe(Layer.provide(SqlitePersistenceMemory)),
+          // Inert on purpose: a live orchestration reactor could start a
+          // provider session from a route test.
+          Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
+            start: () => Effect.void,
+            drain: Effect.void,
+            evaluate: () => Effect.succeed([]),
+          }),
         ),
       ),
       Layer.provideMerge(FetchHttpClient.layer),

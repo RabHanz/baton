@@ -33,7 +33,9 @@ import {
   type DiscoveredLocalServerList,
   EventId,
   type EditorId,
+  FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
+  OrchestrationFiringNotFoundError,
   type FileManagerRevealKind,
   type OrchestrationClientOrigin,
   type OrchestrationCommand,
@@ -89,6 +91,8 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as FleetQuery from "./fabric/FleetQuery.ts";
+import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
+import * as OrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
 import * as WorkSessionService from "./fabric/WorkSessionService.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -570,6 +574,8 @@ const makeWsRpcLayer = (
       const providerAuth = yield* ProviderAuthService;
       const providerInstances = yield* ProviderInstanceRegistry;
       const workSessions = yield* WorkSessionService.WorkSessionService;
+      const orchestrationRules = yield* OrchestrationRuleService.OrchestrationRuleService;
+      const orchestrationReactor = yield* FabricOrchestrationReactor.FabricOrchestrationReactor;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
@@ -3792,6 +3798,69 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             FABRIC_WS_METHODS.fleetGet,
             Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>
+          observeRpcEffect(
+            FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate,
+            Effect.map(orchestrationRules.create(input), (rule) => ({ rule })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ORCHESTRATION_WS_METHODS.ruleList]: (input) =>
+          observeRpcEffect(
+            FABRIC_ORCHESTRATION_WS_METHODS.ruleList,
+            Effect.map(orchestrationRules.list(input), (rules) => ({ rules })),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable]: (input) =>
+          observeRpcEffect(
+            FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable,
+            Effect.map(
+              orchestrationRules.setStatus({ id: input.id, status: "disabled" }),
+              (rule) => ({ rule }),
+            ),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable]: (input) =>
+          observeRpcEffect(
+            FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable,
+            Effect.map(
+              orchestrationRules.setStatus({ id: input.id, status: "enabled" }),
+              (rule) => ({ rule }),
+            ),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm]: (input) =>
+          observeRpcEffect(
+            FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm,
+            Effect.gen(function* () {
+              const firing = yield* orchestrationRules.getFiring(input.firingId);
+              if (firing === null) {
+                return yield* new OrchestrationFiringNotFoundError({ firingId: input.firingId });
+              }
+              // Answering the gate settles that firing either way. A refusal
+              // is a completed decision, not a failure, and the sequenced
+              // rules that were waiting on it stay parked because only a
+              // `completed` outcome releases them.
+              yield* orchestrationRules.completeFiring({
+                firingId: input.firingId,
+                outcome: input.confirmed ? "completed" : "skipped",
+                producedThreadId: null,
+                detail: input.confirmed ? "Confirmed." : "Declined.",
+              });
+              // Re-evaluating lets anything sequenced behind a confirmed gate
+              // run immediately rather than waiting for the next event.
+              if (input.confirmed) {
+                yield* orchestrationReactor
+                  .evaluate({ workSessionId: firing.workSessionId, changedThreadId: null })
+                  .pipe(Effect.ignoreCause({ log: true }));
+              }
+              const rules = yield* orchestrationRules.list({
+                workSessionId: firing.workSessionId,
+                includeDisabled: true,
+              });
+              return { rules };
+            }),
             { "rpc.aggregate": "fabric" },
           ),
         [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>

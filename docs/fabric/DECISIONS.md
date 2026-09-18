@@ -440,3 +440,84 @@ A related trap, caught by a test: the "nothing moved, do not write" guard first 
 which swallowed the opening update of a fresh synopsis whenever the signal's instant matched the empty
 record's. Identity is the right test, because the reducer returns its input unchanged for a signal
 that carried nothing.
+
+---
+
+## D19 — The rule's action field is `action`, not `then`
+
+**Decided** 2026-09-18, during Phase 9. **Deviates from** §22's YAML sketch.
+
+§22 writes rules as `trigger: … then: …`, and the first cut of the contract used `then` verbatim. A
+lint rule caught what that means in TypeScript: an object with a `then` property is **thenable**, so
+`await rule` or a rule landing inside a resolved promise makes the runtime call `rule.then(...)`.
+These objects cross an RPC boundary and land in promise-based client code, where exactly that
+happens.
+
+**Consequence:** the wire field is `action`. §22's vocabulary survives in the documentation and in
+`describeRule`, which is where a human reads it; the property name is one a runtime cannot mistake
+for a promise.
+
+Recorded because the specification's own spelling was changed, and a reader comparing the two should
+find the reason here rather than assume a typo.
+
+---
+
+## D20 — A sequenced rule fires once per predecessor completion, not once per evaluation
+
+**Decided** 2026-09-18, after the first live run.
+
+`after_rule` originally asked "has the predecessor completed?". That is true forever after the first
+completion, so the rule fired on every subsequent event until `maxFirings` stopped it. The live proof
+recorded `fired=3/3` on a notify rule that should have fired once.
+
+The bound worked — nothing ran away, and the rule reported itself `exhausted` rather than going quiet
+— but **a bound is a safety net, not a schedule**. A rule that relies on its limit to stop is a rule
+whose limit is the only thing standing between the user and a runaway, and it burns the budget that
+exists for real re-runs.
+
+**Consequence:** a sequenced rule may fire only while its own firing count is behind the number of
+times its predecessor has _completed_. One review completing releases one notification; a second
+review releases a second. That is also what makes implement → review → fix → review work at all,
+because the same rule has to be allowed to fire again for the right reason.
+
+Worth stating plainly: the unit tests passed before this fix. The behaviour was only visible in a run
+against a real provider, which is the argument for having one.
+
+---
+
+## D21 — A rule refuses to start a session on a provider that cannot run
+
+**Decided** 2026-09-18, after the first live run.
+
+The specification's sentence names Codex. This environment has a Codex provider _configured_ but no
+`codex` binary installed, so the rule dutifully created a thread, the adapter failed to spawn, and
+the work session's synopsis filled with a `spawn codex ENOENT` stack trace — a rule doing exactly
+what it was told and producing nothing but noise.
+
+**Consequence:** `startProviderSession` checks the instance registry before creating anything —
+enabled, installed, and not marked unavailable — and the firing records `skipped` with the reason.
+Not `failed`: "that account is not available on this environment" is a correct outcome, and calling
+it a failure would train the user to ignore failures.
+
+The general rule this instance of: **a rule's action should refuse early rather than create
+wreckage.** Anything a rule can check before it acts, it checks before it acts.
+
+---
+
+## D22 — What a rule may do is a named service, not access to the engine
+
+**Decided** 2026-09-18, during Phase 9.
+
+The reactor could have been handed the orchestration engine and allowed to dispatch whatever it
+liked. It is instead given `OrchestrationEffectsService`, whose whole surface is three methods: start
+a provider session, message the active implementation thread, record a notification.
+
+The reason is auditability under change. §22's limit — a graph over work sessions, not unrestricted
+agent self-replication — is not enforceable by intention; it is enforceable by the list of things the
+code can call being short and living in one file. A future phase that wants a rule to push a branch
+has to add a method, and that shows up as a diff somebody reviews.
+
+**Consequence:** rules cannot archive, delete, settle, push, or touch a work session other than their
+own, because there is no method for it. The notification action writes to the work session's synopsis
+rather than inventing a second delivery mechanism, so a rule's message reaches the fleet and the
+spoken status through the path those already read.
