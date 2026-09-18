@@ -61,6 +61,18 @@ export interface IntentProvider {
   readonly model: string | null;
   /** Installed, enabled and not reporting itself unavailable. */
   readonly available: boolean;
+  /**
+   * The account has proven a login: authenticated *and* naming the address it
+   * is authenticated as.
+   *
+   * Distinct from `available`, and the distinction cost a live deploy to find.
+   * A configured instance whose stored credentials have expired still reports
+   * itself enabled, installed and "authenticated" — what it cannot do is
+   * answer. Anything that spends a call on an account should prefer one of
+   * these; anything the user *named* should still be attempted, because "it is
+   * not logged in" is a better answer than silently using another account.
+   */
+  readonly signedIn: boolean;
 }
 
 export interface IntentGate {

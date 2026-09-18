@@ -36,6 +36,7 @@ const base: IntentVocabulary = {
       label: "Claude A",
       model: "claude-sonnet",
       available: true,
+      signedIn: true,
     },
     {
       instanceId: "codex",
@@ -43,6 +44,7 @@ const base: IntentVocabulary = {
       label: "Codex",
       model: "gpt-5",
       available: false,
+      signedIn: false,
     },
   ],
   openGates: [],

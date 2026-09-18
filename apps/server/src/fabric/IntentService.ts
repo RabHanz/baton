@@ -214,6 +214,11 @@ export const make = Effect.gen(function* () {
         candidate.provider.enabled &&
         candidate.provider.installed &&
         isProviderAvailable(candidate.provider),
+      // An address is the only thing in the snapshot that says a login actually
+      // resolved. `status: "authenticated"` survives an expired refresh token.
+      signedIn:
+        candidate.provider.auth.status === "authenticated" &&
+        (candidate.provider.auth.email ?? "").trim().length > 0,
     }));
   });
 

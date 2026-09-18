@@ -32,6 +32,7 @@ import {
   type IntentModelReply,
 } from "@t3tools/shared/fabricIntentModel";
 import type { IntentVocabulary } from "@t3tools/shared/fabricIntentParser";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -73,18 +74,32 @@ export class FabricIntentInterpreter extends Context.Service<
 /**
  * Which account reads the sentence.
  *
- * The first available one, in the order the environment lists them — a stable,
- * boring rule the user can predict. Deliberately not "the busiest" or "the one
- * with most quota": a sentence should not be read by a different account
- * depending on the hour, because the *account* is what the reading is billed
- * to and what its rate limit belongs to.
+ * The first **signed-in** one, in the order the environment lists them — a
+ * stable, boring rule the user can predict. Deliberately not "the busiest" or
+ * "the one with most quota": a sentence should not be read by a different
+ * account depending on the hour, because the account is what the reading is
+ * billed to and what its rate limit belongs to.
+ *
+ * "Signed in" rather than merely "available", and that distinction cost a live
+ * deploy to find. On the Director's local box the first configured instance is
+ * a claude-swap account whose refresh token has expired: enabled, installed,
+ * and still reporting `authenticated`, because the CLI knows whose account it
+ * is. It simply cannot answer. The interpreter picked it, the call failed
+ * instantly, and the sentence came back as the grammar's refusal — silent, and
+ * identical to having no model at all.
+ *
+ * Falls back to any available account when none reports an address: a provider
+ * that does not publish one is not thereby broken, and refusing to try would be
+ * the same silence in a different costume.
  */
 export const chooseInterpreterInstance = (
   vocabulary: IntentVocabulary,
 ): { readonly instanceId: string; readonly model: string } | null => {
-  const available = vocabulary.providers.find((provider) => provider.available);
-  if (available === undefined) return null;
-  return { instanceId: available.instanceId, model: INTENT_MODEL_SLUG };
+  const chosen =
+    vocabulary.providers.find((provider) => provider.available && provider.signedIn) ??
+    vocabulary.providers.find((provider) => provider.available);
+  if (chosen === undefined) return null;
+  return { instanceId: chosen.instanceId, model: INTENT_MODEL_SLUG };
 };
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -122,7 +137,12 @@ export const make = Effect.gen(function* () {
         Effect.catchCause((cause) =>
           Effect.logWarning("Fabric could not read a sentence with a model", {
             sentence,
-            cause,
+            instanceId: chosen.instanceId,
+            model: chosen.model,
+            // Flattened: the structured logger renders a Cause as
+            // `[Object]`, which is exactly no help at the one moment somebody
+            // is reading this line.
+            errors: Cause.prettyErrors(cause).map((error) => error.message),
           }).pipe(Effect.as(null)),
         ),
       );
