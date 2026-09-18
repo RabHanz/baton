@@ -78,6 +78,7 @@ it("refuses to fire once the bound is spent", () => {
     state: "done_unseen",
     changedThreadId: ThreadId.make("t1"),
     firings: [],
+    stateChanged: true,
   });
   assert.deepStrictEqual(decision, { fire: false, reason: "exhausted" });
 });
@@ -97,6 +98,7 @@ it("refuses to fire on a thread its own firing created", () => {
         outcome: "completed",
       },
     ],
+    stateChanged: true,
   });
   assert.deepStrictEqual(decision, { fire: false, reason: "would_self_trigger" });
 });
@@ -114,6 +116,7 @@ it("checks self-triggering before the trigger, so a matching state cannot slip p
         outcome: "completed",
       },
     ],
+    stateChanged: true,
   });
   assert.strictEqual(decision.fire, false);
   assert.strictEqual(decision.fire === false ? decision.reason : null, "would_self_trigger");
@@ -123,7 +126,13 @@ it("holds a sequenced rule until its predecessor completed", () => {
   const first = OrchestrationRuleId.make("rule-first");
   const sequenced = rule({ trigger: { kind: "after_rule", ruleId: first } });
   assert.deepStrictEqual(
-    shouldFire({ rule: sequenced, state: "done_unseen", changedThreadId: null, firings: [] }),
+    shouldFire({
+      rule: sequenced,
+      state: "done_unseen",
+      changedThreadId: null,
+      firings: [],
+      stateChanged: true,
+    }),
     { fire: false, reason: "predecessor_not_completed" },
   );
   // An unanswered confirmation gate is `awaiting_confirmation`, not completed,
@@ -134,6 +143,7 @@ it("holds a sequenced rule until its predecessor completed", () => {
       state: "done_unseen",
       changedThreadId: null,
       firings: [{ ruleId: first, producedThreadId: null, outcome: "awaiting_confirmation" }],
+      stateChanged: true,
     }),
     { fire: false, reason: "predecessor_not_completed" },
   );
@@ -143,6 +153,7 @@ it("holds a sequenced rule until its predecessor completed", () => {
       state: "done_unseen",
       changedThreadId: null,
       firings: [{ ruleId: first, producedThreadId: null, outcome: "completed" }],
+      stateChanged: true,
     }),
     { fire: true },
   );
@@ -174,6 +185,7 @@ it("fires a sequenced rule once per predecessor completion, not once per event",
       state: "done_unseen",
       changedThreadId: null,
       firings: [predecessorCompleted, ownFiring],
+      stateChanged: true,
     }),
     { fire: false, reason: "predecessor_not_completed" },
   );
@@ -186,6 +198,7 @@ it("fires a sequenced rule once per predecessor completion, not once per event",
       state: "done_unseen",
       changedThreadId: null,
       firings: [predecessorCompleted, ownFiring, predecessorCompleted],
+      stateChanged: true,
     }),
     { fire: true },
   );
@@ -198,12 +211,61 @@ it("refuses a disabled rule and a state the trigger does not match", () => {
       state: "done_unseen",
       changedThreadId: null,
       firings: [],
+      stateChanged: true,
     }),
     { fire: false, reason: "disabled" },
   );
   assert.deepStrictEqual(
-    shouldFire({ rule: rule(), state: "working", changedThreadId: null, firings: [] }),
+    shouldFire({
+      rule: rule(),
+      state: "working",
+      changedThreadId: null,
+      firings: [],
+      stateChanged: true,
+    }),
     { fire: false, reason: "trigger_not_matched" },
+  );
+});
+
+it("fires on entering a state, not while it stays true", () => {
+  // A trigger names a transition. A work session that sits idle for an hour
+  // has not finished a hundred times, and before this the bound was the only
+  // thing stopping it from saying so — the shape D20 already called wrong.
+  assert.deepStrictEqual(
+    shouldFire({
+      rule: rule({ firedCount: 1 }),
+      state: "idle",
+      changedThreadId: null,
+      firings: [],
+      stateChanged: true,
+    }),
+    { fire: true },
+  );
+  assert.deepStrictEqual(
+    shouldFire({
+      rule: rule({ firedCount: 1 }),
+      state: "idle",
+      changedThreadId: null,
+      firings: [],
+      stateChanged: false,
+    }),
+    { fire: false, reason: "state_unchanged" },
+  );
+});
+
+it("lets a rule that has never fired act on a state it finds already true", () => {
+  // "When this finishes, have it reviewed", said about work that has just
+  // finished, has to do something. Only its second firing waits for a new
+  // transition.
+  assert.deepStrictEqual(
+    shouldFire({
+      rule: rule({ firedCount: 0 }),
+      state: "done_unseen",
+      changedThreadId: null,
+      firings: [],
+      stateChanged: false,
+    }),
+    { fire: true },
   );
 });
 
@@ -279,6 +341,7 @@ layer("OrchestrationRuleService", (it) => {
           state: "done_unseen",
           changedThreadId: null,
           firings: [],
+          stateChanged: true,
         }).fire,
       );
     }),
@@ -393,6 +456,26 @@ layer("OrchestrationRuleService", (it) => {
           detail: "",
         }),
       );
+    }),
+  );
+
+  it.effect("remembers the state a work session was last seen in", () =>
+    Effect.gen(function* () {
+      // Durable rather than in memory, for the reason the firing count is: a
+      // restart would otherwise call every matched state a fresh transition,
+      // and a restart is when a runaway does the most damage.
+      const service = yield* OrchestrationRuleService;
+      const id = WorkSessionId.make("ws-observed");
+      assert.isNull(yield* service.observeState({ workSessionId: id, state: "working" }));
+      assert.strictEqual(
+        yield* service.observeState({ workSessionId: id, state: "working" }),
+        "working",
+      );
+      assert.strictEqual(
+        yield* service.observeState({ workSessionId: id, state: "idle" }),
+        "working",
+      );
+      assert.strictEqual(yield* service.observeState({ workSessionId: id, state: "idle" }), "idle");
     }),
   );
 });

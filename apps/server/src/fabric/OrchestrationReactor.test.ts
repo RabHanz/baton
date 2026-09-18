@@ -110,6 +110,22 @@ const finishedThread: OrchestrationThreadShell = {
   hasActionableProposedPlan: false,
 };
 
+/** The same thread, mid-turn: `working`, which no trigger matches. */
+const workingThread: OrchestrationThreadShell = {
+  ...finishedThread,
+  latestTurn: {
+    turnId: TurnId.make("turn-2"),
+    state: "running",
+    requestedAt: "2026-09-18T05:01:00.000Z",
+    startedAt: "2026-09-18T05:01:01.000Z",
+    completedAt: null,
+    assistantMessageId: null,
+  },
+};
+
+/** What the projection reports right now. Reset by each test that moves it. */
+let currentThread: OrchestrationThreadShell = finishedThread;
+
 const reviewAction = {
   kind: "start_provider_session",
   providerInstanceId: codex,
@@ -133,7 +149,10 @@ const harness = (effects: Partial<OrchestrationEffects>) =>
     Layer.provideMerge(Layer.mergeAll(ruleServiceLayer, workSessionLayer)),
     Layer.provide(
       Layer.mock(ProjectionSnapshotQuery)({
-        getThreadShellById: () => Effect.succeed(Option.some(finishedThread)),
+        // Read through a holder, so a test can move the work session between
+        // states — the only way to exercise a transition rather than a
+        // condition.
+        getThreadShellById: () => Effect.succeed(Option.some(currentThread)),
       }),
     ),
     Layer.provide(
@@ -148,6 +167,7 @@ const harness = (effects: Partial<OrchestrationEffects>) =>
   );
 
 const givenFinishedWork = Effect.gen(function* () {
+  currentThread = finishedThread;
   const workSessions = yield* WorkSessionService;
   yield* workSessions.create({ id: workSessionId, projectId, title: "Reactor work" });
   yield* workSessions.attachThread({
@@ -221,6 +241,51 @@ describe("the reactor's own evaluation", () => {
     ),
   );
 
+  it.effect("fires once on a state that persists, and again when it is re-entered", () =>
+    Effect.gen(function* () {
+      // The defect this closes: a work session sitting idle re-fired every
+      // `on_done` rule on every unrelated thread event, up to the bound. The
+      // bound contained it, and D20 already said what a bound is — a safety
+      // net, not a schedule.
+      currentThread = finishedThread;
+      yield* givenFinishedWork;
+      const rules = yield* OrchestrationRuleService;
+      const id = OrchestrationRuleId.make("rule-transition");
+      yield* rules.create({
+        id,
+        workSessionId,
+        trigger: { kind: "on_done" },
+        action: reviewAction,
+      });
+
+      const reactor = yield* FabricOrchestrationReactor;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        yield* reactor.evaluate({ workSessionId, changedThreadId: implThreadId });
+      }
+      assert.strictEqual(yield* ruleCount(id), 1);
+
+      // Out of the matching state: nothing fires, and nothing is armed.
+      currentThread = workingThread;
+      yield* reactor.evaluate({ workSessionId, changedThreadId: implThreadId });
+      assert.strictEqual(yield* ruleCount(id), 1);
+
+      // Back into it: a real transition, and a second firing.
+      currentThread = finishedThread;
+      yield* reactor.evaluate({ workSessionId, changedThreadId: implThreadId });
+      assert.strictEqual(yield* ruleCount(id), 2);
+    }).pipe(
+      Effect.provide(
+        harness({
+          startProviderSession: () =>
+            Effect.sync(() => {
+              started += 1;
+              return ThreadId.make(`review-transition-${started}`);
+            }),
+        }),
+      ),
+    ),
+  );
+
   it.effect("stops at the bound however many times the work finishes", () =>
     Effect.gen(function* () {
       yield* givenFinishedWork;
@@ -235,7 +300,10 @@ describe("the reactor's own evaluation", () => {
       });
 
       const reactor = yield* FabricOrchestrationReactor;
-      for (let attempt = 0; attempt < 6; attempt += 1) {
+      // Six real finishes: in and out of the matching state each time, so the
+      // transition rule cannot be what stops it.
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        currentThread = attempt % 2 === 0 ? finishedThread : workingThread;
         yield* reactor.evaluate({ workSessionId, changedThreadId: implThreadId });
       }
 
