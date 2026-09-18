@@ -84,6 +84,7 @@ export type FiringRefusal =
   | { readonly fire: false; readonly reason: "exhausted" }
   | { readonly fire: false; readonly reason: "would_self_trigger" }
   | { readonly fire: false; readonly reason: "trigger_not_matched" }
+  | { readonly fire: false; readonly reason: "state_unchanged" }
   | { readonly fire: false; readonly reason: "predecessor_not_completed" };
 
 /**
@@ -102,6 +103,17 @@ export function shouldFire(input: {
   readonly firings: ReadonlyArray<
     Pick<OrchestrationFiring, "ruleId" | "producedThreadId" | "outcome">
   >;
+  /**
+   * True when the work session **entered** this state; false when it was
+   * already in it.
+   *
+   * A trigger names a transition, not a condition. "When Claude finishes this"
+   * is about the moment it finishes, and a work session that sits idle for an
+   * hour has not finished a hundred times. Without this, every thread event on
+   * an idle work session re-fired every `on_done` rule until the bound stopped
+   * it — the bound doing the work of a schedule again, exactly as D20 warned.
+   */
+  readonly stateChanged: boolean;
 }): FiringRefusal {
   if (input.rule.status === "disabled") return { fire: false, reason: "disabled" };
   if (!ruleCanFire(input.rule)) return { fire: false, reason: "exhausted" };
@@ -129,9 +141,16 @@ export function shouldFire(input: {
       : { fire: false, reason: "predecessor_not_completed" };
   }
 
-  return triggerMatchesState(input.rule.trigger, input.state)
+  if (!triggerMatchesState(input.rule.trigger, input.state)) {
+    return { fire: false, reason: "trigger_not_matched" };
+  }
+  // A rule that has never fired is allowed one firing on a state it finds
+  // already true: "when this finishes, have it reviewed", said about work that
+  // has just finished, must do something. After that it waits for the state to
+  // be entered again.
+  return input.stateChanged || input.rule.firedCount === 0
     ? { fire: true }
-    : { fire: false, reason: "trigger_not_matched" };
+    : { fire: false, reason: "state_unchanged" };
 }
 
 const toRule = (row: OrchestrationRuleRow): OrchestrationRule => ({ ...row });
@@ -172,6 +191,15 @@ export class OrchestrationRuleService extends Context.Service<
     readonly getFiring: (
       id: OrchestrationFiringId,
     ) => Effect.Effect<OrchestrationFiring | null, OrchestrationRuleError>;
+    /**
+     * Read and then record the state this work session is in, returning what it
+     * was before. One call, because every caller wants both halves and doing
+     * them separately invites an evaluation that reads a state it just wrote.
+     */
+    readonly observeState: (input: {
+      readonly workSessionId: WorkSessionId;
+      readonly state: FabricSessionState;
+    }) => Effect.Effect<FabricSessionState | null, OrchestrationRuleError>;
     readonly subscribe: Effect.Effect<
       PubSub.Subscription<OrchestrationRuleStreamItem>,
       never,
@@ -363,6 +391,28 @@ export const make = Effect.gen(function* () {
       Effect.map((row) => (row === null ? null : toFiring(row))),
     );
 
+  const observeState: OrchestrationRuleService["Service"]["observeState"] = ({
+    workSessionId,
+    state,
+  }) =>
+    // Under the same permit as firing: two evaluations racing here would both
+    // read the old state and both call it a transition.
+    Semaphore.withPermit(
+      mutations,
+      Effect.gen(function* () {
+        const previous = yield* repository
+          .getObservedState(workSessionId)
+          .pipe(Effect.mapError(storageFailure("getObservedState")));
+        if (previous !== state) {
+          const observedAt = yield* nowIso;
+          yield* repository
+            .setObservedState({ workSessionId, state, observedAt })
+            .pipe(Effect.mapError(storageFailure("setObservedState")));
+        }
+        return previous;
+      }),
+    );
+
   return {
     create,
     list,
@@ -371,6 +421,7 @@ export const make = Effect.gen(function* () {
     beginFiring,
     completeFiring,
     getFiring,
+    observeState,
     subscribe: PubSub.subscribe(events),
   } satisfies OrchestrationRuleService["Service"];
 });
