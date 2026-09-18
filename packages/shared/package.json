@@ -39,6 +39,18 @@
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"
     },
+    "./fabricAudit": {
+      "types": "./src/fabricAudit.ts",
+      "import": "./src/fabricAudit.ts"
+    },
+    "./fabricCapabilityPolicy": {
+      "types": "./src/fabricCapabilityPolicy.ts",
+      "import": "./src/fabricCapabilityPolicy.ts"
+    },
+    "./fabricRetention": {
+      "types": "./src/fabricRetention.ts",
+      "import": "./src/fabricRetention.ts"
+    },
     "./fabricAdoptedSession": {
       "types": "./src/fabricAdoptedSession.ts",
       "import": "./src/fabricAdoptedSession.ts"

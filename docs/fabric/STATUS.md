@@ -16,9 +16,46 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it      |
 | 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have |
 | 7 — mobile voice + quick actions               | **partial**               | the Phase 7 table below: the fleet, the status questions and the deep links are built and typecheck; the mic, App Intents and handoff are blocked on a device, a mac and Phase 3    |
-| 8 — Herdr adoption                             | **partial**               | the Phase 8 table below: the domain, the mapping, the fleet and every refusal are proven on the snapshot; discovery and send-input are blocked on Herdr not being installed here    | \n  | 10 — capability plane + hardening | not started | —   |
+| 8 — Herdr adoption                             | **partial**               | the Phase 8 table below: the domain, the mapping, the fleet and every refusal are proven on the snapshot; discovery and send-input are blocked on Herdr not being installed here    |
+| 10 — capability plane + hardening              | **partial**               | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                  |
 
-Nothing in this repository implements Fabric beyond what the Phase 2 section below claims.
+## Where Fabric is — the whole programme
+
+One table, so this file answers the question on its own. "Proven" means run
+against the snapshot of real userdata or asserted by a test that drives the real
+services; "built" without "proven" is said explicitly.
+
+| Phase                             | State                     | What is proven                                                                                                                                                   | What is not                                                           | What the Director must supply                                                                 |
+| --------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 0 — upstream audit                | **done**                  | the fork point, the package map, the conflicts table (refreshed at Phase 10)                                                                                     | —                                                                     | —                                                                                             |
+| 1 — deployment baseline           | **done by configuration** | two environments on stock `t3@0.0.42`, paired, with a phone client                                                                                               | several Claude accounts logged in at once                             | **a second and third `claude auth login`**, one per config dir                                |
+| 2 — WorkSession domain            | **done**                  | the domain, the RPC, the sidebar; the work outliving its thread, proven twice — unit and two processes on real data; a real Claude turn; a browser walk          | —                                                                     | —                                                                                             |
+| 3 — provider/account handoff      | **not started**           | —                                                                                                                                                                | everything                                                            | **the second Claude login** (Phase 1's item). The handoff cannot be _proved_ with one account |
+| 4 — synopsis + fleet              | **done**                  | §10's ladder, §11.1's triggers, the §33 fleet and its "Needs me" filter, §20's spoken answers; proven against two threads in different states                    | a remote environment's fleet appearing in another client              | —                                                                                             |
+| 5 — the intent surface            | **done for text**         | one deterministic grammar; status, message, start/resume, rule creation and gate answers; every intent recorded; the §29 exit sentences run against the snapshot | a microphone, App Intents, a browser walk of the bar                  | — (the phone's own keyboard supplies dictation)                                               |
+| 6 — VS Code, browser, dictation   | **partial**               | the context bus, §14's routing, §18's injection report refusing Wayland by name, dictation kept client-side                                                      | both extensions; no desktop run                                       | **VS Code and a browser with an extension host**, on a machine with a desktop session         |
+| 7 — the phone                     | **partial**               | the fleet screen, the §20 questions, deep links including work whose thread has ended                                                                            | the app has never been run                                            | **a phone or a simulator, and a mac** for App Intents and the Action Button                   |
+| 8 — adopted sessions              | **partial**               | §9's mapping, declared capability limits, an adopted terminal moving the work's state — proven on the snapshot                                                   | discovery from a real runtime; input delivered to a real pane         | **Herdr installed** where the terminals are                                                   |
+| 9 — orchestration                 | **done**                  | bounded rules, no self-triggering, a durable bound, transition semantics; §22's own sentence fired once and stopped, live                                        | a genuinely cross-account review                                      | **the second account**                                                                        |
+| 10 — capability plane + hardening | **partial**               | the plane and its policy, retention, the audit view, migration additivity as a test, reconnect and two-client agreement, `fleet.get` at 26ms median              | a mid-turn disconnection; a phone resume; the capabilities themselves | **a device** for the resume case                                                              |
+
+### §30's V1 definition of done, honestly
+
+| #   | Criterion                                                           | State                                                                                           |
+| --- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | One desktop UI shows Claude A/B/C and Codex across two environments | **blocked** — one account is logged in                                                          |
+| 2   | Phone connects to the same environments and continues work          | **done** (upstream), and Fabric's own screen is built but unrun                                 |
+| 3   | Separate Claude accounts stay logged in                             | **blocked** — the second login                                                                  |
+| 4   | WorkSession survives account handoff                                | **blocked** — Phase 3                                                                           |
+| 5   | Parallel tasks use separate worktrees                               | **done** (upstream)                                                                             |
+| 6   | State/needs-attention visible across sessions                       | **done** — the fleet, proven                                                                    |
+| 7   | Mic messages a focused or named WorkSession without push-to-talk    | **not met** — no microphone in the fork by D24; the client that owns one is not built           |
+| 8   | "What's X doing?" answers without interrupting X                    | **done** — proven against the snapshot                                                          |
+| 9   | Dictation writes into a focused browser field                       | **partial** — the routing and the refusals are proven; the browser extension is not built       |
+| 10  | VS Code Remote SSH context associates with a WorkSession            | **partial** — the contract and the routing are proven; the extension is not built               |
+| 11  | High-risk production operations require confirmation                | **done, and stricter** — refused from a sentence (D28) and off in the production template (D42) |
+| 12  | Disconnecting the laptop does not kill server-side work             | **done** — proven at the connection level                                                       |
+| 13  | Reconnecting from another client restores the correct state         | **done** — proven: identical fleet after a drop, two clients agreeing                           |
 
 ## Phase 1 — done by configuration, no code changes
 
@@ -627,3 +664,48 @@ registered by hand, and input actually delivered to it.
 - **No UI.** The fleet carries adopted sessions and the entry's state accounts
   for them, so they already move the "Needs me" count on both clients; neither
   client renders an adopted row of its own yet.
+
+## Phase 10 — the capability plane, and hardening
+
+| Item                           | State                                                   | Where it is proven, or what blocks it                                                                                                                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capability registry and policy | done                                                    | `packages/contracts/src/fabric/capability.ts`, `packages/shared/src/fabricCapabilityPolicy.ts` — §23's twelve capabilities, §24.1's classes, and one evaluation everything goes through. The capabilities themselves are deliberately not implemented (D41) |
+| Production policy templates    | done                                                    | development, supervised and production; production switches high-risk capabilities **off** rather than gating them, because the confirmation would be a tap on a phone in a taxi (D42)                                                                      |
+| Retention settings             | done                                                    | `packages/shared/src/fabricRetention.ts`, applied to the intent log where it grows rather than on a timer (D43)                                                                                                                                             |
+| Audit log                      | done                                                    | `packages/shared/src/fabricAudit.ts` — a view over the records that already exist, never a fourth table (D44)                                                                                                                                               |
+| Schema migration testing       | done                                                    | `apps/server/src/persistence/FabricMigrationsAdditive.test.ts` — D7 as a test: no Fabric migration may drop, rename or rewrite anything, or touch a table Fabric does not own                                                                               |
+| Reconnect / offline resume     | **partial**                                             | against the snapshot: a connection dropped and remade returns identical fleet state, and two clients at once agree. A _mid-turn_ disconnection and a phone resume still need a client that can be backgrounded                                              |
+| Performance profiling          | done, at this scale                                     | `fabric.fleet.get` over the real snapshot: **min 18ms, median 26ms, max 40ms** for 10 work sessions. Recorded rather than assumed; it is not a load test                                                                                                    |
+| Observability                  | **already upstream**                                    | every `fabric.*` handler goes through `observeRpcEffect` with `rpc.aggregate: "fabric"`, so Fabric's RPCs appear in the same traces and metrics as T3's                                                                                                     |
+| Upstream rebase workflow       | done                                                    | `UPSTREAM.md`'s conflicts table regenerated from `git diff --name-only` at Phase 10: every upstream file this fork edits is listed, and everything else it contributes is a new file                                                                        |
+| Security review                | done, as a review                                       | below                                                                                                                                                                                                                                                       |
+| Machine capability integration | **partial**                                             | the policy is per-environment and the mode is a property of the environment; binding a policy to each machine in the registry needs the machine registry work §5.6 describes, which no phase has built                                                      |
+| Reconnect chaos testing        | **blocked**: needs a client that can be killed mid-turn | the connection-level case is proven; the turn-level case is not                                                                                                                                                                                             |
+
+### The security review
+
+What Fabric adds to T3's surface, and what holds it:
+
+- **Every `fabric.*` RPC has a declared auth scope**, and the scope map's key set
+  must equal the RPC group's — an unscoped method does not compile
+  (`RpcAuthorization.test.ts`).
+- **No secret is read, written or forwarded by Fabric code.** The provider
+  credentials stay where T3 put them; nothing under `fabric/` opens a credential
+  file, and §30.14 is checked by the diff on every PR.
+- **Three boundaries are client-local by construction**, so the environment
+  cannot receive what it has no business having: the context bus (D24, D32),
+  dictated text (D31), and the browser's page content (§17, enforced by the
+  contract's shape rather than by a policy).
+- **A sentence never authorises a high-risk action** (D28), and §24.1's list is
+  matched before intent classification so routing through an agent is not a way
+  around it.
+- **Automation is bounded**: rules have a durable firing bound, cannot be
+  triggered by their own effect, and fire on a transition rather than while a
+  state persists (D20, D29, D30).
+- **Adopted sessions declare what Fabric may not do to them** (D39), so a
+  terminal Fabric does not own cannot be typed into by accident.
+
+What the review did **not** cover, and should before daily use: a dependency
+audit of the fork against upstream, a look at the pairing/token lifetimes T3
+ships with, and a second pair of eyes on the WebSocket authentication path,
+which Fabric inherits unchanged and did not test.

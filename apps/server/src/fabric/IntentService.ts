@@ -25,6 +25,7 @@
  */
 import {
   DEFAULT_INTENT_LIST_LIMIT,
+  DEFAULT_RETENTION,
   FabricIntentExecutionError,
   FabricIntentId,
   FabricIntentStorageError,
@@ -36,6 +37,7 @@ import {
   type FabricIntentResolution,
   type WorkSessionId,
 } from "@t3tools/contracts";
+import { expiredRecords } from "@t3tools/shared/fabricRetention";
 import {
   resolveFabricIntent,
   type IntentGate,
@@ -295,6 +297,7 @@ export const make = Effect.gen(function* () {
         at,
       });
       yield* publish({ kind: "fabric.intent.resolved", record: row });
+      yield* prune;
       if (execution.failed) {
         // Recorded first, then raised: the caller gets an error, and the log
         // still shows what was attempted.
@@ -305,6 +308,30 @@ export const make = Effect.gen(function* () {
       }
       return { resolution, reply: execution.reply, record: row };
     });
+
+  /**
+   * §26's horizon, applied where the log grows rather than on a timer.
+   *
+   * A scheduler would be a second lifecycle to keep honest, and this log only
+   * grows when somebody says something — so pruning here runs exactly as often
+   * as it needs to and never on an idle machine. The *rule* is the shared one
+   * (`expiredRecords`), so the horizon cannot drift between the policy and the
+   * SQL.
+   */
+  const prune = Effect.gen(function* () {
+    const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+    const records = yield* repository
+      .listForRetention()
+      .pipe(Effect.catchCause(() => Effect.succeed([])));
+    const expired = expiredRecords({
+      records,
+      days: DEFAULT_RETENTION.intentDays,
+      keepRefusals: DEFAULT_RETENTION.keepRefusals,
+      now,
+    });
+    if (expired.length === 0) return;
+    yield* repository.deleteByIds(expired).pipe(Effect.ignoreCause({ log: true }));
+  }).pipe(Effect.ignoreCause({ log: true }));
 
   const list: FabricIntentService["Service"]["list"] = ({ workSessionId, limit }) =>
     repository.list({ workSessionId, limit: limit ?? DEFAULT_INTENT_LIST_LIMIT }).pipe(

@@ -46,6 +46,18 @@ export class FabricIntentRepository extends Context.Service<
       readonly workSessionId: WorkSessionId | null;
       readonly limit: number;
     }) => Effect.Effect<ReadonlyArray<FabricIntentRow>, ProjectionRepositoryError>;
+    /**
+     * Just enough of every row for the retention rule to judge it: when it
+     * happened and whether it was a refusal. Deliberately not the whole row —
+     * the point of pruning is to touch less, not more.
+     */
+    readonly listForRetention: () => Effect.Effect<
+      ReadonlyArray<{ readonly id: string; readonly at: string; readonly refused: boolean }>,
+      ProjectionRepositoryError
+    >;
+    readonly deleteByIds: (
+      ids: ReadonlyArray<string>,
+    ) => Effect.Effect<number, ProjectionRepositoryError>;
   }
 >()("t3/fabric/IntentRepository/FabricIntentRepository") {}
 
@@ -96,6 +108,12 @@ export const make = Effect.gen(function* () {
     `,
   });
 
+  const selectRetention = SqlSchema.findAll({
+    Request: Schema.Struct({}),
+    Result: Schema.Struct({ id: FabricIntentId, at: IsoDateTime, outcome: FabricIntentOutcome }),
+    execute: () => sql`SELECT id, at, outcome FROM fabric_intents`,
+  });
+
   const fail = (operation: string) => toPersistenceSqlError(operation);
 
   const insert: FabricIntentRepository["Service"]["insert"] = (row) =>
@@ -115,7 +133,28 @@ export const make = Effect.gen(function* () {
       : selectForSession({ workSessionId, limit })
     ).pipe(Effect.mapError(fail("FabricIntentRepository.list")));
 
-  return { insert, list } satisfies FabricIntentRepository["Service"];
+  const listForRetention: FabricIntentRepository["Service"]["listForRetention"] = () =>
+    selectRetention({}).pipe(
+      Effect.mapError(fail("FabricIntentRepository.listForRetention")),
+      Effect.map((rows) =>
+        rows.map((row) => ({ id: row.id, at: row.at, refused: row.outcome === "refused" })),
+      ),
+    );
+
+  const deleteByIds: FabricIntentRepository["Service"]["deleteByIds"] = (ids) =>
+    ids.length === 0
+      ? Effect.succeed(0)
+      : sql`DELETE FROM fabric_intents WHERE id IN ${sql.in(ids)}`.pipe(
+          Effect.mapError(fail("FabricIntentRepository.deleteByIds")),
+          Effect.as(ids.length),
+        );
+
+  return {
+    insert,
+    list,
+    listForRetention,
+    deleteByIds,
+  } satisfies FabricIntentRepository["Service"];
 });
 
 export const layer = Layer.effect(FabricIntentRepository, make);
