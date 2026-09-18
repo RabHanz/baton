@@ -49,6 +49,17 @@ extends.
 
 | Route test wiring | `apps/server/src/server.test.ts` | the routes gained a dependency, so the test that builds them by hand provides it | 2 |
 
+**One upstream file is rewritten rather than extended, and one is deleted.**
+`apps/server/src/project/AgentSessionScanner.ts` now reads a transcript from its **end** instead of
+streaming the whole file forwards (`DECISIONS.md` D54), which replaced `readTranscript` and made
+`apps/server/src/project/AgentSessionJson.ts` — the streaming field-selecting JSON reader that
+existed to bound a forward whole-file read — dead. It is deleted rather than left unused; an
+upstream sync that changes it will report a delete/modify conflict, and the resolution is to keep
+the deletion unless upstream's own importer has stopped reading forwards. This is the largest single
+divergence in the fork and the reason is in D54: on the Director's own machine, a 420 MB and a
+171 MB session both refused to import with `TranscriptJsonLimitError`, which is to say the
+conversations most worth resuming were exactly the ones that could not be.
+
 **Checked at Phase 10.** The table above was regenerated from
 `git diff --name-only <fork-point> HEAD`, filtered to files Fabric _edits_ rather than adds. Every
 upstream file this fork touches is in it; everything else Fabric contributes is a new file under a

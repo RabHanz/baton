@@ -33,9 +33,14 @@ import {
   AgentSessionImportProjectChangedError,
   AgentSessionImportProjectNotFoundError,
   AgentSessionImportResult,
+  AgentSessionImportThreadError,
+  AgentSessionImportThreadInput,
+  AgentSessionImportThreadResult,
   AgentSessionScanInput,
   AgentSessionScanResult,
   AgentSessionScanError,
+  AgentSessionThreadsInput,
+  AgentSessionThreadsResult,
 } from "./agentSessions.ts";
 import {
   AssetAccessError,
@@ -337,6 +342,8 @@ export const WS_METHODS = {
   filesystemBrowse: "filesystem.browse",
   agentSessionsScan: "agentSessions.scan",
   agentSessionsImport: "agentSessions.import",
+  agentSessionsThreads: "agentSessions.threads",
+  agentSessionsImportThread: "agentSessions.importThread",
   assetsCreateUrl: "assets.createUrl",
   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
   attachmentsDelete: "attachments.delete",
@@ -1013,6 +1020,24 @@ const WsAgentSessionsImportRpc = Rpc.make(WS_METHODS.agentSessionsImport, {
   ]),
 });
 
+const WsAgentSessionsThreadsRpc = Rpc.make(WS_METHODS.agentSessionsThreads, {
+  payload: AgentSessionThreadsInput,
+  success: AgentSessionThreadsResult,
+  error: Schema.Union([AgentSessionScanError, EnvironmentAuthorizationError]),
+});
+
+const WsAgentSessionsImportThreadRpc = Rpc.make(WS_METHODS.agentSessionsImportThread, {
+  payload: AgentSessionImportThreadInput,
+  success: AgentSessionImportThreadResult,
+  error: Schema.Union([
+    AgentSessionImportProjectChangedError,
+    AgentSessionImportProjectNotFoundError,
+    AgentSessionImportThreadError,
+    AgentSessionScanError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsAssetsCreateUrlRpc = Rpc.make(WS_METHODS.assetsCreateUrl, {
   payload: AssetCreateUrlInput,
   success: AssetCreateUrlResult,
@@ -1673,6 +1698,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsFilesystemBrowseRpc,
   WsAgentSessionsScanRpc,
   WsAgentSessionsImportRpc,
+  WsAgentSessionsThreadsRpc,
+  WsAgentSessionsImportThreadRpc,
   WsAssetsCreateUrlRpc,
   WsAttachmentsCreateUploadUrlRpc,
   WsAttachmentsDeleteRpc,

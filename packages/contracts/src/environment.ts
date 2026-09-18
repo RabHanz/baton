@@ -177,6 +177,13 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       hidden for that environment rather than probing. Same version-skew
       contract as threadSettlement. */
   fabricWorkSessions: Schema.optionalKey(Schema.Boolean),
+  /** Server understands `agentSessions.threads` and `agentSessions.importThread`:
+      the conversation-level listing and single-session import behind the
+      "Import Claude Code / Codex conversations" action. Absent on servers whose
+      only import surface is the first-run wizard's project scan, so a client
+      must keep the action hidden for that environment rather than probing.
+      Same version-skew contract as threadSettlement. */
+  agentSessionConversationImport: Schema.optionalKey(Schema.Boolean),
   /** The desktop app supervising this server can be driven over RPC:
       server.updateServer runs its check -> download -> relaunch. Absent on
       desktop servers whose app predates the remote trigger, where clients

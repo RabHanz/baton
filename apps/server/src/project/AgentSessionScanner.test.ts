@@ -117,12 +117,40 @@ const runRecentThreadOutcomes = (input: ScannerTestInput & { readonly workspaceR
     );
   }).pipe(Effect.provide(makeScannerTestLayer(input)));
 
+const runThreadSummaries = (
+  input: ScannerTestInput & { readonly workspaceRoot?: string | undefined },
+) =>
+  Effect.gen(function* () {
+    const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+    return yield* scanner.recentThreadSummaries(
+      input.workspaceRoot === undefined ? {} : { workspaceRoot: input.workspaceRoot },
+    );
+  }).pipe(Effect.provide(makeScannerTestLayer(input)));
+
 const runRecentThreads = (input: ScannerTestInput & { readonly workspaceRoot: string }) =>
   runRecentThreadOutcomes(input).pipe(
     Effect.map((outcomes) =>
       outcomes.flatMap((outcome) => (outcome._tag === "Importable" ? [outcome.thread] : [])),
     ),
   );
+
+/**
+ * Watch one method on an open file without replacing the handle.
+ *
+ * Spreading the handle would copy its own properties and drop its prototype,
+ * taking `seek` and every other method with it — which reads as a scanner bug
+ * rather than a test one.
+ */
+const observeReadAlloc = (
+  file: FileSystem.File,
+  readAlloc: FileSystem.File["readAlloc"],
+): FileSystem.File =>
+  new Proxy(file, {
+    get(target, key) {
+      if (key === "readAlloc") return readAlloc;
+      return Reflect.get(target, key, target);
+    },
+  });
 
 const makeTempDir = Effect.fn("AgentSessionScanner.test.makeTempDir")(function* (prefix: string) {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -1141,15 +1169,13 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
               return fileSystem.open(filePath, options);
             opens += 1;
             return fileSystem.open(resolveFile(filePath), options).pipe(
-              Effect.map((file) => ({
-                ...file,
-                stat: file.stat,
-                readAlloc: (size: number) => {
+              Effect.map((file) =>
+                observeReadAlloc(file, (size) => {
                   reservedBytes += Number(size);
                   requests.push(Number(size));
                   return file.readAlloc(size);
-                },
-              })),
+                }),
+              ),
             );
           },
         });
@@ -1209,16 +1235,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             operations += 1;
             let offset = 0;
             return fileSystem.open(template, options).pipe(
-              Effect.map((file) => ({
-                ...file,
-                stat: file.stat,
-                readAlloc: () =>
+              Effect.map((file) =>
+                observeReadAlloc(file, () =>
                   Effect.sync(() => {
                     operations += 1;
                     if (offset === bytes.length) return Option.none<Uint8Array>();
                     return Option.some(bytes.subarray(offset, ++offset));
                   }),
-              })),
+                ),
+              ),
             );
           },
         });
@@ -1374,8 +1399,12 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
   });
 
   describe("recentThreads", () => {
+    // The record count used to decide whether a transcript could be imported at
+    // all: past 100,000 it was skipped, terminal newline and all. Reading from
+    // the end made the count a budget on work rather than a verdict, so both
+    // shapes import — and the newest prompt is the one that comes back.
     it.effect.each([false, true])(
-      "counts terminal newlines correctly with record overflow=%s",
+      "imports a hundred-thousand-record transcript, overflow=%s",
       (overflow) =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
@@ -1409,17 +1438,203 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             codexHomePath,
             workspaceRoot: workspace,
           });
-          expect(outcomes.map((outcome) => outcome._tag)).toEqual(
-            overflow ? ["Skipped", "Importable"] : ["Importable", "Skipped"],
-          );
+          expect(outcomes.map((outcome) => outcome._tag)).toEqual(["Importable", "Importable"]);
           expect(
             outcomes.flatMap((outcome) =>
               outcome._tag === "Importable"
                 ? outcome.thread.messages.map((message) => message.text)
                 : [],
             ),
-          ).toEqual([overflow ? "Older prompt" : "First prompt"]);
+            // The end of the file is what comes back: with a prompt there, that
+            // prompt; with 99,998 empty records there, the walk runs out of
+            // records and the head answers instead.
+          ).toEqual(
+            overflow ? ["Overflow prompt", "Older prompt"] : ["First prompt", "Older prompt"],
+          );
         }),
+    );
+
+    // The defect his own machine found: a 420 MB session refused with
+    // "selected history exceeds the 32 MiB memory budget", which is to say the
+    // conversations most worth resuming were the ones that could not be.
+    it.effect("imports the last messages of a transcript far past any memory budget", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-huge-claude-");
+        const codexHomePath = yield* makeTempDir("t3code-huge-codex-");
+        const workspace = yield* makeTempDir("t3code-huge-workspace-");
+        const sessionId = "8f14e45f-ceea-4e6d-9dbb-1b9a2e40d7a1";
+        const filler = "x".repeat(64 * 1024);
+        const record = (index: number, text: string) =>
+          encodeTranscriptRecord({
+            type: index % 2 === 0 ? "user" : "assistant",
+            cwd: workspace,
+            sessionId,
+            timestamp: "2026-08-24T11:00:00.000Z",
+            message: { content: [{ type: "text", text }] },
+          });
+        // ~36 MB: past the old 32 MiB history budget and past the 16 MiB the
+        // backwards read will touch, so the tail is genuinely a tail.
+        const lines: Array<string> = [record(0, "The first thing I asked")];
+        for (let index = 1; index <= 560; index++) {
+          lines.push(record(index, `${filler} turn ${index}`));
+        }
+        lines.push(record(561, "The last thing I asked"));
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-huge", `${sessionId}.jsonl`),
+          contents: `${lines.join("\n")}\n`,
+          mtimeMs: nowMs,
+        });
+
+        const outcomes = yield* runRecentThreadOutcomes({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+        });
+
+        expect(outcomes.map((outcome) => outcome._tag)).toEqual(["Importable"]);
+        const thread = outcomes[0]?._tag === "Importable" ? outcomes[0].thread : null;
+        expect(thread?.providerSessionId).toBe(sessionId);
+        expect(thread?.messages.at(-1)?.text).toBe("The last thing I asked");
+        // The conversation continues past what is shown, and the import says so.
+        expect(thread?.historyTruncated).toBe(true);
+        expect(thread?.messages.some((message) => message.text.includes("The first thing"))).toBe(
+          false,
+        );
+      }),
+    );
+
+    it.effect("lists a session whose directory is named only after a long preamble", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-preamble-claude-");
+        const codexHomePath = yield* makeTempDir("t3code-preamble-codex-");
+        const workspace = yield* makeTempDir("t3code-preamble-workspace-");
+        const sessionId = "3b2d1c4e-5f6a-4b8c-9d0e-1f2a3b4c5d6e";
+        // What a session continued after compaction actually starts with: a
+        // summary and its settings, none of it naming a directory. In the real
+        // transcript the first cwd sat at byte 952,129.
+        const preamble = [
+          encodeTranscriptRecord({ type: "history-suppression" }),
+          encodeTranscriptRecord({ type: "ai-title", aiTitle: "Continued session" }),
+          encodeTranscriptRecord({ type: "agent-name" }),
+          encodeTranscriptRecord({
+            type: "summary",
+            message: { content: [{ type: "text", text: "s".repeat(1_200_000) }] },
+          }),
+          encodeTranscriptRecord({ type: "mode" }),
+          encodeTranscriptRecord({ type: "permission-mode" }),
+        ];
+        const body = [
+          encodeTranscriptRecord({
+            type: "user",
+            cwd: workspace,
+            sessionId,
+            timestamp: "2026-08-24T11:00:00.000Z",
+            message: { content: [{ type: "text", text: "Carry on where we left off" }] },
+          }),
+        ];
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-continued", `${sessionId}.jsonl`),
+          contents: `${[...preamble, ...body].join("\n")}\n`,
+          mtimeMs: nowMs,
+        });
+
+        const scan = yield* runScan({ claudeHomePath, codexHomePath });
+        expect(scan.candidates.map((candidate) => candidate.path)).toEqual([workspace]);
+
+        const outcomes = yield* runRecentThreadOutcomes({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+        });
+        expect(outcomes.map((outcome) => outcome._tag)).toEqual(["Importable"]);
+      }),
+    );
+
+    // The listing behind "Import Claude Code / Codex conversations": what the
+    // user is looking for is a conversation, not the folder it ran in.
+    it.effect("lists recent conversations across every project and account", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-listing-claude-");
+        const secondHome = yield* makeTempDir("t3code-listing-claude-second-");
+        const codexHomePath = yield* makeTempDir("t3code-listing-codex-");
+        const workspace = yield* makeTempDir("t3code-listing-workspace-");
+        const otherWorkspace = yield* makeTempDir("t3code-listing-other-");
+        const sessionOne = "11111111-2222-4333-8444-555555555555";
+        const sessionTwo = "66666666-7777-4888-8999-aaaaaaaaaaaa";
+        const claudeTranscript = (cwd: string, sessionId: string, text: string) =>
+          `${encodeTranscriptRecord({
+            type: "user",
+            cwd,
+            sessionId,
+            timestamp: "2026-08-24T11:00:00.000Z",
+            message: { content: [{ type: "text", text }] },
+          })}\n${encodeTranscriptRecord({
+            type: "assistant",
+            cwd,
+            sessionId,
+            timestamp: "2026-08-24T11:01:00.000Z",
+            message: { model: "claude-x", content: [{ type: "text", text: "On it" }] },
+          })}\n`;
+
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-a", `${sessionOne}.jsonl`),
+          contents: claudeTranscript(workspace, sessionOne, "Rebuild the deploy script"),
+          mtimeMs: nowMs - 60_000,
+        });
+        yield* writeTranscript({
+          filePath: path.join(secondHome, "projects", "-b", `${sessionTwo}.jsonl`),
+          contents: claudeTranscript(otherWorkspace, sessionTwo, "Draft the launch note"),
+          mtimeMs: nowMs - 30_000,
+        });
+
+        const listed = yield* runThreadSummaries({
+          claudeHomePath,
+          codexHomePath,
+          providerInstances: {
+            [ProviderInstanceId.make("claude-second")]: {
+              driver: ProviderDriverKind.make("claudeAgent"),
+              config: { homePath: secondHome },
+            },
+          },
+        });
+
+        // Newest first, each naming the account that ran it and the directory
+        // it ran in — the three things that tell two conversations apart.
+        expect(
+          listed.threads.map((thread) => [
+            thread.providerSessionId,
+            thread.providerInstanceId,
+            thread.workspaceRoot,
+            thread.preview,
+            thread.alreadyImported,
+          ]),
+        ).toEqual([
+          [sessionTwo, "claude-second", otherWorkspace, "Draft the launch note", false],
+          [sessionOne, "claudeAgent", workspace, "Rebuild the deploy script", false],
+        ]);
+        expect(listed.threads.every((thread) => thread.sizeBytes > 0)).toBe(true);
+        expect(listed.threads.map((thread) => thread.threadId)).toEqual([
+          `import:claude-second:${sessionTwo}`,
+          `import:claudeAgent:${sessionOne}`,
+        ]);
+        expect(listed.truncated).toBeUndefined();
+
+        const scoped = yield* runThreadSummaries({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+        });
+        expect(scoped.threads.map((thread) => thread.providerSessionId)).toEqual([sessionOne]);
+      }),
     );
 
     it.effect("imports recent Claude and Codex sessions for the selected project only", () =>
@@ -1709,18 +1924,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
               Effect.map((file) =>
                 !transcriptPaths.has(filePath) || count === 1
                   ? file
-                  : {
-                      ...file,
-                      stat: file.stat,
-                      readAlloc: (size: number) =>
-                        file.readAlloc(size).pipe(
-                          Effect.tap((chunk) =>
-                            Effect.sync(() => {
-                              if (chunk._tag === "Some") fullReadBytes += chunk.value.byteLength;
-                            }),
-                          ),
+                  : observeReadAlloc(file, (size) =>
+                      file.readAlloc(size).pipe(
+                        Effect.tap((chunk) =>
+                          Effect.sync(() => {
+                            if (chunk._tag === "Some") fullReadBytes += chunk.value.byteLength;
+                          }),
                         ),
-                    },
+                      ),
+                    ),
               ),
             );
           },
@@ -1746,7 +1958,10 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
-    it.effect("skips excessive records without blocking an older valid transcript", () =>
+    // 100,001 blank lines used to spend the whole record budget and cost the
+    // transcript its import. Walking from the end, a blank line is not a record
+    // and buys nothing, so both sessions come back.
+    it.effect("imports a transcript padded with blank records, and the one behind it", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
@@ -1786,7 +2001,8 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           codexHomePath,
           workspaceRoot: workspace,
         });
-        expect(outcomes.map((outcome) => outcome._tag)).toEqual(["Skipped", "Importable"]);
+        expect(outcomes.map((outcome) => outcome._tag)).toEqual(["Importable", "Importable"]);
+        expect(outcomes[0]).toMatchObject({ thread: { providerSessionId: "excessive" } });
         expect(outcomes[1]).toMatchObject({ thread: { providerSessionId: "older" } });
       }),
     );
@@ -2214,10 +2430,8 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
             transcriptOpenCount += 1;
             if (transcriptOpenCount === 1) return fileSystem.open(filePath, options);
             return fileSystem.open(filePath, options).pipe(
-              Effect.map((file) => ({
-                ...file,
-                stat: file.stat,
-                readAlloc: (size: number) =>
+              Effect.map((file) =>
+                observeReadAlloc(file, (size) =>
                   file.readAlloc(size).pipe(
                     Effect.tap((chunk) =>
                       Effect.gen(function* () {
@@ -2230,7 +2444,8 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
                       }),
                     ),
                   ),
-              })),
+                ),
+              ),
             );
           },
         });

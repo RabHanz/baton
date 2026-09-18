@@ -6,6 +6,7 @@ import {
   TerminalIcon,
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
+import { useRouter } from "@tanstack/react-router";
 import { Atom } from "effect/unstable/reactivity";
 import {
   type KeyboardEvent,
@@ -39,6 +40,7 @@ import {
   type DesktopServerExposureState,
   type DesktopWslState,
   type EnvironmentId,
+  type ServerConfig,
   resolveEnvironmentMachineKind,
 } from "@t3tools/contracts";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
@@ -50,6 +52,7 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { IMPORT_CONVERSATIONS_LABEL, ImportConversationsDialog } from "./ImportConversationsDialog";
 import { cn } from "../../lib/utils";
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
@@ -1429,6 +1432,29 @@ function NetworkAccessDescription({
   );
 }
 
+/**
+ * Whether this server understands the conversation listing. Older servers only
+ * have the first-run wizard's project scan, and probing them would fail in a
+ * way that reads as the feature being broken rather than absent.
+ */
+function supportsConversationImport(serverConfig: ServerConfig | null | undefined): boolean {
+  return serverConfig?.environment.capabilities.agentSessionConversationImport === true;
+}
+
+/** Opening an imported conversation is just opening its thread. */
+function useOpenImportedThread() {
+  const router = useRouter();
+  return useCallback(
+    (environmentId: EnvironmentId, threadId: string) => {
+      void router.navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId, threadId },
+      });
+    },
+    [router],
+  );
+}
+
 type SavedBackendListRowProps = {
   environment: EnvironmentPresentation;
   removingEnvironmentId: EnvironmentId | null;
@@ -1485,6 +1511,8 @@ function SavedBackendListRow({
   onRemove,
 }: SavedBackendListRowProps) {
   const environmentId = environment.environmentId;
+  const [importOpen, setImportOpen] = useState(false);
+  const openImportedThread = useOpenImportedThread();
   const unsupported = environment.connection.phase === "unsupported";
   const enabled = environment.entry.enabled && !unsupported;
   const isConnected = environment.connection.phase === "connected";
@@ -1641,6 +1669,9 @@ function SavedBackendListRow({
             environmentId={environmentId}
             serverConfig={environment.serverConfig}
           />
+          {supportsConversationImport(environment.serverConfig) ? (
+            <MenuItem onClick={() => setImportOpen(true)}>{IMPORT_CONVERSATIONS_LABEL}</MenuItem>
+          ) : null}
           {errorTraceId ? (
             <MenuItem onClick={() => copyTraceId(errorTraceId)}>Copy trace ID</MenuItem>
           ) : null}
@@ -1650,6 +1681,15 @@ function SavedBackendListRow({
           </MenuItem>
         </MenuPopup>
       </Menu>
+      {importOpen ? (
+        <ImportConversationsDialog
+          open
+          onOpenChange={setImportOpen}
+          environmentId={environmentId}
+          environmentLabel={environment.label}
+          onOpenThread={openImportedThread}
+        />
+      ) : null}
     </EnvironmentRow>
   );
 }
@@ -2005,6 +2045,8 @@ export function ConnectionsSettings() {
     DesktopServerExposureState["mode"] | null
   >(null);
   const primaryServerConfig = primaryEnvironment?.serverConfig ?? null;
+  const [primaryImportOpen, setPrimaryImportOpen] = useState(false);
+  const openImportedThread = useOpenImportedThread();
   const primaryVersionMismatch = resolveServerConfigVersionMismatch(primaryServerConfig);
   const primaryServerUpdateState = useAtomValue(
     serverEnvironment.updateStateAtom(primaryEnvironmentId),
@@ -3306,6 +3348,11 @@ export function ConnectionsSettings() {
                       environmentId={primaryEnvironmentId}
                       serverConfig={primaryServerConfig}
                     />
+                    {supportsConversationImport(primaryServerConfig) ? (
+                      <MenuItem onClick={() => setPrimaryImportOpen(true)}>
+                        {IMPORT_CONVERSATIONS_LABEL}
+                      </MenuItem>
+                    ) : null}
                   </MenuPopup>
                 </Menu>
               ) : null
@@ -3687,6 +3734,15 @@ export function ConnectionsSettings() {
   return (
     <SettingsPageContainer width="wide">
       {primarySettings}
+      {primaryImportOpen && primaryEnvironmentId !== null ? (
+        <ImportConversationsDialog
+          open
+          onOpenChange={setPrimaryImportOpen}
+          environmentId={primaryEnvironmentId}
+          environmentLabel={primaryEnvironment?.label ?? "this machine"}
+          onOpenThread={openImportedThread}
+        />
+      ) : null}
       <SettingsSection
         {...searchableSetting("remote-environments")}
         title="Environments"

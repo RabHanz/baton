@@ -1508,7 +1508,13 @@ const ThreadHistoryImportCommand = Schema.Struct({
   messages: Schema.Array(
     Schema.Struct({
       messageId: MessageId,
-      role: Schema.Literals(["user", "assistant"]),
+      /**
+       * `system` is the import's own line — what was shown and what the agent
+       * still has. A long conversation is imported from its end, and the
+       * difference between "this is all there was" and "this is the last of it"
+       * is the difference between trusting the resume and not.
+       */
+      role: Schema.Literals(["user", "assistant", "system"]),
       text: Schema.String,
       createdAt: IsoDateTime,
     }),
