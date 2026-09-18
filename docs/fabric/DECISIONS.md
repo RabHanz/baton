@@ -1034,6 +1034,92 @@ came back.
 
 ---
 
+## D45 — Fabric is on by default in this fork
+
+**Decided** 2026-09-18 by the Director, for the first deploy: the fork is to be
+installed on his own running server and a Fabric surface is to render "so he does
+not have to find a setting".
+
+`fabricWorkSessionsEnabled` was introduced in Phase 2 as a client preference
+defaulting to **off**, which was right while the fork was a branch nobody ran and
+wrong the moment it became the thing he opens. A build of Fabric where the user
+must first find a switch is a build nobody uses.
+
+It stays a _client preference_ rather than becoming an environment setting,
+because what it changes is this client's navigation. The sidebar still checks the
+server's `fabricWorkSessions` capability before calling anything, so a client
+pointed at a stock T3 server renders the stock sidebar rather than erroring — the
+default moved, the safety did not.
+
+**Consequence:** `Schema.withDecodingDefault(Effect.succeed(true))`, so a profile
+that has never seen the setting gets Fabric, and a profile that explicitly turned
+it off keeps it off.
+
+**What this also exposes, said plainly:** the key is not in `ClientSettingsPatch`
+and there is no row for it in the settings panel — Phase 2 never added one,
+because the walk set it directly in the client's stored settings. Turning Fabric
+_off_ therefore means editing stored settings, not clicking something. That is
+acceptable while the default is the intended state and the Director wanted no
+setting to find, and it is deliberately not fixed here: the row would go in
+`SettingsPanels.tsx`, the single file most likely to conflict on every upstream
+merge, and this branch's job was the deploy. A test asserts both halves so the
+gap cannot be mistaken for an oversight later.
+
+---
+
+## D46 — The fork ships as a version beside the release, never over it
+
+**Decided** 2026-09-18, during the first deploy.
+
+Upstream's runtime keeps every version under `~/.t3/runtime/versions/<version>/`
+and picks one through `service-state.json` and the unit's `ExecStart`. The fork
+is installed as another such version, built through upstream's own release chain
+(`vp run --filter t3 build` → `build-exe` → `build-cli-archive.ts` →
+`smoke-cli-archive.ts`), and the unit is repointed with a systemd **drop-in**.
+
+The alternative — overwriting the installed release, or editing the unit file —
+was rejected because it destroys the rollback. With a drop-in, rolling back is
+deleting one file and restoring one JSON file, and both are in `DEPLOY.md`.
+
+**Consequence:** the service-state protocol number is part of the deploy. This
+fork is protocol 3 and the installed 0.0.42 wrote 2, and the launcher refuses a
+state whose protocol is not exactly its own — so the first restart failed with
+`Service state is invalid or unsupported.` until the file was rewritten. The old
+file is kept as half of the rollback.
+
+---
+
+## D47 — T3 Connect's public config is read from the installed release, not committed
+
+**Decided** 2026-09-18, during the first deploy, after T3 Connect did not come
+back with the fork.
+
+`hasCloudPublicConfig` gates the whole cloud-link startup path on three values —
+relay URL, Clerk publishable key, Clerk CLI OAuth client id — which the official
+release receives as build-time defines from upstream's CI. A fork build has none,
+so the startup reconcile is skipped. Nothing errors: the _previous_ server
+deletes its Cloudflare tunnel on clean shutdown (so an offline environment is not
+billed), expecting the next startup to provision a replacement, and the fork
+simply never does. The environment stops being reachable from t3.codes while
+every local check still passes.
+
+Three options were considered. Baking the values into the fork's build was
+rejected: they are upstream's cloud, and this fork may be open-sourced. Carrying
+them in a committed `.env` was rejected for the same reason plus the standing no
+secrets rule. What ships instead is
+`scripts/fabric/cloud-public-config.sh`, which reads them out of whichever
+official release is installed on the machine and prints a systemd drop-in. No
+value ever enters the repository, and a machine with no official release gets a
+refusal that names what to install.
+
+The relay client's OTLP tracing triple is deliberately **not** carried over: it
+contains an Axiom ingest token, which is a credential and is upstream's. Leaving
+it unset disables relay-client tracing.
+
+**Consequence:** "T3 Connect works" is a deploy check with a log line to look for
+(`T3 Connect desired link reconciled on startup`) and a process to see
+(`cloudflared tunnel run`), not an assumption.
+
 ## D48 — Fabric's migrations leave upstream's number space alone
 
 **Decided** 2026-09-18, on the Director's instruction to fix the collision before the first upstream

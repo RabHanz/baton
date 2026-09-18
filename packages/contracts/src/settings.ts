@@ -358,13 +358,18 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   /**
    * Group the sidebar by Fabric work session — the user's work — instead of
-   * listing provider threads flat. Off by default while Fabric is being built.
-   * It is a client preference rather than an environment setting because what
-   * it changes is this client's navigation, and an environment that does not
-   * understand `fabric.*` is handled separately: the sidebar checks the
-   * server's `fabricWorkSessions` capability before calling anything.
+   * listing provider threads flat.
+   *
+   * **On by default in this fork**, which is the whole reason the fork exists:
+   * a build of Fabric where the user has to find a setting before seeing any of
+   * it is a build nobody uses. It stays a client preference rather than an
+   * environment setting because what it changes is this client's navigation,
+   * and an environment that does not understand `fabric.*` is handled
+   * separately — the sidebar checks the server's `fabricWorkSessions`
+   * capability before calling anything, so a client pointed at a stock T3
+   * server still renders the stock sidebar.
    */
-  fabricWorkSessionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  fabricWorkSessionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),
