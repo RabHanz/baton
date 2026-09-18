@@ -12,8 +12,11 @@ import { useState, type ReactNode } from "react";
 
 import { useFabricFleet } from "../fabricFleetResolvers";
 import { useNowMinute } from "../hooks/useNowMinute";
+import { formatRelativeTimeLabel } from "../timestampFormat";
 import { cn } from "../lib/utils";
 import { useFleet } from "../state/fabricWorkSessions";
+import { useThreadShells } from "../state/entities";
+import { ImportConversationsDialog } from "./settings/ImportConversationsDialog";
 import { FabricIntentBar } from "./sidebar/FabricIntentBar";
 import { RedactedSensitiveText } from "./settings/RedactedSensitiveText";
 import { Button } from "./ui/button";
@@ -143,7 +146,12 @@ function EnvironmentFleetPanel({
         </button>
       </div>
       {visible.length === 0 ? (
-        <EmptyFleet needsUserOnly={needsUserOnly} hasWork={rows.length > 0} />
+        <EmptyFleet
+          environmentId={environmentId}
+          environmentLabel={machine}
+          needsUserOnly={needsUserOnly}
+          hasWork={rows.length > 0}
+        />
       ) : (
         <ul className="flex flex-col divide-y divide-border/70 rounded-lg border border-border">
           {visible.map((row) => (
@@ -158,7 +166,56 @@ function EnvironmentFleetPanel({
           ))}
         </ul>
       )}
+      <RecentThreads environmentId={environmentId} />
     </section>
+  );
+}
+
+/**
+ * The conversations he was last in, under the fleet.
+ *
+ * A work session is work Fabric started; an imported conversation is not one,
+ * and a machine whose 420 MB session sits one click away in the sidebar should
+ * not be greeted with "No work yet" as if the screen were empty.
+ */
+function RecentThreads({ environmentId }: { readonly environmentId: EnvironmentId }): ReactNode {
+  const threads = useThreadShells();
+  const navigate = useNavigate();
+  const recent = threads
+    .filter((thread) => thread.environmentId === environmentId)
+    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .slice(0, 6);
+  if (recent.length === 0) return null;
+  return (
+    <div data-testid="fabric-landing-recent" className="flex flex-col gap-1.5">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Pick up where you left off
+      </h3>
+      <ul className="flex flex-col divide-y divide-border/70 rounded-lg border border-border">
+        {recent.map((thread) => (
+          <li key={`${thread.environmentId}:${thread.id}`}>
+            <button
+              type="button"
+              data-testid="fabric-landing-thread"
+              onClick={() =>
+                void navigate({
+                  to: "/$environmentId/$threadId",
+                  params: { environmentId: thread.environmentId, threadId: thread.id },
+                })
+              }
+              className="flex w-full items-baseline gap-3 px-4 py-2.5 text-left hover:bg-accent/40"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm leading-5 text-foreground">
+                {thread.title}
+              </span>
+              <span className="shrink-0 text-xs leading-5 text-muted-foreground">
+                {formatRelativeTimeLabel(thread.updatedAt)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -168,13 +225,18 @@ function EnvironmentFleetPanel({
  * "nothing here".
  */
 function EmptyFleet({
+  environmentId,
+  environmentLabel,
   needsUserOnly,
   hasWork,
 }: {
+  readonly environmentId: EnvironmentId;
+  readonly environmentLabel: string | null;
   readonly needsUserOnly: boolean;
   readonly hasWork: boolean;
 }): ReactNode {
   const navigate = useNavigate();
+  const [importOpen, setImportOpen] = useState(false);
   if (needsUserOnly && hasWork) {
     return (
       <p className="rounded-lg border border-border px-4 py-6 text-center text-sm text-muted-foreground">
@@ -187,14 +249,25 @@ function EmptyFleet({
       <p className="text-sm text-muted-foreground">
         No work yet. Say what you want above, or bring a conversation you have already had.
       </p>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => void navigate({ to: "/settings/connections" })}
-      >
+      {/* The action itself, not a trip to the settings page that holds it. */}
+      <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
         <MessagesSquareIcon />
         Import conversations
       </Button>
+      {importOpen ? (
+        <ImportConversationsDialog
+          open
+          onOpenChange={setImportOpen}
+          environmentId={environmentId}
+          environmentLabel={environmentLabel ?? "this machine"}
+          onOpenThread={(openEnvironmentId, threadId) =>
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: { environmentId: openEnvironmentId, threadId },
+            })
+          }
+        />
+      ) : null}
     </div>
   );
 }
