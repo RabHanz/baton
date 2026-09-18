@@ -26,6 +26,7 @@ import {
   type OrchestrationAction,
   type OrchestrationFiring,
   type OrchestrationRule,
+  type OrchestrationRuleId,
   type ThreadId,
   type WorkSessionId,
 } from "@t3tools/contracts";
@@ -73,6 +74,16 @@ export class FabricOrchestrationReactor extends Context.Service<
     readonly evaluate: (input: {
       readonly workSessionId: WorkSessionId;
       readonly changedThreadId: ThreadId | null;
+      /**
+       * A rule to leave alone in this pass.
+       *
+       * Used when the evaluation was *caused* by answering that rule's own
+       * confirmation gate: re-evaluating exists to release what was queued
+       * behind the question, and firing the question's own rule again re-asks
+       * it the moment it is answered. The live run did exactly that — confirm,
+       * and a second `awaiting_confirmation` appeared in the same second.
+       */
+      readonly skipRuleId?: OrchestrationRuleId | null;
     }) => Effect.Effect<ReadonlyArray<OrchestrationFiring>>;
   }
 >()("t3/fabric/OrchestrationReactor/FabricOrchestrationReactor") {}
@@ -205,6 +216,7 @@ export const make = Effect.gen(function* () {
   const evaluate: FabricOrchestrationReactor["Service"]["evaluate"] = ({
     workSessionId,
     changedThreadId,
+    skipRuleId,
   }) =>
     Effect.gen(function* () {
       const state = yield* currentState(workSessionId);
@@ -215,6 +227,7 @@ export const make = Effect.gen(function* () {
 
       const fired: OrchestrationFiring[] = [];
       for (const rule of candidates) {
+        if (skipRuleId !== undefined && skipRuleId !== null && rule.id === skipRuleId) continue;
         const decision = shouldFire({ rule, state, changedThreadId, firings });
         if (!decision.fire) continue;
 

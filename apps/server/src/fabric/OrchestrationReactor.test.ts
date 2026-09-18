@@ -341,6 +341,36 @@ describe("the reactor's own evaluation", () => {
     }).pipe(Effect.provide(harness({}))),
   );
 
+  it.effect("does not re-ask the question it was asked to release", () =>
+    Effect.gen(function* () {
+      // From the live run: answering a gate re-evaluates the work session so
+      // that whatever was queued behind it can run — and the gate's own rule
+      // matched the same unchanged state, so a second question appeared in the
+      // same second the first was answered.
+      yield* givenFinishedWork;
+      const rules = yield* OrchestrationRuleService;
+      const gate = OrchestrationRuleId.make("rule-gate-rearm");
+      yield* rules.create({
+        id: gate,
+        workSessionId,
+        trigger: { kind: "on_done" },
+        action: { kind: "confirmation_gate", question: "Restart the worker?" },
+      });
+
+      const reactor = yield* FabricOrchestrationReactor;
+      const asked = yield* reactor.evaluate({ workSessionId, changedThreadId: implThreadId });
+      assert.strictEqual(asked[0]?.outcome, "awaiting_confirmation");
+
+      const releasing = yield* reactor.evaluate({
+        workSessionId,
+        changedThreadId: null,
+        skipRuleId: gate,
+      });
+      assert.lengthOf(releasing, 0);
+      assert.strictEqual(yield* ruleCount(gate), 1);
+    }).pipe(Effect.provide(harness({}))),
+  );
+
   it.effect("evaluates nothing for a work session that does not exist", () =>
     Effect.gen(function* () {
       const reactor = yield* FabricOrchestrationReactor;

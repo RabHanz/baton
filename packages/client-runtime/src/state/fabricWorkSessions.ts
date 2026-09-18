@@ -12,6 +12,7 @@
  * and it belongs in the surface that renders it.
  */
 import {
+  FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
   type WorkSession,
@@ -96,6 +97,25 @@ export function createFabricWorkSessionAtoms<R, E>(
     rules: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:rules",
       tag: FABRIC_ORCHESTRATION_WS_METHODS.ruleList,
+    }),
+    /**
+     * One sentence, resolved and not run. This is what the input calls while
+     * the user is still typing, so it must never write anything — which is why
+     * it is a separate method with a read scope rather than a flag on `run`.
+     */
+    intentResolve: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:intent-resolve",
+      tag: FABRIC_INTENT_WS_METHODS.intentResolve,
+    }),
+    intentRun: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:intent-run",
+      tag: FABRIC_INTENT_WS_METHODS.intentRun,
+      scheduler,
+      concurrency,
+    }),
+    intents: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:intent-list",
+      tag: FABRIC_INTENT_WS_METHODS.intentList,
     }),
     ruleCreate: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:rule-create",

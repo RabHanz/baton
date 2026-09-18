@@ -20,6 +20,7 @@ import {
 } from "../../fabricFleetView";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useFleet } from "../../state/fabricWorkSessions";
+import { FabricIntentBar } from "./FabricIntentBar";
 
 export interface FabricFleetSectionProps {
   /** Only environments that advertise `fabricWorkSessions`. */
@@ -34,6 +35,8 @@ export interface FabricFleetSectionProps {
     projectId: ProjectId,
   ) => string | null;
   readonly onSelectWorkSession: (environmentId: EnvironmentId, entry: FabricFleetEntry) => void;
+  /** Bumped after a sentence runs, so the intent log re-reads. */
+  readonly onIntentRan: () => void;
 }
 
 export function FabricFleetSection(props: FabricFleetSectionProps): ReactNode {
@@ -69,7 +72,6 @@ function EnvironmentFleet(
   // during render: `Date.now()` here would freeze the moment a row last
   // rendered, and a synopsis would never *become* stale on screen.
   const nowMinute = useNowMinute();
-  if (entries.length === 0) return null;
 
   const rows = buildFleetRows({
     entries: entries.map((entry) => ({ environmentId: props.environmentId, entry })),
@@ -81,13 +83,48 @@ function EnvironmentFleet(
     // instead of skewing every age by the machine's offset.
     now: Date.parse(`${nowMinute}:00Z`),
   });
+  return (
+    <div className="pt-1">
+      {/* The input sits above the fleet because it is how the fleet is
+          addressed: "what needs me" and "tell the scheduler to stop" are the
+          same surface as the list they act on. */}
+      <FabricIntentBar
+        environmentId={props.environmentId}
+        focusedWorkSessionId={null}
+        onRan={props.onIntentRan}
+      />
+      {/* No work yet still gets the input: "start work on X" is exactly the
+          sentence someone types into an empty fleet. */}
+      {entries.length === 0 ? null : (
+        <FleetList
+          {...props}
+          rows={rows}
+          entries={entries}
+          needsUserOnly={props.needsUserOnly}
+          onToggleNeedsUser={props.onToggleNeedsUser}
+        />
+      )}
+    </div>
+  );
+}
+
+function FleetList(
+  props: FabricFleetSectionProps & {
+    readonly environmentId: EnvironmentId;
+    readonly needsUserOnly: boolean;
+    readonly onToggleNeedsUser: (next: boolean) => void;
+    readonly rows: readonly FleetRow[];
+    readonly entries: ReadonlyArray<FabricFleetEntry>;
+  },
+): ReactNode {
+  const { rows, entries } = props;
   const counts = countFleetRows(rows);
   const visible = filterFleetRows(rows, props.needsUserOnly);
   const byEntry = new Map(entries.map((entry) => [entry.workSessionId, entry]));
 
   return (
-    <div className="px-2 pt-1">
-      <div className="flex items-center justify-between gap-2 pb-1">
+    <>
+      <div className="flex items-center justify-between gap-2 px-2 pb-1">
         <p className="text-[11px] font-medium uppercase tracking-wide text-sidebar-muted-foreground">
           Fleet
         </p>
@@ -107,7 +144,7 @@ function EnvironmentFleet(
         </button>
       </div>
       {visible.length === 0 ? (
-        <p className="pb-1 text-[11px] leading-4 text-sidebar-muted-foreground">
+        <p className="px-2 pb-1 text-[11px] leading-4 text-sidebar-muted-foreground">
           {props.needsUserOnly ? "Nothing needs you." : "No work yet."}
         </p>
       ) : (
@@ -122,7 +159,7 @@ function EnvironmentFleet(
           />
         ))
       )}
-    </div>
+    </>
   );
 }
 
@@ -133,7 +170,7 @@ function FleetRowView(props: { readonly row: FleetRow; readonly onSelect: () => 
       type="button"
       data-testid="sidebar-fleet-row"
       onClick={props.onSelect}
-      className="flex w-full items-baseline gap-1.5 py-0.5 text-left"
+      className="flex w-full items-baseline gap-1.5 px-2 py-0.5 text-left"
     >
       <span
         aria-hidden

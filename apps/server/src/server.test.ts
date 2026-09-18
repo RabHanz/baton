@@ -108,6 +108,7 @@ const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unk
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
+import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
 import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
@@ -513,6 +514,63 @@ const makeBrowserOtlpPayload = (spanName: string) =>
     // @effect-diagnostics-next-line preferSchemaOverJson:off
     return JSON.parse(request.body) as OtlpTracer.TraceData;
   });
+
+/**
+ * Fabric's own services for the route tests.
+ *
+ * The work-session, rule and intent services are **real**, each on an in-memory
+ * database: this file exercises the routes, and a mocked service would prove
+ * nothing about whether they are wired. What a rule or a sentence may *cause*
+ * is inert, because a live reactor or executor could start a provider session
+ * from a route test.
+ *
+ * The layer values are shared by reference on purpose — Effect memoises a layer
+ * per build, so the intent service reads the same work sessions the routes
+ * write, rather than a second database that would silently disagree.
+ */
+const fabricWorkSessionTestLayer = FabricWorkSessionService.layer.pipe(
+  Layer.provide(SqlitePersistenceMemory),
+);
+const fabricRuleTestLayer = FabricOrchestrationRuleService.layer.pipe(
+  Layer.provide(SqlitePersistenceMemory),
+);
+const fabricServicesTestLayer = Layer.mergeAll(
+  fabricWorkSessionTestLayer,
+  fabricRuleTestLayer,
+  Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
+    start: () => Effect.void,
+    drain: Effect.void,
+    evaluate: () => Effect.succeed([]),
+  }),
+  FabricIntentService.layer.pipe(
+    Layer.provide(SqlitePersistenceMemory),
+    Layer.provide(
+      Layer.succeed(FabricIntentService.FabricIntentExecutor, {
+        execute: () => Effect.succeed({ reply: "Done.", workSessionId: null, failed: false }),
+      }),
+    ),
+    Layer.provide(Layer.mergeAll(fabricWorkSessionTestLayer, fabricRuleTestLayer)),
+    // Its own projection and registry stubs rather than the app's: this block
+    // is provided last in the chain, so it cannot borrow from mocks declared
+    // earlier. An empty fleet is the right shape here anyway — these tests are
+    // about the route and the log, not about what the grammar resolves to.
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
+          getProjectShells: () => Effect.succeed([]),
+          getShellSnapshot: () =>
+            Effect.succeed({
+              snapshotSequence: 0,
+              projects: [],
+              threads: [],
+              updatedAt: "1970-01-01T00:00:00.000Z",
+            }),
+        }),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+      ),
+    ),
+  ),
+);
 
 const buildAppUnderTest = (options?: {
   onPairingChangesSubscribed?: Effect.Effect<void>;
@@ -1216,23 +1274,7 @@ const buildAppUnderTest = (options?: {
       }),
       Layer.provideMerge(makeAuthTestLayer()),
       Layer.provideMerge(ServerSecretStore.layer),
-      Layer.provide(
-        Layer.mergeAll(
-          workspaceAndProjectServicesLayer,
-          // The real work-session and rule services, each on its own in-memory
-          // database. Not mocks: this file exercises the routes, and a mocked
-          // service would prove nothing about whether they are wired.
-          FabricWorkSessionService.layer.pipe(Layer.provide(SqlitePersistenceMemory)),
-          FabricOrchestrationRuleService.layer.pipe(Layer.provide(SqlitePersistenceMemory)),
-          // Inert on purpose: a live orchestration reactor could start a
-          // provider session from a route test.
-          Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
-            start: () => Effect.void,
-            drain: Effect.void,
-            evaluate: () => Effect.succeed([]),
-          }),
-        ),
-      ),
+      Layer.provide(Layer.mergeAll(workspaceAndProjectServicesLayer, fabricServicesTestLayer)),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(GitHubCli.layer.pipe(Layer.provideMerge(VcsProcess.layer))),
       Layer.provide(layerConfig),

@@ -33,6 +33,7 @@ import {
   type DiscoveredLocalServerList,
   EventId,
   type EditorId,
+  FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
   OrchestrationFiringNotFoundError,
@@ -91,6 +92,7 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as FleetQuery from "./fabric/FleetQuery.ts";
+import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
 import * as WorkSessionService from "./fabric/WorkSessionService.ts";
@@ -576,6 +578,7 @@ const makeWsRpcLayer = (
       const workSessions = yield* WorkSessionService.WorkSessionService;
       const orchestrationRules = yield* OrchestrationRuleService.OrchestrationRuleService;
       const orchestrationReactor = yield* FabricOrchestrationReactor.FabricOrchestrationReactor;
+      const intents = yield* FabricIntentService.FabricIntentService;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
@@ -3852,7 +3855,13 @@ const makeWsRpcLayer = (
               // run immediately rather than waiting for the next event.
               if (input.confirmed) {
                 yield* orchestrationReactor
-                  .evaluate({ workSessionId: firing.workSessionId, changedThreadId: null })
+                  .evaluate({
+                    workSessionId: firing.workSessionId,
+                    changedThreadId: null,
+                    // Not the rule that asked: re-firing it would re-ask the
+                    // question in the same second it was answered.
+                    skipRuleId: firing.ruleId,
+                  })
                   .pipe(Effect.ignoreCause({ log: true }));
               }
               const rules = yield* orchestrationRules.list({
@@ -3861,6 +3870,41 @@ const makeWsRpcLayer = (
               });
               return { rules };
             }),
+            { "rpc.aggregate": "fabric" },
+          ),
+        // One sentence in. `resolve` is what the input shows you before you
+        // press enter; `run` is the same resolution, executed and recorded.
+        [FABRIC_INTENT_WS_METHODS.intentResolve]: (input) =>
+          observeRpcEffect(
+            FABRIC_INTENT_WS_METHODS.intentResolve,
+            Effect.map(
+              intents.resolve({
+                text: input.text,
+                focusedWorkSessionId: input.focusedWorkSessionId ?? null,
+              }),
+              (resolution) => ({ resolution }),
+            ),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_INTENT_WS_METHODS.intentRun]: (input) =>
+          observeRpcEffect(
+            FABRIC_INTENT_WS_METHODS.intentRun,
+            intents.run({
+              text: input.text,
+              focusedWorkSessionId: input.focusedWorkSessionId ?? null,
+            }),
+            { "rpc.aggregate": "fabric" },
+          ),
+        [FABRIC_INTENT_WS_METHODS.intentList]: (input) =>
+          observeRpcEffect(
+            FABRIC_INTENT_WS_METHODS.intentList,
+            Effect.map(
+              intents.list({
+                workSessionId: input.workSessionId ?? null,
+                limit: input.limit ?? null,
+              }),
+              (recorded) => ({ intents: recorded }),
+            ),
             { "rpc.aggregate": "fabric" },
           ),
         [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>

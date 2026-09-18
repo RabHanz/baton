@@ -1,0 +1,308 @@
+/**
+ * Intent: one sentence in, one Fabric command out.
+ *
+ * §13's model, built where it can actually be relied on. The Director's north
+ * star is that he speaks into whatever microphone is nearest — iOS dictation,
+ * Wispr Flow, a DJI receiver through his own speech-to-text — and the fleet
+ * does the thing. **The fork owns everything after the text exists.** No
+ * microphone, no wake word, no speech model lives here; a phone's dictation
+ * and a keyboard produce the same string, and this is what that string means.
+ *
+ * Three properties hold, and they are the whole reason this is a contract
+ * rather than a prompt:
+ *
+ *   1. **Deterministic first, and in V1 only** (§13: "do not feed every
+ *      transcript blindly into an LLM"). A grammar decides what a sentence
+ *      means. There is no model in the path, so the same words always produce
+ *      the same command, and the user can be told exactly what will happen
+ *      before it happens.
+ *   2. **A refusal names the words it could not place.** Guessing is the one
+ *      behaviour that makes a voice surface untrustworthy: a misheard sentence
+ *      that starts a provider session is worse than one that does nothing.
+ *   3. **A sentence never authorises a high-risk action** (§24.2). The
+ *      classifier recognises §24.1's HIGH list explicitly and refuses it by
+ *      name, rather than failing to parse it and saying something vague.
+ *
+ * @module fabric/intent
+ */
+import * as Schema from "effect/Schema";
+
+import { IsoDateTime, ProjectId, TrimmedNonEmptyString, TrimmedString } from "../baseSchemas.ts";
+import { ProviderInstanceId } from "../providerInstance.ts";
+import {
+  OrchestrationAction,
+  OrchestrationFiringId,
+  OrchestrationTrigger,
+} from "./orchestrationRule.ts";
+import { WorkSessionId } from "./workSession.ts";
+
+export const FABRIC_INTENT_WS_METHODS = {
+  /** Resolve without doing anything. What the input shows you before Enter. */
+  intentResolve: "fabric.intent.resolve",
+  intentRun: "fabric.intent.run",
+  intentList: "fabric.intent.list",
+} as const;
+
+export const FabricIntentId = TrimmedNonEmptyString.pipe(Schema.brand("FabricIntentId"));
+export type FabricIntentId = typeof FabricIntentId.Type;
+
+/**
+ * §24.1's classes, as they apply to a sentence rather than to a task.
+ *
+ * `high` exists to be refused. Nothing this surface can do is high-risk; the
+ * class is here so that a sentence which *asks* for one is recognised and named
+ * instead of falling through to "I did not understand that", which would teach
+ * the user to rephrase until something happened.
+ */
+export const FabricIntentRisk = Schema.Literals(["low", "medium", "high"]);
+export type FabricIntentRisk = typeof FabricIntentRisk.Type;
+
+/** Which of §20's questions a fleet-wide status request is asking. */
+export const FabricStatusQuestion = Schema.Literals([
+  "needs_me",
+  "running",
+  "finished",
+  "everything",
+]);
+export type FabricStatusQuestion = typeof FabricStatusQuestion.Type;
+
+/**
+ * One rule a sentence asked for, before ids exist.
+ *
+ * Structurally the parser's `ParsedRule`. It crosses the wire because the
+ * preview has to show the user the rules a sentence would create *before* they
+ * are created — a rule that appears without having been read back is exactly
+ * what §22 is trying to avoid.
+ */
+export const FabricIntentRuleDraft = Schema.Struct({
+  trigger: OrchestrationTrigger,
+  action: OrchestrationAction,
+  /** True when this rule runs after the one before it in the list. */
+  afterPrevious: Schema.Boolean,
+  maxFirings: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 20 })),
+});
+export type FabricIntentRuleDraft = typeof FabricIntentRuleDraft.Type;
+
+/**
+ * What the sentence resolved to. Every member names its target by id: the
+ * grammar does the resolving, so execution never re-interprets words.
+ */
+export const FabricIntentCommand = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("status_fleet"),
+    question: FabricStatusQuestion,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("status_work_session"),
+    workSessionId: WorkSessionId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("message_work_session"),
+    workSessionId: WorkSessionId,
+    /** Exactly what the user said after the target, not a paraphrase. */
+    text: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("start_work_session"),
+    projectId: ProjectId,
+    title: TrimmedNonEmptyString,
+    providerInstanceId: ProviderInstanceId,
+    model: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    /** A second provider session on work that already exists. Not a handoff. */
+    kind: Schema.Literal("resume_work_session"),
+    workSessionId: WorkSessionId,
+    providerInstanceId: ProviderInstanceId,
+    model: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create_rules"),
+    workSessionId: WorkSessionId,
+    rules: Schema.Array(FabricIntentRuleDraft),
+    /**
+     * The sentence, verbatim, so every rule it creates can be read back in the
+     * words that made it. A rule whose source is empty is unreadable a week
+     * later, which is the opposite of §22's inspectability.
+     */
+    source: TrimmedString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("answer_gate"),
+    firingId: OrchestrationFiringId,
+    confirmed: Schema.Boolean,
+  }),
+]);
+export type FabricIntentCommand = typeof FabricIntentCommand.Type;
+
+export const FabricIntentRefusalReason = Schema.Literals([
+  /** Nothing in the grammar matched. */
+  "unrecognised",
+  /** §24.1 HIGH. A sentence never authorises one. */
+  "high_risk",
+  /** Understood, and belongs to a phase that is not built. */
+  "not_available_yet",
+  /** Named something this environment does not have. */
+  "unknown_target",
+  /** Several things matched and the difference matters (§14 rung 9). */
+  "ambiguous_target",
+  /** "Yes" with nothing waiting for an answer. */
+  "nothing_to_confirm",
+  /** The rule grammar refused; its own words come back in `unplaced`. */
+  "rule_not_understood",
+]);
+export type FabricIntentRefusalReason = typeof FabricIntentRefusalReason.Type;
+
+export const FabricIntentRefusal = Schema.Struct({
+  reason: FabricIntentRefusalReason,
+  /** The words the grammar could not place, verbatim. Never a summary. */
+  unplaced: TrimmedString,
+  /** What to say back. Written to be spoken as well as read. */
+  message: TrimmedNonEmptyString,
+});
+export type FabricIntentRefusal = typeof FabricIntentRefusal.Type;
+
+export const FabricIntentResolution = Schema.Union([
+  Schema.Struct({
+    outcome: Schema.Literal("resolved"),
+    command: FabricIntentCommand,
+    /** One line, in the user's terms: "Tell Claude on Scheduler: run the tests." */
+    description: TrimmedNonEmptyString,
+    risk: FabricIntentRisk,
+    /** The work this touches, when it touches one. */
+    workSessionId: Schema.NullOr(WorkSessionId),
+  }),
+  Schema.Struct({
+    outcome: Schema.Literal("refused"),
+    refusal: FabricIntentRefusal,
+  }),
+]);
+export type FabricIntentResolution = typeof FabricIntentResolution.Type;
+
+export const FabricIntentOutcome = Schema.Literals(["resolved", "refused", "failed"]);
+export type FabricIntentOutcome = typeof FabricIntentOutcome.Type;
+
+/**
+ * One recorded intent. Durable, because "why did that thread appear?" and "what
+ * did I ask it to do?" must be answerable after the fact — the same argument
+ * that makes an orchestration firing durable.
+ */
+export const FabricIntentRecord = Schema.Struct({
+  id: FabricIntentId,
+  /** What the user said, verbatim. */
+  text: TrimmedNonEmptyString,
+  outcome: FabricIntentOutcome,
+  /** The command's `kind`, or null when nothing resolved. */
+  commandKind: Schema.NullOr(TrimmedNonEmptyString),
+  workSessionId: Schema.NullOr(WorkSessionId),
+  description: TrimmedString,
+  /** The spoken reply, ready for any TTS the client has. */
+  reply: TrimmedString,
+  risk: FabricIntentRisk,
+  refusalReason: Schema.NullOr(FabricIntentRefusalReason),
+  at: IsoDateTime,
+});
+export type FabricIntentRecord = typeof FabricIntentRecord.Type;
+
+/**
+ * The §28 event family for this surface.
+ *
+ * §28's sketch names these `fabric.voice.*`. They are `fabric.intent.*` here
+ * because the same sentence arrives from dictation, a phone, a keyboard and a
+ * future wake word, and naming the family after one transport would misdescribe
+ * every other one. See `docs/fabric/DECISIONS.md`.
+ */
+export const FabricIntentEvent = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("fabric.intent.received"),
+    id: FabricIntentId,
+    text: TrimmedNonEmptyString,
+    at: IsoDateTime,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("fabric.intent.resolved"),
+    record: FabricIntentRecord,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("fabric.intent.refused"),
+    record: FabricIntentRecord,
+  }),
+]);
+export type FabricIntentEvent = typeof FabricIntentEvent.Type;
+
+// ---------------------------------------------------------------------------
+// RPC payloads
+// ---------------------------------------------------------------------------
+
+export const FabricIntentInput = Schema.Struct({
+  text: TrimmedNonEmptyString,
+  /**
+   * What the user is looking at. §14's ladder rung 3, and the only rung a
+   * server can be told about: the environment has no idea what is focused
+   * unless the client says so. Absent means "resolve from the utterance alone,
+   * then from what moved most recently".
+   */
+  focusedWorkSessionId: Schema.optionalKey(Schema.NullOr(WorkSessionId)),
+});
+export type FabricIntentInput = typeof FabricIntentInput.Type;
+
+export const FabricIntentResolveResult = Schema.Struct({
+  resolution: FabricIntentResolution,
+});
+export type FabricIntentResolveResult = typeof FabricIntentResolveResult.Type;
+
+export const FabricIntentRunResult = Schema.Struct({
+  resolution: FabricIntentResolution,
+  /** What to say back. Empty only when there is genuinely nothing to say. */
+  reply: TrimmedString,
+  record: FabricIntentRecord,
+});
+export type FabricIntentRunResult = typeof FabricIntentRunResult.Type;
+
+export const FabricIntentListInput = Schema.Struct({
+  workSessionId: Schema.optionalKey(WorkSessionId),
+  limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+});
+export type FabricIntentListInput = typeof FabricIntentListInput.Type;
+
+export const FabricIntentListResult = Schema.Struct({
+  /** Newest first. */
+  intents: Schema.Array(FabricIntentRecord),
+});
+export type FabricIntentListResult = typeof FabricIntentListResult.Type;
+
+/** How many intents a list returns when the caller does not say. */
+export const DEFAULT_INTENT_LIST_LIMIT = 20;
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+export class FabricIntentStorageError extends Schema.TaggedError<FabricIntentStorageError>()(
+  "FabricIntentStorageError",
+  { operation: TrimmedNonEmptyString, detail: TrimmedString },
+) {
+  override get message(): string {
+    return `Could not ${this.operation} the intent log: ${this.detail}`;
+  }
+}
+
+/**
+ * The sentence resolved and the command failed. Deliberately distinct from a
+ * refusal: "I would not" and "I could not" are different answers, and a user
+ * who cannot tell them apart cannot tell whether rephrasing would help.
+ */
+export class FabricIntentExecutionError extends Schema.TaggedError<FabricIntentExecutionError>()(
+  "FabricIntentExecutionError",
+  { commandKind: TrimmedNonEmptyString, detail: TrimmedString },
+) {
+  override get message(): string {
+    return `Could not run ${this.commandKind}: ${this.detail}`;
+  }
+}
+
+export const FabricIntentError = Schema.Union([
+  FabricIntentStorageError,
+  FabricIntentExecutionError,
+]);
+export type FabricIntentError = typeof FabricIntentError.Type;

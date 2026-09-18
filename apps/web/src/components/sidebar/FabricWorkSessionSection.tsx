@@ -22,13 +22,21 @@ import {
   workSessionThreadSubtitle,
   type WorkSessionGroup,
 } from "../../fabricWorkSessionGrouping";
+import { buildIntentRows, type IntentRow } from "../../fabricIntentView";
 import { buildRuleRows, rulesByWorkSession, type RuleRow } from "../../fabricRuleView";
-import { useOrchestrationRules, useWorkSessions } from "../../state/fabricWorkSessions";
+import {
+  intentsByWorkSession,
+  useIntents,
+  useOrchestrationRules,
+  useWorkSessions,
+} from "../../state/fabricWorkSessions";
 import type { SidebarThreadSummary } from "../../types";
 
 export interface FabricWorkSessionSectionProps {
   /** Only environments that advertise `fabricWorkSessions`. */
   readonly environmentIds: readonly EnvironmentId[];
+  /** Bumped when a sentence runs, so the intent log re-reads. */
+  readonly intentRevision: number;
   readonly threads: ReadonlyArray<SidebarThreadSummary & { readonly environmentId: EnvironmentId }>;
   readonly resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
   readonly resolveProviderLabel: (
@@ -65,9 +73,11 @@ function EnvironmentWorkSessions(
 ): ReactNode {
   const { workSessions } = useWorkSessions(props.environmentId);
   const { rules } = useOrchestrationRules(props.environmentId);
+  const { intents } = useIntents(props.environmentId, props.intentRevision);
   if (workSessions.length === 0) return null;
 
   const rulesByWork = rulesByWorkSession(rules);
+  const intentsByWork = intentsByWorkSession(intents);
 
   const grouping = buildWorkSessionGrouping({
     workSessions: workSessions.map((workSession) => ({
@@ -90,6 +100,9 @@ function EnvironmentWorkSessions(
           activeThreadKey={props.activeThreadKey}
           onSelectThread={props.onSelectThread}
           ruleRows={buildRuleRows(rulesByWork.get(group.workSession.id) ?? [])}
+          // Three is enough to see what was just asked without the block
+          // becoming a transcript.
+          intentRows={buildIntentRows((intentsByWork.get(group.workSession.id) ?? []).slice(0, 3))}
         />
       ))}
     </>
@@ -103,6 +116,7 @@ function WorkSessionGroupRows(props: {
   readonly activeThreadKey: string | null;
   readonly onSelectThread: (environmentId: EnvironmentId, thread: SidebarThreadSummary) => void;
   readonly ruleRows: readonly RuleRow[];
+  readonly intentRows: readonly IntentRow[];
 }): ReactNode {
   const { group } = props;
   // With no live thread the work still has a line, and it says which account
@@ -165,6 +179,22 @@ function WorkSessionGroupRows(props: {
           {/* A rule the user cannot see is indistinguishable from an agent
               doing things on its own, which is what §22 exists to prevent. */}
           {`⤳ ${rule.description} ${rule.lastFiring === null ? `(${rule.budget})` : `— ${rule.lastFiring}`}`}
+        </p>
+      ))}
+      {props.intentRows.map((intent) => (
+        <p
+          key={intent.id}
+          data-testid="sidebar-work-session-intent"
+          className={cn(
+            "truncate pl-2 text-[11px] leading-4",
+            intent.refused || intent.failed
+              ? "text-sidebar-destructive-foreground"
+              : "text-sidebar-muted-foreground",
+          )}
+        >
+          {/* What was asked, then what came of it. Refusals stay visible: "it
+              did nothing and I don't know why" is what this line answers. */}
+          {`“${intent.text}” — ${intent.outcome}`}
         </p>
       ))}
     </div>

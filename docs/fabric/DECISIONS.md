@@ -551,3 +551,126 @@ is "rules must terminate", is the wrong trade.
 
 **Consequence:** `after(time)` is named in `STATUS.md`'s not-built list and stays there until a
 sentence needs it. When it arrives it gets its own guard, not a share of `after_rule`'s.
+
+---
+
+## D24 — No speech in the fork: it owns everything after the text exists
+
+**Decided** 2026-09-18, during Phase 5. **Narrows** §29 Phase 5, which lists microphone
+enumeration, a wake provider, VAD, STT, TTS and a HUD.
+
+The Director already dictates all day, from three different places: iOS dictation on the phone,
+Wispr Flow on the laptop, and a DJI receiver through his own speech-to-text. Every one of them puts
+**text into a focused field**. Building a fourth speech pipeline inside the environment would add a
+microphone it cannot reach — the server runs on a box in a rack — and would make the phone's words
+mean something different from the laptop's.
+
+So the boundary is the string. `fabric.intent.*` takes text and nothing else, and there is no audio
+code in this repository. What §29 Phase 5 calls the voice service is a **client** concern, and the
+client that exists today is a text input in the sidebar.
+
+**Consequence:** the spoken reply is plain text on the wire; whatever the client has — iOS speech
+synthesis, the OS voice, nothing at all — says it. Nothing in the fork needs a speech vendor, a
+model, or a licence, and a phone, a laptop and a keyboard are the same input as far as the
+environment is concerned.
+
+What this does **not** cover, and is therefore not done: wake words, hands-free activation,
+conversation windows, and the §12.3 mode machine. Those are real Phase 5 tasks and they live in the
+client that owns the microphone.
+
+---
+
+## D25 — The event family is `fabric.intent.*`, not §28's `fabric.voice.*`
+
+**Decided** 2026-09-18, during Phase 5. **Deviates from** §28's sketch, which names
+`fabric.voice.targetChanged`, `fabric.voice.commandAccepted` and `fabric.voice.commandRejected`.
+
+Given D24, "voice" would be the wrong word in the log: the same sentence arrives from dictation, a
+phone, a keyboard, and one day a wake word, and naming the family after one transport misdescribes
+every other one. The events are `fabric.intent.received`, `fabric.intent.resolved` and
+`fabric.intent.refused`.
+
+`targetChanged` has no counterpart yet because there is no conversation window to hold a target
+between utterances — that belongs with the client that owns the microphone.
+
+---
+
+## D26 — §14's ladder stops where the environment's knowledge stops, and a named target never falls back
+
+**Decided** 2026-09-18, during Phase 5.
+
+§14 lists nine rungs of context resolution. An environment can honestly climb three of them: the
+explicit target in the sentence (rung 1), what the client says is focused (rung 3, and only because
+the client passes it), and the work that moved most recently (rung 6). Rungs 2, 4 and 5 are desktop
+facts — the voice conversation's target, the VS Code session, the focused editable field — that this
+process has never been told, and rung 8 is a semantic resolver, which D-by-default means a model.
+
+The ladder therefore stops rather than guessing, and one rule makes the difference between useful
+and dangerous: **a target the user named and the grammar cannot place is a refusal, never a fall
+back to what is focused.** A pronoun falls back; a name does not. The failure that prevents is
+specific — a message meant for one account landing in another because the resolver quietly decided
+the user must have meant the thing on screen.
+
+**Consequence:** "tell it to stop" uses the focused work, "tell the deploy pipeline to stop" is
+refused by name when there is no such work, and rung 9's clarification is asked only when two
+candidates genuinely match.
+
+---
+
+## D27 — Resolving and running are separate methods, because previewing must not need permission to act
+
+**Decided** 2026-09-18, during Phase 5.
+
+The input shows what a sentence will do before the user presses enter. That preview is not
+decoration; on a surface fed by dictation it is the confirmation step. It runs while the user is
+still typing, which means it must be free of side effects and cheap enough to call on a debounce.
+
+Two RPCs rather than one flag: `fabric.intent.resolve` carries the **read** scope and writes
+nothing — not even to the intent log — and `fabric.intent.run` carries the **operate** scope
+because what it does depends on the sentence. The scope cannot depend on the words: a read-only
+client must not be one phrasing away from starting a provider session.
+
+---
+
+## D28 — A sentence never authorises a high-risk action, and the §24.1 list is recognised by name
+
+**Decided** 2026-09-18, during Phase 5. **Stricter than** §24.2, which allows a high-risk request
+through an explicit confirmation surface or a narrow preauthorisation.
+
+Neither of those exists yet, so the honest V1 is a refusal. What matters more is _how_ it refuses:
+§24.1's HIGH list — production deploys, restarting production services, merging a protected branch,
+destructive database work, credentials, purchases — is matched **before** anything else in the
+grammar, and named back.
+
+The reason is that the alternative is worse than a refusal. An unparsed "deploy to production" would
+come back as "I could not place that", which invites rephrasing until something sticks; and the same
+words inside a message — "tell VentureOS to deploy to production" — would otherwise resolve as a
+perfectly ordinary low-risk message to an agent. Routing through an agent must not be a way around
+the rule, so the risk check runs before the intent check.
+
+**Consequence:** a sentence can start a session, message one, create a bounded rule and answer a
+question. It cannot deploy, merge, drop, rotate or buy, and it says so in those words.
+
+---
+
+## D29 — Answering a question must not re-ask it
+
+**Decided** 2026-09-18, after the Phase 5 live run. **Amends** Phase 9's confirmation path.
+
+Answering a `confirmation_gate` re-evaluates the work session, on purpose: that is what releases
+whatever was sequenced behind the question. In the live run it also re-fired the gate's own rule —
+the work session's state had not changed, so the rule matched again — and a second
+`awaiting_confirmation` appeared in the same second the first was answered. Left alone, the user
+answers the same question three times and the rule then reports itself exhausted.
+
+**Consequence:** the evaluation caused by an answer skips the rule that asked. `evaluate` takes a
+`skipRuleId`, and both confirmation paths — the RPC and the spoken one — pass the answered firing's
+rule.
+
+**The general case is still open, and is recorded here rather than quietly fixed.** A state-triggered
+rule fires whenever it is evaluated in a matching state, not only when the state _changes_ into a
+match. An idle work session receiving three unrelated thread events can therefore fire an `on_done`
+rule three times, up to its bound. The bound contains it — nothing runs away — but D20 already says
+what a bound is: a safety net, not a schedule. The fix is a per-work-session record of the last
+observed state so a rule can fire on the transition, and it is a Phase 9 amendment with its own
+migration, not something to bolt on at the end of this one. It is in `STATUS.md`'s not-proven list.

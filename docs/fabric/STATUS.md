@@ -5,19 +5,19 @@ What actually works, as opposed to what is planned. Updated at the end of every 
 Phase order: **0 → 2 → 3 → 4 → 9 → 5 → 6 → 7 → 8 → 10**. Phase 1 is already done; the reasoning
 for moving 9 ahead of 5 is in `DECISIONS.md`.
 
-| Phase                                          | State                     | Evidence                                                                                            |
-| ---------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
-| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`        |
-| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                               |
-| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider               |
-| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                          |
-| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider          |
-| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped |
-| 5 — desktop voice service                      | not started               | —                                                                                                   |
-| 6 — VS Code + browser + system dictation       | not started               | —                                                                                                   |
-| 7 — mobile voice + quick actions               | not started               | —                                                                                                   |
-| 8 — Herdr adoption                             | not started               | —                                                                                                   |
-| 10 — capability plane + hardening              | not started               | —                                                                                                   |
+| Phase                                          | State                     | Evidence                                                                                                                                                                       |
+| ---------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`                                                                                   |
+| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                                                                                                          |
+| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider                                                                                          |
+| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                                                                                                     |
+| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider                                                                                     |
+| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped                                                                            |
+| 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it |
+| 6 — VS Code + browser + system dictation       | not started               | —                                                                                                                                                                              |
+| 7 — mobile voice + quick actions               | not started               | —                                                                                                                                                                              |
+| 8 — Herdr adoption                             | not started               | —                                                                                                                                                                              |
+| 10 — capability plane + hardening              | not started               | —                                                                                                                                                                              |
 
 Nothing in this repository implements Fabric beyond what the Phase 2 section below claims.
 
@@ -323,3 +323,96 @@ after(rule|time)`. The event triggers and `after_rule` ship; a time trigger does
 - **No browser walk of the rule rows.** The rendering is unit-tested and the web package typechecks;
   the frames under `frames/` are from Phase 2 and Phase 4.
 - **Voice does not create rules yet.** The parser is pure and ready; wiring it to speech is Phase 5.
+
+## Phase 5 — the intent surface
+
+The Director's north star: he speaks a sentence into whatever microphone is nearest — iOS dictation,
+Wispr Flow, a DJI receiver through his own speech-to-text — and the fleet does the thing. **The fork
+owns everything after the text exists** (`DECISIONS.md` D24). There is no audio code in this
+repository and there should not be: a phone, a laptop and a keyboard must mean the same thing to the
+environment.
+
+| Item                                                             | State | Where it is proven                                                                                                                                                                           |
+| ---------------------------------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fabric.intent.run(text)` over RPC, with auth scopes             | done  | `rpc.ts`, `RpcAuthorization.ts` — three methods; `resolve` reads, `run` operates, `list` reads. The scope map's key set must equal the RPC group's, so an unscoped method is a compile error |
+| One deterministic grammar, §13, no model                         | done  | `packages/shared/src/fabricIntentParser.ts` — a pure function of the sentence and the environment's own vocabulary; nothing in the path can reach a provider                                 |
+| Work-session status → Phase 4's spoken sentence                  | done  | `IntentService.test.ts`; the live run answered "What needs me?" with the §20 sentence built from the real fleet                                                                              |
+| Start / resume a work session on a named project, host, provider | done  | `fabricIntentParser.test.ts`; `IntentExecutorLive.ts` starts it through the same narrow effects a rule uses                                                                                  |
+| Message the active implementation session                        | done  | `IntentService.test.ts` — the user's own words reach the work session's live thread, unchanged                                                                                               |
+| Create a rule, by delegating to `fabricRuleParser`               | done  | `IntentService.test.ts`; the live run created §22's two rules from one sentence, each carrying the sentence as its source                                                                    |
+| Answer a parked confirmation gate                                | done  | the live run parked a gate and released it by sentence; `fabricIntentParser.test.ts` for the grammar, including two questions waiting                                                        |
+| Refuse everything else, naming the phrase                        | done  | `fabricIntentParser.test.ts` — 32 cases; every refusal carries the words it could not place                                                                                                  |
+| Every intent recorded (`received` / `resolved` / `refused`)      | done  | migration 057, one additive table; `IntentService.ts` publishes the three §28-style events and writes the row, refusals included                                                             |
+| Shown on the work session when it has one                        | done  | `apps/web/src/fabricIntentView.ts` + tests; the Work block renders the last three for each work session                                                                                      |
+| A text entry point in the web UI, behind the same flag           | done  | `FabricIntentBar.tsx` in the Fleet section: resolves while typing, shows what enter will do, says the reply afterwards                                                                       |
+| The spoken reply is text any TTS can read                        | done  | `FabricIntentRunResult.reply` is a plain string; no speech vendor, model or licence anywhere in the fork (D24)                                                                               |
+| No model decides anything                                        | done  | `resolveFabricIntent` is arithmetic over strings and the environment's own records                                                                                                           |
+| 15+ parser cases from the specification and his phrasing         | done  | 32 in `fabricIntentParser.test.ts`, plus 7 service cases and 7 view cases                                                                                                                    |
+
+### The Phase 5 exit criterion
+
+> Against the snapshot: the specification's status sentence returns the Phase 4 sentence, a rule
+> sentence creates the rule, a gate sentence releases a parked gate, and a nonsense sentence is
+> refused by name.
+
+```text
+> What needs me?
+  resolves to: status_fleet — Say what needs you. [risk low]
+  reply:       Claude is waiting for approval on Production deploy check. Rule proof failed on Claude.
+
+> When Claude finishes this, have Claude review it and tell me if either needs me.
+  resolves to: create_rules — Create 2 rules on Fabric proof scratch / Intent proof. [risk medium]
+  reply:       Created 2 rules. Each will fire at most three times.
+    rule-…-1: trigger=on_done    action=start_provider_session max=3 source="When Claude finishes this, …"
+    rule-…-2: trigger=after_rule action=notify                 max=3 source="When Claude finishes this, …"
+
+  before: fired=1/3 — intent-proof-gate-3#1:awaiting_confirmation
+> Yes, go ahead on intent-proof-3
+  resolves to: answer_gate — Answer yes to: Restart the worker?
+  reply:       Confirmed.
+  after:              fired=1/3 — intent-proof-gate-3#1:completed
+  five seconds later: fired=1/3 — intent-proof-gate-3#1:completed
+
+> Sort out the thing with the stuff
+  resolves to: REFUSED (unrecognised) — I could not place "Sort out the thing with the stuff". …
+
+> Deploy to production
+  resolves to: REFUSED (high_risk) — That asks for a production deploy. Fabric never does that from
+               a sentence — do it yourself, with the change in front of you.
+```
+
+The gate was parked without spending anything: stopping the thread's session emits
+`thread.session-set`, one of the four events the reactor already reads, so the rule fired on a real
+event rather than on a hand-written row. No provider turn was taken anywhere in this phase.
+
+### Three defects the live run found
+
+**Rules created by sentence had no source.** §22 keeps the user's own words on the rule so it can be
+read back; the intent path was not passing them, and the live run printed `source=""`. The sentence
+now travels with the command and onto every rule it creates.
+
+**A refusal nobody could act on.** Two pieces of work shared a title, so the ambiguity refusal read
+"That could be Intent proof, or Intent proof. Say which one." The refusal now names the ids when the
+labels collide — and the ids are matchable, so "Yes, go ahead on intent-proof-3" is an answer the
+grammar accepts.
+
+**Answering a question re-asked it.** Confirming a gate re-evaluates the work session so that what
+was queued behind it can run; the gate's own rule matched the same unchanged state and parked a
+second question in the same second. The evaluation caused by an answer now skips the rule that
+asked. `DECISIONS.md` D29, which also records the general case that is still open.
+
+### Not proven in Phase 5
+
+- **No microphone, wake word, or conversation window.** By decision (D24) those belong to the client
+  that owns the audio device. What is proven is everything after the text: this phase does not claim
+  hands-free operation, and §29 Phase 5's own exit criterion — walking away from the keyboard with a
+  DJI mic — is not met by this repository alone.
+- **No browser walk of the intent bar.** The rendering and the preview wording are unit-tested and
+  the web package typechecks; the committed frames are still Phase 2 and Phase 4.
+- **`start_work_session` was not run live.** The grammar and the executor are tested, and the live
+  run deliberately did not start a provider session, because this phase was not authorised to spend
+  a turn.
+- **A state-triggered rule still fires on a state that persists**, not only on the transition into
+  it — bounded by `maxFirings`, and the fix needs a per-work-session observed-state record. D29.
+- **No second account**, so "continue this with Claude B" resolves against one Claude. The mechanism
+  is there; the second subscription is still Phase 1's open item.
