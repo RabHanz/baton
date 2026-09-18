@@ -19,6 +19,22 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 8 — Herdr adoption                             | **partial**               | the Phase 8 table below: the domain, the mapping, the fleet and every refusal are proven on the snapshot; discovery and send-input are blocked on Herdr not being installed here    |
 | 10 — capability plane + hardening              | **partial**               | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                  |
 
+## What Fabric is for, in his words (D56)
+
+"I want all of my projects and the active sessions within those projects that I am
+managing to work on to be in the T3 code, or whatever UI the Fabric should have,
+beautifully and functionally in threads there. If it is working and any kind of provider
+reaches limits, it should automatically or manually swap seamlessly to the other
+provider, and the coding and work mustn't ever stop unless it is stopped manually. That
+was my hands-off vision for development and coding, but it is just a part, a small part
+of the grand scheme of things, because what I envision is a completely hands-off computer
+control using my voice. That is what Fabric was brought to life for, across my devices,
+across my agents, across my projects, and across platforms."
+
+Read the rest of this page against that sentence. Continuity is the product: a limit is an
+event Fabric absorbs, not an interruption he sees. Voice is the grand scheme, and the
+development surface is one slice of it.
+
 ## Where Fabric is — the whole programme
 
 One table, so this file answers the question on its own. "Proven" means run

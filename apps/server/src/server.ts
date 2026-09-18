@@ -29,6 +29,7 @@ import * as FabricOrchestrationEffects from "./fabric/OrchestrationEffectsLive.t
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
 import * as FabricSynopsisReactor from "./fabric/SynopsisReactor.ts";
+import * as FabricAccountPoolService from "./fabric/AccountPoolService.ts";
 import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import {
   otlpTracesProxyRouteLayer,
@@ -365,6 +366,8 @@ const PullRequestServiceLive = PullRequestService.layer.pipe(
 
 /** Fabric work sessions. Needs only the SQL client. */
 const FabricWorkSessionServiceLive = FabricWorkSessionService.layer;
+/** Reads the account switcher's own store and asks it to switch; one process per call. */
+const FabricAccountPoolServiceLive = FabricAccountPoolService.layer;
 
 /**
  * Adopted sessions (§9), and the external runtime they come from.
@@ -551,6 +554,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
       PreviewLayerLive,
       DeviceLayerLive,
       FabricWorkSessionServiceLive,
+      FabricAccountPoolServiceLive,
       FabricAdoptedSessionServiceLive,
     ),
   ),

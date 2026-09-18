@@ -1562,3 +1562,35 @@ fail.
 
 **Consequence:** an imported conversation is a conversation he can continue, not an archive he can
 read. That is the whole difference between this feature and a transcript viewer.
+
+---
+
+## D56 — The amendment: continuity is the product, and voice is the point
+
+**Decided** 2026-09-18. The specification never says this, and he called that a flaw in
+the document. The document is not the authority; he is. Verbatim:
+
+"I want all of my projects and the active sessions within those projects that I am
+managing to work on to be in the T3 code, or whatever UI the Fabric should have,
+beautifully and functionally in threads there. If it is working and any kind of provider
+reaches limits, it should automatically or manually swap seamlessly to the other
+provider, and the coding and work mustn't ever stop unless it is stopped manually. That
+was my hands-off vision for development and coding, but it is just a part, a small part
+of the grand scheme of things, because what I envision is a completely hands-off computer
+control using my voice. That is what Fabric was brought to life for, across my devices,
+across my agents, across my projects, and across platforms."
+
+Three things follow, and they outrank the phase list:
+
+1. **A limit is an event Fabric absorbs, not an interruption he sees.** "The coding and work
+   mustn't ever stop unless it is stopped manually" is the acceptance test for account
+   rotation — not "a handoff exists", but that the work continued and he did not have to do
+   anything. Same thread, same transcript, credential swapped underneath at a turn boundary.
+2. **"Any kind of provider."** In-place rotation covers accounts behind one config directory;
+   the §6.1 capsule covers a different directory or a different provider. Which mechanism ran
+   is a detail he should never have to think about: one action, one policy, and the only place
+   the difference is named is the timeline.
+3. **Voice is the grand scheme; development is one slice.** Everything else is scaffolding for
+   "completely hands-off computer control using my voice… across my devices, across my agents,
+   across my projects, and across platforms." The reconciliation table judges every phase
+   against that sentence rather than against the document's own list.

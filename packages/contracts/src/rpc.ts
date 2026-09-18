@@ -203,6 +203,16 @@ import {
   OrchestrationRuleResult,
 } from "./fabric/orchestrationRule.ts";
 import {
+  FABRIC_ACCOUNT_WS_METHODS,
+  FabricAccountPoolInput,
+  FabricAccountPool,
+  FabricAccountPoolUnavailableError,
+  FabricAccountRotationFailedError,
+  FabricAccountRotationRefusedError,
+  FabricAccountUseInput,
+  FabricAccountUseResult,
+} from "./fabric/accountPool.ts";
+import {
   FABRIC_WS_METHODS,
   WorkSessionAttachThreadInput,
   WorkSessionCreateInput,
@@ -1450,6 +1460,23 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
 // user's work, which outlives the thread and the account running it. See
 // `packages/contracts/src/fabric/workSession.ts`.
 
+const WsFabricAccountPoolRpc = Rpc.make(FABRIC_ACCOUNT_WS_METHODS.accountPool, {
+  payload: FabricAccountPoolInput,
+  success: FabricAccountPool,
+  error: Schema.Union([FabricAccountPoolUnavailableError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAccountUseRpc = Rpc.make(FABRIC_ACCOUNT_WS_METHODS.accountUse, {
+  payload: FabricAccountUseInput,
+  success: FabricAccountUseResult,
+  error: Schema.Union([
+    FabricAccountPoolUnavailableError,
+    FabricAccountRotationRefusedError,
+    FabricAccountRotationFailedError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsFabricWorkSessionListRpc = Rpc.make(FABRIC_WS_METHODS.workSessionList, {
   payload: WorkSessionListInput,
   success: WorkSessionListResult,
@@ -1763,6 +1790,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsFabricAccountPoolRpc,
+  WsFabricAccountUseRpc,
   WsFabricWorkSessionListRpc,
   WsFabricWorkSessionCreateRpc,
   WsFabricWorkSessionUpdateRpc,
