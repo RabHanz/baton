@@ -142,8 +142,27 @@ export const AgentSessionThreadSummary = Schema.Struct({
   preview: Schema.String,
   /** Directory the session ran in, as the transcript recorded it. */
   workspaceRoot: TrimmedNonEmptyString,
-  /** Set when a project already exists at that directory on this server. */
+  /**
+   * Set when a project on this server owns that directory — either rooted at
+   * it, or containing it. Containment is what makes presence honest: a session
+   * run in a worktree or a subdirectory of a project is that project's work,
+   * and matching roots exactly left 4,013 of this box's 7,071 transcripts
+   * belonging to no project at all.
+   */
   projectId: Schema.optional(ProjectId),
+  /**
+   * The directory the session actually ran in, when that is not the project
+   * root — a worktree, a package, a scratch directory. `workspaceRoot` reports
+   * the project's root so rows group, and this says where the work happened.
+   */
+  sessionRoot: Schema.optional(TrimmedNonEmptyString),
+  /**
+   * The session ran below the project root rather than at it. Agent lanes are
+   * overwhelmingly nested, and they outnumber his own sessions by three orders
+   * of magnitude on the agent box — so a listing that cannot tell them apart
+   * buries the conversations he is looking for.
+   */
+  nested: Schema.optional(Schema.Boolean),
   model: Schema.NullOr(Schema.String),
   messageCount: NonNegativeInt,
   sizeBytes: NonNegativeInt,

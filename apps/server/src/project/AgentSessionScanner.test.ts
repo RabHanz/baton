@@ -23,8 +23,10 @@ import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSn
 import * as ServerSettings from "../serverSettings.ts";
 import * as AgentSessionScanner from "./AgentSessionScanner.ts";
 
-const makeProjectShell = (workspaceRoot: string): OrchestrationProjectShell => ({
-  id: ProjectId.make("project-1"),
+const makeProjectShell = (workspaceRoot: string, index = 0): OrchestrationProjectShell => ({
+  // Indexed so containment tests can tell two projects apart; the first keeps
+  // the id every existing assertion already names.
+  id: ProjectId.make(`project-${index + 1}`),
   title: "Imported",
   workspaceRoot,
   defaultModelSelection: null,
@@ -43,7 +45,9 @@ const makeProjectionSnapshotQueryLayer = (importedWorkspaceRoots: ReadonlyArray<
     getShellSnapshot: () =>
       Effect.succeed({
         snapshotSequence: 0,
-        projects: importedWorkspaceRoots.map((workspaceRoot) => makeProjectShell(workspaceRoot)),
+        projects: importedWorkspaceRoots.map((workspaceRoot, index) =>
+          makeProjectShell(workspaceRoot, index),
+        ),
         threads: [],
         updatedAt: "2026-01-01T00:00:00.000Z",
       }),
@@ -1688,6 +1692,144 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           workspaceRoot: workspace,
         });
         expect(scoped.threads.map((thread) => thread.providerSessionId)).toEqual([sessionOne]);
+      }),
+    );
+
+    // Presence, rather than importability. A session run in a worktree or a
+    // package below a project is that project's work: matching roots exactly
+    // left 4,013 of the agent box's 7,071 transcripts owned by no project at
+    // all, which is why none of that work was visible in T3.
+    it.effect("lists a session run below a project under that project, marked nested", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-nested-claude-");
+        const codexHomePath = yield* makeTempDir("t3code-nested-codex-");
+        const workspace = yield* makeTempDir("t3code-nested-workspace-");
+        const worktree = path.join(workspace, ".worktrees", "agent-a1");
+        const rootSession = "11111111-2222-4333-8444-555555555555";
+        const nestedSession = "66666666-7777-4888-8999-aaaaaaaaaaaa";
+        const claudeTranscript = (cwd: string, sessionId: string, text: string) =>
+          `${encodeTranscriptRecord({
+            type: "user",
+            cwd,
+            sessionId,
+            timestamp: "2026-08-24T11:00:00.000Z",
+            message: { content: [{ type: "text", text }] },
+          })}\n`;
+
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-root", `${rootSession}.jsonl`),
+          contents: claudeTranscript(workspace, rootSession, "His own session"),
+          mtimeMs: nowMs - 600_000,
+        });
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-wt", `${nestedSession}.jsonl`),
+          contents: claudeTranscript(worktree, nestedSession, "An agent lane"),
+          mtimeMs: nowMs - 60_000,
+        });
+
+        const listed = yield* runThreadSummaries({
+          claudeHomePath,
+          codexHomePath,
+          importedWorkspaceRoots: [workspace],
+          workspaceRoot: workspace,
+        });
+
+        expect(
+          listed.threads.map((thread) => [
+            thread.providerSessionId,
+            thread.projectId,
+            thread.workspaceRoot,
+            thread.sessionRoot,
+            thread.nested,
+          ]),
+        ).toEqual([
+          // His own session leads even though the lane is nine minutes newer:
+          // nested work never crowds the project's own out of the listing.
+          [rootSession, "project-1", workspace, undefined, undefined],
+          [nestedSession, "project-1", workspace, worktree, true],
+        ]);
+      }),
+    );
+
+    it.effect("gives a nested session to the nearest project, not the outer one", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-nearest-claude-");
+        const codexHomePath = yield* makeTempDir("t3code-nearest-codex-");
+        const outer = yield* makeTempDir("t3code-nearest-outer-");
+        const inner = path.join(outer, "packages", "inner");
+        const session = "11111111-2222-4333-8444-555555555555";
+
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-inner", `${session}.jsonl`),
+          contents: `${encodeTranscriptRecord({
+            type: "user",
+            cwd: path.join(inner, "src"),
+            sessionId: session,
+            timestamp: "2026-08-24T11:00:00.000Z",
+            message: { content: [{ type: "text", text: "Inner work" }] },
+          })}\n`,
+          mtimeMs: nowMs - 60_000,
+        });
+
+        const listed = yield* runThreadSummaries({
+          claudeHomePath,
+          codexHomePath,
+          importedWorkspaceRoots: [outer, inner],
+          workspaceRoot: outer,
+        });
+
+        // `project-2` is the inner project: the longest matching root wins, so a
+        // checkout inside another project keeps its own sessions.
+        expect(listed.threads.map((thread) => thread.projectId)).toEqual(["project-2"]);
+      }),
+    );
+
+    // The listing widens to nested sessions; the bulk import must not. "Import
+    // this project's history" pulling in every agent lane under it is a flood.
+    it.effect("keeps the project-wide import pinned to the project root", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+        yield* TestClock.setTime(nowMs);
+        const claudeHomePath = yield* makeTempDir("t3code-pinned-claude-");
+        const codexHomePath = yield* makeTempDir("t3code-pinned-codex-");
+        const workspace = yield* makeTempDir("t3code-pinned-workspace-");
+        const worktree = path.join(workspace, ".worktrees", "agent-a1");
+        const rootSession = "11111111-2222-4333-8444-555555555555";
+        const nestedSession = "66666666-7777-4888-8999-aaaaaaaaaaaa";
+        const line = (cwd: string, sessionId: string, text: string) =>
+          `${encodeTranscriptRecord({
+            type: "user",
+            cwd,
+            sessionId,
+            timestamp: "2026-08-24T11:00:00.000Z",
+            message: { content: [{ type: "text", text }] },
+          })}\n`;
+
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-root", `${rootSession}.jsonl`),
+          contents: line(workspace, rootSession, "His own session"),
+          mtimeMs: nowMs - 600_000,
+        });
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-wt", `${nestedSession}.jsonl`),
+          contents: line(worktree, nestedSession, "An agent lane"),
+          mtimeMs: nowMs - 60_000,
+        });
+
+        const imported = yield* runRecentThreads({
+          claudeHomePath,
+          codexHomePath,
+          workspaceRoot: workspace,
+        });
+
+        expect(imported.map((thread) => thread.providerSessionId)).toEqual([rootSession]);
       }),
     );
 

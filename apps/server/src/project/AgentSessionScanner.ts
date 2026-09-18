@@ -254,9 +254,17 @@ export class AgentSessionScanner extends Context.Service<
      * error directly — there is no server-local context worth wrapping.
      */
     readonly scan: Effect.Effect<AgentSessionScanResult, AgentSessionScanError>;
+    /**
+     * `includeNested` widens the search to sessions run below the root — a
+     * worktree, a package. The project-wide import leaves it off, because
+     * taking in every agent lane under a project is a flood rather than an
+     * onboarding; importing one named conversation turns it on, because that
+     * session is exactly the one the user pointed at.
+     */
     readonly recentThreads: (
       workspaceRoot: string,
       completedSources?: ReadonlyArray<AgentSessionImportSource>,
+      includeNested?: boolean,
     ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
     /**
      * The same recent transcripts, described rather than imported: one entry per
@@ -1748,8 +1756,19 @@ export const make = Effect.gen(function* () {
     // directory's. The import path always names a root; the listing does not.
     workspaceRoot: string | null,
     completedSources: ReadonlyArray<AgentSessionImportSource>,
+    /**
+     * Include sessions run *below* the root — worktrees, packages, scratch
+     * directories. The listing wants them, because that is where most of the
+     * work happened and hiding it is what made presence dishonest. The bulk
+     * import must not: "import this project's history" taking in 4,013
+     * agent-lane transcripts from `.claude-worktrees/` is a flood, not an
+     * onboarding, so it stays pinned to the root and single conversations are
+     * imported by name.
+     */
+    includeNested = false,
   ) {
     let rootIdentity: string | null = null;
+    let rootPrefix: string | null = null;
     if (workspaceRoot !== null) {
       const root = path.resolve(expandHomePath(workspaceRoot));
       const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
@@ -1757,7 +1776,29 @@ export const make = Effect.gen(function* () {
         return { stream: Stream.empty, candidatesTruncated: false };
       }
       rootIdentity = yield* directoryIdentity(root);
+      rootPrefix = includeNested ? normalizeForWorktreeMatch(realRoot, foldWorktreeCase) : null;
     }
+
+    /**
+     * How a session's directory relates to the named root. Used twice — once on
+     * the cached candidate and again on the `cwd` read out of the transcript
+     * body, because a replaced file can belong to a different project than the
+     * candidate that pointed at it. Both call sites must agree, which is why
+     * this is one function rather than two copies of the comparison.
+     */
+    const rootRelation = Effect.fn("AgentSessionScanner.rootRelation")(function* (
+      candidatePath: string,
+    ) {
+      if (rootIdentity === null) return "unscoped" as const;
+      if ((yield* directoryIdentity(candidatePath)) === rootIdentity) return "root" as const;
+      if (rootPrefix === null) return "outside" as const;
+      const realCandidate = yield* fileSystem
+        .realPath(candidatePath)
+        .pipe(Effect.orElseSucceed(() => candidatePath));
+      return normalizeForWorktreeMatch(realCandidate, foldWorktreeCase).startsWith(rootPrefix)
+        ? ("nested" as const)
+        : ("outside" as const);
+    });
     const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
     const cutoffMs = nowMs - RECENT_THREAD_WINDOW_MS;
 
@@ -1772,14 +1813,17 @@ export const make = Effect.gen(function* () {
     const eligibleTranscripts: Array<{
       readonly candidate: RawCandidate;
       readonly transcript: RawCandidate["transcripts"][number] & { readonly mtimeMs: number };
+      /** Ran below the named root rather than at it. Only ever true for the listing. */
+      readonly nested: boolean;
     }> = [];
     for (const candidate of candidates) {
       const expanded = expandHomePath(candidate.cwd.trim());
       if (!path.isAbsolute(expanded)) continue;
       const resolved = path.resolve(expanded);
-      if (rootIdentity === null) {
-        if (isExcludedProjectPath(resolved)) continue;
-      } else if ((yield* directoryIdentity(resolved)) !== rootIdentity) continue;
+      const relation = yield* rootRelation(resolved);
+      if (relation === "outside") continue;
+      if (relation === "unscoped" && isExcludedProjectPath(resolved)) continue;
+      const entryNested = relation === "nested";
 
       for (const transcript of candidate.transcripts) {
         if (
@@ -1792,11 +1836,17 @@ export const make = Effect.gen(function* () {
         eligibleTranscripts.push({
           candidate,
           transcript: { ...transcript, mtimeMs: transcript.mtimeMs },
+          nested: entryNested,
         });
       }
     }
 
     eligibleTranscripts.sort((left, right) => {
+      // The project's own sessions are never crowded out of the listing by the
+      // agent lanes running inside it. On this box those nested transcripts
+      // outnumber the root's four by a thousand to one, so a recency-only
+      // order would spend every one of the 50 rows before reaching his.
+      if (left.nested !== right.nested) return left.nested ? 1 : -1;
       if (left.transcript.mtimeMs !== right.transcript.mtimeMs) {
         return right.transcript.mtimeMs - left.transcript.mtimeMs;
       }
@@ -1877,11 +1927,12 @@ export const make = Effect.gen(function* () {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
           const resolvedCwd = path.resolve(expandedCwd);
-          if (rootIdentity === null) {
+          const cwdRelation = yield* rootRelation(resolvedCwd);
+          if (cwdRelation === "unscoped") {
             // A directory nothing can be a project in is not a listing failure,
             // so it leaves no "could not import" trace behind it.
             if (isExcludedProjectPath(resolvedCwd)) return Option.none<AgentSessionRecentThread>();
-          } else if ((yield* directoryIdentity(resolvedCwd)) !== rootIdentity) {
+          } else if (cwdRelation === "outside") {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
 
@@ -1927,9 +1978,10 @@ export const make = Effect.gen(function* () {
   const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
     workspaceRoot,
     completedSources = [],
+    includeNested = false,
   ) =>
     Stream.unwrap(
-      prepareRecentThreads(workspaceRoot, completedSources).pipe(
+      prepareRecentThreads(workspaceRoot, completedSources, includeNested).pipe(
         Effect.map((prepared) => prepared.stream),
       ),
     );
@@ -1937,7 +1989,7 @@ export const make = Effect.gen(function* () {
   const recentThreadSummaries: AgentSessionScanner["Service"]["recentThreadSummaries"] = Effect.fn(
     "AgentSessionScanner.recentThreadSummaries",
   )(function* (options) {
-    const prepared = yield* prepareRecentThreads(options?.workspaceRoot ?? null, []);
+    const prepared = yield* prepareRecentThreads(options?.workspaceRoot ?? null, [], true);
     // One past the limit: the extra entry is what proves the list was cut,
     // and the stream is lazy, so nothing beyond it is ever read.
     const collected = yield* prepared.stream.pipe(
@@ -1963,15 +2015,32 @@ export const make = Effect.gen(function* () {
       projectsByRoot.set(normalizeProjectPathForComparison(projectRoot), project);
       projectsByRoot.set(yield* directoryIdentity(projectRoot), project);
     }
+    // Longest root first, so a project checked out inside another project keeps
+    // its own sessions instead of the parent swallowing them.
+    const projectRootPrefixes = shellSnapshot.projects
+      .map((project) => ({
+        project,
+        prefix: normalizeForWorktreeMatch(
+          path.resolve(expandHomePath(project.workspaceRoot)),
+          foldWorktreeCase,
+        ),
+      }))
+      .sort((left, right) => right.prefix.length - left.prefix.length);
+    const containingProject = (sessionRoot: string) => {
+      const normalized = normalizeForWorktreeMatch(path.resolve(sessionRoot), foldWorktreeCase);
+      return projectRootPrefixes.find((entry) => normalized.startsWith(entry.prefix))?.project;
+    };
     const existingThreadIds = new Set(shellSnapshot.threads.map((thread) => thread.id));
     const stillWritingAfterMs =
       DateTime.toEpochMillis(yield* DateTime.now) - STILL_WRITING_WINDOW_MS;
 
     const threads: Array<AgentSessionThreadSummary> = [];
     for (const outcome of listed) {
-      const project =
+      const rootedProject =
         projectsByRoot.get(normalizeProjectPathForComparison(outcome.workspaceRoot)) ??
         projectsByRoot.get(yield* directoryIdentity(outcome.workspaceRoot));
+      const project = rootedProject ?? containingProject(outcome.workspaceRoot);
+      const nested = rootedProject === undefined && project !== undefined;
       const threadId = importedAgentSessionThreadId(outcome.source);
       threads.push({
         provider: outcome.thread.source,
@@ -1982,6 +2051,7 @@ export const make = Effect.gen(function* () {
         preview: threadPreview(outcome.thread),
         workspaceRoot: project?.workspaceRoot ?? outcome.workspaceRoot,
         ...(project === undefined ? {} : { projectId: project.id }),
+        ...(nested ? { sessionRoot: outcome.workspaceRoot, nested: true } : {}),
         model: outcome.thread.model,
         messageCount: outcome.thread.messages.length,
         sizeBytes: outcome.source.size,
