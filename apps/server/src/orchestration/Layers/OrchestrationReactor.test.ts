@@ -15,6 +15,7 @@ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
+import * as FabricOrchestrationReactor from "../../fabric/OrchestrationReactor.ts";
 import * as FabricSynopsisReactor from "../../fabric/SynopsisReactor.ts";
 import { StorageCleanup } from "../../storageCleanup.ts";
 
@@ -124,6 +125,16 @@ describe("OrchestrationReactor", () => {
             drain: Effect.void,
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
+            start: () => {
+              started.push("fabric-orchestration-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+            evaluate: () => Effect.succeed([]),
+          }),
+        ),
       ),
     );
 
@@ -141,6 +152,7 @@ describe("OrchestrationReactor", () => {
       "pull-request-sync-reactor",
       "agent-awareness-relay",
       "fabric-synopsis-reactor",
+      "fabric-orchestration-reactor",
       "storage-cleanup",
     ]);
 

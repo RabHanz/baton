@@ -5,19 +5,19 @@ What actually works, as opposed to what is planned. Updated at the end of every 
 Phase order: **0 → 2 → 3 → 4 → 9 → 5 → 6 → 7 → 8 → 10**. Phase 1 is already done; the reasoning
 for moving 9 ahead of 5 is in `DECISIONS.md`.
 
-| Phase                                          | State                     | Evidence                                                                                     |
-| ---------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
-| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9` |
-| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                        |
-| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider        |
-| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                   |
-| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider   |
-| 9 — orchestration                              | not started               | —                                                                                            |
-| 5 — desktop voice service                      | not started               | —                                                                                            |
-| 6 — VS Code + browser + system dictation       | not started               | —                                                                                            |
-| 7 — mobile voice + quick actions               | not started               | —                                                                                            |
-| 8 — Herdr adoption                             | not started               | —                                                                                            |
-| 10 — capability plane + hardening              | not started               | —                                                                                            |
+| Phase                                          | State                     | Evidence                                                                                            |
+| ---------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
+| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`        |
+| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                               |
+| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider               |
+| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                          |
+| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider          |
+| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped |
+| 5 — desktop voice service                      | not started               | —                                                                                                   |
+| 6 — VS Code + browser + system dictation       | not started               | —                                                                                                   |
+| 7 — mobile voice + quick actions               | not started               | —                                                                                                   |
+| 8 — Herdr adoption                             | not started               | —                                                                                                   |
+| 10 — capability plane + hardening              | not started               | —                                                                                                   |
 
 Nothing in this repository implements Fabric beyond what the Phase 2 section below claims.
 
@@ -236,3 +236,90 @@ first, and `02-needs-me-filter.png` after the filter was clicked.
   `apps/mobile` renders them yet; that is Phase 7.
 - **`limited` has not been seen in the wild.** It is unit-tested against a reported quota window at
   100%, but no account was exhausted to watch it happen.
+
+## Phase 9 — bounded orchestration
+
+| Item                                                                                  | State         | Where it is proven                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OrchestrationRule` contract: trigger, action, follow-up, confirmation gate           | done          | `packages/contracts/src/fabric/orchestrationRule.ts`                                                                                                                                                               |
+| Triggers `on_done` / `on_needs_user` / `on_failed` / `after_rule`                     | done          | `OrchestrationRuleService.test.ts` — each mapped onto the `FabricSessionState` values §10 derives, and nothing else                                                                                                |
+| `after(time)` triggers                                                                | **not built** | a scheduler rather than a reactor, and none of this phase's three safety properties is written to hold for one; `DECISIONS.md` D23                                                                                 |
+| Actions: start a provider session, message the implementer, notify, confirmation gate | done          | `OrchestrationEffectsLive.ts` is the whole list of what a rule may do; `OrchestrationReactor.test.ts` drives each one through the real services and reads back the firing it recorded                              |
+| Persistence, additive                                                                 | done          | migration 056, two tables; `OrchestrationRuleRepository.ts`                                                                                                                                                        |
+| Create / list / disable / enable / confirm over RPC, each with an auth scope          | done          | `rpc.ts`, `RpcAuthorization.ts` — the key set must equal the RPC group's, so an unscoped method is a compile error                                                                                                 |
+| Evaluated by a reactor on the same events Phase 4 reads                               | done          | `OrchestrationReactor.test.ts` pins the event set — the four Phase 4 reads, and pinning/snoozing/renaming ignored: a rule must not fire on a fact the fleet cannot see                                             |
+| Never a model in the firing decision                                                  | done          | `shouldFire` is arithmetic over recorded facts; there is no model call anywhere in the path                                                                                                                        |
+| Hard loop bound: at most N firings, default 3, durable                                | done          | the count lives in the database, not in memory — a bound that resets on restart is not one. `OrchestrationReactor.test.ts`: six finishes, two firings, then `exhausted`                                            |
+| Never re-triggered by its own effect                                                  | done          | `shouldFire` checks the produced thread **before** the trigger, so a matching state on a rule's own thread cannot slip past; the reactor test fires once and then returns nothing for the review thread it created |
+| `ruleTriggered` / `ruleCompleted` events (§28)                                        | done          | `OrchestrationRuleService.test.ts`                                                                                                                                                                                 |
+| Firings on the work-session timeline                                                  | done          | every firing records what produced it; the Work block renders the rule and its last firing                                                                                                                         |
+| Natural language → rule, deterministic grammar, no model                              | done          | `packages/shared/src/fabricRuleParser.ts` + 12 tests, including the specification's own sentence                                                                                                                   |
+| The parser refuses with the phrase it could not place                                 | done          | "deploy to production" is named back rather than dropped, and nothing is created when part of a sentence cannot be placed                                                                                          |
+| Rules shown in the UI behind the same flag                                            | done          | `apps/web/src/fabricRuleView.ts` + tests; rendered in the Work block                                                                                                                                               |
+
+### The Phase 9 exit criterion
+
+> The specification's sentence creates an inspectable rule and, against the snapshot with a thread
+> you finish by hand, it fires once, starts the review thread, and stops.
+
+```text
+parsed: ok=true
+parsed into 2 rule(s)
+rule rule-proof-b-1: trigger=on_done   action=start_provider_session max=3
+rule rule-proof-b-2: trigger=after_rule action=notify                max=3
+implementation thread started: rule-proof-impl-2
+
+  … one cheap turn on the box's own Claude Max subscription, finished by hand …
+
+rule rule-proof-b-1 [enabled] fired=1/3
+  firing rule-proof-b-1#1: completed by=on_done:idle
+    produced=rule-rule-proof-2-47f9c726-… detail="Started claudeAgent as review."
+rule rule-proof-b-2 [enabled] fired=1/3
+  firing rule-proof-b-2#1: completed by=after_rule:starting detail="if either needs me"
+timeline: claudeAgent/created/implementation:live, claudeAgent/created/review:live
+synopsis: [{"text":"if either needs me", …}]
+```
+
+Re-read minutes later, after the review thread had taken its own turn: still `fired=1/3` on both.
+The review session finishing did **not** re-fire the rule that created it, which is the loop §22
+names.
+
+### Two defects the live run found
+
+Neither was visible to the unit tests, and both are the kind only a real run produces.
+
+**A sequenced rule fired on every event, not once per predecessor completion.** The first run
+recorded `fired=3/3` on the notify rule, which then read `exhausted`. `shouldFire` was asking "has
+the predecessor completed?", and that stays true forever. The bound stopped it — the safety net doing
+exactly its job — but a bound is not a schedule. A sequenced rule now fires only while its own firing
+count is behind the predecessor's completions, so a second review releases a second notification and
+nothing else does. `DECISIONS.md` D20.
+
+**A rule started a session on a provider that cannot run.** The first run started the review on this
+environment's Codex, which is configured but whose binary is not installed. The rule did what it was
+told; the result was a dead thread and a synopsis containing a spawn stack trace. A rule now checks
+availability before creating anything and records `skipped` with the reason, because "that account is
+not available here" is a correct outcome rather than a fault. D21.
+
+### Not built, and not pretended otherwise
+
+- **`after(time)` triggers.** The brief's trigger set is `on_done, on_needs_user, on_failed,
+after(rule|time)`. The event triggers and `after_rule` ship; a time trigger does not, because it is
+  a scheduler rather than a reactor and none of this phase's three safety properties is written to
+  hold for one. The reasoning, and what it would take, is `DECISIONS.md` D23.
+
+### Not proven in Phase 9
+
+- **No second account.** The specification's sentence names Codex; this box has no Codex binary, so
+  the proof's vocabulary resolves "Codex" to the installed Claude instance. The _mechanism_ —
+  starting a named account as a reviewer — is what ran; a genuinely cross-account review needs the
+  second subscription Phase 1 is still waiting on.
+- **The review's findings were not read back.** `message_active_implementation_session` with
+  `include: review_findings` is built and unit-tested, but no run has taken a real reviewer's
+  BLOCKING output and returned it to the implementer. That is §22's full loop and it needs a reviewer
+  that can actually run.
+- **`confirmation_gate` has not been answered in a browser.** The RPC, the parked state and the
+  release path are tested; no run has clicked it.
+- **No browser walk of the rule rows.** The rendering is unit-tested and the web package typechecks;
+  the frames under `frames/` are from Phase 2 and Phase 4.
+- **Voice does not create rules yet.** The parser is pure and ready; wiring it to speech is Phase 5.

@@ -22,7 +22,8 @@ import {
   workSessionThreadSubtitle,
   type WorkSessionGroup,
 } from "../../fabricWorkSessionGrouping";
-import { useWorkSessions } from "../../state/fabricWorkSessions";
+import { buildRuleRows, rulesByWorkSession, type RuleRow } from "../../fabricRuleView";
+import { useOrchestrationRules, useWorkSessions } from "../../state/fabricWorkSessions";
 import type { SidebarThreadSummary } from "../../types";
 
 export interface FabricWorkSessionSectionProps {
@@ -63,7 +64,10 @@ function EnvironmentWorkSessions(
   props: FabricWorkSessionSectionProps & { readonly environmentId: EnvironmentId },
 ): ReactNode {
   const { workSessions } = useWorkSessions(props.environmentId);
+  const { rules } = useOrchestrationRules(props.environmentId);
   if (workSessions.length === 0) return null;
+
+  const rulesByWork = rulesByWorkSession(rules);
 
   const grouping = buildWorkSessionGrouping({
     workSessions: workSessions.map((workSession) => ({
@@ -85,6 +89,7 @@ function EnvironmentWorkSessions(
           resolveThreadStatusLabel={props.resolveThreadStatusLabel}
           activeThreadKey={props.activeThreadKey}
           onSelectThread={props.onSelectThread}
+          ruleRows={buildRuleRows(rulesByWork.get(group.workSession.id) ?? [])}
         />
       ))}
     </>
@@ -97,6 +102,7 @@ function WorkSessionGroupRows(props: {
   readonly resolveThreadStatusLabel: (thread: SidebarThreadSummary) => string | null;
   readonly activeThreadKey: string | null;
   readonly onSelectThread: (environmentId: EnvironmentId, thread: SidebarThreadSummary) => void;
+  readonly ruleRows: readonly RuleRow[];
 }): ReactNode {
   const { group } = props;
   // With no live thread the work still has a line, and it says which account
@@ -146,6 +152,21 @@ function WorkSessionGroupRows(props: {
           </button>
         );
       })}
+      {props.ruleRows.map((rule) => (
+        <p
+          key={rule.ruleId}
+          data-testid="sidebar-work-session-rule"
+          className={cn(
+            "truncate pl-2 text-[11px] leading-4",
+            rule.awaitingConfirmation ? "text-sidebar-foreground" : "text-sidebar-muted-foreground",
+            rule.status === "disabled" && "line-through",
+          )}
+        >
+          {/* A rule the user cannot see is indistinguishable from an agent
+              doing things on its own, which is what §22 exists to prevent. */}
+          {`⤳ ${rule.description} ${rule.lastFiring === null ? `(${rule.budget})` : `— ${rule.lastFiring}`}`}
+        </p>
+      ))}
     </div>
   );
 }

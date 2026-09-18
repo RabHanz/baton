@@ -43,6 +43,10 @@
       "types": "./src/fabricFleet.ts",
       "import": "./src/fabricFleet.ts"
     },
+    "./fabricRuleParser": {
+      "types": "./src/fabricRuleParser.ts",
+      "import": "./src/fabricRuleParser.ts"
+    },
     "./fabricSynopsis": {
       "types": "./src/fabricSynopsis.ts",
       "import": "./src/fabricSynopsis.ts"

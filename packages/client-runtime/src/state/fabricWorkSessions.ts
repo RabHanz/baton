@@ -12,6 +12,7 @@
  * and it belongs in the surface that renders it.
  */
 import {
+  FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_WS_METHODS,
   type WorkSession,
   type WorkSessionStreamItem,
@@ -90,6 +91,35 @@ export function createFabricWorkSessionAtoms<R, E>(
     fleet: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:fleet",
       tag: FABRIC_WS_METHODS.fleetGet,
+    }),
+    /** Rules and their firings, so a rule is inspectable rather than ambient (§22). */
+    rules: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:rules",
+      tag: FABRIC_ORCHESTRATION_WS_METHODS.ruleList,
+    }),
+    ruleCreate: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:rule-create",
+      tag: FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate,
+      scheduler,
+      concurrency,
+    }),
+    ruleDisable: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:rule-disable",
+      tag: FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable,
+      scheduler,
+      concurrency,
+    }),
+    ruleEnable: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:rule-enable",
+      tag: FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable,
+      scheduler,
+      concurrency,
+    }),
+    ruleConfirm: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:rule-confirm",
+      tag: FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm,
+      scheduler,
+      concurrency,
     }),
     create: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:work-session-create",
