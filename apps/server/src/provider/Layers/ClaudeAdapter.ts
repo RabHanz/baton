@@ -1952,9 +1952,27 @@ function toRequestError(threadId: ThreadId, method: string, cause: unknown): Pro
   return new ProviderAdapterRequestError({
     provider: PROVIDER,
     method,
-    detail: `${method} failed`,
+    // Carry what the CLI actually said. `turn/setPermissionMode failed` is all
+    // a resumed 420 MB session left behind on this author's own box, and a
+    // failure whose cause is not written down costs a deploy to see — the same
+    // lesson `cause: [Object]` taught the intent path.
+    detail:
+      causeMessage(cause) === null
+        ? `${method} failed`
+        : `${method} failed: ${causeMessage(cause)}`,
     cause,
   });
+}
+
+/** The message an unknown rejection carries, when it carries one. */
+function causeMessage(cause: unknown): string | null {
+  if (typeof cause === "string" && cause.trim().length > 0) return cause.trim();
+  if (cause instanceof Error && cause.message.trim().length > 0) return cause.message.trim();
+  if (typeof cause === "object" && cause !== null && "message" in cause) {
+    const message = (cause as { readonly message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) return message.trim();
+  }
+  return null;
 }
 
 function sdkMessageType(value: unknown): string | undefined {
