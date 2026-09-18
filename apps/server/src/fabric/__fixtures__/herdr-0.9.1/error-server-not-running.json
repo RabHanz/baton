@@ -1,0 +1,1 @@
+{"id":"cli:api:snapshot","error":{"code":"server_not_running","message":"no herdr server is running at /home/dev/.config/herdr/sessions/no-such-session/herdr.sock; run `herdr session attach no-such-session` to start or attach it"}}

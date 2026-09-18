@@ -215,6 +215,10 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_ADOPTED_WS_METHODS.adoptedRefresh]: AuthOrchestrationOperateScope,
   [FABRIC_ADOPTED_WS_METHODS.adoptedDetach]: AuthOrchestrationOperateScope,
   [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: AuthOrchestrationOperateScope,
+  // Reading is a read scope even though what it reads is somebody's live
+  // terminal, because it changes nothing. Whether there is anything to read is
+  // decided by the capability check on the session itself.
+  [FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

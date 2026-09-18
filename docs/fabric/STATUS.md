@@ -16,7 +16,7 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it      |
 | 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have |
 | 7 — mobile voice + quick actions               | **partial**               | the Phase 7 table below: the fleet, the status questions and the deep links are built and typecheck; the mic, App Intents and handoff are blocked on a device, a mac and Phase 3    |
-| 8 — Herdr adoption                             | **partial**               | the Phase 8 table below: the domain, the mapping, the fleet and every refusal are proven on the snapshot; discovery and send-input are blocked on Herdr not being installed here    |
+| 8 — Herdr adoption                             | **done for a terminal**   | the Phase 8 table below: Herdr 0.9.1 is installed and a real pane is discovered, adopted, in the fleet and readable. A live agent CLI under Herdr, and firing input at a real pane, are still open |
 | 10 — capability plane + hardening              | **partial**               | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                  |
 
 ## Where Fabric is — the whole programme
@@ -35,7 +35,7 @@ services; "built" without "proven" is said explicitly.
 | 5 — the intent surface            | **done for text**         | one deterministic grammar; status, message, start/resume, rule creation and gate answers; every intent recorded; the §29 exit sentences run against the snapshot | a microphone, App Intents, a browser walk of the bar                  | — (the phone's own keyboard supplies dictation)                                               |
 | 6 — VS Code, browser, dictation   | **partial**               | the context bus, §14's routing, §18's injection report refusing Wayland by name, dictation kept client-side                                                      | both extensions; no desktop run                                       | **VS Code and a browser with an extension host**, on a machine with a desktop session         |
 | 7 — the phone                     | **partial**               | the fleet screen, the §20 questions, deep links including work whose thread has ended                                                                            | the app has never been run                                            | **a phone or a simulator, and a mac** for App Intents and the Action Button                   |
-| 8 — adopted sessions              | **partial**               | §9's mapping, declared capability limits, an adopted terminal moving the work's state — proven on the snapshot                                                   | discovery from a real runtime; input delivered to a real pane         | **Herdr installed** where the terminals are                                                   |
+| 8 — adopted sessions              | **done for a terminal**   | Herdr 0.9.1 installed; a real pane discovered, adopted, attached to a work session, in the fleet with its limits, and its output read — live, not on the snapshot | a live agent CLI under Herdr; input fired at a real pane; a rendered terminal | — (an agent under Herdr, when one is worth the session it costs)                        |
 | 9 — orchestration                 | **done**                  | bounded rules, no self-triggering, a durable bound, transition semantics; §22's own sentence fired once and stopped, live                                        | a genuinely cross-account review                                      | **the second account**                                                                        |
 | 10 — capability plane + hardening | **partial**               | the plane and its policy, retention, the audit view, migration additivity as a test, reconnect and two-client agreement, `fleet.get` at 26ms median              | a mid-turn disconnection; a phone resume; the capabilities themselves | **a device** for the resume case                                                              |
 
@@ -790,69 +790,98 @@ wired to routes and to the same RPC the desktop uses.
 adapter, discovery, state mapping, an `AdoptedSession`, attachment to a work
 session, a raw terminal surface, "show X", and a safe send-input capability.
 
-The domain is built and proven against the snapshot. The parts that need the
-runtime itself are **blocked on Herdr not being installed on this box** — and
-that absence is what makes their refusals provable rather than hypothetical.
+**Herdr is now installed** (`0.9.1`, on signzart, as a user systemd service), so
+the half of this phase that needed the runtime has been taken. The refusals are
+still proven — the adapter is tested against captured CLI output for a missing
+binary, a stopped server and a rejected request — and they are no longer the
+only thing proven.
 
-| Item                                  | State                                                               | Where it is proven, or what blocks it                                                                                                                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Herdr adapter                         | done, as a **port**                                                 | `AdoptedRuntimeAdapter` + `HerdrAdapterLive.ts`: the only file that knows the runtime exists. Herdr is AGPL and is integrated, never vendored (D37)                                                    |
-| Discover server/workspaces/panes      | **partial**                                                         | the shape and the line parser are proven (`HerdrAdapterLive.test.ts`); on a machine without Herdr discovery refuses **by name** rather than returning an empty list that reads as "nothing is running" |
-| Map semantic agent state              | done                                                                | `packages/shared/src/fabricAdoptedSession.ts` — §9's four rows, and a word Fabric does not know is refused rather than called idle (D38)                                                               |
-| Create an AdoptedSession              | done                                                                | Fabric migration 006, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                                        |
-| Attach to a WorkSession               | done                                                                | the work session id is on the row, and the fleet groups by it                                                                                                                                          |
-| Appear in the fleet                   | done                                                                | `fabricFleet.test.ts` and the live run: an adopted pane that reports `blocked` makes the _work_ say it needs the user (D40)                                                                            |
-| Declared capability limits            | done                                                                | every adopted session carries what Fabric may not do to it, and each refusal says why (D39)                                                                                                            |
-| Safe send-input                       | done as a gate, **blocked** as an action                            | the capability check, the released-session check and the runtime's own refusal are proven; nothing has been typed into a real pane                                                                     |
-| Raw terminal attach surface, "show X" | **blocked**: no Herdr, and no desktop session to show a terminal in | the capability is declared and carried on the row; the surface is the desktop's, which Phase 6 already lists as blocked                                                                                |
+| Item                                  | State                                                     | Where it is proven, or what blocks it                                                                                                                                                              |
+| ------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Herdr adapter                         | done, as a **port**                                       | `AdoptedRuntimeAdapter` + `HerdrAdapterLive.ts`: the only file that knows the runtime exists. Integrated, never vendored (D37, and its licence correction — upstream is Apache-2.0, not AGPL)       |
+| Discover server/workspaces/panes      | **done, against a real runtime**                          | one `herdr api snapshot` call, parsed against fixtures captured from the live binary. `scripts/fabric-herdr-proof.ts` returns `available=true candidates=2` from two real panes                     |
+| Map semantic agent state              | done                                                      | `packages/shared/src/fabricAdoptedSession.ts` — §9's four rows; a word Fabric does not know is still refused (D38), and a pane with no agent maps by what is running in it (D55)                    |
+| Create an AdoptedSession              | done                                                      | Fabric migration 006, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                                      |
+| Attach to a WorkSession               | **done, live**                                            | the proof run adopts a *discovered* pane into `ws-herdr-proof`, rather than one registered by hand                                                                                                   |
+| Appear in the fleet                   | **done, live**                                            | `fabricFleet.test.ts`, and the proof run's fleet query returns the adopted pane with its state                                                                                                       |
+| Declared capability limits            | done                                                      | every adopted session carries what Fabric may not do to it, and each refusal says why (D39); printed in the proof run                                                                                |
+| Safe send-input                       | done as a gate; wired and **deliberately not yet fired**  | `pane send-text` then `pane send-keys enter`, tested against captured CLI output including the half-delivered case. Nothing has been typed into a pane anybody was using                             |
+| Read an adopted terminal              | **done, live**                                            | `fabric.adopted.readOutput`, gated on `showTerminal` and never on `readConversation` (D56); the proof run reads real lines off a running pane                                                        |
+| Raw terminal attach surface, "show X" | **partial** — the server half is done                     | the server returns the pane's text; *rendering* a terminal is a desktop client's job, which Phase 6 still lists as blocked on a desktop session this box does not have                              |
 
 ### The Phase 8 exit criterion
 
 > A Claude/Codex/Hermes CLI running persistently in Herdr can appear in the
 > Fabric fleet and be surfaced/controlled with declared capability limits.
 
-Against the snapshot, with the server on it and Herdr absent:
+Taken against the installed runtime, 2026-09-18, by
+`node apps/server/scripts/fabric-herdr-proof.ts`. Everything below is real
+except the database, which is in memory so the run leaves nothing behind: the
+live adapter shelling out to `herdr`, the real service, real capability gates,
+and a pane nobody registered by hand.
 
 ```text
-discover: available=false candidates=0
-  reason: herdr is not installed on this environment. Install it where the
-          terminals are, or adopt sessions by hand.
+=== 1. discover: what does the real runtime report? ===
+available=true candidates=2
+  proof/w1:p1  state=monitoring runtimeState=unknown agent=none  bash …/ticker.sh
+  proof/w1:p2  state=idle       runtimeState=unknown agent=none  shell in lanes
 
-adopted herdr:ops:hermes-1: state=working runtime=herdr
-  capabilities: readConversation=false sendInput=true approvals=false
-                diffs=false stop=true showTerminal=true
+=== 2. adopt it, and attach it to a work session ===
+adopted herdr:w1:p1
+  state=monitoring  workSession=ws-herdr-proof
+  bash …/ticker.sh (herdr) — adopted, so no readConversation, approvals, diffs
 
-fleet:
-  with a working pane:        work state=working    needsUser=false threads=0 adopted=hermes:working
-  after herdr says blocked:   work state=needs_input needsUser=true  threads=0 adopted=hermes:needs_input
+=== 3. the fleet for that work session ===
+  bash …/ticker.sh: monitoring  (adopted from herdr)
 
-sendInput: delivered=false
-  detail: herdr is not installed on this environment. …
+=== 4. declared capability limits ===
+  MAY NOT readConversation    may     sendInput
+  MAY NOT approvals           may     stop
+  MAY NOT diffs               may     showTerminal
 
-unknown state: refused
-  after the refusal: work state=needs_input needsUser=true adopted=hermes:needs_input
+=== 5. read its output, gated on showTerminal ===
+available=true
+  | tick 682  pid=1419932  23:04:48
+  | tick 683  pid=1419932  23:04:50
+  | tick 684  pid=1419932  23:04:52
+
+=== 6. a capability the runtime did not claim is refused by name ===
+released at 2026-09-18T23:06:25.427Z
+sendInput after release: refused
+  AdoptedCapabilityRefusedError: sendInput is not available on this adopted
+  session: this session was released; adopt it again to type into it.
 ```
 
-So: **appearing in the fleet with declared capability limits is proven**, and
-with a work session that has no thread of Fabric's own — the adopted terminal is
-the only thing running, and the fleet says what it is doing. What is not proven
-is the half that needs the runtime: a real Herdr pane, discovered rather than
-registered by hand, and input actually delivered to it.
+So the exit criterion is met for a terminal: **discovered from the real runtime,
+adopted, attached to a work session, in the fleet, with declared limits, and its
+output readable**. The two panes also demonstrate D55 — the one running
+something reads as `monitoring`, the one at a prompt as `idle`, and neither
+claims to need the user.
 
 ### Not proven in Phase 8
 
-- **Herdr is not installed on this box**, so nothing has been discovered from a
-  real runtime and nothing has been typed into a real pane. Both paths end in a
-  refusal that names the missing runtime, which is the honest answer and is
-  itself proven.
-- **No raw terminal surface.** Showing a terminal is a desktop client's job, and
-  Phase 6 already lists the desktop pieces as blocked on a session this box does
-  not have.
+- **No agent CLI has been run under Herdr here.** The criterion names Claude,
+  Codex or Hermes, and what was adopted is a shell loop. The agent path is the
+  same code — `herdr api snapshot` returns an `agents` array and the adapter
+  prefers the agent's own state word over the pane's — but `agents` was empty on
+  every run, so the §9 mapping of `blocked`/`working`/`done` is proven by test
+  and not by a live agent. Starting one would have cost a provider session that
+  nobody asked for.
+- **Nothing has been typed into a real pane.** `sendInput` is wired to
+  `pane send-text` and `pane send-keys`, and tested against captured CLI output
+  including the case where the text lands and return does not. It has not been
+  fired at a live terminal, which is a deliberate choice rather than a gap in
+  the code: the first pane it types into should be one its owner expects.
+- **No rendered terminal.** The server can return a pane's text; showing a
+  terminal is a desktop client's job, which Phase 6 lists as blocked.
 - **One runtime.** `AdoptedRuntime` has a single member; a second is a contract
   change rather than a value somebody invents.
 - **No UI.** The fleet carries adopted sessions and the entry's state accounts
   for them, so they already move the "Needs me" count on both clients; neither
   client renders an adopted row of its own yet.
+- **Nothing polls.** Discovery runs when asked. An adopted session's state is
+  whatever the last `discover` or `refresh` said, so a pane that finished a
+  minute ago still reads `monitoring` until something asks again.
 
 ## Phase 10 — the capability plane, and hardening
 

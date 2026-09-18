@@ -866,16 +866,35 @@ session is.
 ## D37 — Herdr is integrated, never vendored
 
 **Decided** 2026-09-18, during Phase 8. **Implements** §9 and the fork's own
-licence boundary.
+licence boundary. **Corrected 2026-09-18** once Herdr was actually installed;
+the correction changes the premise, not the decision.
 
-Herdr is AGPL and is a separate program. Fabric adopts sessions _from_ it by
-speaking to its control surface from the outside, the way a person at a prompt
-would, and this repository contains none of its code.
+Herdr is a separate program. Fabric adopts sessions _from_ it by speaking to its
+control surface from the outside, the way a person at a prompt would, and this
+repository contains none of its code.
 
-The practical shape that forces: `AdoptedRuntimeAdapter` is a **port** with two
-methods, and `HerdrAdapterLive` is the only file that knows the runtime exists.
-Swapping in a second runtime later is a new adapter, not a change to the domain,
-and nothing in `packages/` links against Herdr at all.
+> **Correction — the licence premise was wrong.**
+>
+> This was written against `github.com/SuperCodeAgents/herdr-terminal`, which is
+> **AGPL-3.0**. That repository is a **fork whose last push was 2026-05-24**.
+> Upstream is `github.com/herdrdev/herdr`: Rust, ~39k stars, v0.9.1 released
+> 2026-09-16, licensed **Apache-2.0**.
+>
+> So "Herdr is AGPL" is not true of the Herdr anyone would install, and the
+> copyleft reasoning behind "never vendored" does not apply. **The decision
+> stands on the better reason**: Herdr is a running server with its own
+> lifecycle, release channel and update path, and a copy inside this repository
+> would be a fork we then had to maintain. The port is a port because that is
+> the right shape, not because a licence forbade the alternative.
+>
+> The stale fork would also be four months behind and would not have the
+> `api snapshot` surface the adapter now uses.
+
+The practical shape that forces: `AdoptedRuntimeAdapter` is a **port** — three
+methods now that a pane's text can be read — and `HerdrAdapterLive` is the only
+file that knows the runtime exists. Swapping in a second runtime later is a new
+adapter, not a change to the domain, and nothing in `packages/` links against
+Herdr at all.
 
 **Consequence:** a machine without Herdr still gets the whole adopted-session
 domain — registering, listing, the fleet, the refusals — and every call that
@@ -1517,3 +1536,77 @@ that_:
 Both are reachable from Settings → Environments (per machine, including this one) and from the
 project's own page (narrowed to its directory), behind an
 `agentSessionConversationImport` capability so an older server is not probed.
+
+---
+
+## D55 — A terminal that is not an agent is `monitoring` or `idle`, and adoptable
+
+**Decided** 2026-09-18, once Herdr was installed and discovery ran against it.
+**Refines** D38. **Implements** §9.
+
+D38 refuses a runtime state Fabric does not know rather than calling it `idle`,
+and that stays. The first live discovery showed the rule swallowing the case §9
+was written for.
+
+Herdr gives every pane an `agent_status`, and for a pane that is not a
+recognised coding agent — an infrastructure terminal, a test watcher, a
+`tail -f`, the examples in this contract's own docstring — that value is
+`unknown`. Under D38 alone such a pane was **discoverable and never adoptable**:
+`herdr reported a state Fabric does not know: 'unknown'`, every time, forever.
+
+`unknown` is not a word Fabric failed to learn. It is Herdr saying it has no
+agent state to give. So it falls through to another fact Herdr reports rather
+than to a guess — whether the pane has a foreground process:
+
+| Herdr says                              | Fabric calls it       |
+| --------------------------------------- | --------------------- |
+| `blocked` / `working` / `done` / `idle` | §9's table, unchanged |
+| `unknown`, something running            | `monitoring`          |
+| `unknown`, a bare prompt                | `idle`                |
+| anything else                           | refused (D38)         |
+
+`monitoring` rather than `working`, which would claim an agent is mid-turn, and
+rather than `idle`, which would sort a live terminal to the bottom of the fleet.
+§10 already uses `monitoring` for a watch loop, and an unclassified live terminal
+is exactly that. **Neither answer is in `FABRIC_STATES_NEEDING_USER`**: an
+adopted terminal never raises "needs me" on an inference. Only `blocked` does.
+
+**The fact has to travel with the candidate.** State is derived on the server so
+a client cannot invent one, which means adopting a pane has to supply the same
+observation discovery had. `AdoptedSessionCandidate` and `AdoptedRegisterInput`
+carry `foreground` for that reason — the observation, what is running, not a
+state.
+
+**"Is anything running" is not "is the process list non-empty".** A pane at a
+bare prompt reports one foreground process: the shell. The two are told apart by
+whether the foreground process group is the shell's own:
+
+```text
+idle    fg_pgid=1393244  shell_pid=1393244  [(1393244, "/bin/bash")]
+busy    fg_pgid=1419932  shell_pid=1393241  [(1419932, "bash …/ticker.sh"), …]
+```
+
+Both shapes are committed in `apps/server/src/fabric/__fixtures__/herdr-0.9.1/`,
+captured from two live panes side by side. The invented version of that check
+read every idle terminal as busy, and only the real capture showed it.
+
+---
+
+## D56 — Reading an adopted terminal is `showTerminal`, never `readConversation`
+
+**Decided** 2026-09-18, during Phase 8's completion.
+
+`fabric.adopted.readOutput` returns the text on a pane. It is gated on
+`showTerminal`, which is the capability it exercises: §21's "show X", answered on
+the server for a client that has no terminal of its own to render into.
+
+It is emphatically **not** `readConversation`, which stays false for every
+adopted session. There is no structured conversation on a session Fabric did not
+start — no turns, no roles, no approvals — only characters a program wrote to a
+terminal. A capability check that conflated the two would be exactly the pretence
+§9 exists to prevent, and would put a "read the conversation" button on a session
+that has none.
+
+The read is bounded (1–2000 lines, 200 by default) and asks Herdr for
+`recent-unwrapped`, because a transcript line a soft wrap split in two is one
+line of work, and reading it as two is how a log stops being searchable.

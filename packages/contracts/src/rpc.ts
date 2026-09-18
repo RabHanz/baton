@@ -174,6 +174,8 @@ import {
   AdoptedDiscoverInput,
   AdoptedDiscoverResult,
   AdoptedListInput,
+  AdoptedReadOutputInput,
+  AdoptedReadOutputResult,
   AdoptedRefInput,
   AdoptedRefreshInput,
   AdoptedRegisterInput,
@@ -1611,6 +1613,12 @@ const WsFabricAdoptedSendInputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedSe
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
+const WsFabricAdoptedReadOutputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput, {
+  payload: AdoptedReadOutputInput,
+  success: AdoptedReadOutputResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
 const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
@@ -1788,5 +1796,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricAdoptedRefreshRpc,
   WsFabricAdoptedDetachRpc,
   WsFabricAdoptedSendInputRpc,
+  WsFabricAdoptedReadOutputRpc,
   WsFabricSubscribeWorkSessionsRpc,
 );

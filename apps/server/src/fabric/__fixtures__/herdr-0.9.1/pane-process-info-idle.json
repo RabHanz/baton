@@ -1,0 +1,1 @@
+{"id":"cli:pane:process_info","result":{"process_info":{"foreground_process_group_id":1393244,"foreground_processes":[{"argv":["/bin/bash"],"cmdline":"/bin/bash","cwd":"/mnt/HC_Volume_106652742/tmp/lanes","name":"bash","pid":1393244}],"pane_id":"w1:p2","shell_pid":1393244},"type":"pane_process_info"}}
