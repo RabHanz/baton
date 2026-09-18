@@ -188,9 +188,21 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const allModelNames = selectedEntries
     ? selectedEntries.map((selection) => selection.label).join(", ") || "Choose models"
     : undefined;
-  const triggerTooltipContent = shortcutLabel
-    ? `${props.triggerLabel ?? allModelNames ?? triggerLabel} · ${shortcutLabel}`
-    : (props.triggerLabel ?? allModelNames ?? triggerLabel);
+  // With more than one login for a driver, "which account is this" is the
+  // question the composer could not answer: the rail is icons and the badge
+  // only says the instances differ. The name goes in the tooltip; the address
+  // stays behind the picker's reveal, where a click can ask for it.
+  const accountName =
+    activeEntry && showInstanceBadge && props.triggerLabel === undefined
+      ? activeEntry.displayName
+      : null;
+  const triggerTooltipContent = [
+    props.triggerLabel ?? allModelNames ?? triggerLabel,
+    accountName,
+    shortcutLabel,
+  ]
+    .filter((part): part is string => typeof part === "string" && part.length > 0)
+    .join(" · ");
 
   return (
     <Popover

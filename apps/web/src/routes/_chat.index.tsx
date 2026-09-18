@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { isLocalEnvironmentDisabled } from "../localEnvironment";
 import { isElectron } from "../env";
+import { FabricLanding } from "../components/FabricLanding";
 import { NoProjectsHero } from "../components/NoProjectsHero";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
@@ -18,6 +19,7 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
+import { useFabricFleet } from "../fabricFleetResolvers";
 import { useEnvironments } from "../state/environments";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
@@ -25,11 +27,18 @@ import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments, isReady } = useEnvironments();
+  const fleet = useFabricFleet();
 
   if (authGateState.status === "hosted-static") {
     if (!isReady) return null;
     if (environments.length === 0) return <HostedStaticOnboardingState />;
   }
+
+  // With work sessions on, the first screen is what everything is doing. An
+  // editor opens on a prompt; a surface you run several machines from opens on
+  // what happened while you were away. Off, or on a server that has never heard
+  // of Fabric, this is upstream's draft landing exactly as it was.
+  if (fleet.environmentIds.length > 0) return <FabricLanding />;
 
   return <IndexDraftLanding />;
 }

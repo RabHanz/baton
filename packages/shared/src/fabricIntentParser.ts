@@ -420,7 +420,11 @@ const ambiguous = (candidates: ReadonlyArray<IntentWorkSession>, phrase: string)
 };
 
 const noWorkSessions = (phrase: string): Refusal =>
-  refuse("unknown_target", phrase, "There is no work here to point that at yet.");
+  refuse(
+    "unknown_target",
+    phrase,
+    'There is no work here to point that at yet. Start some with "start work on <project>".',
+  );
 
 const matchProvider = (phrase: string, vocabulary: IntentVocabulary): IntentProvider | null => {
   const needle = stripArticle(normalise(phrase));
@@ -716,7 +720,11 @@ function resolveGateAnswer(
   if (targetPhrase !== null) {
     const target = resolveTarget(targetPhrase, vocabulary);
     if (target.kind === "unknown") {
-      return refuse("unknown_target", target.phrase, `I could not place "${target.phrase}".`);
+      return refuse(
+        "unknown_target",
+        target.phrase,
+        `I could not place "${target.phrase}". Name the project or the work session.`,
+      );
     }
     if (target.kind === "many") return ambiguous(target.candidates, targetPhrase);
     if (target.kind === "one") {
@@ -880,7 +888,11 @@ function resolveResume(text: string, vocabulary: IntentVocabulary): FabricIntent
 
     const target = resolveTarget(body.length === 0 ? null : body, vocabulary);
     if (target.kind === "unknown") {
-      return refuse("unknown_target", target.phrase, `I could not place "${target.phrase}".`);
+      return refuse(
+        "unknown_target",
+        target.phrase,
+        `I could not place "${target.phrase}". Name the project or the work session.`,
+      );
     }
     if (target.kind === "many") return ambiguous(target.candidates, body);
     if (target.kind === "none") return noWorkSessions(body);
@@ -928,7 +940,11 @@ function chooseProvider(
     const named = matchProvider(phrase, vocabulary);
     if (named === null) {
       return {
-        refusal: refuse("unknown_target", phrase, `I could not place the account "${phrase}".`),
+        refusal: refuse(
+          "unknown_target",
+          phrase,
+          `I could not place the account "${phrase}". Settings -> Providers lists the ones this machine has.`,
+        ),
       };
     }
     if (!named.available) {
@@ -942,7 +958,11 @@ function chooseProvider(
     }
     if (named.model === null) {
       return {
-        refusal: refuse("unknown_target", phrase, `${named.label} has no model configured here.`),
+        refusal: refuse(
+          "unknown_target",
+          phrase,
+          `${named.label} has no model configured here. Pick one for it in Settings -> Providers.`,
+        ),
       };
     }
     return { provider: named, model: named.model };
@@ -957,7 +977,11 @@ function chooseProvider(
   }
   if (usable.length === 0) {
     return {
-      refusal: refuse("unknown_target", "", "No account is available on this environment."),
+      refusal: refuse(
+        "unknown_target",
+        "",
+        "No account is available on this environment. Add one in Settings -> Providers, or sign the CLI in on that machine.",
+      ),
     };
   }
   return {
