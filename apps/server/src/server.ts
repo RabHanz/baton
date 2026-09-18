@@ -21,6 +21,7 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
+import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import {
   otlpTracesProxyRouteLayer,
   assetRouteLayer,
@@ -337,6 +338,9 @@ const PullRequestServiceLive = PullRequestService.layer.pipe(
   Layer.provide(SourceControlRateLimit.layer),
 );
 
+/** Fabric work sessions. Needs only the SQL client. */
+const FabricWorkSessionServiceLive = FabricWorkSessionService.layer;
+
 const GitManagerLayerLive = GitManager.layer.pipe(
   Layer.provideMerge(ProjectSetupScriptRunner.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
   Layer.provideMerge(WorktreeSetupTracker.layer),
@@ -498,7 +502,21 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(VcsLayerLive),
   Layer.provideMerge(ProviderRuntimeLayerLive),
-  Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive, DeviceLayerLive)),
+  // One work-session service for the whole server, so a mutation arriving on
+  // one client's socket reaches every other client's subscription; a
+  // per-connection instance would give each client its own silent event bus.
+  // It sits in the runtime rather than beside the routes because it needs
+  // nothing but the SQL client `PersistenceLayerLive` supplies on the next
+  // line, and because the handoff work of the next phase runs in a reactor,
+  // which is here rather than in a route.
+  Layer.provideMerge(
+    Layer.mergeAll(
+      TerminalLayerLive,
+      PreviewLayerLive,
+      DeviceLayerLive,
+      FabricWorkSessionServiceLive,
+    ),
+  ),
   Layer.provideMerge(PersistenceLayerLive),
   // Both read a user-owned file out of the state directory and stream changes
   // to clients; neither depends on the other.

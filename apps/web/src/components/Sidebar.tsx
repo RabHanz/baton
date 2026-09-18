@@ -31,10 +31,12 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   resolveEnvironmentMachineKind,
+  type EnvironmentId,
   type EnvironmentMachineKind,
   type ProjectIconOverride,
   type ScopedThreadRef,
   type ThreadId,
+  type WorkSession,
 } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
@@ -167,6 +169,7 @@ import {
   resolveSidebarDropVerb,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
+  type SidebarThreadStatus,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
@@ -232,6 +235,7 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
+import { FabricWorkSessionSection } from "./sidebar/FabricWorkSessionSection";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
@@ -302,6 +306,18 @@ function WorkingDuration(props: { startedAt: string | null }) {
 }
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
+
+// The word the Work block puts after the account and host. "Ready" is the
+// resting state and says nothing useful on that line, so it stays blank there
+// rather than labelling every idle thread.
+const SIDEBAR_THREAD_STATUS_LABELS: Record<SidebarThreadStatus, string | null> = {
+  approval: "Approval needed",
+  input: "Needs you",
+  working: "Working",
+  monitoring: "Monitoring",
+  failed: "Failed",
+  ready: null,
+};
 // Collapsed shelves share one empty list so a route change alone does not
 // give the sidebar list a new identity.
 const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
@@ -2138,6 +2154,7 @@ export default function Sidebar() {
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
+  const fabricWorkSessionsEnabled = useClientSettings((s) => s.fabricWorkSessionsEnabled);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
@@ -2319,6 +2336,28 @@ export default function Sidebar() {
       ),
     [serverConfigs],
   );
+  // Two gates, answering different questions. The capability says the server
+  // understands `fabric.*` at all — an older one has no such tables and would
+  // reject the call, so a client must not probe. The client setting says
+  // whether this user wants the Work block.
+  const fabricWorkSessionEnvironmentIds = useMemo(
+    () =>
+      fabricWorkSessionsEnabled
+        ? environments
+            .map((environment) => environment.environmentId)
+            .filter(
+              (environmentId) =>
+                serverConfigs.get(environmentId)?.environment.capabilities.fabricWorkSessions ===
+                true,
+            )
+        : [],
+    [environments, fabricWorkSessionsEnabled, serverConfigs],
+  );
+  const resolveFabricProviderLabel = useCallback(
+    (environmentId: EnvironmentId, providerInstanceId: string) =>
+      providerEntriesByEnvironment.get(environmentId)?.get(providerInstanceId)?.displayName ?? null,
+    [providerEntriesByEnvironment],
+  );
   // Rows read the project record for its icon and cwd. Group labels can include
   // a repository owner or a different title, so they travel separately.
   const projectByKey = useMemo(
@@ -2335,6 +2374,11 @@ export default function Sidebar() {
         ),
       ),
     [projectGroups],
+  );
+  const resolveFabricProjectLabel = useCallback(
+    (environmentId: EnvironmentId, workSession: WorkSession) =>
+      projectDisplayNameByKey.get(`${environmentId}:${workSession.projectId}`) ?? null,
+    [projectDisplayNameByKey],
   );
 
   const nowMinute = useNowMinute();
@@ -2829,6 +2873,12 @@ export default function Sidebar() {
       });
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+  );
+  const selectFabricWorkSessionThread = useCallback(
+    (environmentId: EnvironmentId, thread: EnvironmentThreadShell) => {
+      void navigateToThread(scopeThreadRef(environmentId, thread.id));
+    },
+    [navigateToThread],
   );
 
   // Dropping files on a row opens that thread and attaches the files there.
@@ -4591,6 +4641,22 @@ export default function Sidebar() {
                 No threads found
               </p>
             )
+          ) : null}
+          {!isSearchingThreads ? (
+            <FabricWorkSessionSection
+              environmentIds={fabricWorkSessionEnvironmentIds}
+              threads={threads}
+              resolveEnvironmentLabel={(environmentId) =>
+                environmentLabelById.get(environmentId) ?? null
+              }
+              resolveProviderLabel={resolveFabricProviderLabel}
+              resolveProjectLabel={resolveFabricProjectLabel}
+              resolveThreadStatusLabel={(thread) =>
+                SIDEBAR_THREAD_STATUS_LABELS[resolveSidebarThreadStatus(thread)]
+              }
+              activeThreadKey={routeThreadKey}
+              onSelectThread={selectFabricWorkSessionThread}
+            />
           ) : null}
           {!isSearchingThreads ? (
             <TooltipProvider

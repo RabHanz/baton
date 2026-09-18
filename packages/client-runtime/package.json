@@ -119,6 +119,10 @@
       "types": "./src/state/entities.ts",
       "default": "./src/state/entities.ts"
     },
+    "./state/fabric-work-sessions": {
+      "types": "./src/state/fabricWorkSessions.ts",
+      "default": "./src/state/fabricWorkSessions.ts"
+    },
     "./state/filesystem": {
       "types": "./src/state/filesystem.ts",
       "default": "./src/state/filesystem.ts"

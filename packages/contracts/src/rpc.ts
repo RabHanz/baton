@@ -164,6 +164,20 @@ import {
   ProjectWriteFileResult,
 } from "./project.ts";
 import {
+  FABRIC_WS_METHODS,
+  WorkSessionAttachThreadInput,
+  WorkSessionCreateInput,
+  WorkSessionDetachThreadInput,
+  WorkSessionError,
+  WorkSessionListInput,
+  WorkSessionListResult,
+  WorkSessionRefInput,
+  WorkSessionResult,
+  WorkSessionStartThreadInput,
+  WorkSessionStreamItem,
+  WorkSessionUpdateInput,
+} from "./fabric/workSession.ts";
+import {
   TerminalAttachInput,
   TerminalAttachStreamEvent,
   TerminalClearInput,
@@ -1373,6 +1387,81 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
+// Fabric work sessions. `fabric.*` is the layer above provider threads: the
+// user's work, which outlives the thread and the account running it. See
+// `packages/contracts/src/fabric/workSession.ts`.
+
+const WsFabricWorkSessionListRpc = Rpc.make(FABRIC_WS_METHODS.workSessionList, {
+  payload: WorkSessionListInput,
+  success: WorkSessionListResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionCreateRpc = Rpc.make(FABRIC_WS_METHODS.workSessionCreate, {
+  payload: WorkSessionCreateInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionUpdateRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUpdate, {
+  payload: WorkSessionUpdateInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionAttachThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSessionAttachThread, {
+  payload: WorkSessionAttachThreadInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionDetachThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSessionDetachThread, {
+  payload: WorkSessionDetachThreadInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionStartThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSessionStartThread, {
+  payload: WorkSessionStartThreadInput,
+  success: WorkSessionResult,
+  error: Schema.Union([
+    WorkSessionError,
+    OrchestrationDispatchCommandError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
+const WsFabricWorkSessionSettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionSettle, {
+  payload: WorkSessionRefInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionUnsettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUnsettle, {
+  payload: WorkSessionRefInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionArchiveRpc = Rpc.make(FABRIC_WS_METHODS.workSessionArchive, {
+  payload: WorkSessionRefInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricWorkSessionUnarchiveRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUnarchive, {
+  payload: WorkSessionRefInput,
+  success: WorkSessionResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
+  payload: Schema.Struct({}),
+  success: WorkSessionStreamItem,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsServerProbeRpc,
   WsServerGetConfigRpc,
@@ -1516,4 +1605,15 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsFabricWorkSessionListRpc,
+  WsFabricWorkSessionCreateRpc,
+  WsFabricWorkSessionUpdateRpc,
+  WsFabricWorkSessionAttachThreadRpc,
+  WsFabricWorkSessionDetachThreadRpc,
+  WsFabricWorkSessionStartThreadRpc,
+  WsFabricWorkSessionSettleRpc,
+  WsFabricWorkSessionUnsettleRpc,
+  WsFabricWorkSessionArchiveRpc,
+  WsFabricWorkSessionUnarchiveRpc,
+  WsFabricSubscribeWorkSessionsRpc,
 );

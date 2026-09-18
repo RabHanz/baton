@@ -6,27 +6,40 @@ tree, and how to get real test data without touching a live install.
 
 ## Fork point
 
-| | |
-| --- | --- |
-| Fork | `github.com/RabHanz/t3code` |
-| Upstream | `github.com/pingdotgg/t3code` |
-| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383` |
-| Commit subject | `fix(mobile): show Agent behavior icon on Android (#12316)` |
-| Commit date | 2026-09-17 14:03:01 -0700 |
-| Upstream license | MIT, © 2026 T3 Tools Inc. (`LICENSE`) |
-| Fork created | 2026-09-17 ~21:50Z |
-| Fabric work begins | 2026-09-18 |
+|                         |                                                             |
+| ----------------------- | ----------------------------------------------------------- |
+| Fork                    | `github.com/RabHanz/t3code`                                 |
+| Upstream                | `github.com/pingdotgg/t3code`                               |
+| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                  |
+| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)` |
+| Commit date             | 2026-09-17 14:03:01 -0700                                   |
+| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                       |
+| Fork created            | 2026-09-17 ~21:50Z                                          |
+| Fabric work begins      | 2026-09-18                                                  |
 
 The fork carried no Fabric code at that point; it was a clean mirror of upstream `main`.
 
 ### Conflicts carried
 
-None yet. Each phase that diverges from upstream in a way that will conflict on rebase adds a row
-here with the file, the reason, and the upstream construct it extends.
+Files Fabric edits rather than adds — everything else it contributes is a new file. Each edit is a
+small, localized insertion chosen so a rebase conflicts in one place rather than across a rewrite.
+Each phase that diverges further adds a row with the file, the reason, and the upstream construct it
+extends.
 
-| Area | Upstream file touched | Why | Phase |
-| --- | --- | --- | --- |
-| _(none yet)_ | | | |
+| Area                   | Upstream file touched                                                                       | Why                                                                                                                                                                                                                                     | Phase |
+| ---------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| RPC surface            | `packages/contracts/src/rpc.ts`                                                             | one import, eleven `Rpc.make`s, eleven entries in `WsRpcGroup`. There is no other way to add a method                                                                                                                                   | 2     |
+| RPC surface            | `packages/contracts/src/index.ts`                                                           | one re-export line                                                                                                                                                                                                                      | 2     |
+| Auth                   | `apps/server/src/auth/RpcAuthorization.ts`                                                  | eleven scope entries. The record is keyed off the RPC group's own type, so omitting them is a type error                                                                                                                                | 2     |
+| Handlers               | `apps/server/src/ws.ts`                                                                     | one service acquired, eleven handler entries at the end of `WsRpcGroup.of`. Thin by design — only `startThread` has logic, and it has to reach the orchestration engine                                                                 | 2     |
+| Layers                 | `apps/server/src/server.ts`                                                                 | one layer added to `RuntimeCoreDependenciesLive`. It cannot go beside the routes: `WsRpcGroup.toLayer` expresses handler requirements through an unresolved `HandlerRequirements<…>`, which `Layer.provide`'s `Exclude` cannot see into | 2     |
+| Capability             | `packages/contracts/src/environment.ts`, `apps/server/src/environment/ServerEnvironment.ts` | one capability key and its `true`                                                                                                                                                                                                       | 2     |
+| Client setting         | `packages/contracts/src/settings.ts`                                                        | one `ClientSettings` key                                                                                                                                                                                                                | 2     |
+| Client RPC tags        | `packages/client-runtime/src/rpc/client.ts`                                                 | one member added to `EnvironmentSubscriptionRpcTag`                                                                                                                                                                                     | 2     |
+| Client-runtime exports | `packages/client-runtime/package.json`                                                      | one subpath export                                                                                                                                                                                                                      | 2     |
+| Sidebar                | `apps/web/src/components/Sidebar.tsx`                                                       | two memos, one callback, one status-label map, one flagged block above the thread list. The thread list itself is untouched — `DECISIONS.md` D12                                                                                        | 2     |
+| Migrations             | `apps/server/src/persistence/Migrations.ts`                                                 | one import and one manifest row                                                                                                                                                                                                         | 2     |
+| Route test wiring      | `apps/server/src/server.test.ts`                                                            | the routes gained a dependency, so the test that builds them by hand provides it                                                                                                                                                        | 2     |
 
 ## Remotes and rebasing
 
@@ -65,23 +78,23 @@ After a rebase, re-run this page's fork-point table and the conflicts table.
 Workspace globs come from `pnpm-workspace.yaml`: `apps/*`, `infra/*`, `packages/*`,
 `oxlint-plugin-t3code`, `scripts`.
 
-| Path | Package name | Owns | Fabric relevance |
-| --- | --- | --- | --- |
-| `apps/server` | `t3` | WebSocket server, orchestration (command → decider → event → projector → reactor), providers, checkpointing, persistence, MCP toolkits, terminals, preview browser | WorkSession persistence, RPC handlers, and every Fabric reactor live here |
-| `apps/web` | `@t3tools/web` | React/Vite client; the sidebar, thread view, settings | WorkSession sidebar grouping, timeline, synopsis card |
-| `apps/desktop` | `@t3tools/desktop` | Electron shell wrapping `apps/web`, bundles a server runner, hosts the Chromium `<webview>` preview browser | desktop voice service, context bus, tray/HUD (Phase 5–6) |
-| `apps/mobile` | `@t3tools/mobile` | React Native (iOS + Android), separate navigation | WorkSession list, mic button, App Intents (Phase 7) |
-| `apps/marketing` | `@t3tools/marketing` | the public site | not touched by Fabric |
-| `packages/contracts` | `@t3tools/contracts` | Effect/Schema wire contracts; `rpc.ts` is the client↔server boundary, `orchestration.ts` the domain commands/events, `environment.ts` the capability descriptor | the `WorkSession` schema, `fabric.*` RPC methods and events, and the Fabric capability flag |
-| `packages/shared` | `@t3tools/shared` | shared runtime utilities, subpath exports, no barrel | normalization helpers shared by server and clients |
-| `packages/client-runtime` | `@t3tools/client-runtime` | connection supervisor, RPC session, shared state services used by web **and** mobile | WorkSession state service, so web and mobile do not diverge |
-| `packages/ssh` | `@t3tools/ssh` | SSH tunnels and desktop-managed remote environments | multi-host topology; unchanged by Fabric |
-| `packages/tailscale` | `@t3tools/tailscale` | tailnet serve/status integration | the private-network default (spec §25) |
-| `packages/effect-acp` | `effect-acp` | Agent Client Protocol binding | provider adapters |
-| `packages/effect-codex-app-server` | `effect-codex-app-server` | Codex app-server protocol binding | Codex provider |
-| `infra/relay` | `t3code-relay` | T3 Connect relay | push notifications for "needs me" |
-| `oxlint-plugin-t3code` | `@t3tools/oxlint-plugin-t3code` | repo lint rules | — |
-| `scripts` | `@t3tools/scripts` | dev runner, release, icon and mobile tooling | — |
+| Path                               | Package name                    | Owns                                                                                                                                                               | Fabric relevance                                                                            |
+| ---------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `apps/server`                      | `t3`                            | WebSocket server, orchestration (command → decider → event → projector → reactor), providers, checkpointing, persistence, MCP toolkits, terminals, preview browser | WorkSession persistence, RPC handlers, and every Fabric reactor live here                   |
+| `apps/web`                         | `@t3tools/web`                  | React/Vite client; the sidebar, thread view, settings                                                                                                              | WorkSession sidebar grouping, timeline, synopsis card                                       |
+| `apps/desktop`                     | `@t3tools/desktop`              | Electron shell wrapping `apps/web`, bundles a server runner, hosts the Chromium `<webview>` preview browser                                                        | desktop voice service, context bus, tray/HUD (Phase 5–6)                                    |
+| `apps/mobile`                      | `@t3tools/mobile`               | React Native (iOS + Android), separate navigation                                                                                                                  | WorkSession list, mic button, App Intents (Phase 7)                                         |
+| `apps/marketing`                   | `@t3tools/marketing`            | the public site                                                                                                                                                    | not touched by Fabric                                                                       |
+| `packages/contracts`               | `@t3tools/contracts`            | Effect/Schema wire contracts; `rpc.ts` is the client↔server boundary, `orchestration.ts` the domain commands/events, `environment.ts` the capability descriptor    | the `WorkSession` schema, `fabric.*` RPC methods and events, and the Fabric capability flag |
+| `packages/shared`                  | `@t3tools/shared`               | shared runtime utilities, subpath exports, no barrel                                                                                                               | normalization helpers shared by server and clients                                          |
+| `packages/client-runtime`          | `@t3tools/client-runtime`       | connection supervisor, RPC session, shared state services used by web **and** mobile                                                                               | WorkSession state service, so web and mobile do not diverge                                 |
+| `packages/ssh`                     | `@t3tools/ssh`                  | SSH tunnels and desktop-managed remote environments                                                                                                                | multi-host topology; unchanged by Fabric                                                    |
+| `packages/tailscale`               | `@t3tools/tailscale`            | tailnet serve/status integration                                                                                                                                   | the private-network default (spec §25)                                                      |
+| `packages/effect-acp`              | `effect-acp`                    | Agent Client Protocol binding                                                                                                                                      | provider adapters                                                                           |
+| `packages/effect-codex-app-server` | `effect-codex-app-server`       | Codex app-server protocol binding                                                                                                                                  | Codex provider                                                                              |
+| `infra/relay`                      | `t3code-relay`                  | T3 Connect relay                                                                                                                                                   | push notifications for "needs me"                                                           |
+| `oxlint-plugin-t3code`             | `@t3tools/oxlint-plugin-t3code` | repo lint rules                                                                                                                                                    | —                                                                                           |
+| `scripts`                          | `@t3tools/scripts`              | dev runner, release, icon and mobile tooling                                                                                                                       | —                                                                                           |
 
 ### The three files a Fabric change almost always touches
 
