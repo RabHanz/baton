@@ -1556,6 +1556,57 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    // An added Claude account keeps its own credentials and links the primary's
+    // `projects` tree, so the same file is reachable through two homes. Listing
+    // it twice would read as the same conversation having happened twice.
+    it.effect.skipIf(!symlinksSupported)(
+      "lists a conversation once when two accounts share one transcript tree",
+      () =>
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const fileSystem = yield* FileSystem.FileSystem;
+          const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+          yield* TestClock.setTime(nowMs);
+          const claudeHomePath = yield* makeTempDir("t3code-shared-primary-");
+          const secondHome = yield* makeTempDir("t3code-shared-second-");
+          const codexHomePath = yield* makeTempDir("t3code-shared-codex-");
+          const workspace = yield* makeTempDir("t3code-shared-workspace-");
+          const sessionId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+          yield* writeTranscript({
+            filePath: path.join(claudeHomePath, "projects", "-p", `${sessionId}.jsonl`),
+            contents: `${encodeTranscriptRecord({
+              type: "user",
+              cwd: workspace,
+              sessionId,
+              timestamp: "2026-08-24T11:00:00.000Z",
+              message: { content: [{ type: "text", text: "Shared history" }] },
+            })}\n`,
+            mtimeMs: nowMs - 60_000,
+          });
+          yield* fileSystem.symlink(
+            path.join(claudeHomePath, "projects"),
+            path.join(secondHome, "projects"),
+          );
+
+          const listed = yield* runThreadSummaries({
+            claudeHomePath,
+            codexHomePath,
+            workspaceRoot: workspace,
+            providerInstances: {
+              [ProviderInstanceId.make("claude-second")]: {
+                driver: ProviderDriverKind.make("claudeAgent"),
+                config: { homePath: secondHome },
+              },
+            },
+          });
+
+          expect(listed.threads.map((thread) => thread.providerSessionId)).toEqual([sessionId]);
+          // The built-in instance owns a shared tree; the added account is not
+          // where that conversation ran.
+          expect(listed.threads[0]?.providerInstanceId).toBe("claudeAgent");
+        }),
+    );
+
     // The listing behind "Import Claude Code / Codex conversations": what the
     // user is looking for is a conversation, not the folder it ran in.
     it.effect("lists recent conversations across every project and account", () =>

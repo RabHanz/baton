@@ -1554,7 +1554,18 @@ export const make = Effect.gen(function* () {
           homePath = layout.sharedHomePath;
         }
 
-        const homeKey = `${source}\0${yield* directoryIdentity(homePath)}`;
+        // Two accounts can keep separate credentials and share one transcript
+        // tree — which is exactly what an added Claude account does here, since
+        // `projects` is a link to the primary's (D52). Deduplicating on the home
+        // would then list every conversation once per account, as if the same
+        // session had happened three times. The directory that actually holds
+        // the transcripts is the thing to compare, and a link resolves to the
+        // same identity as its target.
+        const transcriptsDir = path.join(
+          homePath,
+          source === "claudeAgent" ? "projects" : "sessions",
+        );
+        const homeKey = `${source}\0${yield* directoryIdentity(transcriptsDir)}`;
         if (seenHomes.has(homeKey)) continue;
         seenHomes.add(homeKey);
         homes.push({ homePath, providerInstanceId: instanceId });
