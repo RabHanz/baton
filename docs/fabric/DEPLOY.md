@@ -128,6 +128,33 @@ Then check, in this order, because each one can pass while the next fails:
 | Tailscale Serve    | `tailscale serve status` still maps the HTTPS port to `127.0.0.1:3773`, and **another tailnet device** gets 200 from it (a same-host probe fails the TLS handshake on SNI and proves nothing)                                                                                                                |
 | The OOM shield     | `choom -n -900 -p <launcher pid>` and `<server pid>`; a restart resets it, so it is re-applied every time                                                                                                                                                                                                    |
 
+### When the relay keeps reconnecting
+
+Symptom: the client says _"Reconnecting: Relay could not reach the environment
+endpoint (endpoint_request_failed)"_, and `userdata/logs/boot-service.log` shows
+one connection index failing every ~30 seconds with
+`control stream encountered a failure while serving` while the other three stay
+up.
+
+Cause, on the Director's home network: QUIC to the nearest Cloudflare edge. The
+connector opens four connections, and the one that lands on the flaky edge
+cannot hold its control stream.
+
+Fix, with no code change and no rebuild — the server spawns the connector with
+its own environment, and cloudflared reads its flags from there:
+
+```ini
+# ~/.config/systemd/user/t3code.service.d/fabric-tunnel-protocol.conf
+[Service]
+Environment=TUNNEL_TRANSPORT_PROTOCOL=http2
+```
+
+`TUNNEL_TRANSPORT_PROTOCOL` is the env form of `--protocol` for `tunnel run`.
+**Not `TUNNEL_PROTOCOL`** — that name is accepted silently and does nothing,
+which cost a restart to find out. Confirm by the log: every
+`Registered tunnel connection` line should end `protocol=http2`, and the failure
+lines stop. Deleting the file goes back to QUIC.
+
 ## 6. Rolling back
 
 In increasing order of severity. The first is almost always enough:

@@ -8,6 +8,7 @@ import { ClaudeSettings } from "@t3tools/contracts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -16,6 +17,7 @@ import * as Schema from "effect/Schema";
 import {
   buildClaudeCapabilitiesProbeQueryOptions,
   CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES,
+  CLAUDE_USAGE_TIMEOUT_MS,
   probeClaudeCapabilities,
 } from "./ClaudeProvider.ts";
 
@@ -189,6 +191,35 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
   );
 });
 
+it.effect("asks for rate limits without the local transcript scan", () =>
+  Effect.gen(function* () {
+    // `get_usage` also scans the user's own transcripts to fill a `behaviors`
+    // section this caller never reads, and that scan is most of its cost on a
+    // machine with a long history. Dropping the flag would put the request back
+    // on a path whose duration depends on how much the user has used Claude
+    // Code, which is what made it time out in the first place (2026-09-18).
+    let usageOptions: unknown = "not called";
+    const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(
+      () =>
+        ({
+          initializationResult: async () => ({
+            account: { email: "dev@example.com" },
+            commands: [],
+          }),
+          usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: (options?: unknown) => {
+            usageOptions = options;
+            return Promise.resolve({ rate_limits_available: true, rate_limits: {} });
+          },
+        }) as unknown as ReturnType<typeof ClaudeSdk.query>,
+    );
+    yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
+
+    yield* probeClaudeCapabilities(decodeClaudeSettings({ binaryPath: "claude" }));
+
+    assert.deepEqual(usageOptions, { skipBehaviors: true });
+  }).pipe(Effect.scoped),
+);
+
 it.effect("preserves initialized capabilities when optional usage times out", () =>
   Effect.gen(function* () {
     const usageStarted = yield* Deferred.make<void>();
@@ -211,7 +242,10 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
       decodeClaudeSettings({ binaryPath: "claude" }),
     ).pipe(Effect.forkChild);
     yield* Deferred.await(usageStarted);
-    yield* TestClock.adjust("4 seconds");
+    // Read from the constant rather than repeating the number: the deadline
+    // moved once already (4s was a coin toss on a machine with a large local
+    // history) and a literal here would have to be found and changed again.
+    yield* TestClock.adjust(Duration.millis(CLAUDE_USAGE_TIMEOUT_MS + 1_000));
     const capabilities = yield* Fiber.join(probe);
     assert.equal(capabilities?.email, "dev@example.com");
     assert.equal(capabilities?.subscriptionType, "pro");
