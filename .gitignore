@@ -15,6 +15,9 @@ build/
 .logs/
 release/
 release-mock/
+# `scripts/build-cli-archive.ts` defaults here, and a fork builds its own
+# distribution on a workstation rather than only in a clean CI runner.
+release-cli/
 .t3
 .idea/
 apps/web/.playwright

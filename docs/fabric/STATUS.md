@@ -39,6 +39,27 @@ services; "built" without "proven" is said explicitly.
 | 9 — orchestration                 | **done**                  | bounded rules, no self-triggering, a durable bound, transition semantics; §22's own sentence fired once and stopped, live                                        | a genuinely cross-account review                                      | **the second account**                                                                        |
 | 10 — capability plane + hardening | **partial**               | the plane and its policy, retention, the audit view, migration additivity as a test, reconnect and two-client agreement, `fleet.get` at 26ms median              | a mid-turn disconnection; a phone resume; the capabilities themselves | **a device** for the resume case                                                              |
 
+## On the boxes — what is actually running
+
+The fork stopped being a branch on 2026-09-18: the Director cleared it to replace
+the stock release on his own servers ("you can restart the t3 as I haven't used
+it yet"). The runbook is `DEPLOY.md`; this is the state.
+
+| Machine       | Runtime                                   | Verified                                                                                                                                                                                                                                                                                                                                                       |
+| ------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| signzart-prod | `0.0.43-fabric.1` (fork), beside `0.0.42` | service active, `http://127.0.0.1:3773` → 200; migrations 054–059 applied to the live `userdata` and seven `fabric_*` tables present; `projection_projects` still carries VentureOS; T3 Connect reconciled and the tunnel re-registered; Tailscale Serve returns 200 from another tailnet device; OOM shield re-applied; frames in `frames/deploy-2026-09-18/` |
+| the local box | `0.0.42` (stock)                          | not yet switched                                                                                                                                                                                                                                                                                                                                               |
+
+What the deploy changed in the fork itself: `fabricWorkSessionsEnabled` now
+defaults **on** (`DECISIONS.md` D45), because a build where the user must find a
+setting before seeing any of it is a build nobody uses.
+
+Two things the first deploy taught, both now in `DEPLOY.md` and both invisible
+until they bite: the service-launcher **protocol number** must match (D46), and a
+fork build carries **none of T3 Connect's public config**, so the cloud link is
+skipped and the environment quietly stops being reachable from t3.codes while
+every local check still passes (D47).
+
 ### §30's V1 definition of done, honestly
 
 | #   | Criterion                                                           | State                                                                                           |
