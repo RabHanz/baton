@@ -250,20 +250,33 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
         className="w-full rounded bg-sidebar-accent/40 px-1.5 py-1 text-xs leading-4 text-sidebar-foreground placeholder:text-sidebar-muted-foreground focus:outline-none"
       />
       {preview === null ? null : (
-        <p
-          data-testid="sidebar-intent-preview"
-          className={cn(
-            "truncate pt-0.5 text-[11px] leading-4",
-            preview.tone === "refused"
-              ? "text-sidebar-destructive-foreground"
-              : "text-sidebar-muted-foreground",
-            preview.weighty && "text-sidebar-foreground",
-          )}
-        >
-          {preview.tone === "will"
-            ? `${awaitingSecondEnter ? "↵ again to run" : "↵"} ${preview.line}`
-            : preview.line}
-        </p>
+        <>
+          {awaitingSecondEnter ? (
+            // Its own line, the way a fleet row gives its heading and its
+            // detail a line each: at 256px the marker and the description
+            // cannot share one without the description — the half that matters
+            // — being the half that truncates.
+            <p
+              data-testid="sidebar-intent-marker"
+              className="truncate pt-0.5 text-[11px] leading-4 text-sidebar-muted-foreground"
+            >
+              ↵ again to run
+            </p>
+          ) : null}
+          <p
+            data-testid="sidebar-intent-preview"
+            className={cn(
+              "truncate text-[11px] leading-4",
+              awaitingSecondEnter ? "" : "pt-0.5",
+              preview.tone === "refused"
+                ? "text-sidebar-destructive-foreground"
+                : "text-sidebar-muted-foreground",
+              preview.weighty && "text-sidebar-foreground",
+            )}
+          >
+            {preview.tone === "will" && !awaitingSecondEnter ? `↵ ${preview.line}` : preview.line}
+          </p>
+        </>
       )}
       {preview?.unplaced === null || preview === null ? null : (
         <p className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
