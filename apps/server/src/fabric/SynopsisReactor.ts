@@ -233,7 +233,10 @@ export const make = Effect.gen(function* () {
         modelSelection: {
           instanceId: instanceId as never,
           model: SYNOPSIS_MODEL_SLUG,
-          options: [],
+          // Two sentences about turns that already happened; the scratchpad is
+          // latency with nothing to show for it. Same measurement as the intent
+          // path (D53).
+          options: [{ id: "thinking", value: false }],
         },
       });
 
