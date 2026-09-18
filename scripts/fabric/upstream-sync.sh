@@ -18,7 +18,12 @@
 # make "what did we change" unanswerable.
 #
 # Usage:
-#   scripts/fabric/upstream-sync.sh [--report-only] [--branch <name>] [--no-pr]
+#   scripts/fabric/upstream-sync.sh [--report-only] [--branch <name>]
+#                                   [--base <ref>] [--no-pr]
+#
+# `--base` exists for the case where the fork's `main` is not yet where the sync
+# should start from — a fix the merge depends on sitting in an open PR, say.
+# It defaults to `origin/main`, which is the normal answer.
 #
 # Exit codes: 0 done (or nothing to do), 1 refused, 2 merged with conflicts left
 # in the worktree for a human.
@@ -30,11 +35,13 @@ cd "$(git rev-parse --show-toplevel)"
 report_only=0
 open_pr=1
 branch=""
+base="origin/main"
 while [ $# -gt 0 ]; do
   case "$1" in
     --report-only) report_only=1 ;;
     --no-pr) open_pr=0 ;;
     --branch) shift; branch="${1:-}" ;;
+    --base) shift; base="${1:-}" ;;
     *) echo "upstream-sync: unknown argument '$1'" >&2; exit 1 ;;
   esac
   shift
@@ -122,8 +129,8 @@ if [ -z "$branch" ]; then
   branch="fabric/upstream-sync-$(date -u +%Y%m%d)"
 fi
 
-echo "==> Merging upstream/main into $branch"
-git checkout --quiet -B "$branch" origin/main
+echo "==> Merging upstream/main into $branch (from $base)"
+git checkout --quiet -B "$branch" "$base"
 
 set +e
 git merge --no-edit -m "sync: merge upstream/main into the fork
