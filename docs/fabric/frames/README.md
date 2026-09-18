@@ -75,6 +75,16 @@ the description do not both fit, so the description truncates. The marker earns
 its place — it is the difference between "this will run" and "this is what I
 think you said" — but the line needs work before this is a daily surface.
 
+## The intent bar at 256 px — before and after
+
+| Frame                                          | What is on screen                                                                                                                                                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `intent-bar-2026-09-18/01-before-one-line.png` | `↵ again to run Check overall status of…` — the marker and the description sharing one line, so the half that matters is the half that truncates.                                                                                     |
+| `intent-bar-2026-09-18/02-after-two-lines.png` | `↵ again to run` on its own line, `Check the status of all work across th…` on the next with the full width of the rail. The same shape a fleet row already uses for its heading and its detail: one line per thing, each truncating. |
+
+Both are the live server, reading the same sentence — `what's cooking` — through
+his own account. Neither ran anything: the second Enter is his.
+
 ## What the frames also show, and what they cost
 
 Two honest observations a reader would make anyway:

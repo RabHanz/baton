@@ -61,6 +61,21 @@ export const INTENT_MODEL_SLUG = "claude-haiku-4-5";
  *
  * Codex's own structured one-shot is the obvious next entry here.
  */
+/**
+ * Thinking off.
+ *
+ * Placing one sentence against a list of names does not need a scratchpad, and
+ * a scratchpad is generated tokens, which is time. Measured on the Director's
+ * own account, same sentence and model: **10.0s with thinking, 6.0s without**.
+ * His own `settings.json` turns it on — reasonably, for writing code — and the
+ * CLI loads that, so this call inherited it until it said otherwise.
+ *
+ * Expressed as a model-selection option because that is upstream's own
+ * mechanism for it; hard-coding it in the driver would make these two
+ * operations special cases inside a function that has none.
+ */
+export const INTENT_MODEL_OPTIONS = [{ id: "thinking", value: false }] as const;
+
 export const INTENT_CAPABLE_DRIVERS: ReadonlySet<string> = new Set(["claudeAgent"]);
 
 export interface IntentInterpretation {
@@ -140,10 +155,7 @@ export const make = Effect.gen(function* () {
         modelSelection: {
           instanceId: chosen.instanceId as never,
           model: chosen.model,
-          // No option selections: effort, thinking and fast mode are choices
-          // about writing code, and this call reads one sentence against a
-          // list of names.
-          options: [],
+          options: INTENT_MODEL_OPTIONS,
         },
       }).pipe(
         // A model that fails, times out or returns nonsense leaves the

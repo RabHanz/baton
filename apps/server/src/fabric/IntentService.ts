@@ -326,7 +326,19 @@ export const make = Effect.gen(function* () {
     readonly allowModel?: boolean | undefined;
   }) =>
     Effect.gen(function* () {
-      const vocabulary = yield* buildVocabulary(focusedWorkSessionId);
+      const normalisedForLookup = normaliseIntentText(text);
+      // Side by side: the fleet read and the memory read answer different
+      // questions, and the second does not depend on the first. On a machine
+      // with work on it the fleet read is the slower of the two.
+      const [vocabulary, learnedRow] = yield* Effect.all(
+        [
+          buildVocabulary(focusedWorkSessionId),
+          vocabularyMemory
+            .find(normalisedForLookup)
+            .pipe(Effect.catchCause(() => Effect.succeed(null))),
+        ],
+        { concurrency: 2 },
+      );
       const grammar = resolveFabricIntent(text, vocabulary);
 
       // Which refusals get a second reader, and which are final.
@@ -353,10 +365,8 @@ export const make = Effect.gen(function* () {
         return { resolution: grammar, source: "grammar" as const, model: null, normalised: null };
       }
 
-      const normalised = normaliseIntentText(text);
-      const learned = yield* vocabularyMemory
-        .find(normalised)
-        .pipe(Effect.catchCause(() => Effect.succeed(null)));
+      const normalised = normalisedForLookup;
+      const learned = learnedRow;
       if (learned !== null) {
         const command = decodeLearnedCommand(learned.commandJson);
         if (Option.isSome(command)) {

@@ -168,8 +168,18 @@ export const INTENT_MODEL_JSON_SCHEMA = {
   },
 } as const;
 
-const list = (entries: ReadonlyArray<string>): string =>
-  entries.length === 0 ? "  (none)" : entries.map((entry) => `  ${entry}`).join("\n");
+/** How many entries of each kind the prompt carries. */
+export const PROMPT_LIST_LIMIT = 40;
+
+const list = (entries: ReadonlyArray<string>): string => {
+  if (entries.length === 0) return "  (none)";
+  const shown = entries.slice(0, PROMPT_LIST_LIMIT).map((entry) => `  ${entry}`);
+  return entries.length <= PROMPT_LIST_LIMIT
+    ? shown.join("\n")
+    : [...shown, `  (+${entries.length - PROMPT_LIST_LIMIT} more, least recently touched)`].join(
+        "\n",
+      );
+};
 
 /**
  * Everything the model is allowed to know, and nothing else.
@@ -224,12 +234,13 @@ export function buildIntentModelPrompt(input: {
     "PROJECTS (id — title):",
     list(vocabulary.projects.map((project) => `${project.id} — ${project.title}`)),
     "",
-    "ACCOUNTS (id — label — available):",
+    // Only the accounts that can actually be chosen: naming the others invites
+    // the model to pick one, and every such pick is refused downstream anyway.
+    "ACCOUNTS (id — label):",
     list(
-      vocabulary.providers.map(
-        (provider) =>
-          `${provider.instanceId} — ${provider.label} — ${provider.available ? "available" : "unavailable"}`,
-      ),
+      vocabulary.providers
+        .filter((provider) => provider.available)
+        .map((provider) => `${provider.instanceId} — ${provider.label}`),
     ),
     "",
     "WAITING (id — question):",

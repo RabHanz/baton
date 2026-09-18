@@ -1377,3 +1377,58 @@ copies next to the links.
 `planProviderAccount` decides the directory, the instance id and the one command to run, and returns
 it for a person to read. The surface that shows that plan to the Director is not built yet; the
 mechanism underneath it is, and it is exercised on every Claude session start.
+
+---
+
+## D53 — The ten seconds were a scratchpad, and most of what is left is not ours
+
+**Decided** 2026-09-18, after the Director's point that for a voice surface the wait _is_ the
+product.
+
+A model reading took ~10 s live. Measured on his own account, with the real transport, the
+decomposition is:
+
+| Part                                            | Measured                                                                      | Whose                          |
+| ----------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------ |
+| CLI spawn + initialisation                      | 0.7–1.0 s                                                                     | ours to pre-pay, not to remove |
+| Claude Code's own system prompt                 | ~26,000 tokens, cache-read every call                                         | **not ours**                   |
+| Model generation **with thinking**              | ~9 s                                                                          | ours to turn off               |
+| Model generation **without thinking**           | ~5 s                                                                          | the floor for this transport   |
+| Fabric's own work (fleet read, grammar, memory) | milliseconds — a gate sentence that never reaches a model answers in **6 ms** | ours, and already negligible   |
+
+**The finding: his own `settings.json` turns thinking on**, reasonably, because he writes code with
+it. The CLI loads user settings, so a classification against a closed list of names inherited a
+scratchpad it has no use for. Turning it off for Fabric's two model reads — as a model-selection
+option, which is upstream's own mechanism, rather than a special case inside the driver — took the
+same sentence from **10.0 s to 6.0 s** with 0 thinking tokens, and the ten-sentence median on the
+live server from ~10 s to **5.4 s**.
+
+**What else was done, and what it was worth:**
+
+- The variable half of the prompt is bounded: accounts that cannot be chosen are not listed at all
+  (naming them invites a pick that is refused downstream anyway), and each list is capped at 40
+  with a note. Worth little today — our prompt is hundreds of tokens against Claude Code's 26,000 —
+  and it stops a busy fleet turning a 5-second read into a 9-second one.
+- The constant block already came first, which is what lets the CLI's prompt cache hold it. Left
+  alone deliberately.
+- The learned-phrasing lookup now runs beside the fleet read instead of after it. An exact grammar
+  hit never waited on a model; a _learned_ hit waited on a fleet read it has no use for.
+
+**Why the 3-second target is not met, precisely.** After thinking is off, the remaining ~5 s is one
+API call carrying ~26k cached tokens of Claude Code's own system prompt, answered through an
+**end-turn tool** — the structured-output mechanism is a tool call plus its carrier, not a single
+completion. The fork chooses neither. What is left to us is the 0.7–1.0 s of spawn, which a
+pre-warmed session would remove: the SDK does support a streaming-input session with
+`outputFormat: json_schema`, measured here at **0.9 s to initialise** and reusable across sentences.
+
+**That session is not shipped, and the reason is worth recording.** It buys ~1 s of ~5.4 s, and it
+costs a resident `claude` process per environment plus a conversation that accumulates history —
+which is the one thing this path must not have, because "tell it to stop" resolving against what was
+said three sentences ago is exactly the guessing §14 forbids. The variant that keeps the property —
+a pre-spawned session per read, replaced immediately after use — is worth building when the
+remaining 4 s comes down, and pointless while it does not.
+
+**Consequence:** the honest number for "speak a sentence the grammar cannot place, see what it
+understood" is about five seconds on this transport, and a sentence the grammar or the memory can
+place is instant. The gap between those two is now the reason to teach the grammar, and the learned
+table is what does it.

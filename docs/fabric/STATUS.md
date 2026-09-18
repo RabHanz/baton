@@ -135,6 +135,34 @@ release can be built from an upstream tree until it is a boolean**. The fork
 pins it back to `true` with a comment, and that patch should be dropped when
 upstream fixes it.
 
+### How long a model reading takes (D53)
+
+Measured on signzart against the live server, over the ten sentences the grammar
+refuses, `allowModel: true` — which is exactly what the first Enter does:
+
+|                         | before                  | after                                                          |
+| ----------------------- | ----------------------- | -------------------------------------------------------------- |
+| median, Enter → reading | ~10.0 s                 | **5.4 s**                                                      |
+| fastest                 | —                       | **6 ms** (a sentence the grammar places; no model call at all) |
+| slowest                 | —                       | 10.2 s                                                         |
+| thinking tokens         | on, by his own settings | 0                                                              |
+
+The cut is one setting: his `~/.claude/settings.json` turns thinking on, the CLI
+loads it, and a classification against a closed list of names inherited a
+scratchpad. Turning it off for Fabric's two model reads took the same sentence
+from 10.0 s to 6.0 s.
+
+**The 3-second target is not met and the remainder is not ours.** After thinking
+is off, what is left is one API call carrying ~26,000 tokens of Claude Code's own
+system prompt, answered through an end-turn tool — a tool call plus its carrier,
+not a single completion. Fabric's own share is milliseconds: the fastest of the
+ten was 6 ms, which is a sentence that never reached a model at all.
+
+A pre-warmed SDK session would remove the remaining 0.7–1.0 s of spawn — it is
+measured and it works — and it is deliberately not shipped: it buys ~1 s of
+~5.4 s and costs a conversation that accumulates history, which is the one thing
+this path must not have.
+
 ### What running it on his boxes found
 
 Three defects, none of which any test would have caught, because each needed a
