@@ -92,7 +92,7 @@ function FabricEnvironmentFleet(props: { readonly environmentId: EnvironmentId }
     entries: entries.map((entry) => ({ environmentId: props.environmentId, entry })),
     resolveProjectLabel: () => null,
     resolveEnvironmentLabel: () => null,
-    resolveProviderLabel: () => null,
+    resolveProviderAccount: () => null,
     // `nowMinute` has no offset, so it parses as local rather than UTC unless
     // the zone is made explicit — the same trap the desktop hit.
     now: Date.parse(`${nowMinute}:00Z`),

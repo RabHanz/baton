@@ -12,10 +12,12 @@ import { type ReactNode, useState } from "react";
 import type { EnvironmentId, FabricFleetEntry, ProjectId } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
+import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import {
   buildFleetRows,
   countFleetRows,
   filterFleetRows,
+  type FleetAccount,
   type FleetRow,
 } from "@t3tools/shared/fabricFleetView";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -27,10 +29,10 @@ export interface FabricFleetSectionProps {
   /** Only environments that advertise `fabricWorkSessions`. */
   readonly environmentIds: readonly EnvironmentId[];
   readonly resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
-  readonly resolveProviderLabel: (
+  readonly resolveProviderAccount: (
     environmentId: EnvironmentId,
     providerInstanceId: string,
-  ) => string | null;
+  ) => FleetAccount | null;
   readonly resolveProjectLabel: (
     environmentId: EnvironmentId,
     projectId: ProjectId,
@@ -80,7 +82,7 @@ function EnvironmentFleet(
     entries: entries.map((entry) => ({ environmentId: props.environmentId, entry })),
     resolveProjectLabel: props.resolveProjectLabel,
     resolveEnvironmentLabel: props.resolveEnvironmentLabel,
-    resolveProviderLabel: props.resolveProviderLabel,
+    resolveProviderAccount: props.resolveProviderAccount,
     // `useNowMinute` yields "2026-09-18T04:59", and a date-time with no offset
     // parses as local rather than UTC — so the zone is made explicit here
     // instead of skewing every age by the machine's offset.
@@ -202,6 +204,28 @@ function FleetRowView(props: { readonly row: FleetRow; readonly onSelect: () => 
           <span className="block truncate text-[11px] leading-4 text-sidebar-muted-foreground">
             {[row.attribution, row.detail].filter((part) => part !== null).join(" · ")}
             {row.detail !== null && row.detailStale ? " (stale)" : ""}
+          </span>
+        )}
+        {row.account?.email == null ? null : (
+          <span
+            data-testid="sidebar-fleet-row-account"
+            className="block max-w-full text-[11px] leading-4 text-sidebar-muted-foreground"
+            // The row is a button; revealing the address is its own control and
+            // must not also select the work session.
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* Redacted until asked for, the same treatment the settings card
+                gives a provider address — a sidebar is the thing people
+                screenshot. Which login is behind an instance is exactly what
+                goes wrong silently when two config directories end up sharing
+                credentials (D52), so it is worth being able to see. */}
+            <RedactedSensitiveText
+              value={row.account.email}
+              ariaLabel="Toggle account email visibility"
+              revealTooltip="Click to reveal the account this is running as"
+              hideTooltip="Click to hide the account"
+              className="max-w-full truncate"
+            />
           </span>
         )}
       </span>

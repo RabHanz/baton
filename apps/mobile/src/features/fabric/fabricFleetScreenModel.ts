@@ -18,6 +18,7 @@ import {
   buildFleetRows,
   countFleetRows,
   filterFleetRows,
+  type FleetAccount,
   type FleetRow,
 } from "@t3tools/shared/fabricFleetView";
 
@@ -31,10 +32,10 @@ export interface FabricScreenInput {
     projectId: ProjectId,
   ) => string | null;
   readonly resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
-  readonly resolveProviderLabel: (
+  readonly resolveProviderAccount: (
     environmentId: EnvironmentId,
     providerInstanceId: string,
-  ) => string | null;
+  ) => FleetAccount | null;
   readonly now: number;
   readonly needsUserOnly: boolean;
 }

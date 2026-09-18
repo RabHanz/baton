@@ -16,6 +16,8 @@
 import { type ReactNode } from "react";
 import type { EnvironmentId, WorkSession } from "@t3tools/contracts";
 
+import type { FleetAccount } from "@t3tools/shared/fabricFleetView";
+
 import { cn } from "~/lib/utils";
 import {
   buildWorkSessionGrouping,
@@ -39,10 +41,10 @@ export interface FabricWorkSessionSectionProps {
   readonly intentRevision: number;
   readonly threads: ReadonlyArray<SidebarThreadSummary & { readonly environmentId: EnvironmentId }>;
   readonly resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
-  readonly resolveProviderLabel: (
+  readonly resolveProviderAccount: (
     environmentId: EnvironmentId,
     providerInstanceId: string,
-  ) => string | null;
+  ) => FleetAccount | null;
   readonly resolveProjectLabel: (
     environmentId: EnvironmentId,
     workSession: WorkSession,
@@ -86,7 +88,7 @@ function EnvironmentWorkSessions(
     })),
     threads: props.threads.filter((thread) => thread.environmentId === props.environmentId),
     resolveEnvironmentLabel: props.resolveEnvironmentLabel,
-    resolveProviderLabel: props.resolveProviderLabel,
+    resolveProviderAccount: props.resolveProviderAccount,
   });
 
   return (
