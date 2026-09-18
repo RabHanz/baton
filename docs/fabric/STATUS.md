@@ -68,6 +68,29 @@ change moves each machine's record across and logs
 numbering, which is harmless — it only matters once upstream publishes a
 migration at 054, and the repair ships in the same binary that would meet it.
 
+### What running it on his boxes found
+
+Three defects, none of which any test would have caught, because each needed a
+real machine with a real history on it.
+
+| Found                                                        | What it was                                                                                                                                                                                                                                                                                                                              | Fixed by                                                                                                                                                                                                                       |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "onnyx · Claude: Could not read limits"                      | The usage control request had the 4s deadline the fast CLI calls share. It costs an API round trip **plus a scan of the user's own transcripts**, so its cost scales with how much they have used Claude Code. Measured on his box, three runs: 2.3s, 2.6s, 3.5s. Against 4s that is a coin toss, and losing it reads as an auth problem | `CLAUDE_USAGE_TIMEOUT_MS = 15s`, inside the probe's own 25s budget, plus `skipBehaviors: true` so the transcript scan is skipped entirely. Two tests pin both                                                                  |
+| The Claude instances could not spawn at all on the local box | `claude` lives under nvm there, and a systemd **user** unit gets a PATH with neither `~/.local/bin` nor nvm on it. The instances resolved their config dirs and failed at spawn, which also reads as an auth problem                                                                                                                     | a stable `~/.local/bin/claude` symlink and a PATH drop-in; `DEPLOY.md`                                                                                                                                                         |
+| "Relay could not reach the environment endpoint" every ~30s  | One of the connector's four connections lands on a Cloudflare edge whose QUIC control stream his network will not hold                                                                                                                                                                                                                   | `TUNNEL_TRANSPORT_PROTOCOL=http2` in a drop-in — the server spawns the connector with its own environment, so this needed no code and no rebuild. All four connections now register `protocol=http2`, and the failures stopped |
+
+The shape of all three is the same and worth naming: **a local condition that
+only exists on a machine somebody actually uses** — a large history, a version
+manager, a home network. None of it is reachable from a test suite, and all of
+it was reachable within an hour of the fork being the thing he opens.
+
+Two Claude accounts beyond the default are now logged in **on signzart**
+(`claude-signzart`, `claude-rabee`, both reading `Authenticated · Claude Max
+Subscription`), which is Phase 3's blocker cleared there. On the local box the
+same two accounts' refresh tokens are dead — `cswap list` says
+`re-login needed` — so Phase 3 still needs one `claude auth login` per account
+on that machine, which only the Director can do.
+
 ### §30's V1 definition of done, honestly
 
 | #   | Criterion                                                           | State                                                                                           |

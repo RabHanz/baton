@@ -172,6 +172,24 @@ function apiProviderAuthMetadata(
 const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 
 /**
+ * The usage control request gets its own deadline, well above the 4s
+ * `DEFAULT_TIMEOUT_MS` the fast CLI calls share.
+ *
+ * Measured, not guessed. `get_usage` costs an API round trip *plus* a scan of
+ * the user's local transcripts, so its cost scales with how much they have
+ * used Claude Code — not with anything this server does. On a fresh machine it
+ * answers in well under a second; on the Director's own box, with 9GB of
+ * transcripts, three runs took 2.3s, 2.6s and 3.5s. Against a 4s deadline that
+ * is a coin toss, and losing it shows up as "Could not read limits" with
+ * everything else about the account resolving perfectly — which is exactly how
+ * it was reported (2026-09-18).
+ *
+ * 15s stays inside the 25s the whole probe has, so a slow usage request still
+ * cannot discard the initialization data that came back first.
+ */
+export const CLAUDE_USAGE_TIMEOUT_MS = 15_000;
+
+/**
  * Keep workspace-scoped command discovery intact while isolating the periodic
  * health check from configured MCP servers.
  */
@@ -364,8 +382,21 @@ const probeClaudeCapabilities = (
       Effect.gen(function* () {
         // Usage has its own deadline so a slow optional request cannot discard initialization.
         const usageResult = yield* Effect.tryPromise(() =>
-          q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
-        ).pipe(Effect.timeout(DEFAULT_TIMEOUT_MS), Effect.result);
+          // `skipBehaviors` skips the scan of local transcripts that fills the
+          // response's `behaviors` section, which this caller never reads — it
+          // wants `rate_limits` and nothing else. Measured on a machine with a
+          // large history: 2.3s with the flag against 2.6-3.5s without.
+          //
+          // The cast is deliberate and narrow. The option arrived in a later
+          // SDK than the one this workspace pins, and an older SDK ignores the
+          // extra argument rather than failing, so passing it is safe on both
+          // and becomes free the moment the pin moves.
+          (
+            q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET as (options?: {
+              readonly skipBehaviors?: boolean;
+            }) => ReturnType<typeof q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET>
+          )({ skipBehaviors: true }),
+        ).pipe(Effect.timeout(CLAUDE_USAGE_TIMEOUT_MS), Effect.result);
         const usage = Result.isSuccess(usageResult)
           ? {
               rate_limits_available: usageResult.success.rate_limits_available,
