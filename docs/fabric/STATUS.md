@@ -205,6 +205,24 @@ orchestrator session writes in bursts, and a fifteen-minute gap between bursts
 reads as quiet. The import refuses within five minutes of a write; past that it
 is the user's judgement.
 
+### Resuming an imported conversation (D55)
+
+Importing is half the answer; the other half is whether the thread can take a
+turn. On `0.0.43-fabric.8` it could not:
+
+```
+session=error   turn/setPermissionMode failed
+```
+
+The provider log had the rest: the CLI had restored the session and reported back
+its own id, so the resume worked and the _turn_ did not — T3 asked the CLI to
+switch to the mode it was already in, which a resumed session refuses. Calling
+only on an actual change fixed it, and the same question then came back with what
+that session was doing four days earlier.
+
+Frames: `frames/resume-2026-09-18/` — both attempts in one thread, the failure
+above the answer.
+
 ### What running it on his boxes found
 
 Three defects, none of which any test would have caught, because each needed a

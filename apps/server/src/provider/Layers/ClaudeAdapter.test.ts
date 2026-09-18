@@ -7411,6 +7411,33 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // A resumed 420 MB session imported cleanly and then could not take a turn:
+  // `turn/setPermissionMode failed`, no prompt delivered. The request was for
+  // the mode the session already had — work that can only fail.
+  it.effect("does not ask the CLI for the permission mode it already has", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "carry on where we left off",
+        interactionMode: "default",
+        attachments: [],
+      });
+
+      assert.deepEqual(harness.query.setPermissionModeCalls, []);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("sets plan permission mode on sendTurn when interactionMode is plan", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

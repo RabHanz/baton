@@ -419,6 +419,13 @@ interface ClaudeSessionContext {
   streamFiber: Fiber.Fiber<void, Error> | undefined;
   readonly startedAt: string;
   readonly basePermissionMode: PermissionMode | undefined;
+  /**
+   * The mode the CLI is in now, so a turn does not ask it to change to the mode
+   * it already has. That request is a no-op on a fresh session and a failure on
+   * a resumed one, which is how a 420 MB conversation imported cleanly and then
+   * could not take a turn.
+   */
+  currentPermissionMode: PermissionMode | undefined;
   currentApiModelId: string | undefined;
   /** Effective effort for the session's turns; subagents without an explicit
    * effort override inherit this. */
@@ -5084,6 +5091,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         streamFiber: undefined,
         startedAt,
         basePermissionMode: permissionMode,
+        currentPermissionMode: permissionMode,
         currentApiModelId: apiModelId,
         currentEffort: effectiveEffort ?? undefined,
         resumeSessionId: sessionId,
@@ -5234,16 +5242,21 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     // "plan" maps directly to the SDK's "plan" permission mode;
     // "default" restores the session's original permission mode.
     // When interactionMode is absent we leave the current mode unchanged.
-    if (input.interactionMode === "plan") {
+    const targetPermissionMode: PermissionMode | null =
+      input.interactionMode === "plan"
+        ? "plan"
+        : input.interactionMode === "default"
+          ? (context.basePermissionMode ?? "default")
+          : null;
+    // Only when it is actually a change. Asking for the mode already in effect
+    // is the whole of what a normal turn used to send, and a resumed session
+    // refuses it — so the turn died before the prompt was ever delivered.
+    if (targetPermissionMode !== null && targetPermissionMode !== context.currentPermissionMode) {
       yield* Effect.tryPromise({
-        try: () => context.query.setPermissionMode("plan"),
+        try: () => context.query.setPermissionMode(targetPermissionMode),
         catch: (cause) => toRequestError(input.threadId, "turn/setPermissionMode", cause),
       });
-    } else if (input.interactionMode === "default") {
-      yield* Effect.tryPromise({
-        try: () => context.query.setPermissionMode(context.basePermissionMode ?? "default"),
-        catch: (cause) => toRequestError(input.threadId, "turn/setPermissionMode", cause),
-      });
+      context.currentPermissionMode = targetPermissionMode;
     }
 
     const turnId = steeringTurnState?.turnId ?? TurnId.make(yield* randomUUIDv4);

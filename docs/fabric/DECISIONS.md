@@ -1517,3 +1517,48 @@ that_:
 Both are reachable from Settings → Environments (per machine, including this one) and from the
 project's own page (narrowed to its directory), behind an
 `agentSessionConversationImport` capability so an older server is not probed.
+
+---
+
+## D55 — A turn asked the CLI to change to the mode it already had, and a resumed session refused
+
+**Decided** 2026-09-18, after the Director's _"When can I move all of my sessions to T3 code?"_ —
+where the difference between **imported** and **moved** is whether the thread can take a turn.
+
+The 420 MB conversation imported cleanly and then could not answer. The projection said:
+
+```
+session=error   turn/setPermissionMode failed
+```
+
+and nothing else. The provider log said more:
+
+```
+session.started     resume: 735f333a-898c-479e-9370-26be44c409c3
+session.configured  cwd=/home/onnyx/VentureOS
+claude/result/success   session_id=735f333a-…   num_turns=0   result=""
+```
+
+**So the resume worked.** The CLI restored a four-day-old session, reported back its own session id,
+and then the turn died before the prompt reached it.
+
+**The request that killed it was a request for the mode already in effect.** `sendTurn` applies the
+thread's interaction mode by calling `setPermissionMode`, and for `interactionMode: "default"` — what
+every ordinary turn carries — the target is `basePermissionMode`, which is _the mode the session was
+started with_. On a fresh session that is a no-op the CLI tolerates. On a resumed one it is refused,
+and the refusal takes the turn with it.
+
+The fix is the obvious one and would be right whatever the CLI did: **track the mode in effect and
+call only on a change.** A control request whose success would change nothing is work that can only
+fail.
+
+**Two things this cost, both recorded:**
+
+- The first attempt left `turn/setPermissionMode failed` and no cause at all. `toRequestError` now
+  carries the rejection's own message — the same lesson `cause: [Object]` taught the intent path in
+  D50, learned twice in three days.
+- Two authorised turns on his account: one to reproduce with the cause visible, one to prove the
+  fix. The second answered with what that session was doing on 14 September.
+
+**Consequence:** an imported conversation is a conversation he can continue, not an archive he can
+read. That is the whole difference between this feature and a transcript viewer.
