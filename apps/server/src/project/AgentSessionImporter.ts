@@ -324,7 +324,10 @@ export const importAgentThread = Effect.fn("importAgentThread")(function* (
     if (binding) return { threadId, imported: false } satisfies AgentSessionImportThreadResult;
   }
 
-  const found = yield* scanner.recentThreads(workspaceRoot).pipe(
+  // Nested sessions are searched too: the listing shows a project's worktree
+  // and package sessions under it, so a conversation the user picked there must
+  // be importable. The project-wide import below stays pinned to the root.
+  const found = yield* scanner.recentThreads(workspaceRoot, [], true).pipe(
     Stream.filter(
       (outcome) =>
         outcome._tag === "Importable" &&

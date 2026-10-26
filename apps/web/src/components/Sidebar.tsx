@@ -238,6 +238,7 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { FabricFleetSection } from "./sidebar/FabricFleetSection";
 import { FabricWorkSessionSection } from "./sidebar/FabricWorkSessionSection";
+import { SessionPresenceSection } from "./sidebar/SessionPresenceSection";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
@@ -2354,6 +2355,20 @@ export default function Sidebar() {
             )
         : [],
     [environments, fabricWorkSessionsEnabled, serverConfigs],
+  );
+  // Presence is not gated on the Fabric setting: "my sessions are here" is not
+  // a Fabric feature, it is what the machine already knows, and it answers the
+  // question the import dialog made him go looking for.
+  const sessionPresenceEnvironmentIds = useMemo(
+    () =>
+      environments
+        .map((environment) => environment.environmentId)
+        .filter(
+          (environmentId) =>
+            serverConfigs.get(environmentId)?.environment.capabilities
+              .agentSessionConversationImport === true,
+        ),
+    [environments, serverConfigs],
   );
   const resolveFabricProviderAccount = useCallback(
     (environmentId: EnvironmentId, providerInstanceId: string) => {
@@ -4700,6 +4715,20 @@ export default function Sidebar() {
               onSelectWorkSession={selectFabricFleetEntry}
               onIntentRan={() => setFabricIntentRevision((revision) => revision + 1)}
               activeThreadKey={routeThreadKey}
+            />
+          ) : null}
+          {!isSearchingThreads ? (
+            <SessionPresenceSection
+              environmentIds={sessionPresenceEnvironmentIds}
+              resolveProjectLabel={(environmentId, projectId) =>
+                projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
+              }
+              onOpenThread={(environmentId, threadId) => {
+                void router.navigate({
+                  to: "/$environmentId/$threadId",
+                  params: { environmentId, threadId },
+                });
+              }}
             />
           ) : null}
           {!isSearchingThreads ? (

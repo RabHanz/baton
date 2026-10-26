@@ -288,6 +288,37 @@ it.layer(NodeServices.layer)("AgentSessionImporter", (it) => {
       }),
     );
 
+    // The listing shows a project's worktree and package sessions under it, so
+    // a conversation picked there has to be findable. The project-wide import
+    // stays pinned to the root — that distinction is the whole argument, and it
+    // is invisible unless the argument itself is asserted.
+    it.effect("searches below the project root when one conversation is picked", () =>
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse("2026-08-24T12:00:00.000Z"));
+        const wanted = makeThread("claudeAgent");
+        const calls: Array<{ readonly root: string; readonly includeNested: boolean | undefined }> =
+          [];
+        const scanner = AgentSessionScanner.AgentSessionScanner.of({
+          scan: Effect.die("unused"),
+          recentThreadSummaries: () => Effect.die("unused"),
+          recentThreads: (workspaceRoot, _completed, includeNested) => {
+            calls.push({ root: workspaceRoot, includeNested });
+            return Stream.make(makeThreadOutcome(wanted));
+          },
+        });
+
+        yield* runImportThread({
+          scanner,
+          engine: makeStubEngine([]),
+          directory: makeStubDirectory([]),
+          snapshots: makeSnapshotsLayer({ project: makeProject() }),
+          providerSessionId: wanted.providerSessionId,
+        });
+
+        expect(calls).toEqual([{ root: WORKSPACE_ROOT, includeNested: true }]);
+      }),
+    );
+
     // The transcript is the only record of the conversation. Resuming a session
     // that is still writing to it puts a second writer on that file, so the
     // import refuses until it goes quiet — the listing declines to offer it,
