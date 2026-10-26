@@ -45,6 +45,18 @@ Re-derived from the fork, both boxes and the spec rather than from this page's o
 | Wake word / microphone                                    | **built, proven headless**                              | desktop + real core wired (D66, `VOICE.md`): espeak fixtures as the mic → wake → VAD → STT → intent → HUD line; not yet run on Windows or with the DJI mic                                               |
 | Local box second and third Claude login                   | **blocked on the Director**                             | `claude auth login` per account on onnyx; the refresh tokens there are dead                                                                                                                              |
 
+## P1 round 2, 2026-10-26 — one surface per project (proven live, `0.0.43-baton.19`)
+
+| Piece                                                                  | State                                                                                                                                                                                     | Evidence                                                                                                   |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| One entry per project, sessions under it, one line when one runs (D72) | **proven**                                                                                                                                                                                | `frames/p1-round2-2026-10-26/1-…`: VentureOS shows `3 live · onnyx + signzart-prod · 2 accounts` at 390 px |
+| Both boxes in one view (D72)                                           | **proven from signzart's client** with onnyx added as a second environment; on the phone it needs both environments added in the T3 app (T3 Connect)                                      |
+| Identity through rotation, adoption, handoff (D72)                     | **proven for adoption live** (row key `claude:9edbd793…` kept, gained a Send box); rotation keeps the id by D69's resume (proven earlier); handoff keeps the work session row (unit test) |
+| File/image send (D73)                                                  | **proven**: `proof-note.txt` from the 390 px view landed in `onnyx:~/VentureOS/.baton/inbox/` (git-excluded, tree clean) and the onnyx session answered its code word `MARIGOLD-7`        |
+| Send to a session not in Herdr (D74)                                   | **proven**: a plain-terminal Claude session that had answered DELTA was adopted in one tap, then asked from the same view; it answered DELTA                                              |
+| Desktop voice typecheck (18 style errors from #31)                     | **fixed**: file-level `@effect-diagnostics` headers on the six non-Effect voice files; desktop `tsc` clean                                                                                |
+| onnyx OOM protection (D75)                                             | **blocked on one root command** (in D75); user units cannot go below the manager's 200 and onnyx's askpass refuses agents                                                                 |
+
 ## What Baton is for, in his words (D56)
 
 "I want all of my projects and the active sessions within those projects that I am
