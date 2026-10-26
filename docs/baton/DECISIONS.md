@@ -2008,3 +2008,52 @@ drop-in names the exact path), but `t3 update` must never be pointed at a fork b
    called handoff proof with claude" from the intent bar, then **Continue with… → Codex**. The work
    moved to a Codex thread, which took a real turn on the capsule and asked for its first command
    approval (`4-continue-with-codex.png`).
+
+## D72 — One entry per project, across boxes and accounts
+
+**Decided** 2026-10-26 on the Director's binding shape: _"different sessions are one surface, even
+across accounts. One project, regardless of the account, shows as one session if it is running, or
+multiple."_ The sidebar's Baton block is now an input plus **Projects**: every connected
+environment's fleet (T3 work sessions, Claude Code sessions, Herdr panes) is merged in the client,
+grouped by a project key, one line when one session runs. The key is T3's own repository identity
+(`RepositoryIdentityResolver`, the canonical remote) on both sides, so a checkout on signzart and one
+on onnyx at different paths are one project; a directory with no remote falls back to `dir:<folder>`.
+Accounts and boxes are attributes on a row, never a place to go.
+
+Merging happens in the client because the client is already where T3 joins environments (it groups
+logical projects across environments the same way); the server adds only the project ref. On the
+phone, the T3 app shows both boxes when both environments are added to it.
+
+Row identity: a Claude row is keyed by its conversation id, a work row by its work session id. A
+rotation (D69, same id resumed), an adoption into Herdr (D74, same id) and a "Continue with…"
+handoff (D62, same work session) therefore keep the row; only its attributes change. SDK-driven
+Claude sessions (`entrypoint: sdk-*`) are not listed: their owner is a program.
+
+## D73 — A file goes into the session's own directory, and the message carries its path
+
+`baton.live.attach` writes up to 8 MB into `<session cwd>/.baton/inbox/<stamp>-<safe name>` (mode
+600, `.baton/` appended to the repository's `info/exclude`, never `.gitignore`), and the client
+sends the text with `@<path>`, which Claude Code reads as a file reference and a shell takes as a
+path. The name is reduced to a basename and a safe character set before it touches the disk.
+
+## D74 — A session outside Herdr is adopted in one tap, never reached through Claude's socket
+
+A Claude session in a plain terminal or VS Code has no input path Baton may use: its only one is
+Claude Code's private peer socket (`messagingSocketPath` with a `.key`), which stays closed. Its row
+offers **Bring into Herdr to send**: after a confirm, and only when Claude Code reports it idle,
+Baton sends it SIGTERM, waits for it to exit, and runs `baton --resume <id> <cwd>`, which reopens the
+same conversation in the project's Herdr space. The row keeps its key and gains a Send box.
+
+## D75 — onnyx OOM protection needs one root command
+
+A user unit cannot set `OOMScoreAdjust` below its manager's `DefaultOOMScoreAdjust=200`, and the
+onnyx askpass refuses non-interactive use, so `sudo choom` fails there. The fix is one root command
+on onnyx, after which the user unit's `OOMScoreAdjust=-900` is allowed:
+
+```bash
+sudo mkdir -p /etc/systemd/system/user@1000.service.d
+printf '[Service]\nOOMScoreAdjust=-900\n' | sudo tee /etc/systemd/system/user@1000.service.d/baton-oom.conf
+sudo systemctl daemon-reload && sudo systemctl restart user@1000.service
+```
+
+Not applied by an agent: it restarts the user manager (every user service on the box).
