@@ -1857,7 +1857,60 @@ session is carried in the pane ref as `<session>~<pane>` so adopted rows need no
 Not wired: a T3 terminal on one box attached to a Herdr session on the other, because the boxes'
 SSH route needs a dedicated key alias that a T3 terminal does not have.
 
-## D66 — One control surface for every session, independent of the account
+## D66 — The desktop owns the microphone, the HUD and where the words go
+
+**Decided** 2026-10-26. **Amends** D24 for the desktop only. The Director wants Fabric hands-free and
+always listening through his DJI mic, or any mic, with nothing touched. D24 kept speech out of the
+fork because the server sits on a box with no microphone. That still holds for the server. The
+desktop app does sit next to the mic, so it captures audio and hands it to the voice core
+(`packages/fabric-voice`, a separate lane). Everything after the core still ends as text through the
+same grammar and gates, so D24's rule that a phone, a laptop and a keyboard mean the same thing
+holds.
+
+- **Capture** (`apps/desktop/src/fabric/voice/`): Chromium's `getUserMedia` in a hidden window, so
+  a DJI receiver is an ordinary device. No native module and no driver. The page sends float PCM,
+  and `pcm.ts` turns it into 16 kHz mono int16 in 20 ms frames.
+- **Device pin**: by normalised _name_, never by id. Windows renumbers a USB receiver on replug
+  ("(2- DJI MIC MINI)" becomes "(3- …)"), so an id pin is lost the first time it is unplugged. When
+  the pinned mic is missing, capture falls back to the OS default and says which one is missing. A
+  `devicechange` moves capture back when the mic returns.
+- **Hard mute** is enforced in `voiceLoop.ts`: no frame reaches the core while muted.
+- **Routing**: dictation is pasted into the focused field on Windows (the clipboard rung of Phase
+  6's `TextInjectionAdapter`) and never leaves the machine. Direct-session speech becomes
+  `Tell it: <words>` and command speech goes as said. Both reach the intent bar over
+  `desktopBridge.onFabricVoiceUtterance` and run through `fabric.intent.run`, the same path as a
+  typed sentence.
+- **Opt-in**: "Always listening" and "Start Fabric when I sign in" are tray checkboxes, both off by
+  default, saved in `fabric-voice.json` in the state dir.
+- **Airdeck** is an explicit activation provider through global hotkeys, which Airdeck's `"keys"`
+  action can already send. Airdeck needs no code change. The chords stay clear of Airdeck's own
+  F9 to F12:
+
+  | Chord               | Does                    | Airdeck profile entry                               |
+  | ------------------- | ----------------------- | --------------------------------------------------- |
+  | `Ctrl+Alt+Shift+F5` | wake (unmutes if muted) | `{ "action": "keys", "keys": "ctrl+alt+shift+f5" }` |
+  | `Ctrl+Alt+Shift+F6` | toggle direct-session   | `{ "action": "keys", "keys": "ctrl+alt+shift+f6" }` |
+  | `Ctrl+Alt+Shift+F7` | toggle mute             | `{ "action": "keys", "keys": "ctrl+alt+shift+f7" }` |
+
+**The core seam.** `voiceTypes.ts` uses §12.2's names, `AudioInputProvider` included, and declares
+`VoiceCore` (`pushAudio`, `activate`, `onState`, `onUtterance`). `DesktopApp` passes
+`makeCore: null` until `packages/fabric-voice` lands. Until then the tray shows "Voice core not
+installed" and the mic is not opened.
+
+**The Windows installer** cannot be cross-built here. `scripts/build-desktop-artifact.ts --platform
+win` compiles Rust helpers for `x86_64-pc-windows-msvc` and needs the Visual Studio Build Tools, so
+it runs on Windows: `pnpm install` then `pnpm run dist:desktop:win:x64`, with the prerequisites in
+`docs/operations/development.md#windows-installer-prerequisites`.
+
+Rejected: a loopback HTTP endpoint for Airdeck (D64's reason still applies, and hotkeys need nothing
+new on Airdeck's side); pinning by device id (lost on replug); a native audio module such as
+naudiodon (a Windows build dependency for something Chromium already does).
+
+**Not proven:** nothing has run on Windows. The loop is proven headless (`voiceLoop.test.ts`: a
+48 kHz stereo WAV as the microphone, resampled, framed, segmented, routed, and hard-muted), but the
+tray, HUD, `getUserMedia` capture and SendKeys paste have not been run on a Windows desktop.
+
+## D68 — One control surface for every session, independent of the account
 
 **Decided** 2026-10-26 on the Director's priority 1: Claude Remote Control is bound to an account,
 so every account change broke his control channel. Fabric's channel is the session's _place_, not
@@ -1879,7 +1932,7 @@ its account:
   `~/.local/bin/fab`) starts the agent in a tab of the project's Herdr space, so new work is
   sendable and survivable from the start.
 
-## D67 — Rotation restarts Herdr-hosted sessions on the new account, same conversation
+## D69 — Rotation restarts Herdr-hosted sessions on the new account, same conversation
 
 After D63 rotates the account, each idle Claude session hosted in a Herdr pane gets `/exit` and,
 once its shell is back, `claude --resume <id>` in the same pane: same conversation, same pane, same

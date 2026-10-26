@@ -1,7 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDateInEffect:off globalDate:off
 /**
  * Live Claude Code sessions on this machine, read from Claude Code's own
- * per-process descriptors (D66). Read-only: the `.key` files beside them are
+ * per-process descriptors (D68). Read-only: the `.key` files beside them are
  * never opened.
  */
 import * as NodeFS from "node:fs";

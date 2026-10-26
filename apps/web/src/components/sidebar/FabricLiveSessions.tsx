@@ -1,6 +1,6 @@
 /**
  * Every running session on one environment, from any harness and any account,
- * each with a one-field send (D66). Herdr panes and Claude Code sessions living
+ * each with a one-field send (D68). Herdr panes and Claude Code sessions living
  * in them are typed into through Herdr; a session in a plain terminal or VS Code
  * is listed with its state and account, and says how to bring it into Fabric.
  */

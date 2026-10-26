@@ -1,5 +1,5 @@
 /**
- * Every Claude Code session running on an environment, whoever started it (D66).
+ * Every Claude Code session running on an environment, whoever started it (D68).
  *
  * Claude Code writes `<config dir>/sessions/<pid>.json` for each live process:
  * its conversation id, directory, name, busy/idle status and where it runs

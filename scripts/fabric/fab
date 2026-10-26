@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fab — start (or rejoin) work inside Fabric + Herdr, so a session is owned from birth (D66).
+# fab — start (or rejoin) work inside Fabric + Herdr, so a session is owned from birth (D68).
 #
 #   fab <project|dir> [claude|codex|<command…>]   new agent in a new tab of that project's space
 #   fab --resume <claude-session-id> [dir]          bring an existing Claude conversation into Herdr

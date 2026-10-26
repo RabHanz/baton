@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
- * Restart a Claude Code session in its own Herdr pane, same conversation (D67).
+ * Restart a Claude Code session in its own Herdr pane, same conversation (D69).
  *
  * After the account under the config directory is rotated (D57/D63) a running
  * CLI still holds the spent account's token. Exiting it and running

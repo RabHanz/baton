@@ -3837,7 +3837,7 @@ const makeWsRpcLayer = (
         // §6.1: the same work on another provider instance. Refuses before
         // creating anything; once the thread exists, a failure detaches it and
         // gives the active slot back, so the work is never left between two.
-        // Fabric patch point (D66): one-field send to a Herdr pane.
+        // Fabric patch point (D68): one-field send to a Herdr pane.
         [FABRIC_LIVE_WS_METHODS.herdrSend]: (input) =>
           observeRpcEffect(FABRIC_LIVE_WS_METHODS.herdrSend, herdrSend(adopted, input), {
             "rpc.aggregate": "fabric",
