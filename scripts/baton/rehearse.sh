@@ -18,7 +18,7 @@ root="${BATON_REHEARSAL_DIR:-/mnt/HC_Volume_106652742/tmp/lanes/rehearsal}/run-$
 rm -rf "$root"
 mkdir -p "$root/home" "$root/runtime"
 tar -xzf "$backup/userdata-rest.tar.gz" -C "$root/home"
-cp "$backup/state.sqlite" "$root/home/userdata/state.sqlite"
+cp "$backup/"*.sqlite "$root/home/userdata/"
 rm -f "$root/home/userdata/secrets/"cloud-*
 node -e '
   const fs = require("node:fs"); const p = process.argv[1];

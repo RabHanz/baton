@@ -18,11 +18,13 @@ import {
   BATON_HANDOFF_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_WS_METHODS,
+  BatonFleetResult,
   type WorkSession,
   type WorkSessionStreamItem,
 } from "@t3tools/baton-contracts";
 import { Atom } from "effect/reactivity";
 import * as Stream from "effect/Stream";
+import { persistQuery } from "@t3tools/client-runtime/state/query-persistence";
 
 import type { EnvironmentRegistry as EnvironmentRegistryModule } from "@t3tools/client-runtime/connection";
 
@@ -30,6 +32,7 @@ type EnvironmentRegistry = EnvironmentRegistryModule.EnvironmentRegistry;
 import {
   createAtomCommandScheduler,
   createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
 } from "@t3tools/client-runtime/state/runtime";
 
@@ -75,13 +78,28 @@ export function createBatonWorkSessionAtoms<R, E>(
     mode: "serial" as const,
     key: ({ environmentId }: { environmentId: string }) => environmentId,
   };
+  /** The environment's work sessions, folded from snapshot plus events. */
+  const workSessions = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:baton:work-sessions",
+    tag: BATON_WS_METHODS.subscribeWorkSessions,
+    transform: (stream) =>
+      Stream.scan(stream, (): ReadonlyArray<WorkSession> => [], applyWorkSessionStreamItem),
+  });
   return {
-    /** The environment's work sessions, folded from snapshot plus events. */
-    workSessions: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:baton:work-sessions",
-      tag: BATON_WS_METHODS.subscribeWorkSessions,
-      transform: (stream) =>
-        Stream.scan(stream, (): ReadonlyArray<WorkSession> => [], applyWorkSessionStreamItem),
+    workSessions,
+    /**
+     * The fleet as a query: it waits for the environment's connection instead of failing before
+     * it (the old read-on-mount did, and the next try was a 20 s tick, which was the "first
+     * sidebar load"); the last answer is persisted, so a reload paints at once; it re-reads when
+     * a work session moves, and every 15 s for Herdr and Claude sessions, which nothing streams.
+     */
+    fleetQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:fleet-query",
+      tag: BATON_WS_METHODS.fleetGet,
+      persistence: persistQuery(BatonFleetResult),
+      staleTimeMs: 5_000,
+      refreshIntervalMs: 15_000,
+      refreshTrigger: ({ environmentId }) => workSessions({ environmentId, input: {} }),
     }),
     list: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:work-session-list",

@@ -1,223 +1,42 @@
-/* oxlint-disable react/exhaustive-effect-dependencies, t3code/no-low-value-comments, t3code/no-manual-memo, t3code/react-effect-budget -- Baton file predating upstream's rule (D82) */
 /**
- * Baton work sessions in the web client.
- *
- * Two gates decide whether any of this is live, and they answer different
- * questions:
- *
- *   - the environment's `fabricWorkSessions` capability answers "does this
- *     server understand `fabric.*` at all"; without it the client must not call,
- *     because an older server would reject the request;
- *   - the client setting answers "does this user want the sidebar grouped by
- *     work"; it is off by default while Baton is being built.
+ * Baton's client state in the web app: the shared atoms, and every environment's fleet read as
+ * one value for the sidebar block.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import type { BatonFleet, EnvironmentId } from "@t3tools/baton-contracts";
 import { createBatonWorkSessionAtoms } from "@t3tools/baton-shared/workSessionAtoms";
-import type {
-  AdoptedSessionCandidate,
-  ClaudeLiveSession,
-  EnvironmentId,
-  BatonFleetEntry,
-  BatonIntentRecord,
-  OrchestrationRuleWithFirings,
-  WorkSession,
-} from "@t3tools/baton-contracts";
+import * as Option from "effect/Option";
+import { Atom, AsyncResult } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
-import { useEnvironmentQuery } from "./query";
-import { useAtomCommand } from "./use-atom-command";
 
 export const batonWorkSessions = createBatonWorkSessionAtoms(connectionAtomRuntime);
 
-const NO_WORK_SESSIONS: ReadonlyArray<WorkSession> = [];
-
-/**
- * One environment's work sessions. Pass `null` for the environment id when the
- * environment is unknown or has not advertised the capability; the subscription
- * is then never opened.
- */
-export function useWorkSessions(environmentId: EnvironmentId | null): {
-  readonly workSessions: ReadonlyArray<WorkSession>;
-  readonly loaded: boolean;
-} {
-  const query = useEnvironmentQuery(
-    environmentId === null ? null : batonWorkSessions.workSessions({ environmentId, input: {} }),
-  );
-  return useMemo(
-    () => ({ workSessions: query.data ?? NO_WORK_SESSIONS, loaded: query.data !== undefined }),
-    [query.data],
-  );
+export interface EnvironmentFleet {
+  readonly environmentId: EnvironmentId;
+  /** Null until the first answer (or the persisted one from the last visit) arrives. */
+  readonly fleet: BatonFleet | null;
 }
 
-const NO_FLEET_ENTRIES: ReadonlyArray<BatonFleetEntry> = [];
-const NO_HERDR: ReadonlyArray<AdoptedSessionCandidate> = [];
-const NO_CLAUDE: ReadonlyArray<ClaudeLiveSession> = [];
+/** Keyed by the comma-joined environment ids, so one atom serves one sidebar's set. */
+const fleetsAtom = Atom.family((key: string) =>
+  Atom.make((get): ReadonlyArray<EnvironmentFleet> =>
+    key
+      .split(",")
+      .filter((id) => id.length > 0)
+      .map((id) => {
+        const environmentId = id as EnvironmentId;
+        const result = get(batonWorkSessions.fleetQuery({ environmentId, input: {} }));
+        return {
+          environmentId,
+          fleet: Option.getOrNull(Option.map(AsyncResult.value(result), (value) => value.fleet)),
+        };
+      }),
+  ),
+);
 
-/**
- * One environment's fleet, refreshed whenever its work sessions change.
- *
- * The dependency on `workSessions` is the refresh trigger and is deliberate:
- * every server-side change to a work session or a synopsis pushes on that
- * stream, so the fleet re-reads exactly when something moved, and never on a
- * timer.
- */
-export function useFleet(environmentId: EnvironmentId | null): {
-  readonly entries: ReadonlyArray<BatonFleetEntry>;
-  readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
-  readonly claude: ReadonlyArray<ClaudeLiveSession>;
-  readonly loaded: boolean;
-} {
-  const { workSessions } = useWorkSessions(environmentId);
-  const [read, setRead] = useState<{
-    readonly entries: ReadonlyArray<BatonFleetEntry>;
-    readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
-    readonly claude: ReadonlyArray<ClaudeLiveSession>;
-    readonly loaded: boolean;
-  }>({ entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, claude: NO_CLAUDE, loaded: false });
-  // Herdr's agents change without any work session moving, and nothing streams
-  // them to the client yet, so they are the one part of the fleet on a timer
-  // (D65). shortcut: a 20 s tick; upgrade when the server pushes Herdr state.
-  const [herdrTick, setHerdrTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setHerdrTick((tick) => tick + 1), 20_000);
-    return () => clearInterval(timer);
-  }, []);
-  const readFleet = useAtomCommand(batonWorkSessions.fleet, { reportFailure: false });
-  // The trigger is "a work session or a synopsis moved", not object identity:
-  // the subscription hands back a new array on every event, and re-reading for
-  // an unchanged fleet would be a poll with extra steps.
-  const signature = useMemo(
-    () =>
-      workSessions
-        .map((entry) => `${entry.id}:${entry.updatedAt}:${entry.synopsis?.updatedAt ?? ""}`)
-        .join("|"),
-    [workSessions],
-  );
-
-  useEffect(() => {
-    if (environmentId === null) return;
-    let cancelled = false;
-    void readFleet({ environmentId, input: {} }).then((result) => {
-      if (cancelled) return;
-      // A fleet that cannot be read renders as empty rather than as stale: a
-      // list that quietly keeps showing the last good answer is the failure
-      // §11 names.
-      setRead(
-        result._tag === "Success"
-          ? {
-              entries: result.value.fleet.entries,
-              herdr: result.value.fleet.herdr ?? NO_HERDR,
-              claude: result.value.fleet.claudeSessions ?? NO_CLAUDE,
-              loaded: true,
-            }
-          : { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, claude: NO_CLAUDE, loaded: false },
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId, readFleet, signature, herdrTick]);
-
-  // Derived rather than stored, so a disconnected environment and an empty one
-  // need no effect to clear what the last read left behind.
-  if (environmentId === null)
-    return { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, claude: NO_CLAUDE, loaded: false };
-  if (signature === "")
-    return { entries: NO_FLEET_ENTRIES, herdr: read.herdr, claude: read.claude, loaded: true };
-  return read;
-}
-
-const NO_RULES: ReadonlyArray<OrchestrationRuleWithFirings> = [];
-
-/**
- * One environment's orchestration rules, on the same refresh trigger as the
- * fleet.
- *
- * A firing changes the work session it belongs to — it starts a thread or
- * writes a synopsis finding — so the work-session stream already signals "a
- * rule may have done something", and a second subscription would only add a
- * way for the two to disagree.
- */
-export function useOrchestrationRules(environmentId: EnvironmentId | null): {
-  readonly rules: ReadonlyArray<OrchestrationRuleWithFirings>;
-} {
-  const { workSessions } = useWorkSessions(environmentId);
-  const [rules, setRules] = useState<ReadonlyArray<OrchestrationRuleWithFirings>>(NO_RULES);
-  const readRules = useAtomCommand(batonWorkSessions.rules, { reportFailure: false });
-  const signature = useMemo(
-    () =>
-      workSessions
-        .map((entry) => `${entry.id}:${entry.updatedAt}:${entry.synopsis?.updatedAt ?? ""}`)
-        .join("|"),
-    [workSessions],
-  );
-
-  useEffect(() => {
-    if (environmentId === null || signature === "") return;
-    let cancelled = false;
-    // Disabled rules are included on purpose: a rule the user switched off
-    // should stay visible, or turning it back on means remembering it existed.
-    void readRules({ environmentId, input: { includeDisabled: true } }).then((result) => {
-      if (cancelled) return;
-      setRules(result._tag === "Success" ? result.value.rules : NO_RULES);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId, readRules, signature]);
-
-  if (environmentId === null || signature === "") return { rules: NO_RULES };
-  return { rules };
-}
-
-const NO_INTENTS: ReadonlyArray<BatonIntentRecord> = [];
-
-/**
- * The sentences this environment was asked to act on, newest first.
- *
- * Read on the same trigger as the rules, plus a nudge after the user runs one:
- * an intent that starts a session changes the work-session stream, but one that
- * is refused changes nothing, and a refusal is exactly what the user needs to
- * see.
- */
-export function useIntents(
-  environmentId: EnvironmentId | null,
-  revision: number,
-): { readonly intents: ReadonlyArray<BatonIntentRecord> } {
-  const { workSessions } = useWorkSessions(environmentId);
-  const [intents, setIntents] = useState<ReadonlyArray<BatonIntentRecord>>(NO_INTENTS);
-  const readIntents = useAtomCommand(batonWorkSessions.intents, { reportFailure: false });
-  const signature = useMemo(
-    () => workSessions.map((entry) => `${entry.id}:${entry.updatedAt}`).join("|"),
-    [workSessions],
-  );
-
-  useEffect(() => {
-    if (environmentId === null) return;
-    let cancelled = false;
-    void readIntents({ environmentId, input: {} }).then((result) => {
-      if (cancelled) return;
-      setIntents(result._tag === "Success" ? result.value.intents : NO_INTENTS);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [environmentId, readIntents, signature, revision]);
-
-  if (environmentId === null) return { intents: NO_INTENTS };
-  return { intents };
-}
-
-/** Recent intents keyed by the work they touched. */
-export function intentsByWorkSession(
-  records: ReadonlyArray<BatonIntentRecord>,
-): ReadonlyMap<string, readonly BatonIntentRecord[]> {
-  const grouped = new Map<string, BatonIntentRecord[]>();
-  for (const record of records) {
-    if (record.workSessionId === null) continue;
-    const existing = grouped.get(record.workSessionId);
-    if (existing === undefined) grouped.set(record.workSessionId, [record]);
-    else existing.push(record);
-  }
-  return grouped;
+export function useBatonFleets(
+  environmentIds: ReadonlyArray<EnvironmentId>,
+): ReadonlyArray<EnvironmentFleet> {
+  return useAtomValue(fleetsAtom(environmentIds.join(",")));
 }

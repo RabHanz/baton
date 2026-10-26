@@ -31,6 +31,7 @@ import { cn } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../batonContextView";
 import { previewResolution } from "../../batonIntentView";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { Input } from "../ui/input";
 import { useAtomCommand } from "../../state/use-atom-command";
 
 /** Long enough that typing does not round-trip per keystroke. */
@@ -274,7 +275,9 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
           {dictationModeLabel(null)}
         </p>
       ) : null}
-      <input
+      <Input
+        nativeInput
+        size="compact"
         type="text"
         data-testid="sidebar-intent-input"
         // What arms this field from a hotkey, a mic button, or an external
@@ -311,7 +314,6 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
           event.preventDefault();
           submit();
         }}
-        className="w-full rounded bg-sidebar-row-hover px-1.5 py-1 text-xs leading-4 text-sidebar-foreground placeholder:text-sidebar-muted-foreground focus:outline-none"
       />
       {preview === null ? null : (
         <>
