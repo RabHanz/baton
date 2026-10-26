@@ -37,7 +37,7 @@ import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
-import { FabricRouteScreen } from "./features/fabric/FabricRouteScreen";
+import { BatonRouteScreen } from "./features/baton/BatonRouteScreen";
 import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
 import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
@@ -580,11 +580,12 @@ export const RootStack = createNativeStackNavigator({
     // is what a notification about work whose thread has ended links to — the
     // thread route cannot express that, and the work outliving its thread is
     // the whole point of the object.
-    Fabric: createNativeStackScreen({
-      screen: FabricRouteScreen,
+    Baton: createNativeStackScreen({
+      screen: BatonRouteScreen,
+      // Legacy name (D71): notifications and links already issued open fabric/..., so the route keeps it.
       linking: "fabric/:environmentId?/:workSessionId?",
       options: {
-        title: "Fabric",
+        title: "Baton",
       },
     }),
     Home: createNativeStackScreen({

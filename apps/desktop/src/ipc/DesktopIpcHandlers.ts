@@ -36,7 +36,7 @@ import {
   installUpdate,
   setUpdateChannel,
 } from "./methods/updates.ts";
-import { getFabricInjectionReport } from "./methods/fabric.ts";
+import { getBatonInjectionReport } from "./methods/baton.ts";
 import {
   getAppBranding,
   getLocalEnvironmentBootstraps,
@@ -80,7 +80,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(AppActivationIpc.setReady);
   yield* ipc.handle(AppActivationIpc.complete);
 
-  yield* ipc.handle(getFabricInjectionReport);
+  yield* ipc.handle(getBatonInjectionReport);
   yield* ipc.handleSync(getAppBranding);
   yield* ipc.handleSync(getSystemLocale);
   yield* ipc.handleSync(getWindowFullscreenState);

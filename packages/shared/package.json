@@ -39,77 +39,77 @@
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"
     },
-    "./fabricAudit": {
-      "types": "./src/fabricAudit.ts",
-      "import": "./src/fabricAudit.ts"
+    "./batonAudit": {
+      "types": "./src/batonAudit.ts",
+      "import": "./src/batonAudit.ts"
     },
-    "./fabricCapabilityPolicy": {
-      "types": "./src/fabricCapabilityPolicy.ts",
-      "import": "./src/fabricCapabilityPolicy.ts"
+    "./batonCapabilityPolicy": {
+      "types": "./src/batonCapabilityPolicy.ts",
+      "import": "./src/batonCapabilityPolicy.ts"
     },
-    "./fabricRetention": {
-      "types": "./src/fabricRetention.ts",
-      "import": "./src/fabricRetention.ts"
+    "./batonRetention": {
+      "types": "./src/batonRetention.ts",
+      "import": "./src/batonRetention.ts"
     },
-    "./fabricAdoptedSession": {
-      "types": "./src/fabricAdoptedSession.ts",
-      "import": "./src/fabricAdoptedSession.ts"
+    "./batonAdoptedSession": {
+      "types": "./src/batonAdoptedSession.ts",
+      "import": "./src/batonAdoptedSession.ts"
     },
-    "./fabricContextBus": {
-      "types": "./src/fabricContextBus.ts",
-      "import": "./src/fabricContextBus.ts"
+    "./batonContextBus": {
+      "types": "./src/batonContextBus.ts",
+      "import": "./src/batonContextBus.ts"
     },
-    "./fabricDictation": {
-      "types": "./src/fabricDictation.ts",
-      "import": "./src/fabricDictation.ts"
+    "./batonDictation": {
+      "types": "./src/batonDictation.ts",
+      "import": "./src/batonDictation.ts"
     },
-    "./fabricAccountRotation": {
-      "types": "./src/fabricAccountRotation.ts",
-      "import": "./src/fabricAccountRotation.ts"
+    "./batonAccountRotation": {
+      "types": "./src/batonAccountRotation.ts",
+      "import": "./src/batonAccountRotation.ts"
     },
-    "./fabricFleet": {
-      "types": "./src/fabricFleet.ts",
-      "import": "./src/fabricFleet.ts"
+    "./batonFleet": {
+      "types": "./src/batonFleet.ts",
+      "import": "./src/batonFleet.ts"
     },
-    "./fabricFleetView": {
-      "types": "./src/fabricFleetView.ts",
-      "import": "./src/fabricFleetView.ts"
+    "./batonFleetView": {
+      "types": "./src/batonFleetView.ts",
+      "import": "./src/batonFleetView.ts"
     },
-    "./fabricHandoff": {
-      "types": "./src/fabricHandoff.ts",
-      "import": "./src/fabricHandoff.ts"
+    "./batonHandoff": {
+      "types": "./src/batonHandoff.ts",
+      "import": "./src/batonHandoff.ts"
     },
-    "./fabricInjection": {
-      "types": "./src/fabricInjection.ts",
-      "import": "./src/fabricInjection.ts"
+    "./batonInjection": {
+      "types": "./src/batonInjection.ts",
+      "import": "./src/batonInjection.ts"
     },
-    "./fabricProviderAccounts": {
-      "types": "./src/fabricProviderAccounts.ts",
-      "import": "./src/fabricProviderAccounts.ts"
+    "./batonProviderAccounts": {
+      "types": "./src/batonProviderAccounts.ts",
+      "import": "./src/batonProviderAccounts.ts"
     },
-    "./fabricIntentParser": {
-      "types": "./src/fabricIntentParser.ts",
-      "import": "./src/fabricIntentParser.ts"
+    "./batonIntentParser": {
+      "types": "./src/batonIntentParser.ts",
+      "import": "./src/batonIntentParser.ts"
     },
-    "./fabricIntentModel": {
-      "types": "./src/fabricIntentModel.ts",
-      "import": "./src/fabricIntentModel.ts"
+    "./batonIntentModel": {
+      "types": "./src/batonIntentModel.ts",
+      "import": "./src/batonIntentModel.ts"
     },
-    "./fabricRuleParser": {
-      "types": "./src/fabricRuleParser.ts",
-      "import": "./src/fabricRuleParser.ts"
+    "./batonRuleParser": {
+      "types": "./src/batonRuleParser.ts",
+      "import": "./src/batonRuleParser.ts"
     },
-    "./fabricSynopsis": {
-      "types": "./src/fabricSynopsis.ts",
-      "import": "./src/fabricSynopsis.ts"
+    "./batonSynopsis": {
+      "types": "./src/batonSynopsis.ts",
+      "import": "./src/batonSynopsis.ts"
     },
-    "./fabricSynopsisModel": {
-      "types": "./src/fabricSynopsisModel.ts",
-      "import": "./src/fabricSynopsisModel.ts"
+    "./batonSynopsisModel": {
+      "types": "./src/batonSynopsisModel.ts",
+      "import": "./src/batonSynopsisModel.ts"
     },
-    "./fabricSpokenStatus": {
-      "types": "./src/fabricSpokenStatus.ts",
-      "import": "./src/fabricSpokenStatus.ts"
+    "./batonSpokenStatus": {
+      "types": "./src/batonSpokenStatus.ts",
+      "import": "./src/batonSpokenStatus.ts"
     },
     "./git": {
       "types": "./src/git.ts",

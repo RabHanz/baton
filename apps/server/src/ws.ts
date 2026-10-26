@@ -34,16 +34,16 @@ import {
   EventId,
   type EditorId,
   ProviderDriverKind,
-  FABRIC_ADOPTED_WS_METHODS,
-  FABRIC_INTENT_WS_METHODS,
-  FABRIC_ORCHESTRATION_WS_METHODS,
-  FABRIC_ACCOUNT_WS_METHODS,
-  FABRIC_HANDOFF_WS_METHODS,
-  FABRIC_LIVE_WS_METHODS,
-  FABRIC_WS_METHODS,
+  BATON_ADOPTED_WS_METHODS,
+  BATON_INTENT_WS_METHODS,
+  BATON_ORCHESTRATION_WS_METHODS,
+  BATON_ACCOUNT_WS_METHODS,
+  BATON_HANDOFF_WS_METHODS,
+  BATON_LIVE_WS_METHODS,
+  BATON_WS_METHODS,
   buildHandoffCapsule,
   isProviderAvailable,
-  MessageId as FabricMessageId,
+  MessageId as BatonMessageId,
   WorkSessionHandoffRefusedError,
   OrchestrationFiringNotFoundError,
   type FileManagerRevealKind,
@@ -100,13 +100,13 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
-import * as FleetQuery from "./fabric/FleetQuery.ts";
-import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts";
-import * as FabricIntentService from "./fabric/IntentService.ts";
-import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
-import * as OrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
-import { herdrSend } from "./fabric/HerdrSend.ts";
-import * as WorkSessionService from "./fabric/WorkSessionService.ts";
+import * as FleetQuery from "./baton/FleetQuery.ts";
+import * as BatonAdoptedSessionService from "./baton/AdoptedSessionService.ts";
+import * as BatonIntentService from "./baton/IntentService.ts";
+import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
+import * as OrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
+import { herdrSend } from "./baton/HerdrSend.ts";
+import * as WorkSessionService from "./baton/WorkSessionService.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -162,7 +162,7 @@ import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
 import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
-import * as AccountPoolService from "./fabric/AccountPoolService.ts";
+import * as AccountPoolService from "./baton/AccountPoolService.ts";
 
 /** Only Claude keeps several accounts behind one config directory today. */
 const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -593,9 +593,9 @@ const makeWsRpcLayer = (
       const workSessions = yield* WorkSessionService.WorkSessionService;
       const accountPool = yield* AccountPoolService.AccountPoolService;
       const orchestrationRules = yield* OrchestrationRuleService.OrchestrationRuleService;
-      const orchestrationReactor = yield* FabricOrchestrationReactor.FabricOrchestrationReactor;
-      const intents = yield* FabricIntentService.FabricIntentService;
-      const adopted = yield* FabricAdoptedSessionService.AdoptedSessionService;
+      const orchestrationReactor = yield* BatonOrchestrationReactor.BatonOrchestrationReactor;
+      const intents = yield* BatonIntentService.BatonIntentService;
+      const adopted = yield* BatonAdoptedSessionService.AdoptedSessionService;
       const providerInstallation = yield* makeProviderInstallation();
       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
       const config = yield* ServerConfig.ServerConfig;
@@ -3743,59 +3743,59 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "server" },
           ),
 
-        // Fabric work sessions. Thin by design: the domain lives in
-        // `fabric/WorkSessionService`, and the only handler with logic of its
+        // Baton work sessions. Thin by design: the domain lives in
+        // `baton/WorkSessionService`, and the only handler with logic of its
         // own is `startThread`, which has to reach the orchestration engine.
-        [FABRIC_ACCOUNT_WS_METHODS.accountPool]: (input) =>
+        [BATON_ACCOUNT_WS_METHODS.accountPool]: (input) =>
           observeRpcEffect(
-            FABRIC_ACCOUNT_WS_METHODS.accountPool,
+            BATON_ACCOUNT_WS_METHODS.accountPool,
             accountPool.read(input.driver ?? DEFAULT_ROTATION_DRIVER),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ACCOUNT_WS_METHODS.accountUse]: (input) =>
+        [BATON_ACCOUNT_WS_METHODS.accountUse]: (input) =>
           observeRpcEffect(
-            FABRIC_ACCOUNT_WS_METHODS.accountUse,
+            BATON_ACCOUNT_WS_METHODS.accountUse,
             accountPool.activate({
               driver: input.driver ?? DEFAULT_ROTATION_DRIVER,
               key: input.key,
               reason: input.reason ?? "manual",
               workSessionId: input.workSessionId ?? null,
             }),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionList]: (input) =>
+        [BATON_WS_METHODS.workSessionList]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionList,
+            BATON_WS_METHODS.workSessionList,
             Effect.map(workSessions.list(input), (sessions) => ({ workSessions: sessions })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionCreate]: (input) =>
+        [BATON_WS_METHODS.workSessionCreate]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionCreate,
+            BATON_WS_METHODS.workSessionCreate,
             Effect.map(workSessions.create(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionUpdate]: (input) =>
+        [BATON_WS_METHODS.workSessionUpdate]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionUpdate,
+            BATON_WS_METHODS.workSessionUpdate,
             Effect.map(workSessions.update(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionAttachThread]: (input) =>
+        [BATON_WS_METHODS.workSessionAttachThread]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionAttachThread,
+            BATON_WS_METHODS.workSessionAttachThread,
             Effect.map(workSessions.attachThread(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionDetachThread]: (input) =>
+        [BATON_WS_METHODS.workSessionDetachThread]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionDetachThread,
+            BATON_WS_METHODS.workSessionDetachThread,
             Effect.map(workSessions.detachThread(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionStartThread]: (input) =>
+        [BATON_WS_METHODS.workSessionStartThread]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionStartThread,
+            BATON_WS_METHODS.workSessionStartThread,
             Effect.gen(function* () {
               const workSession = yield* workSessions.get(input.id);
               // One thread-creation path. This dispatches the same command a
@@ -3804,7 +3804,7 @@ const makeWsRpcLayer = (
               // identically to a thread started from the sidebar.
               const command = yield* normalizeDispatchCommand({
                 type: "thread.create",
-                commandId: yield* serverCommandId("fabric-work-session-thread"),
+                commandId: yield* serverCommandId("baton-work-session-thread"),
                 threadId: input.threadId,
                 projectId: workSession.projectId,
                 title: input.title,
@@ -3832,19 +3832,19 @@ const makeWsRpcLayer = (
               });
               return { workSession: attached };
             }),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
         // §6.1: the same work on another provider instance. Refuses before
         // creating anything; once the thread exists, a failure detaches it and
         // gives the active slot back, so the work is never left between two.
-        // Fabric patch point (D68): one-field send to a Herdr pane.
-        [FABRIC_LIVE_WS_METHODS.herdrSend]: (input) =>
-          observeRpcEffect(FABRIC_LIVE_WS_METHODS.herdrSend, herdrSend(adopted, input), {
-            "rpc.aggregate": "fabric",
+        // Baton patch point (D68): one-field send to a Herdr pane.
+        [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
+          observeRpcEffect(BATON_LIVE_WS_METHODS.herdrSend, herdrSend(adopted, input), {
+            "rpc.aggregate": "baton",
           }),
-        [FABRIC_HANDOFF_WS_METHODS.workSessionHandoff]: (input) =>
+        [BATON_HANDOFF_WS_METHODS.workSessionHandoff]: (input) =>
           observeRpcEffect(
-            FABRIC_HANDOFF_WS_METHODS.workSessionHandoff,
+            BATON_HANDOFF_WS_METHODS.workSessionHandoff,
             Effect.gen(function* () {
               const workSession = yield* workSessions.get(input.id);
               const from =
@@ -3858,7 +3858,7 @@ const makeWsRpcLayer = (
               const targetId = input.modelSelection.instanceId;
               if (from !== null && from.providerInstanceId === targetId) {
                 return yield* refuse(
-                  "the target is the instance already running it; rotate the account in place instead (fabric.account.use).",
+                  "the target is the instance already running it; rotate the account in place instead (baton.account.use).",
                 );
               }
               const instance = yield* providerInstances.getInstance(targetId);
@@ -3910,7 +3910,7 @@ const makeWsRpcLayer = (
               const runtimeMode = input.runtimeMode ?? "approval-required";
               const create = yield* normalizeDispatchCommand({
                 type: "thread.create",
-                commandId: yield* serverCommandId("fabric-handoff-thread"),
+                commandId: yield* serverCommandId("baton-handoff-thread"),
                 threadId: input.threadId,
                 projectId: workSession.projectId,
                 title: workSession.title,
@@ -3943,10 +3943,10 @@ const makeWsRpcLayer = (
                 });
                 const turn = yield* normalizeDispatchCommand({
                   type: "thread.turn.start",
-                  commandId: yield* serverCommandId("fabric-handoff-turn"),
+                  commandId: yield* serverCommandId("baton-handoff-turn"),
                   threadId: input.threadId,
                   message: {
-                    messageId: FabricMessageId.make(`handoff-${input.threadId}`),
+                    messageId: BatonMessageId.make(`handoff-${input.threadId}`),
                     role: "user",
                     text: capsule.text,
                     attachments: [],
@@ -3979,71 +3979,71 @@ const makeWsRpcLayer = (
                 .pipe(Effect.ignoreCause({ log: true }));
               return { workSession: continued, capsule };
             }),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionSettle]: (input) =>
+        [BATON_WS_METHODS.workSessionSettle]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionSettle,
+            BATON_WS_METHODS.workSessionSettle,
             Effect.map(workSessions.settle(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionUnsettle]: (input) =>
+        [BATON_WS_METHODS.workSessionUnsettle]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionUnsettle,
+            BATON_WS_METHODS.workSessionUnsettle,
             Effect.map(workSessions.unsettle(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionArchive]: (input) =>
+        [BATON_WS_METHODS.workSessionArchive]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionArchive,
+            BATON_WS_METHODS.workSessionArchive,
             Effect.map(workSessions.archive(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.workSessionUnarchive]: (input) =>
+        [BATON_WS_METHODS.workSessionUnarchive]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.workSessionUnarchive,
+            BATON_WS_METHODS.workSessionUnarchive,
             Effect.map(workSessions.unarchive(input), (workSession) => ({ workSession })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_WS_METHODS.fleetGet]: (input) =>
+        [BATON_WS_METHODS.fleetGet]: (input) =>
           observeRpcEffect(
-            FABRIC_WS_METHODS.fleetGet,
+            BATON_WS_METHODS.fleetGet,
             Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>
+        [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>
           observeRpcEffect(
-            FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate,
+            BATON_ORCHESTRATION_WS_METHODS.ruleCreate,
             Effect.map(orchestrationRules.create(input), (rule) => ({ rule })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ORCHESTRATION_WS_METHODS.ruleList]: (input) =>
+        [BATON_ORCHESTRATION_WS_METHODS.ruleList]: (input) =>
           observeRpcEffect(
-            FABRIC_ORCHESTRATION_WS_METHODS.ruleList,
+            BATON_ORCHESTRATION_WS_METHODS.ruleList,
             Effect.map(orchestrationRules.list(input), (rules) => ({ rules })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable]: (input) =>
+        [BATON_ORCHESTRATION_WS_METHODS.ruleDisable]: (input) =>
           observeRpcEffect(
-            FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable,
+            BATON_ORCHESTRATION_WS_METHODS.ruleDisable,
             Effect.map(
               orchestrationRules.setStatus({ id: input.id, status: "disabled" }),
               (rule) => ({ rule }),
             ),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable]: (input) =>
+        [BATON_ORCHESTRATION_WS_METHODS.ruleEnable]: (input) =>
           observeRpcEffect(
-            FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable,
+            BATON_ORCHESTRATION_WS_METHODS.ruleEnable,
             Effect.map(
               orchestrationRules.setStatus({ id: input.id, status: "enabled" }),
               (rule) => ({ rule }),
             ),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm]: (input) =>
+        [BATON_ORCHESTRATION_WS_METHODS.ruleConfirm]: (input) =>
           observeRpcEffect(
-            FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm,
+            BATON_ORCHESTRATION_WS_METHODS.ruleConfirm,
             Effect.gen(function* () {
               const firing = yield* orchestrationRules.getFiring(input.firingId);
               if (firing === null) {
@@ -4078,13 +4078,13 @@ const makeWsRpcLayer = (
               });
               return { rules };
             }),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
         // One sentence in. `resolve` is what the input shows you before you
         // press enter; `run` is the same resolution, executed and recorded.
-        [FABRIC_INTENT_WS_METHODS.intentResolve]: (input) =>
+        [BATON_INTENT_WS_METHODS.intentResolve]: (input) =>
           observeRpcEffect(
-            FABRIC_INTENT_WS_METHODS.intentResolve,
+            BATON_INTENT_WS_METHODS.intentResolve,
             Effect.map(
               intents.resolve({
                 text: input.text,
@@ -4095,20 +4095,20 @@ const makeWsRpcLayer = (
               }),
               (resolution) => ({ resolution }),
             ),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_INTENT_WS_METHODS.intentRun]: (input) =>
+        [BATON_INTENT_WS_METHODS.intentRun]: (input) =>
           observeRpcEffect(
-            FABRIC_INTENT_WS_METHODS.intentRun,
+            BATON_INTENT_WS_METHODS.intentRun,
             intents.run({
               text: input.text,
               focusedWorkSessionId: input.focusedWorkSessionId ?? null,
             }),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_INTENT_WS_METHODS.intentList]: (input) =>
+        [BATON_INTENT_WS_METHODS.intentList]: (input) =>
           observeRpcEffect(
-            FABRIC_INTENT_WS_METHODS.intentList,
+            BATON_INTENT_WS_METHODS.intentList,
             Effect.map(
               intents.list({
                 workSessionId: input.workSessionId ?? null,
@@ -4116,52 +4116,52 @@ const makeWsRpcLayer = (
               }),
               (recorded) => ({ intents: recorded }),
             ),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        // §9's adopted sessions: terminals Fabric did not start. Discovery
+        // §9's adopted sessions: terminals Baton did not start. Discovery
         // refuses by name on a machine without the runtime, rather than
         // returning an empty list that reads as "nothing is running".
-        [FABRIC_ADOPTED_WS_METHODS.adoptedDiscover]: (_input) =>
-          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedDiscover, adopted.discover, {
-            "rpc.aggregate": "fabric",
+        [BATON_ADOPTED_WS_METHODS.adoptedDiscover]: (_input) =>
+          observeRpcEffect(BATON_ADOPTED_WS_METHODS.adoptedDiscover, adopted.discover, {
+            "rpc.aggregate": "baton",
           }),
-        [FABRIC_ADOPTED_WS_METHODS.adoptedRegister]: (input) =>
+        [BATON_ADOPTED_WS_METHODS.adoptedRegister]: (input) =>
           observeRpcEffect(
-            FABRIC_ADOPTED_WS_METHODS.adoptedRegister,
+            BATON_ADOPTED_WS_METHODS.adoptedRegister,
             Effect.map(adopted.register(input), (session) => ({ session })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ADOPTED_WS_METHODS.adoptedList]: (input) =>
+        [BATON_ADOPTED_WS_METHODS.adoptedList]: (input) =>
           observeRpcEffect(
-            FABRIC_ADOPTED_WS_METHODS.adoptedList,
+            BATON_ADOPTED_WS_METHODS.adoptedList,
             Effect.map(adopted.list(input), (sessions) => ({ sessions })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ADOPTED_WS_METHODS.adoptedRefresh]: (input) =>
+        [BATON_ADOPTED_WS_METHODS.adoptedRefresh]: (input) =>
           observeRpcEffect(
-            FABRIC_ADOPTED_WS_METHODS.adoptedRefresh,
+            BATON_ADOPTED_WS_METHODS.adoptedRefresh,
             Effect.map(adopted.refresh(input), (session) => ({ session })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ADOPTED_WS_METHODS.adoptedDetach]: (input) =>
+        [BATON_ADOPTED_WS_METHODS.adoptedDetach]: (input) =>
           observeRpcEffect(
-            FABRIC_ADOPTED_WS_METHODS.adoptedDetach,
+            BATON_ADOPTED_WS_METHODS.adoptedDetach,
             Effect.map(adopted.detach(input.id), (session) => ({ session })),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
-        [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: (input) =>
-          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, adopted.sendInput(input), {
-            "rpc.aggregate": "fabric",
+        [BATON_ADOPTED_WS_METHODS.adoptedSendInput]: (input) =>
+          observeRpcEffect(BATON_ADOPTED_WS_METHODS.adoptedSendInput, adopted.sendInput(input), {
+            "rpc.aggregate": "baton",
           }),
-        [FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput]: (input) =>
-          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput, adopted.readOutput(input), {
-            "rpc.aggregate": "fabric",
+        [BATON_ADOPTED_WS_METHODS.adoptedReadOutput]: (input) =>
+          observeRpcEffect(BATON_ADOPTED_WS_METHODS.adoptedReadOutput, adopted.readOutput(input), {
+            "rpc.aggregate": "baton",
           }),
-        [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>
+        [BATON_WS_METHODS.subscribeWorkSessions]: (_input) =>
           observeRpcStream(
-            FABRIC_WS_METHODS.subscribeWorkSessions,
+            BATON_WS_METHODS.subscribeWorkSessions,
             WorkSessionService.workSessionStream(workSessions),
-            { "rpc.aggregate": "fabric" },
+            { "rpc.aggregate": "baton" },
           ),
       });
     }),

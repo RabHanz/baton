@@ -103,8 +103,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "interpretFabricIntent"
-      | "writeFabricSynopsis",
+      | "interpretBatonIntent"
+      | "writeBatonSynopsis",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -135,8 +135,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "interpretFabricIntent"
-      | "writeFabricSynopsis";
+      | "interpretBatonIntent"
+      | "writeBatonSynopsis";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -192,8 +192,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       // Titles need only the supplied prompt, not configuration from the checkout.
       const workingDirectory =
         operation === "generateThreadTitle" ||
-        operation === "interpretFabricIntent" ||
-        operation === "writeFabricSynopsis"
+        operation === "interpretBatonIntent" ||
+        operation === "writeBatonSynopsis"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
@@ -419,14 +419,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
   /**
    * D50: one sentence to one command, when the grammar could not place it.
    *
-   * The prompt arrives built — Fabric owns what the model is allowed to know,
+   * The prompt arrives built — Baton owns what the model is allowed to know,
    * and this driver owns only how to ask. Every field is required in the schema
    * so a partial answer is a decode failure rather than a silent default, and
    * every field is checked against the environment's real ids afterwards.
    */
-  const interpretFabricIntent: NonNullable<
-    TextGeneration.TextGeneration["Service"]["interpretFabricIntent"]
-  > = Effect.fn("ClaudeTextGeneration.interpretFabricIntent")(function* (input) {
+  const interpretBatonIntent: NonNullable<
+    TextGeneration.TextGeneration["Service"]["interpretBatonIntent"]
+  > = Effect.fn("ClaudeTextGeneration.interpretBatonIntent")(function* (input) {
     const outputSchema = Schema.Struct({
       kind: Schema.String,
       statusQuestion: Schema.NullOr(Schema.String),
@@ -443,7 +443,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     });
 
     return yield* runClaudeJson({
-      operation: "interpretFabricIntent",
+      operation: "interpretBatonIntent",
       cwd: process.cwd(),
       prompt: input.prompt,
       outputSchemaJson: outputSchema,
@@ -458,9 +458,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
    * derived from events, because a model guessing "needs approval" is a model
    * deciding whether to interrupt someone.
    */
-  const writeFabricSynopsis: NonNullable<
-    TextGeneration.TextGeneration["Service"]["writeFabricSynopsis"]
-  > = Effect.fn("ClaudeTextGeneration.writeFabricSynopsis")(function* (input) {
+  const writeBatonSynopsis: NonNullable<
+    TextGeneration.TextGeneration["Service"]["writeBatonSynopsis"]
+  > = Effect.fn("ClaudeTextGeneration.writeBatonSynopsis")(function* (input) {
     const outputSchema = Schema.Struct({
       // The descriptions are the instruction the model actually follows: the
       // first real run answered "Wrote a two-sentence status update for …",
@@ -476,7 +476,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     });
 
     return yield* runClaudeJson({
-      operation: "writeFabricSynopsis",
+      operation: "writeBatonSynopsis",
       cwd: process.cwd(),
       prompt: input.prompt,
       outputSchemaJson: outputSchema,
@@ -489,7 +489,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    interpretFabricIntent,
-    writeFabricSynopsis,
+    interpretBatonIntent,
+    writeBatonSynopsis,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

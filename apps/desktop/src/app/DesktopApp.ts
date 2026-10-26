@@ -28,8 +28,8 @@ import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
-import { startDesktopFabricVoice } from "../fabric/voice/DesktopFabricVoice.ts";
-import { createDesktopVoiceCore, resolveVoiceAssets } from "../fabric/voice/desktopVoiceCore.ts";
+import { startDesktopBatonVoice } from "../baton/voice/DesktopBatonVoice.ts";
+import { createDesktopVoiceCore, resolveVoiceAssets } from "../baton/voice/desktopVoiceCore.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopRemoteUpdates from "../updates/DesktopRemoteUpdates.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
@@ -184,11 +184,11 @@ const bootstrap = Effect.gen(function* () {
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
 
   yield* snapShot.initialize;
-  // Fabric voice must never stop the app starting: a missing tray host or a
+  // Baton voice must never stop the app starting: a missing tray host or a
   // refused microphone is reported in its own tray, not as a startup failure.
   const hostEnvironment = yield* HostProcessEnvironment;
   yield* Effect.sync(() =>
-    startDesktopFabricVoice({
+    startDesktopBatonVoice({
       stateDir: environment.stateDir,
       platform: environment.platform,
       ensureMainWindow: () => Effect.runPromise(desktopWindow.ensureMain),
@@ -199,8 +199,8 @@ const bootstrap = Effect.gen(function* () {
               stateDir: environment.stateDir,
               platform: environment.platform,
               env: {
-                FABRIC_VOICE_MODELS: hostEnvironment["FABRIC_VOICE_MODELS"],
-                FABRIC_WHISPER_CLI: hostEnvironment["FABRIC_WHISPER_CLI"],
+                BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"],
+                BATON_WHISPER_CLI: hostEnvironment["BATON_WHISPER_CLI"],
               },
               modelsDir: settings.modelsDir,
               whisperCli: settings.whisperCli,
@@ -212,7 +212,7 @@ const bootstrap = Effect.gen(function* () {
         ).core,
     }),
   ).pipe(
-    Effect.catchDefect((cause) => logBootstrapWarning("fabric voice did not start", { cause })),
+    Effect.catchDefect((cause) => logBootstrapWarning("baton voice did not start", { cause })),
   );
 
   if (!settings.localEnvironmentEnabled) {

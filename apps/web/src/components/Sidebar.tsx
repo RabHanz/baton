@@ -33,7 +33,7 @@ import {
   resolveEnvironmentMachineKind,
   type EnvironmentId,
   type EnvironmentMachineKind,
-  type FabricFleetEntry,
+  type BatonFleetEntry,
   type ProjectIconOverride,
   type ScopedThreadRef,
   type ThreadId,
@@ -237,8 +237,8 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
-import { FabricFleetSection } from "./sidebar/FabricFleetSection";
-import { FabricWorkSessionSection } from "./sidebar/FabricWorkSessionSection";
+import { BatonFleetSection } from "./sidebar/BatonFleetSection";
+import { BatonWorkSessionSection } from "./sidebar/BatonWorkSessionSection";
 import { SessionPresenceSection } from "./sidebar/SessionPresenceSection";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
@@ -2344,7 +2344,7 @@ export default function Sidebar() {
   // understands `fabric.*` at all — an older one has no such tables and would
   // reject the call, so a client must not probe. The client setting says
   // whether this user wants the Work block.
-  const fabricWorkSessionEnvironmentIds = useMemo(
+  const batonWorkSessionEnvironmentIds = useMemo(
     () =>
       fabricWorkSessionsEnabled
         ? environments
@@ -2357,8 +2357,8 @@ export default function Sidebar() {
         : [],
     [environments, fabricWorkSessionsEnabled, serverConfigs],
   );
-  // Presence is not gated on the Fabric setting: "my sessions are here" is not
-  // a Fabric feature, it is what the machine already knows, and it answers the
+  // Presence is not gated on the Baton setting: "my sessions are here" is not
+  // a Baton feature, it is what the machine already knows, and it answers the
   // question the import dialog made him go looking for.
   const sessionPresenceEnvironmentIds = useMemo(
     () =>
@@ -2371,7 +2371,7 @@ export default function Sidebar() {
         ),
     [environments, serverConfigs],
   );
-  const resolveFabricProviderAccount = useCallback(
+  const resolveBatonProviderAccount = useCallback(
     (environmentId: EnvironmentId, providerInstanceId: string) => {
       const entry = providerEntriesByEnvironment.get(environmentId)?.get(providerInstanceId);
       if (entry === undefined) return null;
@@ -2385,8 +2385,8 @@ export default function Sidebar() {
     },
     [providerEntriesByEnvironment],
   );
-  // Fabric patch point (D62): the instances a work session can continue on.
-  const listFabricHandoffTargets = useCallback(
+  // Baton patch point (D62): the instances a work session can continue on.
+  const listBatonHandoffTargets = useCallback(
     (environmentId: EnvironmentId) =>
       [...(providerEntriesByEnvironment.get(environmentId)?.values() ?? [])].flatMap((entry) => {
         if (!isProviderInstancePickerReady(entry)) return [];
@@ -2400,7 +2400,7 @@ export default function Sidebar() {
   // A sentence that is refused changes nothing on the work-session stream, and
   // a refusal is exactly what the user needs to see. This is the nudge that
   // re-reads the intent log when the stream has no reason to fire.
-  const [fabricIntentRevision, setFabricIntentRevision] = useState(0);
+  const [batonIntentRevision, setBatonIntentRevision] = useState(0);
   // Rows read the project record for its icon and cwd. Group labels can include
   // a repository owner or a different title, so they travel separately.
   const projectByKey = useMemo(
@@ -2418,7 +2418,7 @@ export default function Sidebar() {
       ),
     [projectGroups],
   );
-  const resolveFabricProjectLabel = useCallback(
+  const resolveBatonProjectLabel = useCallback(
     (environmentId: EnvironmentId, workSession: WorkSession) =>
       projectDisplayNameByKey.get(`${environmentId}:${workSession.projectId}`) ?? null,
     [projectDisplayNameByKey],
@@ -2917,7 +2917,7 @@ export default function Sidebar() {
     },
     [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
   );
-  const selectFabricWorkSessionThread = useCallback(
+  const selectBatonWorkSessionThread = useCallback(
     (environmentId: EnvironmentId, thread: EnvironmentThreadShell) => {
       void navigateToThread(scopeThreadRef(environmentId, thread.id));
     },
@@ -2926,8 +2926,8 @@ export default function Sidebar() {
   // A fleet row opens the thread the user is working through. With none live —
   // the work is between providers — there is nothing to navigate to, and the
   // row stays put rather than bouncing the route somewhere arbitrary.
-  const selectFabricFleetEntry = useCallback(
-    (environmentId: EnvironmentId, entry: FabricFleetEntry) => {
+  const selectBatonFleetEntry = useCallback(
+    (environmentId: EnvironmentId, entry: BatonFleetEntry) => {
       const threadId = entry.activeThreadId ?? entry.threads[0]?.threadId ?? null;
       if (threadId === null) return;
       void navigateToThread(scopeThreadRef(environmentId, threadId));
@@ -4716,18 +4716,18 @@ export default function Sidebar() {
             )
           ) : null}
           {!isSearchingThreads ? (
-            <FabricFleetSection
-              environmentIds={fabricWorkSessionEnvironmentIds}
+            <BatonFleetSection
+              environmentIds={batonWorkSessionEnvironmentIds}
               resolveEnvironmentLabel={(environmentId) =>
                 environmentLabelById.get(environmentId) ?? null
               }
-              resolveProviderAccount={resolveFabricProviderAccount}
-              listHandoffTargets={listFabricHandoffTargets}
+              resolveProviderAccount={resolveBatonProviderAccount}
+              listHandoffTargets={listBatonHandoffTargets}
               resolveProjectLabel={(environmentId, projectId) =>
                 projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
               }
-              onSelectWorkSession={selectFabricFleetEntry}
-              onIntentRan={() => setFabricIntentRevision((revision) => revision + 1)}
+              onSelectWorkSession={selectBatonFleetEntry}
+              onIntentRan={() => setBatonIntentRevision((revision) => revision + 1)}
               activeThreadKey={routeThreadKey}
             />
           ) : null}
@@ -4746,20 +4746,20 @@ export default function Sidebar() {
             />
           ) : null}
           {!isSearchingThreads ? (
-            <FabricWorkSessionSection
-              environmentIds={fabricWorkSessionEnvironmentIds}
-              intentRevision={fabricIntentRevision}
+            <BatonWorkSessionSection
+              environmentIds={batonWorkSessionEnvironmentIds}
+              intentRevision={batonIntentRevision}
               threads={threads}
               resolveEnvironmentLabel={(environmentId) =>
                 environmentLabelById.get(environmentId) ?? null
               }
-              resolveProviderAccount={resolveFabricProviderAccount}
-              resolveProjectLabel={resolveFabricProjectLabel}
+              resolveProviderAccount={resolveBatonProviderAccount}
+              resolveProjectLabel={resolveBatonProjectLabel}
               resolveThreadStatusLabel={(thread) =>
                 SIDEBAR_THREAD_STATUS_LABELS[resolveSidebarThreadStatus(thread)]
               }
               activeThreadKey={routeThreadKey}
-              onSelectThread={selectFabricWorkSessionThread}
+              onSelectThread={selectBatonWorkSessionThread}
             />
           ) : null}
           {!isSearchingThreads ? (

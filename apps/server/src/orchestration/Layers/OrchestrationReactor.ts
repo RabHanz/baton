@@ -13,8 +13,8 @@ import * as ThreadSettlementReactor from "../ThreadSettlementReactor.ts";
 import * as PullRequestSyncReactor from "../PullRequestSyncReactor.ts";
 import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
-import * as FabricOrchestrationReactor from "../../fabric/OrchestrationReactor.ts";
-import * as FabricSynopsisReactor from "../../fabric/SynopsisReactor.ts";
+import * as BatonOrchestrationReactor from "../../baton/OrchestrationReactor.ts";
+import * as BatonSynopsisReactor from "../../baton/SynopsisReactor.ts";
 import * as StorageCleanup from "../../storageCleanup.ts";
 
 export const makeOrchestrationReactor = Effect.gen(function* () {
@@ -26,8 +26,8 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
   const pullRequestSyncReactor = yield* PullRequestSyncReactor.PullRequestSyncReactor;
   const threadPullRequestReactor = yield* ThreadPullRequestReactor.ThreadPullRequestReactor;
   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
-  const fabricSynopsisReactor = yield* FabricSynopsisReactor.FabricSynopsisReactor;
-  const fabricOrchestrationReactor = yield* FabricOrchestrationReactor.FabricOrchestrationReactor;
+  const batonSynopsisReactor = yield* BatonSynopsisReactor.BatonSynopsisReactor;
+  const batonOrchestrationReactor = yield* BatonOrchestrationReactor.BatonOrchestrationReactor;
   const storageCleanup = yield* StorageCleanup.StorageCleanup;
 
   const start: OrchestrationReactorShape["start"] = Effect.fn("start")(function* () {
@@ -39,10 +39,10 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
     yield* threadSettlementReactor.start();
     yield* pullRequestSyncReactor.start();
     yield* agentAwarenessRelay.start();
-    yield* fabricSynopsisReactor.start();
+    yield* batonSynopsisReactor.start();
     // After the synopsis reactor: a rule that fires should see a synopsis the
     // same events have already moved.
-    yield* fabricOrchestrationReactor.start();
+    yield* batonOrchestrationReactor.start();
     yield* storageCleanup.start();
   });
 

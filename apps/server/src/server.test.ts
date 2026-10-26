@@ -32,7 +32,7 @@ import {
   type PreviewEvent,
   ProjectId,
   type ProviderAuthState,
-  FabricAccountPoolUnavailableError,
+  BatonAccountPoolUnavailableError,
   ProviderDriverKind,
   ProviderInstanceId,
   type ProviderInstallState,
@@ -110,12 +110,12 @@ const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unk
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import * as DeviceService from "./device/DeviceService.ts";
-import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts";
-import * as FabricIntentService from "./fabric/IntentService.ts";
-import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
-import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
-import * as FabricAccountPoolService from "./fabric/AccountPoolService.ts";
-import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
+import * as BatonAdoptedSessionService from "./baton/AdoptedSessionService.ts";
+import * as BatonIntentService from "./baton/IntentService.ts";
+import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
+import * as BatonOrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
+import * as BatonAccountPoolService from "./baton/AccountPoolService.ts";
+import * as BatonWorkSessionService from "./baton/WorkSessionService.ts";
 import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
 import {
   isThreadDetailEvent,
@@ -521,7 +521,7 @@ const makeBrowserOtlpPayload = (spanName: string) =>
   });
 
 /**
- * Fabric's own services for the route tests.
+ * Baton's own services for the route tests.
  *
  * The work-session, rule and intent services are **real**, each on an in-memory
  * database: this file exercises the routes, and a mocked service would prove
@@ -533,10 +533,10 @@ const makeBrowserOtlpPayload = (spanName: string) =>
  * per build, so the intent service reads the same work sessions the routes
  * write, rather than a second database that would silently disagree.
  */
-const fabricWorkSessionTestLayer = FabricWorkSessionService.layer.pipe(
+const batonWorkSessionTestLayer = BatonWorkSessionService.layer.pipe(
   Layer.provide(SqlitePersistenceMemory),
 );
-const fabricRuleTestLayer = FabricOrchestrationRuleService.layer.pipe(
+const batonRuleTestLayer = BatonOrchestrationRuleService.layer.pipe(
   Layer.provide(SqlitePersistenceMemory),
 );
 /**
@@ -544,10 +544,10 @@ const fabricRuleTestLayer = FabricOrchestrationRuleService.layer.pipe(
  * refusal a machine without Herdr gives, which is what these route tests
  * should see.
  */
-const fabricAdoptedTestLayer = FabricAdoptedSessionService.layer.pipe(
+const batonAdoptedTestLayer = BatonAdoptedSessionService.layer.pipe(
   Layer.provide(SqlitePersistenceMemory),
   Layer.provide(
-    Layer.succeed(FabricAdoptedSessionService.AdoptedRuntimeAdapter, {
+    Layer.succeed(BatonAdoptedSessionService.AdoptedRuntimeAdapter, {
       discover: Effect.succeed({
         available: false,
         reason: "herdr is not installed on this environment.",
@@ -572,19 +572,19 @@ const fabricAdoptedTestLayer = FabricAdoptedSessionService.layer.pipe(
  * No account switcher in a route test: every read is the answer a machine
  * without one gives, which is what these tests should see.
  */
-const fabricAccountPoolTestLayer = Layer.succeed(
-  FabricAccountPoolService.AccountPoolService,
-  FabricAccountPoolService.AccountPoolService.of({
+const batonAccountPoolTestLayer = Layer.succeed(
+  BatonAccountPoolService.AccountPoolService,
+  BatonAccountPoolService.AccountPoolService.of({
     read: (driver) =>
       Effect.fail(
-        new FabricAccountPoolUnavailableError({
+        new BatonAccountPoolUnavailableError({
           driver,
           detail: "no account switcher is installed here (cswap)",
         }),
       ),
     activate: (input) =>
       Effect.fail(
-        new FabricAccountPoolUnavailableError({
+        new BatonAccountPoolUnavailableError({
           driver: input.driver,
           detail: "no account switcher is installed here (cswap)",
         }),
@@ -592,20 +592,20 @@ const fabricAccountPoolTestLayer = Layer.succeed(
   }),
 );
 
-const fabricServicesTestLayer = Layer.mergeAll(
-  fabricAccountPoolTestLayer,
-  fabricWorkSessionTestLayer,
-  fabricRuleTestLayer,
-  fabricAdoptedTestLayer,
-  Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
+const batonServicesTestLayer = Layer.mergeAll(
+  batonAccountPoolTestLayer,
+  batonWorkSessionTestLayer,
+  batonRuleTestLayer,
+  batonAdoptedTestLayer,
+  Layer.succeed(BatonOrchestrationReactor.BatonOrchestrationReactor, {
     start: () => Effect.void,
     drain: Effect.void,
     evaluate: () => Effect.succeed([]),
   }),
-  FabricIntentService.layer.pipe(
+  BatonIntentService.layer.pipe(
     Layer.provide(SqlitePersistenceMemory),
     // No model read here: these routes are tested for what they carry, not for
-    // what a model would say, and a stock install has no `interpretFabricIntent`
+    // what a model would say, and a stock install has no `interpretBatonIntent`
     // either (D50 makes it optional per driver).
     Layer.provide(
       Layer.succeed(TextGeneration.TextGeneration, {
@@ -616,12 +616,12 @@ const fabricServicesTestLayer = Layer.mergeAll(
       } as unknown as TextGeneration.TextGeneration["Service"]),
     ),
     Layer.provide(
-      Layer.succeed(FabricIntentService.FabricIntentExecutor, {
+      Layer.succeed(BatonIntentService.BatonIntentExecutor, {
         execute: () => Effect.succeed({ reply: "Done.", workSessionId: null, failed: false }),
       }),
     ),
     Layer.provide(
-      Layer.mergeAll(fabricWorkSessionTestLayer, fabricRuleTestLayer, fabricAdoptedTestLayer),
+      Layer.mergeAll(batonWorkSessionTestLayer, batonRuleTestLayer, batonAdoptedTestLayer),
     ),
     // Its own projection and registry stubs rather than the app's: this block
     // is provided last in the chain, so it cannot borrow from mocks declared
@@ -1347,7 +1347,7 @@ const buildAppUnderTest = (options?: {
       }),
       Layer.provideMerge(makeAuthTestLayer()),
       Layer.provideMerge(ServerSecretStore.layer),
-      Layer.provide(Layer.mergeAll(workspaceAndProjectServicesLayer, fabricServicesTestLayer)),
+      Layer.provide(Layer.mergeAll(workspaceAndProjectServicesLayer, batonServicesTestLayer)),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(GitHubCli.layer.pipe(Layer.provideMerge(VcsProcess.layer))),
       Layer.provide(layerConfig),

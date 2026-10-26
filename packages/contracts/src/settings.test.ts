@@ -284,8 +284,8 @@ describe("ClientSettings default diff file state", () => {
   });
 });
 
-describe("ClientSettings Fabric work sessions", () => {
-  it("gives a profile that has never seen the setting the Fabric sidebar", () => {
+describe("ClientSettings Baton work sessions", () => {
+  it("gives a profile that has never seen the setting the Baton sidebar", () => {
     // The Director's condition for the first deploy was that he does not have to
     // find a setting, so this default is a requirement rather than a taste: an
     // upstream merge that flips it back should fail here.
@@ -302,7 +302,7 @@ describe("ClientSettings Fabric work sessions", () => {
   it("is not part of the settings patch, so no panel can write it yet", () => {
     // Recorded rather than fixed: adding the key would mean adding a row to
     // upstream's settings panel, which is the file every upstream merge touches.
-    // The default is what the user gets, and turning Fabric off means editing
+    // The default is what the user gets, and turning Baton off means editing
     // the client's stored settings. See DECISIONS.md D45.
     expect(decodeClientSettingsPatch({ fabricWorkSessionsEnabled: false })).not.toHaveProperty(
       "fabricWorkSessionsEnabled",

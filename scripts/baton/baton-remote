@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# baton-remote — attach to a Herdr session on another box (D70).
+#
+#   baton-remote <ssh-target> [session]     e.g.  baton-remote onnyx@onnyx fab-api
+#
+# Herdr's --remote runs plain `ssh` with the user's SSH config. The box-to-box key is not in that
+# config, so this puts an `ssh` shim first on PATH for this one command only: it adds the identity
+# named by BATON_REMOTE_IDENTITY (default: the venture key) with IdentitiesOnly and BatchMode, and
+# changes nothing else on the machine.
+set -euo pipefail
+target="${1:?usage: baton-remote <ssh-target> [session]}"
+session="${2:-}"
+identity="${BATON_REMOTE_IDENTITY:-${FAB_REMOTE_IDENTITY:-$HOME/.config/venture-ssh/onnyx_ed25519}}"
+[[ -r "$identity" ]] || { echo "baton-remote: no identity at $identity (set BATON_REMOTE_IDENTITY)" >&2; exit 2; }
+shim="$(mktemp -d "${TMPDIR:-/tmp}/baton-remote.XXXXXX")"
+trap 'rm -rf "$shim"' EXIT
+real_ssh="$(command -v ssh)"
+printf '#!/bin/sh\nexec %q -i %q -o IdentitiesOnly=yes -o BatchMode=yes "$@"\n' "$real_ssh" "$identity" > "$shim/ssh"
+chmod 700 "$shim/ssh"
+args=(--remote "ssh://$target")
+[[ -n "$session" ]] && args+=(--session "$session")
+PATH="$shim:$PATH" herdr "${args[@]}"

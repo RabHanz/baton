@@ -172,10 +172,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   environmentIcon: Schema.optionalKey(Schema.Boolean),
   /** Server understands `fabric.workSession.*` and `fabric.subscribeWorkSessions`,
       and persists work sessions -- the user's work as an object above provider
-      threads. Absent on servers from before Fabric, which have no such tables
+      threads. Absent on servers from before Baton, which have no such tables
       and would reject the calls, so a client must keep its work-session UI
       hidden for that environment rather than probing. Same version-skew
       contract as threadSettlement. */
+  // Legacy name (D71): clients already check this capability key.
   fabricWorkSessions: Schema.optionalKey(Schema.Boolean),
   /** Server understands `agentSessions.threads` and `agentSessions.importThread`:
       the conversation-level listing and single-session import behind the

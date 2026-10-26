@@ -561,7 +561,7 @@ function uniqueShellCandidates(candidates: Array<ShellCandidate | null>): ShellC
 }
 
 /**
- * Fabric (D61): a T3 terminal can be a client of a named Herdr session instead
+ * Baton (D61): a T3 terminal can be a client of a named Herdr session instead
  * of owning its shell, so the shell and everything under it outlive a T3
  * restart, a deploy or an OOM — the property tmux was kept around for. The PTY
  * T3 holds is only `herdr --session <name>`; reopening the terminal re-attaches.
@@ -570,7 +570,8 @@ function uniqueShellCandidates(candidates: Array<ShellCandidate | null>): ShellC
  * it is a per-machine fact (is Herdr installed here); upgrade to a settings
  * toggle when a client exposes it.
  */
-export const FABRIC_TERMINAL_RUNTIME_ENV = "T3CODE_FABRIC_TERMINAL_RUNTIME";
+// Legacy name (D71): set by fabric-terminal-herdr.conf on the boxes, so it keeps "FABRIC".
+export const BATON_TERMINAL_RUNTIME_ENV = "T3CODE_FABRIC_TERMINAL_RUNTIME";
 
 /** Herdr session names are directory names; keep them short and portable. */
 export function herdrTerminalSessionName(threadId: string, terminalId: string): string {
@@ -2262,7 +2263,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         Effect.andThen(
           Effect.gen(function* () {
             const shellCandidates = terminalShellCandidates({
-              runtime: baseEnv[FABRIC_TERMINAL_RUNTIME_ENV],
+              runtime: baseEnv[BATON_TERMINAL_RUNTIME_ENV],
               threadId: session.threadId,
               terminalId: session.terminalId,
               shells: resolveShellCandidates(shellResolver, platform, baseEnv),
@@ -2373,7 +2374,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       yield* unregisterTerminal({ threadId, terminalId });
       // Closing is the user ending the terminal, so the Herdr session that kept
       // it alive across restarts ends too. A missing binary or session is fine.
-      if (baseEnv[FABRIC_TERMINAL_RUNTIME_ENV] === "herdr") {
+      if (baseEnv[BATON_TERMINAL_RUNTIME_ENV] === "herdr") {
         const name = herdrTerminalSessionName(threadId, terminalId);
         for (const verb of ["stop", "delete"]) {
           yield* processRunner

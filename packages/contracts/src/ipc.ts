@@ -89,7 +89,7 @@ import type {
 } from "./orchestration.ts";
 import { SnapShotSource } from "./orchestration.ts";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import type { FabricInjectionReport } from "./fabric/context.ts";
+import type { BatonInjectionReport } from "./baton/context.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -1231,19 +1231,19 @@ export interface DesktopBridge {
    * What this machine can type into, for §18's "capability must be reported
    * honestly". The renderer supplies what it knows — whether it has a field of
    * its own — and the main process supplies what the OS knows. Absent on
-   * desktop builds predating Fabric's dictation work.
+   * desktop builds predating Baton's dictation work.
    */
-  getFabricInjectionReport?: (request: {
+  getBatonInjectionReport?: (request: {
     readonly applicationIntegrationConnected: boolean;
     readonly keystrokeSimulationAllowed: boolean;
-  }) => Promise<FabricInjectionReport>;
+  }) => Promise<BatonInjectionReport>;
   /**
-   * The desktop voice core's intent calls (`@t3tools/fabric-voice` router),
+   * The desktop voice core's intent calls (`@t3tools/baton-voice` router),
    * answered with this window's own `fabric.intent.resolve` / `run`, so spoken
    * sentences meet the same grammar and server gates as typed ones. Dictation
-   * never arrives here: the desktop pastes it itself. Absent without Fabric voice.
+   * never arrives here: the desktop pastes it itself. Absent without Baton voice.
    */
-  onFabricVoiceRequest?: (
+  onBatonVoiceRequest?: (
     handler: (
       request:
         | {
@@ -1260,7 +1260,7 @@ export interface DesktopBridge {
     ) => Promise<unknown>,
   ) => () => void;
   /** §14 rung 3 for the voice core: the work session on screen, or null. */
-  setFabricVoiceFocus?: (workSessionId: string | null) => void;
+  setBatonVoiceFocus?: (workSessionId: string | null) => void;
   // One bootstrap per pool instance currently registered with bootstrap
   // info (omits instances whose backend hasn't produced a config yet).
   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.
