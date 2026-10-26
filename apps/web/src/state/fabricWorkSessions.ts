@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFabricWorkSessionAtoms } from "@t3tools/client-runtime/state/fabric-work-sessions";
 import type {
+  AdoptedSessionCandidate,
   EnvironmentId,
   FabricFleetEntry,
   FabricIntentRecord,
@@ -47,6 +48,7 @@ export function useWorkSessions(environmentId: EnvironmentId | null): {
 }
 
 const NO_FLEET_ENTRIES: ReadonlyArray<FabricFleetEntry> = [];
+const NO_HERDR: ReadonlyArray<AdoptedSessionCandidate> = [];
 
 /**
  * One environment's fleet, refreshed whenever its work sessions change.
@@ -58,13 +60,23 @@ const NO_FLEET_ENTRIES: ReadonlyArray<FabricFleetEntry> = [];
  */
 export function useFleet(environmentId: EnvironmentId | null): {
   readonly entries: ReadonlyArray<FabricFleetEntry>;
+  readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
   readonly loaded: boolean;
 } {
   const { workSessions } = useWorkSessions(environmentId);
   const [read, setRead] = useState<{
     readonly entries: ReadonlyArray<FabricFleetEntry>;
+    readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
     readonly loaded: boolean;
-  }>({ entries: NO_FLEET_ENTRIES, loaded: false });
+  }>({ entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, loaded: false });
+  // Herdr's agents change without any work session moving, and nothing streams
+  // them to the client yet, so they are the one part of the fleet on a timer
+  // (D65). shortcut: a 20 s tick; upgrade when the server pushes Herdr state.
+  const [herdrTick, setHerdrTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setHerdrTick((tick) => tick + 1), 20_000);
+    return () => clearInterval(timer);
+  }, []);
   const readFleet = useAtomCommand(fabricWorkSessions.fleet, { reportFailure: false });
   // The trigger is "a work session or a synopsis moved", not object identity:
   // the subscription hands back a new array on every event, and re-reading for
@@ -79,10 +91,6 @@ export function useFleet(environmentId: EnvironmentId | null): {
 
   useEffect(() => {
     if (environmentId === null) return;
-    // No work sessions means an empty fleet; asking the server to confirm that
-    // is a round trip for a known answer. The empty result is derived below
-    // rather than written into state here.
-    if (signature === "") return;
     let cancelled = false;
     void readFleet({ environmentId, input: {} }).then((result) => {
       if (cancelled) return;
@@ -91,19 +99,23 @@ export function useFleet(environmentId: EnvironmentId | null): {
       // §11 names.
       setRead(
         result._tag === "Success"
-          ? { entries: result.value.fleet.entries, loaded: true }
-          : { entries: NO_FLEET_ENTRIES, loaded: false },
+          ? {
+              entries: result.value.fleet.entries,
+              herdr: result.value.fleet.herdr ?? NO_HERDR,
+              loaded: true,
+            }
+          : { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, loaded: false },
       );
     });
     return () => {
       cancelled = true;
     };
-  }, [environmentId, readFleet, signature]);
+  }, [environmentId, readFleet, signature, herdrTick]);
 
   // Derived rather than stored, so a disconnected environment and an empty one
   // need no effect to clear what the last read left behind.
-  if (environmentId === null) return { entries: NO_FLEET_ENTRIES, loaded: false };
-  if (signature === "") return { entries: NO_FLEET_ENTRIES, loaded: true };
+  if (environmentId === null) return { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, loaded: false };
+  if (signature === "") return { entries: NO_FLEET_ENTRIES, herdr: read.herdr, loaded: true };
   return read;
 }
 

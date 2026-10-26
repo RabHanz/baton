@@ -1,0 +1,37 @@
+{
+  "fabric": "Input spots Fabric owns, in Airdeck's spots.json shape (D64). Airdeck's 'Import Fabric input spots' adds them.",
+  "spots": [
+    {
+      "label": "Fabric · tell the work (Chrome)",
+      "process": "chrome",
+      "browser": "chrome",
+      "titleContains": "T3 Code",
+      "elementName": "Say what you want",
+      "automationId": "fabric-intent-input",
+      "className": "",
+      "controlType": "Edit",
+      "offsetX": 0,
+      "offsetY": 0,
+      "fracX": 0,
+      "fracY": 0,
+      "afterKeys": "",
+      "method": "element"
+    },
+    {
+      "label": "Fabric · tell the work (Edge)",
+      "process": "msedge",
+      "browser": "msedge",
+      "titleContains": "T3 Code",
+      "elementName": "Say what you want",
+      "automationId": "fabric-intent-input",
+      "className": "",
+      "controlType": "Edit",
+      "offsetX": 0,
+      "offsetY": 0,
+      "fracX": 0,
+      "fracY": 0,
+      "afterKeys": "",
+      "method": "element"
+    }
+  ]
+}

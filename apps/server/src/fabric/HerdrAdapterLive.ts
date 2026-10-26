@@ -347,6 +347,37 @@ export const paneLabel = (input: {
   return input.paneId;
 };
 
+/**
+ * Named Herdr sessions (D65). T3's own terminals live in `t3-*` sessions (D61)
+ * and an agent can run in any of them, so discovery walks every running one.
+ *
+ * shortcut: a non-default session rides in the pane id as `<session>~<pane>`
+ * so the adopted-session columns need no migration; upgrade to a `session`
+ * column when adopted rows grow another field.
+ */
+export const SESSION_SEPARATOR = "~";
+
+export const splitPaneRef = (
+  pane: string,
+): { readonly session: string | null; readonly pane: string } => {
+  const at = pane.indexOf(SESSION_SEPARATOR);
+  return at < 0
+    ? { session: null, pane }
+    : { session: pane.slice(0, at), pane: pane.slice(at + 1) };
+};
+
+/** `herdr session list` prints a table: name, status, directory, socket. */
+export const parseHerdrSessionList = (stdout: string): ReadonlyArray<string> =>
+  stdout
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/))
+    .filter((parts) => parts.length >= 2 && parts[1] === "running")
+    .map((parts) => parts[0] as string);
+
+const sessionArgs = (session: string | null): ReadonlyArray<string> =>
+  session === null || session === "default" ? [] : ["--session", session];
+
 /** One discovered pane, in the shape `AdoptedDiscoverResult` wants. */
 export const toCandidate = (input: {
   readonly pane: HerdrSnapshotPane;
@@ -400,48 +431,100 @@ export const make = Effect.gen(function* () {
   });
 
   const discover: AdoptedRuntimeAdapter["Service"]["discover"] = Effect.gen(function* () {
-    const snapshotResult = yield* cli.run(["api", "snapshot"]);
-    if (snapshotResult.exitCode !== 0) return unavailable(describeFailure(snapshotResult));
-
-    const snapshot = parseHerdrSnapshot(snapshotResult.stdout);
-    if (snapshot === null) {
-      return unavailable(
-        refused("unreadable", "herdr answered, but its snapshot was not a shape Fabric reads"),
-      );
-    }
-
-    const agentByPane = new Map(snapshot.agents.map((agent) => [agent.paneId, agent]));
-
-    let processInfoCalls = 0;
+    const listed = yield* cli.run(["session", "list"]);
+    const names = listed.exitCode === 0 ? parseHerdrSessionList(listed.stdout) : [];
+    const sessions = names.length === 0 ? ["default"] : names;
     const candidates: Array<AdoptedSessionCandidate> = [];
-    for (const pane of snapshot.panes) {
-      const agent = agentByPane.get(pane.paneId) ?? null;
-      // Only a pane with no agent needs the second call. A recognised agent has
-      // already told Herdr what it is doing.
-      let foreground: string | null = null;
-      if (agent === null && processInfoCalls < MAX_PROCESS_INFO_CALLS) {
-        processInfoCalls += 1;
-        const info = yield* cli.run(["pane", "process-info", "--pane", pane.paneId]);
-        foreground = info.exitCode === 0 ? parseHerdrForeground(info.stdout) : null;
+    let firstFailure: string | null = null;
+    let anyAnswered = false;
+    for (const session of sessions) {
+      const result = yield* discoverSession(session);
+      if (typeof result === "string") {
+        firstFailure ??= result;
+        continue;
       }
-      candidates.push(
-        toCandidate({
+      anyAnswered = true;
+      candidates.push(...result);
+    }
+    if (!anyAnswered) return unavailable(firstFailure ?? NOT_INSTALLED);
+    return { available: true, reason: "", candidates } satisfies AdoptedDiscoverResult;
+  });
+
+  const discoverSession = (session: string) =>
+    Effect.gen(function* () {
+      const prefix = sessionArgs(session);
+      const snapshotResult = yield* cli.run([...prefix, "api", "snapshot"]);
+      if (snapshotResult.exitCode !== 0) return describeFailure(snapshotResult);
+
+      const snapshot = parseHerdrSnapshot(snapshotResult.stdout);
+      if (snapshot === null) {
+        return refused(
+          "unreadable",
+          "herdr answered, but its snapshot was not a shape Fabric reads",
+        );
+      }
+
+      const agentByPane = new Map(snapshot.agents.map((agent) => [agent.paneId, agent]));
+
+      let processInfoCalls = 0;
+      const candidates: Array<AdoptedSessionCandidate> = [];
+      for (const pane of snapshot.panes) {
+        const agent = agentByPane.get(pane.paneId) ?? null;
+        // Only a pane with no agent needs the second call. A recognised agent has
+        // already told Herdr what it is doing.
+        let foreground: string | null = null;
+        if (agent === null && processInfoCalls < MAX_PROCESS_INFO_CALLS) {
+          processInfoCalls += 1;
+          const info = yield* cli.run([...prefix, "pane", "process-info", "--pane", pane.paneId]);
+          foreground = info.exitCode === 0 ? parseHerdrForeground(info.stdout) : null;
+        }
+        const candidate = toCandidate({
           pane,
           agent,
           workspaceLabel: snapshot.workspaceLabels.get(pane.workspaceId) ?? pane.workspaceId,
           foreground,
-        }),
-      );
-    }
-
-    return { available: true, reason: "", candidates } satisfies AdoptedDiscoverResult;
-  });
+        });
+        const named = prefix.length > 0;
+        const located: AdoptedSessionCandidate = named
+          ? {
+              ...candidate,
+              label: `${candidate.label} · ${session}`,
+              location: {
+                ...candidate.location,
+                pane: `${session}${SESSION_SEPARATOR}${pane.paneId}`,
+              },
+            }
+          : candidate;
+        // A blocked agent's question belongs in the fleet, not only in its pane.
+        if (located.state === "needs_input") {
+          const read = yield* cli.run([
+            ...prefix,
+            "pane",
+            "read",
+            pane.paneId,
+            "--source",
+            "recent-unwrapped",
+            "--lines",
+            "12",
+          ]);
+          candidates.push({
+            ...located,
+            blockedPrompt: read.exitCode === 0 ? read.stdout.trimEnd() : null,
+          });
+        } else {
+          candidates.push(located);
+        }
+      }
+      return candidates;
+    });
 
   const sendInput: AdoptedRuntimeAdapter["Service"]["sendInput"] = (input) =>
     Effect.gen(function* () {
-      const pane = input.session.location.pane;
+      const ref = splitPaneRef(input.session.location.pane);
+      const pane = ref.pane;
+      const prefix = sessionArgs(ref.session);
 
-      const typed = yield* cli.run(["pane", "send-text", pane, input.text]);
+      const typed = yield* cli.run([...prefix, "pane", "send-text", pane, input.text]);
       if (typed.exitCode !== 0) return { delivered: false, detail: describeFailure(typed) };
 
       if (!input.submit) {
@@ -451,7 +534,7 @@ export const make = Effect.gen(function* () {
         };
       }
 
-      const submitted = yield* cli.run(["pane", "send-keys", pane, "enter"]);
+      const submitted = yield* cli.run([...prefix, "pane", "send-keys", pane, "enter"]);
       if (submitted.exitCode !== 0) {
         // The text is in the pane and return is not. Reporting "delivered"
         // would hide half of what happened, so this refusal says which half.
@@ -467,10 +550,12 @@ export const make = Effect.gen(function* () {
 
   const readOutput: AdoptedRuntimeAdapter["Service"]["readOutput"] = (input) =>
     Effect.gen(function* () {
+      const ref = splitPaneRef(input.session.location.pane);
       const result = yield* cli.run([
+        ...sessionArgs(ref.session),
         "pane",
         "read",
-        input.session.location.pane,
+        ref.pane,
         // Soft wraps joined: a line of a transcript that a wrap split in two is
         // one line of work, and reading it as two is how a log stops being
         // searchable.

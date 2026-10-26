@@ -149,6 +149,11 @@ export const AdoptedSessionCandidate = Schema.Struct({
   foreground: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   /** What that word maps to, or null when Fabric does not know the word. */
   state: Schema.NullOr(FabricSessionState),
+  /**
+   * The last lines of a pane whose agent is blocked: the question it is asking,
+   * surfaced where the fleet is read rather than only inside the terminal.
+   */
+  blockedPrompt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type AdoptedSessionCandidate = typeof AdoptedSessionCandidate.Type;
 
