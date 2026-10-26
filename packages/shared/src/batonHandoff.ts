@@ -91,7 +91,7 @@ export function chooseHandoffTarget(input: {
 
   const ranked = usable
     .map((candidate) => ({ candidate, headroom: accountHeadroom(candidate.limits) ?? 0 }))
-    .toSorted(
+    .sort(
       (left, right) =>
         right.headroom - left.headroom ||
         left.candidate.instanceId.localeCompare(right.candidate.instanceId),

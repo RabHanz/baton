@@ -1,0 +1,662 @@
+Subject: server: route and authorise the fabric.* RPCs
+
+ws.ts handlers, RpcAuthorization scopes (the key sets must match or it does not compile), the
+environment capability, and the client-runtime RPC client. One concern: the wire.
+
+diff --git a/apps/server/src/auth/RpcAuthorization.ts b/apps/server/src/auth/RpcAuthorization.ts
+index 27fde35b9e90009cd02709c8aba55996f9cb2fe1..e80b9bc0d5081937c388721efa376fca9a6219f1 100644
+--- a/apps/server/src/auth/RpcAuthorization.ts
++++ b/apps/server/src/auth/RpcAuthorization.ts
+@@ -7,6 +7,13 @@ import {
+   AuthRelayWriteScope,
+   AuthReviewWriteScope,
+   AuthTerminalOperateScope,
++  BATON_ADOPTED_WS_METHODS,
++  BATON_INTENT_WS_METHODS,
++  BATON_ORCHESTRATION_WS_METHODS,
++  BATON_ACCOUNT_WS_METHODS,
++  BATON_HANDOFF_WS_METHODS,
++  BATON_LIVE_WS_METHODS,
++  BATON_WS_METHODS,
+   ORCHESTRATION_WS_METHODS,
+   type AuthEnvironmentScope,
+   WS_METHODS,
+@@ -121,6 +128,8 @@ export const RPC_REQUIRED_SCOPES = {
+   [WS_METHODS.filesystemBrowse]: AuthOrchestrationReadScope,
+   [WS_METHODS.agentSessionsScan]: AuthOrchestrationReadScope,
+   [WS_METHODS.agentSessionsImport]: AuthOrchestrationOperateScope,
++  [WS_METHODS.agentSessionsThreads]: AuthOrchestrationReadScope,
++  [WS_METHODS.agentSessionsImportThread]: AuthOrchestrationOperateScope,
+   [WS_METHODS.assetsCreateUrl]: AuthOrchestrationReadScope,
+   [WS_METHODS.attachmentsCreateUploadUrl]: AuthOrchestrationOperateScope,
+   [WS_METHODS.attachmentsDelete]: AuthOrchestrationOperateScope,
+@@ -176,6 +185,58 @@ export const RPC_REQUIRED_SCOPES = {
+   [WS_METHODS.subscribeServerLifecycle]: AuthOrchestrationReadScope,
+   [WS_METHODS.subscribeAuthAccess]: AuthAccessReadScope,
+   [WS_METHODS.subscribeBackgroundPolicy]: AuthOrchestrationReadScope,
++  // Baton work sessions sit above provider threads and are read and mutated
++  // by the same people who read and operate threads, so they reuse the
++  // orchestration scopes rather than introducing a parallel permission axis.
++  // Starting a thread inside a work session dispatches an ordinary
++  // orchestration command underneath, which is why it needs the operate scope.
++  [BATON_ACCOUNT_WS_METHODS.accountPool]: AuthOrchestrationReadScope,
++  [BATON_ACCOUNT_WS_METHODS.accountUse]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
++  [BATON_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionAttachThread]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionDetachThread]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionStartThread]: AuthOrchestrationOperateScope,
++  [BATON_HANDOFF_WS_METHODS.workSessionHandoff]: AuthOrchestrationOperateScope,
++  [BATON_LIVE_WS_METHODS.herdrSend]: AuthOrchestrationOperateScope,
++  [BATON_LIVE_WS_METHODS.liveAttach]: AuthOrchestrationOperateScope,
++  [BATON_LIVE_WS_METHODS.liveAdopt]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
++  [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
++  [BATON_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
++  // A rule starts provider sessions and messages threads when it fires, so
++  // creating or re-enabling one is an operate-level act even though the RPC
++  // itself only writes a row. Reading the rules is a read.
++  [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: AuthOrchestrationOperateScope,
++  [BATON_ORCHESTRATION_WS_METHODS.ruleList]: AuthOrchestrationReadScope,
++  [BATON_ORCHESTRATION_WS_METHODS.ruleDisable]: AuthOrchestrationOperateScope,
++  [BATON_ORCHESTRATION_WS_METHODS.ruleEnable]: AuthOrchestrationOperateScope,
++  [BATON_ORCHESTRATION_WS_METHODS.ruleConfirm]: AuthOrchestrationOperateScope,
++  // Resolving a sentence reads the fleet and decides what it would mean; it
++  // starts nothing. Running it can message a session, start one, or create a
++  // rule, so it is an operate act whatever the sentence turns out to say — the
++  // scope cannot depend on the words, or a read-only client would be one
++  // phrasing away from an operate-level effect.
++  [BATON_INTENT_WS_METHODS.intentResolve]: AuthOrchestrationReadScope,
++  [BATON_INTENT_WS_METHODS.intentRun]: AuthOrchestrationOperateScope,
++  [BATON_INTENT_WS_METHODS.intentList]: AuthOrchestrationReadScope,
++  // Adopting a terminal is an operate act even though discovery is a read:
++  // registering one puts it in the fleet, and typing into it types into
++  // somebody's live session.
++  [BATON_ADOPTED_WS_METHODS.adoptedDiscover]: AuthOrchestrationReadScope,
++  [BATON_ADOPTED_WS_METHODS.adoptedList]: AuthOrchestrationReadScope,
++  [BATON_ADOPTED_WS_METHODS.adoptedRegister]: AuthOrchestrationOperateScope,
++  [BATON_ADOPTED_WS_METHODS.adoptedRefresh]: AuthOrchestrationOperateScope,
++  [BATON_ADOPTED_WS_METHODS.adoptedDetach]: AuthOrchestrationOperateScope,
++  [BATON_ADOPTED_WS_METHODS.adoptedSendInput]: AuthOrchestrationOperateScope,
++  // Reading is a read scope even though what it reads is somebody's live
++  // terminal, because it changes nothing. Whether there is anything to read is
++  // decided by the capability check on the session itself.
++  [BATON_ADOPTED_WS_METHODS.adoptedReadOutput]: AuthOrchestrationReadScope,
+ } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
+ 
+ export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {
+diff --git a/apps/server/src/environment/ServerEnvironment.ts b/apps/server/src/environment/ServerEnvironment.ts
+index d58c014d86e85a21c28e6e50093caf21c707049f..06d43ecf3b1c81bcbed5b1c46b52370efca68ae0 100644
+--- a/apps/server/src/environment/ServerEnvironment.ts
++++ b/apps/server/src/environment/ServerEnvironment.ts
+@@ -242,6 +242,8 @@ export const make = Effect.gen(function* () {
+       threadPullRequestLinking: true,
+       environmentIcon: true,
+       projectCloneTracking: true,
++      fabricWorkSessions: true,
++      agentSessionConversationImport: true,
+       ...(serverSelfUpdate === null ? {} : { serverSelfUpdate }),
+       ...(serverSelfUpdate === "boot-service" || desktopAppUpdate
+         ? {
+diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
+index bcc19be00da5fc618eb6adf3912618b151230d2a..9eda4ff1d2652bd19791d2d596a67eeac733b595 100644
+--- a/apps/server/src/ws.ts
++++ b/apps/server/src/ws.ts
+@@ -31,9 +31,23 @@ import {
+   ClientSurface,
+   ClientWebDeployment,
+   CommandId,
++  DEFAULT_PROVIDER_INTERACTION_MODE,
+   type DiscoveredLocalServerList,
+   EventId,
+   type EditorId,
++  ProviderDriverKind,
++  BATON_ADOPTED_WS_METHODS,
++  BATON_INTENT_WS_METHODS,
++  BATON_ORCHESTRATION_WS_METHODS,
++  BATON_ACCOUNT_WS_METHODS,
++  BATON_HANDOFF_WS_METHODS,
++  BATON_LIVE_WS_METHODS,
++  BATON_WS_METHODS,
++  buildHandoffCapsule,
++  isProviderAvailable,
++  MessageId as BatonMessageId,
++  WorkSessionHandoffRefusedError,
++  OrchestrationFiringNotFoundError,
+   type FileManagerRevealKind,
+   type OrchestrationClientOrigin,
+   type OrchestrationCommand,
+@@ -90,6 +104,14 @@ import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
+ 
+ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+ import * as ServerConfig from "./config.ts";
++import * as FleetQuery from "./baton/FleetQuery.ts";
++import * as BatonAdoptedSessionService from "./baton/AdoptedSessionService.ts";
++import * as BatonIntentService from "./baton/IntentService.ts";
++import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
++import * as OrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
++import { herdrSend } from "./baton/HerdrSend.ts";
++import { liveAdopt, liveAttach } from "./baton/LiveActions.ts";
++import * as WorkSessionService from "./baton/WorkSessionService.ts";
+ import * as EnvironmentTheme from "./environmentTheme.ts";
+ import * as Keybindings from "./keybindings.ts";
+ import * as ExternalLauncher from "./process/externalLauncher.ts";
+@@ -148,7 +170,11 @@ import * as NewProject from "./project/NewProject.ts";
+ import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
+ import * as WorktreeSetupTracker from "./project/WorktreeSetupTracker.ts";
+ import * as AgentSessionScanner from "./project/AgentSessionScanner.ts";
+-import { importRecentAgentThreads } from "./project/AgentSessionImporter.ts";
++import * as AccountPoolService from "./baton/AccountPoolService.ts";
++
++/** Only Claude keeps several accounts behind one config directory today. */
++const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
++import { importAgentThread, importRecentAgentThreads } from "./project/AgentSessionImporter.ts";
+ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
+ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
+ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -575,6 +601,12 @@ const makeWsRpcLayer = (
+       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
+       const providerAuth = yield* ProviderAuthService;
+       const providerInstances = yield* ProviderInstanceRegistry;
++      const workSessions = yield* WorkSessionService.WorkSessionService;
++      const accountPool = yield* AccountPoolService.AccountPoolService;
++      const orchestrationRules = yield* OrchestrationRuleService.OrchestrationRuleService;
++      const orchestrationReactor = yield* BatonOrchestrationReactor.BatonOrchestrationReactor;
++      const intents = yield* BatonIntentService.BatonIntentService;
++      const adopted = yield* BatonAdoptedSessionService.AdoptedSessionService;
+       const providerInstallation = yield* makeProviderInstallation();
+       const serverUpdate = yield* ServerSelfUpdate.ServerSelfUpdate;
+       const config = yield* ServerConfig.ServerConfig;
+@@ -3468,6 +3500,33 @@ const makeWsRpcLayer = (
+             ),
+             { "rpc.aggregate": "workspace" },
+           ),
++        [WS_METHODS.agentSessionsThreads]: (input) =>
++          observeRpcEffect(
++            WS_METHODS.agentSessionsThreads,
++            agentSessionScanner.recentThreadSummaries(input),
++            { "rpc.aggregate": "workspace" },
++          ),
++        [WS_METHODS.agentSessionsImportThread]: (input) =>
++          observeRpcEffect(
++            WS_METHODS.agentSessionsImportThread,
++            importAgentThread(input).pipe(
++              Effect.provideService(AgentSessionScanner.AgentSessionScanner, agentSessionScanner),
++              Effect.provideService(
++                OrchestrationEngine.OrchestrationEngineService,
++                orchestrationEngine,
++              ),
++              Effect.provideService(
++                ProjectionSnapshotQuery.ProjectionSnapshotQuery,
++                projectionSnapshotQuery,
++              ),
++              Effect.provideService(Crypto.Crypto, crypto),
++              Effect.provideService(
++                ProviderSessionDirectory.ProviderSessionDirectory,
++                providerSessionDirectory,
++              ),
++            ),
++            { "rpc.aggregate": "workspace" },
++          ),
+         [WS_METHODS.assetsCreateUrl]: (input) =>
+           observeRpcEffect(
+             WS_METHODS.assetsCreateUrl,
+@@ -4074,6 +4133,436 @@ const makeWsRpcLayer = (
+             ),
+             { "rpc.aggregate": "server" },
+           ),
++
++        // Baton work sessions. Thin by design: the domain lives in
++        // `baton/WorkSessionService`, and the only handler with logic of its
++        // own is `startThread`, which has to reach the orchestration engine.
++        [BATON_ACCOUNT_WS_METHODS.accountPool]: (input) =>
++          observeRpcEffect(
++            BATON_ACCOUNT_WS_METHODS.accountPool,
++            accountPool.read(input.driver ?? DEFAULT_ROTATION_DRIVER),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ACCOUNT_WS_METHODS.accountUse]: (input) =>
++          observeRpcEffect(
++            BATON_ACCOUNT_WS_METHODS.accountUse,
++            accountPool.activate({
++              driver: input.driver ?? DEFAULT_ROTATION_DRIVER,
++              key: input.key,
++              reason: input.reason ?? "manual",
++              workSessionId: input.workSessionId ?? null,
++            }),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionList]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionList,
++            Effect.map(workSessions.list(input), (sessions) => ({ workSessions: sessions })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionCreate]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionCreate,
++            Effect.map(workSessions.create(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionUpdate]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionUpdate,
++            Effect.map(workSessions.update(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionAttachThread]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionAttachThread,
++            Effect.map(workSessions.attachThread(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionDetachThread]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionDetachThread,
++            Effect.map(workSessions.detachThread(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionStartThread]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionStartThread,
++            Effect.gen(function* () {
++              const workSession = yield* workSessions.get(input.id);
++              // One thread-creation path. This dispatches the same command a
++              // client would have sent, through the same engine, so worktree
++              // bootstrap, checkpoint baselines and analytics all behave
++              // identically to a thread started from the sidebar.
++              const command = yield* normalizeDispatchCommand({
++                type: "thread.create",
++                commandId: yield* serverCommandId("baton-work-session-thread"),
++                threadId: input.threadId,
++                projectId: workSession.projectId,
++                title: input.title,
++                modelSelection: input.modelSelection,
++                runtimeMode: input.runtimeMode,
++                interactionMode: input.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
++                // Defaulting to the work session's own checkout is what keeps
++                // sequential providers working on the same branch.
++                branch: input.branch ?? workSession.baseBranch,
++                worktreePath: input.worktreePath ?? workSession.primaryWorktreePath,
++                createdAt: yield* nowIso,
++              }).pipe(Effect.provideContext(normalizerContext));
++              yield* dispatchNormalizedCommand(command);
++              yield* recordClientCommandAnalytics(command);
++              const instance = yield* providerInstances.getInstance(
++                input.modelSelection.instanceId,
++              );
++              const attached = yield* workSessions.attachThread({
++                id: input.id,
++                threadId: input.threadId,
++                providerInstanceId: input.modelSelection.instanceId,
++                providerDriver: instance?.driverKind ?? null,
++                origin: "created",
++                ...(input.role === undefined ? {} : { role: input.role }),
++              });
++              return { workSession: attached };
++            }),
++            { "rpc.aggregate": "baton" },
++          ),
++        // §6.1: the same work on another provider instance. Refuses before
++        // creating anything; once the thread exists, a failure detaches it and
++        // gives the active slot back, so the work is never left between two.
++        // Baton patch point (D68): one-field send to a Herdr pane.
++        // Baton patch point (D73, D74): file into a session, adopt into Herdr.
++        [BATON_LIVE_WS_METHODS.liveAttach]: (input) =>
++          observeRpcEffect(BATON_LIVE_WS_METHODS.liveAttach, liveAttach(adopted, input), {
++            "rpc.aggregate": "fabric",
++          }),
++        [BATON_LIVE_WS_METHODS.liveAdopt]: (input) =>
++          observeRpcEffect(BATON_LIVE_WS_METHODS.liveAdopt, liveAdopt(input), {
++            "rpc.aggregate": "fabric",
++          }),
++        [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
++          observeRpcEffect(BATON_LIVE_WS_METHODS.herdrSend, herdrSend(adopted, input), {
++            "rpc.aggregate": "baton",
++          }),
++        [BATON_HANDOFF_WS_METHODS.workSessionHandoff]: (input) =>
++          observeRpcEffect(
++            BATON_HANDOFF_WS_METHODS.workSessionHandoff,
++            Effect.gen(function* () {
++              const workSession = yield* workSessions.get(input.id);
++              const from =
++                workSession.providerSessions.find(
++                  (session) =>
++                    session.threadId === workSession.activeThreadId && session.detachedAt === null,
++                ) ?? null;
++              const refuse = (reason: string) =>
++                new WorkSessionHandoffRefusedError({ workSessionId: input.id, reason });
++
++              const targetId = input.modelSelection.instanceId;
++              if (from !== null && from.providerInstanceId === targetId) {
++                return yield* refuse(
++                  "the target is the instance already running it; rotate the account in place instead (baton.account.use).",
++                );
++              }
++              const instance = yield* providerInstances.getInstance(targetId);
++              if (instance === undefined || !instance.enabled) {
++                return yield* refuse(`provider instance ${targetId} is not configured here.`);
++              }
++              const snapshot = yield* instance.snapshot.getSnapshot;
++              if (!snapshot.installed || !isProviderAvailable(snapshot)) {
++                return yield* refuse(
++                  `provider instance ${targetId} is not signed in or available.`,
++                );
++              }
++
++              const project = yield* projectionSnapshotQuery
++                .getProjectShellById(workSession.projectId)
++                .pipe(Effect.orElseSucceed(() => Option.none()));
++              const cwd =
++                workSession.primaryWorktreePath ??
++                Option.getOrNull(Option.map(project, (shell) => shell.workspaceRoot));
++              const status =
++                cwd === null
++                  ? null
++                  : yield* vcsStatusBroadcaster
++                      .refreshStatus(cwd)
++                      .pipe(Effect.orElseSucceed(() => null));
++              const capsule = buildHandoffCapsule({
++                workSession,
++                git: {
++                  branch: status?.refName ?? workSession.baseBranch,
++                  worktree: cwd,
++                  commit: null,
++                  dirtyFiles: status?.workingTree.files.map((file) => file.path) ?? [],
++                },
++                sourceThreadId: from?.threadId ?? null,
++                sourceProvider:
++                  from === null
++                    ? null
++                    : [from.providerDriver, from.providerInstanceId]
++                        .filter((part) => part !== null)
++                        .join(" / ") || null,
++                note: input.note ?? null,
++              });
++
++              // A retried handoff is the same handoff.
++              if (workSession.providerSessions.some((entry) => entry.threadId === input.threadId)) {
++                return { workSession, capsule };
++              }
++
++              const runtimeMode = input.runtimeMode ?? "approval-required";
++              const create = yield* normalizeDispatchCommand({
++                type: "thread.create",
++                commandId: yield* serverCommandId("baton-handoff-thread"),
++                threadId: input.threadId,
++                projectId: workSession.projectId,
++                title: workSession.title,
++                modelSelection: input.modelSelection,
++                runtimeMode,
++                interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
++                branch: workSession.baseBranch,
++                worktreePath: workSession.primaryWorktreePath,
++                createdAt: yield* nowIso,
++              }).pipe(Effect.provideContext(normalizerContext));
++              yield* dispatchNormalizedCommand(create);
++
++              const rollback = Effect.gen(function* () {
++                yield* workSessions
++                  .detachThread({ id: input.id, threadId: input.threadId })
++                  .pipe(Effect.ignore);
++                yield* workSessions
++                  .update({ id: input.id, activeThreadId: from?.threadId ?? null })
++                  .pipe(Effect.ignore);
++              });
++
++              const continued = yield* Effect.gen(function* () {
++                yield* workSessions.attachThread({
++                  id: input.id,
++                  threadId: input.threadId,
++                  providerInstanceId: targetId,
++                  providerDriver: instance.driverKind,
++                  origin: "created",
++                  makeActive: true,
++                });
++                const turn = yield* normalizeDispatchCommand({
++                  type: "thread.turn.start",
++                  commandId: yield* serverCommandId("baton-handoff-turn"),
++                  threadId: input.threadId,
++                  message: {
++                    messageId: BatonMessageId.make(`handoff-${input.threadId}`),
++                    role: "user",
++                    text: capsule.text,
++                    attachments: [],
++                  },
++                  runtimeMode,
++                  interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
++                  createdAt: yield* nowIso,
++                }).pipe(Effect.provideContext(normalizerContext));
++                yield* dispatchNormalizedCommand(turn);
++                // The previous thread stays on the timeline as history, closed
++                // at the moment the work moved.
++                return from === null
++                  ? yield* workSessions.get(input.id)
++                  : yield* workSessions.detachThread({ id: input.id, threadId: from.threadId });
++              }).pipe(Effect.onError(() => rollback));
++
++              const at = yield* nowIso;
++              yield* workSessions
++                .applySynopsis({
++                  workSessionId: input.id,
++                  signals: [
++                    {
++                      kind: "finding",
++                      at,
++                      text: `Handed off from ${capsule.sourceProvider ?? "no active session"} to ${instance.driverKind} / ${targetId}.`,
++                      source: "events",
++                    },
++                  ],
++                })
++                .pipe(Effect.ignoreCause({ log: true }));
++              return { workSession: continued, capsule };
++            }),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionSettle]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionSettle,
++            Effect.map(workSessions.settle(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionUnsettle]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionUnsettle,
++            Effect.map(workSessions.unsettle(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionArchive]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionArchive,
++            Effect.map(workSessions.archive(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.workSessionUnarchive]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.workSessionUnarchive,
++            Effect.map(workSessions.unarchive(input), (workSession) => ({ workSession })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_WS_METHODS.fleetGet]: (input) =>
++          observeRpcEffect(
++            BATON_WS_METHODS.fleetGet,
++            Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>
++          observeRpcEffect(
++            BATON_ORCHESTRATION_WS_METHODS.ruleCreate,
++            Effect.map(orchestrationRules.create(input), (rule) => ({ rule })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ORCHESTRATION_WS_METHODS.ruleList]: (input) =>
++          observeRpcEffect(
++            BATON_ORCHESTRATION_WS_METHODS.ruleList,
++            Effect.map(orchestrationRules.list(input), (rules) => ({ rules })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ORCHESTRATION_WS_METHODS.ruleDisable]: (input) =>
++          observeRpcEffect(
++            BATON_ORCHESTRATION_WS_METHODS.ruleDisable,
++            Effect.map(
++              orchestrationRules.setStatus({ id: input.id, status: "disabled" }),
++              (rule) => ({ rule }),
++            ),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ORCHESTRATION_WS_METHODS.ruleEnable]: (input) =>
++          observeRpcEffect(
++            BATON_ORCHESTRATION_WS_METHODS.ruleEnable,
++            Effect.map(
++              orchestrationRules.setStatus({ id: input.id, status: "enabled" }),
++              (rule) => ({ rule }),
++            ),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ORCHESTRATION_WS_METHODS.ruleConfirm]: (input) =>
++          observeRpcEffect(
++            BATON_ORCHESTRATION_WS_METHODS.ruleConfirm,
++            Effect.gen(function* () {
++              const firing = yield* orchestrationRules.getFiring(input.firingId);
++              if (firing === null) {
++                return yield* new OrchestrationFiringNotFoundError({ firingId: input.firingId });
++              }
++              // Answering the gate settles that firing either way. A refusal
++              // is a completed decision, not a failure, and the sequenced
++              // rules that were waiting on it stay parked because only a
++              // `completed` outcome releases them.
++              yield* orchestrationRules.completeFiring({
++                firingId: input.firingId,
++                outcome: input.confirmed ? "completed" : "skipped",
++                producedThreadId: null,
++                detail: input.confirmed ? "Confirmed." : "Declined.",
++              });
++              // Re-evaluating lets anything sequenced behind a confirmed gate
++              // run immediately rather than waiting for the next event.
++              if (input.confirmed) {
++                yield* orchestrationReactor
++                  .evaluate({
++                    workSessionId: firing.workSessionId,
++                    changedThreadId: null,
++                    // Not the rule that asked: re-firing it would re-ask the
++                    // question in the same second it was answered.
++                    skipRuleId: firing.ruleId,
++                  })
++                  .pipe(Effect.ignoreCause({ log: true }));
++              }
++              const rules = yield* orchestrationRules.list({
++                workSessionId: firing.workSessionId,
++                includeDisabled: true,
++              });
++              return { rules };
++            }),
++            { "rpc.aggregate": "baton" },
++          ),
++        // One sentence in. `resolve` is what the input shows you before you
++        // press enter; `run` is the same resolution, executed and recorded.
++        [BATON_INTENT_WS_METHODS.intentResolve]: (input) =>
++          observeRpcEffect(
++            BATON_INTENT_WS_METHODS.intentResolve,
++            Effect.map(
++              intents.resolve({
++                text: input.text,
++                focusedWorkSessionId: input.focusedWorkSessionId ?? null,
++                // Absent means no: a preview that fires on every pause in
++                // typing must not spend a model call each time (D50).
++                allowModel: input.allowModel ?? false,
++              }),
++              (resolution) => ({ resolution }),
++            ),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_INTENT_WS_METHODS.intentRun]: (input) =>
++          observeRpcEffect(
++            BATON_INTENT_WS_METHODS.intentRun,
++            intents.run({
++              text: input.text,
++              focusedWorkSessionId: input.focusedWorkSessionId ?? null,
++            }),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_INTENT_WS_METHODS.intentList]: (input) =>
++          observeRpcEffect(
++            BATON_INTENT_WS_METHODS.intentList,
++            Effect.map(
++              intents.list({
++                workSessionId: input.workSessionId ?? null,
++                limit: input.limit ?? null,
++              }),
++              (recorded) => ({ intents: recorded }),
++            ),
++            { "rpc.aggregate": "baton" },
++          ),
++        // §9's adopted sessions: terminals Baton did not start. Discovery
++        // refuses by name on a machine without the runtime, rather than
++        // returning an empty list that reads as "nothing is running".
++        [BATON_ADOPTED_WS_METHODS.adoptedDiscover]: (_input) =>
++          observeRpcEffect(BATON_ADOPTED_WS_METHODS.adoptedDiscover, adopted.discover, {
++            "rpc.aggregate": "baton",
++          }),
++        [BATON_ADOPTED_WS_METHODS.adoptedRegister]: (input) =>
++          observeRpcEffect(
++            BATON_ADOPTED_WS_METHODS.adoptedRegister,
++            Effect.map(adopted.register(input), (session) => ({ session })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ADOPTED_WS_METHODS.adoptedList]: (input) =>
++          observeRpcEffect(
++            BATON_ADOPTED_WS_METHODS.adoptedList,
++            Effect.map(adopted.list(input), (sessions) => ({ sessions })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ADOPTED_WS_METHODS.adoptedRefresh]: (input) =>
++          observeRpcEffect(
++            BATON_ADOPTED_WS_METHODS.adoptedRefresh,
++            Effect.map(adopted.refresh(input), (session) => ({ session })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ADOPTED_WS_METHODS.adoptedDetach]: (input) =>
++          observeRpcEffect(
++            BATON_ADOPTED_WS_METHODS.adoptedDetach,
++            Effect.map(adopted.detach(input.id), (session) => ({ session })),
++            { "rpc.aggregate": "baton" },
++          ),
++        [BATON_ADOPTED_WS_METHODS.adoptedSendInput]: (input) =>
++          observeRpcEffect(BATON_ADOPTED_WS_METHODS.adoptedSendInput, adopted.sendInput(input), {
++            "rpc.aggregate": "baton",
++          }),
++        [BATON_ADOPTED_WS_METHODS.adoptedReadOutput]: (input) =>
++          observeRpcEffect(BATON_ADOPTED_WS_METHODS.adoptedReadOutput, adopted.readOutput(input), {
++            "rpc.aggregate": "baton",
++          }),
++        [BATON_WS_METHODS.subscribeWorkSessions]: (_input) =>
++          observeRpcStream(
++            BATON_WS_METHODS.subscribeWorkSessions,
++            WorkSessionService.workSessionStream(workSessions),
++            { "rpc.aggregate": "baton" },
++          ),
+       });
+     }),
+   );
+diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
+index 055bfe87db8171001a57472df3c9a676f12a3bea..b29c0f17dc856708bcff1f60ff0b6ed1a5f7afe5 100644
+--- a/packages/client-runtime/src/rpc/client.ts
++++ b/packages/client-runtime/src/rpc/client.ts
+@@ -1,4 +1,4 @@
+-import { ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
++import { BATON_WS_METHODS, ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
+ import * as Cause from "effect/Cause";
+ import * as Context from "effect/Context";
+ import type * as Duration from "effect/Duration";
+@@ -60,6 +60,7 @@ export type EnvironmentSubscriptionRpcTag =
+   | typeof WS_METHODS.subscribeVcsStatus
+   | typeof WS_METHODS.subscribeWorktreeSetup
+   | typeof WS_METHODS.subscribeProjectClones
++  | typeof BATON_WS_METHODS.subscribeWorkSessions
+   | typeof WS_METHODS.terminalAttach;
+ 
+ export type EnvironmentStreamCommandRpcTag =

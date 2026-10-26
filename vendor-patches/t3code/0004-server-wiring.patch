@@ -1,0 +1,417 @@
+Subject: server: start Baton's layers and reactors; Baton's own migration manifest (D48)
+
+server.ts provides Baton's services; OrchestrationReactor starts the synopsis, rule and rotation
+reactors; the Sqlite layer runs Baton's manifest and the reclaim. Replaced by baton.sqlite in the
+v2 port.
+
+diff --git a/apps/server/integration/OrchestrationEngineHarness.integration.ts b/apps/server/integration/OrchestrationEngineHarness.integration.ts
+index 5e3b4c6e4afe32903a74b077c17a0ebb0f90e27f..6f4e7a26669ffb3bdb77f8e4bd46bd62cd08aa62 100644
+--- a/apps/server/integration/OrchestrationEngineHarness.integration.ts
++++ b/apps/server/integration/OrchestrationEngineHarness.integration.ts
+@@ -38,6 +38,8 @@ import { ProviderAdapterRegistry } from "../src/provider/Services/ProviderAdapte
+ import { makeProviderRegistryLayer } from "../src/provider/testUtils/providerRegistryMock.ts";
+ import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSessionDirectory.ts";
+ import { ServerSettingsService } from "../src/serverSettings.ts";
++import * as BatonOrchestrationReactor from "../src/baton/OrchestrationReactor.ts";
++import * as BatonSynopsisReactor from "../src/baton/SynopsisReactor.ts";
+ import * as StorageCleanup from "../src/storageCleanup.ts";
+ import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
+ import { makeCodexAdapter } from "../src/provider/Layers/CodexAdapter.ts";
+@@ -389,6 +391,22 @@ export const makeOrchestrationIntegrationHarness = (
+           drain: Effect.void,
+         }),
+       ),
++      // This harness exercises orchestration, not Baton. Both Baton reactors
++      // are inert here so they cannot add work to the drains these tests wait
++      // on, or start a provider session nobody asked for.
++      Layer.provideMerge(
++        Layer.succeed(BatonSynopsisReactor.BatonSynopsisReactor, {
++          start: () => Effect.void,
++          drain: Effect.void,
++        }),
++      ),
++      Layer.provideMerge(
++        Layer.succeed(BatonOrchestrationReactor.BatonOrchestrationReactor, {
++          start: () => Effect.void,
++          drain: Effect.void,
++          evaluate: () => Effect.succeed([]),
++        }),
++      ),
+       Layer.provideMerge(runtimeIngestionLayer),
+       Layer.provideMerge(providerCommandReactorLayer),
+       Layer.provideMerge(checkpointReactorLayer),
+diff --git a/apps/server/src/orchestration/Layers/OrchestrationReactor.test.ts b/apps/server/src/orchestration/Layers/OrchestrationReactor.test.ts
+index 207ad9a20d3478dd6ae17746330fe62d7c552844..ca75482139eef7c4e4eedb2cc7885a4018baf63d 100644
+--- a/apps/server/src/orchestration/Layers/OrchestrationReactor.test.ts
++++ b/apps/server/src/orchestration/Layers/OrchestrationReactor.test.ts
+@@ -15,6 +15,8 @@ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
+ import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
+ import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
+ import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
++import * as BatonOrchestrationReactor from "../../baton/OrchestrationReactor.ts";
++import * as BatonSynopsisReactor from "../../baton/SynopsisReactor.ts";
+ import { StorageCleanup } from "../../storageCleanup.ts";
+ 
+ describe("OrchestrationReactor", () => {
+@@ -115,6 +117,25 @@ describe("OrchestrationReactor", () => {
+             },
+           }),
+         ),
++        Layer.provideMerge(
++          Layer.succeed(BatonSynopsisReactor.BatonSynopsisReactor, {
++            start: () => {
++              started.push("baton-synopsis-reactor");
++              return Effect.void;
++            },
++            drain: Effect.void,
++          }),
++        ),
++        Layer.provideMerge(
++          Layer.succeed(BatonOrchestrationReactor.BatonOrchestrationReactor, {
++            start: () => {
++              started.push("baton-orchestration-reactor");
++              return Effect.void;
++            },
++            drain: Effect.void,
++            evaluate: () => Effect.succeed([]),
++          }),
++        ),
+       ),
+     );
+ 
+@@ -131,6 +152,8 @@ describe("OrchestrationReactor", () => {
+       "thread-settlement-reactor",
+       "pull-request-sync-reactor",
+       "agent-awareness-relay",
++      "baton-synopsis-reactor",
++      "baton-orchestration-reactor",
+       "storage-cleanup",
+     ]);
+ 
+diff --git a/apps/server/src/orchestration/Layers/OrchestrationReactor.ts b/apps/server/src/orchestration/Layers/OrchestrationReactor.ts
+index da5cc337e42088f8e4343a76a4f373a83ecc307f..3b45fe2099fd9277b0aaecc5170f028619fc98b6 100644
+--- a/apps/server/src/orchestration/Layers/OrchestrationReactor.ts
++++ b/apps/server/src/orchestration/Layers/OrchestrationReactor.ts
+@@ -13,6 +13,8 @@ import * as ThreadSettlementReactor from "../ThreadSettlementReactor.ts";
+ import * as PullRequestSyncReactor from "../PullRequestSyncReactor.ts";
+ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
+ import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
++import * as BatonOrchestrationReactor from "../../baton/OrchestrationReactor.ts";
++import * as BatonSynopsisReactor from "../../baton/SynopsisReactor.ts";
+ import * as StorageCleanup from "../../storageCleanup.ts";
+ 
+ export const makeOrchestrationReactor = Effect.gen(function* () {
+@@ -24,6 +26,8 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
+   const pullRequestSyncReactor = yield* PullRequestSyncReactor.PullRequestSyncReactor;
+   const threadPullRequestReactor = yield* ThreadPullRequestReactor.ThreadPullRequestReactor;
+   const agentAwarenessRelay = yield* AgentAwarenessRelay.AgentAwarenessRelay;
++  const batonSynopsisReactor = yield* BatonSynopsisReactor.BatonSynopsisReactor;
++  const batonOrchestrationReactor = yield* BatonOrchestrationReactor.BatonOrchestrationReactor;
+   const storageCleanup = yield* StorageCleanup.StorageCleanup;
+ 
+   const start: OrchestrationReactorShape["start"] = Effect.fn("start")(function* () {
+@@ -35,6 +39,10 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
+     yield* threadSettlementReactor.start();
+     yield* pullRequestSyncReactor.start();
+     yield* agentAwarenessRelay.start();
++    yield* batonSynopsisReactor.start();
++    // After the synopsis reactor: a rule that fires should see a synopsis the
++    // same events have already moved.
++    yield* batonOrchestrationReactor.start();
+     yield* storageCleanup.start();
+   });
+ 
+diff --git a/apps/server/src/persistence/Layers/Sqlite.ts b/apps/server/src/persistence/Layers/Sqlite.ts
+index 56536087d69c0019db68748ebd32dbd84bf63fa6..150344cde00063e467cee16a9051da5041d281bf 100644
+--- a/apps/server/src/persistence/Layers/Sqlite.ts
++++ b/apps/server/src/persistence/Layers/Sqlite.ts
+@@ -6,6 +6,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
+ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+ 
+ import { runMigrations } from "../Migrations.ts";
++import { reclaimUpstreamMigrationIds, runBatonMigrations } from "../BatonMigrations.ts";
+ import { ServerConfig } from "../../config.ts";
+ 
+ // Size the -wal file is cut back to on the first commit after a WAL reset.
+@@ -21,7 +22,14 @@ const setup = Layer.effectDiscard(
+     // PASSIVE checkpoints never shrink the -wal file, so it otherwise keeps its
+     // largest size until the last connection closes.
+     yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
++    // Baton's migrations live in their own manifest and their own tracking
++    // table, so upstream's number space stays upstream's (D48). Three calls in
++    // this order and no other: the reclaim first, so a database still carrying
++    // Baton's old 054-059 rows gives those ids back *before* upstream's runner
++    // reads its high-water mark and skips its own migration at that number.
++    yield* reclaimUpstreamMigrationIds();
+     yield* runMigrations();
++    yield* runBatonMigrations();
+   }),
+ );
+ 
+diff --git a/apps/server/src/server.test.ts b/apps/server/src/server.test.ts
+index 221941aa78334b2803e702fd256d1b424a3d1545..cf750e6b924aae903d1162fc9580d54a61568f05 100644
+--- a/apps/server/src/server.test.ts
++++ b/apps/server/src/server.test.ts
+@@ -32,6 +32,7 @@ import {
+   type PreviewEvent,
+   ProjectId,
+   type ProviderAuthState,
++  BatonAccountPoolUnavailableError,
+   ProviderDriverKind,
+   ProviderInstanceId,
+   type ProviderInstallState,
+@@ -109,6 +110,12 @@ const encodeTestJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unk
+ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+ import * as ServerConfig from "./config.ts";
+ import * as DeviceService from "./device/DeviceService.ts";
++import * as BatonAdoptedSessionService from "./baton/AdoptedSessionService.ts";
++import * as BatonIntentService from "./baton/IntentService.ts";
++import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
++import * as BatonOrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
++import * as BatonAccountPoolService from "./baton/AccountPoolService.ts";
++import * as BatonWorkSessionService from "./baton/WorkSessionService.ts";
+ import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
+ import {
+   isThreadDetailEvent,
+@@ -135,6 +142,7 @@ import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationE
+ import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore.ts";
+ import { PersistenceSqlError } from "./persistence/Errors.ts";
+ import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
++import * as TextGeneration from "./textGeneration/TextGeneration.ts";
+ import * as ModelManifest from "./provider/ModelManifest.ts";
+ import * as ProviderService from "./provider/Services/ProviderService.ts";
+ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
+@@ -520,6 +528,131 @@ const makeBrowserOtlpPayload = (spanName: string) =>
+     return JSON.parse(request.body) as OtlpTracer.TraceData;
+   });
+ 
++/**
++ * Baton's own services for the route tests.
++ *
++ * The work-session, rule and intent services are **real**, each on an in-memory
++ * database: this file exercises the routes, and a mocked service would prove
++ * nothing about whether they are wired. What a rule or a sentence may *cause*
++ * is inert, because a live reactor or executor could start a provider session
++ * from a route test.
++ *
++ * The layer values are shared by reference on purpose — Effect memoises a layer
++ * per build, so the intent service reads the same work sessions the routes
++ * write, rather than a second database that would silently disagree.
++ */
++const batonWorkSessionTestLayer = BatonWorkSessionService.layer.pipe(
++  Layer.provide(SqlitePersistenceMemory),
++);
++const batonRuleTestLayer = BatonOrchestrationRuleService.layer.pipe(
++  Layer.provide(SqlitePersistenceMemory),
++);
++/**
++ * Adopted sessions (§9) with a runtime that is not there: every answer is the
++ * refusal a machine without Herdr gives, which is what these route tests
++ * should see.
++ */
++const batonAdoptedTestLayer = BatonAdoptedSessionService.layer.pipe(
++  Layer.provide(SqlitePersistenceMemory),
++  Layer.provide(
++    Layer.succeed(BatonAdoptedSessionService.AdoptedRuntimeAdapter, {
++      discover: Effect.succeed({
++        available: false,
++        reason: "herdr is not installed on this environment.",
++        candidates: [],
++      }),
++      sendInput: () =>
++        Effect.succeed({
++          delivered: false,
++          detail: "herdr is not installed on this environment.",
++        }),
++      readOutput: () =>
++        Effect.succeed({
++          available: false,
++          detail: "herdr is not installed on this environment.",
++          output: "",
++        }),
++    }),
++  ),
++);
++
++/**
++ * No account switcher in a route test: every read is the answer a machine
++ * without one gives, which is what these tests should see.
++ */
++const batonAccountPoolTestLayer = Layer.succeed(
++  BatonAccountPoolService.AccountPoolService,
++  BatonAccountPoolService.AccountPoolService.of({
++    read: (driver) =>
++      Effect.fail(
++        new BatonAccountPoolUnavailableError({
++          driver,
++          detail: "no account switcher is installed here (cswap)",
++        }),
++      ),
++    activate: (input) =>
++      Effect.fail(
++        new BatonAccountPoolUnavailableError({
++          driver: input.driver,
++          detail: "no account switcher is installed here (cswap)",
++        }),
++      ),
++  }),
++);
++
++const batonServicesTestLayer = Layer.mergeAll(
++  batonAccountPoolTestLayer,
++  batonWorkSessionTestLayer,
++  batonRuleTestLayer,
++  batonAdoptedTestLayer,
++  Layer.succeed(BatonOrchestrationReactor.BatonOrchestrationReactor, {
++    start: () => Effect.void,
++    drain: Effect.void,
++    evaluate: () => Effect.succeed([]),
++  }),
++  BatonIntentService.layer.pipe(
++    Layer.provide(SqlitePersistenceMemory),
++    // No model read here: these routes are tested for what they carry, not for
++    // what a model would say, and a stock install has no `interpretBatonIntent`
++    // either (D50 makes it optional per driver).
++    Layer.provide(
++      Layer.succeed(TextGeneration.TextGeneration, {
++        generateCommitMessage: () => Effect.die("not used"),
++        generatePrContent: () => Effect.die("not used"),
++        generateBranchName: () => Effect.die("not used"),
++        generateThreadTitle: () => Effect.die("not used"),
++      } as unknown as TextGeneration.TextGeneration["Service"]),
++    ),
++    Layer.provide(
++      Layer.succeed(BatonIntentService.BatonIntentExecutor, {
++        execute: () => Effect.succeed({ reply: "Done.", workSessionId: null, failed: false }),
++      }),
++    ),
++    Layer.provide(
++      Layer.mergeAll(batonWorkSessionTestLayer, batonRuleTestLayer, batonAdoptedTestLayer),
++    ),
++    // Its own projection and registry stubs rather than the app's: this block
++    // is provided last in the chain, so it cannot borrow from mocks declared
++    // earlier. An empty fleet is the right shape here anyway — these tests are
++    // about the route and the log, not about what the grammar resolves to.
++    Layer.provide(
++      Layer.mergeAll(
++        Layer.mock(ProjectionSnapshotQuery.ProjectionSnapshotQuery)({
++          getProjectShells: () => Effect.succeed([]),
++          getShellSnapshot: () =>
++            Effect.succeed({
++              snapshotSequence: 0,
++              projects: [],
++              threads: [],
++              updatedAt: "1970-01-01T00:00:00.000Z",
++            }),
++        }),
++        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
++      ),
++    ),
++  ),
++);
++
+ const buildAppUnderTest = (options?: {
+   onPairingChangesSubscribed?: Effect.Effect<void>;
+   config?: Partial<ServerConfig.ServerConfig["Service"]>;
+@@ -1244,7 +1377,7 @@ const buildAppUnderTest = (options?: {
+       }),
+       Layer.provideMerge(makeAuthTestLayer()),
+       Layer.provideMerge(ServerSecretStore.layer),
+-      Layer.provide(workspaceAndProjectServicesLayer),
++      Layer.provide(Layer.mergeAll(workspaceAndProjectServicesLayer, batonServicesTestLayer)),
+       Layer.provideMerge(
+         options?.layers?.httpClient === undefined
+           ? FetchHttpClient.layer
+diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
+index 43bba34bd8c5e050f183d136ddadef3e2a34de0f..5bc78d6375c875e6d36ef4a09c886bd492a051e0 100644
+--- a/apps/server/src/server.ts
++++ b/apps/server/src/server.ts
+@@ -25,6 +25,17 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
+ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+ import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
+ import * as ServerConfig from "./config.ts";
++import * as BatonAdoptedSessionService from "./baton/AdoptedSessionService.ts";
++import * as BatonHerdrAdapter from "./baton/HerdrAdapterLive.ts";
++import * as BatonIntentExecutor from "./baton/IntentExecutorLive.ts";
++import * as BatonIntentService from "./baton/IntentService.ts";
++import * as BatonOrchestrationEffects from "./baton/OrchestrationEffectsLive.ts";
++import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
++import * as BatonOrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
++import * as BatonSynopsisReactor from "./baton/SynopsisReactor.ts";
++import * as BatonAccountRotationReactor from "./baton/AccountRotationReactor.ts";
++import * as BatonAccountPoolService from "./baton/AccountPoolService.ts";
++import * as BatonWorkSessionService from "./baton/WorkSessionService.ts";
+ import {
+   otlpTracesProxyRouteLayer,
+   assetRouteLayer,
+@@ -273,6 +284,22 @@ const ReactorLayerLive = Layer.empty.pipe(
+   Layer.provideMerge(PullRequestSyncReactor.layer),
+   Layer.provideMerge(ThreadPullRequestReactor.layer),
+   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
++  Layer.provideMerge(BatonSynopsisReactor.layer),
++  Layer.provideMerge(BatonAccountRotationReactor.layer),
++  // Sits here, before the orchestration layer, because later entries provide to
++  // earlier ones: the intent surface consumes the reactor, the rule service and
++  // the same narrow effects a rule uses, rather than reaching the engine on its
++  // own. One sentence and one rule cause work through the same door.
++  Layer.provideMerge(BatonIntentService.layer.pipe(Layer.provideMerge(BatonIntentExecutor.layer))),
++  // The orchestration reactor is the only thing that starts work nobody asked
++  // for in the moment, so what it is allowed to do is a named, separate layer
++  // rather than ambient access to the engine.
++  Layer.provideMerge(
++    BatonOrchestrationReactor.layer.pipe(
++      Layer.provideMerge(BatonOrchestrationEffects.layer),
++      Layer.provideMerge(BatonOrchestrationRuleService.layer),
++    ),
++  ),
+   Layer.provideMerge(RuntimeReceiptBusLive),
+ );
+ 
+@@ -356,6 +383,22 @@ const PullRequestServiceLive = PullRequestService.layer.pipe(
+   Layer.provide(SourceControlRateLimit.layer),
+ );
+ 
++/** Baton work sessions. Needs only the SQL client. */
++const BatonWorkSessionServiceLive = BatonWorkSessionService.layer;
++/** Reads the account switcher's own store and asks it to switch; one process per call. */
++const BatonAccountPoolServiceLive = BatonAccountPoolService.layer;
++
++/**
++ * Adopted sessions (§9), and the external runtime they come from.
++ *
++ * The adapter is provided here rather than inside the service so the one place
++ * that talks to another program stays visible — and so a machine without that
++ * program still gets a service whose every answer is a refusal by name.
++ */
++const BatonAdoptedSessionServiceLive = BatonAdoptedSessionService.layer.pipe(
++  Layer.provide(BatonHerdrAdapter.layer),
++);
++
+ const GitManagerLayerLive = GitManager.layer.pipe(
+   Layer.provideMerge(ProjectSetupScriptRunner.layer.pipe(Layer.provide(ServerSettingsLayerLive))),
+   Layer.provideMerge(WorktreeSetupTracker.layer),
+@@ -523,7 +566,23 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+   Layer.provideMerge(GitLayerLive),
+   Layer.provideMerge(VcsLayerLive),
+   Layer.provideMerge(ProviderRuntimeLayerLive),
+-  Layer.provideMerge(Layer.mergeAll(TerminalLayerLive, PreviewLayerLive, DeviceLayerLive)),
++  // One work-session service for the whole server, so a mutation arriving on
++  // one client's socket reaches every other client's subscription; a
++  // per-connection instance would give each client its own silent event bus.
++  // It sits in the runtime rather than beside the routes because it needs
++  // nothing but the SQL client `PersistenceLayerLive` supplies on the next
++  // line, and because the handoff work of the next phase runs in a reactor,
++  // which is here rather than in a route.
++  Layer.provideMerge(
++    Layer.mergeAll(
++      TerminalLayerLive,
++      PreviewLayerLive,
++      DeviceLayerLive,
++      BatonWorkSessionServiceLive,
++      BatonAccountPoolServiceLive,
++      BatonAdoptedSessionServiceLive,
++    ),
++  ),
+   Layer.provideMerge(PersistenceLayerLive),
+   // Both read a user-owned file out of the state directory and stream changes
+   // to clients; neither depends on the other.

@@ -171,7 +171,7 @@ function FleetList(
   return (
     <>
       <div className="flex items-center justify-between gap-2 px-2 pb-1">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-sidebar-muted-foreground">
+        <p className="text-2xs font-medium uppercase tracking-wide text-sidebar-muted-foreground">
           Fleet
         </p>
         <button
@@ -180,9 +180,9 @@ function FleetList(
           aria-pressed={props.needsUserOnly}
           onClick={() => props.onToggleNeedsUser(!props.needsUserOnly)}
           className={cn(
-            "rounded px-1.5 py-0.5 text-[11px] leading-4",
+            "rounded px-1.5 py-0.5 text-2xs leading-4",
             props.needsUserOnly
-              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              ? "bg-sidebar-row-selected text-sidebar-foreground"
               : "text-sidebar-muted-foreground",
           )}
         >
@@ -190,7 +190,7 @@ function FleetList(
         </button>
       </div>
       {visible.length === 0 ? (
-        <p className="px-2 pb-1 text-[11px] leading-4 text-sidebar-muted-foreground">
+        <p className="px-2 pb-1 text-2xs leading-4 text-sidebar-muted-foreground">
           {props.needsUserOnly ? "Nothing needs you." : "No work yet."}
         </p>
       ) : (
@@ -231,8 +231,8 @@ function FleetRowView(props: { readonly row: FleetRow; readonly onSelect: () => 
       <span
         aria-hidden
         className={cn(
-          "w-2 shrink-0 text-center text-[11px] leading-4",
-          row.needsUser ? "text-sidebar-destructive-foreground" : "text-sidebar-muted-foreground",
+          "w-2 shrink-0 text-center text-2xs leading-4",
+          row.needsUser ? "text-destructive" : "text-sidebar-muted-foreground",
         )}
       >
         {row.glyph}
@@ -240,12 +240,12 @@ function FleetRowView(props: { readonly row: FleetRow; readonly onSelect: () => 
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
           <span className="truncate text-xs leading-5 text-sidebar-foreground">{row.heading}</span>
-          <span className="shrink-0 text-[11px] leading-4 text-sidebar-muted-foreground">
+          <span className="shrink-0 text-2xs leading-4 text-sidebar-muted-foreground">
             {row.stateLabel}
           </span>
         </span>
         {row.attribution === null && row.detail === null ? null : (
-          <span className="block truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+          <span className="block truncate text-2xs leading-4 text-sidebar-muted-foreground">
             {[row.attribution, row.detail].filter((part) => part !== null).join(" · ")}
             {row.detail !== null && row.detailStale ? " (stale)" : ""}
           </span>
@@ -253,7 +253,7 @@ function FleetRowView(props: { readonly row: FleetRow; readonly onSelect: () => 
         {row.account?.email == null ? null : (
           <span
             data-testid="sidebar-fleet-row-account"
-            className="block max-w-full text-[11px] leading-4 text-sidebar-muted-foreground"
+            className="block max-w-full text-2xs leading-4 text-sidebar-muted-foreground"
             // The row is a button; revealing the address is its own control and
             // must not also select the work session.
             onClick={(event) => event.stopPropagation()}
