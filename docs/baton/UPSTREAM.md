@@ -112,9 +112,11 @@ files upstream owns; each is an isolated insertion:
 | `packages/contracts/src/rpc.ts`, `index.ts`              | the two Rpc definitions and the exports                                           |
 | `packages/client-runtime/src/state/batonWorkSessions.ts` | `handoff`, `herdrSend` commands                                                   |
 | `apps/web/src/components/sidebar/BatonIntentBar.tsx`     | `id="fabric-intent-input"` (D64)                                                  |
+| `third-party-licenses.config.json`                       | `packageOverrides` for `onnxruntime-node`/`-common` (desktop voice, D66)          |
 
-The Fabric → Baton rename (D71) touched only lines Baton already owned in these files and added no
-new patch point. The words "Fabric" left in upstream's mobile code (`ComposerAttachmentStrip.tsx`,
+The Fabric → Baton rename (D71) touched only lines Baton already owned in these files. The
+license overrides are the one new entry: the voice core's `onnxruntime-*` ship no license file,
+and the web build reads the desktop manifest, so without them the release build fails. The words "Fabric" left in upstream's mobile code (`ComposerAttachmentStrip.tsx`,
 `nativeReviewDiffSurface.ts`, `apps/mobile/modules/`, `patches/`) are React Native's renderer and
 are not ours.
 
