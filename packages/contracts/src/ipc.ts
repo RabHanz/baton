@@ -1237,6 +1237,19 @@ export interface DesktopBridge {
     readonly applicationIntegrationConnected: boolean;
     readonly keystrokeSimulationAllowed: boolean;
   }) => Promise<FabricInjectionReport>;
+  /**
+   * Words the desktop's voice service heard, for the intent bar to run:
+   * `focused_session` goes to the session on screen as a message, and
+   * `fabric_intent` is a command for the grammar. Dictation never arrives
+   * here — the desktop types it itself and the words stay on the machine.
+   * Absent on desktop builds without Fabric voice.
+   */
+  onFabricVoiceUtterance?: (
+    listener: (utterance: {
+      readonly route: "focused_session" | "fabric_intent";
+      readonly text: string;
+    }) => void,
+  ) => () => void;
   // One bootstrap per pool instance currently registered with bootstrap
   // info (omits instances whose backend hasn't produced a config yet).
   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.

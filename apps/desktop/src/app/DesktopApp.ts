@@ -27,6 +27,7 @@ import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopShellEnvironment from "../shell/DesktopShellEnvironment.ts";
+import { startDesktopFabricVoice } from "../fabric/voice/DesktopFabricVoice.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopRemoteUpdates from "../updates/DesktopRemoteUpdates.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
@@ -181,6 +182,18 @@ const bootstrap = Effect.gen(function* () {
   yield* logBootstrapInfo("bootstrap ipc handlers registered");
 
   yield* snapShot.initialize;
+  // Fabric voice must never stop the app starting: a missing tray host or a
+  // refused microphone is reported in its own tray, not as a startup failure.
+  yield* Effect.sync(() =>
+    startDesktopFabricVoice({
+      stateDir: environment.stateDir,
+      platform: environment.platform,
+      ensureMainWindow: () => Effect.runPromise(desktopWindow.ensureMain),
+      makeCore: null,
+    }),
+  ).pipe(
+    Effect.catchDefect((cause) => logBootstrapWarning("fabric voice did not start", { cause })),
+  );
 
   if (!settings.localEnvironmentEnabled) {
     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");
