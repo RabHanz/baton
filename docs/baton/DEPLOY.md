@@ -1,5 +1,12 @@
 # Deploying this fork onto a machine that runs stock T3 Code
 
+**Since the v2 port this page is scripts.** `scripts/baton/release-build.sh <version>` builds the
+archive (§1); `scripts/baton/deploy-beside.sh <archive> <version> [--host onnyx@onnyx]` does §0,
+§2, §3 and §5's first check, backing up every `*.sqlite` and writing `rollback.sh` before it
+switches; `rehearse.sh` boots an archive on a `snapshot-userdata.sh` copy first; `auto-sync.sh`
+chains them daily. `live-proof.mjs` and `revoke-proof-sessions.sh` prove the sidebar, Send and a
+Herdr terminal on a deployed box and clean up after. The prose below is why each step exists.
+
 Written from the first real deploy (signzart-prod, 2026-09-18, `0.0.43-fabric.1`
 replacing `0.0.42`), so every step below is one that was actually needed. Two
 rules shape all of it:
