@@ -20,6 +20,8 @@ import {
   layerWith,
   paneLabel,
   parseHerdrError,
+  parseHerdrSessionList,
+  splitPaneRef,
   parseHerdrForeground,
   parseHerdrSnapshot,
   toCandidate,
@@ -252,7 +254,8 @@ describe("discovery against the captured CLI", () => {
       expect(idle?.state).toBe("idle");
       // One snapshot call first, then one enrichment per agent-less pane — never
       // four list calls that can disagree with each other.
-      expect(calls[0]).toEqual(["api", "snapshot"]);
+      expect(calls[0]).toEqual(["session", "list"]);
+      expect(calls[1]).toEqual(["api", "snapshot"]);
     }),
   );
 
@@ -409,6 +412,88 @@ describe("reading a pane", () => {
       expect(result.available).toBe(false);
       expect(result.detail).toContain("pane_not_found");
       expect(result.output).toBe("");
+    }),
+  );
+});
+
+describe("named sessions and blocked prompts (D65)", () => {
+  it("reads herdr's session table, running sessions only", () => {
+    expect(
+      parseHerdrSessionList(
+        "name status directory socket\ndefault running /a /a/s\nt3-x-default running /b /b/s\nold stopped /c /c/s\n",
+      ),
+    ).toEqual(["default", "t3-x-default"]);
+  });
+
+  it("carries a named session in the pane ref and splits it back", () => {
+    expect(splitPaneRef("t3-x-default~w1:p1")).toEqual({ session: "t3-x-default", pane: "w1:p1" });
+    expect(splitPaneRef("w1:p1")).toEqual({ session: null, pane: "w1:p1" });
+  });
+
+  it.effect("walks every running session and asks each with --session", () =>
+    Effect.gen(function* () {
+      const calls: Array<ReadonlyArray<string>> = [];
+      const result = yield* runAdapter(
+        scriptedCli(
+          [
+            [
+              "session list",
+              ok("name status dir sock\ndefault running /a /s\nt3-a-default running /b /s\n"),
+            ],
+            ["api snapshot", ok(SNAPSHOT)],
+            ["--session t3-a-default api snapshot", ok(SNAPSHOT)],
+            ["pane process-info", ok(PROCESS_IDLE)],
+            ["--session t3-a-default pane process-info", ok(PROCESS_IDLE)],
+          ],
+          calls,
+        ),
+        (adapter) => adapter.discover,
+      );
+      expect(result.available).toBe(true);
+      const named = result.candidates.filter((c) => c.location.pane.startsWith("t3-a-default~"));
+      expect(named.length).toBeGreaterThan(0);
+      expect(named[0]?.label).toContain("t3-a-default");
+      expect(calls.some((args) => args.join(" ") === "--session t3-a-default api snapshot")).toBe(
+        true,
+      );
+    }),
+  );
+
+  it.effect("puts a blocked agent's question on the candidate", () =>
+    Effect.gen(function* () {
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      const blocked = JSON.stringify({
+        id: "cli:api:snapshot",
+        result: {
+          type: "session_snapshot",
+          snapshot: {
+            workspaces: [{ workspace_id: "w1", label: "web" }],
+            panes: [
+              {
+                pane_id: "w1:p1",
+                workspace_id: "w1",
+                tab_id: "w1:t1",
+                cwd: "/w",
+                agent_status: "blocked",
+              },
+            ],
+            agents: [{ pane_id: "w1:p1", name: "web", kind: "claude", agent_status: "blocked" }],
+          },
+        },
+      });
+      const result = yield* runAdapter(
+        scriptedCli([
+          ["api snapshot", ok(blocked)],
+          [
+            "pane read w1:p1",
+            ok("Bash command rm -rf dist\nDo you want to proceed?\n1. Yes\n2. No\n"),
+          ],
+        ]),
+        (adapter) => adapter.discover,
+      );
+      const candidate = result.candidates[0];
+      expect(candidate?.state).toBe("needs_input");
+      expect(candidate?.blockedPrompt).toContain("Do you want to proceed?");
     }),
   );
 });

@@ -233,6 +233,9 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
         // What arms this field from a hotkey, a mic button, or an external
         // dictation tool that types into whatever has focus.
         data-fabric-intent-input="true"
+        // Chromium exposes the id as the UI Automation id: Airdeck's imported
+        // spot finds this box by it (public/fabric/airdeck-spots.json, D64).
+        id="fabric-intent-input"
         value={text}
         disabled={running}
         placeholder="What needs me?"

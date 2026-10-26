@@ -12,12 +12,17 @@
  * building the same fleet locally passes its real value and gets the stricter
  * answer. See `docs/fabric/DECISIONS.md` D17.
  */
-import { type FabricFleet, type FabricFleetAdopted } from "@t3tools/contracts";
+import {
+  type AdoptedSessionCandidate,
+  type FabricFleet,
+  type FabricFleetAdopted,
+} from "@t3tools/contracts";
 import {
   buildFabricFleet,
   filterFleetNeedsUser,
   type FleetThreadInput,
 } from "@t3tools/shared/fabricFleet";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
@@ -28,6 +33,12 @@ import { WorkSessionService } from "./WorkSessionService.ts";
 
 /** A provider window at 100% is the account saying it is out, not a guess. */
 const isExhausted = (usedPercent: number): boolean => usedPercent >= 100;
+
+// shortcut: one Herdr discovery per 15 s for the whole server, because fleet.get
+// is read on every repaint and discovery is several CLI calls; upgrade to
+// Herdr's socket event stream when the adapter subscribes instead of polling.
+const HERDR_CACHE_MS = 15_000;
+let herdrCache: { at: number; candidates: ReadonlyArray<AdoptedSessionCandidate> } | null = null;
 
 export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
   readonly includeArchived?: boolean | undefined;
@@ -97,7 +108,15 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     else existing.push(row);
   }
 
-  const fleet = buildFabricFleet({
+  const nowMs = yield* Clock.currentTimeMillis;
+  if (herdrCache === null || nowMs - herdrCache.at > HERDR_CACHE_MS) {
+    const discovered = yield* adoptedSessions.discover.pipe(
+      Effect.catchCause(() => Effect.succeed({ available: false, reason: "", candidates: [] })),
+    );
+    herdrCache = { at: nowMs, candidates: discovered.candidates };
+  }
+
+  const built = buildFabricFleet({
     workSessions: sessions,
     threads,
     // The environment answering the question is by definition reachable.
@@ -108,6 +127,7 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     observedAt: DateTime.formatIso(yield* DateTime.now),
   });
 
+  const fleet: FabricFleet = { ...built, herdr: herdrCache.candidates };
   const result: FabricFleet = input.needsUserOnly === true ? filterFleetNeedsUser(fleet) : fleet;
   return result;
 });

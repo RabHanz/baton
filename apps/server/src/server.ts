@@ -29,6 +29,7 @@ import * as FabricOrchestrationEffects from "./fabric/OrchestrationEffectsLive.t
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
 import * as FabricSynopsisReactor from "./fabric/SynopsisReactor.ts";
+import * as FabricAccountRotationReactor from "./fabric/AccountRotationReactor.ts";
 import * as FabricAccountPoolService from "./fabric/AccountPoolService.ts";
 import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
 import {
@@ -265,6 +266,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(FabricSynopsisReactor.layer),
+  Layer.provideMerge(FabricAccountRotationReactor.layer),
   // Sits here, before the orchestration layer, because later entries provide to
   // earlier ones: the intent surface consumes the reactor, the rule service and
   // the same narrow effects a rule uses, rather than reaching the engine on its
