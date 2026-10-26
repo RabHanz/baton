@@ -6,9 +6,9 @@
 // reuse the saved `<outPrefix>-state.json` as `state:<file>`. Prints the time the Baton block took
 // to appear, which is the "first sidebar load" Phase C measures. Playwright comes from
 // $PLAYWRIGHT_DIR (a directory holding node_modules/playwright), since Baton does not depend on it.
-import { createRequire } from "node:module";
+import * as NodeModule from "node:module";
 
-const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`);
+const require = NodeModule.createRequire(`${process.env.PLAYWRIGHT_DIR ?? process.cwd()}/`);
 const { chromium } = require("playwright");
 
 const [target, out, ...rest] = process.argv.slice(2);
