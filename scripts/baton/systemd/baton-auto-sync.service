@@ -1,0 +1,14 @@
+[Unit]
+Description=Baton daily upstream sync (pin, patches, gates, PR, deploy both boxes)
+After=network-online.target
+
+[Service]
+Type=oneshot
+Nice=10
+Environment=TMPDIR=/mnt/HC_Volume_106652742/tmp/lanes
+Environment=BATON_REPO_DIR=/mnt/HC_Volume_106652742/dev/t3code
+# Run a copy taken from origin/main, so a change landing mid-run cannot alter the running script.
+ExecStartPre=/usr/bin/git -C /mnt/HC_Volume_106652742/dev/t3code fetch --quiet origin main
+ExecStartPre=/bin/sh -c 'git -C /mnt/HC_Volume_106652742/dev/t3code show origin/main:scripts/baton/auto-sync.sh > %h/.t3/baton-auto-sync.sh'
+ExecStart=/bin/bash %h/.t3/baton-auto-sync.sh
+TimeoutStartSec=4h

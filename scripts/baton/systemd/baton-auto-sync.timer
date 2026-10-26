@@ -1,0 +1,11 @@
+[Unit]
+Description=Baton daily upstream sync
+
+[Timer]
+# 22:30 UTC is 03:30 in GMT+5: the boxes are quiet and the Director is asleep.
+OnCalendar=*-*-* 22:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
