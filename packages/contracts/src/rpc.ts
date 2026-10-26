@@ -229,6 +229,12 @@ import {
   WorkSessionUpdateInput,
 } from "./fabric/workSession.ts";
 import {
+  FABRIC_HANDOFF_WS_METHODS,
+  WorkSessionHandoffInput,
+  WorkSessionHandoffRefusedError,
+  WorkSessionHandoffResult,
+} from "./fabric/handoff.ts";
+import {
   TerminalAttachInput,
   TerminalAttachStreamEvent,
   TerminalClearInput,
@@ -1519,6 +1525,17 @@ const WsFabricWorkSessionStartThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSession
   ]),
 });
 
+const WsFabricWorkSessionHandoffRpc = Rpc.make(FABRIC_HANDOFF_WS_METHODS.workSessionHandoff, {
+  payload: WorkSessionHandoffInput,
+  success: WorkSessionHandoffResult,
+  error: Schema.Union([
+    WorkSessionError,
+    WorkSessionHandoffRefusedError,
+    OrchestrationDispatchCommandError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsFabricWorkSessionSettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -1806,6 +1823,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricWorkSessionAttachThreadRpc,
   WsFabricWorkSessionDetachThreadRpc,
   WsFabricWorkSessionStartThreadRpc,
+  WsFabricWorkSessionHandoffRpc,
   WsFabricWorkSessionSettleRpc,
   WsFabricWorkSessionUnsettleRpc,
   WsFabricWorkSessionArchiveRpc,
