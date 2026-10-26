@@ -173,7 +173,9 @@ export const resolveClaudeAccountHomeLayout = Effect.fn("resolveClaudeAccountHom
         : path.join(NodeOS.homedir(), ".claude"),
     );
     const homePath = config.homePath.trim();
-    if (homePath.length === 0) {
+    // A relative home would be materialised under the server's cwd (a test fixture did exactly
+    // that, linking the real ~/.claude into the repository); only an absolute or ~ path is an account.
+    if (homePath.length === 0 || !path.isAbsolute(expandHomePath(homePath))) {
       return { mode: "direct", sharedHomePath, accountHomePath: undefined };
     }
     const accountHomePath = path.resolve(expandHomePath(homePath));

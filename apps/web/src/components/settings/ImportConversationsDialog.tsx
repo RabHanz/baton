@@ -210,7 +210,7 @@ export function ImportConversationsDialog({
               data-testid="import-conversations-loading"
               className="flex flex-col items-center gap-3 py-10"
             >
-              <Spinner className="size-5 text-muted-foreground" />
+              <Spinner className="size-5" />
               <p className="text-sm text-muted-foreground">Looking for conversations…</p>
             </div>
           ) : error !== null ? (
@@ -266,7 +266,7 @@ export function ImportConversationsDialog({
                           {thread.preview}
                         </span>
                       ) : null}
-                      <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground/80">
+                      <span className="mt-1 flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground/80">
                         <FolderIcon aria-hidden className="size-3 shrink-0" />
                         <span className="min-w-0 truncate">{thread.workspaceRoot}</span>
                         <span aria-hidden>·</span>

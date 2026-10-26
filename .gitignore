@@ -47,3 +47,6 @@ node_modules/
 
 # pnpm content-addressable store; never belongs in the repo.
 .pnpm-store/
+
+# ClaudeAdapter.test.ts names a relative config dir; Baton's shared-home materialiser (D52) fills it
+apps/server/synthetic config*

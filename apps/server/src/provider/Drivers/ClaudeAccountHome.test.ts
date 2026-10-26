@@ -217,6 +217,14 @@ it.effect("does nothing at all for the primary account", () =>
   }).pipe(run),
 );
 
+it.effect("never materialises a relative home under the server's cwd", () =>
+  Effect.gen(function* () {
+    const layout = yield* resolveClaudeAccountHomeLayout({ homePath: "./synthetic config" });
+    assert.equal(layout.mode, "direct");
+    assert.equal(layout.accountHomePath, undefined);
+  }).pipe(run),
+);
+
 it.effect("treats an account home equal to the shared one as the primary", () =>
   Effect.gen(function* () {
     const root = makeRoot();

@@ -79,7 +79,7 @@ export function rankRotationTargets(
         account.headroomPercent !== null &&
         account.headroomPercent >= minimumHeadroomPercent,
     )
-    .toSorted(
+    .sort(
       (left, right) =>
         (right.headroomPercent ?? 0) - (left.headroomPercent ?? 0) ||
         left.key.localeCompare(right.key),

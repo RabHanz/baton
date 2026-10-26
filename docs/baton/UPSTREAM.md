@@ -129,7 +129,7 @@ The words "Fabric" left in upstream's mobile code (`ComposerAttachmentStrip.tsx`
 `nativeReviewDiffSurface.ts`, `apps/mobile/modules/`, `patches/`) are React Native's renderer and
 are not ours.
 
-### The port plan (decided 2026-10-26, not started)
+### The port plan (decided 2026-10-26; progress in STATUS.md, "v2 port")
 
 **Target shape.** T3 becomes a pinned vendor tree that Baton does not edit. Baton lives in its own
 top-level packages around it, and the edits T3 truly forces become a short, named patch series
@@ -225,28 +225,24 @@ git remote -v
 To take upstream changes:
 
 ```sh
-scripts/baton/upstream-sync.sh --report-only   # what upstream did, and what it will touch
-scripts/baton/upstream-sync.sh                 # merge it onto a branch and open the PR
+scripts/baton/upstream-sync.sh --report-only     # what upstream did, which patched paths it touched
+scripts/baton/upstream-sync.sh [--to <commit>]   # move the pin, re-apply the series, gates, PR
+scripts/baton/gates.sh [--install] [--build]     # the same gates by hand
 ```
 
-The script fetches both remotes, lists upstream's new commits, intersects the files they changed
-with the files this fork changed, flags every hit against the conflicts table above (read out of
-this document, so the table stays the one source of that list), then merges `upstream/main` into a
-branch off the fork's `main` and opens the pull request with that report as the body. It refuses a
-dirty tree, never pushes to `main`, and when the merge conflicts it stops with the list of files
-rather than guessing.
+Since 2026-10-26 (D76) the sync does not merge. Baton's edits to upstream are the patch series in
+`vendor-patches/t3code/` over the commit in `PIN`, and the sync is mechanical:
 
-**The fork absorbs upstream; it is not rebased onto it.** The original plan here was the opposite —
-keep `main` a fast-forward mirror and rebase `baton/*` on top — and that stopped being possible
-the moment Baton work merged into the fork's `main`, which is where it belongs now that the fork
-is what runs on the Director's machines. Rebasing would rewrite every Baton commit on every sync,
-so "what did the fork change" would have no stable answer, and every open branch would need
-force-pushing. Merge commits on the fork's `main` are therefore expected and fine.
+1. `patches.sh rebase <commit>` makes every upstream path the new commit's, deletions included,
+   then re-applies each patch with `git apply --3way`. A patch that fails leaves conflict markers
+   and is named; nothing else needs a human.
+2. `pnpm-lock.yaml` is re-resolved from upstream's (`REGENERATED`), never patched.
+3. The result is committed with two parents, the fork's `main` and the upstream commit, so
+   upstream's history stays reachable and `git merge-base` keeps meaning something.
+4. `gates.sh --install --build` (D77), then push and open the PR with the report as its body.
 
-What keeps the Baton diff legible instead is the conflicts table: every upstream file the fork
-edits is listed with the reason, and everything else Baton contributes is a new file under a
-`baton` name. `git diff <fork-point>..main -- ':!*baton*'` is still the patch series against
-upstream.
+`patches.sh verify` is the invariant: every path upstream owns equals `PIN` plus the series. It
+runs first in the gates, so an upstream file edited outside a patch fails before anything else.
 
 **The number space is not shared.** Baton's migrations used to sit at 054–059 inside upstream's
 manifest, one upstream release away from either a duplicate-id failure or — worse, because it is
@@ -254,7 +250,7 @@ silent — upstream's own migration being skipped forever. They now have their o
 own `fabric_sql_migrations` table, and databases carrying the old numbering are repaired on boot.
 `DECISIONS.md` D48.
 
-After a sync, re-run this page's fork-point table and the conflicts table.
+After a sync, update this page's fork-point table. The patch list is `vendor-patches/t3code/series`.
 
 ## Package map
 
