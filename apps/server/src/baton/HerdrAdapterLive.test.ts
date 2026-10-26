@@ -462,7 +462,6 @@ describe("named sessions and blocked prompts (D65)", () => {
 
   it.effect("puts a blocked agent's question on the candidate", () =>
     Effect.gen(function* () {
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       const blocked = JSON.stringify({
         id: "cli:api:snapshot",
         result: {
