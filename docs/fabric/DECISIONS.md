@@ -1945,3 +1945,30 @@ its account:
 After D63 rotates the account, each idle Claude session hosted in a Herdr pane gets `/exit` and,
 once its shell is back, `claude --resume <id>` in the same pane: same conversation, same pane, same
 send path, no Remote Control step. Busy sessions are skipped (still working means not limited).
+
+## D70 — Box-to-box attach is Herdr's own `--remote`, with the key given to one command
+
+**Decided** 2026-10-26. Herdr's `--remote` runs plain `ssh` and reads the user's SSH config; the
+box-to-box key lives at `~/.config/venture-ssh/` and is in no SSH config. `fab-remote <target>
+[session]` (scripts/fabric/fab-remote) puts a throwaway `ssh` shim first on PATH for that one
+command, adding `-i <key> -o IdentitiesOnly=yes -o BatchMode=yes`; nothing on the machine changes.
+Proven signzart → onnyx: a pane on onnyx printing `REMOTE-OK-onnyx` rendered in the local client.
+**onnyx → signzart is blocked**: onnyx holds no key for signzart, and signzart's SSH is Tailscale SSH
+in check mode, which asks for a browser login at login.tailscale.com before any key is consulted.
+The Director either approves that check for onnyx or adds a key for `dev@signzart-prod`.
+
+## The P1 proof, 2026-10-26 (frames in `frames/p1-2026-10-26/`)
+
+1. `fab fabproof claude` twice: two Claude Code sessions in one Herdr space, both on the same
+   account (optima). The phone-width (390 px) sidebar lists both, plus the orchestrator session in a
+   VS Code terminal, each with state and account (`1-every-session-390.png`).
+2. One field each: "ALPHA" and "BRAVO" sent from that view; each pane answered (`2-…`).
+3. Pane 1 restarted by the D69 path (`/exit`, then `claude --resume <id>` in the same pane): new pid,
+   same session id. Asked from the same view "which word did you reply with earlier?" it answered
+   ALPHA; pane 2 answered CHARLIE (`3-…`). The cswap credential swap itself was **not** fired live
+   for this proof, because it moves every session on the box including the orchestrator; it was
+   proven by hand in PR #21 and is what D63 calls before D69 runs.
+4. On a userdata copy (`VACUUM`-style backup, its own server on :3790): "Start work on VentureOS
+   called handoff proof with claude" from the intent bar, then **Continue with… → Codex**. The work
+   moved to a Codex thread, which took a real turn on the capsule and asked for its first command
+   approval (`4-continue-with-codex.png`).
