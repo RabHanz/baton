@@ -1,4 +1,4 @@
-// @effect-diagnostics globalConsole:off globalConsoleInEffect:off nodeBuiltinImport:off
+// @effect-diagnostics globalConsole:off globalConsoleInEffect:off nodeBuiltinImport:off globalTimers:off preferSchemaOverJson:off
 /**
  * D61 live proof: a T3 terminal backed by a Herdr session outlives the process
  * that held it. Spawns exactly what the terminal manager spawns

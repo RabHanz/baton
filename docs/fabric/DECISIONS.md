@@ -1816,3 +1816,43 @@ attaches it active, sends the capsule as the first turn, and only then closes th
 onto the timeline. A failure after the thread exists detaches it and restores the previous active
 thread. The resume intent ("continue X with Codex") now starts from the same capsule rather than
 an empty prompt. Not auto-triggered (§29 Phase 3: no silent switches in V1).
+
+## D63 — Automatic rotation is a trigger on the limits T3 already reads
+
+**Decided** 2026-10-26 (queue item 5). `AccountRotationReactor` reads the Claude account pool every
+two minutes and hands it to the existing `decideRotation` policy; a spent window counts as a reported
+limit. One automatic rotation per limit window, the cooldown and hysteresis stay in the policy.
+Enabled per machine with `T3CODE_FABRIC_ON_LIMIT=auto` (both boxes, drop-in
+`fabric-on-limit.conf`); anything else is "ask", so a stock install never rotates on its own. This
+honours D56 ("the work mustn't ever stop") over §29 Phase 3's "no silent switch in V1", which D56
+already outranks. Known limit: the turn boundary is not enforced; a swap mid-turn takes effect on
+the next turn because the running CLI already holds its token.
+
+## D64 — Airdeck is Fabric's hands-free input device, joined by an input spot
+
+**Decided** 2026-10-26. Airdeck (RabHanz/airdeck) already hops between saved "input spots" found by
+UI Automation, and Wispr push-to-talk types into whichever has focus. So the seam is a spot, not a
+new protocol: the intent bar carries `id="fabric-intent-input"` (Chromium's UI Automation id) and
+`aria-label="Say what you want"`, and the web server publishes `/fabric/airdeck-spots.json` in
+Airdeck's own `spots.json` shape. Airdeck's "Import Fabric input spots" (RabHanz/airdeck#1, not
+compiled here) adds them. Text arriving in the bar is routed by the intent surface to the focused
+work session (§14), so nothing Airdeck sends bypasses the gates the bar already has. A test pins
+the file to the input's real id, name and the page title.
+
+Rejected: a loopback HTTP input endpoint on T3 (Airdeck runs on the laptop, T3 on the boxes, and a
+network text-injection endpoint would be a new trust boundary for no gain over the bar).
+
+## D65 — Herdr's agents are listed in the fleet, from every named session
+
+**Decided** 2026-10-26, after the Herdr walkthrough (`docs/fabric/research/herdr-0.9.5-2026-10-26/`).
+Herdr 0.9.5 is the agent runtime (spaces, tabs, agents panel, restore, remote attach); Fabric adopts
+it instead of rebuilding it. Discovery now walks every running Herdr session (`herdr session list`,
+then `--session <name> api snapshot`), so agents in T3's own Herdr-backed terminals (D61) are found.
+The fleet carries them as `herdr` (cached 15 s server-side, polled 20 s by the client), and a blocked
+agent's last 12 lines ride along as `blockedPrompt`, shown in place in the sidebar. A non-default
+session is carried in the pane ref as `<session>~<pane>` so adopted rows need no migration.
+
+"Come back from any machine" is Herdr's own: T3 on any device already reaches each box's terminals
+(D61), and box to box it is `herdr --remote <ssh-target> --session <name>` per the snapshot docs.
+Not wired: a T3 terminal on one box attached to a Herdr session on the other, because the boxes'
+SSH route needs a dedicated key alias that a T3 terminal does not have.
