@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
  * Baton voice on the desktop: the microphone, the tray, the HUD, the hotkeys
  * and where finished words go (§12.1, §12.3, Phase 5). D65.

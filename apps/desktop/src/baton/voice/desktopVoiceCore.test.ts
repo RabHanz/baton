@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off globalDate:off nodeBuiltinImport:off
 /**
  * The desktop's capture → core loop with the REAL core: the voice lane's
  * espeak-ng fixtures as the microphone, openWakeWord → Silero → whisper.cpp →
