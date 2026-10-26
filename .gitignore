@@ -15,9 +15,6 @@ build/
 .logs/
 release/
 release-mock/
-# `scripts/build-cli-archive.ts` defaults here, and a fork builds its own
-# distribution on a workstation rather than only in a clean CI runner.
-release-cli/
 .t3
 .idea/
 apps/web/.playwright
@@ -30,13 +27,16 @@ squashfs-root/
 .vercel
 .gstack/
 .plans/
+/audits/
 dist-electron/
 .electron-runtime/
 .showcase/
 apps/mobile/.showcase/
 apps/mobile/.generated/
+apps/mobile/.android-cache/
 /.generated/
 artifacts/app-store/screenshots/
+artifacts/mobile-e2e/
 .github/pr-assets/
 native/**/target/
 node_modules/
@@ -47,6 +47,3 @@ node_modules/
 
 # pnpm content-addressable store; never belongs in the repo.
 .pnpm-store/
-
-# ClaudeAdapter.test.ts names a relative config dir; Baton's shared-home materialiser (D52) fills it
-apps/server/synthetic config*

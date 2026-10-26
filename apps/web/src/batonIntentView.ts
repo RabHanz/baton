@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Presentation for the intent input.
  *
@@ -10,7 +11,11 @@
  * So the preview is not decoration. It is the confirmation step, and the
  * wording below is what the user reads at the moment they decide.
  */
-import type { BatonIntentRecord, BatonIntentResolution, BatonIntentRisk } from "@t3tools/contracts";
+import type {
+  BatonIntentRecord,
+  BatonIntentResolution,
+  BatonIntentRisk,
+} from "@t3tools/baton-contracts";
 
 export interface IntentPreview {
   /** `will` — pressing enter does this. `refused` — it will not happen. */

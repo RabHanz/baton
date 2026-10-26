@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * §12.3's voice modes as a pure reducer. No audio, no clock, no I/O: every
  * event carries its own time, so the whole thing is replayable in a test.
@@ -21,7 +22,7 @@
  *
  * @module baton-voice/modeMachine
  */
-import { classifyDictation } from "@t3tools/shared/batonDictation";
+import { classifyDictation } from "@t3tools/baton-shared/dictation";
 
 export type VoiceMode =
   | "sleeping"

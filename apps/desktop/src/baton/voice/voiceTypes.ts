@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The desktop's side of §12.2's pipeline, by the specification's own names.
  *

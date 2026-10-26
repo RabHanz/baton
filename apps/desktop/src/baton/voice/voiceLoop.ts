@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Microphone → core → HUD and router. Electron-free, so the same loop runs in
  * the app and headless against a WAV file.

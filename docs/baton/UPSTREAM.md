@@ -6,17 +6,17 @@ tree, and how to get real test data without touching a live install.
 
 ## Fork point
 
-|                         |                                                                   |
-| ----------------------- | ----------------------------------------------------------------- |
-| Fork                    | `github.com/RabHanz/baton`                                        |
-| Upstream                | `github.com/pingdotgg/t3code`                                     |
-| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                        |
-| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)`       |
-| Commit date             | 2026-09-17 14:03:01 -0700                                         |
-| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                             |
-| Fork created            | 2026-09-17 ~21:50Z                                                |
-| Baton work begins       | 2026-09-18                                                        |
-| **Upstream pin now**    | `024d49520e` (2026-10-02), merged 2026-10-26 as `0.0.45-baton.20` |
+|                         |                                                                      |
+| ----------------------- | -------------------------------------------------------------------- |
+| Fork                    | `github.com/RabHanz/baton`                                           |
+| Upstream                | `github.com/pingdotgg/t3code`                                        |
+| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                           |
+| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)`          |
+| Commit date             | 2026-09-17 14:03:01 -0700                                            |
+| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                                |
+| Fork created            | 2026-09-17 ~21:50Z                                                   |
+| Baton work begins       | 2026-09-18                                                           |
+| **Upstream pin now**    | `e762f09e26` (2026-10-26, the v2 engine), ported as `0.1.2-baton.22` |
 
 The fork carried no Baton code at that point; it was a clean mirror of upstream `main`.
 The pin is the last upstream commit before the v2 orchestrator (`de3439142`); see
@@ -109,10 +109,27 @@ Baton's server half is written against v1. Six modules call it directly (`FleetQ
 `SynopsisReactor`), and every repository opens `state.sqlite` through the deleted layer. So
 going past `024d49520e` is a **port**, not a conflict resolution.
 
-### Patch points today (2026-10-26, measured)
+### Patch points after the v2 port (2026-10-26)
 
-`git diff --name-only --diff-filter=M 024d49520e HEAD` lists **60 upstream files** the fork edits,
-against 236 it adds. The old nine-row list here undercounted. By area:
+`vendor-patches/t3code/series` is the list and `scripts/baton/patches.sh files` prints the paths:
+six patches over 13 upstream files, about 300 lines.
+
+| Patch                      | Upstream files                                                       |
+| -------------------------- | -------------------------------------------------------------------- |
+| `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Baton package deps)  |
+| `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts`                 |
+| `0003-herdr-terminal`      | `apps/server/src/terminal/Manager.ts` (D81)                          |
+| `0004-claude-account-home` | `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (D52) |
+| `0005-client-rpc`          | `packages/client-runtime/src/rpc/protocol.ts`, `rpc/client.ts`       |
+| `0006-web-sidebar`         | `apps/web/src/components/Sidebar.tsx`                                |
+
+Not yet back on v2: the desktop voice IPC (built on the laptop, never deployed to the boxes) and
+the mobile Baton route's entry point. Each returns as its own patch.
+
+### Patch points before the port (2026-10-26, measured at `024d49520e`)
+
+`git diff --name-only --diff-filter=M 024d49520e HEAD` listed **60 upstream files** the fork edited,
+against 236 it added. By area:
 
 | Area           | Files                                                                                                                                                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

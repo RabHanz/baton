@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-em-dash-copy, t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The Work block: the sidebar's answer to "what am I working on", above the
  * thread list.
@@ -14,9 +15,9 @@
  * and is exactly what the thread list cannot show.
  */
 import { type ReactNode } from "react";
-import type { EnvironmentId, WorkSession } from "@t3tools/contracts";
+import type { EnvironmentId, WorkSession } from "@t3tools/baton-contracts";
 
-import type { FleetAccount } from "@t3tools/shared/batonFleetView";
+import type { FleetAccount } from "@t3tools/baton-shared/fleetView";
 
 import { cn } from "~/lib/utils";
 import {

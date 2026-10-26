@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The local API the desktop calls (docs/baton/VOICE.md): start/stop, device
  * select, a state stream, the last transcript and the current target. In

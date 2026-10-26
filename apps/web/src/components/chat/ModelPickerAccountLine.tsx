@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 

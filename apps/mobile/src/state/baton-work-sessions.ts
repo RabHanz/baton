@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/react-effect-budget -- Baton file predating upstream's rule (D82) */
 /**
  * Baton on the phone.
  *
@@ -11,8 +12,8 @@
  * make the screen call something that will be rejected.
  */
 import { useEffect, useMemo, useState } from "react";
-import { createBatonWorkSessionAtoms } from "@t3tools/client-runtime/state/baton-work-sessions";
-import type { EnvironmentId, BatonFleetEntry, WorkSession } from "@t3tools/contracts";
+import { createBatonWorkSessionAtoms } from "@t3tools/baton-shared/workSessionAtoms";
+import type { EnvironmentId, BatonFleetEntry, WorkSession } from "@t3tools/baton-contracts";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { useEnvironmentQuery } from "./query";

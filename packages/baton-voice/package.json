@@ -13,6 +13,8 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@t3tools/baton-contracts": "workspace:*",
+    "@t3tools/baton-shared": "workspace:*",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "onnxruntime-node": "1.30.0"

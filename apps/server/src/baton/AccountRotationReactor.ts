@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The trigger for automatic account rotation (D63, queue item 5).
  *
@@ -14,14 +15,14 @@
  * the usage probe's own cache-backed call. Upgrade to the `limited` transition
  * when provider runtime events carry the limit.
  */
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderDriverKind } from "@t3tools/baton-contracts";
 import {
   activeAccount,
   decideRotation,
   type BatonOnLimitPolicy,
   type RotationDecision,
-} from "@t3tools/shared/batonAccountRotation";
-import type { BatonAccountPool } from "@t3tools/contracts";
+} from "@t3tools/baton-shared/accountRotation";
+import type { BatonAccountPool } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

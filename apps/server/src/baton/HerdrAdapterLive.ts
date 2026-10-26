@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * Herdr, from the outside.
  *
@@ -31,8 +33,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
 
-import { type AdoptedDiscoverResult, type AdoptedSessionCandidate } from "@t3tools/contracts";
-import { mapHerdrPaneState } from "@t3tools/shared/batonAdoptedSession";
+import { type AdoptedDiscoverResult, type AdoptedSessionCandidate } from "@t3tools/baton-contracts";
+import { mapHerdrPaneState } from "@t3tools/baton-shared/adoptedSession";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

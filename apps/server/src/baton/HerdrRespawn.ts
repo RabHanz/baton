@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
  * Restart a Claude Code session in its own Herdr pane, same conversation (D69).

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off globalDateInEffect:off
 /**
  * Two actions on live sessions that need no account (D73, D74).
@@ -22,7 +23,7 @@ import {
   type BatonLiveAdoptResult,
   type BatonLiveAttachInput,
   type BatonLiveAttachResult,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
 /**
  * The project a directory belongs to, the same answer on every box (D72).
  *
@@ -7,7 +8,7 @@
  * folder name, which is weaker and is marked `dir:` so it never collides with
  * a repository key.
  */
-import type { BatonProjectRef } from "@t3tools/contracts";
+import type { BatonProjectRef } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 
 import { RepositoryIdentityResolver } from "../project/RepositoryIdentityResolver.ts";

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-em-dash-copy, t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Presentation for orchestration rules in the sidebar.
  *
@@ -11,7 +12,7 @@ import {
   describeRule,
   type OrchestrationFiring,
   type OrchestrationRuleWithFirings,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 
 export interface RuleRow {
   readonly ruleId: string;

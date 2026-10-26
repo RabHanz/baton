@@ -36,8 +36,6 @@ enum T3ComposerClipboard {
   }
 }
 
-// Expo Modules 2.0: the clipboard function is a @JS member; the view stays in
-// definition() until the 2.0 view API lands.
 @ExpoModule("T3ComposerEditor")
 public class T3ComposerEditorModule: Module {
   // UIPasteboard is main-thread only, so the member is main-actor isolated.
@@ -90,6 +88,12 @@ public class T3ComposerEditorModule: Module {
       }
       Prop("spellCheck") { (view: T3ComposerEditorView, spellCheck: Bool) in
         view.setSpellCheck(spellCheck)
+      }
+      Prop("submitTitle") { (view: T3ComposerEditorView, title: String) in
+        view.setSubmitTitle(title)
+      }
+      Prop("alternateSubmitTitle") { (view: T3ComposerEditorView, title: String) in
+        view.setAlternateSubmitTitle(title)
       }
       Prop("enterBehavior") { (view: T3ComposerEditorView, behavior: String) in
         view.setEnterBehavior(behavior)
