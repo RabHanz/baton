@@ -26,6 +26,13 @@ if [ -n "$host" ]; then
     "bash ~/dev/baton-deploy/deploy-beside.sh ~/dev/baton-deploy/$(basename "$archive") $version"
 fi
 
+# A non-interactive ssh shell has no nvm; the backups need node:sqlite (Node >= 22.5).
+if ! command -v node > /dev/null; then
+  nvm_node="$(ls -d "$HOME"/.nvm/versions/node/v2[2-9]*/bin 2> /dev/null | sort -V | tail -1)"
+  [ -n "$nvm_node" ] && export PATH="$nvm_node:$PATH"
+fi
+command -v node > /dev/null || { echo "deploy-beside: no node on PATH for the backup" >&2; exit 1; }
+
 t3home="$HOME/.t3"
 dropins="$HOME/.config/systemd/user/t3code.service.d"
 root="${BATON_BACKUP_ROOT:-}"
