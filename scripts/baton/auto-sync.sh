@@ -14,7 +14,8 @@
 #      Claude fix session in Herdr, so it is in Baton's sidebar on every device
 #   5. alarm: when the pin is more than 3 days behind upstream main, open (or comment on) an issue
 #
-# Exit codes: 0 synced or nothing to do, 2 a patch needs a human, 3 gates failed, 4 deploy failed.
+# Exit codes: 0 synced or nothing to do, 2 a patch needs a human, 3 gates failed, 4 deploy failed,
+# 5 the volume is below its free-space floor.
 set -euo pipefail
 
 # The clone the worktree hangs off. The timer runs a copy of this script taken from origin/main
@@ -59,6 +60,14 @@ age_days=0
 [ -n "$oldest_unsynced" ] && age_days=$(( ($(date +%s) - oldest_unsynced) / 86400 ))
 echo "pin $(git rev-parse --short "$pin"); upstream is $behind commits ahead; oldest unsynced is $age_days days old"
 
+# The box's disk guard (VentureOS scripts/ops/disk-guard.sh) when present, else 8 GB free on the
+# volume: a build that starts into less can fail mid-write, which is worse than not starting.
+disk_ok() {
+  local guard=/home/onnyx/VentureOS/scripts/ops/disk-guard.sh
+  if [ -f "$guard" ]; then bash "$guard" --quiet; return; fi
+  [ "$(df -BG --output=avail "$work" | tail -1 | tr -dc 0-9)" -ge 8 ]
+}
+
 issue() { # issue <title> <body-file>: one open issue per title, commented on after that
   local title="$1" body="$2" number
   number="$(gh issue list -R "$repo" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' 2> /dev/null || true)"
@@ -74,9 +83,19 @@ if [ "$age_days" -gt "$alarm_days" ]; then
   echo "ALARM: $age_days days behind"
 fi
 
-if [ "$behind" -eq 0 ]; then echo "nothing to sync"; exit 0; fi
+if [ "$behind" -eq 0 ]; then
+  echo "nothing to sync"
+  cd "$repo_dir" && rm -rf "$work" && git worktree prune
+  exit 0
+fi
 if [ "$dry" -eq 1 ]; then bash scripts/baton/upstream-sync.sh --report-only; exit 0; fi
 
+if ! disk_ok; then
+  body="$(mktemp)"
+  printf 'The daily sync did not start: the volume is below its free-space floor.\n\nLog: `%s`\n' "$log" > "$body"
+  issue "Upstream sync skipped: disk" "$body"
+  exit 5
+fi
 bash scripts/baton/toolchain-install.sh > /dev/null
 source scripts/baton/toolchain.sh
 pnpm install --frozen-lockfile --silent > /dev/null 2>&1 || pnpm install --silent > /dev/null
@@ -104,15 +123,8 @@ if [ "$rc" -ne 0 ]; then
     printf 'Fix the conflict markers or the failing gate, then: scripts/baton/patches.sh refresh && scripts/baton/patches.sh verify && scripts/baton/gates.sh --install --build.\n'
     printf 'Commit on %s, push it, open the PR, and stop. Report and log: %s, %s.\n' "$branch" "$report" "$log"
   } > "$prompt"
-  claude_bin="$(command -v claude || echo "$HOME/.nvm/versions/node/v24.19.0/bin/claude")"
-  baton "$work" "$claude_bin" --permission-mode bypassPermissions "$(cat "$prompt")" < /dev/null > /dev/null 2>&1 || true
-  # A first run in a folder asks whether to trust it; this worktree is ours.
-  if herdr --session fab-baton-autosync pane wait-output w1:p1 --match "Enter to confirm" --timeout 20000 > /dev/null 2>&1; then
-    herdr --session fab-baton-autosync pane wait-output w1:p1 --match zzz-never --timeout 2000 > /dev/null 2>&1 || true
-    herdr --session fab-baton-autosync pane send-keys w1:p1 Down > /dev/null
-    herdr --session fab-baton-autosync pane wait-output w1:p1 --match zzz-never --timeout 1500 > /dev/null 2>&1 || true
-    herdr --session fab-baton-autosync pane send-keys w1:p1 Enter > /dev/null
-  fi
+  # The worktree is kept for the fix session; the next run starts it fresh.
+  bash scripts/baton/start-fix-session.sh "$work" "$prompt" || echo "could not start the fix session"
   exit "$rc"
 fi
 
@@ -127,6 +139,7 @@ echo "merged $url"
 upstream_version="$(node -p 'require("./apps/server/package.json").version')"
 n="$(ls "$HOME/.t3/runtime/versions" | sed -n 's/.*-baton\.\([0-9]*\)$/\1/p' | sort -n | tail -1)"
 version="$upstream_version-baton.$(( ${n:-0} + 1 ))"
+disk_ok || { echo "disk below its floor; merged but not built or deployed"; exit 5; }
 NODE_ENV=production bash scripts/baton/release-build.sh "$version"
 archive="release-cli/t3-$version-linux-x64.tar.gz"
 
@@ -160,6 +173,9 @@ for box in local "$onnyx"; do
   issue "Deploy rolled back: $version" "$body"
   exit 4
 done
-rm -f release-cli/*.tar.gz
-rm -rf apps/server/dist apps/web/dist "$snap" "$TMPDIR/rehearsal/run-baton-autosync-snapshot"
+# Nothing of a green run stays on the volume: the worktree (about 5 GB with its build) is rebuilt
+# from origin/main next time. A red run keeps it for the fix session.
+rm -rf "$snap" "$TMPDIR/rehearsal/run-baton-autosync-snapshot"
+cd "$repo_dir"
+rm -rf "$work" && git worktree prune
 echo "deployed $version to both boxes"
