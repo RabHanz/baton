@@ -6,7 +6,7 @@ import type {
 } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildBatonProjects, type EnvironmentLive } from "./batonProjects";
+import { batonRowStatusPill, buildBatonProjects, type EnvironmentLive } from "./batonProjects";
 
 const repo = { key: "github.com/rabhanz/ventureos", label: "VentureOS" };
 
@@ -103,5 +103,36 @@ describe("one entry per project, across boxes and accounts (D72)", () => {
     const ventureos = groups.find((group) => group.key === repo.key);
     expect(ventureos?.rows.map((row) => row.kind).toSorted()).toEqual(["claude", "work"]);
     expect(groups.find((group) => group.key === "dir:logs")?.rows[0]?.kind).toBe("pane");
+  });
+});
+
+describe("batonRowStatusPill", () => {
+  const row = (state: string) =>
+    ({
+      kind: "pane",
+      key: "k",
+      environmentId: "e",
+      box: "b",
+      title: "t",
+      state,
+      urgent: false,
+      pane: "p",
+      prompt: null,
+    }) as unknown as Parameters<typeof batonRowStatusPill>[0];
+
+  it("says what a thread row would say, in T3's own labels", () => {
+    expect(batonRowStatusPill(row("blocked"))?.label).toBe("Pending Approval");
+    expect(batonRowStatusPill(row("needs_approval"))?.label).toBe("Pending Approval");
+    expect(batonRowStatusPill(row("needs_input"))?.label).toBe("Awaiting Input");
+    expect(batonRowStatusPill(row("busy"))?.label).toBe("Working");
+    expect(batonRowStatusPill(row("working"))?.pulse).toBe(true);
+    expect(batonRowStatusPill(row("failed"))?.label).toBe("Failed");
+    expect(batonRowStatusPill(row("limited"))?.label).toBe("Waiting");
+    expect(batonRowStatusPill(row("done_unseen"))?.label).toBe("Completed");
+  });
+
+  it("gives a quiet session no pill, as T3 gives a quiet thread none", () => {
+    expect(batonRowStatusPill(row("idle"))).toBeNull();
+    expect(batonRowStatusPill(row("ready"))).toBeNull();
   });
 });

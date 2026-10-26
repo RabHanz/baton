@@ -40,10 +40,13 @@ root="${BATON_BACKUP_ROOT:-}"
 backup="$root/before-$version-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$backup"
 
-node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.argv[1],{readOnly:true}).exec(\"VACUUM INTO '\"+process.argv[2]+\"'\")" \
-  "$t3home/userdata/state.sqlite" "$backup/state.sqlite"
-[ -f "$t3home/userdata/baton.sqlite" ] && node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.argv[1],{readOnly:true}).exec(\"VACUUM INTO '\"+process.argv[2]+\"'\")" \
-  "$t3home/userdata/baton.sqlite" "$backup/baton.sqlite"
+# Every SQLite file (upstream's state.sqlite and statev2.sqlite, Baton's baton.sqlite), each a
+# consistent VACUUM INTO copy rather than a file copy of a live WAL database.
+for db in "$t3home"/userdata/*.sqlite; do
+  [ -s "$db" ] || continue
+  node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync(process.argv[1],{readOnly:true}).exec(\"VACUUM INTO '\"+process.argv[2]+\"'\")" \
+    "$db" "$backup/$(basename "$db")"
+done
 tar -czf "$backup/userdata-rest.tar.gz" -C "$t3home" --exclude='userdata/*.sqlite*' --exclude='userdata/logs' userdata
 cp "$t3home/runtime/service-state.json" "$backup/service-state.json"
 cp -r "$dropins" "$backup/dropins"
