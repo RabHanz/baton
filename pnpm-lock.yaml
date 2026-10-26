@@ -153,6 +153,9 @@ importers:
       '@t3tools/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@t3tools/fabric-voice':
+        specifier: workspace:*
+        version: link:../../packages/fabric-voice
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -180,6 +183,9 @@ importers:
       ffi-rs:
         specifier: 1.3.2
         version: 1.3.2
+      onnxruntime-node:
+        specifier: 1.30.0
+        version: 1.30.0
       playwright-core:
         specifier: 1.60.0
         version: 1.60.0
