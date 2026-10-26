@@ -1238,18 +1238,29 @@ export interface DesktopBridge {
     readonly keystrokeSimulationAllowed: boolean;
   }) => Promise<FabricInjectionReport>;
   /**
-   * Words the desktop's voice service heard, for the intent bar to run:
-   * `focused_session` goes to the session on screen as a message, and
-   * `fabric_intent` is a command for the grammar. Dictation never arrives
-   * here — the desktop types it itself and the words stay on the machine.
-   * Absent on desktop builds without Fabric voice.
+   * The desktop voice core's intent calls (`@t3tools/fabric-voice` router),
+   * answered with this window's own `fabric.intent.resolve` / `run`, so spoken
+   * sentences meet the same grammar and server gates as typed ones. Dictation
+   * never arrives here: the desktop pastes it itself. Absent without Fabric voice.
    */
-  onFabricVoiceUtterance?: (
-    listener: (utterance: {
-      readonly route: "focused_session" | "fabric_intent";
-      readonly text: string;
-    }) => void,
+  onFabricVoiceRequest?: (
+    handler: (
+      request:
+        | {
+            readonly kind: "resolve";
+            readonly text: string;
+            readonly focusedWorkSessionId: string | null;
+            readonly allowModel: boolean;
+          }
+        | {
+            readonly kind: "run";
+            readonly text: string;
+            readonly focusedWorkSessionId: string | null;
+          },
+    ) => Promise<unknown>,
   ) => () => void;
+  /** §14 rung 3 for the voice core: the work session on screen, or null. */
+  setFabricVoiceFocus?: (workSessionId: string | null) => void;
   // One bootstrap per pool instance currently registered with bootstrap
   // info (omits instances whose backend hasn't produced a config yet).
   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.

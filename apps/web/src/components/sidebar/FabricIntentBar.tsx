@@ -25,7 +25,6 @@ import { classifyDictation } from "@t3tools/shared/fabricDictation";
 import { cn } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../fabricContextView";
 import { previewResolution } from "../../fabricIntentView";
-import { voiceUtteranceSentence } from "../../fabricVoiceView";
 import { fabricWorkSessions } from "../../state/fabricWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -108,33 +107,44 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
   const { environmentId, focusedWorkSessionId, onRan } = props;
-  // Speech from the desktop's voice service runs like a typed sentence: same
-  // grammar, same gates. Dictation never arrives here (the desktop types it).
+  const ownsVoice = useRef(false);
+  // The desktop voice core's intent calls, answered with this bar's own RPCs:
+  // spoken sentences meet the same grammar and gates as typed ones. Dictation
+  // never arrives here (the desktop pastes it and the words stay local).
   useEffect(() => {
-    const subscribe = window.desktopBridge?.onFabricVoiceUtterance;
-    // The bar can be on screen twice (landing and sidebar); one sentence must run once.
+    const subscribe = window.desktopBridge?.onFabricVoiceRequest;
+    // The bar can be on screen twice (landing and sidebar); one must answer.
     if (subscribe === undefined || voiceListenerClaimed) return;
     voiceListenerClaimed = true;
-    const unsubscribe = subscribe((utterance) => {
-      const sentence = voiceUtteranceSentence(utterance);
-      if (sentence === null) return;
-      void runIntent({
-        environmentId,
-        input: { text: sentence, focusedWorkSessionId: focusedWorkSessionId as never },
-      }).then((result) => {
-        setReply(
-          result._tag === "Success"
-            ? result.value.reply
-            : "That could not be done. Nothing changed.",
-        );
-        if (result._tag === "Success") onRan();
-      });
+    ownsVoice.current = true;
+    const unsubscribe = subscribe(async (request) => {
+      const input = {
+        text: request.text,
+        focusedWorkSessionId: request.focusedWorkSessionId as never,
+      };
+      if (request.kind === "resolve") {
+        const result = await resolveIntent({
+          environmentId,
+          input: { ...input, allowModel: request.allowModel },
+        });
+        if (result._tag !== "Success") throw new Error("That could not be read.");
+        return result.value.resolution;
+      }
+      const result = await runIntent({ environmentId, input });
+      if (result._tag !== "Success") throw new Error("That could not be done. Nothing changed.");
+      setReply(result.value.reply);
+      onRan();
+      return result.value;
     });
     return () => {
       unsubscribe();
       voiceListenerClaimed = false;
+      ownsVoice.current = false;
     };
-  }, [environmentId, focusedWorkSessionId, onRan, runIntent]);
+  }, [environmentId, onRan, resolveIntent, runIntent]);
+  useEffect(() => {
+    if (ownsVoice.current) window.desktopBridge?.setFabricVoiceFocus?.(focusedWorkSessionId);
+  }, [focusedWorkSessionId]);
 
   const submit = (): void => {
     const trimmed = text.trim();
