@@ -14,6 +14,7 @@ export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
 mkdir -p "$TMPDIR"
 # shellcheck source=toolchain.sh
 source scripts/baton/toolchain.sh
+export PATH="$PWD/node_modules/.bin:$PATH" # build-exe spawns `vp pack` by name
 
 # The SEA step needs Node >= 25.7; a tree still on Node 24 borrows the newest toolchain Node for it.
 sea_node="node"
