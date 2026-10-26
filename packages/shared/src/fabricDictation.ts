@@ -42,7 +42,7 @@ const normalise = (text: string): string =>
 /** "hey jarvis, " and friends, stripped before anything is decided. */
 const WAKE = /^(?:hey |ok |okay )?(?:jarvis|fabric)[,:]?\s+/;
 
-const START = /^(?:start\s+)?dictat(?:e|ing|ion)\b\s*[:,-]?\s*(.*)$/;
+const START = /^(?:start\s+)?dictat(?:e|ing|ion)\b\s*[:,.;-]?\s*(.*)$/;
 const STOP = /^(?:stop|end|finish|quit)\s+dictat(?:e|ing|ion)\b/;
 
 /**

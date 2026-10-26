@@ -1893,9 +1893,16 @@ holds.
   | `Ctrl+Alt+Shift+F7` | toggle mute             | `{ "action": "keys", "keys": "ctrl+alt+shift+f7" }` |
 
 **The core seam.** `voiceTypes.ts` uses §12.2's names, `AudioInputProvider` included, and declares
-`VoiceCore` (`pushAudio`, `activate`, `onState`, `onUtterance`). `DesktopApp` passes
-`makeCore: null` until `packages/fabric-voice` lands. Until then the tray shows "Voice core not
-installed" and the mic is not opened.
+`VoiceCore` (`pushAudio`, `activate`, `onState`, `onUtterance`). `DesktopApp`'s `makeCore` builds
+the real core (`desktopVoiceCore.ts`: openWakeWord, Silero, whisper.cpp, OS TTS) with the core's own
+router, so its rules hold on the desktop: high risk is refused by voice, medium risk needs a later
+"confirm", and dictation stays local. The router's four calls are answered here. `resolve` and `run`
+go to the Fabric window's intent bar over `desktopBridge.onFabricVoiceRequest`; `sendToSession`
+becomes `Tell it: <words>` with that session pinned; `insertText` is the paste adapter. The window
+reports the session on screen (`setFabricVoiceFocus`), which becomes the context bus's rung 3.
+Models and `whisper-cli(.exe)` are read from `<state dir>/voice/`, or from `FABRIC_VOICE_MODELS` /
+`FABRIC_WHISPER_CLI`, or from `modelsDir` / `whisperCli` in `fabric-voice.json`. If any are missing,
+the tray names them and no mic is opened.
 
 **The Windows installer** cannot be cross-built here. `scripts/build-desktop-artifact.ts --platform
 win` compiles Rust helpers for `x86_64-pc-windows-msvc` and needs the Visual Studio Build Tools, so
@@ -1906,8 +1913,9 @@ Rejected: a loopback HTTP endpoint for Airdeck (D64's reason still applies, and 
 new on Airdeck's side); pinning by device id (lost on replug); a native audio module such as
 naudiodon (a Windows build dependency for something Chromium already does).
 
-**Not proven:** nothing has run on Windows. The loop is proven headless (`voiceLoop.test.ts`: a
-48 kHz stereo WAV as the microphone, resampled, framed, segmented, routed, and hard-muted), but the
+**Not proven:** nothing has run on Windows. The loop is proven headless: `voiceLoop.test.ts` (a
+48 kHz stereo WAV, resampled, framed, routed, hard-muted) and `desktopVoiceCore.test.ts` (the voice
+lane's espeak fixtures as the mic, through the real core, down to the HUD's last-words line). The
 tray, HUD, `getUserMedia` capture and SendKeys paste have not been run on a Windows desktop.
 
 ## D68 — One control surface for every session, independent of the account

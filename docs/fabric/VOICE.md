@@ -87,6 +87,13 @@ server's gates all apply), `sendToSession` (direct-session), and `insertText` (Â
 There is deliberately no loopback HTTP port: a web page can reach localhost, and the
 desktop main process imports this package directly.
 
+## On the desktop
+
+`apps/desktop/src/fabric/voice/desktopVoiceCore.ts` builds this core for the tray (D66). Put the
+five model files in `<state dir>/voice/models/` and `whisper-cli.exe` (with its DLLs) in
+`<state dir>/voice/`, or point `modelsDir` / `whisperCli` in `<state dir>/fabric-voice.json` at
+them. "Always listening" stays off until it is ticked in the tray.
+
 ## Tests
 
 - `src/modeMachine.test.ts`, `src/router.test.ts`: unit tests, no models.

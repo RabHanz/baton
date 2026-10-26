@@ -18,6 +18,8 @@ export const DESKTOP_RUNTIME_EXTERNAL_PREFIXES = [
   "@clerk/electron-passkeys",
   "ffi-rs",
   "@yuuang/",
+  // The voice core's wake word and VAD; loads its N-API binary by real path.
+  "onnxruntime-node",
   // Reads its own bundle from disk by resolving `playwright-core/package.json`
   // at runtime and ships the browser driver alongside; there is nothing to
   // gain from inlining a 10 MB file the code re-reads as text.
