@@ -7,9 +7,48 @@ import {
   describeAdoptedSession,
   HERDR_CAPABILITIES,
   KNOWN_HERDR_STATES,
+  mapHerdrPaneState,
   mapHerdrState,
   refuseCapability,
 } from "./fabricAdoptedSession.ts";
+
+describe("mapping a whole pane, which is not the same question as an agent", () => {
+  it("uses the agent's state whenever there is one", () => {
+    expect(mapHerdrPaneState({ agentStatus: "blocked", hasForegroundProcess: true })).toBe(
+      "needs_input",
+    );
+    expect(mapHerdrPaneState({ agentStatus: "working", hasForegroundProcess: false })).toBe(
+      "working",
+    );
+  });
+
+  it("calls an unclassified pane with something running 'monitoring'", () => {
+    // Every terminal that is not a recognised agent reports `unknown`, and that
+    // is most of the terminals §9 exists to adopt. Refusing it would make them
+    // permanently un-adoptable.
+    expect(mapHerdrPaneState({ agentStatus: "unknown", hasForegroundProcess: true })).toBe(
+      "monitoring",
+    );
+  });
+
+  it("calls an unclassified pane at its prompt 'idle'", () => {
+    expect(mapHerdrPaneState({ agentStatus: "unknown", hasForegroundProcess: false })).toBe("idle");
+  });
+
+  it("never raises 'needs me' on a pane it could not classify", () => {
+    // The one wrong state that does real harm is a false alarm at the top of
+    // the fleet. Only Herdr saying `blocked` earns that.
+    for (const hasForegroundProcess of [true, false]) {
+      const state = mapHerdrPaneState({ agentStatus: "unknown", hasForegroundProcess });
+      expect(["needs_input", "needs_approval", "failed", "limited"]).not.toContain(state);
+    }
+  });
+
+  it("still refuses a word it does not know, so D38 survives the fallback", () => {
+    expect(mapHerdrPaneState({ agentStatus: "compacting", hasForegroundProcess: true })).toBeNull();
+    expect(mapHerdrPaneState({ agentStatus: "", hasForegroundProcess: false })).toBeNull();
+  });
+});
 
 describe("mapping a runtime's state", () => {
   it("is §9's table, and nothing else", () => {

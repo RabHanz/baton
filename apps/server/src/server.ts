@@ -377,10 +377,7 @@ const FabricAccountPoolServiceLive = FabricAccountPoolService.layer;
  * program still gets a service whose every answer is a refusal by name.
  */
 const FabricAdoptedSessionServiceLive = FabricAdoptedSessionService.layer.pipe(
-  // The adapter shells out to the `herdr` binary, so it goes through the same
-  // process runner as every other external tool: command resolution, an output
-  // limit, and a timeout that cannot wedge the fleet on a hung socket.
-  Layer.provide(FabricHerdrAdapter.layer.pipe(Layer.provide(ProcessRunner.layer))),
+  Layer.provide(FabricHerdrAdapter.layer),
 );
 
 const GitManagerLayerLive = GitManager.layer.pipe(
