@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * The environment's answer to "here is a sentence; what does it mean, and do
  * it".
@@ -48,16 +50,16 @@ import {
   type BatonIntentRecord,
   type BatonIntentResolution,
   type WorkSessionId,
-} from "@t3tools/contracts";
-import { expiredRecords } from "@t3tools/shared/batonRetention";
+} from "@t3tools/baton-contracts";
+import { expiredRecords } from "@t3tools/baton-shared/retention";
 import {
   normaliseIntentText,
   resolveBatonIntent,
   type IntentGate,
   type IntentProvider,
   type IntentVocabulary,
-} from "@t3tools/shared/batonIntentParser";
-import { HostProcessHostname } from "@t3tools/shared/hostProcess";
+} from "@t3tools/baton-shared/intentParser";
+import { Hostname as HostProcessHostname } from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -67,8 +69,7 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { getFleet } from "./FleetQuery.ts";
 import {
   BatonIntentRepository,
@@ -82,6 +83,7 @@ import {
   layer as intentVocabularyRepositoryLayer,
 } from "./IntentVocabularyRepository.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
+import { BatonEngine } from "./BatonEngine.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 /**
@@ -147,7 +149,7 @@ export const make = Effect.gen(function* () {
   const repository = yield* BatonIntentRepository;
   const vocabularyMemory = yield* BatonIntentVocabularyRepository;
   const interpreter = yield* BatonIntentInterpreter;
-  const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const engine = yield* BatonEngine;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const rules = yield* OrchestrationRuleService;
   const executor = yield* BatonIntentExecutor;
@@ -157,10 +159,7 @@ export const make = Effect.gen(function* () {
   // requirement channel of everything downstream — which is how a change here
   // turns into three hundred errors in `server.test.ts`.
   const fleetContext = yield* Effect.context<
-    | WorkSessionService
-    | AdoptedSessionService
-    | ProjectionSnapshotQuery.ProjectionSnapshotQuery
-    | ProviderRegistry.ProviderRegistry
+    WorkSessionService | AdoptedSessionService | BatonEngine | ProviderRegistry.ProviderRegistry
   >();
 
   // Unique within this process, and a restart moves the prefix. No clock
@@ -253,9 +252,7 @@ export const make = Effect.gen(function* () {
         Effect.provideContext(fleetContext),
         Effect.catchCause(() => Effect.succeed(null)),
       );
-      const projectShells = yield* snapshotQuery
-        .getProjectShells()
-        .pipe(Effect.catchCause(() => Effect.succeed([])));
+      const projectShells = yield* engine.projects;
       const projectTitle = new Map(projectShells.map((project) => [project.id, project.title]));
 
       const short = hostname.split(".")[0]?.trim() ?? hostname;

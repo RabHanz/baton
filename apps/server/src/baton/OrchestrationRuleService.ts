@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * Bounded orchestration: deciding whether a rule may fire, recording that it
  * did, and refusing when it must not.
@@ -37,7 +39,7 @@ import {
   type OrchestrationRuleWithFirings,
   type ThreadId,
   type WorkSessionId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

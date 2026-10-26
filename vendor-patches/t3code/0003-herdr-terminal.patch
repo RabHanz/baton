@@ -1,0 +1,46 @@
+Subject: terminal: Herdr-backed terminals behind T3CODE_FABRIC_TERMINAL_RUNTIME=herdr (D61, D81)
+
+Two hooks: the spawn candidates gain `herdr --session <name>`, and closing a terminal ends its
+Herdr session. Not a PtyAdapter, because the adapter is not told which thread and terminal.
+
+diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
+index 5476e7964a46c99a00566b63b2a355216185bb61..bd930c30dab0117b0eb75a84930dae38902c9bf9 100644
+--- a/apps/server/src/terminal/Manager.ts
++++ b/apps/server/src/terminal/Manager.ts
+@@ -73,6 +73,7 @@ import {
+ } from "../observability/Metrics.ts";
+ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+ import * as ProcessRunner from "../processRunner.ts";
++import * as HerdrTerminal from "../baton/HerdrTerminal.ts";
+ import * as PortScanner from "../preview/PortScanner.ts";
+ import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
+ import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
+@@ -2299,7 +2300,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+       increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
+         Effect.andThen(
+           Effect.gen(function* () {
+-            const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
++            const shellCandidates = HerdrTerminal.terminalShellCandidates({
++              runtime: baseEnv[HerdrTerminal.BATON_TERMINAL_RUNTIME_ENV],
++              threadId: session.threadId,
++              terminalId: session.terminalId,
++              shells: resolveShellCandidates(shellResolver, platform, baseEnv),
++            });
+             const terminalEnv = createTerminalSpawnEnv(
+               baseEnv,
+               session.runtimeEnv,
+@@ -2444,6 +2450,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+     if (Option.isSome(session)) {
+       yield* stopProcess(session.value);
+       yield* unregisterTerminal({ threadId, terminalId });
++      // Baton (D61): closing ends the Herdr session that kept the terminal alive across restarts.
++      const runtime = baseEnv[HerdrTerminal.BATON_TERMINAL_RUNTIME_ENV];
++      for (const command of HerdrTerminal.herdrTerminalCloseCommands({
++        runtime,
++        threadId,
++        terminalId,
++      }))
++        yield* processRunner.run(command).pipe(Effect.ignore);
+       yield* persistHistory(threadId, terminalId, session.value.history);
+     }
+ 

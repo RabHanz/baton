@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
 /**
  * Everything a sentence is allowed to cause.
  *
@@ -16,30 +17,29 @@
  * engine. One place creates threads, whatever asked for them.
  */
 import {
-  buildHandoffCapsule,
   type BatonFleetEntry,
   type BatonIntentCommand,
   type OrchestrationRuleId,
   type WorkSessionId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import {
   speakFleetCompletions,
   speakFleetNeedsUser,
   speakFleetRunning,
   speakWorkSessionStatus,
   type SpokenWorkSession,
-} from "@t3tools/shared/batonSpokenStatus";
-import { HostProcessHostname } from "@t3tools/shared/hostProcess";
+} from "@t3tools/baton-shared/spokenStatus";
+import { Hostname as HostProcessHostname } from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { getFleet } from "./FleetQuery.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonIntentExecutor, type IntentExecution } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
+import { BatonEngine } from "./BatonEngine.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 const done = (reply: string, workSessionId: WorkSessionId | null = null): IntentExecution => ({
@@ -62,14 +62,11 @@ export const make = Effect.gen(function* () {
   const effects = yield* OrchestrationEffectsService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const hostname = yield* HostProcessHostname;
-  const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const engine = yield* BatonEngine;
   // Named rather than inferred: `Effect.Effect.Context<...>` resolves to `any`
   // here and takes the requirement channel of every caller with it.
   const fleetContext = yield* Effect.context<
-    | WorkSessionService
-    | AdoptedSessionService
-    | ProjectionSnapshotQuery.ProjectionSnapshotQuery
-    | ProviderRegistry.ProviderRegistry
+    WorkSessionService | AdoptedSessionService | BatonEngine | ProviderRegistry.ProviderRegistry
   >();
 
   const hostLabel = hostname.split(".")[0]?.trim() ?? hostname;
@@ -98,7 +95,7 @@ export const make = Effect.gen(function* () {
   );
 
   const projectLabels = Effect.map(
-    snapshotQuery.getProjectShells().pipe(Effect.catchCause(() => Effect.succeed([]))),
+    engine.projects,
     (projects) => new Map(projects.map((project) => [project.id as string, project.title])),
   );
 
@@ -234,6 +231,29 @@ export const make = Effect.gen(function* () {
           if (workSession === null) {
             return failed("That work is gone.", command.workSessionId);
           }
+          // §6.1 through upstream: the active thread switches provider and keeps its history
+          // (D80). With no thread running, the work gets a fresh one on that account.
+          if (workSession.activeThreadId !== null) {
+            const switched = yield* engine
+              .switchProvider({
+                tag: "intent",
+                threadId: workSession.activeThreadId,
+                modelSelection: {
+                  instanceId: command.providerInstanceId as never,
+                  model: command.model,
+                },
+              })
+              .pipe(
+                Effect.as(true),
+                Effect.catchCause(() => Effect.succeed(false)),
+              );
+            return switched
+              ? done(
+                  `Moved ${workSession.title} to ${command.providerInstanceId}.`,
+                  command.workSessionId,
+                )
+              : failed("That account could not take the work.", command.workSessionId);
+          }
           const threadId = yield* effects.startProviderSession({
             workSessionId: command.workSessionId,
             action: {
@@ -242,23 +262,7 @@ export const make = Effect.gen(function* () {
               model: command.model,
               role: "implementation",
               runtimeMode: "approval-required",
-              // §6.1: the new session starts from the capsule, not from nothing.
-              // The full checkpoint (dirty files) comes with baton.workSession.handoff.
-              prompt: buildHandoffCapsule({
-                workSession,
-                git: {
-                  branch: workSession.baseBranch,
-                  worktree: workSession.primaryWorktreePath,
-                  commit: null,
-                  dirtyFiles: [],
-                },
-                sourceThreadId: workSession.activeThreadId,
-                sourceProvider:
-                  workSession.providerSessions.find(
-                    (entry) => entry.threadId === workSession.activeThreadId,
-                  )?.providerInstanceId ?? null,
-                note: null,
-              }).text,
+              prompt: "",
               title: workSession.title,
             },
           });

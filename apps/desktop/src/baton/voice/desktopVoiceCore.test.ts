@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/no-test-timeout-or-unreasoned-skip, t3code/no-wall-clock-in-tests -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalConsole:off globalDate:off nodeBuiltinImport:off
 /**
  * The desktop's capture → core loop with the REAL core: the voice lane's
@@ -9,8 +10,8 @@
  */
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget } from "@t3tools/contracts";
-import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/shared/batonIntentParser";
+import type { BatonFocusTarget } from "@t3tools/baton-contracts";
+import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

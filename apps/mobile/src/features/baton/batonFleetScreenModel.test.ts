@@ -1,4 +1,4 @@
-import type { EnvironmentId, BatonFleetEntry, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId, BatonFleetEntry, ProjectId } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

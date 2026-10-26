@@ -1,0 +1,102 @@
+Subject: server: mount Baton's services, workers and fabric.* RPC group
+
+server.ts provides BatonServerLayer.services and starts BatonServerLayer.workers beside
+upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds its handlers and
+its own scope middleware (upstream's throws for methods its table does not list).
+
+diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
+index f461a99186b3172ea0eae963e61dc1cfadb1e320..f23455cdf5ad613ca7454462cfd9e94297c34a0b 100644
+--- a/apps/server/src/server.ts
++++ b/apps/server/src/server.ts
+@@ -4,6 +4,7 @@ import * as Random from "effect/Random";
+ import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
+ import * as StorageCleanup from "./storageCleanup.ts";
+ import * as PullRequestSyncReactor from "./orchestration-v2/PullRequestSyncReactor.ts";
++import * as BatonServerLayer from "./baton/BatonServerLayer.ts";
+ import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
+ import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
+ // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
+@@ -614,7 +615,10 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+   layerProviderInstallationRefresh,
+   ReplayMarkers.layer,
+   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
++  BatonServerLayer.workers,
+ ).pipe(
++  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
++  Layer.provideMerge(BatonServerLayer.services),
+   Layer.provideMerge(layerOrchestrationApplication),
+   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
+   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
+index e5696e6f5cd171b225f13e9930ef5d651ff1647a..e694f65dc941102b70413d6e3bfbf270811efa2e 100644
+--- a/apps/server/src/ws.ts
++++ b/apps/server/src/ws.ts
+@@ -228,6 +228,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+ import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
+ import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
++// Baton (vendor-patches/t3code/0002-server-hooks.patch): its own RPC group, handlers and scopes.
++import { BatonRpcGroup } from "@t3tools/baton-contracts";
++import * as BatonRpcAuthorization from "./baton/BatonRpcAuthorization.ts";
++import * as BatonRpcHandlers from "./baton/BatonRpcHandlers.ts";
+ import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
+ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
+ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
+@@ -555,13 +559,14 @@ function projectFileFailureContext(
+ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
+ 
+ // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
+-const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
++const UpstreamWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
++const ServerWsRpcGroup = UpstreamWsRpcGroup.merge(BatonRpcGroup.middleware(RpcInstrumentation));
+ 
+ // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
+ // the group, so its type cost grows with handlers × RPCs. Near 200 methods that
+ // crosses TypeScript's instantiation limit and the layer's requirements degrade to
+ // `any`, so the handlers are registered as two disjoint, smaller groups.
+-type ServerWsRpc = RpcGroup.Rpcs<typeof ServerWsRpcGroup>;
++type ServerWsRpc = RpcGroup.Rpcs<typeof UpstreamWsRpcGroup>;
+ const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
+ type SplitWsRpc = Extract<
+   ServerWsRpc,
+@@ -571,7 +576,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+   SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
+ const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
+   !isSplitWsRpc(rpc);
+-const serverWsRpcs = Array.from(ServerWsRpcGroup.requests.values());
++const serverWsRpcs = Array.from(UpstreamWsRpcGroup.requests.values());
+ const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
+ const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
+ // Replaying each intervening event costs a shell refetch; past this gap a
+@@ -1901,7 +1906,7 @@ export const layerWsRpc = (
+         return result;
+       });
+ 
+-      const handlers = ServerWsRpcGroup.of({
++      const handlers = UpstreamWsRpcGroup.of({
+         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
+           Effect.annotateCurrentSpan({
+             "orchestration_v2.command_id": command.commandId,
+@@ -3286,8 +3291,11 @@ export const layerWsRpc = (
+       const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
+         handlers;
+       return Context.merge(
+-        yield* SplitWsRpcGroup.toHandlers(splitHandlers),
+-        yield* OtherWsRpcGroup.toHandlers(otherHandlers),
++        Context.merge(
++          yield* SplitWsRpcGroup.toHandlers(splitHandlers),
++          yield* OtherWsRpcGroup.toHandlers(otherHandlers),
++        ),
++        yield* BatonRpcHandlers.make,
+       );
+     }),
+   );
+@@ -3361,7 +3369,7 @@ export const layer = Layer.unwrap(
+                         })
+                         .pipe(Effect.ignore);
+                 }),
+-                rpcInstrumentationLayer,
++                Layer.merge(rpcInstrumentationLayer, BatonRpcAuthorization.layer(session.scopes)),
+               ),
+             ),
+             Effect.forkScoped,

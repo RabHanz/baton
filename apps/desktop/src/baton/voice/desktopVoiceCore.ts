@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * The real voice core (`@t3tools/baton-voice`) behind the desktop's
@@ -11,7 +12,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget, BatonIntentResolution } from "@t3tools/contracts";
+import type { BatonFocusTarget, BatonIntentResolution } from "@t3tools/baton-contracts";
 import {
   createOpenWakeWordProvider,
   createOsTts,
@@ -26,8 +27,8 @@ import {
   applyContextSnapshot,
   emptyContextBus,
   type ContextBusState,
-} from "@t3tools/shared/batonContextBus";
-import type { TextInjectionAdapter } from "@t3tools/shared/batonInjection";
+} from "@t3tools/baton-shared/contextBus";
+import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
 
 export const VOICE_MODEL_FILES = [
   "melspectrogram.onnx",

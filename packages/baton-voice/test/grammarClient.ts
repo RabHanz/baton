@@ -3,7 +3,7 @@
  * same fast path IntentService runs before any model. Records every call so a
  * test can assert what left the client and what did not.
  */
-import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/shared/batonIntentParser";
+import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 
 import type { VoiceIntentClient } from "../src/router.ts";
 

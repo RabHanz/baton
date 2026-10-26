@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * openWakeWord (wake) and Silero (VAD) on onnxruntime-node. Both are
  * synchronous per frame from the pipeline's point of view: ORT's `run` is

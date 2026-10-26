@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The environment's own answer to "what is everything doing?".
  *
@@ -17,19 +18,19 @@ import {
   ProviderDriverKind,
   type BatonFleet,
   type BatonFleetAdopted,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import {
   buildBatonFleet,
   filterFleetNeedsUser,
   type FleetThreadInput,
-} from "@t3tools/shared/batonFleet";
+} from "@t3tools/baton-shared/fleet";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
+import { BatonEngine, batonStateInputFromShell } from "./BatonEngine.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
@@ -53,7 +54,7 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
   readonly needsUserOnly?: boolean | undefined;
 }) {
   const workSessions = yield* WorkSessionService;
-  const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const engine = yield* BatonEngine;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const adoptedSessions = yield* AdoptedSessionService;
 
@@ -61,25 +62,22 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     input.includeArchived === undefined ? {} : { includeArchived: input.includeArchived },
   );
 
-  const shell = yield* snapshotQuery
-    .getShellSnapshot()
-    .pipe(Effect.catchCause(() => Effect.succeed(null)));
-
   const threads = new Map<string, FleetThreadInput>();
-  for (const thread of shell?.threads ?? []) {
+  for (const thread of yield* engine.threadShells) {
+    const state = batonStateInputFromShell(thread);
     threads.set(thread.id, {
       threadId: thread.id,
       title: thread.title,
       branch: thread.branch,
       worktreePath: thread.worktreePath,
-      hasPendingApprovals: thread.hasPendingApprovals,
-      hasPendingUserInput: thread.hasPendingUserInput,
-      sessionStatus: thread.session?.status ?? null,
-      sessionLastError: thread.session?.lastError ?? null,
-      backgroundLiveness: thread.backgroundLiveness ?? null,
-      latestTurnState: thread.latestTurn?.state ?? null,
-      latestTurnCompletedAt: thread.latestTurn?.completedAt ?? null,
-      updatedAt: thread.updatedAt,
+      hasPendingApprovals: state.hasPendingApprovals,
+      hasPendingUserInput: state.hasPendingUserInput,
+      sessionStatus: state.sessionStatus,
+      sessionLastError: state.sessionLastError,
+      backgroundLiveness: state.backgroundLiveness,
+      latestTurnState: state.latestTurnState,
+      latestTurnCompletedAt: state.latestTurnCompletedAt,
+      updatedAt: state.updatedAt,
     });
   }
 

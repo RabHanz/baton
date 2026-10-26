@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalTimers:off nodeBuiltinImport:off
 /**
  * Dictation into whatever field has focus, through §18's "clipboard" rung of
@@ -9,7 +10,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 
-import type { TextInjectionAdapter } from "@t3tools/shared/batonInjection";
+import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
 
 export interface Clipboard {
   // Electron 44's clipboard is asynchronous; a plain object in a test is not.

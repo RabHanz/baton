@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-wall-clock-in-tests -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
  * The capture → core loop, headless: a WAV file is the microphone and a tiny

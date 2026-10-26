@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Where a notification about a work session should land.
  *

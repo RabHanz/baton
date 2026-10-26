@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * One entry per project across every box and account (D72).
  *
@@ -15,7 +16,7 @@ import type {
   ClaudeLiveSession,
   EnvironmentId,
   ProjectId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 
 export interface EnvironmentLive {
   readonly environmentId: EnvironmentId;

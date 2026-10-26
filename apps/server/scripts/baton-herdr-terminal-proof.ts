@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalConsole:off globalConsoleInEffect:off nodeBuiltinImport:off globalTimers:off preferSchemaOverJson:off
 /**
  * D61 live proof: a T3 terminal backed by a Herdr session outlives the process
@@ -12,7 +13,11 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeModule from "node:module";
 
-import { herdrTerminalSessionName, terminalShellCandidates } from "../src/terminal/Manager.ts";
+import {
+  herdrTerminalSessionName,
+  terminalShellCandidates,
+  type HerdrShellCandidate,
+} from "../src/baton/HerdrTerminal.ts";
 
 const require = NodeModule.createRequire(import.meta.url);
 const pty = require("node-pty") as typeof import("node-pty");
@@ -24,7 +29,7 @@ const [candidate] = terminalShellCandidates({
   runtime: "herdr",
   threadId,
   terminalId,
-  shells: [{ shell: "/bin/bash" }],
+  shells: [{ shell: "/bin/bash" } as HerdrShellCandidate],
 });
 if (candidate === undefined) throw new Error("no candidate");
 

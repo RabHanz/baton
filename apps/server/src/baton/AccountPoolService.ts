@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-em-dash-copy, t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * The accounts one config directory can run as, and moving between them.
  *
@@ -29,15 +31,16 @@ import {
   type BatonAccountRotation,
   type BatonAccountRotationReason,
   type WorkSessionId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import { collectStreamAsString } from "../provider/providerSnapshot.ts";
+import { collectStreamAsString } from "@t3tools/provider-core/server/snapshotProbe";
 
 /** cswap's `--json` contract, which carries its own `schemaVersion`. */
 const CswapUsageWindow = Schema.Struct({
