@@ -85,6 +85,8 @@ if [ "$rc" -ne 0 ]; then
 fi
 
 echo "==> Regenerating pnpm-lock.yaml"
+# A new pin can name a new Node or pnpm; install it first (idempotent, checksum-verified).
+bash scripts/baton/toolchain-install.sh > /dev/null
 # shellcheck source=toolchain.sh
 source scripts/baton/toolchain.sh
 nice -n 10 pnpm install --lockfile-only --silent
