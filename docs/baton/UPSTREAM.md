@@ -6,17 +6,17 @@ tree, and how to get real test data without touching a live install.
 
 ## Fork point
 
-|                         |                                                                      |
-| ----------------------- | -------------------------------------------------------------------- |
-| Fork                    | `github.com/RabHanz/baton`                                           |
-| Upstream                | `github.com/pingdotgg/t3code`                                        |
-| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                           |
-| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)`          |
-| Commit date             | 2026-09-17 14:03:01 -0700                                            |
-| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                                |
-| Fork created            | 2026-09-17 ~21:50Z                                                   |
-| Baton work begins       | 2026-09-18                                                           |
-| **Upstream pin now**    | `e762f09e26` (2026-10-26, the v2 engine), ported as `0.1.2-baton.22` |
+|                         |                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| Fork                    | `github.com/RabHanz/baton`                                                           |
+| Upstream                | `github.com/pingdotgg/t3code`                                                        |
+| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                                           |
+| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)`                          |
+| Commit date             | 2026-09-17 14:03:01 -0700                                                            |
+| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                                                |
+| Fork created            | 2026-09-17 ~21:50Z                                                                   |
+| Baton work begins       | 2026-09-18                                                                           |
+| **Upstream pin now**    | `vendor-patches/t3code/PIN`, moved daily by `auto-sync.sh` (v2 port at `e762f09e26`) |
 
 The fork carried no Baton code at that point; it was a clean mirror of upstream `main`.
 The pin is the last upstream commit before the v2 orchestrator (`de3439142`); see
