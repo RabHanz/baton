@@ -44,6 +44,47 @@ export const mapHerdrState = (runtimeState: string): FabricSessionState | null =
 export const KNOWN_HERDR_STATES: ReadonlyArray<string> = Object.keys(HERDR_STATES);
 
 /**
+ * Herdr's word for "there is no agent here that I can classify".
+ *
+ * Every pane carries an `agent_status`, and a plain shell — one running a
+ * build, a `tail -f`, or nothing at all — reports `unknown`. Verified against
+ * Herdr 0.9.1 on the box, not assumed.
+ */
+export const HERDR_UNCLASSIFIED = "unknown";
+
+/**
+ * A pane's state, which is a different question from an agent's.
+ *
+ * D38 refuses a word Fabric does not know, and that stays: a later Herdr saying
+ * "compacting" must not quietly become `idle`. But `unknown` is not that case.
+ * It is the answer for every terminal that is not a recognised agent — the
+ * infrastructure terminals and test watchers this contract was written to adopt
+ * — and refusing it would leave them permanently un-adoptable, which is the
+ * opposite of what §9 asks for.
+ *
+ * So `unknown` falls through to another fact Herdr reports rather than to a
+ * guess: whether the pane has a foreground process.
+ *
+ *   - something running → `monitoring`. Not `working`, which would claim an
+ *     agent is taking a turn, and not `idle`, which would sort a live terminal
+ *     to the bottom of the fleet. §10 already uses `monitoring` for a watch
+ *     loop, and an unclassified live terminal is exactly that.
+ *   - a bare prompt → `idle`, which is simply true.
+ *
+ * Neither answer is in `FABRIC_STATES_NEEDING_USER`. An adopted terminal never
+ * raises "needs me" on an inference; only Herdr saying `blocked` does that.
+ */
+export const mapHerdrPaneState = (input: {
+  readonly agentStatus: string;
+  readonly hasForegroundProcess: boolean;
+}): FabricSessionState | null => {
+  const agentState = mapHerdrState(input.agentStatus);
+  if (agentState !== null) return agentState;
+  if (input.agentStatus.trim().toLowerCase() !== HERDR_UNCLASSIFIED) return null;
+  return input.hasForegroundProcess ? "monitoring" : "idle";
+};
+
+/**
  * What Fabric assumes an adopted session can do when its runtime says nothing.
  *
  * Deliberately the least: a runtime has to claim a capability before Fabric

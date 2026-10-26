@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsoleInEffect:off globalConsole:off globalDateInEffect:off preferSchemaOverJson:off
 /**
  * Run the session listing against this machine's real transcripts and the real
  * project rows, and print what presence would show.
@@ -12,7 +13,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ProjectId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeSqlite from "node:sqlite";
 
 import * as ServerConfig from "../src/config.ts";
 import * as ProjectionSnapshotQuery from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -23,7 +24,7 @@ const USERDATA = `${process.env["HOME"]}/.t3/userdata/state.sqlite`;
 
 /** The live project rows, read straight out of the running server's database. */
 const readProjects = () => {
-  const db = new DatabaseSync(USERDATA, { readOnly: true });
+  const db = new NodeSqlite.DatabaseSync(USERDATA, { readOnly: true });
   try {
     return db
       .prepare(
@@ -45,7 +46,7 @@ const readProjects = () => {
 };
 
 const readThreadIds = () => {
-  const db = new DatabaseSync(USERDATA, { readOnly: true });
+  const db = new NodeSqlite.DatabaseSync(USERDATA, { readOnly: true });
   try {
     return db
       .prepare("select thread_id from projection_threads where deleted_at is null")

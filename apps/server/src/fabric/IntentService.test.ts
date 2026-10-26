@@ -183,6 +183,12 @@ const baseLayer = (
                   delivered: false,
                   detail: "herdr is not installed on this environment.",
                 }),
+              readOutput: () =>
+                Effect.succeed({
+                  available: false,
+                  detail: "herdr is not installed on this environment.",
+                  output: "",
+                }),
             }),
           ),
         ),

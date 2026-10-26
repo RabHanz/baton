@@ -3999,6 +3999,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, adopted.sendInput(input), {
             "rpc.aggregate": "fabric",
           }),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput]: (input) =>
+          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput, adopted.readOutput(input), {
+            "rpc.aggregate": "fabric",
+          }),
         [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>
           observeRpcStream(
             FABRIC_WS_METHODS.subscribeWorkSessions,
