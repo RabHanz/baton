@@ -106,6 +106,7 @@ import * as BatonIntentService from "./baton/IntentService.ts";
 import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
 import { herdrSend } from "./baton/HerdrSend.ts";
+import { liveAdopt, liveAttach } from "./baton/LiveActions.ts";
 import * as WorkSessionService from "./baton/WorkSessionService.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -3838,6 +3839,15 @@ const makeWsRpcLayer = (
         // creating anything; once the thread exists, a failure detaches it and
         // gives the active slot back, so the work is never left between two.
         // Baton patch point (D68): one-field send to a Herdr pane.
+        // Baton patch point (D73, D74): file into a session, adopt into Herdr.
+        [BATON_LIVE_WS_METHODS.liveAttach]: (input) =>
+          observeRpcEffect(BATON_LIVE_WS_METHODS.liveAttach, liveAttach(adopted, input), {
+            "rpc.aggregate": "fabric",
+          }),
+        [BATON_LIVE_WS_METHODS.liveAdopt]: (input) =>
+          observeRpcEffect(BATON_LIVE_WS_METHODS.liveAdopt, liveAdopt(input), {
+            "rpc.aggregate": "fabric",
+          }),
         [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
           observeRpcEffect(BATON_LIVE_WS_METHODS.herdrSend, herdrSend(adopted, input), {
             "rpc.aggregate": "baton",

@@ -409,6 +409,7 @@ export const toCandidate = (input: {
     // Without it a pane Herdr could not classify is discoverable and not
     // adoptable, which is most of the terminals §9 is for.
     foreground: input.foreground,
+    cwd: input.pane.cwd,
     state: mapHerdrPaneState({
       agentStatus: runtimeState,
       hasForegroundProcess: input.foreground !== null,

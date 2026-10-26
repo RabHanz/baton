@@ -230,6 +230,10 @@ import {
 } from "./baton/workSession.ts";
 import {
   BATON_LIVE_WS_METHODS,
+  BatonLiveAdoptInput,
+  BatonLiveAdoptResult,
+  BatonLiveAttachInput,
+  BatonLiveAttachResult,
   BatonHerdrSendInput,
   BatonHerdrSendResult,
 } from "./baton/liveSessions.ts";
@@ -1541,6 +1545,18 @@ const WsBatonWorkSessionHandoffRpc = Rpc.make(BATON_HANDOFF_WS_METHODS.workSessi
   ]),
 });
 
+const WsBatonLiveAttachRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAttach, {
+  payload: BatonLiveAttachInput,
+  success: BatonLiveAttachResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonLiveAdoptRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAdopt, {
+  payload: BatonLiveAdoptInput,
+  success: BatonLiveAdoptResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
   payload: BatonHerdrSendInput,
   success: BatonHerdrSendResult,
@@ -1836,6 +1852,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsBatonWorkSessionStartThreadRpc,
   WsBatonWorkSessionHandoffRpc,
   WsBatonHerdrSendRpc,
+  WsBatonLiveAttachRpc,
+  WsBatonLiveAdoptRpc,
   WsBatonWorkSessionSettleRpc,
   WsBatonWorkSessionUnsettleRpc,
   WsBatonWorkSessionArchiveRpc,

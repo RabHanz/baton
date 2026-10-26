@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
  * The capture → core loop, headless: a WAV file is the microphone and a tiny
  * energy segmenter stands in for the voice core, which is another lane's.

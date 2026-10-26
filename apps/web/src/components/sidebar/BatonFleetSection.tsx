@@ -9,7 +9,12 @@
  * client renders; it does not decide what "working" means.
  */
 import { type ReactNode, useState } from "react";
-import type { EnvironmentId, BatonFleetEntry, ProjectId } from "@t3tools/contracts";
+import type {
+  BatonFleetEntry,
+  BatonProjectRef,
+  EnvironmentId,
+  ProjectId,
+} from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -24,7 +29,7 @@ import { useNowMinute } from "../../hooks/useNowMinute";
 import { focusedWorkSessionFromThreads } from "../../batonContextView";
 import { useFleet } from "../../state/batonWorkSessions";
 import { BatonContinueWith, type HandoffTarget } from "./BatonContinueWith";
-import { BatonLiveSessions } from "./BatonLiveSessions";
+import { BatonProjects } from "./BatonProjects";
 import { BatonIntentBar } from "./BatonIntentBar";
 
 export interface BatonFleetSectionProps {
@@ -40,6 +45,16 @@ export interface BatonFleetSectionProps {
     projectId: ProjectId,
   ) => string | null;
   readonly onSelectWorkSession: (environmentId: EnvironmentId, entry: BatonFleetEntry) => void;
+  /** The project a T3 work session belongs to, the same key live sessions use (D72). */
+  readonly resolveWorkProject?: (
+    environmentId: EnvironmentId,
+    projectId: ProjectId,
+  ) => BatonProjectRef | null;
+  /** The account behind a work session's active thread. */
+  readonly resolveWorkAccount?: (
+    environmentId: EnvironmentId,
+    entry: BatonFleetEntry,
+  ) => string | null;
   /** Provider instances a work session can be handed to (D62). */
   readonly listHandoffTargets?: (environmentId: EnvironmentId) => ReadonlyArray<HandoffTarget>;
   /** Bumped after a sentence runs, so the intent log re-reads. */
@@ -56,7 +71,9 @@ export function BatonFleetSection(props: BatonFleetSectionProps): ReactNode {
       data-testid="sidebar-fleet"
       className="flex flex-col gap-px border-b border-sidebar-border pb-2"
     >
-      {props.environmentIds.map((environmentId) => (
+      {/* One input, addressed to the primary environment; the sessions below
+          are one surface across every environment (D72). */}
+      {props.environmentIds.slice(0, 1).map((environmentId) => (
         <EnvironmentFleet
           key={environmentId}
           environmentId={environmentId}
@@ -65,6 +82,18 @@ export function BatonFleetSection(props: BatonFleetSectionProps): ReactNode {
           {...props}
         />
       ))}
+      {props.resolveWorkProject === undefined || props.resolveWorkAccount === undefined ? null : (
+        <BatonProjects
+          environmentIds={props.environmentIds}
+          resolveEnvironmentLabel={props.resolveEnvironmentLabel}
+          resolveWorkProject={props.resolveWorkProject}
+          resolveWorkAccount={props.resolveWorkAccount}
+          onSelectWorkSession={props.onSelectWorkSession}
+          {...(props.listHandoffTargets === undefined
+            ? {}
+            : { listHandoffTargets: props.listHandoffTargets })}
+        />
+      )}
     </div>
   );
 }
@@ -76,7 +105,7 @@ function EnvironmentFleet(
     readonly onToggleNeedsUser: (next: boolean) => void;
   },
 ): ReactNode {
-  const { entries, herdr, claude } = useFleet(props.environmentId);
+  const { entries } = useFleet(props.environmentId);
   // Staleness is a clock, so it needs a ticking one rather than a reading taken
   // during render: `Date.now()` here would freeze the moment a row last
   // rendered, and a synopsis would never *become* stale on screen.
@@ -111,7 +140,8 @@ function EnvironmentFleet(
       />
       {/* No work yet still gets the input: "start work on X" is exactly the
           sentence someone types into an empty fleet. */}
-      {entries.length === 0 ? null : (
+      {/* Without the project surface (an older caller), the per-environment list stays. */}
+      {entries.length === 0 || props.resolveWorkProject !== undefined ? null : (
         <FleetList
           {...props}
           rows={rows}
@@ -120,7 +150,6 @@ function EnvironmentFleet(
           onToggleNeedsUser={props.onToggleNeedsUser}
         />
       )}
-      <BatonLiveSessions environmentId={props.environmentId} herdr={herdr} claude={claude} />
     </div>
   );
 }
