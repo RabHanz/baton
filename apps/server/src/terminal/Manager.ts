@@ -560,6 +560,45 @@ function uniqueShellCandidates(candidates: Array<ShellCandidate | null>): ShellC
   return ordered;
 }
 
+/**
+ * Fabric (D61): a T3 terminal can be a client of a named Herdr session instead
+ * of owning its shell, so the shell and everything under it outlive a T3
+ * restart, a deploy or an OOM — the property tmux was kept around for. The PTY
+ * T3 holds is only `herdr --session <name>`; reopening the terminal re-attaches.
+ *
+ * shortcut: chosen by an environment variable rather than a setting, because
+ * it is a per-machine fact (is Herdr installed here); upgrade to a settings
+ * toggle when a client exposes it.
+ */
+export const FABRIC_TERMINAL_RUNTIME_ENV = "T3CODE_FABRIC_TERMINAL_RUNTIME";
+
+/** Herdr session names are directory names; keep them short and portable. */
+export function herdrTerminalSessionName(threadId: string, terminalId: string): string {
+  const clean = (value: string) => value.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `t3-${clean(threadId).slice(0, 40)}-${clean(terminalId).slice(0, 20)}`;
+}
+
+/**
+ * The spawn candidates for a terminal. With Herdr on, Herdr first and the
+ * ordinary shells after it, so a machine without the binary still gets a
+ * terminal rather than an error.
+ */
+export function terminalShellCandidates(input: {
+  readonly runtime: string | undefined;
+  readonly threadId: string;
+  readonly terminalId: string;
+  readonly shells: ReadonlyArray<ShellCandidate>;
+}): ReadonlyArray<ShellCandidate> {
+  if (input.runtime !== "herdr") return input.shells;
+  return [
+    {
+      shell: "herdr",
+      args: ["--session", herdrTerminalSessionName(input.threadId, input.terminalId)],
+    },
+    ...input.shells,
+  ];
+}
+
 function resolveShellCandidates(
   shellResolver: () => string,
   platform: NodeJS.Platform,
@@ -2222,7 +2261,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
         Effect.andThen(
           Effect.gen(function* () {
-            const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
+            const shellCandidates = terminalShellCandidates({
+              runtime: baseEnv[FABRIC_TERMINAL_RUNTIME_ENV],
+              threadId: session.threadId,
+              terminalId: session.terminalId,
+              shells: resolveShellCandidates(shellResolver, platform, baseEnv),
+            });
             const terminalEnv = createTerminalSpawnEnv(baseEnv, session.runtimeEnv);
             const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
             ptyProcess = spawnResult.process;
@@ -2327,6 +2371,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     if (Option.isSome(session)) {
       yield* stopProcess(session.value);
       yield* unregisterTerminal({ threadId, terminalId });
+      // Closing is the user ending the terminal, so the Herdr session that kept
+      // it alive across restarts ends too. A missing binary or session is fine.
+      if (baseEnv[FABRIC_TERMINAL_RUNTIME_ENV] === "herdr") {
+        const name = herdrTerminalSessionName(threadId, terminalId);
+        for (const verb of ["stop", "delete"]) {
+          yield* processRunner
+            .run({ command: "herdr", args: ["session", verb, name], timeout: "10 seconds" })
+            .pipe(Effect.ignore);
+        }
+      }
       yield* persistHistory(threadId, terminalId, session.value.history);
     }
 

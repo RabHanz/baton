@@ -16,6 +16,7 @@
  * engine. One place creates threads, whatever asked for them.
  */
 import {
+  buildHandoffCapsule,
   type FabricFleetEntry,
   type FabricIntentCommand,
   type OrchestrationRuleId,
@@ -241,7 +242,23 @@ export const make = Effect.gen(function* () {
               model: command.model,
               role: "implementation",
               runtimeMode: "approval-required",
-              prompt: "",
+              // §6.1: the new session starts from the capsule, not from nothing.
+              // The full checkpoint (dirty files) comes with fabric.workSession.handoff.
+              prompt: buildHandoffCapsule({
+                workSession,
+                git: {
+                  branch: workSession.baseBranch,
+                  worktree: workSession.primaryWorktreePath,
+                  commit: null,
+                  dirtyFiles: [],
+                },
+                sourceThreadId: workSession.activeThreadId,
+                sourceProvider:
+                  workSession.providerSessions.find(
+                    (entry) => entry.threadId === workSession.activeThreadId,
+                  )?.providerInstanceId ?? null,
+                note: null,
+              }).text,
               title: workSession.title,
             },
           });
