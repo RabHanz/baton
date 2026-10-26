@@ -66,10 +66,12 @@ const rows = page.locator('[data-testid="sidebar-baton-session"]');
 console.log(`rows: ${await rows.count()}`);
 for (const spec of sends) {
   const at = spec.indexOf("=");
-  // The composer is labelled "Send to <session title>".
-  const input = page
-    .locator(`[data-testid="sidebar-baton-send-input"][aria-label*="${spec.slice(0, at)}"]`)
-    .first();
+  // One composer serves the selected session: select the row, then type.
+  await rows
+    .filter({ hasText: spec.slice(0, at) })
+    .first()
+    .click();
+  const input = page.locator('[data-testid="sidebar-baton-send-input"]').first();
   await input.fill(spec.slice(at + 1));
   await input.press("Enter");
   await page.getByText("Sent", { exact: true }).first().waitFor({ timeout: 20_000 });

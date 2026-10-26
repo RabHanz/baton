@@ -1,29 +1,24 @@
 #!/usr/bin/env bash
-# Disable the inherited upstream workflows that deploy or publish with upstream's
-# secrets. Done through the GitHub API, not by editing the workflow files, so the
-# files stay byte-identical to upstream and never conflict on a sync. Idempotent;
-# upstream-sync.sh runs it after every merge. CI and the checks stay enabled.
+# Disable every inherited upstream workflow except a short allowlist, through the GitHub API so
+# the files stay byte-identical to upstream. Upstream's workflows either run on Blacksmith runners
+# this repository does not have (they queue forever, D77) or deploy and publish with upstream's
+# secrets. An allowlist rather than a denylist, so a workflow upstream adds later is off by default.
+# Idempotent; upstream-sync.sh runs it after every sync.
 set -euo pipefail
 
 repo="${BATON_REPO:-RabHanz/baton}"
-disable=(
-  cursor-hygiene-webhook.yml        # forwards events to Cursor with upstream's token
-  deploy-relay.yml                  # deploys the T3 Connect relay
-  desktop-macos-preview-publish.yml # signs and publishes macOS previews
-  mobile-eas-preview.yml            # EAS builds on upstream's Expo account
-  mobile-eas-production.yml         # EAS production submit
-  publish-aur.yml                   # pushes the AUR package
-  release.yml                       # nightly/latest release, Discord, Cloudflare
-  release-desktop.yml               # called by release.yml; signing secrets
-  web-preview.yml                   # Vercel previews
-  pr-vouch.yml                      # upstream's contributor vouching bot
+keep=(
+  baton.yml      # Baton's patch-series check, GitHub-hosted
+  pr-size.yml    # labels PR size, GitHub-hosted, no secrets
+  issue-labels.yml
 )
 
-for wf in "${disable[@]}"; do
-  state="$(gh api "repos/$repo/actions/workflows/$wf" -q .state 2>/dev/null || echo missing)"
-  case "$state" in
-    active) gh workflow disable "$wf" -R "$repo" && echo "disabled $wf" ;;
-    missing) echo "absent   $wf" ;;
-    *) echo "already  $wf ($state)" ;;
-  esac
-done
+gh api "repos/$repo/actions/workflows" --paginate --jq '.workflows[] | "\(.state) \(.path)"' |
+  while read -r state path; do
+    file="$(basename "$path")"
+    if printf '%s\n' "${keep[@]}" | grep -qxF "$file"; then
+      echo "keep     $file ($state)"
+    elif [ "$state" = active ]; then
+      gh workflow disable "$file" -R "$repo" > /dev/null && echo "disabled $file"
+    fi
+  done
