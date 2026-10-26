@@ -103,16 +103,17 @@ Baton logic lives in `apps/server/src/baton/`, `packages/contracts/src/baton/`,
 `apps/web/src/components/sidebar/Baton*`, `scripts/baton/`. These are the only lines it adds to
 files upstream owns; each is an isolated insertion:
 
-| File                                                     | Hook                                                                              |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `apps/server/src/ws.ts`                                  | method imports; the `fabric.workSession.handoff` and `fabric.herdr.send` handlers |
-| `apps/server/src/server.ts`                              | `BatonAccountRotationReactor.layer` in `ReactorLayerLive`                         |
-| `apps/server/src/auth/RpcAuthorization.ts`               | scopes for the two methods above                                                  |
-| `apps/server/src/terminal/Manager.ts`                    | `terminalShellCandidates` + the Herdr close in `closeSession` (D61)               |
-| `packages/contracts/src/rpc.ts`, `index.ts`              | the two Rpc definitions and the exports                                           |
-| `packages/client-runtime/src/state/batonWorkSessions.ts` | `handoff`, `herdrSend` commands                                                   |
-| `apps/web/src/components/sidebar/BatonIntentBar.tsx`     | `id="fabric-intent-input"` (D64)                                                  |
-| `third-party-licenses.config.json`                       | `packageOverrides` for `onnxruntime-node`/`-common` (desktop voice, D66)          |
+| File                                                     | Hook                                                                                                |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `apps/server/src/ws.ts`                                  | method imports; the `fabric.workSession.handoff` and `fabric.herdr.send` handlers                   |
+| `apps/server/src/server.ts`                              | `BatonAccountRotationReactor.layer` in `ReactorLayerLive`                                           |
+| `apps/server/src/auth/RpcAuthorization.ts`               | scopes for the two methods above                                                                    |
+| `apps/server/src/terminal/Manager.ts`                    | `terminalShellCandidates` + the Herdr close in `closeSession` (D61)                                 |
+| `packages/contracts/src/rpc.ts`, `index.ts`              | the two Rpc definitions and the exports                                                             |
+| `packages/client-runtime/src/state/batonWorkSessions.ts` | `handoff`, `herdrSend` commands                                                                     |
+| `apps/web/src/components/Sidebar.tsx`                    | `resolveBatonWorkProject`, `resolveBatonWorkAccount` and their two props on the Baton section (D72) |
+| `apps/web/src/components/sidebar/BatonIntentBar.tsx`     | `id="fabric-intent-input"` (D64)                                                                    |
+| `third-party-licenses.config.json`                       | `packageOverrides` for `onnxruntime-node`/`-common` (desktop voice, D66)                            |
 
 The Fabric → Baton rename (D71) touched only lines Baton already owned in these files. The
 license overrides are the one new entry: the voice core's `onnxruntime-*` ship no license file,

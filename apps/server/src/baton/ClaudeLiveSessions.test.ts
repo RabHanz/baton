@@ -33,6 +33,7 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
     expect(parseClaudeSessionDescriptor(descriptor({ kind: "print" }), live)).toBeNull();
     expect(parseClaudeSessionDescriptor(descriptor(), { ...live, alive: () => false })).toBeNull();
     expect(parseClaudeSessionDescriptor("{nope", live)).toBeNull();
+    expect(parseClaudeSessionDescriptor(descriptor({ entrypoint: "sdk-cli" }), live)).toBeNull();
   });
 
   it("knows which Herdr pane a session lives in", () => {

@@ -29,8 +29,11 @@ export const projectRefFor = (cwd: string): Effect.Effect<BatonProjectRef> =>
       .resolve(cwd)
       .pipe(Effect.catchCause(() => Effect.succeed(null)));
     if (identity === null) return folderProjectRef(cwd);
+    // The checkout's own folder name keeps its capitals ("VentureOS", not "ventureos").
+    const folder = folderProjectRef(cwd).label;
+    const name = identity.name ?? identity.displayName ?? folder;
     return {
       key: identity.canonicalKey,
-      label: identity.name ?? identity.displayName ?? folderProjectRef(cwd).label,
+      label: name.toLowerCase() === folder.toLowerCase() ? folder : name,
     };
   });
