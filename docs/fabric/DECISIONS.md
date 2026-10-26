@@ -1786,3 +1786,33 @@ that has none.
 The read is bounded (1–2000 lines, 200 by default) and asks Herdr for
 `recent-unwrapped`, because a transcript line a soft wrap split in two is one
 line of work, and reading it as two is how a log stops being searchable.
+
+---
+
+## D61 — T3's terminal is a Herdr session client, by machine
+
+**Decided** 2026-10-26, closing D58's first gap. With `T3CODE_FABRIC_TERMINAL_RUNTIME=herdr` in the
+service environment, the terminal manager spawns `herdr --session t3-<thread>-<terminal>` instead
+of a shell, with the ordinary shells behind it as fallbacks. The PTY T3 owns is only a Herdr client;
+the shell and its children belong to Herdr's own server, so a T3 restart, deploy or OOM takes the
+client and not the work. Reopening the terminal runs the same command and re-attaches. An explicit
+close stops and deletes the session, because closing is the user ending it.
+
+Proven live (`apps/server/scripts/fabric-herdr-terminal-proof.ts`, herdr 0.9.5): `sleep 7777` in the
+pane, the pty killed with SIGKILL, the process still alive, the re-attach seeing the same pid, and
+after the close path the process gone and the session unlisted.
+
+Rejected: a setting in `settings.json` (a per-machine fact, and no client renders it yet; upgrade
+when one does); wrapping T3's provider processes in Herdr (§9 principle 1).
+
+## D62 — Handoff to another instance is a capsule plus a new thread in the same worktree
+
+**Decided** 2026-10-26. `fabric.workSession.handoff` implements §6.1 for every move in-place
+rotation (D56/D57) cannot make: another driver, another config directory. It refuses before
+creating anything (same instance: rotate instead; not configured; not signed in), reads the
+checkout's branch and dirty files, builds the capsule from the work session and its capped
+synopsis (`buildHandoffCapsule`, pure and tested), creates the thread in the same worktree,
+attaches it active, sends the capsule as the first turn, and only then closes the previous thread
+onto the timeline. A failure after the thread exists detaches it and restores the previous active
+thread. The resume intent ("continue X with Codex") now starts from the same capsule rather than
+an empty prompt. Not auto-triggered (§29 Phase 3: no silent switches in V1).
