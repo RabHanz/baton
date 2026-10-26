@@ -60,7 +60,7 @@ if [ "$tests" -eq 1 ]; then
     fi
     # Upstream's browser tests carry 15 s timeouts that a loaded box misses; a retry tells a
     # flake from a failure without hiding a test that fails every time.
-    [ "$pkg" = apps/web ] && extra+=(--retry 2)
+    [ "$pkg" = apps/web ] && extra+=(--retry 2 --maxWorkers 2)
     (cd "$pkg" && nice -n 10 pnpm -s test "${extra[@]}")
   done
 fi
