@@ -54,7 +54,7 @@ git reset --quiet --hard origin/main
 pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
 behind="$(git rev-list --count "$pin..upstream/main")"
 oldest_unsynced=""
-[ "$behind" -gt 0 ] && oldest_unsynced="$(git log --reverse --format=%ct "$pin..upstream/main" | head -1)"
+[ "$behind" -gt 0 ] && oldest_unsynced="$(git log --reverse --format=%ct "$pin..upstream/main" | sed -n 1p)"  # sed reads to the end: no SIGPIPE under pipefail
 age_days=0
 [ -n "$oldest_unsynced" ] && age_days=$(( ($(date +%s) - oldest_unsynced) / 86400 ))
 echo "pin $(git rev-parse --short "$pin"); upstream is $behind commits ahead; oldest unsynced is $age_days days old"
