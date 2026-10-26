@@ -152,6 +152,9 @@ fi
 
 git push --quiet -u origin "$branch"
 
+# A sync can bring new deploy/publish workflows; keep upstream's secrets-bound ones off.
+bash "$(dirname "$0")/disable-upstream-workflows.sh" || echo "warn: could not check upstream workflows"
+
 if [ "$open_pr" -eq 1 ] && command -v gh > /dev/null 2>&1; then
   gh pr create --base main --head "$branch" \
     --title "sync: upstream/main into the fork ($ahead commits)" \
