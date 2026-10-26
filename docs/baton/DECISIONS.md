@@ -2094,3 +2094,56 @@ internals that are not a package, and `contracts/rpc.ts` would import a package 
 rewrites every one of those imports against v2. So Phase A ships the series and the sync. The
 package split happens in Phase B as part of the rewrite, with the RPC group merged at the server and
 the client so contracts never import Baton.
+
+Done in Phase B as: `packages/baton-contracts` (the `fabric.*` schemas and `BatonRpcGroup`, plus a
+re-export of `@t3tools/contracts` so Baton files import one module) and `packages/baton-shared`
+(the pure logic and the client's work-session atoms). Server code stays in `apps/server/src/baton/`
+and web code in `apps/web/src/components/sidebar/Baton*`: both are new files, never patches, and
+moving them into packages would need upstream's apps to export internals they do not export.
+
+## D79 — Baton reaches upstream's engine through one service, `BatonEngine`
+
+Six Baton modules called the v1 engine directly, which is why the v2 move was a port rather than a
+merge. Now one file, `apps/server/src/baton/BatonEngine.ts`, holds every call into
+`orchestration-v2`: thread shells, projects, the domain-event stream, launching a thread (upstream's
+`ThreadLaunchService`), sending a message (`ThreadManagementService.sendToThread`), switching
+provider and settling (`provider.switch`, `thread.settle`). It also maps a v2 thread shell onto the
+§10 ladder (`batonStateInputFromShell`). The next engine change upstream makes is a change to this
+file. The model one-shots (D50, D51) run `claude -p --json-schema` through `BatonOneShot`, because
+upstream's text generation exposes only its own five operations; they run as the box's primary
+Claude home, which is the account cswap has active.
+
+## D80 — "Continue with…" is upstream's `provider.switch`; Baton's capsule is gone
+
+D62 moved work to another provider by starting a second thread seeded with a capsule. Upstream v2
+switches the provider on the same thread and carries the context with its own handoff service, so
+the thread keeps its id and history, and the work session keeps its thread. `fabric.workSession.handoff`
+keeps its name and refusals and now dispatches `provider.switch`; an optional note is sent as the
+first message on the new provider. The capsule schema and builder are deleted. Settling a work
+session also settles its threads in upstream, so T3's own sidebar agrees.
+
+Also adopted from upstream rather than ported (the plan's list): restart resume and waiting out a
+limit (upstream's recovery workers), large-transcript import and its UI (upstream's scanner and
+importer; Baton's import dialog, presence section and landing are deleted), the Claude usage-probe
+deadline (upstream bounds it). Kept as Baton's: account rotation (D63, D69), adoption and live
+sessions (D68, D73, D74), work sessions, rules, intents, synopsis, Herdr.
+
+## D81 — Herdr terminals stay a two-line hook, not a PtyAdapter
+
+The plan expected v2's `PtyAdapter` service to absorb D61. The adapter receives a shell, arguments,
+a cwd and an environment, but not the thread and terminal it serves, and upstream strips `T3CODE_*`
+variables from the terminal's environment. The Herdr session name has to be stable per terminal or
+a reopened terminal cannot re-attach. So `terminal/Manager.ts` keeps two hooks into
+`baton/HerdrTerminal.ts`: one wraps the spawn candidates, one ends the Herdr session on close.
+Upstream's own `survivesRestart` puts the terminal's process in a separate systemd slice, which
+keeps it alive across a restart but leaves nothing to re-attach to, so it does not replace Herdr.
+
+## D82 — Baton files that predate upstream's newer lint and Effect rules opt out per file
+
+Upstream's v2 tree enforces rules Baton's code predates: comments of at most four lines,
+`Effect.fn` for every generator, no manual memoisation and no effects in React files, no em dashes in
+copy. Bringing roughly 360 findings in 116 Baton files up to them is real work that would hold the
+port back. Each such file carries a first-line `oxlint-disable` (or `@effect-diagnostics`) naming
+the rules it is exempt from and pointing here. New Baton files follow upstream's rules. Phase C
+rewrites the web block from T3's components and drops those headers there; the server files lose
+theirs as they are next touched.

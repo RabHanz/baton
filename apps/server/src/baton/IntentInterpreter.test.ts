@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Which account reads a sentence.
  *
@@ -10,7 +11,7 @@
  */
 import { describe, expect, it } from "vite-plus/test";
 
-import type { IntentProvider, IntentVocabulary } from "@t3tools/shared/batonIntentParser";
+import type { IntentProvider, IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 
 import { chooseInterpreterInstance, INTENT_MODEL_SLUG } from "./IntentInterpreter.ts";
 

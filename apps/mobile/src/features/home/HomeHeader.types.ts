@@ -17,7 +17,5 @@ export interface HomeHeaderProps {
   readonly onProjectChange: (projectKey: string | null) => void;
   readonly onOpenEnvironments: () => void;
   readonly onOpenSettings: () => void;
-  /** The fleet: what every environment is doing, in one glance (§29 Phase 7). */
-  readonly onOpenBaton: () => void;
   readonly onStartNewTask: () => void;
 }

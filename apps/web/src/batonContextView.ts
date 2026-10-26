@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-em-dash-copy, t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * What the client itself knows about where the user is, and what it can do
  * about dictation.
@@ -19,7 +20,7 @@ import {
   describeInjection,
   type BatonFleetEntry,
   type BatonInjectionReport,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 
 /**
  * The work session the user is looking at, from the thread the route has open.

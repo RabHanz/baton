@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off - providers spawn OS binaries; the desktop calls this outside Effect.
 /**
  * STT and TTS providers. whisper.cpp runs as its `whisper-cli` binary (no

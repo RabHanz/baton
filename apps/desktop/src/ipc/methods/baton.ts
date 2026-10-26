@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Baton's desktop-side answers.
  *
@@ -11,7 +12,7 @@
  * available right now. The main process supplies the half the OS knows. Neither
  * half is invented.
  */
-import { BatonInjectionReport } from "@t3tools/contracts";
+import { BatonInjectionReport } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Electron from "electron";

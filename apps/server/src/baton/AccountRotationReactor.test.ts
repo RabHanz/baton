@@ -1,4 +1,4 @@
-import type { BatonAccount, BatonAccountPool } from "@t3tools/contracts";
+import type { BatonAccount, BatonAccountPool } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { respawnPlan } from "./HerdrRespawn.ts";

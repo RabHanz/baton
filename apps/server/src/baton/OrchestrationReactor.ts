@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * Evaluates orchestration rules, on the same events Phase 4's state derivation
  * reads.
@@ -29,17 +31,15 @@ import {
   type OrchestrationRuleId,
   type ThreadId,
   type WorkSessionId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { BatonEngine, batonStateInputFromShell } from "./BatonEngine.ts";
 import { forkParked } from "../serverActivation.ts";
 import { shouldFire } from "./OrchestrationRuleService.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
@@ -100,8 +100,7 @@ interface Pending {
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const engine = yield* BatonEngine;
   const workSessions = yield* WorkSessionService;
   const rules = yield* OrchestrationRuleService;
   const effects = yield* OrchestrationEffectsService;
@@ -120,29 +119,9 @@ export const make = Effect.gen(function* () {
       const live = workSession.providerSessions.filter((session) => session.detachedAt === null);
       const states: BatonSessionState[] = [];
       for (const providerSession of live) {
-        const shell = yield* snapshotQuery
-          .getThreadShellById(providerSession.threadId)
-          .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
-        const thread = Option.getOrNull(shell);
-        // The attachment outlived the thread. That is the domain's core
-        // invariant, not an error, and it contributes no state.
+        const thread = yield* engine.threadShell(providerSession.threadId);
         if (thread === null) continue;
-        states.push(
-          deriveBatonSessionState({
-            environmentOnline: true,
-            hasPendingApprovals: thread.hasPendingApprovals,
-            hasPendingUserInput: thread.hasPendingUserInput,
-            sessionStatus: thread.session?.status ?? null,
-            sessionLastError: thread.session?.lastError ?? null,
-            backgroundLiveness: thread.backgroundLiveness ?? null,
-            latestTurnState: thread.latestTurn?.state ?? null,
-            latestTurnCompletedAt: thread.latestTurn?.completedAt ?? null,
-            // The environment does not know when the user last looked; the
-            // rule only needs "a turn ended", which `done_unseen` gives.
-            lastVisitedAt: null,
-            providerQuotaExhausted: false,
-          }),
-        );
+        states.push(deriveBatonSessionState(batonStateInputFromShell(thread)));
       }
       return deriveWorkSessionState(states);
     });
@@ -281,43 +260,21 @@ export const make = Effect.gen(function* () {
   const start: BatonOrchestrationReactor["Service"]["start"] = Effect.fn(
     "BatonOrchestrationReactor.start",
   )(function* () {
-    const events = yield* engine.subscribeDomainEvents;
     yield* forkParked(
-      Stream.runForEach(events, (event) => {
-        const threadId = threadIdForEvent(event);
-        if (threadId === null) return Effect.void;
-        return workSessions.findForThread(threadId).pipe(
+      Stream.runForEach(engine.changedThreads, (threadId) =>
+        workSessions.findForThread(threadId).pipe(
           Effect.catchCause(() => Effect.succeed(null)),
           Effect.flatMap((workSessionId) =>
             workSessionId === null
               ? Effect.void
               : worker.enqueue({ workSessionId, changedThreadId: threadId }),
           ),
-        );
-      }),
+        ),
+      ),
     );
   });
 
   return { start, drain: worker.drain, evaluate } satisfies BatonOrchestrationReactor["Service"];
 });
-
-/**
- * The events that can change what a work session is doing. Deliberately the
- * same set Phase 4's state derivation reads from, because a rule must not fire
- * on a fact the fleet cannot see.
- */
-export function threadIdForEvent(event: { type: string; payload?: unknown }): ThreadId | null {
-  switch (event.type) {
-    case "thread.turn-diff-completed":
-    case "thread.session-set":
-    case "thread.activity-appended":
-    case "thread.message-sent": {
-      const payload = event.payload as { threadId?: ThreadId } | undefined;
-      return payload?.threadId ?? null;
-    }
-    default:
-      return null;
-  }
-}
 
 export const layer = Layer.effect(BatonOrchestrationReactor, make);

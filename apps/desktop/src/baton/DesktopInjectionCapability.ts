@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * What this desktop can honestly type into — §18, answered from the machine
  * rather than from hope.
@@ -14,11 +15,11 @@
  * `process` at call time: the interesting cases are other people's machines,
  * and the only way to test them here is to be handed their facts.
  */
-import type { BatonInjectionReport } from "@t3tools/contracts";
+import type { BatonInjectionReport } from "@t3tools/baton-contracts";
 import {
   describeInjectionCapabilities,
   type InjectionHostFacts,
-} from "@t3tools/shared/batonInjection";
+} from "@t3tools/baton-shared/injection";
 
 export interface DesktopHostEnvironment {
   /** `process.platform`. */

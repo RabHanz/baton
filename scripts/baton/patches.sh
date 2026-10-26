@@ -15,9 +15,9 @@
 #
 # Usage:
 #   patches.sh verify [<commit>]          <commit> (default HEAD) == PIN + series on upstream paths
-#   patches.sh refresh [--assign <patch> <path>...]
+#   patches.sh refresh [--assign <patch> <path>...]...
 #                                         rewrite every patch from the working tree; new upstream
-#                                         edits must be assigned to a patch once
+#                                         edits must be assigned to a patch once (repeatable)
 #   patches.sh rebase <upstream-commit>   move the working tree to a new pin and re-apply the
 #                                         series with --3way (exit 2 = conflicts left in the tree)
 #   patches.sh files [<patch>]            upstream paths a patch, or the whole series, touches
@@ -78,13 +78,19 @@ cmd_refresh() {
   while read -r p; do
     while read -r f; do owner["$f"]="$p"; done < <(patch_paths "$dir/$p")
   done < <(series)
-  if [ "${1:-}" = "--assign" ]; then
-    shift
-    local target="${1:?--assign needs a patch name}"
-    shift
-    series | grep -qxF "$target" || die "$target is not in $dir/series"
-    for f in "$@"; do owner["$f"]="$target"; done
-  fi
+  # --assign <patch> <path>... ; repeatable: --assign A a1 a2 --assign B b1
+  local target=""
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--assign" ]; then
+      target="${2:?--assign needs a patch name}"
+      series | grep -qxF "$target" || die "$target is not in $dir/series"
+      shift 2
+    else
+      [ -n "$target" ] || die "unexpected argument $1"
+      owner["$1"]="$target"
+      shift
+    fi
+  done
 
   # Upstream paths the working tree changes (added files are Baton's own and are excluded).
   local changed unassigned=()

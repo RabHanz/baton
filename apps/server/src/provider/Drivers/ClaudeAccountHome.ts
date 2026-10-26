@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * One Claude account's config directory: its credentials, everybody's
  * everything else.
@@ -24,14 +25,16 @@
  */
 import * as NodeOS from "node:os";
 
-import { type ClaudeSettings } from "@t3tools/contracts";
+import { type ClaudeSettings } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
-import { expandHomePath } from "../../pathExpansion.ts";
+import { expandHomePath as expandHomePathFrom } from "@t3tools/provider-core/server/pathExpansion";
+
+const expandHomePath = (value: string): string => expandHomePathFrom(value, NodeOS.homedir());
 
 /**
  * What belongs to the account and must never be shared.
@@ -340,3 +343,14 @@ export const materializeClaudeAccountHome = Effect.fn("materializeClaudeAccountH
     { discard: true },
   );
 });
+
+/**
+ * The one call upstream's Claude adapter makes (0004-claude-account-home.patch): resolve this
+ * instance's layout and materialise it. Never fails the adapter: a home that cannot be linked
+ * still runs, with the account's own files, and the reason is logged.
+ */
+export const materializeForConfig = (config: Pick<ClaudeSettings, "homePath">) =>
+  resolveClaudeAccountHomeLayout(config).pipe(
+    Effect.flatMap((layout) => materializeClaudeAccountHome(layout)),
+    Effect.ignoreCause({ log: true }),
+  );

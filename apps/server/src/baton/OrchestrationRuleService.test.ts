@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 import {
   OrchestrationRuleId,
   ProviderInstanceId,
@@ -5,13 +6,13 @@ import {
   WorkSessionId,
   type BatonSessionState,
   type OrchestrationRule,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   layer as ruleServiceLayer,
   OrchestrationRuleService,

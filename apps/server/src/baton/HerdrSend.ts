@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
 /**
  * One-field send to any Herdr pane the fleet shows (D68).
  *
@@ -11,8 +12,8 @@ import {
   AdoptedSessionId,
   type BatonHerdrSendInput,
   type BatonHerdrSendResult,
-} from "@t3tools/contracts";
-import { HERDR_CAPABILITIES } from "@t3tools/shared/batonAdoptedSession";
+} from "@t3tools/baton-contracts";
+import { HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
 import * as Effect from "effect/Effect";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";

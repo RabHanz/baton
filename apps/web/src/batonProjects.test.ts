@@ -3,7 +3,7 @@ import type {
   BatonFleetEntry,
   ClaudeLiveSession,
   EnvironmentId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildBatonProjects, type EnvironmentLive } from "./batonProjects";

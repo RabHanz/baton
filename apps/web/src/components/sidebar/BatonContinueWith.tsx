@@ -3,7 +3,7 @@
  * instance. The server builds the capsule, starts the thread in the same
  * worktree and closes the previous one onto the timeline.
  */
-import type { EnvironmentId, BatonFleetEntry, ProviderInstanceId } from "@t3tools/contracts";
+import type { EnvironmentId, BatonFleetEntry, ProviderInstanceId } from "@t3tools/baton-contracts";
 import { newThreadId } from "~/lib/utils";
 import { useState, type ReactNode } from "react";
 

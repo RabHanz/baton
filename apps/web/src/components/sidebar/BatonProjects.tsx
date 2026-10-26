@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-manual-memo, t3code/react-effect-budget -- Baton file predating upstream's rule (D82) */
 /**
  * The sidebar's one surface (D72): one entry per project, across both boxes and
  * every account, with each live session under it. A project with one live
@@ -9,7 +10,7 @@ import type {
   BatonProjectRef,
   EnvironmentId,
   ProjectId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {

@@ -1,22 +1,22 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/no-manual-memo -- Baton file predating upstream's rule (D82) */
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
-import type { FleetAccount } from "@t3tools/shared/batonFleetView";
+import type { EnvironmentId, ProjectId } from "@t3tools/baton-contracts";
+import type { FleetAccount } from "@t3tools/baton-shared/fleetView";
 import { useCallback, useMemo } from "react";
 
 import { deriveProviderEntriesByEnvironment } from "./providerInstances";
 import { useProjects } from "./state/entities";
 import { useEnvironments } from "./state/environments";
 import { environmentServerConfigsAtom } from "./state/server";
-import { useClientSettings } from "./hooks/useSettings";
 
 /**
  * The environments whose fleet can be read, and the three lookups a fleet row
  * needs to name itself: the machine, the account, the project.
  *
- * Two gates, answering different questions. The capability says the server
- * understands `fabric.*` at all — an older one has no such tables and would
- * reject the call, so a client must not probe. The client setting says whether
- * this user wants the fleet.
+ * Every connected environment: since the v2 port Baton is not behind a setting
+ * or a capability flag (both were patches to upstream's contracts). A server
+ * without Baton answers `fabric.*` with an error, which each reader treats as
+ * "nothing here".
  */
 export function useBatonFleet(): {
   readonly environmentIds: readonly EnvironmentId[];
@@ -33,20 +33,9 @@ export function useBatonFleet(): {
   const { environments } = useEnvironments();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const projects = useProjects();
-  const enabled = useClientSettings((settings) => settings.fabricWorkSessionsEnabled);
-
   const environmentIds = useMemo(
-    () =>
-      enabled
-        ? environments
-            .map((environment) => environment.environmentId)
-            .filter(
-              (environmentId) =>
-                serverConfigs.get(environmentId)?.environment.capabilities.fabricWorkSessions ===
-                true,
-            )
-        : [],
-    [enabled, environments, serverConfigs],
+    () => environments.map((environment) => environment.environmentId),
+    [environments],
   );
 
   const labelByEnvironment = useMemo(

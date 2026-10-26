@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalDate:off - audio time is anchored to the wall clock once, at creation.
 /**
  * §12.2's pipeline: frames → wake → VAD segmentation → STT → mode machine →
@@ -10,8 +11,8 @@
  *
  * @module baton-voice/core
  */
-import type { ContextBusState } from "@t3tools/shared/batonContextBus";
-import { emptyContextBus } from "@t3tools/shared/batonContextBus";
+import type { ContextBusState } from "@t3tools/baton-shared/contextBus";
+import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
 
 import {
   DEFAULT_TIMINGS,

@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * Adopting a session Baton did not start (§9).
  *
@@ -32,12 +34,12 @@ import {
   type AdoptedSessionError,
   type AdoptedSessionId,
   type WorkSessionId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import {
   ADOPTED_MINIMUM_CAPABILITIES,
   mapHerdrPaneState,
   refuseCapability,
-} from "@t3tools/shared/batonAdoptedSession";
+} from "@t3tools/baton-shared/adoptedSession";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

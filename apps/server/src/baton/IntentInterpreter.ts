@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * The model read of a sentence the grammar could not place (D50).
  *
@@ -25,19 +27,21 @@
  *   3. **It never reaches a provider that is not there.** No available account
  *      is a refusal by name, not a hang.
  */
-import type { BatonIntentResolution } from "@t3tools/contracts";
+import type { BatonIntentResolution } from "@t3tools/baton-contracts";
 import {
   buildIntentModelPrompt,
   interpretIntentModelReply,
   type IntentModelReply,
-} from "@t3tools/shared/batonIntentModel";
-import type { IntentVocabulary } from "@t3tools/shared/batonIntentParser";
+} from "@t3tools/baton-shared/intentModel";
+import type { IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { TextGeneration } from "../textGeneration/TextGeneration.ts";
+import * as Schema from "effect/Schema";
+
+import { BatonOneShot } from "./BatonOneShot.ts";
 
 /**
  * The tier that reads a sentence against a list of names.
@@ -47,7 +51,7 @@ import { TextGeneration } from "../textGeneration/TextGeneration.ts";
  * vocabulary, the cheapest capable model does it, and anything larger spends
  * the user's quota to arrive at the same answer more slowly.
  */
-export const INTENT_MODEL_SLUG = "claude-haiku-4-5";
+export const INTENT_MODEL_SLUG = "haiku";
 
 /**
  * The drivers that can read a sentence into a command.
@@ -134,7 +138,7 @@ export const chooseInterpreterInstance = (
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const textGeneration = yield* TextGeneration;
+  const oneShot = yield* BatonOneShot;
 
   const interpret: BatonIntentInterpreter["Service"]["interpret"] = ({
     sentence,
@@ -146,33 +150,43 @@ export const make = Effect.gen(function* () {
       if (chosen === null) return null;
 
       const prompt = buildIntentModelPrompt({ sentence, vocabulary, learned });
-      const interpretBatonIntent = textGeneration.interpretBatonIntent;
-      if (interpretBatonIntent === undefined) return null;
-
-      const reply = yield* interpretBatonIntent({
-        sentence,
-        prompt,
-        modelSelection: {
-          instanceId: chosen.instanceId as never,
+      const reply = yield* oneShot
+        .run({
+          prompt,
           model: chosen.model,
-          options: INTENT_MODEL_OPTIONS,
-        },
-      }).pipe(
-        // A model that fails, times out or returns nonsense leaves the
-        // grammar's refusal standing. It is a worse answer than a good reading
-        // and a much better one than a guess.
-        Effect.catchCause((cause) =>
-          Effect.logWarning("Baton could not read a sentence with a model", {
-            sentence,
-            instanceId: chosen.instanceId,
-            model: chosen.model,
-            // Flattened: the structured logger renders a Cause as
-            // `[Object]`, which is exactly no help at the one moment somebody
-            // is reading this line.
-            errors: Cause.prettyErrors(cause).map((error) => error.message),
-          }).pipe(Effect.as(null)),
-        ),
-      );
+          // Every field required, so a partial answer is a decode failure rather than a silent
+          // default; every id is checked against the environment afterwards.
+          outputSchema: Schema.Struct({
+            kind: Schema.String,
+            statusQuestion: Schema.NullOr(Schema.String),
+            workSessionId: Schema.NullOr(Schema.String),
+            projectId: Schema.NullOr(Schema.String),
+            providerInstanceId: Schema.NullOr(Schema.String),
+            title: Schema.NullOr(Schema.String),
+            message: Schema.NullOr(Schema.String),
+            firingId: Schema.NullOr(Schema.String),
+            confirmed: Schema.NullOr(Schema.Boolean),
+            description: Schema.String,
+            confidence: Schema.String,
+            question: Schema.NullOr(Schema.String),
+          }),
+        })
+        .pipe(
+          // A model that fails, times out or returns nonsense leaves the
+          // grammar's refusal standing. It is a worse answer than a good reading
+          // and a much better one than a guess.
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Baton could not read a sentence with a model", {
+              sentence,
+              instanceId: chosen.instanceId,
+              model: chosen.model,
+              // Flattened: the structured logger renders a Cause as
+              // `[Object]`, which is exactly no help at the one moment somebody
+              // is reading this line.
+              errors: Cause.prettyErrors(cause).map((error) => error.message),
+            }).pipe(Effect.as(null)),
+          ),
+        );
       if (reply === null) return null;
 
       const resolution = interpretIntentModelReply({

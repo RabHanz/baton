@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
  * Baton voice on the desktop: the microphone, the tray, the HUD, the hotkeys
@@ -10,7 +11,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget } from "@t3tools/contracts";
+import type { BatonFocusTarget } from "@t3tools/baton-contracts";
 import type { BatonVoiceCore, VoiceIntentClient } from "@t3tools/baton-voice";
 import * as Electron from "electron";
 

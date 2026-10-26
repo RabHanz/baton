@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The intent surface end to end inside the environment: a sentence, the real
  * grammar, the real work sessions and rules, the real executor, and the log
@@ -14,29 +15,30 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
-  TurnId,
   WorkSessionId,
   type OrchestrationProjectShell,
-  type OrchestrationThreadShell,
+  RuntimeRequestId,
+  type OrchestrationV2ThreadShell,
   type ServerProvider,
   type ThreadId as ThreadIdType,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { TextGeneration } from "../textGeneration/TextGeneration.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { at, v2Shell } from "./__fixtures__/v2ThreadShell.ts";
+import { BatonEngine } from "./BatonEngine.ts";
+import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
+import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { AdoptedRuntimeAdapter, layer as adoptedSessionLayer } from "./AdoptedSessionService.ts";
 import { layer as intentExecutorLayer } from "./IntentExecutorLive.ts";
 import { BatonIntentService, layer as intentServiceLayer } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { layer as ruleServiceLayer, OrchestrationRuleService } from "./OrchestrationRuleService.ts";
+import { INTENT_MODEL_SLUG } from "./IntentInterpreter.ts";
 import { layer as workSessionLayer, WorkSessionService } from "./WorkSessionService.ts";
 
 const projectId = ProjectId.make("project-ventureos");
@@ -57,35 +59,18 @@ const project: OrchestrationProjectShell = {
 };
 
 /** One thread, blocked on an approval: the state §20's "what needs me" is for. */
-const waitingThread: OrchestrationThreadShell = {
+const waitingThread: OrchestrationV2ThreadShell = v2Shell({
   id: implThreadId,
   projectId,
   title: "Implementation",
-  modelSelection: { instanceId: claude, model: "sonnet" },
-  runtimeMode: "approval-required",
-  interactionMode: "default",
-  branch: null,
-  worktreePath: null,
-  pullRequests: [],
-  latestTurn: {
-    turnId: TurnId.make("turn-1"),
-    state: "completed",
-    requestedAt: "2026-09-18T05:00:00.000Z",
-    startedAt: "2026-09-18T05:00:01.000Z",
-    completedAt: "2026-09-18T05:00:30.000Z",
-    assistantMessageId: null,
+  status: "waiting",
+  pendingRuntimeRequest: {
+    id: RuntimeRequestId.make("request-1"),
+    kind: "command",
+    createdAt: at("2026-09-18T05:00:20.000Z"),
+    blocking: true,
   },
-  createdAt: "2026-09-18T05:00:00.000Z",
-  updatedAt: "2026-09-18T05:00:30.000Z",
-  archivedAt: null,
-  settledOverride: null,
-  settledAt: null,
-  session: null,
-  latestUserMessageAt: "2026-09-18T05:00:00.000Z",
-  hasPendingApprovals: true,
-  hasPendingUserInput: false,
-  hasActionableProposedPlan: false,
-};
+});
 
 const provider = {
   instanceId: claude,
@@ -135,18 +120,14 @@ const harness = Effect.gen(function* () {
 type ModelReply = Record<string, unknown> | null;
 
 const textGenerationLayer = (reply: ModelReply, calls: Ref.Ref<ReadonlyArray<string>>) =>
-  Layer.succeed(TextGeneration, {
-    generateCommitMessage: () => Effect.die("not used"),
-    generatePrContent: () => Effect.die("not used"),
-    generateBranchName: () => Effect.die("not used"),
-    generateThreadTitle: () => Effect.die("not used"),
-    ...(reply === null
-      ? {}
-      : {
-          interpretBatonIntent: (input: { readonly prompt: string }) =>
-            Ref.update(calls, (all) => [...all, input.prompt]).pipe(Effect.as(reply as never)),
-        }),
-  } as unknown as TextGeneration["Service"]);
+  Layer.succeed(BatonOneShot, {
+    run: ((input: { readonly prompt: string }) =>
+      reply === null
+        ? Effect.fail(new BatonOneShotError({ detail: "no model on this environment" }))
+        : Ref.update(calls, (all) => [...all, input.prompt]).pipe(
+            Effect.as(reply as never),
+          )) as BatonOneShot["Service"]["run"],
+  });
 
 const baseLayer = (
   effects: Layer.Layer<OrchestrationEffectsService>,
@@ -195,26 +176,15 @@ const baseLayer = (
       ),
     ),
     Layer.provide(
-      Layer.mock(ProjectionSnapshotQuery)({
-        getProjectShells: () => Effect.succeed([project]),
-        getShellSnapshot: () =>
-          Effect.succeed({
-            snapshotSequence: 1,
-            projects: [project],
-            threads: [waitingThread],
-            updatedAt: "2026-09-18T05:00:30.000Z",
-          }),
+      Layer.mock(BatonEngine)({
+        projects: Effect.succeed([project]),
+        threadShells: Effect.succeed([waitingThread]),
+        threadShell: (threadId) =>
+          Effect.succeed(threadId === waitingThread.id ? waitingThread : null),
+        changedThreads: Stream.empty,
       }),
     ),
     Layer.provide(Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([provider]) })),
-    Layer.provide(
-      Layer.mock(OrchestrationEngineService)({
-        readEvents: () => Stream.empty,
-        dispatch: () => Effect.succeed({ sequence: 1 }),
-        streamDomainEvents: Stream.empty,
-        latestSequence: Effect.succeed(0),
-      }),
-    ),
     Layer.provideMerge(SqlitePersistenceMemory),
   );
 
@@ -300,7 +270,7 @@ describe("a sentence the grammar cannot place (D50)", () => {
           assert.strictEqual(result.resolution.outcome, "resolved");
           assert.strictEqual(result.record.commandKind, "message_work_session");
           assert.strictEqual(result.record.source, "model");
-          assert.strictEqual(result.record.model, "claude-haiku-4-5");
+          assert.strictEqual(result.record.model, INTENT_MODEL_SLUG);
 
           // The user's words reached the thread, not a paraphrase of them.
           assert.deepStrictEqual(yield* Ref.get(sent), [
