@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * The real voice core (`@t3tools/baton-voice`) behind the desktop's
  * `makeCore` seam: openWakeWord → Silero VAD → whisper.cpp → the §12.3 mode

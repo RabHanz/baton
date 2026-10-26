@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * WAV files as microphones: the headless proof of the capture → core loop,
  * and a way to replay a recorded utterance on a box with no audio device.
