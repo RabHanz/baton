@@ -1,10 +1,6 @@
-0001-build-and-versions.patch
-0002-contracts.patch
-0003-rpc-and-auth.patch
-0004-server-wiring.patch
-0005-claude-provider-and-limits.patch
-0006-session-import.patch
-0007-herdr-terminal.patch
-0008-web.patch
-0009-desktop.patch
-0010-mobile.patch
+0001-build.patch
+0002-server-hooks.patch
+0003-herdr-terminal.patch
+0004-claude-account-home.patch
+0005-client-rpc.patch
+0006-web-sidebar.patch

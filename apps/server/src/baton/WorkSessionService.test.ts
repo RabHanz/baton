@@ -1,10 +1,10 @@
-import { ProjectId, ProviderInstanceId, ThreadId, WorkSessionId } from "@t3tools/contracts";
+import { ProjectId, ProviderInstanceId, ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { layer as workSessionServiceLayer, WorkSessionService } from "./WorkSessionService.ts";
 
 const layer = it.layer(workSessionServiceLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));

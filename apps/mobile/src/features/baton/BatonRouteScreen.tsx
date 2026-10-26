@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The fleet, on the phone.
  *
@@ -17,12 +18,12 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, TextInput, View } from "react-native";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/baton-contracts";
 
 import { useFocusEffect } from "@react-navigation/native";
 
-import { AppText as Text } from "../../components/AppText";
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
+import { AppText as Text } from "../../components/ui/AppText";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { useServerConfigs } from "../../state/entities";
 import { useEnvironments } from "../../state/environments";
 import { useBatonIntent, useFleet } from "../../state/baton-work-sessions";
@@ -38,14 +39,10 @@ export function BatonRouteScreen() {
   const { environments } = useEnvironments();
   const serverConfigs = useServerConfigs();
 
-  // The first environment that understands `fabric.*`. A phone talks to
-  // several, and calling an older one would be rejected rather than empty.
+  // The first connected environment: Baton is no longer behind a capability flag (v2 port).
   const environmentId = useMemo<EnvironmentId | null>(() => {
     for (const environment of environments) {
-      const config = serverConfigs.get(environment.environmentId);
-      if (config?.environment.capabilities.fabricWorkSessions === true) {
-        return environment.environmentId;
-      }
+      if (serverConfigs.has(environment.environmentId)) return environment.environmentId;
     }
     return null;
   }, [environments, serverConfigs]);

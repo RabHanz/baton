@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * Keeps each work session's Working Synopsis current, from the orchestration
  * event log alone.
@@ -29,26 +31,25 @@
  * capability, a failed call — the deterministic synopsis stands. It is the
  * older, plainer answer, and it is never wrong about the facts.
  */
-import { type OrchestrationEvent, type ThreadId, type TurnId } from "@t3tools/contracts";
+import type { OrchestrationV2DomainEvent, ThreadId } from "@t3tools/baton-contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
-import { synopsisSignalForActivity, type SynopsisSignal } from "@t3tools/shared/batonSynopsis";
+import type { SynopsisSignal } from "@t3tools/baton-shared/synopsis";
 import {
   buildSynopsisPrompt,
   SYNOPSIS_TURN_WINDOW,
   type SynopsisTurn,
-} from "@t3tools/shared/batonSynopsisModel";
+} from "@t3tools/baton-shared/synopsisModel";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+import * as DateTime from "effect/DateTime";
+import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import { forkParked } from "../serverActivation.ts";
-import { TextGeneration } from "../textGeneration/TextGeneration.ts";
+import { BatonEngine } from "./BatonEngine.ts";
+import { BatonOneShot } from "./BatonOneShot.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 /**
@@ -59,7 +60,7 @@ import { WorkSessionService } from "./WorkSessionService.ts";
  * and the queue drain no longer double-schedules" is the whole point, and the
  * cheapest tier does not reliably produce the second.
  */
-export const SYNOPSIS_MODEL_SLUG = "claude-sonnet-5";
+export const SYNOPSIS_MODEL_SLUG = "sonnet";
 
 export class BatonSynopsisReactor extends Context.Service<
   BatonSynopsisReactor,
@@ -71,68 +72,80 @@ export class BatonSynopsisReactor extends Context.Service<
 
 interface Pending {
   readonly threadId: ThreadId;
+  readonly dedupeKey: string;
   readonly signals: ReadonlyArray<SynopsisSignal>;
   /** Set only for a completed turn, which is the one milestone that is written. */
-  readonly completedTurnId?: TurnId | undefined;
+  /** The run that completed; a synopsis is written once per run. */
+  readonly completedTurnId?: string | undefined;
 }
 
 /**
- * Turn one orchestration event into synopsis signals.
- *
- * Exported for its test: this mapping is where a wrong guess about an event's
- * meaning would quietly produce a confident, false synopsis, so it is worth
- * asserting directly rather than through a reactor.
+ * What one of upstream's v2 domain events tells the synopsis, if anything. Pure, so the mapping
+ * is tested without an engine. Message events repeat as a message streams; only user messages
+ * are read, and the reactor drops a message id it has already seen.
  */
-export function synopsisSignalsForEvent(event: OrchestrationEvent): Pending | null {
+export function synopsisSignalsForEvent(event: OrchestrationV2DomainEvent): Pending | null {
+  const at = DateTime.formatIso(event.occurredAt);
   switch (event.type) {
-    case "thread.message-sent": {
-      const payload = event.payload;
-      if (payload.role !== "user") return null;
+    case "message.updated": {
+      const message = event.payload;
+      if (message.role !== "user" || message.text.trim().length === 0) return null;
       return {
-        threadId: payload.threadId,
-        signals: [{ kind: "turn-started", at: payload.createdAt, prompt: payload.text }],
+        threadId: event.threadId,
+        dedupeKey: `message:${message.id}`,
+        signals: [{ kind: "turn-started", at, prompt: message.text }],
       };
     }
-    case "thread.turn-diff-completed": {
-      const payload = event.payload;
-      const paths = payload.files.map((file) => file.path);
-      return {
-        threadId: payload.threadId,
-        completedTurnId: payload.turnId,
-        signals: [
-          ...(paths.length === 0
-            ? []
-            : [{ kind: "files-changed" as const, at: payload.completedAt, paths }]),
-          { kind: "turn-completed" as const, at: payload.completedAt },
-        ],
-      };
+    case "run.updated": {
+      const run = event.payload;
+      if (run.status === "completed") {
+        return {
+          threadId: event.threadId,
+          dedupeKey: `run:${run.id}:completed`,
+          completedTurnId: run.id,
+          signals: [{ kind: "turn-completed", at }],
+        };
+      }
+      if (run.status === "failed") {
+        return {
+          threadId: event.threadId,
+          dedupeKey: `run:${run.id}:failed`,
+          signals: [{ kind: "turn-failed", at, reason: null }],
+        };
+      }
+      return null;
     }
-    case "thread.activity-appended": {
-      const signal = synopsisSignalForActivity(event.payload.activity);
-      return signal === null ? null : { threadId: event.payload.threadId, signals: [signal] };
+    case "runtime-request.updated": {
+      const request = event.payload;
+      const question = request.kind === "user_input";
+      if (request.status === "pending") {
+        return {
+          threadId: event.threadId,
+          dedupeKey: `request:${request.id}:pending`,
+          signals: [
+            question
+              ? { kind: "question-asked", at, label: "A question for you" }
+              : { kind: "approval-requested", at, label: `Approve ${request.kind}` },
+          ],
+        };
+      }
+      if (request.status === "resolved") {
+        return {
+          threadId: event.threadId,
+          dedupeKey: `request:${request.id}:resolved`,
+          signals: [
+            question ? { kind: "question-answered", at } : { kind: "approval-resolved", at },
+          ],
+        };
+      }
+      return null;
     }
-    case "thread.session-set": {
-      const session = event.payload.session;
-      // The session's own status is the state machine's business; what the
-      // synopsis wants from it is the one thing the state does not say —
-      // whether the provider failed, and why.
-      if (session.status !== "error" || session.lastError === null) return null;
+    case "thread.pull-request-link-updated": {
+      const link = event.payload;
       return {
-        threadId: event.payload.threadId,
-        signals: [{ kind: "turn-failed", at: session.updatedAt, reason: session.lastError }],
-      };
-    }
-    case "thread.pull-request-linked": {
-      const payload = event.payload;
-      return {
-        threadId: payload.threadId,
-        signals: [
-          {
-            kind: "pull-request-opened",
-            at: payload.updatedAt,
-            label: `${payload.link.repository}#${payload.link.number}`,
-          },
-        ],
+        threadId: event.threadId,
+        dedupeKey: `pr:${link.repository}#${link.number}`,
+        signals: [{ kind: "pull-request-opened", at, label: `${link.repository}#${link.number}` }],
       };
     }
     default:
@@ -140,104 +153,61 @@ export function synopsisSignalsForEvent(event: OrchestrationEvent): Pending | nu
   }
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const engine = yield* BatonEngine;
   const workSessions = yield* WorkSessionService;
-  const snapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-  const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
-  const textGeneration = yield* TextGeneration;
+  const oneShot = yield* BatonOneShot;
 
   /**
-   * Turns already written about.
-   *
-   * "At most once per trigger" is the Director's own wording, and a turn id is
-   * exactly that trigger's identity. Bounded, because this is a running
-   * server: a thousand turns later, whether turn one was written is not a
-   * question anybody asks.
+   * Keys already handled: run ids for "written once per turn" (the Director's own wording),
+   * message and request ids because v2 re-emits an updated record. Bounded, because this is a
+   * running server: a thousand turns later nobody asks whether turn one was written.
    */
-  const WRITTEN_TURN_LIMIT = 256;
-  const writtenTurns = new Set<string>();
-  const markWritten = (turnId: string): boolean => {
-    if (writtenTurns.has(turnId)) return false;
-    writtenTurns.add(turnId);
-    while (writtenTurns.size > WRITTEN_TURN_LIMIT) {
-      const oldest = writtenTurns.values().next();
+  const SEEN_LIMIT = 512;
+  const seen = new Set<string>();
+  const markSeen = (key: string): boolean => {
+    if (seen.has(key)) return false;
+    seen.add(key);
+    while (seen.size > SEEN_LIMIT) {
+      const oldest = seen.values().next();
       if (oldest.done === true) break;
-      writtenTurns.delete(oldest.value);
+      seen.delete(oldest.value);
     }
     return true;
   };
 
-  /** The first available account, the same boring rule the intent path uses. */
-  const chooseInstance = Effect.gen(function* () {
-    const providers = yield* providerRegistry.getProviders.pipe(
-      Effect.catchCause(() => Effect.succeed([])),
-    );
-    // Same rule as the intent path: a driver that can write one, and an account
-    // that has actually proven a login. A configured instance with an expired
-    // token still reports itself authenticated (D50's live finding).
-    const capable = providers.filter(
-      (provider) => provider.enabled && provider.installed && provider.driver === "claudeAgent",
-    );
-    const signedIn = capable.find(
-      (provider) =>
-        provider.auth.status === "authenticated" && (provider.auth.email ?? "").trim().length > 0,
-    );
-    return (signedIn ?? capable[0])?.instanceId ?? null;
-  });
-
-  const recentTurns = (threadId: ThreadId) =>
-    Effect.gen(function* () {
-      const detail = yield* snapshotQuery
-        .getThreadDetailSnapshot(threadId, { turnLimit: SYNOPSIS_TURN_WINDOW })
-        .pipe(Effect.catchCause(() => Effect.succeed(Option.none())));
-      if (Option.isNone(detail)) return [] as ReadonlyArray<SynopsisTurn>;
-      const messages = detail.value.thread.messages ?? [];
-      return messages.flatMap((message): ReadonlyArray<SynopsisTurn> => {
-        const role =
-          message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : null;
-        const text = typeof message.text === "string" ? message.text : "";
-        return role === null || text.trim().length === 0 ? [] : [{ role, text }];
-      });
-    });
-
-  /**
-   * Write the two sentences, if anything here can.
-   *
-   * Every failure is silent and leaves the assembled synopsis in place: no
-   * account, no capability, no answer. A synopsis is a convenience, and the
-   * plain one is never wrong about the facts.
-   */
   const writeSynopsis = (input: {
     readonly workSessionId: string;
     readonly threadId: ThreadId;
     readonly at: string;
   }) =>
     Effect.gen(function* () {
-      const write = textGeneration.writeBatonSynopsis;
-      if (write === undefined) return;
-      const instanceId = yield* chooseInstance;
-      if (instanceId === null) return;
-
       const workSession = yield* workSessions.get(input.workSessionId as never);
-      const turns = yield* recentTurns(input.threadId);
+      const turns: ReadonlyArray<SynopsisTurn> = yield* engine.recentMessages(
+        input.threadId,
+        SYNOPSIS_TURN_WINDOW,
+      );
       if (turns.length === 0) return;
 
-      const written = yield* write({
+      const written = yield* oneShot.run({
         prompt: buildSynopsisPrompt({
           title: workSession.title,
           objective: workSession.objective,
           turns,
         }),
-        modelSelection: {
-          instanceId: instanceId as never,
-          model: SYNOPSIS_MODEL_SLUG,
-          // Two sentences about turns that already happened; the scratchpad is
-          // latency with nothing to show for it. Same measurement as the intent
-          // path (D53).
-          options: [{ id: "thinking", value: false }],
-        },
+        model: SYNOPSIS_MODEL_SLUG,
+        outputSchema: Schema.Struct({
+          // The descriptions are the instruction the model follows: unannotated, the first real
+          // run narrated the request ("Wrote a two-sentence status update for ...").
+          currentAction: Schema.String.annotate({
+            description:
+              "One sentence about where this WORK is now. Never about this request, this summary, or yourself.",
+          }),
+          next: Schema.String.annotate({
+            description:
+              "One sentence about what is needed next for this WORK. Never about this request or yourself.",
+          }),
+        }),
       });
 
       yield* workSessions.applySynopsis({
@@ -256,32 +226,26 @@ export const make = Effect.gen(function* () {
   const worker = yield* makeDrainableWorker((pending: Pending) =>
     Effect.gen(function* () {
       const workSessionId = yield* workSessions.findForThread(pending.threadId);
-      // Most threads belong to no work session, and that is the normal case
-      // while Baton is opt-in. Nothing to do, no log line worth writing.
       if (workSessionId === null) return;
       yield* workSessions.applySynopsis({ workSessionId, signals: pending.signals });
 
-      // The written account comes after the assembled one, so the facts are
-      // already current when the model's two sentences land on top of them.
-      const turnId = pending.completedTurnId;
-      if (turnId === undefined || !markWritten(turnId)) return;
+      // A model-written synopsis once per completed run: the run's own completion, not any
+      // event that happens to mention it.
+      const runId = pending.completedTurnId;
       const at = pending.signals.at(-1)?.at;
-      if (at === undefined) return;
+      if (runId === undefined || at === undefined) return;
       yield* writeSynopsis({ workSessionId, threadId: pending.threadId, at });
-    }).pipe(
-      // A synopsis is a convenience. A failure to write one must never take
-      // down the event loop that carries the work itself.
-      Effect.ignoreCause({ log: true }),
-    ),
+    }).pipe(Effect.ignoreCause({ log: true })),
   );
 
   const start: BatonSynopsisReactor["Service"]["start"] = Effect.fn("BatonSynopsisReactor.start")(
     function* () {
-      const events = yield* engine.subscribeDomainEvents;
       yield* forkParked(
-        Stream.runForEach(events, (event) => {
+        Stream.runForEach(engine.domainEvents, (event) => {
           const pending = synopsisSignalsForEvent(event);
-          return pending === null ? Effect.void : worker.enqueue(pending);
+          return pending === null || !markSeen(pending.dedupeKey)
+            ? Effect.void
+            : worker.enqueue(pending);
         }),
       );
     },

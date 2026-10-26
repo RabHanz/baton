@@ -9,13 +9,13 @@ import {
   WorkSessionId,
   type AdoptedRegisterInput,
   type AdoptedSessionId,
-} from "@t3tools/contracts";
-import { HERDR_CAPABILITIES } from "@t3tools/shared/batonAdoptedSession";
+} from "@t3tools/baton-contracts";
+import { HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   AdoptedRuntimeAdapter,
   AdoptedSessionService,

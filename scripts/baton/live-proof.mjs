@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // Drive a live Baton web client at phone width and prove the sidebar, Send and a Herdr terminal.
 //
 //   node scripts/baton/live-proof.mjs <pairUrl|state:file.json> <outPrefix> [--send <rowText>=<message>]...
@@ -79,8 +80,10 @@ if (rest.includes("--terminal")) {
   // Open a thread and its terminal; with T3CODE_FABRIC_TERMINAL_RUNTIME=herdr it is a Herdr session
   // client, which `herdr session list` then shows (D61).
   await page.keyboard.press("Escape");
-  await page.goto(base, { waitUntil: "domcontentloaded" });
-  const thread = page.locator('[data-testid="baton-landing-thread"]').first();
+  // The newest thread in upstream's own list (expand the settled shelf if that is all there is).
+  const shelf = page.getByRole("button", { name: /settled/i }).first();
+  if (await shelf.isVisible().catch(() => false)) await shelf.click().catch(() => {});
+  const thread = page.locator("[data-thread-item]").first();
   await thread.waitFor({ timeout: 60_000 });
   await thread.click();
   await page.waitForTimeout(4000);

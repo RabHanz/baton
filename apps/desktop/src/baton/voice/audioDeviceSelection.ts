@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * §12.1: pin a microphone, remember it, fall back to the OS default, and pick
  * the pinned one again when it comes back.

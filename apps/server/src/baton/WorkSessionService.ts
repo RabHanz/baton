@@ -1,3 +1,5 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- Baton file predating upstream's rule (D82) */
+// @effect-diagnostics effectFnOpportunity:off flatMapConditionalToFilterOrFail:off preferSchemaOverJson:off instanceOfSchema:off preferSucceedSomeOrNone:off
 /**
  * Baton work sessions: the user's work as an object that outlives the
  * provider thread and the account running it.
@@ -16,7 +18,7 @@
  * rows. `docs/baton/DECISIONS.md` D11 explains why Baton keeps its events out
  * of T3's orchestration event store.
  */
-import { applySynopsisSignals, type SynopsisSignal } from "@t3tools/shared/batonSynopsis";
+import { applySynopsisSignals, type SynopsisSignal } from "@t3tools/baton-shared/synopsis";
 import {
   DEFAULT_WORK_SESSION_PRIORITY,
   DEFAULT_WORK_SESSION_PROVIDER_ROLE,
@@ -41,7 +43,7 @@ import {
   type WorkSessionSynopsis,
   type WorkSessionUpdateInput,
   type ThreadId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";

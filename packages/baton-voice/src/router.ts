@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-em-dash-copy, t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Effects from the mode machine → the existing Baton intent path → §14's
  * destination. The router decides nothing the intent path already decides:
@@ -16,13 +17,13 @@
  *
  * @module baton-voice/router
  */
-import type { BatonIntentResolution } from "@t3tools/contracts";
+import type { BatonIntentResolution } from "@t3tools/baton-contracts";
 import {
   resolveContextWorkSession,
   resolveInjectionTarget,
   type ContextBusState,
-} from "@t3tools/shared/batonContextBus";
-import { highRiskSubject } from "@t3tools/shared/batonIntentParser";
+} from "@t3tools/baton-shared/contextBus";
+import { highRiskSubject } from "@t3tools/baton-shared/intentParser";
 
 import type { VoiceEffect } from "./modeMachine.ts";
 

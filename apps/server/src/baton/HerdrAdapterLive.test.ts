@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The adapter, driven by output captured from `herdr 0.9.1` on the box.
  *

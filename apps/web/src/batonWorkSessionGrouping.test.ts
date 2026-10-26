@@ -6,7 +6,7 @@ import {
   WorkSessionId,
   type WorkSession,
   type WorkSessionProviderSession,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildWorkSessionGrouping, workSessionThreadSubtitle } from "./batonWorkSessionGrouping";
@@ -15,29 +15,15 @@ import type { SidebarThreadSummary } from "./types";
 const environmentId = EnvironmentId.make("home-linux");
 const projectId = ProjectId.make("ventureos");
 
+/** The grouping reads only a thread's id and environment; the rest of the shell is upstream's. */
 function thread(id: string): SidebarThreadSummary & { environmentId: EnvironmentId } {
   return {
     environmentId,
     id: ThreadId.make(id),
     projectId,
     title: id,
-    modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "sonnet" },
-    runtimeMode: "approval-required",
-    interactionMode: "default",
-    branch: null,
-    worktreePath: null,
-    pullRequests: [],
-    latestTurn: null,
-    createdAt: "2026-09-18T00:00:00.000Z",
-    updatedAt: "2026-09-18T00:00:00.000Z",
-    archivedAt: null,
-    settledOverride: null,
-    settledAt: null,
-    session: null,
-    latestUserMessageAt: null,
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    hasActionableProposedPlan: false,
+  } as unknown as SidebarThreadSummary & {
+    environmentId: EnvironmentId;
   };
 }
 

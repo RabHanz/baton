@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/no-test-timeout-or-unreasoned-skip -- Baton file predating upstream's rule (D82) */
 /**
  * Recorded WAV → openWakeWord → Silero VAD → whisper.cpp → mode machine →
  * router → the real grammar. Needs the models and whisper-cli; skipped (with

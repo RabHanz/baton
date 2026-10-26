@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Phase 8's exit criterion, taken against a real Herdr.
  *
@@ -18,8 +19,8 @@
  * a correct answer, and the one this phase could prove before the binary
  * existed.
  */
-import { WorkSessionId, type AdoptedSessionId } from "@t3tools/contracts";
-import { describeAdoptedSession, HERDR_CAPABILITIES } from "@t3tools/shared/batonAdoptedSession";
+import { WorkSessionId, type AdoptedSessionId } from "@t3tools/baton-contracts";
+import { describeAdoptedSession, HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -28,7 +29,7 @@ import {
   layer as adoptedSessionLayer,
 } from "../src/baton/AdoptedSessionService.ts";
 import { layer as herdrAdapterLayer } from "../src/baton/HerdrAdapterLive.ts";
-import { SqlitePersistenceMemory } from "../src/persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../src/baton/BatonDatabase.ts";
 
 const line = (text = ""): void => {
   process.stdout.write(`${text}\n`);

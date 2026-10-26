@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off - this test reads the migration files as text, which is the only way to assert what their SQL does.
 /**
  * D7, as a test rather than a promise.

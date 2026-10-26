@@ -1,73 +1,35 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 import {
   OrchestrationRuleId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
-  TurnId,
   WorkSessionId,
   type OrchestrationAction,
-  type OrchestrationThreadShell,
-} from "@t3tools/contracts";
-import { assert, describe, expect, it } from "@effect/vitest";
+  type OrchestrationV2ThreadShell,
+} from "@t3tools/baton-contracts";
+import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { finishedShell, workingShell } from "./__fixtures__/v2ThreadShell.ts";
+import { BatonEngine } from "./BatonEngine.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   BatonOrchestrationReactor,
   layer as reactorLayer,
   OrchestrationEffectsService,
-  threadIdForEvent,
   type OrchestrationEffects,
 } from "./OrchestrationReactor.ts";
 import { layer as ruleServiceLayer, OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { layer as workSessionLayer, WorkSessionService } from "./WorkSessionService.ts";
 
-describe("threadIdForEvent", () => {
-  const threadId = ThreadId.make("thread-1");
-
-  it("reacts to exactly the events Phase 4's state derivation reads", () => {
-    // A rule must not fire on a fact the fleet cannot see. Keeping the two
-    // event sets identical is what makes "done" mean the same thing in both.
-    for (const type of [
-      "thread.turn-diff-completed",
-      "thread.session-set",
-      "thread.activity-appended",
-      "thread.message-sent",
-    ]) {
-      expect(threadIdForEvent({ type, payload: { threadId } })).toBe(threadId);
-    }
-  });
-
-  it("ignores events that cannot change what the work is doing", () => {
-    // Pinning, snoozing and renaming move a thread around the sidebar. None
-    // of them is a reason to start a provider session.
-    for (const type of [
-      "thread.pinned",
-      "thread.snoozed",
-      "thread.meta-updated",
-      "project.created",
-    ]) {
-      expect(threadIdForEvent({ type, payload: { threadId } })).toBeNull();
-    }
-  });
-
-  it("returns null rather than guessing when an event carries no thread", () => {
-    expect(threadIdForEvent({ type: "thread.session-set", payload: {} })).toBeNull();
-    expect(threadIdForEvent({ type: "thread.session-set" })).toBeNull();
-  });
-});
-
 // --- one evaluation, end to end over the real services --------------------
 //
-// The only stubs are the two upstream services the reactor reads through
-// (the projection, for what a thread is doing, and the engine, which it only
-// uses to subscribe) and `OrchestrationEffects`, which exists precisely so the
+// The only stubs are `BatonEngine`, the one seam to upstream's engine (what a
+// thread is doing, and the event subscription), and `OrchestrationEffects`, which exists precisely so the
 // list of things a rule may do can be swapped for a recording of what it asked
 // for. The work sessions, the rules, the firings and the bound are real and go
 // through SQLite.
@@ -79,52 +41,14 @@ const reviewThreadId = ThreadId.make("review-thread");
 const claude = ProviderInstanceId.make("claude-a");
 const codex = ProviderInstanceId.make("codex");
 
-/** A thread whose turn finished and that nobody has looked at: `done_unseen`. */
-const finishedThread: OrchestrationThreadShell = {
-  id: implThreadId,
-  projectId,
-  title: "Implementation",
-  modelSelection: { instanceId: claude, model: "sonnet" },
-  runtimeMode: "approval-required",
-  interactionMode: "default",
-  branch: null,
-  worktreePath: null,
-  pullRequests: [],
-  latestTurn: {
-    turnId: TurnId.make("turn-1"),
-    state: "completed",
-    requestedAt: "2026-09-18T05:00:00.000Z",
-    startedAt: "2026-09-18T05:00:01.000Z",
-    completedAt: "2026-09-18T05:00:30.000Z",
-    assistantMessageId: null,
-  },
-  createdAt: "2026-09-18T05:00:00.000Z",
-  updatedAt: "2026-09-18T05:00:30.000Z",
-  archivedAt: null,
-  settledOverride: null,
-  settledAt: null,
-  session: null,
-  latestUserMessageAt: "2026-09-18T05:00:00.000Z",
-  hasPendingApprovals: false,
-  hasPendingUserInput: false,
-  hasActionableProposedPlan: false,
-};
+/** A thread whose run finished and that nobody has looked at: `done_unseen`. */
+const finishedThread: OrchestrationV2ThreadShell = finishedShell(implThreadId);
 
-/** The same thread, mid-turn: `working`, which no trigger matches. */
-const workingThread: OrchestrationThreadShell = {
-  ...finishedThread,
-  latestTurn: {
-    turnId: TurnId.make("turn-2"),
-    state: "running",
-    requestedAt: "2026-09-18T05:01:00.000Z",
-    startedAt: "2026-09-18T05:01:01.000Z",
-    completedAt: null,
-    assistantMessageId: null,
-  },
-};
+/** The same thread, mid-run: `working`, which no trigger matches. */
+const workingThread: OrchestrationV2ThreadShell = workingShell(implThreadId);
 
 /** What the projection reports right now. Reset by each test that moves it. */
-let currentThread: OrchestrationThreadShell = finishedThread;
+let currentThread: OrchestrationV2ThreadShell = finishedThread;
 
 const reviewAction = {
   kind: "start_provider_session",
@@ -148,19 +72,12 @@ const harness = (effects: Partial<OrchestrationEffects>) =>
     ),
     Layer.provideMerge(Layer.mergeAll(ruleServiceLayer, workSessionLayer)),
     Layer.provide(
-      Layer.mock(ProjectionSnapshotQuery)({
+      Layer.mock(BatonEngine)({
         // Read through a holder, so a test can move the work session between
         // states — the only way to exercise a transition rather than a
         // condition.
-        getThreadShellById: () => Effect.succeed(Option.some(currentThread)),
-      }),
-    ),
-    Layer.provide(
-      Layer.mock(OrchestrationEngineService)({
-        readEvents: () => Stream.empty,
-        dispatch: () => Effect.succeed({ sequence: 1 }),
-        streamDomainEvents: Stream.empty,
-        latestSequence: Effect.succeed(0),
+        threadShell: () => Effect.sync(() => currentThread),
+        changedThreads: Stream.empty,
       }),
     ),
     Layer.provideMerge(SqlitePersistenceMemory),

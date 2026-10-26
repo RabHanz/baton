@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Baton's migrations, in their own number space and their own tracking table.
  *
@@ -26,8 +27,7 @@
  */
 
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as Migrator from "effect/unstable/sql/Migrator";
+import * as Migrator from "effect/sql/Migrator";
 
 import Migration0001 from "./Migrations/Baton/001_WorkSessions.ts";
 import Migration0002 from "./Migrations/Baton/002_WorkSessionSynopsis.ts";
@@ -58,26 +58,6 @@ export const batonMigrationManifest = batonMigrationEntries.map(
   ([id, name]) => [id, name] as const,
 );
 
-/**
- * What these migrations were called while they lived in upstream's manifest,
- * against the id they have now. Every database this fork has already touched
- * carries the left-hand names at ids 54-59.
- *
- * Matched by name rather than by id: no upstream migration is called any of
- * these, so the adoption below cannot mistake one of theirs for one of ours
- * even if upstream has since put something else at 54.
- */
-const LEGACY_MIGRATION_NAMES: ReadonlyArray<readonly [legacyName: string, batonId: number]> = [
-  ["FabricWorkSessions", 1],
-  ["FabricWorkSessionSynopsis", 2],
-  ["FabricOrchestrationRules", 3],
-  ["FabricIntents", 4],
-  ["FabricWorkSessionObservedState", 5],
-  ["FabricAdoptedSessions", 6],
-];
-
-const legacyNames = LEGACY_MIGRATION_NAMES.map(([name]) => name);
-
 const makeBatonMigrationLoader = (throughId?: number) =>
   Migrator.fromRecord(
     Object.fromEntries(
@@ -88,91 +68,6 @@ const makeBatonMigrationLoader = (throughId?: number) =>
   );
 
 const run = Migrator.make({});
-
-/**
- * Give upstream's number space back, without re-running anything.
- *
- * A database migrated by an earlier build of this fork has rows 54-59 in
- * `effect_sql_migrations`, which pins upstream's high-water mark at 59 and
- * would make upstream's own 054-059 unrunnable forever. This moves that record
- * across: each legacy row is written into Baton's table under its new id, and
- * then deleted from upstream's, so the high-water mark drops back to upstream's
- * real latest.
- *
- * It **adopts** rather than re-runs, and that distinction is load-bearing. The
- * obvious alternative — drop the rows and let Baton's migrator run 1-6 again
- * over tables that already exist — looks safe because the `CREATE TABLE`s say
- * `IF NOT EXISTS`, and it is not: `002_WorkSessionSynopsis` adds a column, and
- * `ALTER TABLE ... ADD COLUMN` has no `IF NOT EXISTS` in SQLite. That path
- * fails on boot with `duplicate column name: synopsis_json` on precisely the
- * machines this repair exists for. Adoption is also simply truer — those
- * migrations *did* run, and the record should say so.
- *
- * Partial states are handled the same way: a database that only ever applied
- * 54-56 adopts ids 1-3, and the migrator that follows runs 4-6 for real.
- *
- * Runs before upstream's migrator, not after: if upstream has already published
- * a 054 by the time a machine upgrades, clearing the rows first means their
- * migration runs on this boot rather than the next one.
- *
- * Returns the upstream ids it reclaimed, empty on every database that never saw
- * the old numbering.
- */
-export const reclaimUpstreamMigrationIds = Effect.fn("reclaimUpstreamMigrationIds")(function* () {
-  const sql = yield* SqlClient.SqlClient;
-
-  // A fresh database has no migrations table yet, and a missing table is not a
-  // failure here — it means there is nothing to reclaim.
-  const legacyRows = yield* sql<{
-    readonly migration_id: number;
-    readonly name: string;
-  }>`SELECT migration_id, name FROM effect_sql_migrations WHERE name IN ${sql.in(legacyNames)}`.withoutTransform.pipe(
-    Effect.orElseSucceed(
-      () => [] as ReadonlyArray<{ readonly migration_id: number; readonly name: string }>,
-    ),
-  );
-
-  if (legacyRows.length === 0) return [] as ReadonlyArray<number>;
-
-  // Same shape the migrator creates for SQLite, so the row it writes next and
-  // the rows written here are indistinguishable.
-  yield* sql`
-    CREATE TABLE IF NOT EXISTS ${sql(BATON_MIGRATIONS_TABLE)} (
-      migration_id integer PRIMARY KEY NOT NULL,
-      created_at datetime NOT NULL DEFAULT current_timestamp,
-      name VARCHAR(255) NOT NULL
-    )
-  `.withoutTransform;
-
-  const alreadyAdopted = new Set(
-    (yield* sql<{
-      readonly migration_id: number;
-    }>`SELECT migration_id FROM ${sql(BATON_MIGRATIONS_TABLE)}`.withoutTransform).map(
-      (row) => row.migration_id,
-    ),
-  );
-
-  for (const [legacyName, batonId] of LEGACY_MIGRATION_NAMES) {
-    if (alreadyAdopted.has(batonId)) continue;
-    if (!legacyRows.some((row) => row.name === legacyName)) continue;
-    const name = batonMigrationEntries.find(([id]) => id === batonId)?.[1];
-    if (name === undefined) continue;
-    yield* sql`INSERT INTO ${sql(BATON_MIGRATIONS_TABLE)} (migration_id, name) VALUES (${batonId}, ${name})`
-      .withoutTransform;
-  }
-
-  yield* sql`DELETE FROM effect_sql_migrations WHERE name IN ${sql.in(legacyNames)}`
-    .withoutTransform;
-
-  const reclaimed = legacyRows.map((row) => row.migration_id);
-  yield* Effect.log("Reclaimed upstream migration ids from Baton's early numbering").pipe(
-    Effect.annotateLogs({
-      reclaimed: reclaimed.map(String),
-      table: BATON_MIGRATIONS_TABLE,
-    }),
-  );
-  return reclaimed;
-});
 
 export interface RunBatonMigrationsOptions {
   readonly toMigrationInclusive?: number | undefined;

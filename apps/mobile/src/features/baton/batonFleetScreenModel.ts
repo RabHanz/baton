@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * What the phone's Baton screen shows, as arithmetic.
  *
@@ -13,14 +14,14 @@
  * drift, and the phone is exactly where that drift would be discovered too
  * late.
  */
-import type { EnvironmentId, BatonFleetEntry, ProjectId } from "@t3tools/contracts";
+import type { EnvironmentId, BatonFleetEntry, ProjectId } from "@t3tools/baton-contracts";
 import {
   buildFleetRows,
   countFleetRows,
   filterFleetRows,
   type FleetAccount,
   type FleetRow,
-} from "@t3tools/shared/batonFleetView";
+} from "@t3tools/baton-shared/fleetView";
 
 export interface BatonScreenInput {
   readonly entries: ReadonlyArray<{

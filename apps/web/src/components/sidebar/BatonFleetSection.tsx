@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * The Fleet: what everything is doing, at the top of the sidebar.
  *
@@ -14,7 +15,7 @@ import type {
   BatonProjectRef,
   EnvironmentId,
   ProjectId,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 
 import { cn } from "~/lib/utils";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -24,7 +25,7 @@ import {
   filterFleetRows,
   type FleetAccount,
   type FleetRow,
-} from "@t3tools/shared/batonFleetView";
+} from "@t3tools/baton-shared/fleetView";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { focusedWorkSessionFromThreads } from "../../batonContextView";
 import { useFleet } from "../../state/batonWorkSessions";

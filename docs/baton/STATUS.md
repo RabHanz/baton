@@ -639,7 +639,7 @@ not available here" is a correct outcome rather than a fault. D21.
 ### Not built, and not pretended otherwise
 
 - **`after(time)` triggers.** The brief's trigger set is `on_done, on_needs_user, on_failed,
-after(rule|time)`. The event triggers and `after_rule` ship; a time trigger does not, because it is
+  after(rule|time)`. The event triggers and `after_rule` ship; a time trigger does not, because it is
   a scheduler rather than a reactor and none of this phase's three safety properties is written to
   hold for one. The reasoning, and what it would take, is `DECISIONS.md` D23.
 

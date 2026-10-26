@@ -1,3 +1,4 @@
+/* oxlint-disable react/exhaustive-effect-dependencies, t3code/no-low-value-comments, t3code/no-manual-memo, t3code/react-effect-budget -- Baton file predating upstream's rule (D82) */
 /**
  * Baton work sessions in the web client.
  *
@@ -11,7 +12,7 @@
  *     work"; it is off by default while Baton is being built.
  */
 import { useEffect, useMemo, useState } from "react";
-import { createBatonWorkSessionAtoms } from "@t3tools/client-runtime/state/baton-work-sessions";
+import { createBatonWorkSessionAtoms } from "@t3tools/baton-shared/workSessionAtoms";
 import type {
   AdoptedSessionCandidate,
   ClaudeLiveSession,
@@ -20,7 +21,7 @@ import type {
   BatonIntentRecord,
   OrchestrationRuleWithFirings,
   WorkSession,
-} from "@t3tools/contracts";
+} from "@t3tools/baton-contracts";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { useEnvironmentQuery } from "./query";

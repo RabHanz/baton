@@ -1,5 +1,5 @@
-import type { BatonContextSnapshot } from "@t3tools/contracts";
-import { applyContextSnapshot, emptyContextBus } from "@t3tools/shared/batonContextBus";
+import type { BatonContextSnapshot } from "@t3tools/baton-contracts";
+import { applyContextSnapshot, emptyContextBus } from "@t3tools/baton-shared/contextBus";
 import { describe, expect, it } from "vite-plus/test";
 
 import { grammarClient } from "../test/grammarClient.ts";

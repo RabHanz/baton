@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/react-effect-budget -- Baton file predating upstream's rule (D82) */
 /**
  * One line, above the Fleet: say what you want.
  *
@@ -19,8 +20,12 @@
  * nowhere to put the words (§12.3, §18).
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { EnvironmentId, BatonIntentResolution } from "@t3tools/contracts";
-import { classifyDictation } from "@t3tools/shared/batonDictation";
+import {
+  batonDesktopBridge,
+  type BatonIntentResolution,
+  type EnvironmentId,
+} from "@t3tools/baton-contracts";
+import { classifyDictation } from "@t3tools/baton-shared/dictation";
 
 import { cn } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../batonContextView";
@@ -112,7 +117,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
   // spoken sentences meet the same grammar and gates as typed ones. Dictation
   // never arrives here (the desktop pastes it and the words stay local).
   useEffect(() => {
-    const subscribe = window.desktopBridge?.onBatonVoiceRequest;
+    const subscribe = batonDesktopBridge()?.onBatonVoiceRequest;
     // The bar can be on screen twice (landing and sidebar); one must answer.
     if (subscribe === undefined || voiceListenerClaimed) return;
     voiceListenerClaimed = true;
@@ -143,7 +148,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     };
   }, [environmentId, onRan, resolveIntent, runIntent]);
   useEffect(() => {
-    if (ownsVoice.current) window.desktopBridge?.setBatonVoiceFocus?.(focusedWorkSessionId);
+    if (ownsVoice.current) batonDesktopBridge()?.setBatonVoiceFocus?.(focusedWorkSessionId);
   }, [focusedWorkSessionId]);
 
   const submit = (): void => {
