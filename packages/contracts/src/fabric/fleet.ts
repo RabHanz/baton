@@ -17,6 +17,7 @@ import * as Schema from "effect/Schema";
 
 import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "../baseSchemas.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "../providerInstance.ts";
+import { AdoptedSessionCandidate } from "./adoptedSession.ts";
 import { FabricSessionState } from "./sessionState.ts";
 import { WorkSessionSynopsis } from "./synopsis.ts";
 import { WorkSessionId, WorkSessionStatus } from "./workSession.ts";
@@ -78,6 +79,12 @@ export type FabricFleetEntry = typeof FabricFleetEntry.Type;
 
 export const FabricFleet = Schema.Struct({
   entries: Schema.Array(FabricFleetEntry),
+  /**
+   * Every agent and terminal Herdr is running on this environment, across its
+   * spaces and named sessions, adopted or not (D65). Herdr is where they live;
+   * the fleet is where they are seen. A blocked one carries its question.
+   */
+  herdr: Schema.optionalKey(Schema.Array(AdoptedSessionCandidate)),
   /** When the environment computed this. Every entry is as of this instant. */
   observedAt: IsoDateTime,
 });

@@ -76,6 +76,27 @@ moved to Node `26.12.1` and pnpm `12.14.0`, so the merge needs a fresh install a
 before any gate can run. The pin stays at `52e4b44293`; this is its own lane (a box with headroom,
 Node 26.12, one conflict area at a time), not a side step of a feature lane.
 
+### The sync plan (ledger-ready, not attempted)
+
+1. **Toolchain first, on its own branch.** Install Node 26.12.1 under `dev/toolchain/` and pnpm
+   12.14 via corepack; prove the _current_ fork builds and its gates pass on them before any merge.
+2. **Box.** Run on whichever box has 12 GB free RAM and 25 GB free disk at the time (neither does
+   today: signzart ~14 GB RAM but ~15 GB disk; onnyx 1 GB RAM). Clean `node_modules` and `.repos/`
+   before the fresh install.
+3. **Merge in conflict areas, one commit each:** (a) `package.json`s, `pnpm-workspace.yaml`
+   (keep the `msgpackr-extract: true` pin); (b) contracts `rpc.ts`, `orchestration.ts`, `ipc.ts`,
+   `environment.ts`, `agentSessions.ts`; (c) server `ws.ts`, `server.ts`, `RpcAuthorization.ts`,
+   `Sqlite.ts`; (d) Claude adapter, capabilities probe, text generation; (e) AgentSessionScanner and
+   Importer (Fabric's import/presence); (f) orchestration reactor and its harness; (g) web Sidebar,
+   ModelPicker, ConnectionsSettings, ProjectSettingsPanel, MessagesTimeline, ComposerUsageLimits;
+   (h) mobile and desktop IPC; (i) mobile-showcase scripts (take upstream's).
+4. **Gates per area:** `tsc --noEmit` and `vp test run` for the touched package; the full Fabric
+   suites (`apps/server/src/fabric`, `packages/contracts/src/fabric`, `apps/web/src/fabric*`).
+5. **Migrations:** check upstream's numbering against Fabric's own manifest (D48) on a `VACUUM INTO`
+   snapshot; pre- and post-merge builds both open it.
+6. **Deploy** exactly as `DEPLOY.md`, beside the previous version, rollback = restore the drop-in.
+   Estimate: one lane-day.
+
 ## Remotes and rebasing
 
 The clone is a blobless partial clone (`--filter=blob:none`) with full commit history, which keeps
