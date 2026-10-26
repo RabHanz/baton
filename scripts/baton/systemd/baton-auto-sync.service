@@ -12,3 +12,5 @@ ExecStartPre=/usr/bin/git -C /mnt/HC_Volume_106652742/dev/t3code fetch --quiet o
 ExecStartPre=/bin/sh -c 'git -C /mnt/HC_Volume_106652742/dev/t3code show origin/main:scripts/baton/auto-sync.sh > %h/.t3/baton-auto-sync.sh'
 ExecStart=/bin/bash %h/.t3/baton-auto-sync.sh
 TimeoutStartSec=4h
+# The red path starts a Claude fix session in Herdr; it must outlive this oneshot.
+KillMode=process
