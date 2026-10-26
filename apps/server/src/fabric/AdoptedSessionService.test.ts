@@ -38,6 +38,12 @@ const adapter = (delivered: boolean) =>
           ? { delivered: true, detail: "typed into the pane." }
           : { delivered: false, detail: "herdr is not installed on this environment." },
       ),
+    readOutput: () =>
+      Effect.succeed({
+        available: false,
+        detail: "herdr is not installed on this environment.",
+        output: "",
+      }),
   });
 
 const harness = (delivered = false) =>

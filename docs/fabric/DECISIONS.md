@@ -866,16 +866,35 @@ session is.
 ## D37 — Herdr is integrated, never vendored
 
 **Decided** 2026-09-18, during Phase 8. **Implements** §9 and the fork's own
-licence boundary.
+licence boundary. **Corrected 2026-09-18** once Herdr was actually installed;
+the correction changes the premise, not the decision.
 
-Herdr is AGPL and is a separate program. Fabric adopts sessions _from_ it by
-speaking to its control surface from the outside, the way a person at a prompt
-would, and this repository contains none of its code.
+Herdr is a separate program. Fabric adopts sessions _from_ it by speaking to its
+control surface from the outside, the way a person at a prompt would, and this
+repository contains none of its code.
 
-The practical shape that forces: `AdoptedRuntimeAdapter` is a **port** with two
-methods, and `HerdrAdapterLive` is the only file that knows the runtime exists.
-Swapping in a second runtime later is a new adapter, not a change to the domain,
-and nothing in `packages/` links against Herdr at all.
+> **Correction — the licence premise was wrong.**
+>
+> This was written against `github.com/SuperCodeAgents/herdr-terminal`, which is
+> **AGPL-3.0**. That repository is a **fork whose last push was 2026-05-24**.
+> Upstream is `github.com/herdrdev/herdr`: Rust, ~39k stars, v0.9.1 released
+> 2026-09-16, licensed **Apache-2.0**.
+>
+> So "Herdr is AGPL" is not true of the Herdr anyone would install, and the
+> copyleft reasoning behind "never vendored" does not apply. **The decision
+> stands on the better reason**: Herdr is a running server with its own
+> lifecycle, release channel and update path, and a copy inside this repository
+> would be a fork we then had to maintain. The port is a port because that is
+> the right shape, not because a licence forbade the alternative.
+>
+> The stale fork would also be four months behind and would not have the
+> `api snapshot` surface the adapter now uses.
+
+The practical shape that forces: `AdoptedRuntimeAdapter` is a **port** — three
+methods now that a pane's text can be read — and `HerdrAdapterLive` is the only
+file that knows the runtime exists. Swapping in a second runtime later is a new
+adapter, not a change to the domain, and nothing in `packages/` links against
+Herdr at all.
 
 **Consequence:** a machine without Herdr still gets the whole adopted-session
 domain — registering, listing, the fleet, the refusals — and every call that
@@ -1594,3 +1613,206 @@ Three things follow, and they outrank the phase list:
    "completely hands-off computer control using my voice… across my devices, across my agents,
    across my projects, and across platforms." The reconciliation table judges every phase
    against that sentence rather than against the document's own list.
+
+---
+
+## D57 — One Claude instance, not three: the credential lives in the default config directory
+
+**Decided** 2026-09-18, after the Director signed the second account back in and the
+credential did not land where two of his three configured instances were pointing.
+
+Measured on signzart, read-only, immediately after that sign-in:
+
+```
+/home/dev/.claude
+  credentials file: present (2048 bytes, modified 19:06)
+  loggedIn: true, authMethod: claude.ai
+
+/home/dev/.local/share/claude-swap/sessions/1-signzartco_gmail.com
+  credentials file: ABSENT            loggedIn: false, authMethod: none
+
+/home/dev/.local/share/claude-swap/sessions/2-rabeehanzla_gmail.com
+  credentials file: ABSENT            loggedIn: false, authMethod: none
+```
+
+**That is cswap's actual model.** One config directory holds the live credential, and the
+store swaps the account underneath it — its log reads `Backed up account 3 / Wrote target
+credentials / Updated config file / Switched from account 3 to 1`, and its own comment on
+the publish step is "nothing can fail after the file is published". The
+`sessions/<n>-<email>` directories are materialised for `cswap run`, which is a
+this-terminal-only affordance; one of them held a credential file at 15:16 and cswap had
+removed it by 19:06 (`Invalidated session credentials for account 1`).
+
+**So three provider instances was the wrong shape, and the reason is not preference.** Two
+of them pointed at directories with no credential, which is why they reported themselves
+authenticated with no address and unreadable limits — the state that reads identically to
+an expired login and sent this author looking in the wrong place twice. Worse, a separate
+config directory is precisely the thing that **cannot** continue another directory's
+threads: upstream refuses a resume across instances whose continuation identity differs.
+Three instances would have made rotation impossible by construction.
+
+**The correct shape is one Claude instance on the default config directory, with Fabric
+rotating the account under it.** That is what `fabric.account.use` does, and it is why the
+same thread, session id, transcript and working directory survive a switch.
+
+**Done:** both instances removed from `~/.t3/userdata/settings.json` on signzart and on
+onnyx, each with a timestamped backup of the file beside it, and both servers restarted
+and answering. The default `claudeAgent` instance remains, and it is the one the pool
+rotates.
+
+---
+
+## D58 — Ghostty does not replace tmux, and T3's terminal is already Ghostty
+
+**Asked** 2026-09-18: "we need to replace tmux with Herdr and Ghostty if it is good enough
+or in the vision." §8.2 says the raw terminal is secondary, to use T3's terminal where it is
+sufficient, to evaluate `libghostty` later only if a stronger embedded terminal is materially
+useful, and not to block V1 on it. This answers the question directly rather than deferring
+it again.
+
+**Ghostty is a terminal emulator that runs on his laptop. tmux's job is keeping a process
+alive on the server after the client goes away.** Those are different layers, and no
+emulator can do the second one: it is not on the machine where the work runs. Closing the
+window still kills what is inside it. So Ghostty cannot replace tmux, however good it is —
+and it is good.
+
+**What replaces tmux is Herdr plus T3's own terminal surface**, and the mechanism was
+measured on this box tonight rather than assumed:
+
+```
+herdr server (pid 1393201, its own systemd-independent process)
+  └── /bin/bash (1393244)        ← the pane
+        └── claude (1762158)     ← the agent, reported as blocked → needs_input
+```
+
+No client, no ssh session and no editor appears in that chain. The agent outlived the shell
+that started it, which is the whole property tmux is kept around for.
+
+**The part that is already decided: T3's terminal _is_ Ghostty.** `apps/web/src/terminal/
+ghostty/` is the browser adapter for the official `libghostty-vt` C ABI, pinned at
+`native/libghostty-vt/`, and `apps/mobile/modules/t3-terminal/` uses the same ABI. The VT
+engine question §8.2 left open is answered in the affirmative and shipped; what is _not_
+embedded is Ghostty's own GPU renderer and desktop app, and nothing here needs them. (All 89
+tests under `apps/web/src/terminal/ghostty` pass in this worktree under both `vitest` and
+`vp test`; the three failures reported to this lane did not reproduce.)
+
+**What T3's terminal is still missing for him to live in it.** Three gaps, each read out of
+the code rather than guessed:
+
+1. **It dies with the server.** A terminal is a PTY owned by the T3 server process, so a
+   deploy, an update or an OOM takes every terminal with it. History is persisted and
+   replayed; the running process is not, and cannot be. A Herdr pane survives all three,
+   because Herdr is a separate supervisor.
+2. **Every terminal belongs to a thread.** `TerminalOpenInput` is keyed by `threadId` +
+   `terminalId`, so there is no terminal that is simply "this project" or "this machine" —
+   which is most of what tmux gets used for.
+3. **A terminal opened outside T3 is only ever an adopted pane.** Adoption gives pane text
+   and input; `HERDR_CAPABILITIES` deliberately leaves `readConversation`, `approvals` and
+   `diffs` false, because a pane has no structured conversation to read.
+
+**`libghostty` closes none of the three.** They are process-lifecycle and scoping problems;
+the VT engine is a renderer, and we already have it. So §8.2's "evaluate later" resolves to:
+nothing further to embed, and the work that matters is routing T3's terminal at a Herdr pane
+so it inherits that survival, which is queued rather than pretended.
+
+## D59 — A terminal that is not an agent is `monitoring` or `idle`, and adoptable
+
+**Decided** 2026-09-18, once Herdr was installed and discovery ran against it.
+**Refines** D38. **Implements** §9.
+
+D38 refuses a runtime state Fabric does not know rather than calling it `idle`,
+and that stays. The first live discovery showed the rule swallowing the case §9
+was written for.
+
+Herdr gives every pane an `agent_status`, and for a pane that is not a
+recognised coding agent — an infrastructure terminal, a test watcher, a
+`tail -f`, the examples in this contract's own docstring — that value is
+`unknown`. Under D38 alone such a pane was **discoverable and never adoptable**:
+`herdr reported a state Fabric does not know: 'unknown'`, every time, forever.
+
+`unknown` is not a word Fabric failed to learn. It is Herdr saying it has no
+agent state to give. So it falls through to another fact Herdr reports rather
+than to a guess — whether the pane has a foreground process:
+
+| Herdr says                              | Fabric calls it       |
+| --------------------------------------- | --------------------- |
+| `blocked` / `working` / `done` / `idle` | §9's table, unchanged |
+| `unknown`, something running            | `monitoring`          |
+| `unknown`, a bare prompt                | `idle`                |
+| anything else                           | refused (D38)         |
+
+`monitoring` rather than `working`, which would claim an agent is mid-turn, and
+rather than `idle`, which would sort a live terminal to the bottom of the fleet.
+§10 already uses `monitoring` for a watch loop, and an unclassified live terminal
+is exactly that. **Neither answer is in `FABRIC_STATES_NEEDING_USER`**: an
+adopted terminal never raises "needs me" on an inference. Only `blocked` does.
+
+**The fact has to travel with the candidate.** State is derived on the server so
+a client cannot invent one, which means adopting a pane has to supply the same
+observation discovery had. `AdoptedSessionCandidate` and `AdoptedRegisterInput`
+carry `foreground` for that reason — the observation, what is running, not a
+state.
+
+**"Is anything running" is not "is the process list non-empty".** A pane at a
+bare prompt reports one foreground process: the shell. The two are told apart by
+whether the foreground process group is the shell's own:
+
+```text
+idle    fg_pgid=1393244  shell_pid=1393244  [(1393244, "/bin/bash")]
+busy    fg_pgid=1419932  shell_pid=1393241  [(1419932, "bash …/ticker.sh"), …]
+```
+
+Both shapes are committed in `apps/server/src/fabric/__fixtures__/herdr-0.9.1/`,
+captured from two live panes side by side. The invented version of that check
+read every idle terminal as busy, and only the real capture showed it.
+
+---
+
+## D60 — Reading an adopted terminal is `showTerminal`, never `readConversation`
+
+**Decided** 2026-09-18, during Phase 8's completion.
+
+`fabric.adopted.readOutput` returns the text on a pane. It is gated on
+`showTerminal`, which is the capability it exercises: §21's "show X", answered on
+the server for a client that has no terminal of its own to render into.
+
+It is emphatically **not** `readConversation`, which stays false for every
+adopted session. There is no structured conversation on a session Fabric did not
+start — no turns, no roles, no approvals — only characters a program wrote to a
+terminal. A capability check that conflated the two would be exactly the pretence
+§9 exists to prevent, and would put a "read the conversation" button on a session
+that has none.
+
+The read is bounded (1–2000 lines, 200 by default) and asks Herdr for
+`recent-unwrapped`, because a transcript line a soft wrap split in two is one
+line of work, and reading it as two is how a log stops being searchable.
+
+---
+
+## D61 — T3's terminal is a Herdr session client, by machine
+
+**Decided** 2026-10-26, closing D58's first gap. With `T3CODE_FABRIC_TERMINAL_RUNTIME=herdr` in the
+service environment, the terminal manager spawns `herdr --session t3-<thread>-<terminal>` instead
+of a shell, with the ordinary shells behind it as fallbacks. The PTY T3 owns is only a Herdr client;
+the shell and its children belong to Herdr's own server, so a T3 restart, deploy or OOM takes the
+client and not the work. Reopening the terminal runs the same command and re-attaches. An explicit
+close stops and deletes the session, because closing is the user ending it.
+
+Proven live (`apps/server/scripts/fabric-herdr-terminal-proof.ts`, herdr 0.9.5): `sleep 7777` in the
+pane, the pty killed with SIGKILL, the process still alive, the re-attach seeing the same pid, and
+after the close path the process gone and the session unlisted.
+
+Rejected: a setting in `settings.json` (a per-machine fact, and no client renders it yet; upgrade
+when one does); wrapping T3's provider processes in Herdr (§9 principle 1).
+
+## D62 — Handoff to another instance is a capsule plus a new thread in the same worktree
+
+**Decided** 2026-10-26. `fabric.workSession.handoff` implements §6.1 for every move in-place
+rotation (D56/D57) cannot make: another driver, another config directory. It refuses before
+creating anything (same instance: rotate instead; not configured; not signed in), reads the
+checkout's branch and dirty files, builds the capsule from the work session and its capped
+synopsis (`buildHandoffCapsule`, pure and tested), creates the thread in the same worktree,
+attaches it active, sends the capsule as the first turn, and only then closes the previous thread
+onto the timeline. A failure after the thread exists detaches it and restores the previous active
+thread. The resume intent ("continue X with Codex") now starts from the same capsule rather than
+an empty prompt. Not auto-triggered (§29 Phase 3: no silent switches in V1).

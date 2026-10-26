@@ -33,6 +33,7 @@ export const FABRIC_ADOPTED_WS_METHODS = {
   adoptedRefresh: "fabric.adopted.refresh",
   adoptedDetach: "fabric.adopted.detach",
   adoptedSendInput: "fabric.adopted.sendInput",
+  adoptedReadOutput: "fabric.adopted.readOutput",
 } as const;
 
 export const AdoptedSessionId = TrimmedNonEmptyString.pipe(Schema.brand("AdoptedSessionId"));
@@ -133,6 +134,19 @@ export const AdoptedSessionCandidate = Schema.Struct({
   agentKind: Schema.NullOr(TrimmedNonEmptyString),
   /** The runtime's own word for what it is doing, before mapping. */
   runtimeState: TrimmedNonEmptyString,
+  /**
+   * What the runtime reported running in the pane, when it recognised no agent.
+   *
+   * Null for a terminal at its prompt, and null for a pane whose agent already
+   * reported a state — in that case the agent's word is the better fact and
+   * this is not consulted.
+   *
+   * It is on the candidate because the state derivation stays on the server and
+   * stays deterministic: a client adopting this pane passes the observation
+   * back rather than passing a `state` it chose, so nothing outside the
+   * runtime can invent what a terminal is doing.
+   */
+  foreground: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   /** What that word maps to, or null when Fabric does not know the word. */
   state: Schema.NullOr(FabricSessionState),
 });
@@ -166,6 +180,14 @@ export const AdoptedRegisterInput = Schema.Struct({
   agentKind: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   /** The runtime's own state word. Fabric maps it, and refuses what it cannot. */
   runtimeState: TrimmedNonEmptyString,
+  /**
+   * The candidate's `foreground`, passed back unchanged.
+   *
+   * Without it a terminal that is not a recognised agent can be discovered and
+   * never adopted: the runtime's word for it is `unknown`, and the mapping that
+   * turns `unknown` into a state needs to know whether anything is running.
+   */
+  foreground: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
   workSessionId: Schema.optionalKey(Schema.NullOr(WorkSessionId)),
   /**
    * What the runtime says it can do. Absent means the conservative default —
@@ -178,6 +200,8 @@ export type AdoptedRegisterInput = typeof AdoptedRegisterInput.Type;
 export const AdoptedRefreshInput = Schema.Struct({
   id: AdoptedSessionId,
   runtimeState: TrimmedNonEmptyString,
+  /** As on register: the same word needs the same context to map the same way. */
+  foreground: Schema.optionalKey(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type AdoptedRefreshInput = typeof AdoptedRefreshInput.Type;
 
@@ -215,6 +239,34 @@ export const AdoptedSendInputResult = Schema.Struct({
   detail: TrimmedString,
 });
 export type AdoptedSendInputResult = typeof AdoptedSendInputResult.Type;
+
+/**
+ * Read what is on an adopted terminal.
+ *
+ * This is **not** `readConversation`, and the distinction is the honest part:
+ * there is no structured conversation on a pane Fabric did not start, only
+ * text. It is gated on `showTerminal` because that is the capability it
+ * actually exercises — §21's "show X", answered on the server where the client
+ * has no terminal of its own to render into.
+ */
+export const AdoptedReadOutputInput = Schema.Struct({
+  id: AdoptedSessionId,
+  /**
+   * How much scrollback to ask for. Bounded because a pane can hold megabytes
+   * and an unbounded read would put all of it through the socket.
+   */
+  lines: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 2000 }))),
+});
+export type AdoptedReadOutputInput = typeof AdoptedReadOutputInput.Type;
+
+export const AdoptedReadOutputResult = Schema.Struct({
+  /** False with a reason, the same way `sendInput` refuses. */
+  available: Schema.Boolean,
+  detail: TrimmedString,
+  /** The terminal's text, verbatim, soft wraps already joined. */
+  output: TrimmedString,
+});
+export type AdoptedReadOutputResult = typeof AdoptedReadOutputResult.Type;
 
 // ---------------------------------------------------------------------------
 // Errors

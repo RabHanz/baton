@@ -65,6 +65,17 @@ conversations most worth resuming were exactly the ones that could not be.
 upstream file this fork touches is in it; everything else Fabric contributes is a new file under a
 `fabric` name, which cannot conflict with anything upstream writes.
 
+### Sync attempt, 2026-10-26 — blocked
+
+Upstream `main` at `cc0b86ddf1` (2026-10-26) is **3,658 commits** past the last sync's merge base
+`52e4b44293` (2026-09-18). `git merge-tree` against fork main conflicts in **50 files**: 19 under
+`apps/server/src` (ws.ts, server.ts, ClaudeAdapter, AgentSessionScanner and Importer, the
+orchestration reactor, the Sqlite layer), 7 in `packages/contracts/src` (rpc.ts, orchestration.ts,
+ipc.ts), 6 in `apps/web/src`, plus `pnpm-workspace.yaml` and every `package.json`. Upstream also
+moved to Node `26.12.1` and pnpm `12.14.0`, so the merge needs a fresh install and a new toolchain
+before any gate can run. The pin stays at `52e4b44293`; this is its own lane (a box with headroom,
+Node 26.12, one conflict area at a time), not a side step of a feature lane.
+
 ## Remotes and rebasing
 
 The clone is a blobless partial clone (`--filter=blob:none`) with full commit history, which keeps

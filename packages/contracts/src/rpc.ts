@@ -174,6 +174,8 @@ import {
   AdoptedDiscoverInput,
   AdoptedDiscoverResult,
   AdoptedListInput,
+  AdoptedReadOutputInput,
+  AdoptedReadOutputResult,
   AdoptedRefInput,
   AdoptedRefreshInput,
   AdoptedRegisterInput,
@@ -226,6 +228,12 @@ import {
   WorkSessionStreamItem,
   WorkSessionUpdateInput,
 } from "./fabric/workSession.ts";
+import {
+  FABRIC_HANDOFF_WS_METHODS,
+  WorkSessionHandoffInput,
+  WorkSessionHandoffRefusedError,
+  WorkSessionHandoffResult,
+} from "./fabric/handoff.ts";
 import {
   TerminalAttachInput,
   TerminalAttachStreamEvent,
@@ -1517,6 +1525,17 @@ const WsFabricWorkSessionStartThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSession
   ]),
 });
 
+const WsFabricWorkSessionHandoffRpc = Rpc.make(FABRIC_HANDOFF_WS_METHODS.workSessionHandoff, {
+  payload: WorkSessionHandoffInput,
+  success: WorkSessionHandoffResult,
+  error: Schema.Union([
+    WorkSessionError,
+    WorkSessionHandoffRefusedError,
+    OrchestrationDispatchCommandError,
+    EnvironmentAuthorizationError,
+  ]),
+});
+
 const WsFabricWorkSessionSettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -1635,6 +1654,12 @@ const WsFabricAdoptedDetachRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedDetac
 const WsFabricAdoptedSendInputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, {
   payload: AdoptedSendInputInput,
   success: AdoptedSendInputResult,
+  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsFabricAdoptedReadOutputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput, {
+  payload: AdoptedReadOutputInput,
+  success: AdoptedReadOutputResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
@@ -1798,6 +1823,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricWorkSessionAttachThreadRpc,
   WsFabricWorkSessionDetachThreadRpc,
   WsFabricWorkSessionStartThreadRpc,
+  WsFabricWorkSessionHandoffRpc,
   WsFabricWorkSessionSettleRpc,
   WsFabricWorkSessionUnsettleRpc,
   WsFabricWorkSessionArchiveRpc,
@@ -1817,5 +1843,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricAdoptedRefreshRpc,
   WsFabricAdoptedDetachRpc,
   WsFabricAdoptedSendInputRpc,
+  WsFabricAdoptedReadOutputRpc,
   WsFabricSubscribeWorkSessionsRpc,
 );
