@@ -35,7 +35,7 @@ import { runMigrations } from "./Migrations.ts";
  * the repair and then failed two unrelated cases after it.
  */
 const freshDatabase = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
-  Effect.provide(effect, NodeSqliteClient.layerMemory());
+  Effect.provide(effect, NodeSqliteClient.layer({ filename: ":memory:" }));
 
 /** The ids and names an earlier build of this fork wrote into upstream's table. */
 const LEGACY_ROWS = [
@@ -46,6 +46,13 @@ const LEGACY_ROWS = [
   [58, "FabricWorkSessionObservedState"],
   [59, "FabricAdoptedSessions"],
 ] as const;
+
+/**
+ * Upstream's highest migration while the old numbering existed. A legacy database
+ * stopped there; upstream now ships its own 054, so a fixture that ran the whole
+ * upstream manifest first would describe a database that never existed.
+ */
+const LEGACY_UPSTREAM_HIGH_WATER = 53;
 
 const latestUpstreamId = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -108,7 +115,7 @@ describe("Baton migrations own their number space", () => {
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
 
-        yield* runMigrations();
+        yield* runMigrations({ toMigrationInclusive: LEGACY_UPSTREAM_HIGH_WATER });
         const upstreamLatest = yield* latestUpstreamId;
         // Exactly the state an earlier build of this fork left: the six that
         // existed then, and no more. Running the whole manifest here would
@@ -167,7 +174,7 @@ describe("Baton migrations own their number space", () => {
   it.effect("lets an upstream migration at 054 run after the repair", () =>
     freshDatabase(
       Effect.gen(function* () {
-        yield* runMigrations();
+        yield* runMigrations({ toMigrationInclusive: LEGACY_UPSTREAM_HIGH_WATER });
         yield* runBatonMigrations();
         yield* pretendLegacyNumbering(LEGACY_ROWS.map(([, name]) => name));
 
@@ -199,7 +206,7 @@ describe("Baton migrations own their number space", () => {
       Effect.gen(function* () {
         // A machine that ran an older build of this fork: the first migration
         // applied, the rest never seen.
-        yield* runMigrations();
+        yield* runMigrations({ toMigrationInclusive: LEGACY_UPSTREAM_HIGH_WATER });
         yield* runBatonMigrations({ toMigrationInclusive: 1 });
         yield* pretendLegacyNumbering(["FabricWorkSessions"]);
 
