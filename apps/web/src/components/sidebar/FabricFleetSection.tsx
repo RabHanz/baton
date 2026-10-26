@@ -9,12 +9,7 @@
  * client renders; it does not decide what "working" means.
  */
 import { type ReactNode, useState } from "react";
-import type {
-  AdoptedSessionCandidate,
-  EnvironmentId,
-  FabricFleetEntry,
-  ProjectId,
-} from "@t3tools/contracts";
+import type { EnvironmentId, FabricFleetEntry, ProjectId } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -28,6 +23,7 @@ import {
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { focusedWorkSessionFromThreads } from "../../fabricContextView";
 import { useFleet } from "../../state/fabricWorkSessions";
+import { FabricLiveSessions } from "./FabricLiveSessions";
 import { FabricIntentBar } from "./FabricIntentBar";
 
 export interface FabricFleetSectionProps {
@@ -77,7 +73,7 @@ function EnvironmentFleet(
     readonly onToggleNeedsUser: (next: boolean) => void;
   },
 ): ReactNode {
-  const { entries, herdr } = useFleet(props.environmentId);
+  const { entries, herdr, claude } = useFleet(props.environmentId);
   // Staleness is a clock, so it needs a ticking one rather than a reading taken
   // during render: `Date.now()` here would freeze the moment a row last
   // rendered, and a synopsis would never *become* stale on screen.
@@ -121,59 +117,7 @@ function EnvironmentFleet(
           onToggleNeedsUser={props.onToggleNeedsUser}
         />
       )}
-      <HerdrAgents agents={herdr} />
-    </div>
-  );
-}
-
-/**
- * Herdr's agents and terminals on this environment, across its spaces and
- * named sessions (D65). Herdr is where they live; this is where they are seen
- * from any device. A blocked one shows the question it is asking.
- */
-function HerdrAgents(props: {
-  readonly agents: ReadonlyArray<AdoptedSessionCandidate>;
-}): ReactNode {
-  if (props.agents.length === 0) return null;
-  const ordered = props.agents.toSorted(
-    (a, b) => Number(b.state === "needs_input") - Number(a.state === "needs_input"),
-  );
-  return (
-    <div data-testid="sidebar-herdr-agents" className="pt-2">
-      <p className="px-2 text-[11px] leading-4 text-sidebar-muted-foreground">In Herdr</p>
-      {ordered.map((agent) => (
-        <div
-          key={`${agent.location.workspace}/${agent.location.pane}`}
-          data-testid="sidebar-herdr-agent"
-          className="px-2 py-0.5"
-        >
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-xs leading-5 text-sidebar-foreground">
-              {agent.label}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 text-[11px] leading-4",
-                agent.state === "needs_input"
-                  ? "text-sidebar-destructive-foreground"
-                  : "text-sidebar-muted-foreground",
-              )}
-            >
-              {agent.state === "needs_input" ? "blocked" : (agent.state ?? agent.runtimeState)}
-            </span>
-          </span>
-          <span className="block truncate text-[11px] leading-4 text-sidebar-muted-foreground">
-            {[agent.location.workspace, agent.agentKind]
-              .filter((part) => part !== null)
-              .join(" · ")}
-          </span>
-          {agent.blockedPrompt == null ? null : (
-            <pre className="mt-0.5 max-h-24 overflow-hidden whitespace-pre-wrap rounded bg-sidebar-accent px-1.5 py-1 text-[10px] leading-3.5 text-sidebar-foreground">
-              {agent.blockedPrompt}
-            </pre>
-          )}
-        </div>
-      ))}
+      <FabricLiveSessions environmentId={props.environmentId} herdr={herdr} claude={claude} />
     </div>
   );
 }
