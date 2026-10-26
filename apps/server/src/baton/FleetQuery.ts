@@ -32,6 +32,7 @@ import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
+import { projectRefFor } from "./ProjectRef.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 /** A provider window at 100% is the account saying it is out, not a guess. */
@@ -144,8 +145,16 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     observedAt: DateTime.formatIso(yield* DateTime.now),
   });
 
-  const claudeSessions = yield* readClaudeLiveSessions({ account: herdrCache.account });
-  const fleet: BatonFleet = { ...built, herdr: herdrCache.candidates, claudeSessions };
+  const live = yield* readClaudeLiveSessions({ account: herdrCache.account });
+  const claudeSessions = yield* Effect.forEach(live, (session) =>
+    Effect.map(projectRefFor(session.cwd), (project) => ({ ...session, project })),
+  );
+  const herdr = yield* Effect.forEach(herdrCache.candidates, (candidate) =>
+    candidate.cwd == null
+      ? Effect.succeed(candidate)
+      : Effect.map(projectRefFor(candidate.cwd), (project) => ({ ...candidate, project })),
+  );
+  const fleet: BatonFleet = { ...built, herdr, claudeSessions };
   const result: BatonFleet = input.needsUserOnly === true ? filterFleetNeedsUser(fleet) : fleet;
   return result;
 });

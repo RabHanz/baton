@@ -22,6 +22,8 @@
  */
 import * as Schema from "effect/Schema";
 
+import { BatonProjectRef } from "./liveSessions.ts";
+
 import { IsoDateTime, TrimmedNonEmptyString, TrimmedString } from "../baseSchemas.ts";
 import { BatonSessionState } from "./sessionState.ts";
 import { WorkSessionId } from "./workSession.ts";
@@ -155,6 +157,9 @@ export const AdoptedSessionCandidate = Schema.Struct({
    * surfaced where the fleet is read rather than only inside the terminal.
    */
   blockedPrompt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The pane's working directory and the project it belongs to (D72). */
+  cwd: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  project: Schema.optionalKey(BatonProjectRef),
 });
 export type AdoptedSessionCandidate = typeof AdoptedSessionCandidate.Type;
 

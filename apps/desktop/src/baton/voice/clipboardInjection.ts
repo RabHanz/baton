@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off nodeBuiltinImport:off
 /**
  * Dictation into whatever field has focus, through §18's "clipboard" rung of
  * Phase 6's `TextInjectionAdapter`: put the words on the clipboard, send the

@@ -34,6 +34,7 @@ import {
   type EnvironmentId,
   type EnvironmentMachineKind,
   type BatonFleetEntry,
+  type ProjectId,
   type ProjectIconOverride,
   type ScopedThreadRef,
   type ThreadId,
@@ -2418,6 +2419,34 @@ export default function Sidebar() {
       ),
     [projectGroups],
   );
+  // Baton patch point (D72): the project a work session belongs to, keyed the
+  // way live sessions are (repository canonical key, else folder name).
+  const resolveBatonWorkProject = useCallback(
+    (environmentId: EnvironmentId, projectId: ProjectId) => {
+      const project = projectByKey.get(`${environmentId}:${projectId}`);
+      if (project === undefined) return null;
+      const identity = project.repositoryIdentity;
+      if (identity != null) {
+        return {
+          key: identity.canonicalKey,
+          label: identity.name ?? identity.displayName ?? project.title,
+        };
+      }
+      const leaf = project.workspaceRoot.split("/").filter(Boolean).pop() ?? project.title;
+      return { key: `dir:${leaf.toLowerCase()}`, label: leaf };
+    },
+    [projectByKey],
+  );
+  const resolveBatonWorkAccount = useCallback(
+    (environmentId: EnvironmentId, entry: BatonFleetEntry) => {
+      const instance = entry.threads.find(
+        (thread) => thread.threadId === entry.activeThreadId,
+      )?.providerInstanceId;
+      if (instance == null) return null;
+      return resolveBatonProviderAccount(environmentId, instance)?.label ?? null;
+    },
+    [resolveBatonProviderAccount],
+  );
   const resolveBatonProjectLabel = useCallback(
     (environmentId: EnvironmentId, workSession: WorkSession) =>
       projectDisplayNameByKey.get(`${environmentId}:${workSession.projectId}`) ?? null,
@@ -4723,6 +4752,8 @@ export default function Sidebar() {
               }
               resolveProviderAccount={resolveBatonProviderAccount}
               listHandoffTargets={listBatonHandoffTargets}
+              resolveWorkProject={resolveBatonWorkProject}
+              resolveWorkAccount={resolveBatonWorkAccount}
               resolveProjectLabel={(environmentId, projectId) =>
                 projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
               }
