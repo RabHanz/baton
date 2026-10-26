@@ -63,7 +63,7 @@ touched="$(comm -12 <(printf '%s\n' "$patched") <(printf '%s\n' "$upstream_chang
   printf '| Patched paths upstream also changed | %s |\n\n' "$(printf '%s' "$touched" | grep -c . || true)"
   if [ -n "$touched" ]; then printf '%s\n' "$touched" | sed 's/^/- `/; s/$/`/'; printf '\n'; fi
   printf '### Upstream commits (newest 60)\n\n'
-  git log --no-merges --pretty='- `%h` %s' "$pin..$target" | head -60
+  git log --no-merges --pretty='- `%h` %s' "$pin..$target" | sed -n "1,60p"
   printf '\n'
 } > "$report"
 
