@@ -15,8 +15,8 @@ import * as ThreadPullRequestReactor from "../ThreadPullRequestReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
-import * as FabricOrchestrationReactor from "../../fabric/OrchestrationReactor.ts";
-import * as FabricSynopsisReactor from "../../fabric/SynopsisReactor.ts";
+import * as BatonOrchestrationReactor from "../../baton/OrchestrationReactor.ts";
+import * as BatonSynopsisReactor from "../../baton/SynopsisReactor.ts";
 import { StorageCleanup } from "../../storageCleanup.ts";
 
 describe("OrchestrationReactor", () => {
@@ -117,18 +117,18 @@ describe("OrchestrationReactor", () => {
           }),
         ),
         Layer.provideMerge(
-          Layer.succeed(FabricSynopsisReactor.FabricSynopsisReactor, {
+          Layer.succeed(BatonSynopsisReactor.BatonSynopsisReactor, {
             start: () => {
-              started.push("fabric-synopsis-reactor");
+              started.push("baton-synopsis-reactor");
               return Effect.void;
             },
             drain: Effect.void,
           }),
         ),
         Layer.provideMerge(
-          Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
+          Layer.succeed(BatonOrchestrationReactor.BatonOrchestrationReactor, {
             start: () => {
-              started.push("fabric-orchestration-reactor");
+              started.push("baton-orchestration-reactor");
               return Effect.void;
             },
             drain: Effect.void,
@@ -151,8 +151,8 @@ describe("OrchestrationReactor", () => {
       "thread-settlement-reactor",
       "pull-request-sync-reactor",
       "agent-awareness-relay",
-      "fabric-synopsis-reactor",
-      "fabric-orchestration-reactor",
+      "baton-synopsis-reactor",
+      "baton-orchestration-reactor",
       "storage-cleanup",
     ]);
 

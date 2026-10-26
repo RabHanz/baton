@@ -6,13 +6,13 @@ import {
   AuthRelayWriteScope,
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
-  FABRIC_ADOPTED_WS_METHODS,
-  FABRIC_INTENT_WS_METHODS,
-  FABRIC_ORCHESTRATION_WS_METHODS,
-  FABRIC_ACCOUNT_WS_METHODS,
-  FABRIC_HANDOFF_WS_METHODS,
-  FABRIC_LIVE_WS_METHODS,
-  FABRIC_WS_METHODS,
+  BATON_ADOPTED_WS_METHODS,
+  BATON_INTENT_WS_METHODS,
+  BATON_ORCHESTRATION_WS_METHODS,
+  BATON_ACCOUNT_WS_METHODS,
+  BATON_HANDOFF_WS_METHODS,
+  BATON_LIVE_WS_METHODS,
+  BATON_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
@@ -176,56 +176,56 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeServerLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeAuthAccess]: AuthAccessReadScope,
   [WS_METHODS.subscribeBackgroundPolicy]: AuthOrchestrationReadScope,
-  // Fabric work sessions sit above provider threads and are read and mutated
+  // Baton work sessions sit above provider threads and are read and mutated
   // by the same people who read and operate threads, so they reuse the
   // orchestration scopes rather than introducing a parallel permission axis.
   // Starting a thread inside a work session dispatches an ordinary
   // orchestration command underneath, which is why it needs the operate scope.
-  [FABRIC_ACCOUNT_WS_METHODS.accountPool]: AuthOrchestrationReadScope,
-  [FABRIC_ACCOUNT_WS_METHODS.accountUse]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
-  [FABRIC_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionAttachThread]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionDetachThread]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionStartThread]: AuthOrchestrationOperateScope,
-  [FABRIC_HANDOFF_WS_METHODS.workSessionHandoff]: AuthOrchestrationOperateScope,
-  [FABRIC_LIVE_WS_METHODS.herdrSend]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
-  [FABRIC_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
-  [FABRIC_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
+  [BATON_ACCOUNT_WS_METHODS.accountPool]: AuthOrchestrationReadScope,
+  [BATON_ACCOUNT_WS_METHODS.accountUse]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionList]: AuthOrchestrationReadScope,
+  [BATON_WS_METHODS.workSessionCreate]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionUpdate]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionAttachThread]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionDetachThread]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionStartThread]: AuthOrchestrationOperateScope,
+  [BATON_HANDOFF_WS_METHODS.workSessionHandoff]: AuthOrchestrationOperateScope,
+  [BATON_LIVE_WS_METHODS.herdrSend]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
+  [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
+  [BATON_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
   // A rule starts provider sessions and messages threads when it fires, so
   // creating or re-enabling one is an operate-level act even though the RPC
   // itself only writes a row. Reading the rules is a read.
-  [FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate]: AuthOrchestrationOperateScope,
-  [FABRIC_ORCHESTRATION_WS_METHODS.ruleList]: AuthOrchestrationReadScope,
-  [FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable]: AuthOrchestrationOperateScope,
-  [FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable]: AuthOrchestrationOperateScope,
-  [FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm]: AuthOrchestrationOperateScope,
+  [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: AuthOrchestrationOperateScope,
+  [BATON_ORCHESTRATION_WS_METHODS.ruleList]: AuthOrchestrationReadScope,
+  [BATON_ORCHESTRATION_WS_METHODS.ruleDisable]: AuthOrchestrationOperateScope,
+  [BATON_ORCHESTRATION_WS_METHODS.ruleEnable]: AuthOrchestrationOperateScope,
+  [BATON_ORCHESTRATION_WS_METHODS.ruleConfirm]: AuthOrchestrationOperateScope,
   // Resolving a sentence reads the fleet and decides what it would mean; it
   // starts nothing. Running it can message a session, start one, or create a
   // rule, so it is an operate act whatever the sentence turns out to say — the
   // scope cannot depend on the words, or a read-only client would be one
   // phrasing away from an operate-level effect.
-  [FABRIC_INTENT_WS_METHODS.intentResolve]: AuthOrchestrationReadScope,
-  [FABRIC_INTENT_WS_METHODS.intentRun]: AuthOrchestrationOperateScope,
-  [FABRIC_INTENT_WS_METHODS.intentList]: AuthOrchestrationReadScope,
+  [BATON_INTENT_WS_METHODS.intentResolve]: AuthOrchestrationReadScope,
+  [BATON_INTENT_WS_METHODS.intentRun]: AuthOrchestrationOperateScope,
+  [BATON_INTENT_WS_METHODS.intentList]: AuthOrchestrationReadScope,
   // Adopting a terminal is an operate act even though discovery is a read:
   // registering one puts it in the fleet, and typing into it types into
   // somebody's live session.
-  [FABRIC_ADOPTED_WS_METHODS.adoptedDiscover]: AuthOrchestrationReadScope,
-  [FABRIC_ADOPTED_WS_METHODS.adoptedList]: AuthOrchestrationReadScope,
-  [FABRIC_ADOPTED_WS_METHODS.adoptedRegister]: AuthOrchestrationOperateScope,
-  [FABRIC_ADOPTED_WS_METHODS.adoptedRefresh]: AuthOrchestrationOperateScope,
-  [FABRIC_ADOPTED_WS_METHODS.adoptedDetach]: AuthOrchestrationOperateScope,
-  [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: AuthOrchestrationOperateScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedDiscover]: AuthOrchestrationReadScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedList]: AuthOrchestrationReadScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedRegister]: AuthOrchestrationOperateScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedRefresh]: AuthOrchestrationOperateScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedDetach]: AuthOrchestrationOperateScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedSendInput]: AuthOrchestrationOperateScope,
   // Reading is a read scope even though what it reads is somebody's live
   // terminal, because it changes nothing. Whether there is anything to read is
   // decided by the capability check on the session itself.
-  [FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput]: AuthOrchestrationReadScope,
+  [BATON_ADOPTED_WS_METHODS.adoptedReadOutput]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

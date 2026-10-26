@@ -114,7 +114,7 @@ export const MAC_PERMISSION_HELPER_CHANNEL = "desktop:mac-permission-helper";
 
 export const CHECK_SYSTEM_PERMISSION_CHANNEL = "desktop:check-system-permission";
 
-export const FABRIC_INJECTION_REPORT_CHANNEL = "desktop:fabric-injection-report";
-export const FABRIC_VOICE_REQUEST_CHANNEL = "desktop:fabric-voice-request";
-export const FABRIC_VOICE_RESPONSE_CHANNEL = "desktop:fabric-voice-response";
-export const FABRIC_VOICE_FOCUS_CHANNEL = "desktop:fabric-voice-focus";
+export const BATON_INJECTION_REPORT_CHANNEL = "desktop:baton-injection-report";
+export const BATON_VOICE_REQUEST_CHANNEL = "desktop:baton-voice-request";
+export const BATON_VOICE_RESPONSE_CHANNEL = "desktop:baton-voice-response";
+export const BATON_VOICE_FOCUS_CHANNEL = "desktop:baton-voice-focus";

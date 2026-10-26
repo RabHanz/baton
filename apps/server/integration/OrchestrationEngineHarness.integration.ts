@@ -39,8 +39,8 @@ import { ProviderAdapterRegistry } from "../src/provider/Services/ProviderAdapte
 import { makeProviderRegistryLayer } from "../src/provider/testUtils/providerRegistryMock.ts";
 import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSessionDirectory.ts";
 import { ServerSettingsService } from "../src/serverSettings.ts";
-import * as FabricOrchestrationReactor from "../src/fabric/OrchestrationReactor.ts";
-import * as FabricSynopsisReactor from "../src/fabric/SynopsisReactor.ts";
+import * as BatonOrchestrationReactor from "../src/baton/OrchestrationReactor.ts";
+import * as BatonSynopsisReactor from "../src/baton/SynopsisReactor.ts";
 import * as StorageCleanup from "../src/storageCleanup.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
 import { makeCodexAdapter } from "../src/provider/Layers/CodexAdapter.ts";
@@ -393,17 +393,17 @@ export const makeOrchestrationIntegrationHarness = (
           drain: Effect.void,
         }),
       ),
-      // This harness exercises orchestration, not Fabric. Both Fabric reactors
+      // This harness exercises orchestration, not Baton. Both Baton reactors
       // are inert here so they cannot add work to the drains these tests wait
       // on, or start a provider session nobody asked for.
       Layer.provideMerge(
-        Layer.succeed(FabricSynopsisReactor.FabricSynopsisReactor, {
+        Layer.succeed(BatonSynopsisReactor.BatonSynopsisReactor, {
           start: () => Effect.void,
           drain: Effect.void,
         }),
       ),
       Layer.provideMerge(
-        Layer.succeed(FabricOrchestrationReactor.FabricOrchestrationReactor, {
+        Layer.succeed(BatonOrchestrationReactor.BatonOrchestrationReactor, {
           start: () => Effect.void,
           drain: Effect.void,
           evaluate: () => Effect.succeed([]),

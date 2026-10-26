@@ -1,4 +1,4 @@
-import { FABRIC_WS_METHODS, ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
+import { BATON_WS_METHODS, ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
@@ -58,7 +58,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeVcsStatus
   | typeof WS_METHODS.subscribeWorktreeSetup
   | typeof WS_METHODS.subscribeProjectClones
-  | typeof FABRIC_WS_METHODS.subscribeWorkSessions
+  | typeof BATON_WS_METHODS.subscribeWorkSessions
   | typeof WS_METHODS.terminalAttach;
 
 export type EnvironmentStreamCommandRpcTag =

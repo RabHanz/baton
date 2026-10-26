@@ -45,7 +45,7 @@ export function HomeHeader(props: {
   readonly onOpenEnvironments: () => void;
   readonly onOpenSettings: () => void;
   /** The fleet: what every environment is doing, in one glance (§29 Phase 7). */
-  readonly onOpenFabric: () => void;
+  readonly onOpenBaton: () => void;
   readonly onStartNewTask: () => void;
 }) {
   if (Platform.OS === "android") {
@@ -372,9 +372,9 @@ function IosHomeHeader(props: HomeHeaderProps) {
           </NativeHeaderToolbar.Menu>
           <NativeHeaderToolbar.Spacer flexible />
           <NativeHeaderToolbar.Button
-            accessibilityLabel="Fabric"
+            accessibilityLabel="Baton"
             icon="list.bullet.rectangle"
-            onPress={props.onOpenFabric}
+            onPress={props.onOpenBaton}
           />
           <NativeHeaderToolbar.Button
             accessibilityLabel="New task"

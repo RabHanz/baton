@@ -21,17 +21,17 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
-import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts";
-import * as FabricHerdrAdapter from "./fabric/HerdrAdapterLive.ts";
-import * as FabricIntentExecutor from "./fabric/IntentExecutorLive.ts";
-import * as FabricIntentService from "./fabric/IntentService.ts";
-import * as FabricOrchestrationEffects from "./fabric/OrchestrationEffectsLive.ts";
-import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
-import * as FabricOrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
-import * as FabricSynopsisReactor from "./fabric/SynopsisReactor.ts";
-import * as FabricAccountRotationReactor from "./fabric/AccountRotationReactor.ts";
-import * as FabricAccountPoolService from "./fabric/AccountPoolService.ts";
-import * as FabricWorkSessionService from "./fabric/WorkSessionService.ts";
+import * as BatonAdoptedSessionService from "./baton/AdoptedSessionService.ts";
+import * as BatonHerdrAdapter from "./baton/HerdrAdapterLive.ts";
+import * as BatonIntentExecutor from "./baton/IntentExecutorLive.ts";
+import * as BatonIntentService from "./baton/IntentService.ts";
+import * as BatonOrchestrationEffects from "./baton/OrchestrationEffectsLive.ts";
+import * as BatonOrchestrationReactor from "./baton/OrchestrationReactor.ts";
+import * as BatonOrchestrationRuleService from "./baton/OrchestrationRuleService.ts";
+import * as BatonSynopsisReactor from "./baton/SynopsisReactor.ts";
+import * as BatonAccountRotationReactor from "./baton/AccountRotationReactor.ts";
+import * as BatonAccountPoolService from "./baton/AccountPoolService.ts";
+import * as BatonWorkSessionService from "./baton/WorkSessionService.ts";
 import {
   otlpTracesProxyRouteLayer,
   assetRouteLayer,
@@ -265,22 +265,20 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(PullRequestSyncReactor.layer),
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
-  Layer.provideMerge(FabricSynopsisReactor.layer),
-  Layer.provideMerge(FabricAccountRotationReactor.layer),
+  Layer.provideMerge(BatonSynopsisReactor.layer),
+  Layer.provideMerge(BatonAccountRotationReactor.layer),
   // Sits here, before the orchestration layer, because later entries provide to
   // earlier ones: the intent surface consumes the reactor, the rule service and
   // the same narrow effects a rule uses, rather than reaching the engine on its
   // own. One sentence and one rule cause work through the same door.
-  Layer.provideMerge(
-    FabricIntentService.layer.pipe(Layer.provideMerge(FabricIntentExecutor.layer)),
-  ),
+  Layer.provideMerge(BatonIntentService.layer.pipe(Layer.provideMerge(BatonIntentExecutor.layer))),
   // The orchestration reactor is the only thing that starts work nobody asked
   // for in the moment, so what it is allowed to do is a named, separate layer
   // rather than ambient access to the engine.
   Layer.provideMerge(
-    FabricOrchestrationReactor.layer.pipe(
-      Layer.provideMerge(FabricOrchestrationEffects.layer),
-      Layer.provideMerge(FabricOrchestrationRuleService.layer),
+    BatonOrchestrationReactor.layer.pipe(
+      Layer.provideMerge(BatonOrchestrationEffects.layer),
+      Layer.provideMerge(BatonOrchestrationRuleService.layer),
     ),
   ),
   Layer.provideMerge(RuntimeReceiptBusLive),
@@ -366,10 +364,10 @@ const PullRequestServiceLive = PullRequestService.layer.pipe(
   Layer.provide(SourceControlRateLimit.layer),
 );
 
-/** Fabric work sessions. Needs only the SQL client. */
-const FabricWorkSessionServiceLive = FabricWorkSessionService.layer;
+/** Baton work sessions. Needs only the SQL client. */
+const BatonWorkSessionServiceLive = BatonWorkSessionService.layer;
 /** Reads the account switcher's own store and asks it to switch; one process per call. */
-const FabricAccountPoolServiceLive = FabricAccountPoolService.layer;
+const BatonAccountPoolServiceLive = BatonAccountPoolService.layer;
 
 /**
  * Adopted sessions (§9), and the external runtime they come from.
@@ -378,8 +376,8 @@ const FabricAccountPoolServiceLive = FabricAccountPoolService.layer;
  * that talks to another program stays visible — and so a machine without that
  * program still gets a service whose every answer is a refusal by name.
  */
-const FabricAdoptedSessionServiceLive = FabricAdoptedSessionService.layer.pipe(
-  Layer.provide(FabricHerdrAdapter.layer),
+const BatonAdoptedSessionServiceLive = BatonAdoptedSessionService.layer.pipe(
+  Layer.provide(BatonHerdrAdapter.layer),
 );
 
 const GitManagerLayerLive = GitManager.layer.pipe(
@@ -555,9 +553,9 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
       TerminalLayerLive,
       PreviewLayerLive,
       DeviceLayerLive,
-      FabricWorkSessionServiceLive,
-      FabricAccountPoolServiceLive,
-      FabricAdoptedSessionServiceLive,
+      BatonWorkSessionServiceLive,
+      BatonAccountPoolServiceLive,
+      BatonAdoptedSessionServiceLive,
     ),
   ),
   Layer.provideMerge(PersistenceLayerLive),
