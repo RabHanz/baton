@@ -31,6 +31,7 @@ import type {
   PullRequestReviewerKind,
   PullRequestLabelCandidateList,
   PullRequestState,
+  PullRequestPreview,
   PullRequestUpdateMethod,
   PullRequestViewerPermissions,
   SourceControlProviderKind,
@@ -115,6 +116,11 @@ export interface ProviderChangeRequestSummary {
   readonly reviewDecision?: PullRequestReviewDecision | null | undefined;
   readonly checksState?: PullRequestChecksState | null | undefined;
   readonly mergeability?: PullRequestMergeability | undefined;
+  /**
+   * The host-native stack the pull request sits in, from the same read. Null when the host says
+   * it is in none; absent when the read did not ask.
+   */
+  readonly stack?: PullRequestStackMembership | null | undefined;
 }
 
 /** One layer of a host-native stack, bottom to top order is the array's. */
@@ -399,6 +405,14 @@ export interface PullRequestProviderApi {
   readonly getChangeRequest: (
     input: ProviderRepositoryRef & { readonly number: number },
   ) => Effect.Effect<ProviderChangeRequestDetail, PullRequestProviderError>;
+
+  /** Hosts without a narrow read use their existing detail response for hover cards. */
+  readonly getChangeRequestPreview?: (
+    input: ProviderRepositoryRef & { readonly number: number },
+  ) => Effect.Effect<
+    Omit<PullRequestPreview, "projectId" | "repository">,
+    PullRequestProviderError
+  >;
 
   /**
    * The cheap live fields used by linked threads. Optional because a provider without a narrow

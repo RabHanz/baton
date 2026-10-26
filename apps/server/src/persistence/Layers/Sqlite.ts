@@ -9,6 +9,9 @@ import { runMigrations } from "../Migrations.ts";
 import { reclaimUpstreamMigrationIds, runBatonMigrations } from "../BatonMigrations.ts";
 import { ServerConfig } from "../../config.ts";
 
+// Size the -wal file is cut back to on the first commit after a WAL reset.
+export const WAL_SIZE_LIMIT_BYTES = 32 * 1024 * 1024;
+
 const setup = Layer.effectDiscard(
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -16,6 +19,9 @@ const setup = Layer.effectDiscard(
     yield* sql`PRAGMA busy_timeout = 5000;`;
     yield* sql`PRAGMA foreign_keys = ON;`;
     yield* sql`PRAGMA journal_mode = WAL;`;
+    // PASSIVE checkpoints never shrink the -wal file, so it otherwise keeps its
+    // largest size until the last connection closes.
+    yield* sql.unsafe(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES};`);
     // Baton's migrations live in their own manifest and their own tracking
     // table, so upstream's number space stays upstream's (D48). Three calls in
     // this order and no other: the reclaim first, so a database still carrying
@@ -40,7 +46,7 @@ export const makeSqlitePersistenceLive = Effect.fn("makeSqlitePersistenceLive")(
       filename: dbPath,
       spanAttributes: {
         "db.name": path.basename(dbPath),
-        "service.name": "t3-server",
+        "service.name": "t3code-server",
       },
     }),
   );
