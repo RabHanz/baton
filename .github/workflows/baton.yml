@@ -1,0 +1,25 @@
+# Baton's own check, on GitHub-hosted runners. Upstream's ci.yml needs Blacksmith runners this
+# repository does not have (D77); the full gates run locally via scripts/baton/gates.sh.
+name: Baton patch series
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - name: Upstream paths equal PIN + series
+        run: bash scripts/baton/patches.sh verify
+      - name: patches.sh self-test
+        run: |
+          git config --global user.email ci@baton.invalid
+          git config --global user.name ci
+          bash scripts/baton/patches.test.sh

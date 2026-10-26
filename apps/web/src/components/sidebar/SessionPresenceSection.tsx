@@ -39,6 +39,7 @@ import { agentSessionImportThread, agentSessionThreads } from "../../state/agent
 import { readProjects } from "../../state/entities";
 import { projectEnvironment } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { workspaceRootTitle } from "../settings/ImportConversationsDialog.logic";
 
@@ -97,7 +98,7 @@ function EnvironmentPresence(
       <button
         type="button"
         data-testid="sidebar-session-presence-summary"
-        className="block w-full truncate text-left text-[11px] leading-4 text-sidebar-muted-foreground"
+        className="block w-full truncate text-left text-2xs leading-4 text-sidebar-muted-foreground"
         onClick={() => setExpanded((current) => !current)}
       >
         {`On this machine — ${sessionPresenceSummary(view.counts)}`}
@@ -114,7 +115,7 @@ function EnvironmentPresence(
         <button
           type="button"
           data-testid="sidebar-session-presence-expand"
-          className="block w-full truncate pl-2 text-left text-[11px] leading-4 text-sidebar-muted-foreground"
+          className="block w-full truncate pl-2 text-left text-2xs leading-4 text-sidebar-muted-foreground"
           onClick={() => setExpanded(true)}
         >
           {`Show ${hiddenCount} conversation${hiddenCount === 1 ? "" : "s"} on disk`}
@@ -200,36 +201,39 @@ function PresenceGroupRows(props: {
 
   return (
     <div className="pt-1">
-      <p className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+      <p className="truncate text-2xs leading-4 text-sidebar-muted-foreground">
         {props.group.projectLabel ?? `${props.group.workspaceRoot} — no project yet`}
       </p>
       {props.group.rows.map((row) => (
-        <button
-          key={row.key}
-          type="button"
-          data-testid="sidebar-session-presence-row"
-          data-state={row.state}
-          disabled={row.state === "running"}
-          title={
-            row.state === "running"
+        <Tooltip key={row.key}>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                data-testid="sidebar-session-presence-row"
+                data-state={row.state}
+                disabled={row.state === "running"}
+                className={cn(
+                  "block w-full truncate pl-2 text-left text-2xs leading-4",
+                  row.state === "running"
+                    ? "cursor-default text-sidebar-foreground"
+                    : "text-sidebar-muted-foreground",
+                )}
+                onClick={() => void open(row)}
+              >
+                {presenceRowLabel(row, busyKey === row.key)}
+              </button>
+            }
+          />
+          <TooltipPopup side="top">
+            {row.state === "running"
               ? "Still being written. Opening it would put a second writer on the only copy."
-              : (row.sessionRoot ?? props.group.workspaceRoot)
-          }
-          className={cn(
-            "block w-full truncate pl-2 text-left text-[11px] leading-4",
-            row.state === "running"
-              ? "cursor-default text-sidebar-foreground"
-              : "text-sidebar-muted-foreground",
-          )}
-          onClick={() => void open(row)}
-        >
-          {presenceRowLabel(row, busyKey === row.key)}
-        </button>
+              : (row.sessionRoot ?? props.group.workspaceRoot)}
+          </TooltipPopup>
+        </Tooltip>
       ))}
       {failure === "" ? null : (
-        <p className="truncate pl-2 text-[11px] leading-4 text-sidebar-destructive-foreground">
-          {failure}
-        </p>
+        <p className="truncate pl-2 text-2xs leading-4 text-destructive">{failure}</p>
       )}
     </div>
   );

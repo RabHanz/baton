@@ -1,0 +1,766 @@
+Subject: contracts: the fabric.* RPC group, settings flags and conversation import fields
+
+rpc.ts carries the Baton Rpc definitions (D71 keeps the fabric.* names on the wire); settings and
+environment add Baton's flags and capabilities; agentSessions adds import and presence fields.
+
+diff --git a/packages/contracts/src/agentSessions.ts b/packages/contracts/src/agentSessions.ts
+index 91c181175f3b6f542802ffa0e8d1e5c7312291b0..916207ce57e7367b8d1a93ddc03f3c14b1625147 100644
+--- a/packages/contracts/src/agentSessions.ts
++++ b/packages/contracts/src/agentSessions.ts
+@@ -1,5 +1,11 @@
+ import * as Schema from "effect/Schema";
+-import { IsoDateTime, NonNegativeInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
++import {
++  IsoDateTime,
++  NonNegativeInt,
++  ProjectId,
++  ThreadId,
++  TrimmedNonEmptyString,
++} from "./baseSchemas.ts";
+ import { ProviderInstanceId } from "./providerInstance.ts";
+ 
+ /** Coding agent home directories the scanner knows how to read. */
+@@ -25,6 +31,18 @@ export function isImportedAgentSessionMessageId(messageId: string): boolean {
+   return messageId.startsWith("import:");
+ }
+ 
++/**
++ * The thread id an imported conversation takes. Derived from the session rather
++ * than generated, so importing the same transcript twice lands on the same
++ * thread and a listing can say which conversations are already here.
++ */
++export function importedAgentSessionThreadId(source: {
++  readonly providerInstanceId: ProviderInstanceId;
++  readonly providerSessionId: string;
++}): ThreadId {
++  return ThreadId.make(`import:${source.providerInstanceId}:${source.providerSessionId}`);
++}
++
+ /**
+  * Empty for now. Kept as a struct so future scan options (source filters,
+  * explicit roots) can be added without a new method.
+@@ -103,10 +121,127 @@ export const AgentSessionImportResult = Schema.Struct({
+ });
+ export type AgentSessionImportResult = typeof AgentSessionImportResult.Type;
+ 
++/**
++ * One conversation a coding agent left on disk, offered for import by name
++ * rather than by the directory it ran in. The wizard's project-shaped scan
++ * answers "which folders have history"; this answers "which conversation was
++ * that", which is the question somebody looking for a session they remember is
++ * actually asking.
++ *
++ * `threadId` is the id the imported thread takes, derived from the provider
++ * session, so a client can open the conversation whether it imports it now or
++ * imported it last week.
++ */
++export const AgentSessionThreadSummary = Schema.Struct({
++  provider: AgentSessionSource,
++  providerInstanceId: ProviderInstanceId,
++  providerSessionId: TrimmedNonEmptyString,
++  threadId: ThreadId,
++  title: TrimmedNonEmptyString,
++  /** First user message, trimmed — the line that says which conversation this is. */
++  preview: Schema.String,
++  /** Directory the session ran in, as the transcript recorded it. */
++  workspaceRoot: TrimmedNonEmptyString,
++  /**
++   * Set when a project on this server owns that directory — either rooted at
++   * it, or containing it. Containment is what makes presence honest: a session
++   * run in a worktree or a subdirectory of a project is that project's work,
++   * and matching roots exactly left 4,013 of this box's 7,071 transcripts
++   * belonging to no project at all.
++   */
++  projectId: Schema.optional(ProjectId),
++  /**
++   * The directory the session actually ran in, when that is not the project
++   * root — a worktree, a package, a scratch directory. `workspaceRoot` reports
++   * the project's root so rows group, and this says where the work happened.
++   */
++  sessionRoot: Schema.optional(TrimmedNonEmptyString),
++  /**
++   * The session ran below the project root rather than at it. Agent lanes are
++   * overwhelmingly nested, and they outnumber his own sessions by three orders
++   * of magnitude on the agent box — so a listing that cannot tell them apart
++   * buries the conversations he is looking for.
++   */
++  nested: Schema.optional(Schema.Boolean),
++  model: Schema.NullOr(Schema.String),
++  messageCount: NonNegativeInt,
++  sizeBytes: NonNegativeInt,
++  startedAt: IsoDateTime,
++  lastActiveAt: IsoDateTime,
++  alreadyImported: Schema.Boolean,
++  /**
++   * The transcript was written to minutes ago, so that session may still be
++   * running. Resuming it would put a second writer on one file, and that file
++   * is the only record of the conversation — so the listing says so and waits
++   * rather than offering it.
++   */
++  stillWriting: Schema.Boolean,
++});
++export type AgentSessionThreadSummary = typeof AgentSessionThreadSummary.Type;
++
++/** `workspaceRoot` narrows the listing to one project's directory. */
++export const AgentSessionThreadsInput = Schema.Struct({
++  workspaceRoot: Schema.optional(TrimmedNonEmptyString),
++});
++export type AgentSessionThreadsInput = typeof AgentSessionThreadsInput.Type;
++
++export const AgentSessionThreadsResult = Schema.Struct({
++  threads: Schema.Array(AgentSessionThreadSummary),
++  scannedAt: IsoDateTime,
++  /** A budget ran out before every transcript was read. */
++  truncated: Schema.optional(Schema.Boolean),
++});
++export type AgentSessionThreadsResult = typeof AgentSessionThreadsResult.Type;
++
++/**
++ * Import exactly one conversation into an existing project. The project-wide
++ * import takes everything recent in a directory, which is right for onboarding
++ * and wrong for "resume that one" — picking a single session must not drag a
++ * live transcript from the same folder in beside it.
++ */
++export const AgentSessionImportThreadInput = Schema.Struct({
++  projectId: ProjectId,
++  provider: AgentSessionSource,
++  providerInstanceId: ProviderInstanceId,
++  providerSessionId: TrimmedNonEmptyString,
++  expectedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
++});
++export type AgentSessionImportThreadInput = typeof AgentSessionImportThreadInput.Type;
++
++export const AgentSessionImportThreadResult = Schema.Struct({
++  threadId: ThreadId,
++  /** False when the thread was already imported, which is not a failure. */
++  imported: Schema.Boolean,
++});
++export type AgentSessionImportThreadResult = typeof AgentSessionImportThreadResult.Type;
++
++export class AgentSessionImportThreadError extends Schema.TaggedError<AgentSessionImportThreadError>()(
++  "AgentSessionImportThreadError",
++  {
++    providerSessionId: TrimmedNonEmptyString,
++    reason: Schema.Literals(["not-found", "unresumable", "changed", "still-writing"]),
++  },
++) {
++  override get message(): string {
++    switch (this.reason) {
++      case "not-found":
++        return `Conversation '${this.providerSessionId}' is no longer on disk in this project. Scan again.`;
++      case "unresumable":
++        return `Conversation '${this.providerSessionId}' has no session id its CLI can resume.`;
++      case "changed":
++        return `Conversation '${this.providerSessionId}' changed while it was importing.`;
++      case "still-writing":
++        return `Conversation '${this.providerSessionId}' was written to in the last few minutes, so it is probably still running. Importing it now would put a second writer on the only file that holds it — close that session and try again.`;
++    }
++  }
++}
++
+ export class AgentSessionScanError extends Schema.TaggedError<AgentSessionScanError>()(
+   "AgentSessionScanError",
+   {
+-    operation: Schema.Literals(["read-settings", "read-projects"]),
++    // `import-thread` reaches only the single-conversation import, which no
++    // client that predates it can call.
++    operation: Schema.Literals(["read-settings", "read-projects", "import-thread"]),
+     cause: Schema.Defect(),
+   },
+ ) {
+diff --git a/packages/contracts/src/environment.ts b/packages/contracts/src/environment.ts
+index 089133d878a4dce23d6e0628d1f123f90c1d6f8c..d656d72b6aef70bb4565bf7b0e1247a550af7db2 100644
+--- a/packages/contracts/src/environment.ts
++++ b/packages/contracts/src/environment.ts
+@@ -180,6 +180,21 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
+       setting. Older servers drop the key on write, so clients show the
+       picker inert rather than offering a choice that would never stick. */
+   environmentIcon: Schema.optionalKey(Schema.Boolean),
++  /** Server understands `fabric.workSession.*` and `fabric.subscribeWorkSessions`,
++      and persists work sessions -- the user's work as an object above provider
++      threads. Absent on servers from before Baton, which have no such tables
++      and would reject the calls, so a client must keep its work-session UI
++      hidden for that environment rather than probing. Same version-skew
++      contract as threadSettlement. */
++  // Legacy name (D71): clients already check this capability key.
++  fabricWorkSessions: Schema.optionalKey(Schema.Boolean),
++  /** Server understands `agentSessions.threads` and `agentSessions.importThread`:
++      the conversation-level listing and single-session import behind the
++      "Import Claude Code / Codex conversations" action. Absent on servers whose
++      only import surface is the first-run wizard's project scan, so a client
++      must keep the action hidden for that environment rather than probing.
++      Same version-skew contract as threadSettlement. */
++  agentSessionConversationImport: Schema.optionalKey(Schema.Boolean),
+   /** The desktop app supervising this server can be driven over RPC:
+       server.updateServer runs its check -> download -> relaunch. Absent on
+       desktop servers whose app predates the remote trigger, where clients
+diff --git a/packages/contracts/src/index.ts b/packages/contracts/src/index.ts
+index 978a0459e69bc46e8aa24a4ef4dca58081fb8b01..915c3004e60c49106af6b51a6afb155cae684800 100644
+--- a/packages/contracts/src/index.ts
++++ b/packages/contracts/src/index.ts
+@@ -42,5 +42,17 @@ export * from "./preview.ts";
+ export * from "./previewAutomation.ts";
+ export * from "./resourceTelemetry.ts";
+ export * from "./usage.ts";
++export * from "./baton/sessionState.ts";
++export * from "./baton/synopsis.ts";
++export * from "./baton/workSession.ts";
++export * from "./baton/fleet.ts";
++export * from "./baton/orchestrationRule.ts";
++export * from "./baton/intent.ts";
++export * from "./baton/context.ts";
++export * from "./baton/adoptedSession.ts";
++export * from "./baton/capability.ts";
++export * from "./baton/accountPool.ts";
++export * from "./baton/handoff.ts";
++export * from "./baton/liveSessions.ts";
+ export * from "./rpc.ts";
+ export * from "./worktreeSetup.ts";
+diff --git a/packages/contracts/src/ipc.ts b/packages/contracts/src/ipc.ts
+index 700e5184cf83c3a9b4f2fe3ccbd6d58fc536bbb9..9914b06e5d2e72cdf11936f173cab7d08170bed7 100644
+--- a/packages/contracts/src/ipc.ts
++++ b/packages/contracts/src/ipc.ts
+@@ -12,6 +12,7 @@ import {
+ } from "./previewAutomation.ts";
+ import { SnapShotSource } from "./orchestration.ts";
+ import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
++import type { BatonInjectionReport } from "./baton/context.ts";
+ import { BrowserProfileId } from "./browserProfile.ts";
+ import type {
+   BrowserImportResult,
+@@ -1137,6 +1138,40 @@ export interface DesktopBridge {
+    * regardless of OS settings.
+    */
+   getSystemLocale?: () => string | null;
++  /**
++   * What this machine can type into, for §18's "capability must be reported
++   * honestly". The renderer supplies what it knows — whether it has a field of
++   * its own — and the main process supplies what the OS knows. Absent on
++   * desktop builds predating Baton's dictation work.
++   */
++  getBatonInjectionReport?: (request: {
++    readonly applicationIntegrationConnected: boolean;
++    readonly keystrokeSimulationAllowed: boolean;
++  }) => Promise<BatonInjectionReport>;
++  /**
++   * The desktop voice core's intent calls (`@t3tools/baton-voice` router),
++   * answered with this window's own `fabric.intent.resolve` / `run`, so spoken
++   * sentences meet the same grammar and server gates as typed ones. Dictation
++   * never arrives here: the desktop pastes it itself. Absent without Baton voice.
++   */
++  onBatonVoiceRequest?: (
++    handler: (
++      request:
++        | {
++            readonly kind: "resolve";
++            readonly text: string;
++            readonly focusedWorkSessionId: string | null;
++            readonly allowModel: boolean;
++          }
++        | {
++            readonly kind: "run";
++            readonly text: string;
++            readonly focusedWorkSessionId: string | null;
++          },
++    ) => Promise<unknown>,
++  ) => () => void;
++  /** §14 rung 3 for the voice core: the work session on screen, or null. */
++  setBatonVoiceFocus?: (workSessionId: string | null) => void;
+   // One bootstrap per pool instance currently registered with bootstrap
+   // info (omits instances whose backend hasn't produced a config yet).
+   // The primary backend is identified by id === PRIMARY_LOCAL_ENVIRONMENT_ID.
+diff --git a/packages/contracts/src/orchestration.ts b/packages/contracts/src/orchestration.ts
+index 1ae704d3f6661f9f569f2cea5f94a6c771851dc8..c67373d847d3161a4abd6d5e4953baf2d6614276 100644
+--- a/packages/contracts/src/orchestration.ts
++++ b/packages/contracts/src/orchestration.ts
+@@ -1544,7 +1544,13 @@ const ThreadHistoryImportCommand = Schema.Struct({
+   messages: Schema.Array(
+     Schema.Struct({
+       messageId: MessageId,
+-      role: Schema.Literals(["user", "assistant"]),
++      /**
++       * `system` is the import's own line — what was shown and what the agent
++       * still has. A long conversation is imported from its end, and the
++       * difference between "this is all there was" and "this is the last of it"
++       * is the difference between trusting the resume and not.
++       */
++      role: Schema.Literals(["user", "assistant", "system"]),
+       text: Schema.String,
+       createdAt: IsoDateTime,
+     }),
+diff --git a/packages/contracts/src/rpc.ts b/packages/contracts/src/rpc.ts
+index c1b25459048e4f295b614340ff6478f5112c5f37..db2dc9da96938516040910991cc1f96c8cff3b80 100644
+--- a/packages/contracts/src/rpc.ts
++++ b/packages/contracts/src/rpc.ts
+@@ -44,9 +44,14 @@ import {
+   AgentSessionImportProjectChangedError,
+   AgentSessionImportProjectNotFoundError,
+   AgentSessionImportResult,
++  AgentSessionImportThreadError,
++  AgentSessionImportThreadInput,
++  AgentSessionImportThreadResult,
+   AgentSessionScanInput,
+   AgentSessionScanResult,
+   AgentSessionScanError,
++  AgentSessionThreadsInput,
++  AgentSessionThreadsResult,
+ } from "./agentSessions.ts";
+ import {
+   AssetAccessError,
+@@ -178,6 +183,81 @@ import {
+   ProjectWriteFileInput,
+   ProjectWriteFileResult,
+ } from "./project.ts";
++import { BatonFleetInput, BatonFleetResult } from "./baton/fleet.ts";
++import {
++  BATON_ADOPTED_WS_METHODS,
++  AdoptedDiscoverInput,
++  AdoptedDiscoverResult,
++  AdoptedListInput,
++  AdoptedReadOutputInput,
++  AdoptedReadOutputResult,
++  AdoptedRefInput,
++  AdoptedRefreshInput,
++  AdoptedRegisterInput,
++  AdoptedSendInputInput,
++  AdoptedSendInputResult,
++  AdoptedSessionError,
++  AdoptedSessionListResult,
++  AdoptedSessionResult,
++} from "./baton/adoptedSession.ts";
++import {
++  BATON_INTENT_WS_METHODS,
++  BatonIntentError,
++  BatonIntentInput,
++  BatonIntentListInput,
++  BatonIntentListResult,
++  BatonIntentResolveResult,
++  BatonIntentRunResult,
++} from "./baton/intent.ts";
++import {
++  BATON_ORCHESTRATION_WS_METHODS,
++  OrchestrationConfirmInput,
++  OrchestrationRuleCreateInput,
++  OrchestrationRuleError,
++  OrchestrationRuleListInput,
++  OrchestrationRuleListResult,
++  OrchestrationRuleRefInput,
++  OrchestrationRuleResult,
++} from "./baton/orchestrationRule.ts";
++import {
++  BATON_ACCOUNT_WS_METHODS,
++  BatonAccountPoolInput,
++  BatonAccountPool,
++  BatonAccountPoolUnavailableError,
++  BatonAccountRotationFailedError,
++  BatonAccountRotationRefusedError,
++  BatonAccountUseInput,
++  BatonAccountUseResult,
++} from "./baton/accountPool.ts";
++import {
++  BATON_WS_METHODS,
++  WorkSessionAttachThreadInput,
++  WorkSessionCreateInput,
++  WorkSessionDetachThreadInput,
++  WorkSessionError,
++  WorkSessionListInput,
++  WorkSessionListResult,
++  WorkSessionRefInput,
++  WorkSessionResult,
++  WorkSessionStartThreadInput,
++  WorkSessionStreamItem,
++  WorkSessionUpdateInput,
++} from "./baton/workSession.ts";
++import {
++  BATON_LIVE_WS_METHODS,
++  BatonLiveAdoptInput,
++  BatonLiveAdoptResult,
++  BatonLiveAttachInput,
++  BatonLiveAttachResult,
++  BatonHerdrSendInput,
++  BatonHerdrSendResult,
++} from "./baton/liveSessions.ts";
++import {
++  BATON_HANDOFF_WS_METHODS,
++  WorkSessionHandoffInput,
++  WorkSessionHandoffRefusedError,
++  WorkSessionHandoffResult,
++} from "./baton/handoff.ts";
+ import {
+   TerminalAttachInput,
+   TerminalAttachStreamEvent,
+@@ -306,6 +386,8 @@ export const WS_METHODS = {
+   filesystemBrowse: "filesystem.browse",
+   agentSessionsScan: "agentSessions.scan",
+   agentSessionsImport: "agentSessions.import",
++  agentSessionsThreads: "agentSessions.threads",
++  agentSessionsImportThread: "agentSessions.importThread",
+   assetsCreateUrl: "assets.createUrl",
+   attachmentsCreateUploadUrl: "attachments.createUploadUrl",
+   attachmentsDelete: "attachments.delete",
+@@ -1041,6 +1123,24 @@ const WsAgentSessionsImportRpc = Rpc.make(WS_METHODS.agentSessionsImport, {
+   ]),
+ });
+ 
++const WsAgentSessionsThreadsRpc = Rpc.make(WS_METHODS.agentSessionsThreads, {
++  payload: AgentSessionThreadsInput,
++  success: AgentSessionThreadsResult,
++  error: Schema.Union([AgentSessionScanError, EnvironmentAuthorizationError]),
++});
++
++const WsAgentSessionsImportThreadRpc = Rpc.make(WS_METHODS.agentSessionsImportThread, {
++  payload: AgentSessionImportThreadInput,
++  success: AgentSessionImportThreadResult,
++  error: Schema.Union([
++    AgentSessionImportProjectChangedError,
++    AgentSessionImportProjectNotFoundError,
++    AgentSessionImportThreadError,
++    AgentSessionScanError,
++    EnvironmentAuthorizationError,
++  ]),
++});
++
+ const WsAssetsCreateUrlRpc = Rpc.make(WS_METHODS.assetsCreateUrl, {
+   payload: AssetCreateUrlInput,
+   success: AssetCreateUrlResult,
+@@ -1449,6 +1549,230 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
+   stream: true,
+ });
+ 
++// Baton work sessions. `fabric.*` is the layer above provider threads: the
++// user's work, which outlives the thread and the account running it. See
++// `packages/contracts/src/baton/workSession.ts`.
++
++const WsBatonAccountPoolRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountPool, {
++  payload: BatonAccountPoolInput,
++  success: BatonAccountPool,
++  error: Schema.Union([BatonAccountPoolUnavailableError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountUse, {
++  payload: BatonAccountUseInput,
++  success: BatonAccountUseResult,
++  error: Schema.Union([
++    BatonAccountPoolUnavailableError,
++    BatonAccountRotationRefusedError,
++    BatonAccountRotationFailedError,
++    EnvironmentAuthorizationError,
++  ]),
++});
++
++const WsBatonWorkSessionListRpc = Rpc.make(BATON_WS_METHODS.workSessionList, {
++  payload: WorkSessionListInput,
++  success: WorkSessionListResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionCreateRpc = Rpc.make(BATON_WS_METHODS.workSessionCreate, {
++  payload: WorkSessionCreateInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionUpdateRpc = Rpc.make(BATON_WS_METHODS.workSessionUpdate, {
++  payload: WorkSessionUpdateInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionAttachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionAttachThread, {
++  payload: WorkSessionAttachThreadInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionDetachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionDetachThread, {
++  payload: WorkSessionDetachThreadInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionStartThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionStartThread, {
++  payload: WorkSessionStartThreadInput,
++  success: WorkSessionResult,
++  error: Schema.Union([
++    WorkSessionError,
++    OrchestrationDispatchCommandError,
++    EnvironmentAuthorizationError,
++  ]),
++});
++
++const WsBatonWorkSessionHandoffRpc = Rpc.make(BATON_HANDOFF_WS_METHODS.workSessionHandoff, {
++  payload: WorkSessionHandoffInput,
++  success: WorkSessionHandoffResult,
++  error: Schema.Union([
++    WorkSessionError,
++    WorkSessionHandoffRefusedError,
++    OrchestrationDispatchCommandError,
++    EnvironmentAuthorizationError,
++  ]),
++});
++
++const WsBatonLiveAttachRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAttach, {
++  payload: BatonLiveAttachInput,
++  success: BatonLiveAttachResult,
++  error: EnvironmentAuthorizationError,
++});
++
++const WsBatonLiveAdoptRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAdopt, {
++  payload: BatonLiveAdoptInput,
++  success: BatonLiveAdoptResult,
++  error: EnvironmentAuthorizationError,
++});
++
++const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
++  payload: BatonHerdrSendInput,
++  success: BatonHerdrSendResult,
++  error: EnvironmentAuthorizationError,
++});
++
++const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
++  payload: WorkSessionRefInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionUnsettleRpc = Rpc.make(BATON_WS_METHODS.workSessionUnsettle, {
++  payload: WorkSessionRefInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionArchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionArchive, {
++  payload: WorkSessionRefInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonWorkSessionUnarchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionUnarchive, {
++  payload: WorkSessionRefInput,
++  success: WorkSessionResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonFleetGetRpc = Rpc.make(BATON_WS_METHODS.fleetGet, {
++  payload: BatonFleetInput,
++  success: BatonFleetResult,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonOrchestrationRuleCreateRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleCreate, {
++  payload: OrchestrationRuleCreateInput,
++  success: OrchestrationRuleResult,
++  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonOrchestrationRuleListRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleList, {
++  payload: OrchestrationRuleListInput,
++  success: OrchestrationRuleListResult,
++  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonOrchestrationRuleDisableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleDisable, {
++  payload: OrchestrationRuleRefInput,
++  success: OrchestrationRuleResult,
++  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonOrchestrationRuleEnableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleEnable, {
++  payload: OrchestrationRuleRefInput,
++  success: OrchestrationRuleResult,
++  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonOrchestrationRuleConfirmRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleConfirm, {
++  payload: OrchestrationConfirmInput,
++  success: OrchestrationRuleListResult,
++  error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
++});
++
++// The intent surface. `resolve` reads and `run` writes, and they are separate
++// methods so the scope map can say so: previewing what a sentence would do must
++// not need permission to do it.
++
++const WsBatonIntentResolveRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentResolve, {
++  payload: BatonIntentInput,
++  success: BatonIntentResolveResult,
++  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonIntentRunRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentRun, {
++  payload: BatonIntentInput,
++  success: BatonIntentRunResult,
++  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonIntentListRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentList, {
++  payload: BatonIntentListInput,
++  success: BatonIntentListResult,
++  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
++});
++
++// Sessions Baton adopted rather than started (§9). Discovery reads; the rest
++// change what an external runtime is doing, or what Baton believes about it.
++
++const WsBatonAdoptedDiscoverRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDiscover, {
++  payload: AdoptedDiscoverInput,
++  success: AdoptedDiscoverResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAdoptedRegisterRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRegister, {
++  payload: AdoptedRegisterInput,
++  success: AdoptedSessionResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAdoptedListRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedList, {
++  payload: AdoptedListInput,
++  success: AdoptedSessionListResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAdoptedRefreshRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRefresh, {
++  payload: AdoptedRefreshInput,
++  success: AdoptedSessionResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAdoptedDetachRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDetach, {
++  payload: AdoptedRefInput,
++  success: AdoptedSessionResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAdoptedSendInputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedSendInput, {
++  payload: AdoptedSendInputInput,
++  success: AdoptedSendInputResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonAdoptedReadOutputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedReadOutput, {
++  payload: AdoptedReadOutputInput,
++  success: AdoptedReadOutputResult,
++  error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
++});
++
++const WsBatonSubscribeWorkSessionsRpc = Rpc.make(BATON_WS_METHODS.subscribeWorkSessions, {
++  payload: Schema.Struct({}),
++  success: WorkSessionStreamItem,
++  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
++  stream: true,
++});
++
+ export const WsRpcGroup = RpcGroup.make(
+   WsServerProbeRpc,
+   WsServerGetConfigRpc,
+@@ -1537,6 +1861,8 @@ export const WsRpcGroup = RpcGroup.make(
+   WsFilesystemBrowseRpc,
+   WsAgentSessionsScanRpc,
+   WsAgentSessionsImportRpc,
++  WsAgentSessionsThreadsRpc,
++  WsAgentSessionsImportThreadRpc,
+   WsAssetsCreateUrlRpc,
+   WsAttachmentsCreateUploadUrlRpc,
+   WsAttachmentsDeleteRpc,
+@@ -1600,4 +1926,37 @@ export const WsRpcGroup = RpcGroup.make(
+   WsOrchestrationGetArchivedShellSnapshotRpc,
+   WsOrchestrationSubscribeShellRpc,
+   WsOrchestrationSubscribeThreadRpc,
++  WsBatonAccountPoolRpc,
++  WsBatonAccountUseRpc,
++  WsBatonWorkSessionListRpc,
++  WsBatonWorkSessionCreateRpc,
++  WsBatonWorkSessionUpdateRpc,
++  WsBatonWorkSessionAttachThreadRpc,
++  WsBatonWorkSessionDetachThreadRpc,
++  WsBatonWorkSessionStartThreadRpc,
++  WsBatonWorkSessionHandoffRpc,
++  WsBatonHerdrSendRpc,
++  WsBatonLiveAttachRpc,
++  WsBatonLiveAdoptRpc,
++  WsBatonWorkSessionSettleRpc,
++  WsBatonWorkSessionUnsettleRpc,
++  WsBatonWorkSessionArchiveRpc,
++  WsBatonWorkSessionUnarchiveRpc,
++  WsBatonFleetGetRpc,
++  WsBatonOrchestrationRuleCreateRpc,
++  WsBatonOrchestrationRuleListRpc,
++  WsBatonOrchestrationRuleDisableRpc,
++  WsBatonOrchestrationRuleEnableRpc,
++  WsBatonOrchestrationRuleConfirmRpc,
++  WsBatonIntentResolveRpc,
++  WsBatonIntentRunRpc,
++  WsBatonIntentListRpc,
++  WsBatonAdoptedDiscoverRpc,
++  WsBatonAdoptedRegisterRpc,
++  WsBatonAdoptedListRpc,
++  WsBatonAdoptedRefreshRpc,
++  WsBatonAdoptedDetachRpc,
++  WsBatonAdoptedSendInputRpc,
++  WsBatonAdoptedReadOutputRpc,
++  WsBatonSubscribeWorkSessionsRpc,
+ );
+diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
+index 1331d2dcb30df1899c111f9863e3ee9cd97eeaeb..c42266424a31184fca2cc784d4d199328963b89f 100644
+--- a/packages/contracts/src/settings.test.ts
++++ b/packages/contracts/src/settings.test.ts
+@@ -284,6 +284,32 @@ describe("ClientSettings default diff file state", () => {
+   });
+ });
+ 
++describe("ClientSettings Baton work sessions", () => {
++  it("gives a profile that has never seen the setting the Baton sidebar", () => {
++    // The Director's condition for the first deploy was that he does not have to
++    // find a setting, so this default is a requirement rather than a taste: an
++    // upstream merge that flips it back should fail here.
++    expect(decodeClientSettings({}).fabricWorkSessionsEnabled).toBe(true);
++  });
++
++  it.each([true, false])("preserves an explicit preference of %s", (fabricWorkSessionsEnabled) => {
++    const settings = decodeClientSettings({ fabricWorkSessionsEnabled });
++    expect(encodeClientSettings(settings).fabricWorkSessionsEnabled).toBe(
++      fabricWorkSessionsEnabled,
++    );
++  });
++
++  it("is not part of the settings patch, so no panel can write it yet", () => {
++    // Recorded rather than fixed: adding the key would mean adding a row to
++    // upstream's settings panel, which is the file every upstream merge touches.
++    // The default is what the user gets, and turning Baton off means editing
++    // the client's stored settings. See DECISIONS.md D45.
++    expect(decodeClientSettingsPatch({ fabricWorkSessionsEnabled: false })).not.toHaveProperty(
++      "fabricWorkSessionsEnabled",
++    );
++  });
++});
++
+ describe("ClientSettings diff colors", () => {
+   it("keeps red and green for existing settings without a saved palette", () => {
+     expect(decodeClientSettings({}).diffColorScheme).toBe("red-green");
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index 65ac8c04e20cd1a921299d5b0a079e6fe0739209..dee3578d39f0883c79db1b9a6bf59cfcb54006d3 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -371,6 +371,21 @@ export const ClientSettingsSchema = Schema.Struct({
+   dismissedProviderUpdateNotificationKeys: Schema.Array(TrimmedNonEmptyString).pipe(
+     Schema.withDecodingDefault(Effect.succeed([])),
+   ),
++  /**
++   * Group the sidebar by Baton work session — the user's work — instead of
++   * listing provider threads flat.
++   *
++   * **On by default in this fork**, which is the whole reason the fork exists:
++   * a build of Baton where the user has to find a setting before seeing any of
++   * it is a build nobody uses. It stays a client preference rather than an
++   * environment setting because what it changes is this client's navigation,
++   * and an environment that does not understand `fabric.*` is handled
++   * separately — the sidebar checks the server's `fabricWorkSessions`
++   * capability before calling anything, so a client pointed at a stock T3
++   * server still renders the stock sidebar.
++   */
++  // Legacy name (D71): a persisted settings key; renaming it would reset the toggle.
++  fabricWorkSessionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+   diffLayout: DiffLayout.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_DIFF_LAYOUT))),

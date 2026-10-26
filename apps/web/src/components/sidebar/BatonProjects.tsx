@@ -81,7 +81,7 @@ export function BatonProjects(props: BatonProjectsProps): ReactNode {
         />
       ))}
       {groups.length === 0 ? null : (
-        <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted-foreground">
+        <p className="px-2 pb-1 text-2xs font-medium uppercase tracking-wide text-sidebar-muted-foreground">
           Projects
         </p>
       )}
@@ -96,7 +96,7 @@ export function BatonProjects(props: BatonProjectsProps): ReactNode {
                 <span className="truncate text-xs font-medium leading-5 text-sidebar-foreground">
                   {group.label}
                 </span>
-                <span className="shrink-0 text-[11px] leading-4 text-sidebar-muted-foreground">
+                <span className="shrink-0 text-2xs leading-4 text-sidebar-muted-foreground">
                   {[
                     `${group.rows.length} live`,
                     group.boxes.join(" + "),
@@ -164,18 +164,18 @@ function SessionRow(
         )}
         <span
           className={cn(
-            "shrink-0 text-[11px] leading-4",
-            row.urgent ? "text-sidebar-destructive-foreground" : "text-sidebar-muted-foreground",
+            "shrink-0 text-2xs leading-4",
+            row.urgent ? "text-destructive" : "text-sidebar-muted-foreground",
           )}
         >
           {row.state}
         </span>
       </span>
-      <span className="block truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+      <span className="block truncate text-2xs leading-4 text-sidebar-muted-foreground">
         {detail}
       </span>
       {row.kind !== "work" && row.prompt !== null ? (
-        <pre className="mt-0.5 max-h-24 overflow-hidden whitespace-pre-wrap rounded bg-sidebar-accent px-1.5 py-1 text-[10px] leading-3.5 text-sidebar-foreground">
+        <pre className="mt-0.5 max-h-24 overflow-hidden whitespace-pre-wrap rounded bg-sidebar-row-selected px-1.5 py-1 text-3xs leading-3.5 text-sidebar-foreground">
           {row.prompt}
         </pre>
       ) : null}
@@ -224,12 +224,12 @@ function AdoptButton(props: {
             setNote(result._tag === "Success" ? result.value.detail : "Could not adopt");
           });
         }}
-        className="rounded border border-sidebar-border px-2 py-0.5 text-[11px] text-sidebar-foreground"
+        className="rounded border border-sidebar-border px-2 py-0.5 text-2xs text-sidebar-foreground"
       >
         Bring into Herdr to send
       </button>
       {note === null ? null : (
-        <span className="truncate text-[11px] text-sidebar-muted-foreground">{note}</span>
+        <span className="truncate text-2xs text-sidebar-muted-foreground">{note}</span>
       )}
     </div>
   );
@@ -323,7 +323,7 @@ function SendBox(props: {
         </button>
       </form>
       {note === null ? null : (
-        <span className="block text-[11px] leading-4 text-sidebar-muted-foreground">{note}</span>
+        <span className="block text-2xs leading-4 text-sidebar-muted-foreground">{note}</span>
       )}
     </>
   );

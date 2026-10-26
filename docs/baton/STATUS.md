@@ -19,6 +19,26 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 8 — Herdr adoption                             | **done for a terminal**             | Herdr 0.9.5 on both boxes; a real pane discovered, adopted, in the fleet and readable; T3 terminals can be Herdr-backed and outlive T3 (D61, proven live)                                    |
 | 10 — capability plane + hardening              | **partial**                         | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                           |
 
+## v2 port (resume here), started 2026-10-26
+
+The plan is `UPSTREAM.md` "The port plan". Four phases, each merged and deployable on its own.
+
+| Phase                                                                    | State         | Evidence / next step                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A — patch series + sync + gates at the current pin, no behaviour change  | **in review** | `vendor-patches/t3code/` (PIN `024d49520e`, 10 patches, 59 upstream paths + the lockfile), `patches.sh verify` passes on the tree, self-test 5/5, `gates.sh`, `release-build.sh`, `deploy-beside.sh`; D76–D78. Deploy as `0.0.45-baton.21` beside baton.20 |
+| B — Node 26.12.1 / pnpm 12.14.0, pin to upstream main, server half on v2 | not started   | toolchain installed and checksum-verified at `/mnt/HC_Volume_106652742/dev/toolchain/node-v26.12.1-linux-x64` (pnpm 12.14.0 inside; pnpm 12 shares the v11 store, so no second 5 GB store). Dry run: none of the 10 patches applies to upstream main as-is |
+| C — sidebar from T3's own components at one hook; ~25 s first load       | not started   |                                                                                                                                                                                                                                                            |
+| D — daily auto-sync job                                                  | not started   | `upstream-sync.sh` already does pin → series → lockfile → gates → PR; D adds the timer, merge+deploy on green, issue on red, the >3-day alarm                                                                                                              |
+
+Phase A also fixed what the gates found on main: typecheck failed in `scripts/mobile-showcase.test.ts`
+(a Baton test of a showcase scene the pre-v2 merge dropped; reverted to upstream's file), lint had
+over 40 errors in Baton's own UI files under upstream's newer shadcn rules (off-scale font sizes, four
+undeclared colours that rendered nothing, a native title tooltip, `toSorted`), and eight symlinks
+into `/home/dev/.claude` were committed under `apps/server/synthetic config's $literal/`. That
+directory came from an upstream test that names a relative `homePath`, which Baton's shared-home
+materialiser (D52) filled with links to the real home. Relative homes are now never materialised,
+and the server's test run no longer walks into the Director's plugins.
+
 ## Gap list, 2026-10-26 (where an older line below disagrees, this wins)
 
 Re-derived from the fork, both boxes and the spec rather than from this page's own older rows.

@@ -1,164 +1,117 @@
 #!/usr/bin/env bash
 #
-# Bring upstream's work into the fork, and say what it will cost before it does.
+# Move Baton to a newer upstream T3 Code: bump the pin, re-apply the patch series, run the gates,
+# and open the pull request. Mechanical by design; the one thing it hands a human is a patch that
+# no longer applies.
 #
-# A fork that only diverges is a fork that eventually cannot take a fix. This
-# does the three things that keep the distance visible and small:
+#   scripts/baton/upstream-sync.sh [--to <upstream-ref>] [--report-only] [--no-gates]
+#                                  [--no-pr] [--branch <name>] [--base <ref>]
 #
-#   1. reports what upstream did since the last sync — commits, and the files
-#      they touched that this fork also touches;
-#   2. calls out, by name, every hit against the conflicts table in
-#      `docs/baton/UPSTREAM.md`, because those are the files where a merge will
-#      need a human decision rather than a resolution;
-#   3. merges `upstream/main` into a branch off the fork's `main` and opens the
-#      pull request, with the report as the body.
+#   --to        the upstream commit to move to (default upstream/main)
+#   --base      where the sync branch starts (default origin/main)
 #
-# Merge commits are fine here: this fork is not rebased onto upstream, it
-# absorbs upstream. A rebase would rewrite every Baton commit on every sync and
-# make "what did we change" unanswerable.
+# What it does, in order:
+#   1. fetch; report upstream's commits and which of them touch a path the series patches
+#   2. branch, `patches.sh rebase <to>`: upstream paths become <to>'s, the series re-applies --3way
+#   3. regenerate pnpm-lock.yaml (REGENERATED: never patched, re-resolved from upstream's)
+#   4. commit with two parents, the base and <to>, so upstream's history stays reachable
+#   5. `gates.sh --install --build`
+#   6. push and open the PR with the report as the body
 #
-# Usage:
-#   scripts/baton/upstream-sync.sh [--report-only] [--branch <name>]
-#                                   [--base <ref>] [--no-pr]
-#
-# `--base` exists for the case where the fork's `main` is not yet where the sync
-# should start from — a fix the merge depends on sitting in an open PR, say.
-# It defaults to `origin/main`, which is the normal answer.
-#
-# Exit codes: 0 done (or nothing to do), 1 refused, 2 merged with conflicts left
-# in the worktree for a human.
+# Exit codes: 0 done or nothing to do, 1 refused, 2 a patch needs a human, 3 gates failed.
+# The tree is left on the sync branch in cases 2 and 3 so the fix starts from it.
 
 set -euo pipefail
-
 cd "$(git rev-parse --show-toplevel)"
+export LC_ALL=C
 
-report_only=0
-open_pr=1
-branch=""
-base="origin/main"
+to="upstream/main" base="origin/main" branch="" report_only=0 gates=1 open_pr=1
 while [ $# -gt 0 ]; do
   case "$1" in
+    --to) shift; to="${1:?}" ;;
+    --base) shift; base="${1:?}" ;;
+    --branch) shift; branch="${1:?}" ;;
     --report-only) report_only=1 ;;
+    --no-gates) gates=0 ;;
     --no-pr) open_pr=0 ;;
-    --branch) shift; branch="${1:-}" ;;
-    --base) shift; base="${1:-}" ;;
     *) echo "upstream-sync: unknown argument '$1'" >&2; exit 1 ;;
   esac
   shift
 done
 
-if [ -n "$(git status --porcelain)" ]; then
-  echo "upstream-sync: the working tree is dirty. Commit or stash first." >&2
-  exit 1
-fi
+[ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "upstream-sync: the working tree is dirty" >&2; exit 1; }
 
 echo "==> Fetching"
 git fetch --quiet origin main
 git fetch --quiet upstream main
+target="$(git rev-parse --verify "$to^{commit}")"
+pin="$(git show "$base:vendor-patches/t3code/PIN" | tr -d '[:space:]')"
+ahead="$(git rev-list --count "$pin..$target")"
+behind_days=$(( ($(git log -1 --format=%ct "$target") - $(git log -1 --format=%ct "$pin")) / 86400 ))
 
-fork_point="$(git merge-base origin/main upstream/main)"
-ahead="$(git rev-list --count origin/main..upstream/main)"
-
-report="$(mktemp)"
-trap 'rm -f "$report"' EXIT
+report="${BATON_SYNC_REPORT:-$(mktemp)}"
+patched="$(git show "$base:vendor-patches/t3code/series" | grep -vE '^\s*(#|$)' |
+  while read -r p; do git show "$base:vendor-patches/t3code/$p" | sed -n 's|^diff --git a/\(.*\) b/.*$|\1|p'; done | sort -u)"
+upstream_changed="$(git diff --no-renames --name-only "$pin" "$target" | grep -v '^\.repos/' | sort -u || true)"
+touched="$(comm -12 <(printf '%s\n' "$patched") <(printf '%s\n' "$upstream_changed") || true)"
 
 {
-  printf '## Upstream sync\n\n'
-  printf '| | |\n| --- | --- |\n'
-  printf '| Fork `main` | `%s` |\n' "$(git rev-parse --short origin/main)"
-  printf '| Upstream `main` | `%s` |\n' "$(git rev-parse --short upstream/main)"
-  printf '| Common ancestor | `%s` |\n' "$(git rev-parse --short "$fork_point")"
-  printf '| Upstream commits to take | %s |\n\n' "$ahead"
+  printf '## Upstream sync\n\n| | |\n| --- | --- |\n'
+  printf '| Pin now | `%s` (%s) |\n' "$(git rev-parse --short "$pin")" "$(git log -1 --format=%cs "$pin")"
+  printf '| Moving to | `%s` (%s) |\n' "$(git rev-parse --short "$target")" "$(git log -1 --format=%cs "$target")"
+  printf '| Upstream commits | %s (%s days of upstream) |\n' "$ahead" "$behind_days"
+  printf '| Patched paths upstream also changed | %s |\n\n' "$(printf '%s' "$touched" | grep -c . || true)"
+  if [ -n "$touched" ]; then printf '%s\n' "$touched" | sed 's/^/- `/; s/$/`/'; printf '\n'; fi
+  printf '### Upstream commits (newest 60)\n\n'
+  git log --no-merges --pretty='- `%h` %s' "$pin..$target" | head -60
+  printf '\n'
 } > "$report"
 
-if [ "$ahead" -eq 0 ]; then
-  echo "Nothing to sync: upstream/main is already an ancestor of origin/main."
-  cat "$report"
-  exit 0
-fi
-
-# Upstream vendors reference checkouts under .repos/, which are enormous and
-# have nothing to do with the fork. They are counted, not listed.
-upstream_files="$(git diff --name-only "$fork_point" upstream/main | grep -v '^\.repos/' || true)"
-vendored_count="$(git diff --name-only "$fork_point" upstream/main | grep -c '^\.repos/' || true)"
-fork_files="$(git diff --name-only "$fork_point" origin/main || true)"
-
-overlap="$(comm -12 <(printf '%s\n' "$upstream_files" | sort -u) <(printf '%s\n' "$fork_files" | sort -u) || true)"
-
-# Every path the conflicts table names, read out of its own backticks so the
-# document stays the single source of that list.
-conflict_paths="$(
-  sed -n '/^### Conflicts carried/,/^## /p' docs/baton/UPSTREAM.md |
-    grep -oE '`[a-zA-Z0-9_./-]+\.(ts|tsx|json|sh|yaml|yml)`' |
-    tr -d '`' | sort -u
-)"
-
-flagged="$(comm -12 <(printf '%s\n' "$overlap" | sort -u) <(printf '%s\n' "$conflict_paths") || true)"
-
-{
-  printf '### What upstream changed\n\n'
-  git log --no-merges --pretty='- `%h` %s' "$fork_point".."upstream/main" | head -60
-  printf '\n(%s files outside `.repos/`; %s vendored reference files ignored.)\n\n' \
-    "$(printf '%s\n' "$upstream_files" | grep -c . || true)" "$vendored_count"
-
-  printf '### Files both sides touched\n\n'
-  if [ -z "$overlap" ]; then
-    printf 'None. This sync cannot conflict.\n\n'
-  else
-    printf '%s\n' "$overlap" | sed 's/^/- `/; s/$/`/'
-    printf '\n'
-  fi
-
-  printf '### Against the conflicts table\n\n'
-  if [ -z "$flagged" ]; then
-    printf 'No file named in `docs/baton/UPSTREAM.md` was touched upstream.\n\n'
-  else
-    printf 'Upstream moved these, and `UPSTREAM.md` already says why the fork is in them:\n\n'
-    printf '%s\n' "$flagged" | sed 's/^/- `/; s/$/`/'
-    printf '\n'
-  fi
-} >> "$report"
-
+if [ "$ahead" -eq 0 ]; then echo "Nothing to sync: the pin is upstream's tip."; exit 0; fi
 cat "$report"
+[ "$report_only" -eq 0 ] || exit 0
 
-if [ "$report_only" -eq 1 ]; then
-  exit 0
-fi
-
-if [ -z "$branch" ]; then
-  branch="baton/upstream-sync-$(date -u +%Y%m%d)"
-fi
-
-echo "==> Merging upstream/main into $branch (from $base)"
+branch="${branch:-baton/upstream-sync-$(date -u +%Y%m%d)-$(git rev-parse --short "$target")}"
+echo "==> $branch from $base"
 git checkout --quiet -B "$branch" "$base"
 
 set +e
-git merge --no-edit -m "sync: merge upstream/main into the fork
-
-$ahead upstream commits. Conflicts, if any, are resolved keeping both sides:
-upstream's behaviour and Baton's additions. See docs/baton/UPSTREAM.md." upstream/main
-merge_status=$?
+bash scripts/baton/patches.sh rebase "$target"
+rc=$?
 set -e
+if [ "$rc" -ne 0 ]; then
+  printf '\n### Result\n\nThe series stopped (exit %s). See the CONFLICT lines above.\n' "$rc" >> "$report"
+  exit "$rc"
+fi
 
-if [ "$merge_status" -ne 0 ]; then
-  echo
-  echo "==> Merge stopped with conflicts in:"
-  git diff --name-only --diff-filter=U | sed 's/^/    /'
-  echo
-  echo "Resolve them, keeping both upstream's behaviour and Baton's additions,"
-  echo "then: git commit && git push -u origin $branch"
-  exit 2
+echo "==> Regenerating pnpm-lock.yaml"
+# shellcheck source=toolchain.sh
+source scripts/baton/toolchain.sh
+nice -n 10 pnpm install --lockfile-only --silent
+git add -A
+
+tree="$(git write-tree)"
+commit="$(git commit-tree "$tree" -p "$(git rev-parse HEAD)" -p "$target" \
+  -m "sync: upstream to $(git rev-parse --short "$target") ($ahead commits)" \
+  -m "Pin $(git rev-parse --short "$pin") -> $(git rev-parse --short "$target"); patch series re-applied by scripts/baton/patches.sh rebase.")"
+git reset --quiet --hard "$commit"
+bash scripts/baton/patches.sh verify
+
+if [ "$gates" -eq 1 ]; then
+  set +e
+  bash scripts/baton/gates.sh --install --build 2>&1 | tee "${report%.md}.gates.log"
+  rc="${PIPESTATUS[0]}"
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    printf '\n### Result\n\nGates failed. Log: `%s`\n' "${report%.md}.gates.log" >> "$report"
+    exit 3
+  fi
+  printf '\n### Result\n\nSeries applied, lockfile regenerated, gates passed (typecheck, lint, tests, build).\n' >> "$report"
 fi
 
 git push --quiet -u origin "$branch"
-
-# A sync can bring new deploy/publish workflows; keep upstream's secrets-bound ones off.
-bash "$(dirname "$0")/disable-upstream-workflows.sh" || echo "warn: could not check upstream workflows"
-
-if [ "$open_pr" -eq 1 ] && command -v gh > /dev/null 2>&1; then
+bash scripts/baton/disable-upstream-workflows.sh || echo "warn: could not check upstream workflows"
+if [ "$open_pr" -eq 1 ]; then
   gh pr create --base main --head "$branch" \
-    --title "sync: upstream/main into the fork ($ahead commits)" \
-    --body-file "$report"
-else
-  echo "Pushed $branch. Open the pull request when ready."
+    --title "sync: upstream to $(git rev-parse --short "$target") ($ahead commits)" --body-file "$report"
 fi

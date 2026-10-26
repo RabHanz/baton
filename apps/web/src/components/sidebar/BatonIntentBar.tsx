@@ -252,7 +252,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       {reading ? (
         <p
           data-testid="sidebar-intent-reading"
-          className="pb-0.5 text-[11px] leading-4 text-sidebar-muted-foreground"
+          className="pb-0.5 text-2xs leading-4 text-sidebar-muted-foreground"
         >
           {/* A model read takes seconds, not milliseconds. Saying so beats an
               input that looks like it ignored the keypress. */}
@@ -262,7 +262,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       {dictating ? (
         <p
           data-testid="sidebar-intent-dictating"
-          className="pb-0.5 text-[11px] leading-4 text-sidebar-foreground"
+          className="pb-0.5 text-2xs leading-4 text-sidebar-foreground"
         >
           {/* The mode is never invisible: dictation the user has forgotten is
               on is how a sentence meant for an agent ends up in an email. */}
@@ -306,7 +306,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
           event.preventDefault();
           submit();
         }}
-        className="w-full rounded bg-sidebar-accent/40 px-1.5 py-1 text-xs leading-4 text-sidebar-foreground placeholder:text-sidebar-muted-foreground focus:outline-none"
+        className="w-full rounded bg-sidebar-row-hover px-1.5 py-1 text-xs leading-4 text-sidebar-foreground placeholder:text-sidebar-muted-foreground focus:outline-none"
       />
       {preview === null ? null : (
         <>
@@ -317,7 +317,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
             // — being the half that truncates.
             <p
               data-testid="sidebar-intent-marker"
-              className="truncate pt-0.5 text-[11px] leading-4 text-sidebar-muted-foreground"
+              className="truncate pt-0.5 text-2xs leading-4 text-sidebar-muted-foreground"
             >
               ↵ again to run
             </p>
@@ -325,11 +325,9 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
           <p
             data-testid="sidebar-intent-preview"
             className={cn(
-              "truncate text-[11px] leading-4",
+              "truncate text-2xs leading-4",
               awaitingSecondEnter ? "" : "pt-0.5",
-              preview.tone === "refused"
-                ? "text-sidebar-destructive-foreground"
-                : "text-sidebar-muted-foreground",
+              preview.tone === "refused" ? "text-destructive" : "text-sidebar-muted-foreground",
               preview.weighty && "text-sidebar-foreground",
             )}
           >
@@ -338,14 +336,14 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
         </>
       )}
       {preview?.unplaced === null || preview === null ? null : (
-        <p className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+        <p className="truncate text-2xs leading-4 text-sidebar-muted-foreground">
           {`could not place: ${preview.unplaced}`}
         </p>
       )}
       {reply === null ? null : (
         <p
           data-testid="sidebar-intent-reply"
-          className="pt-0.5 text-[11px] leading-4 text-sidebar-foreground"
+          className="pt-0.5 text-2xs leading-4 text-sidebar-foreground"
         >
           {reply}
         </p>

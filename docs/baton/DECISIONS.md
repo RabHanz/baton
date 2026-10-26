@@ -2057,3 +2057,40 @@ sudo systemctl daemon-reload && sudo systemctl restart user@1000.service
 ```
 
 Not applied by an agent: it restarts the user manager (every user service on the box).
+
+## D76 — The vendor tree stays at the repository root; a patch series and a gate keep it untouched
+
+The port plan drew upstream under `vendor/t3code/`. Doing that moves every path upstream's own
+tooling assumes: the workspace globs, the root `package.json` scripts, `vite.config.ts`, and the
+release chain in `scripts/` that builds the CLI archive we deploy. Each would need a Baton edit to
+find the moved tree, so the subdirectory adds patch points instead of removing them.
+
+The subdirectory's purpose is met another way. `vendor-patches/t3code/` holds the pin (`PIN`), the
+ordered `series`, and one patch per concern. `scripts/baton/patches.sh verify` proves that every
+path upstream owns equals the pin plus the series, so an edit that bypasses the series fails the
+gate. A sync is `patches.sh rebase <commit>`: upstream's paths become the new commit's, and the
+series re-applies with `--3way`. `pnpm-lock.yaml` is listed in `REGENERATED` and re-resolved on
+every sync, because a lockfile patch would conflict on every upstream release.
+
+Rejected: `git subtree` under `vendor/` (above). A Debian-style overlay that assembles a build tree
+from pristine sources at build time, because every edit would then happen in a generated copy and
+the deploy would build from something that is not the commit. Plain `git merge upstream`, because
+nothing answers "what does Baton change in upstream", and a conflict is resolved once, inside a
+merge commit, where nobody can re-run it.
+
+## D77 — The gates run locally, because upstream's CI cannot run in this repository
+
+Upstream's `ci.yml` runs on Blacksmith runners. RabHanz/baton has none, so its runs queue forever
+(PR #4's did). The gates are `scripts/baton/gates.sh`: the patch-series verify and its self-test,
+typecheck, lint, the tests of every package Baton adds to or patches, and the build. The sync job
+runs the same script, so a sync meets the same bar as a hand-made change.
+
+## D78 — Baton's code moves into its own packages when the port rewrites it, not before
+
+The plan's `packages/baton-server`, `baton-contracts` and `baton-web` are the end state. At the
+pre-v2 pin, though, Baton's server code imports the v1 engine, the v1 Sqlite layer and server
+internals that are not a package, and `contracts/rpc.ts` would import a package that imports
+`@t3tools/contracts` back. Moving it now means moving it twice: once at v1, and again when the port
+rewrites every one of those imports against v2. So Phase A ships the series and the sync. The
+package split happens in Phase B as part of the rewrite, with the RPC group merged at the server and
+the client so contracts never import Baton.

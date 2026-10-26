@@ -55,7 +55,7 @@ export function BatonContinueWith(props: {
             );
           });
         }}
-        className="min-w-0 rounded border border-sidebar-border bg-transparent px-1 py-0.5 text-[11px] text-sidebar-muted-foreground"
+        className="min-w-0 rounded border border-sidebar-border bg-transparent px-1 py-0.5 text-2xs text-sidebar-muted-foreground"
       >
         <option value="">Continue with…</option>
         {targets.map((target) => (
@@ -65,7 +65,7 @@ export function BatonContinueWith(props: {
         ))}
       </select>
       {note === null ? null : (
-        <span className="truncate text-[11px] text-sidebar-muted-foreground">{note}</span>
+        <span className="truncate text-2xs text-sidebar-muted-foreground">{note}</span>
       )}
     </div>
   );
