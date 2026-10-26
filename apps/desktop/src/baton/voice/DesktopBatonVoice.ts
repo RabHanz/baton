@@ -19,7 +19,7 @@ import {
   BATON_VOICE_FOCUS_CHANNEL,
   BATON_VOICE_REQUEST_CHANNEL,
   BATON_VOICE_RESPONSE_CHANNEL,
-} from "../../ipc/channels.ts";
+} from "../channels.ts";
 import {
   choiceDeviceId,
   realDevices,

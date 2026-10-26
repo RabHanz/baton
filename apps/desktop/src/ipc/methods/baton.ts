@@ -19,7 +19,7 @@ import * as Electron from "electron";
 
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
 import { desktopInjectionReport } from "../../baton/DesktopInjectionCapability.ts";
-import * as IpcChannels from "../channels.ts";
+import * as IpcChannels from "../../baton/channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 
 export const BatonInjectionReportRequest = Schema.Struct({

@@ -203,8 +203,8 @@ export const describeInjection = (report: BatonInjectionReport): string => {
 };
 
 /**
- * What Baton adds to upstream's `DesktopBridge` (`window.desktopBridge`), declared here rather
- * than patched into `@t3tools/contracts`. Every member is optional: a desktop build without
+ * Baton's desktop bridge, `window.batonDesktopBridge`, beside upstream's `desktopBridge` rather
+ * than patched into it or into `@t3tools/contracts`. Every member is optional: a desktop build without
  * Baton voice simply lacks them.
  */
 export interface BatonDesktopBridge {
@@ -238,6 +238,6 @@ export interface BatonDesktopBridge {
   readonly setBatonVoiceFocus?: (workSessionId: string | null) => void;
 }
 
-/** `window.desktopBridge` with Baton's members, or undefined outside the desktop app. */
+/** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
 export const batonDesktopBridge = (): BatonDesktopBridge | undefined =>
-  (globalThis as { desktopBridge?: BatonDesktopBridge }).desktopBridge;
+  (globalThis as { batonDesktopBridge?: BatonDesktopBridge }).batonDesktopBridge;
