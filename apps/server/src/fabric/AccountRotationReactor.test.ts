@@ -1,6 +1,7 @@
 import type { FabricAccount, FabricAccountPool } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { respawnPlan } from "./HerdrRespawn.ts";
 import { limitReached, rotationTick, sourceWindowResetsAt } from "./AccountRotationReactor.ts";
 
 const now = "2026-10-26T12:00:00.000Z";
@@ -70,5 +71,21 @@ describe("the automatic rotation trigger (D63)", () => {
       now,
     });
     expect(decision).toEqual({ outcome: "hold", reason: "already-rotated-this-window" });
+  });
+});
+
+describe("the respawn plan after a rotation (D67)", () => {
+  it("exits, waits for the shell, and resumes the same conversation in the same pane", () => {
+    const plan = respawnPlan("fab-api~w1:p2", "cc828d1b-2b64");
+    expect(plan.exit[0]).toEqual(["--session", "fab-api", "pane", "send-text", "w1:p2", "/exit"]);
+    expect(plan.resume).toEqual([
+      "--session",
+      "fab-api",
+      "pane",
+      "run",
+      "w1:p2",
+      "claude --resume cc828d1b-2b64",
+    ]);
+    expect(respawnPlan("w1:p1", "x").prefix).toEqual([]);
   });
 });

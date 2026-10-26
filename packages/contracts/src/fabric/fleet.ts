@@ -18,6 +18,7 @@ import * as Schema from "effect/Schema";
 import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "../baseSchemas.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "../providerInstance.ts";
 import { AdoptedSessionCandidate } from "./adoptedSession.ts";
+import { ClaudeLiveSession } from "./liveSessions.ts";
 import { FabricSessionState } from "./sessionState.ts";
 import { WorkSessionSynopsis } from "./synopsis.ts";
 import { WorkSessionId, WorkSessionStatus } from "./workSession.ts";
@@ -85,6 +86,8 @@ export const FabricFleet = Schema.Struct({
    * the fleet is where they are seen. A blocked one carries its question.
    */
   herdr: Schema.optionalKey(Schema.Array(AdoptedSessionCandidate)),
+  /** Every interactive Claude Code process here, whoever started it (D66). */
+  claudeSessions: Schema.optionalKey(Schema.Array(ClaudeLiveSession)),
   /** When the environment computed this. Every entry is as of this instant. */
   observedAt: IsoDateTime,
 });

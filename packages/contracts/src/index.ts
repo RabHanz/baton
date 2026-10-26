@@ -53,5 +53,6 @@ export * from "./fabric/adoptedSession.ts";
 export * from "./fabric/capability.ts";
 export * from "./fabric/accountPool.ts";
 export * from "./fabric/handoff.ts";
+export * from "./fabric/liveSessions.ts";
 export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
