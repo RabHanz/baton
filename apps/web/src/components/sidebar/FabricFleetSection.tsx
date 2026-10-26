@@ -23,6 +23,7 @@ import {
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { focusedWorkSessionFromThreads } from "../../fabricContextView";
 import { useFleet } from "../../state/fabricWorkSessions";
+import { FabricContinueWith, type HandoffTarget } from "./FabricContinueWith";
 import { FabricLiveSessions } from "./FabricLiveSessions";
 import { FabricIntentBar } from "./FabricIntentBar";
 
@@ -39,6 +40,8 @@ export interface FabricFleetSectionProps {
     projectId: ProjectId,
   ) => string | null;
   readonly onSelectWorkSession: (environmentId: EnvironmentId, entry: FabricFleetEntry) => void;
+  /** Provider instances a work session can be handed to (D62). */
+  readonly listHandoffTargets?: (environmentId: EnvironmentId) => ReadonlyArray<HandoffTarget>;
   /** Bumped after a sentence runs, so the intent log re-reads. */
   readonly onIntentRan: () => void;
   /** The thread the route has open, as `<environmentId>:<threadId>`. */
@@ -162,16 +165,26 @@ function FleetList(
           {props.needsUserOnly ? "Nothing needs you." : "No work yet."}
         </p>
       ) : (
-        visible.map((row) => (
-          <FleetRowView
-            key={row.key}
-            row={row}
-            onSelect={() => {
-              const entry = byEntry.get(row.workSessionId);
-              if (entry !== undefined) props.onSelectWorkSession(props.environmentId, entry);
-            }}
-          />
-        ))
+        visible.map((row) => {
+          const entry = byEntry.get(row.workSessionId);
+          return (
+            <div key={row.key}>
+              <FleetRowView
+                row={row}
+                onSelect={() => {
+                  if (entry !== undefined) props.onSelectWorkSession(props.environmentId, entry);
+                }}
+              />
+              {entry === undefined || props.listHandoffTargets === undefined ? null : (
+                <FabricContinueWith
+                  environmentId={props.environmentId}
+                  entry={entry}
+                  targets={props.listHandoffTargets(props.environmentId)}
+                />
+              )}
+            </div>
+          );
+        })
       )}
     </>
   );

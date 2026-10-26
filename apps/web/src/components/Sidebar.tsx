@@ -219,6 +219,7 @@ import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
 import {
   deriveProviderEntriesByEnvironment,
+  isProviderInstancePickerReady,
   shouldShowInstanceBadge,
   type ProviderInstanceEntry,
 } from "../providerInstances";
@@ -2382,6 +2383,18 @@ export default function Sidebar() {
       // projection of it.
       return { label, email: entry.snapshot.auth.email?.trim() || null };
     },
+    [providerEntriesByEnvironment],
+  );
+  // Fabric patch point (D62): the instances a work session can continue on.
+  const listFabricHandoffTargets = useCallback(
+    (environmentId: EnvironmentId) =>
+      [...(providerEntriesByEnvironment.get(environmentId)?.values() ?? [])].flatMap((entry) => {
+        if (!isProviderInstancePickerReady(entry)) return [];
+        const model = entry.models.find((candidate) => candidate.isDefault) ?? entry.models[0];
+        return model === undefined
+          ? []
+          : [{ instanceId: entry.instanceId, label: entry.displayName, model: model.slug }];
+      }),
     [providerEntriesByEnvironment],
   );
   // A sentence that is refused changes nothing on the work-session stream, and
@@ -4709,6 +4722,7 @@ export default function Sidebar() {
                 environmentLabelById.get(environmentId) ?? null
               }
               resolveProviderAccount={resolveFabricProviderAccount}
+              listHandoffTargets={listFabricHandoffTargets}
               resolveProjectLabel={(environmentId, projectId) =>
                 projectDisplayNameByKey.get(`${environmentId}:${projectId}`) ?? null
               }
