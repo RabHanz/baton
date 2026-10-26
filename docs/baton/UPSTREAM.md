@@ -6,18 +6,21 @@ tree, and how to get real test data without touching a live install.
 
 ## Fork point
 
-|                         |                                                             |
-| ----------------------- | ----------------------------------------------------------- |
-| Fork                    | `github.com/RabHanz/baton`                                  |
-| Upstream                | `github.com/pingdotgg/t3code`                               |
-| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                  |
-| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)` |
-| Commit date             | 2026-09-17 14:03:01 -0700                                   |
-| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                       |
-| Fork created            | 2026-09-17 ~21:50Z                                          |
-| Baton work begins       | 2026-09-18                                                  |
+|                         |                                                                   |
+| ----------------------- | ----------------------------------------------------------------- |
+| Fork                    | `github.com/RabHanz/baton`                                        |
+| Upstream                | `github.com/pingdotgg/t3code`                                     |
+| Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                        |
+| Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)`       |
+| Commit date             | 2026-09-17 14:03:01 -0700                                         |
+| Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                             |
+| Fork created            | 2026-09-17 ~21:50Z                                                |
+| Baton work begins       | 2026-09-18                                                        |
+| **Upstream pin now**    | `024d49520e` (2026-10-02), merged 2026-10-26 as `0.0.45-baton.20` |
 
 The fork carried no Baton code at that point; it was a clean mirror of upstream `main`.
+The pin is the last upstream commit before the v2 orchestrator (`de3439142`); see
+"Where upstream went" below for why the fork stops there for now.
 
 ### Conflicts carried
 
@@ -65,61 +68,147 @@ conversations most worth resuming were exactly the ones that could not be.
 upstream file this fork touches is in it; everything else Baton contributes is a new file under a
 `baton` name, which cannot conflict with anything upstream writes.
 
-### Sync attempt, 2026-10-26 — blocked
+### Sync, 2026-10-26: to the last commit before the v2 orchestrator
 
-Upstream `main` at `cc0b86ddf1` (2026-10-26) is **3,658 commits** past the last sync's merge base
-`52e4b44293` (2026-09-18). `git merge-tree` against fork main conflicts in **50 files**: 19 under
-`apps/server/src` (ws.ts, server.ts, ClaudeAdapter, AgentSessionScanner and Importer, the
-orchestration reactor, the Sqlite layer), 7 in `packages/contracts/src` (rpc.ts, orchestration.ts,
-ipc.ts), 6 in `apps/web/src`, plus `pnpm-workspace.yaml` and every `package.json`. Upstream also
-moved to Node `26.12.1` and pnpm `12.14.0`, so the merge needs a fresh install and a new toolchain
-before any gate can run. The pin stays at `52e4b44293`; this is its own lane (a box with headroom,
-Node 26.12, one conflict area at a time), not a side step of a feature lane.
+Merged `52e4b44293..024d49520e`, 430 upstream commits, as `0.0.45-baton.20` (PR from
+`baton/upstream-pre-v2`). 18 files conflicted, and upstream won wherever the two overlapped:
 
-### The sync plan (ledger-ready, not attempted)
+- `pnpm-workspace.yaml`: upstream fixed the `msgpackr-extract` placeholder, so our pin is gone.
+  `node-pty: 1.2.0-beta.15` is added to `overrides`, backported from upstream `22840ab943`. The CLI
+  archive installs without the lockfile, so `^beta.15` drifted to beta.18 and pnpm refused the unused patch.
+- `AgentSessionJson.ts` is back. Upstream's usage transcript reader imports it now.
+- Mobile `HomeHeader.tsx`: upstream's rewrite is taken whole. Baton is one header-right item plus
+  one prop in `HomeHeader.types.ts`.
+- Model picker: upstream's `ComboboxSearchInput`, with the account line kept above it.
+- The Sqlite layer keeps upstream's `journal_size_limit` and our reclaim. Upstream now ships its
+  own 054, so the legacy-numbering test fixtures stop at 053.
+- The version label is `0.0.45-baton.20` on upstream's `0.0.45`. Service protocol is still 3.
 
-1. **Toolchain first, on its own branch.** Install Node 26.12.1 under `dev/toolchain/` and pnpm
-   12.14 via corepack; prove the _current_ fork builds and its gates pass on them before any merge.
-2. **Box.** Run on whichever box has 12 GB free RAM and 25 GB free disk at the time (neither does
-   today: signzart ~14 GB RAM but ~15 GB disk; onnyx 1 GB RAM). Clean `node_modules` and `.repos/`
-   before the fresh install.
-3. **Merge in conflict areas, one commit each:** (a) `package.json`s, `pnpm-workspace.yaml`
-   (keep the `msgpackr-extract: true` pin); (b) contracts `rpc.ts`, `orchestration.ts`, `ipc.ts`,
-   `environment.ts`, `agentSessions.ts`; (c) server `ws.ts`, `server.ts`, `RpcAuthorization.ts`,
-   `Sqlite.ts`; (d) Claude adapter, capabilities probe, text generation; (e) AgentSessionScanner and
-   Importer (Baton's import/presence); (f) orchestration reactor and its harness; (g) web Sidebar,
-   ModelPicker, ConnectionsSettings, ProjectSettingsPanel, MessagesTimeline, ComposerUsageLimits;
-   (h) mobile and desktop IPC; (i) mobile-showcase scripts (take upstream's).
-4. **Gates per area:** `tsc --noEmit` and `vp test run` for the touched package; the full Baton
-   suites (`apps/server/src/baton`, `packages/contracts/src/baton`, `apps/web/src/baton*`).
-5. **Migrations:** check upstream's numbering against Baton's own manifest (D48) on a `VACUUM INTO`
-   snapshot; pre- and post-merge builds both open it.
-6. **Deploy** exactly as `DEPLOY.md`, beside the previous version, rollback = restore the drop-in.
-   Estimate: one lane-day.
+The upstream workflows that deploy or publish with upstream's secrets are disabled through the
+GitHub API, not by editing the files. That is `scripts/baton/disable-upstream-workflows.sh`, and
+`upstream-sync.sh` re-runs it after every merge. CI is kept.
 
-### Patch points in upstream-owned files (2026-10-26)
+### Where upstream went (2026-10-02 onward)
 
-Baton logic lives in `apps/server/src/baton/`, `packages/contracts/src/baton/`,
-`apps/web/src/components/sidebar/Baton*`, `scripts/baton/`. These are the only lines it adds to
-files upstream owns; each is an isolated insertion:
+On 2026-10-02 upstream replaced its orchestration engine (`de3439142`, "introduce new
+orchestrator", #2829). Everything after it, 3,250 commits to `3f9448747` as of 2026-10-26, sits on
+the new engine:
 
-| File                                                     | Hook                                                                                                |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `apps/server/src/ws.ts`                                  | method imports; the `fabric.workSession.handoff` and `fabric.herdr.send` handlers                   |
-| `apps/server/src/server.ts`                              | `BatonAccountRotationReactor.layer` in `ReactorLayerLive`                                           |
-| `apps/server/src/auth/RpcAuthorization.ts`               | scopes for the two methods above                                                                    |
-| `apps/server/src/terminal/Manager.ts`                    | `terminalShellCandidates` + the Herdr close in `closeSession` (D61)                                 |
-| `packages/contracts/src/rpc.ts`, `index.ts`              | the two Rpc definitions and the exports                                                             |
-| `packages/client-runtime/src/state/batonWorkSessions.ts` | `handoff`, `herdrSend` commands                                                                     |
-| `apps/web/src/components/Sidebar.tsx`                    | `resolveBatonWorkProject`, `resolveBatonWorkAccount` and their two props on the Baton section (D72) |
-| `apps/web/src/components/sidebar/BatonIntentBar.tsx`     | `id="fabric-intent-input"` (D64)                                                                    |
-| `third-party-licenses.config.json`                       | `packageOverrides` for `onnxruntime-node`/`-common` (desktop voice, D66)                            |
+- `apps/server/src/orchestration/` (v1: OrchestrationEngine, reactors, ProjectionSnapshotQuery,
+  the Sqlite layer Baton hooks) is **deleted**. `apps/server/src/orchestration-v2/` (about 540
+  files) replaces it.
+- State moves to a **new database file**, `userdata/statev2.sqlite`. A legacy importer
+  (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) copies v1 threads across.
+  `state.sqlite`, where Baton's seven `fabric_*` tables live, is no longer opened.
+- `packages/contracts/src/orchestration.ts` is deleted. The Claude adapter moved to
+  `orchestration-v2/Adapters/ClaudeAdapterV2.ts`, and providers are split into `packages/provider-*`.
+- Node `26.12.1` and pnpm `12.14.0`.
 
-The Fabric → Baton rename (D71) touched only lines Baton already owned in these files. The
-license overrides are the one new entry: the voice core's `onnxruntime-*` ship no license file,
-and the web build reads the desktop manifest, so without them the release build fails. The words "Fabric" left in upstream's mobile code (`ComposerAttachmentStrip.tsx`,
+Baton's server half is written against v1. Six modules call it directly (`FleetQuery`,
+`IntentService`, `IntentExecutorLive`, `OrchestrationEffectsLive`, `OrchestrationReactor`,
+`SynopsisReactor`), and every repository opens `state.sqlite` through the deleted layer. So
+going past `024d49520e` is a **port**, not a conflict resolution.
+
+### Patch points today (2026-10-26, measured)
+
+`git diff --name-only --diff-filter=M 024d49520e HEAD` lists **60 upstream files** the fork edits,
+against 236 it adds. The old nine-row list here undercounted. By area:
+
+| Area           | Files                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RPC and auth   | `contracts/src/rpc.ts`, `index.ts`, `environment.ts`, `settings.ts`, `ipc.ts`, `agentSessions.ts`; `server/src/ws.ts`, `auth/RpcAuthorization.ts`, `environment/ServerEnvironment.ts`; `client-runtime/src/rpc/client.ts` |
+| Server wiring  | `server.ts`, `server.test.ts`, `persistence/Layers/Sqlite.ts`, `orchestration/Layers/OrchestrationReactor.ts` (+test), the integration harness                                                                            |
+| Providers      | `ClaudeAdapter.ts` (+test), `ClaudeProvider.ts`, `ClaudeCapabilitiesProbe.test.ts`, `textGeneration/ClaudeTextGeneration.ts`, `TextGeneration.ts`, `shared/src/usageLimits.ts`                                            |
+| Import         | `project/AgentSessionScanner.ts` (rewritten, D54), `AgentSessionImporter.ts`, their tests                                                                                                                                 |
+| Terminal       | `terminal/Manager.ts` (Herdr runtime, D61)                                                                                                                                                                                |
+| Web            | `Sidebar.tsx`, `_chat.index.tsx`, `ModelPickerContent.tsx`, `ProviderModelPicker.tsx`, `ComposerUsageLimits.tsx`, `MessagesTimeline.tsx`, `ConnectionsSettings.tsx`, `ProjectSettingsPanel.tsx`, `state/agentSessions.ts` |
+| Desktop/mobile | `DesktopApp.ts`, `ipc/channels.ts`, `DesktopIpcHandlers.ts`, `preload.ts`; `Stack.tsx`, `HomeHeader.tsx`, `HomeHeader.types.ts`, `HomeRouteScreen.tsx`                                                                    |
+| Build          | every `package.json` (version, deps), `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `third-party-licenses.config.json`, `scripts/lib/desktop-external-packages.ts`, `.gitignore`                                               |
+
+The words "Fabric" left in upstream's mobile code (`ComposerAttachmentStrip.tsx`,
 `nativeReviewDiffSurface.ts`, `apps/mobile/modules/`, `patches/`) are React Native's renderer and
 are not ours.
+
+### The port plan (decided 2026-10-26, not started)
+
+**Target shape.** T3 becomes a pinned vendor tree that Baton does not edit. Baton lives in its own
+top-level packages around it, and the edits T3 truly forces become a short, named patch series
+that the sync job re-applies.
+
+```text
+vendor/t3code/            upstream at a pinned commit, never hand-edited (git subtree, squash)
+patches/t3code/NNNN-*.patch  the unavoidable edits, one concern each, applied in order
+packages/baton-server/    work sessions, fleet, intents, rules, accounts, Herdr, adoption
+packages/baton-contracts/ fabric.* schemas and Rpc definitions
+packages/baton-web/       sidebar Projects block, intent bar, Continue with…
+packages/baton-voice/     (exists)
+scripts/baton/            sync, patch apply/refresh, deploy, workflow disable
+```
+
+The sync job does five things in order. It moves the pin, re-applies the series with `git apply --3way`,
+and runs the Baton gates. Then it builds, and it opens a PR only when all of that passes. A patch
+that stops applying is the one signal a human needs.
+
+**Adopt T3's, delete ours.** These are features the v2 engine or upstream already ships. Each
+is confirmed in the port by reading upstream's module, not by its name.
+
+| Baton feature                                                            | Upstream now                                                               | Action                                                                                                               |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| "Continue with…" handoff (D62): capsule + new thread on another provider | `ContextHandoffService`, `ContextHandoffDelivery`, `ProviderSwitchService` | Use theirs. Keep only the button and the work-session link                                                           |
+| Work-session settle / needs-me                                           | `ThreadSettlementService` (settle, snooze, PR-aware)                       | Read settlement from v2. Drop our settle state                                                                       |
+| Resume after restart                                                     | `RestartContinuation`, `ProviderRuntimeRecoveryService`                    | Drop any Baton restart logic for T3 threads. Keep D69 (Claude CLI in Herdr) only                                     |
+| Wait for a limit to reset                                                | `UsageLimitRecoveryWorker` (auto-resume at reset)                          | Use theirs for the same account. **Rotation to another account (D63) stays Baton's**, triggered by their limit class |
+| Large-transcript import (D54 tail reader)                                | `AgentSessionScanner` now caps the scan at 1 MB and imports up to 4 GB     | Take upstream's scanner and importer. Delete our rewrite once a 420 MB transcript imports                            |
+| Cross-environment project identity (D72 key)                             | logical projects keyed by `RepositoryIdentity`                             | Already theirs. Our grouping stays a client-side view on top                                                         |
+| Scheduled/triggered runs (part of orchestration rules)                   | `scheduledTasks/` (interval, schedule, webhook)                            | Rules that are time or webhook triggered become scheduled tasks. Keep only "when thread X settles, do Y"             |
+| Claude usage probe deadline                                              | check upstream's `ClaudeProvider`                                          | Drop ours if upstream bounded it, otherwise offer it upstream                                                        |
+
+**Port work that remains Baton's.**
+
+1. Work sessions, synopsis, intents, orchestration rules: rewrite the six v1 call sites against
+   v2's command/event API (`Orchestrator`, `ThreadLaunchService`, `ThreadStream`, `EventSink`).
+   The synopsis and rule reactors subscribe to v2's event stream, the same way upstream's
+   `PullRequestSyncReactor` does. That is one line in `server.ts`.
+2. Herdr terminal runtime (D61): implement it as a `PtyAdapter` layer (the v2 terminal manager takes
+   the adapter as a service). This removes the `terminal/Manager.ts` patch.
+3. Account pool and rotation (D63, D69), adoption (D74), live sessions and send, attach (D73), fleet
+   query: mostly free of the engine. Re-point the provider-registry imports to `packages/provider-core`.
+4. RPC: the `fabric.*` methods stay on the wire, names unchanged (D71). One patch adds the Baton
+   group to `WsRpcGroup` and its scopes, unless v2 has a mergeable group by then.
+5. Web: the Projects block mounts at one point in the sidebar. The model-picker account line,
+   usage-limit notice and import button move into Baton components behind one slot each.
+
+**Data: Baton gets its own SQLite file.** `userdata/baton.sqlite`, opened by
+`packages/baton-server` with its own client and its own migration table. That removes the
+Sqlite-layer patch point and the D48 reclaim. The migration from today's data runs once, on the
+first boot of the ported build:
+
+1. If `baton.sqlite` is missing and `state.sqlite` has `fabric_sql_migrations`, read the seven
+   `fabric_*` tables from `state.sqlite` (read-only) and write them into a fresh `baton.sqlite`.
+   Run Baton's manifest first, then `INSERT … SELECT` per table, with row counts compared table by table.
+2. Rewrite the references that point into v1. A work session's thread ids become v2 thread ids
+   through the legacy importer's id map. Rows whose thread did not import keep the work session
+   and lose the link, with a count in the boot log.
+3. Never write to `state.sqlite`. Rollback to `0.0.45-baton.20` keeps working, because it still reads
+   the untouched v1 file.
+4. Rehearse on a `VACUUM INTO` copy of each box's `state.sqlite` (signzart: 1 project, 7 Baton
+   migrations; onnyx: 17 projects) before any deploy.
+
+**Toolchain.** Node `26.12.1` and pnpm `12.14.0`, user-local under `dev/toolchain/` with corepack,
+proven on the current tree before the port starts. Build on signzart (31 GB RAM; onnyx's 7 GB is
+too small), `nice -n 10`, one build at a time.
+
+**Sequence and estimate.**
+
+| Step                                                                                                 | Estimate                                          |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 1. Toolchain, plus the restructure (vendor subtree, patch series, Baton packages) at the current pin | 1 day                                             |
+| 2. Move the pin to upstream main and apply the series against v2                                     | 0.5 day                                           |
+| 3. Port the server half (items 1–4 above) and adopt-and-delete                                       | 2 days                                            |
+| 4. Own database and its migration, rehearsed on both boxes' copies                                   | 0.5 day                                           |
+| 5. Web and mobile slots, gates, the real run, deploy beside `baton.20`                               | 1 day                                             |
+| 6. The automatic sync job (pin, re-apply, gate, build, PR), then daily on a timer                    | 0.5 day                                           |
+| **Total**                                                                                            | **about 5 lane-days, in 2 lanes (1–2, then 3–6)** |
 
 ## Remotes and rebasing
 
