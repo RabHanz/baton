@@ -20,7 +20,7 @@ export function ModelPickerAccountLine({
   return (
     <div
       data-testid="model-picker-account"
-      className="flex min-w-0 items-baseline gap-1.5 px-2 pt-2 text-[11px] leading-4 text-muted-foreground"
+      className="flex min-w-0 items-baseline gap-1.5 px-2 pt-2 text-2xs leading-4 text-muted-foreground"
     >
       <span className="shrink-0">Runs as</span>
       <span className="min-w-0 truncate font-medium text-foreground/80">{entry.displayName}</span>

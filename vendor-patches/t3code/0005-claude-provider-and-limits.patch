@@ -1,0 +1,651 @@
+Subject: providers: shared account home, limits deadline, one-shot text generation
+
+ClaudeAdapter re-materialises the shared home (D52); ClaudeProvider gives get_usage its own
+deadline; TextGeneration gains the intent and synopsis one-shots (D50, D51); usageLimits reads the
+limit class rotation keys on (D63).
+
+diff --git a/apps/server/src/provider/Layers/ClaudeAdapter.test.ts b/apps/server/src/provider/Layers/ClaudeAdapter.test.ts
+index a91d82cef9e0b076d2731509825e5a21d0c1596a..ca7c9dc050bf2bbee3cf619bff05dfda4de7fbfa 100644
+--- a/apps/server/src/provider/Layers/ClaudeAdapter.test.ts
++++ b/apps/server/src/provider/Layers/ClaudeAdapter.test.ts
+@@ -7618,6 +7618,33 @@ describe("ClaudeAdapterLive", () => {
+     );
+   });
+ 
++  // A resumed 420 MB session imported cleanly and then could not take a turn:
++  // `turn/setPermissionMode failed`, no prompt delivered. The request was for
++  // the mode the session already had — work that can only fail.
++  it.effect("does not ask the CLI for the permission mode it already has", () => {
++    const harness = makeHarness();
++    return Effect.gen(function* () {
++      const adapter = yield* ClaudeAdapter;
++
++      const session = yield* adapter.startSession({
++        threadId: THREAD_ID,
++        provider: ProviderDriverKind.make("claudeAgent"),
++        runtimeMode: "full-access",
++      });
++      yield* adapter.sendTurn({
++        threadId: session.threadId,
++        input: "carry on where we left off",
++        interactionMode: "default",
++        attachments: [],
++      });
++
++      assert.deepEqual(harness.query.setPermissionModeCalls, []);
++    }).pipe(
++      Effect.provideService(Random.Random, makeDeterministicRandomService()),
++      Effect.provide(harness.layer),
++    );
++  });
++
+   it.effect("sets plan permission mode on sendTurn when interactionMode is plan", () => {
+     const harness = makeHarness();
+     return Effect.gen(function* () {
+diff --git a/apps/server/src/provider/Layers/ClaudeAdapter.ts b/apps/server/src/provider/Layers/ClaudeAdapter.ts
+index e4b4bea1d02fc876f80860b36e4db4c09a28ec68..4aea94da1eee40442a6ce215a35ecc84aa871fd3 100644
+--- a/apps/server/src/provider/Layers/ClaudeAdapter.ts
++++ b/apps/server/src/provider/Layers/ClaudeAdapter.ts
+@@ -91,6 +91,10 @@ import { ServerConfig } from "../../config.ts";
+ import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
+ import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
+ import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
++import {
++  materializeClaudeAccountHome,
++  resolveClaudeAccountHomeLayout,
++} from "../Drivers/ClaudeAccountHome.ts";
+ import { planClaudeSkillDispatch } from "../Drivers/ClaudeSkillDispatch.ts";
+ import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
+ import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+@@ -416,6 +420,13 @@ interface ClaudeSessionContext {
+   streamFiber: Fiber.Fiber<void, Error> | undefined;
+   readonly startedAt: string;
+   readonly basePermissionMode: PermissionMode | undefined;
++  /**
++   * The mode the CLI is in now, so a turn does not ask it to change to the mode
++   * it already has. That request is a no-op on a fresh session and a failure on
++   * a resumed one, which is how a 420 MB conversation imported cleanly and then
++   * could not take a turn.
++   */
++  currentPermissionMode: PermissionMode | undefined;
+   currentApiModelId: string | undefined;
+   /** Effective effort for the session's turns; subagents without an explicit
+    * effort override inherit this. */
+@@ -1982,11 +1993,29 @@ function toRequestError(threadId: ThreadId, method: string, cause: unknown): Pro
+   return new ProviderAdapterRequestError({
+     provider: PROVIDER,
+     method,
+-    detail: `${method} failed`,
++    // Carry what the CLI actually said. `turn/setPermissionMode failed` is all
++    // a resumed 420 MB session left behind on this author's own box, and a
++    // failure whose cause is not written down costs a deploy to see — the same
++    // lesson `cause: [Object]` taught the intent path.
++    detail:
++      causeMessage(cause) === null
++        ? `${method} failed`
++        : `${method} failed: ${causeMessage(cause)}`,
+     cause,
+   });
+ }
+ 
++/** The message an unknown rejection carries, when it carries one. */
++function causeMessage(cause: unknown): string | null {
++  if (typeof cause === "string" && cause.trim().length > 0) return cause.trim();
++  if (cause instanceof Error && cause.message.trim().length > 0) return cause.message.trim();
++  if (typeof cause === "object" && cause !== null && "message" in cause) {
++    const message = (cause as { readonly message?: unknown }).message;
++    if (typeof message === "string" && message.trim().length > 0) return message.trim();
++  }
++  return null;
++}
++
+ function sdkMessageType(value: unknown): string | undefined {
+   if (!value || typeof value !== "object") {
+     return undefined;
+@@ -2111,6 +2140,30 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
+   const serverConfig = yield* ServerConfig;
+   const crypto = yield* Crypto.Crypto;
+   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
++  // A second account's config directory holds its credentials and links to the
++  // primary's skills, agents, commands, plugins, memory tree and settings
++  // (D52). Re-materialised here, before every session, so a link the CLI
++  // replaced is repaired rather than assumed to have held — the same shape and
++  // the same reason as Codex's shadow home.
++  //
++  // A failure is logged and not raised: a provider that will not start because
++  // a symlink could not be refreshed is a worse outcome than one running with
++  // the layout it already had.
++  yield* resolveClaudeAccountHomeLayout(claudeSettings).pipe(
++    Effect.provideService(Path.Path, path),
++    Effect.flatMap((layout) =>
++      materializeClaudeAccountHome(layout).pipe(
++        Effect.provideService(Path.Path, path),
++        Effect.provideService(FileSystem.FileSystem, fileSystem),
++      ),
++    ),
++    Effect.catchCause((cause) =>
++      Effect.logWarning("Could not prepare this Claude account's configuration", {
++        instanceId: boundInstanceId,
++        cause,
++      }),
++    ),
++  );
+   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
+     Effect.provideService(Path.Path, path),
+   );
+@@ -5111,6 +5164,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
+         streamFiber: undefined,
+         startedAt,
+         basePermissionMode: permissionMode,
++        currentPermissionMode: permissionMode,
+         currentApiModelId: apiModelId,
+         currentEffort: effectiveEffort ?? undefined,
+         resumeSessionId: sessionId,
+@@ -5263,16 +5317,21 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
+     // "plan" maps directly to the SDK's "plan" permission mode;
+     // "default" restores the session's original permission mode.
+     // When interactionMode is absent we leave the current mode unchanged.
+-    if (input.interactionMode === "plan") {
+-      yield* Effect.tryPromise({
+-        try: () => context.query.setPermissionMode("plan"),
+-        catch: (cause) => toRequestError(input.threadId, "turn/setPermissionMode", cause),
+-      });
+-    } else if (input.interactionMode === "default") {
++    const targetPermissionMode: PermissionMode | null =
++      input.interactionMode === "plan"
++        ? "plan"
++        : input.interactionMode === "default"
++          ? (context.basePermissionMode ?? "default")
++          : null;
++    // Only when it is actually a change. Asking for the mode already in effect
++    // is the whole of what a normal turn used to send, and a resumed session
++    // refuses it — so the turn died before the prompt was ever delivered.
++    if (targetPermissionMode !== null && targetPermissionMode !== context.currentPermissionMode) {
+       yield* Effect.tryPromise({
+-        try: () => context.query.setPermissionMode(context.basePermissionMode ?? "default"),
++        try: () => context.query.setPermissionMode(targetPermissionMode),
+         catch: (cause) => toRequestError(input.threadId, "turn/setPermissionMode", cause),
+       });
++      context.currentPermissionMode = targetPermissionMode;
+     }
+ 
+     const turnId = steeringTurnState?.turnId ?? TurnId.make(yield* randomUUIDv4);
+diff --git a/apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts b/apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
+index 232b8cc02d005be99453fde89925679f7e3a6326..8ec9cbfe991e9e6789eefcefd559e956e7793476 100644
+--- a/apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
++++ b/apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts
+@@ -8,6 +8,7 @@ import { ClaudeSettings } from "@t3tools/contracts";
+ import * as NodeFSP from "node:fs/promises";
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+ import { assert, it } from "@effect/vitest";
++import * as Duration from "effect/Duration";
+ import * as Effect from "effect/Effect";
+ import * as FileSystem from "effect/FileSystem";
+ import * as Path from "effect/Path";
+@@ -16,6 +17,7 @@ import * as Schema from "effect/Schema";
+ import {
+   buildClaudeCapabilitiesProbeQueryOptions,
+   CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES,
++  CLAUDE_USAGE_TIMEOUT_MS,
+   probeClaudeCapabilities,
+ } from "./ClaudeProvider.ts";
+ 
+@@ -189,6 +191,35 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
+   );
+ });
+ 
++it.effect("asks for rate limits without the local transcript scan", () =>
++  Effect.gen(function* () {
++    // `get_usage` also scans the user's own transcripts to fill a `behaviors`
++    // section this caller never reads, and that scan is most of its cost on a
++    // machine with a long history. Dropping the flag would put the request back
++    // on a path whose duration depends on how much the user has used Claude
++    // Code, which is what made it time out in the first place (2026-09-18).
++    let usageOptions: unknown = "not called";
++    const query = vi.spyOn(ClaudeSdk, "query").mockImplementation(
++      () =>
++        ({
++          initializationResult: async () => ({
++            account: { email: "dev@example.com" },
++            commands: [],
++          }),
++          usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: (options?: unknown) => {
++            usageOptions = options;
++            return Promise.resolve({ rate_limits_available: true, rate_limits: {} });
++          },
++        }) as unknown as ReturnType<typeof ClaudeSdk.query>,
++    );
++    yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
++
++    yield* probeClaudeCapabilities(decodeClaudeSettings({ binaryPath: "claude" }));
++
++    assert.deepEqual(usageOptions, { skipBehaviors: true });
++  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
++);
++
+ it.effect("preserves initialized capabilities when optional usage times out", () =>
+   Effect.gen(function* () {
+     const usageStarted = yield* Deferred.make<void>();
+@@ -211,7 +242,10 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
+       decodeClaudeSettings({ binaryPath: "claude" }),
+     ).pipe(Effect.forkChild);
+     yield* Deferred.await(usageStarted);
+-    yield* TestClock.adjust("4 seconds");
++    // Read from the constant rather than repeating the number: the deadline
++    // moved once already (4s was a coin toss on a machine with a large local
++    // history) and a literal here would have to be found and changed again.
++    yield* TestClock.adjust(Duration.millis(CLAUDE_USAGE_TIMEOUT_MS + 1_000));
+     const capabilities = yield* Fiber.join(probe);
+     assert.equal(capabilities?.email, "dev@example.com");
+     assert.equal(capabilities?.subscriptionType, "pro");
+diff --git a/apps/server/src/provider/Layers/ClaudeProvider.ts b/apps/server/src/provider/Layers/ClaudeProvider.ts
+index db06557c7c8e7c40dc969a603249e6a5561ea27f..1ed370e15d561067397233075e9274f957c4adb0 100644
+--- a/apps/server/src/provider/Layers/ClaudeProvider.ts
++++ b/apps/server/src/provider/Layers/ClaudeProvider.ts
+@@ -172,6 +172,24 @@ function apiProviderAuthMetadata(
+ // `undefined` and left the provider unverified and unselectable in the picker.
+ const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
+ 
++/**
++ * The usage control request gets its own deadline, well above the 4s
++ * `DEFAULT_TIMEOUT_MS` the fast CLI calls share.
++ *
++ * Measured, not guessed. `get_usage` costs an API round trip *plus* a scan of
++ * the user's local transcripts, so its cost scales with how much they have
++ * used Claude Code — not with anything this server does. On a fresh machine it
++ * answers in well under a second; on the Director's own box, with 9GB of
++ * transcripts, three runs took 2.3s, 2.6s and 3.5s. Against a 4s deadline that
++ * is a coin toss, and losing it shows up as "Could not read limits" with
++ * everything else about the account resolving perfectly — which is exactly how
++ * it was reported (2026-09-18).
++ *
++ * 15s stays inside the 25s the whole probe has, so a slow usage request still
++ * cannot discard the initialization data that came back first.
++ */
++export const CLAUDE_USAGE_TIMEOUT_MS = 15_000;
++
+ /**
+  * Keep workspace-scoped command discovery intact while isolating the periodic
+  * health check from configured MCP servers.
+@@ -365,8 +383,21 @@ const probeClaudeCapabilities = (
+       Effect.gen(function* () {
+         // Usage has its own deadline so a slow optional request cannot discard initialization.
+         const usageResult = yield* Effect.tryPromise(() =>
+-          q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+-        ).pipe(Effect.timeout(DEFAULT_TIMEOUT_MS), Effect.result);
++          // `skipBehaviors` skips the scan of local transcripts that fills the
++          // response's `behaviors` section, which this caller never reads — it
++          // wants `rate_limits` and nothing else. Measured on a machine with a
++          // large history: 2.3s with the flag against 2.6-3.5s without.
++          //
++          // The cast is deliberate and narrow. The option arrived in a later
++          // SDK than the one this workspace pins, and an older SDK ignores the
++          // extra argument rather than failing, so passing it is safe on both
++          // and becomes free the moment the pin moves.
++          (
++            q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET as (options?: {
++              readonly skipBehaviors?: boolean;
++            }) => ReturnType<typeof q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET>
++          )({ skipBehaviors: true }),
++        ).pipe(Effect.timeout(CLAUDE_USAGE_TIMEOUT_MS), Effect.result);
+         const usage = Result.isSuccess(usageResult)
+           ? {
+               rate_limits_available: usageResult.success.rate_limits_available,
+diff --git a/apps/server/src/textGeneration/ClaudeTextGeneration.ts b/apps/server/src/textGeneration/ClaudeTextGeneration.ts
+index 357ecd686e46e87e70df65cc37e86c6c0e863272..57d352aa2d37da8799494bedb2f190410a144877 100644
+--- a/apps/server/src/textGeneration/ClaudeTextGeneration.ts
++++ b/apps/server/src/textGeneration/ClaudeTextGeneration.ts
+@@ -102,7 +102,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
+       | "generateCommitMessage"
+       | "generatePrContent"
+       | "generateBranchName"
+-      | "generateThreadTitle",
++      | "generateThreadTitle"
++      | "interpretBatonIntent"
++      | "writeBatonSynopsis",
+     value: unknown,
+     detail: string,
+   ): Effect.Effect<string, TextGenerationError> =>
+@@ -132,7 +134,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
+       | "generateCommitMessage"
+       | "generatePrContent"
+       | "generateBranchName"
+-      | "generateThreadTitle";
++      | "generateThreadTitle"
++      | "interpretBatonIntent"
++      | "writeBatonSynopsis";
+     cwd: string;
+     prompt: string;
+     outputSchemaJson: S;
+@@ -187,7 +191,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
+     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
+       // Titles need only the supplied prompt, not configuration from the checkout.
+       const workingDirectory =
+-        operation === "generateThreadTitle"
++        operation === "generateThreadTitle" ||
++        operation === "interpretBatonIntent" ||
++        operation === "writeBatonSynopsis"
+           ? yield* fileSystem
+               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
+               .pipe(
+@@ -410,10 +416,80 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
+       };
+     });
+ 
++  /**
++   * D50: one sentence to one command, when the grammar could not place it.
++   *
++   * The prompt arrives built — Baton owns what the model is allowed to know,
++   * and this driver owns only how to ask. Every field is required in the schema
++   * so a partial answer is a decode failure rather than a silent default, and
++   * every field is checked against the environment's real ids afterwards.
++   */
++  const interpretBatonIntent: NonNullable<
++    TextGeneration.TextGeneration["Service"]["interpretBatonIntent"]
++  > = Effect.fn("ClaudeTextGeneration.interpretBatonIntent")(function* (input) {
++    const outputSchema = Schema.Struct({
++      kind: Schema.String,
++      statusQuestion: Schema.NullOr(Schema.String),
++      workSessionId: Schema.NullOr(Schema.String),
++      projectId: Schema.NullOr(Schema.String),
++      providerInstanceId: Schema.NullOr(Schema.String),
++      title: Schema.NullOr(Schema.String),
++      message: Schema.NullOr(Schema.String),
++      firingId: Schema.NullOr(Schema.String),
++      confirmed: Schema.NullOr(Schema.Boolean),
++      description: Schema.String,
++      confidence: Schema.String,
++      question: Schema.NullOr(Schema.String),
++    });
++
++    return yield* runClaudeJson({
++      operation: "interpretBatonIntent",
++      cwd: process.cwd(),
++      prompt: input.prompt,
++      outputSchemaJson: outputSchema,
++      modelSelection: input.modelSelection,
++    });
++  });
++
++  /**
++   * D51: the §11 synopsis, written rather than assembled.
++   *
++   * Two sentences and nothing else. The state field is not asked for: it stays
++   * derived from events, because a model guessing "needs approval" is a model
++   * deciding whether to interrupt someone.
++   */
++  const writeBatonSynopsis: NonNullable<
++    TextGeneration.TextGeneration["Service"]["writeBatonSynopsis"]
++  > = Effect.fn("ClaudeTextGeneration.writeBatonSynopsis")(function* (input) {
++    const outputSchema = Schema.Struct({
++      // The descriptions are the instruction the model actually follows: the
++      // first real run answered "Wrote a two-sentence status update for …",
++      // narrating the request, because these two fields arrived unannotated.
++      currentAction: Schema.String.annotate({
++        description:
++          "One sentence about where this WORK is now. Never about this request, this summary, or yourself.",
++      }),
++      next: Schema.String.annotate({
++        description:
++          "One sentence about what is needed next for this WORK. Never about this request or yourself.",
++      }),
++    });
++
++    return yield* runClaudeJson({
++      operation: "writeBatonSynopsis",
++      cwd: process.cwd(),
++      prompt: input.prompt,
++      outputSchemaJson: outputSchema,
++      modelSelection: input.modelSelection,
++    });
++  });
++
+   return {
+     generateCommitMessage,
+     generatePrContent,
+     generateBranchName,
+     generateThreadTitle,
++    interpretBatonIntent,
++    writeBatonSynopsis,
+   } satisfies TextGeneration.TextGeneration["Service"];
+ });
+diff --git a/apps/server/src/textGeneration/TextGeneration.ts b/apps/server/src/textGeneration/TextGeneration.ts
+index 37634cea7e4e510e21fac585e5d08510b9d51e2e..4e4414fe2935040da914d05b53db68955161ef5a 100644
+--- a/apps/server/src/textGeneration/TextGeneration.ts
++++ b/apps/server/src/textGeneration/TextGeneration.ts
+@@ -75,6 +75,50 @@ export interface ThreadTitleGenerationResult {
+   needsRefinement?: boolean | undefined;
+ }
+ 
++export interface BatonIntentInterpretationInput {
++  /** The sentence, verbatim. */
++  readonly sentence: string;
++  /** Everything the model is allowed to know: names and ids, no thread contents. */
++  readonly prompt: string;
++  /** What model and provider to use. Baton picks the cheapest tier that classifies. */
++  readonly modelSelection: ModelSelection;
++}
++
++/**
++ * The model's answer, flat and nullable.
++ *
++ * Deliberately `unknown`-free but also deliberately unvalidated here: the
++ * driver's only job is to get a shaped answer back. Whether the ids in it exist
++ * is Baton's question, and `@t3tools/shared/batonIntentModel` answers it.
++ */
++export interface BatonIntentInterpretationResult {
++  readonly kind: string;
++  readonly statusQuestion: string | null;
++  readonly workSessionId: string | null;
++  readonly projectId: string | null;
++  readonly providerInstanceId: string | null;
++  readonly title: string | null;
++  readonly message: string | null;
++  readonly firingId: string | null;
++  readonly confirmed: boolean | null;
++  readonly description: string;
++  readonly confidence: string;
++  readonly question: string | null;
++}
++
++export interface BatonSynopsisInput {
++  /** Recent turns from the thread, oldest first, already trimmed by the caller. */
++  readonly prompt: string;
++  readonly modelSelection: ModelSelection;
++}
++
++export interface BatonSynopsisResult {
++  /** What it is doing right now, one short sentence. */
++  readonly currentAction: string;
++  /** What happens next, one short sentence. */
++  readonly next: string;
++}
++
+ /**
+  * TextGeneration - Service tag for commit and change request text generation.
+  */
+@@ -106,6 +150,23 @@ export class TextGeneration extends Context.Service<
+     readonly generateThreadTitle: (
+       input: ThreadTitleGenerationInput,
+     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
++
++    /**
++     * Read one sentence into one Baton command (`DECISIONS.md` D50).
++     *
++     * Optional on purpose. Only the drivers that can run a cheap structured
++     * one-shot implement it, and Baton refuses by name when the chosen account
++     * cannot — which is a better answer than a build that will not compile
++     * because a provider nobody uses for this lacks a method.
++     */
++    readonly interpretBatonIntent?: (
++      input: BatonIntentInterpretationInput,
++    ) => Effect.Effect<BatonIntentInterpretationResult, TextGenerationError>;
++
++    /** Write the two sentences of a §11 synopsis from a thread's recent turns (D51). */
++    readonly writeBatonSynopsis?: (
++      input: BatonSynopsisInput,
++    ) => Effect.Effect<BatonSynopsisResult, TextGenerationError>;
+   }
+ >()("t3/textGeneration/TextGeneration") {}
+ 
+@@ -113,7 +174,9 @@ type TextGenerationOp =
+   | "generateCommitMessage"
+   | "generatePrContent"
+   | "generateBranchName"
+-  | "generateThreadTitle";
++  | "generateThreadTitle"
++  | "interpretBatonIntent"
++  | "writeBatonSynopsis";
+ 
+ const resolveInstance = (
+   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
+@@ -166,6 +229,32 @@ export const make = Effect.gen(function* () {
+           }),
+         ),
+       ),
++    interpretBatonIntent: (input) =>
++      resolveInstance(registry, "interpretBatonIntent", input.modelSelection.instanceId).pipe(
++        Effect.flatMap((textGeneration) =>
++          textGeneration.interpretBatonIntent
++            ? textGeneration.interpretBatonIntent(input)
++            : Effect.fail(
++                new TextGenerationError({
++                  operation: "interpretBatonIntent",
++                  detail: `Provider instance '${input.modelSelection.instanceId}' cannot read a sentence into a command.`,
++                }),
++              ),
++        ),
++      ),
++    writeBatonSynopsis: (input) =>
++      resolveInstance(registry, "writeBatonSynopsis", input.modelSelection.instanceId).pipe(
++        Effect.flatMap((textGeneration) =>
++          textGeneration.writeBatonSynopsis
++            ? textGeneration.writeBatonSynopsis(input)
++            : Effect.fail(
++                new TextGenerationError({
++                  operation: "writeBatonSynopsis",
++                  detail: `Provider instance '${input.modelSelection.instanceId}' cannot write a synopsis.`,
++                }),
++              ),
++        ),
++      ),
+   });
+ });
+ 
+diff --git a/packages/shared/src/usageLimits.test.ts b/packages/shared/src/usageLimits.test.ts
+index e93c68d1afdbeb6c4a0259f9563baf3c560dca5b..3fd716eb7fb23ed8b28d13dfd36235b8757be446 100644
+--- a/packages/shared/src/usageLimits.test.ts
++++ b/packages/shared/src/usageLimits.test.ts
+@@ -99,6 +99,43 @@ describe("limitsNotice", () => {
+       }),
+     ).toBe("Codex timed out.");
+   });
++
++  // On the author's own machine two Claude instances reported exactly this and
++  // meant "your stored login expired" — which no part of the sentence said.
++  it("tells a signed-out Claude account the one command that fixes it", () => {
++    const checkedAt = "2026-09-03T11:00:00.000Z";
++    const expired = { checkedAt, windows: [], unavailable: { reason: "unsupported" } } as const;
++
++    const notice = limitsNotice(expired, {
++      driver: ProviderDriverKind.make("claudeAgent"),
++      email: undefined,
++      displayName: "claude-rabee",
++    });
++    expect(notice).toContain("claude auth login");
++    expect(notice).toContain("claude-rabee");
++
++    // A signed-in account that reports no limits is a fact about the driver.
++    expect(
++      limitsNotice(expired, {
++        driver: ProviderDriverKind.make("claudeAgent"),
++        email: "someone@example.com",
++      }),
++    ).toBe("This account has no subscription limits.");
++    // And so is any other driver.
++    expect(limitsNotice(expired, { driver: ProviderDriverKind.make("cursor") })).toBe(
++      "This account has no subscription limits.",
++    );
++  });
++
++  it("points a failed probe at the PATH the server runs with", () => {
++    const notice = limitsNotice({
++      checkedAt: "2026-09-03T11:00:00.000Z",
++      windows: [],
++      unavailable: { reason: "probeFailed" },
++    });
++    expect(notice).toContain("Could not read limits.");
++    expect(notice).toContain("PATH");
++  });
+ });
+ 
+ describe("providersWithLimits", () => {
+@@ -849,7 +886,9 @@ describe("collectLimitNotices", () => {
+       ],
+     ]);
+     expect(collectLimitNotices(one)).toEqual([
+-      "Claude Max: Could not read limits.",
++      // The remedy travels with the notice: a diagnostics list that says only
++      // "could not read limits" sends the reader to the wrong place.
++      "Claude Max: Could not read limits. If it keeps failing, check the provider CLI is on the PATH the server itself runs with.",
+       "codex: No limits reported.",
+       "hub: No accounts reported.",
+       "down: ECONNREFUSED",
+@@ -859,7 +898,9 @@ describe("collectLimitNotices", () => {
+       entry: { target: { label: "Desktop" } },
+       serverConfig: { providers: [], usageLimitSources: [] },
+     });
+-    expect(collectLimitNotices(one)[0]).toBe("Laptop · Claude Max: Could not read limits.");
++    expect(collectLimitNotices(one)[0]).toBe(
++      "Laptop · Claude Max: Could not read limits. If it keeps failing, check the provider CLI is on the PATH the server itself runs with.",
++    );
+   });
+ });
+ 
+diff --git a/packages/shared/src/usageLimits.ts b/packages/shared/src/usageLimits.ts
+index b969ffb1c5310062c7bca0fc84d6b277e19718d2..753c92d3f65d6410966d832cbc06c9b476ed3e9e 100644
+--- a/packages/shared/src/usageLimits.ts
++++ b/packages/shared/src/usageLimits.ts
+@@ -498,13 +498,38 @@ function poolWindows(accounts: readonly LimitAccount[], now: number): readonly L
+   return pools.sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind]);
+ }
+ 
+-/** The one-line status under a provider heading when there are no bars to draw. */
+-export function limitsNotice(limits: ServerProviderUsageLimits): string | null {
++/**
++ * The one-line status under a provider heading when there are no bars to draw.
++ *
++ * Where the reason is something the user can act on, it says what to do. A
++ * Claude instance that reports no limits *and* no address is not a driver
++ * without a limits API — it is a login that has expired, and the difference
++ * between those two is the difference between "this is how it is" and "one
++ * command fixes this". Both were rendered as the same sentence, and the second
++ * one cost this author an afternoon of looking in the wrong place.
++ */
++export function limitsNotice(
++  limits: ServerProviderUsageLimits,
++  account?: {
++    readonly driver?: ServerProvider["driver"] | undefined;
++    readonly email?: string | undefined;
++    readonly displayName?: string | null | undefined;
++  },
++): string | null {
+   if (limits.unavailable?.reason === "unsupported") {
+-    return limits.unavailable.message ?? "This account has no subscription limits.";
++    if (limits.unavailable.message) return limits.unavailable.message;
++    if (account?.driver === "claudeAgent" && !account.email?.trim()) {
++      return `Signed out, or the stored login expired. Run \`claude auth login\` with CLAUDE_CONFIG_DIR set to${
++        account.displayName ? ` ${account.displayName}'s` : " this instance's"
++      } home, then reconnect.`;
++    }
++    return "This account has no subscription limits.";
+   }
+   if (limits.unavailable?.reason === "probeFailed") {
+-    return limits.unavailable.message ?? "Could not read limits.";
++    return (
++      limits.unavailable.message ??
++      "Could not read limits. If it keeps failing, check the provider CLI is on the PATH the server itself runs with."
++    );
+   }
+   return limits.windows.length === 0 ? "No limits reported." : null;
+ }

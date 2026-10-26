@@ -135,7 +135,7 @@ function WorkSessionGroupRows(props: {
   return (
     <div className="px-2 py-1">
       {props.projectLabel === null ? null : (
-        <p className="truncate text-[11px] leading-4 text-sidebar-muted-foreground">
+        <p className="truncate text-2xs leading-4 text-sidebar-muted-foreground">
           {props.projectLabel}
         </p>
       )}
@@ -143,7 +143,7 @@ function WorkSessionGroupRows(props: {
         {group.workSession.title}
       </p>
       {dormantSubtitle === null ? null : (
-        <p className="truncate pl-2 text-[11px] leading-4 text-sidebar-muted-foreground">
+        <p className="truncate pl-2 text-2xs leading-4 text-sidebar-muted-foreground">
           {dormantSubtitle}
         </p>
       )}
@@ -155,7 +155,7 @@ function WorkSessionGroupRows(props: {
             type="button"
             data-testid="sidebar-work-session-thread"
             className={cn(
-              "block w-full truncate pl-2 text-left text-[11px] leading-4 text-sidebar-muted-foreground",
+              "block w-full truncate pl-2 text-left text-2xs leading-4 text-sidebar-muted-foreground",
               props.activeThreadKey === threadKey && "text-sidebar-foreground",
             )}
             onClick={() => props.onSelectThread(group.environmentId, row.thread)}
@@ -173,7 +173,7 @@ function WorkSessionGroupRows(props: {
           key={rule.ruleId}
           data-testid="sidebar-work-session-rule"
           className={cn(
-            "truncate pl-2 text-[11px] leading-4",
+            "truncate pl-2 text-2xs leading-4",
             rule.awaitingConfirmation ? "text-sidebar-foreground" : "text-sidebar-muted-foreground",
             rule.status === "disabled" && "line-through",
           )}
@@ -188,10 +188,8 @@ function WorkSessionGroupRows(props: {
           key={intent.id}
           data-testid="sidebar-work-session-intent"
           className={cn(
-            "truncate pl-2 text-[11px] leading-4",
-            intent.refused || intent.failed
-              ? "text-sidebar-destructive-foreground"
-              : "text-sidebar-muted-foreground",
+            "truncate pl-2 text-2xs leading-4",
+            intent.refused || intent.failed ? "text-destructive" : "text-sidebar-muted-foreground",
           )}
         >
           {/* What was asked, then what came of it. Refusals stay visible: "it

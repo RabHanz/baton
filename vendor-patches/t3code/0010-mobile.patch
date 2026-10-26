@@ -1,0 +1,76 @@
+Subject: mobile: the Baton route and its header entry (Phase 7)
+
+diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
+index 417473ba20e8a3aa2bf1f17f46cb0921f37dd497..46a7e76ce45fe423bda7395a5aad4f111eb1c401 100644
+--- a/apps/mobile/src/Stack.tsx
++++ b/apps/mobile/src/Stack.tsx
+@@ -50,6 +50,7 @@ import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
+ import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
+ import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
+ import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
++import { BatonRouteScreen } from "./features/baton/BatonRouteScreen";
+ import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
+ import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
+ import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
+@@ -609,6 +610,18 @@ const RootStackConfig = createNativeStackNavigator({
+     headerShown: false,
+   },
+   screens: {
++    // The fleet on the phone (§29 Phase 7). `fabric/:environmentId/:workSessionId`
++    // is what a notification about work whose thread has ended links to — the
++    // thread route cannot express that, and the work outliving its thread is
++    // the whole point of the object.
++    Baton: createNativeStackScreen({
++      screen: BatonRouteScreen,
++      // Legacy name (D71): notifications and links already issued open fabric/..., so the route keeps it.
++      linking: "fabric/:environmentId?/:workSessionId?",
++      options: {
++        title: "Baton",
++      },
++    }),
+     Home: createNativeStackScreen({
+       screen: HomeRouteScreen,
+       linking: "",
+diff --git a/apps/mobile/src/features/home/HomeHeader.tsx b/apps/mobile/src/features/home/HomeHeader.tsx
+index e1cc7448eb591018aec6f40fc38d43febf749ecb..14f2f72d9fe43bf1b0eed7df2cbd2d7d86fe7fc8 100644
+--- a/apps/mobile/src/features/home/HomeHeader.tsx
++++ b/apps/mobile/src/features/home/HomeHeader.tsx
+@@ -37,6 +37,14 @@ export function HomeHeader(props: HomeHeaderProps) {
+           // (GLASS_HEADER_OPTIONS). Only dynamic values are set here.
+           headerTintColor: iconColor,
+           unstable_headerRightItems: () => [
++            withNativeGlassHeaderItem({
++              accessibilityLabel: "Baton",
++              icon: { name: "list.bullet.rectangle", type: "sfSymbol" } as const,
++              identifier: "home-baton",
++              label: "",
++              onPress: props.onOpenBaton,
++              type: "button",
++            }),
+             withNativeGlassHeaderItem({
+               accessibilityLabel: "Open settings",
+               icon: { name: "ellipsis", type: "sfSymbol" } as const,
+diff --git a/apps/mobile/src/features/home/HomeHeader.types.ts b/apps/mobile/src/features/home/HomeHeader.types.ts
+index 3c5f580f9eefb24bdb91e93c447d312fe3dc41c2..44a769900e0c6e41e64a5a99de29642eb43e3714 100644
+--- a/apps/mobile/src/features/home/HomeHeader.types.ts
++++ b/apps/mobile/src/features/home/HomeHeader.types.ts
+@@ -17,5 +17,7 @@ export interface HomeHeaderProps {
+   readonly onProjectChange: (projectKey: string | null) => void;
+   readonly onOpenEnvironments: () => void;
+   readonly onOpenSettings: () => void;
++  /** The fleet: what every environment is doing, in one glance (§29 Phase 7). */
++  readonly onOpenBaton: () => void;
+   readonly onStartNewTask: () => void;
+ }
+diff --git a/apps/mobile/src/features/home/HomeRouteScreen.tsx b/apps/mobile/src/features/home/HomeRouteScreen.tsx
+index 05070397cef577843ddc51e86162bccb8e2fe421..266b2ac0710aee1c93cbc5581732076f4740e773 100644
+--- a/apps/mobile/src/features/home/HomeRouteScreen.tsx
++++ b/apps/mobile/src/features/home/HomeRouteScreen.tsx
+@@ -186,6 +186,7 @@ export function HomeRouteScreen() {
+               params: { screen: "Settings" },
+             })
+           }
++          onOpenBaton={() => navigation.navigate("Baton")}
+           onSearchQueryChange={setSearchQuery}
+           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+         />
