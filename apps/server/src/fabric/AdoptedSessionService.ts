@@ -22,6 +22,8 @@ import {
   AdoptedStorageError,
   type AdoptedDiscoverResult,
   type AdoptedListInput,
+  type AdoptedReadOutputInput,
+  type AdoptedReadOutputResult,
   type AdoptedRefreshInput,
   type AdoptedRegisterInput,
   type AdoptedSendInputInput,
@@ -33,7 +35,7 @@ import {
 } from "@t3tools/contracts";
 import {
   ADOPTED_MINIMUM_CAPABILITIES,
-  mapHerdrState,
+  mapHerdrPaneState,
   refuseCapability,
 } from "@t3tools/shared/fabricAdoptedSession";
 import * as Context from "effect/Context";
@@ -51,13 +53,19 @@ import {
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 /**
+ * Enough scrollback to see what a terminal has been doing, and little enough
+ * that a fleet row asking for it does not ship a megabyte.
+ */
+const DEFAULT_READ_LINES = 200;
+
+/**
  * What an external runtime must be able to do for Fabric to adopt anything
  * from it.
  *
- * A port rather than an import: Herdr is AGPL and lives in its own process, and
- * this repository ships none of it. The live implementation shells out to the
- * runtime's own control surface, and the one on a machine without it refuses by
- * name.
+ * A port rather than an import: Herdr lives in its own process under its own
+ * licence, and this repository ships none of it. The live implementation shells
+ * out to the runtime's own control surface, and the one on a machine without it
+ * refuses by name.
  */
 export class AdoptedRuntimeAdapter extends Context.Service<
   AdoptedRuntimeAdapter,
@@ -69,6 +77,11 @@ export class AdoptedRuntimeAdapter extends Context.Service<
       readonly text: string;
       readonly submit: boolean;
     }) => Effect.Effect<AdoptedSendInputResult>;
+    /** Read the pane's text. Not a conversation, because there is not one. */
+    readonly readOutput: (input: {
+      readonly session: AdoptedSession;
+      readonly lines: number;
+    }) => Effect.Effect<AdoptedReadOutputResult>;
   }
 >()("t3/fabric/AdoptedSessionService/AdoptedRuntimeAdapter") {}
 
@@ -89,6 +102,9 @@ export class AdoptedSessionService extends Context.Service<
     readonly sendInput: (
       input: AdoptedSendInputInput,
     ) => Effect.Effect<AdoptedSendInputResult, AdoptedSessionError>;
+    readonly readOutput: (
+      input: AdoptedReadOutputInput,
+    ) => Effect.Effect<AdoptedReadOutputResult, AdoptedSessionError>;
     /** Live adopted sessions for one work session; the fleet's question. */
     readonly forWorkSession: (
       workSessionId: WorkSessionId,
@@ -126,9 +142,24 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  /** §9's mapping, with the refusal the contract promises. */
-  const mapState = (runtime: AdoptedSession["runtime"], runtimeState: string) => {
-    const state = mapHerdrState(runtimeState);
+  /**
+   * §9's mapping, with the refusal the contract promises.
+   *
+   * `foreground` is what the runtime saw running in the pane, and it only
+   * matters when the runtime recognised no agent. Without it every terminal
+   * that is not an agent — which is most of what §9 exists to adopt — could be
+   * discovered and never adopted, because the runtime's word for those is
+   * `unknown` and `unknown` alone maps to nothing.
+   */
+  const mapState = (
+    runtime: AdoptedSession["runtime"],
+    runtimeState: string,
+    foreground: string | null,
+  ) => {
+    const state = mapHerdrPaneState({
+      agentStatus: runtimeState,
+      hasForegroundProcess: foreground !== null,
+    });
     return state === null
       ? Effect.fail(new AdoptedStateUnknownError({ runtime, runtimeState }))
       : Effect.succeed(state);
@@ -136,7 +167,7 @@ export const make = Effect.gen(function* () {
 
   const register: AdoptedSessionService["Service"]["register"] = (input) =>
     Effect.gen(function* () {
-      const state = yield* mapState(input.runtime, input.runtimeState);
+      const state = yield* mapState(input.runtime, input.runtimeState, input.foreground ?? null);
       const timestamp = yield* nowIso;
       const row: AdoptedSessionRow = {
         id: input.id,
@@ -165,7 +196,7 @@ export const make = Effect.gen(function* () {
   const refresh: AdoptedSessionService["Service"]["refresh"] = (input) =>
     Effect.gen(function* () {
       const current = yield* require_(input.id);
-      const state = yield* mapState(current.runtime, input.runtimeState);
+      const state = yield* mapState(current.runtime, input.runtimeState, input.foreground ?? null);
       const observedAt = yield* nowIso;
       const next: AdoptedSessionRow = { ...current, state, observedAt };
       yield* repository.update(next).pipe(Effect.mapError(storageFailure("refresh")));
@@ -222,6 +253,41 @@ export const make = Effect.gen(function* () {
       });
     });
 
+  /**
+   * Gated on `showTerminal` rather than `readConversation`.
+   *
+   * Reading the text on a pane is the server-side half of §21's "show X". It is
+   * emphatically not reading a conversation: there is no structured transcript
+   * on a session Fabric did not start, and a capability check that said
+   * otherwise would be the pretence §9 exists to avoid.
+   */
+  const readOutput: AdoptedSessionService["Service"]["readOutput"] = (input) =>
+    Effect.gen(function* () {
+      const session = toSession(yield* require_(input.id));
+      const refusal = refuseCapability({
+        capabilities: session.capabilities,
+        capability: "showTerminal",
+      });
+      if (refusal !== null) {
+        return yield* new AdoptedCapabilityRefusedError({
+          id: input.id,
+          capability: "showTerminal",
+          reason: refusal,
+        });
+      }
+      if (session.detachedAt !== null) {
+        return yield* new AdoptedCapabilityRefusedError({
+          id: input.id,
+          capability: "showTerminal",
+          reason: "this session was released; adopt it again to read its terminal.",
+        });
+      }
+      return yield* adapter.readOutput({
+        session,
+        lines: input.lines ?? DEFAULT_READ_LINES,
+      });
+    });
+
   const forWorkSession: AdoptedSessionService["Service"]["forWorkSession"] = (workSessionId) =>
     list({ workSessionId });
 
@@ -232,6 +298,7 @@ export const make = Effect.gen(function* () {
     list,
     detach,
     sendInput,
+    readOutput,
     forWorkSession,
   } satisfies AdoptedSessionService["Service"];
 });

@@ -38,7 +38,12 @@ import {
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_ACCOUNT_WS_METHODS,
+  FABRIC_HANDOFF_WS_METHODS,
   FABRIC_WS_METHODS,
+  buildHandoffCapsule,
+  isProviderAvailable,
+  MessageId as FabricMessageId,
+  WorkSessionHandoffRefusedError,
   OrchestrationFiringNotFoundError,
   type FileManagerRevealKind,
   type OrchestrationClientOrigin,
@@ -3827,6 +3832,148 @@ const makeWsRpcLayer = (
             }),
             { "rpc.aggregate": "fabric" },
           ),
+        // §6.1: the same work on another provider instance. Refuses before
+        // creating anything; once the thread exists, a failure detaches it and
+        // gives the active slot back, so the work is never left between two.
+        [FABRIC_HANDOFF_WS_METHODS.workSessionHandoff]: (input) =>
+          observeRpcEffect(
+            FABRIC_HANDOFF_WS_METHODS.workSessionHandoff,
+            Effect.gen(function* () {
+              const workSession = yield* workSessions.get(input.id);
+              const from =
+                workSession.providerSessions.find(
+                  (session) =>
+                    session.threadId === workSession.activeThreadId && session.detachedAt === null,
+                ) ?? null;
+              const refuse = (reason: string) =>
+                new WorkSessionHandoffRefusedError({ workSessionId: input.id, reason });
+
+              const targetId = input.modelSelection.instanceId;
+              if (from !== null && from.providerInstanceId === targetId) {
+                return yield* refuse(
+                  "the target is the instance already running it; rotate the account in place instead (fabric.account.use).",
+                );
+              }
+              const instance = yield* providerInstances.getInstance(targetId);
+              if (instance === undefined || !instance.enabled) {
+                return yield* refuse(`provider instance ${targetId} is not configured here.`);
+              }
+              const snapshot = yield* instance.snapshot.getSnapshot;
+              if (!snapshot.installed || !isProviderAvailable(snapshot)) {
+                return yield* refuse(
+                  `provider instance ${targetId} is not signed in or available.`,
+                );
+              }
+
+              const project = yield* projectionSnapshotQuery
+                .getProjectShellById(workSession.projectId)
+                .pipe(Effect.orElseSucceed(() => Option.none()));
+              const cwd =
+                workSession.primaryWorktreePath ??
+                Option.getOrNull(Option.map(project, (shell) => shell.workspaceRoot));
+              const status =
+                cwd === null
+                  ? null
+                  : yield* vcsStatusBroadcaster
+                      .refreshStatus(cwd)
+                      .pipe(Effect.orElseSucceed(() => null));
+              const capsule = buildHandoffCapsule({
+                workSession,
+                git: {
+                  branch: status?.refName ?? workSession.baseBranch,
+                  worktree: cwd,
+                  commit: null,
+                  dirtyFiles: status?.workingTree.files.map((file) => file.path) ?? [],
+                },
+                sourceThreadId: from?.threadId ?? null,
+                sourceProvider:
+                  from === null
+                    ? null
+                    : [from.providerDriver, from.providerInstanceId]
+                        .filter((part) => part !== null)
+                        .join(" / ") || null,
+                note: input.note ?? null,
+              });
+
+              // A retried handoff is the same handoff.
+              if (workSession.providerSessions.some((entry) => entry.threadId === input.threadId)) {
+                return { workSession, capsule };
+              }
+
+              const runtimeMode = input.runtimeMode ?? "approval-required";
+              const create = yield* normalizeDispatchCommand({
+                type: "thread.create",
+                commandId: yield* serverCommandId("fabric-handoff-thread"),
+                threadId: input.threadId,
+                projectId: workSession.projectId,
+                title: workSession.title,
+                modelSelection: input.modelSelection,
+                runtimeMode,
+                interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+                branch: workSession.baseBranch,
+                worktreePath: workSession.primaryWorktreePath,
+                createdAt: yield* nowIso,
+              }).pipe(Effect.provideContext(normalizerContext));
+              yield* dispatchNormalizedCommand(create);
+
+              const rollback = Effect.gen(function* () {
+                yield* workSessions
+                  .detachThread({ id: input.id, threadId: input.threadId })
+                  .pipe(Effect.ignore);
+                yield* workSessions
+                  .update({ id: input.id, activeThreadId: from?.threadId ?? null })
+                  .pipe(Effect.ignore);
+              });
+
+              const continued = yield* Effect.gen(function* () {
+                yield* workSessions.attachThread({
+                  id: input.id,
+                  threadId: input.threadId,
+                  providerInstanceId: targetId,
+                  providerDriver: instance.driverKind,
+                  origin: "created",
+                  makeActive: true,
+                });
+                const turn = yield* normalizeDispatchCommand({
+                  type: "thread.turn.start",
+                  commandId: yield* serverCommandId("fabric-handoff-turn"),
+                  threadId: input.threadId,
+                  message: {
+                    messageId: FabricMessageId.make(`handoff-${input.threadId}`),
+                    role: "user",
+                    text: capsule.text,
+                    attachments: [],
+                  },
+                  runtimeMode,
+                  interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+                  createdAt: yield* nowIso,
+                }).pipe(Effect.provideContext(normalizerContext));
+                yield* dispatchNormalizedCommand(turn);
+                // The previous thread stays on the timeline as history, closed
+                // at the moment the work moved.
+                return from === null
+                  ? yield* workSessions.get(input.id)
+                  : yield* workSessions.detachThread({ id: input.id, threadId: from.threadId });
+              }).pipe(Effect.onError(() => rollback));
+
+              const at = yield* nowIso;
+              yield* workSessions
+                .applySynopsis({
+                  workSessionId: input.id,
+                  signals: [
+                    {
+                      kind: "finding",
+                      at,
+                      text: `Handed off from ${capsule.sourceProvider ?? "no active session"} to ${instance.driverKind} / ${targetId}.`,
+                      source: "events",
+                    },
+                  ],
+                })
+                .pipe(Effect.ignoreCause({ log: true }));
+              return { workSession: continued, capsule };
+            }),
+            { "rpc.aggregate": "fabric" },
+          ),
         [FABRIC_WS_METHODS.workSessionSettle]: (input) =>
           observeRpcEffect(
             FABRIC_WS_METHODS.workSessionSettle,
@@ -3997,6 +4144,10 @@ const makeWsRpcLayer = (
           ),
         [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: (input) =>
           observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, adopted.sendInput(input), {
+            "rpc.aggregate": "fabric",
+          }),
+        [FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput]: (input) =>
+          observeRpcEffect(FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput, adopted.readOutput(input), {
             "rpc.aggregate": "fabric",
           }),
         [FABRIC_WS_METHODS.subscribeWorkSessions]: (_input) =>

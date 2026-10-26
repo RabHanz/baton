@@ -5,19 +5,37 @@ What actually works, as opposed to what is planned. Updated at the end of every 
 Phase order: **0 → 2 → 3 → 4 → 9 → 5 → 6 → 7 → 8 → 10**. Phase 1 is already done; the reasoning
 for moving 9 ahead of 5 is in `DECISIONS.md`.
 
-| Phase                                          | State                     | Evidence                                                                                                                                                                            |
-| ---------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`                                                                                        |
-| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                                                                                                               |
-| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider                                                                                               |
-| 3 — provider/account handoff                   | not started               | blocked on a second Claude login (Phase 1)                                                                                                                                          |
-| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider                                                                                          |
-| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped                                                                                 |
-| 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it      |
-| 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have |
-| 7 — mobile voice + quick actions               | **partial**               | the Phase 7 table below: the fleet, the status questions and the deep links are built and typecheck; the mic, App Intents and handoff are blocked on a device, a mac and Phase 3    |
-| 8 — Herdr adoption                             | **partial**               | the Phase 8 table below: the domain, the mapping, the fleet and every refusal are proven on the snapshot; discovery and send-input are blocked on Herdr not being installed here    |
-| 10 — capability plane + hardening              | **partial**               | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                  |
+| Phase                                          | State                     | Evidence                                                                                                                                                                                     |
+| ---------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 — upstream audit and safe base               | **done**                  | this page, `UPSTREAM.md`, `DECISIONS.md`, `TEST_MATRIX.md`; upstream tree read at `6deac7a9`                                                                                                 |
+| 1 — real deployment baseline, zero custom code | **done by configuration** | two environments running stock `t3@0.0.42`, see below                                                                                                                                        |
+| 2 — WorkSession domain                         | **done**                  | the table below; both gaps since closed in a real browser and against a real provider                                                                                                        |
+| 3 — provider/account handoff                   | **built**                 | in-place rotation proven live (fork PR #21, D56/D57); the §6.1 capsule handoff `fabric.workSession.handoff` built and unit-tested 2026-10-26 (D62). Not yet run against a real provider turn |
+| 4 — working synopsis + fleet status            | **done**                  | the Phase 4 table below; proven against two threads in different states on a real provider                                                                                                   |
+| 9 — orchestration                              | **done**                  | the Phase 9 table below; the specification's own sentence created rules that fired once and stopped                                                                                          |
+| 5 — the intent surface                         | **done for text**         | the Phase 5 table below. The fork owns everything after the text exists (D24), so the microphone, the wake word and the conversation window are the client's and are not in it               |
+| 6 — VS Code + browser + system dictation       | **partial**               | the Phase 6 table below: the context bus, the routing, the injection report and dictation are built and proven; both extension hosts are blocked on a device this box does not have          |
+| 7 — mobile voice + quick actions               | **partial**               | the Phase 7 table below: the fleet, the status questions and the deep links are built and typecheck; the mic, App Intents and handoff are blocked on a device, a mac and Phase 3             |
+| 8 — Herdr adoption                             | **done for a terminal**   | Herdr 0.9.5 on both boxes; a real pane discovered, adopted, in the fleet and readable; T3 terminals can be Herdr-backed and outlive T3 (D61, proven live)                                    |
+| 10 — capability plane + hardening              | **partial**               | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                           |
+
+## Gap list, 2026-10-26 (where an older line below disagrees, this wins)
+
+Re-derived from the fork, both boxes and the spec rather than from this page's own older rows.
+
+| Piece                                                     | State                            | Evidence or blocker                                                                                                                                                                                                    |
+| --------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fork PR #22 (herdr-live) and the account-rotation commits | **merged** into fork main        | herdr-live's adapter supersedes 5bc4e5b5b; its D55/D56 renumbered D59/D60                                                                                                                                              |
+| Upstream sync                                             | **blocked**                      | 3,658 upstream commits since the 09-18 sync; a trial merge conflicts in 50 files (19 in `apps/server/src`), and upstream now needs Node 26.12 and pnpm 12. Its own lane; see `UPSTREAM.md`                             |
+| Sessions from every surface in one place                  | **built, deployed**              | presence lists Claude Code transcripts from any surface (terminal, VS Code, Remote Control all write `~/.claude/projects`); import/resume turns one into a T3 thread reachable from any client (D54/D55)               |
+| Account continuity, same provider                         | **proven live**                  | `fabric.account.use` swaps the account under a live thread (PR #21)                                                                                                                                                    |
+| Phase 3 handoff to another provider or instance           | **built**                        | `fabric.workSession.handoff` + capsule (D62); the resume intent now starts from the capsule. Not yet driven through a real provider turn; no "Continue with…" button in the web client yet (the intent bar reaches it) |
+| Automatic rotation on a limit event                       | **not built**                    | queue item 5, unchanged                                                                                                                                                                                                |
+| tmux replacement                                          | **built, proven live, deployed** | `T3CODE_FABRIC_TERMINAL_RUNTIME=herdr` (D61): a T3 terminal is a Herdr session client, survives a T3 restart, re-attaches on reopen                                                                                    |
+| Herdr                                                     | **0.9.5 on both boxes**          | updated with live handoff 2026-10-26                                                                                                                                                                                   |
+| Phase 6 extensions, Phase 7 phone run, App Intents        | **blocked on hardware**          | a desktop session with VS Code and browser extension hosts; a phone or simulator and a mac                                                                                                                             |
+| Wake word / microphone                                    | **blocked on a client**          | the fork stops at text (D24); the client that owns a mic is not built                                                                                                                                                  |
+| Local box second and third Claude login                   | **blocked on the Director**      | `claude auth login` per account on onnyx; the refresh tokens there are dead                                                                                                                                            |
 
 ## What Fabric is for, in his words (D56)
 
@@ -41,19 +59,37 @@ One table, so this file answers the question on its own. "Proven" means run
 against the snapshot of real userdata or asserted by a test that drives the real
 services; "built" without "proven" is said explicitly.
 
-| Phase                             | State                     | What is proven                                                                                                                                                   | What is not                                                           | What the Director must supply                                                                 |
-| --------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| 0 — upstream audit                | **done**                  | the fork point, the package map, the conflicts table (refreshed at Phase 10)                                                                                     | —                                                                     | —                                                                                             |
-| 1 — deployment baseline           | **done by configuration** | two environments on stock `t3@0.0.42`, paired, with a phone client                                                                                               | several Claude accounts logged in at once                             | **a second and third `claude auth login`**, one per config dir                                |
-| 2 — WorkSession domain            | **done**                  | the domain, the RPC, the sidebar; the work outliving its thread, proven twice — unit and two processes on real data; a real Claude turn; a browser walk          | —                                                                     | —                                                                                             |
-| 3 — provider/account handoff      | **not started**           | —                                                                                                                                                                | everything                                                            | **the second Claude login** (Phase 1's item). The handoff cannot be _proved_ with one account |
-| 4 — synopsis + fleet              | **done**                  | §10's ladder, §11.1's triggers, the §33 fleet and its "Needs me" filter, §20's spoken answers; proven against two threads in different states                    | a remote environment's fleet appearing in another client              | —                                                                                             |
-| 5 — the intent surface            | **done for text**         | one deterministic grammar; status, message, start/resume, rule creation and gate answers; every intent recorded; the §29 exit sentences run against the snapshot | a microphone, App Intents, a browser walk of the bar                  | — (the phone's own keyboard supplies dictation)                                               |
-| 6 — VS Code, browser, dictation   | **partial**               | the context bus, §14's routing, §18's injection report refusing Wayland by name, dictation kept client-side                                                      | both extensions; no desktop run                                       | **VS Code and a browser with an extension host**, on a machine with a desktop session         |
-| 7 — the phone                     | **partial**               | the fleet screen, the §20 questions, deep links including work whose thread has ended                                                                            | the app has never been run                                            | **a phone or a simulator, and a mac** for App Intents and the Action Button                   |
-| 8 — adopted sessions              | **partial**               | §9's mapping, declared capability limits, an adopted terminal moving the work's state — proven on the snapshot                                                   | discovery from a real runtime; input delivered to a real pane         | **Herdr installed** where the terminals are                                                   |
-| 9 — orchestration                 | **done**                  | bounded rules, no self-triggering, a durable bound, transition semantics; §22's own sentence fired once and stopped, live                                        | a genuinely cross-account review                                      | **the second account**                                                                        |
-| 10 — capability plane + hardening | **partial**               | the plane and its policy, retention, the audit view, migration additivity as a test, reconnect and two-client agreement, `fleet.get` at 26ms median              | a mid-turn disconnection; a phone resume; the capabilities themselves | **a device** for the resume case                                                              |
+| Phase                             | State                     | What is proven                                                                                                                                                   | What is not                                                           | What the Director must supply                                                               |
+| --------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 0 — upstream audit                | **done**                  | the fork point, the package map, the conflicts table (refreshed at Phase 10)                                                                                     | —                                                                     | —                                                                                           |
+| 1 — deployment baseline           | **done by configuration** | two environments on stock `t3@0.0.42`, paired, with a phone client                                                                                               | several Claude accounts logged in at once                             | **a second and third `claude auth login`**, one per config dir                              |
+| 2 — WorkSession domain            | **done**                  | the domain, the RPC, the sidebar; the work outliving its thread, proven twice — unit and two processes on real data; a real Claude turn; a browser walk          | —                                                                     | —                                                                                           |
+| 3 — provider/account handoff      | **built**                 | rotation under a live thread (PR #21); the capsule, its refusals and rollback (D62)                                                                              | a handoff run through a real second provider turn                     | — (accounts are signed in on signzart; the local box needs `claude auth login` per account) |
+| 4 — synopsis + fleet              | **done**                  | §10's ladder, §11.1's triggers, the §33 fleet and its "Needs me" filter, §20's spoken answers; proven against two threads in different states                    | a remote environment's fleet appearing in another client              | —                                                                                           |
+| 5 — the intent surface            | **done for text**         | one deterministic grammar; status, message, start/resume, rule creation and gate answers; every intent recorded; the §29 exit sentences run against the snapshot | a microphone, App Intents, a browser walk of the bar                  | — (the phone's own keyboard supplies dictation)                                             |
+| 6 — VS Code, browser, dictation   | **partial**               | the context bus, §14's routing, §18's injection report refusing Wayland by name, dictation kept client-side                                                      | both extensions; no desktop run                                       | **VS Code and a browser with an extension host**, on a machine with a desktop session       |
+| 7 — the phone                     | **partial**               | the fleet screen, the §20 questions, deep links including work whose thread has ended                                                                            | the app has never been run                                            | **a phone or a simulator, and a mac** for App Intents and the Action Button                 |
+| 8 — adopted sessions              | **proven live**           | discovery, adoption, read and send-input against real Herdr; a T3 terminal kept alive by a Herdr session across its pty being killed, and re-attached (D61)      | a live agent CLI adopted in the running server                        | —                                                                                           |
+| 9 — orchestration                 | **done**                  | bounded rules, no self-triggering, a durable bound, transition semantics; §22's own sentence fired once and stopped, live                                        | a genuinely cross-account review                                      | **the second account**                                                                      |
+| 10 — capability plane + hardening | **partial**               | the plane and its policy, retention, the audit view, migration additivity as a test, reconnect and two-client agreement, `fleet.get` at 26ms median              | a mid-turn disconnection; a phone resume; the capabilities themselves | **a device** for the resume case                                                            |
+
+## The queue — what is waiting, and what each one needs
+
+Written down because the Director's standing instruction is that work is queued and
+remembered, never dismissed. Everything here is real work this lane holds and did not do; it
+is ordered, and nothing in it is blocked on a decision he owes.
+
+| #   | Work                                                                                                             | State                                                                          | What it needs                                                                                        |
+| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| 1   | **Deploy the fork carrying presence and the Herdr adapter** to signzart and the local box                        | code committed, gate green, not yet built                                      | a Node ≥ 25.7 toolchain for `build-exe`; the box has 24.13 only, so the SEA step cannot run here yet |
+| 2   | **A pane adopted into a WorkSession, visible in the fleet**                                                      | adapter proven live; the service path unproven end to end                      | item 1 — it runs in the server, not in a script                                                      |
+| 3   | **T3's terminal backed by a Herdr pane** so it survives a T3 restart, not only a client reconnect                | not started; D58 names the three gaps                                          | item 1, then a `TerminalOpenInput` that can name a runtime                                           |
+| 4   | **Herdr on the local box**                                                                                       | installed on signzart by the install lane; absent on onnyx                     | that lane, or the same install run there                                                             |
+| 5   | **The rotation reactor wired to a real limit event**                                                             | rotation proven by hand (D56); nothing triggers it automatically               | a limit to fire against, or a synthetic one recorded as such                                         |
+| 6   | **The three surfaces** — fleet, work sessions, intent bar — walked in a real browser                             | built and typechecked; never walked since the presence block landed above them | item 1 and a browser session                                                                         |
+| 7   | **Wispr as a provider**                                                                                          | not started                                                                    | the §5 grammar is done; this is the dictation source behind it                                       |
+| 8   | **The eight-item reconciliation** between STATUS's phase table and the live boxes                                | half done in this file                                                         | item 1, so the table describes what is deployed rather than what is committed                        |
+| 9   | **Projects that exist on disk but not in T3** — `meliura-engine` has 67 sessions and no project on the local box | presence now lists them last and one click creates the project                 | nothing; it is his call which directories become projects                                            |
 
 ## On the boxes — what is actually running
 
@@ -824,69 +860,98 @@ wired to routes and to the same RPC the desktop uses.
 adapter, discovery, state mapping, an `AdoptedSession`, attachment to a work
 session, a raw terminal surface, "show X", and a safe send-input capability.
 
-The domain is built and proven against the snapshot. The parts that need the
-runtime itself are **blocked on Herdr not being installed on this box** — and
-that absence is what makes their refusals provable rather than hypothetical.
+**Herdr is now installed** (`0.9.1`, on signzart, as a user systemd service), so
+the half of this phase that needed the runtime has been taken. The refusals are
+still proven — the adapter is tested against captured CLI output for a missing
+binary, a stopped server and a rejected request — and they are no longer the
+only thing proven.
 
-| Item                                  | State                                                               | Where it is proven, or what blocks it                                                                                                                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Herdr adapter                         | done, as a **port**                                                 | `AdoptedRuntimeAdapter` + `HerdrAdapterLive.ts`: the only file that knows the runtime exists. Herdr is AGPL and is integrated, never vendored (D37)                                                    |
-| Discover server/workspaces/panes      | **partial**                                                         | the shape and the line parser are proven (`HerdrAdapterLive.test.ts`); on a machine without Herdr discovery refuses **by name** rather than returning an empty list that reads as "nothing is running" |
-| Map semantic agent state              | done                                                                | `packages/shared/src/fabricAdoptedSession.ts` — §9's four rows, and a word Fabric does not know is refused rather than called idle (D38)                                                               |
-| Create an AdoptedSession              | done                                                                | Fabric migration 006, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                                        |
-| Attach to a WorkSession               | done                                                                | the work session id is on the row, and the fleet groups by it                                                                                                                                          |
-| Appear in the fleet                   | done                                                                | `fabricFleet.test.ts` and the live run: an adopted pane that reports `blocked` makes the _work_ say it needs the user (D40)                                                                            |
-| Declared capability limits            | done                                                                | every adopted session carries what Fabric may not do to it, and each refusal says why (D39)                                                                                                            |
-| Safe send-input                       | done as a gate, **blocked** as an action                            | the capability check, the released-session check and the runtime's own refusal are proven; nothing has been typed into a real pane                                                                     |
-| Raw terminal attach surface, "show X" | **blocked**: no Herdr, and no desktop session to show a terminal in | the capability is declared and carried on the row; the surface is the desktop's, which Phase 6 already lists as blocked                                                                                |
+| Item                                  | State                                                    | Where it is proven, or what blocks it                                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Herdr adapter                         | done, as a **port**                                      | `AdoptedRuntimeAdapter` + `HerdrAdapterLive.ts`: the only file that knows the runtime exists. Integrated, never vendored (D37, and its licence correction — upstream is Apache-2.0, not AGPL) |
+| Discover server/workspaces/panes      | **done, against a real runtime**                         | one `herdr api snapshot` call, parsed against fixtures captured from the live binary. `scripts/fabric-herdr-proof.ts` returns `available=true candidates=2` from two real panes               |
+| Map semantic agent state              | done                                                     | `packages/shared/src/fabricAdoptedSession.ts` — §9's four rows; a word Fabric does not know is still refused (D38), and a pane with no agent maps by what is running in it (D59)              |
+| Create an AdoptedSession              | done                                                     | Fabric migration 006, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                               |
+| Attach to a WorkSession               | **done, live**                                           | the proof run adopts a _discovered_ pane into `ws-herdr-proof`, rather than one registered by hand                                                                                            |
+| Appear in the fleet                   | **done, live**                                           | `fabricFleet.test.ts`, and the proof run's fleet query returns the adopted pane with its state                                                                                                |
+| Declared capability limits            | done                                                     | every adopted session carries what Fabric may not do to it, and each refusal says why (D39); printed in the proof run                                                                         |
+| Safe send-input                       | done as a gate; wired and **deliberately not yet fired** | `pane send-text` then `pane send-keys enter`, tested against captured CLI output including the half-delivered case. Nothing has been typed into a pane anybody was using                      |
+| Read an adopted terminal              | **done, live**                                           | `fabric.adopted.readOutput`, gated on `showTerminal` and never on `readConversation` (D60); the proof run reads real lines off a running pane                                                 |
+| Raw terminal attach surface, "show X" | **partial** — the server half is done                    | the server returns the pane's text; _rendering_ a terminal is a desktop client's job, which Phase 6 still lists as blocked on a desktop session this box does not have                        |
 
 ### The Phase 8 exit criterion
 
 > A Claude/Codex/Hermes CLI running persistently in Herdr can appear in the
 > Fabric fleet and be surfaced/controlled with declared capability limits.
 
-Against the snapshot, with the server on it and Herdr absent:
+Taken against the installed runtime, 2026-09-18, by
+`node apps/server/scripts/fabric-herdr-proof.ts`. Everything below is real
+except the database, which is in memory so the run leaves nothing behind: the
+live adapter shelling out to `herdr`, the real service, real capability gates,
+and a pane nobody registered by hand.
 
 ```text
-discover: available=false candidates=0
-  reason: herdr is not installed on this environment. Install it where the
-          terminals are, or adopt sessions by hand.
+=== 1. discover: what does the real runtime report? ===
+available=true candidates=2
+  proof/w1:p1  state=monitoring runtimeState=unknown agent=none  bash …/ticker.sh
+  proof/w1:p2  state=idle       runtimeState=unknown agent=none  shell in lanes
 
-adopted herdr:ops:hermes-1: state=working runtime=herdr
-  capabilities: readConversation=false sendInput=true approvals=false
-                diffs=false stop=true showTerminal=true
+=== 2. adopt it, and attach it to a work session ===
+adopted herdr:w1:p1
+  state=monitoring  workSession=ws-herdr-proof
+  bash …/ticker.sh (herdr) — adopted, so no readConversation, approvals, diffs
 
-fleet:
-  with a working pane:        work state=working    needsUser=false threads=0 adopted=hermes:working
-  after herdr says blocked:   work state=needs_input needsUser=true  threads=0 adopted=hermes:needs_input
+=== 3. the fleet for that work session ===
+  bash …/ticker.sh: monitoring  (adopted from herdr)
 
-sendInput: delivered=false
-  detail: herdr is not installed on this environment. …
+=== 4. declared capability limits ===
+  MAY NOT readConversation    may     sendInput
+  MAY NOT approvals           may     stop
+  MAY NOT diffs               may     showTerminal
 
-unknown state: refused
-  after the refusal: work state=needs_input needsUser=true adopted=hermes:needs_input
+=== 5. read its output, gated on showTerminal ===
+available=true
+  | tick 682  pid=1419932  23:04:48
+  | tick 683  pid=1419932  23:04:50
+  | tick 684  pid=1419932  23:04:52
+
+=== 6. a capability the runtime did not claim is refused by name ===
+released at 2026-09-18T23:06:25.427Z
+sendInput after release: refused
+  AdoptedCapabilityRefusedError: sendInput is not available on this adopted
+  session: this session was released; adopt it again to type into it.
 ```
 
-So: **appearing in the fleet with declared capability limits is proven**, and
-with a work session that has no thread of Fabric's own — the adopted terminal is
-the only thing running, and the fleet says what it is doing. What is not proven
-is the half that needs the runtime: a real Herdr pane, discovered rather than
-registered by hand, and input actually delivered to it.
+So the exit criterion is met for a terminal: **discovered from the real runtime,
+adopted, attached to a work session, in the fleet, with declared limits, and its
+output readable**. The two panes also demonstrate D59 — the one running
+something reads as `monitoring`, the one at a prompt as `idle`, and neither
+claims to need the user.
 
 ### Not proven in Phase 8
 
-- **Herdr is not installed on this box**, so nothing has been discovered from a
-  real runtime and nothing has been typed into a real pane. Both paths end in a
-  refusal that names the missing runtime, which is the honest answer and is
-  itself proven.
-- **No raw terminal surface.** Showing a terminal is a desktop client's job, and
-  Phase 6 already lists the desktop pieces as blocked on a session this box does
-  not have.
+- **No agent CLI has been run under Herdr here.** The criterion names Claude,
+  Codex or Hermes, and what was adopted is a shell loop. The agent path is the
+  same code — `herdr api snapshot` returns an `agents` array and the adapter
+  prefers the agent's own state word over the pane's — but `agents` was empty on
+  every run, so the §9 mapping of `blocked`/`working`/`done` is proven by test
+  and not by a live agent. Starting one would have cost a provider session that
+  nobody asked for.
+- **Nothing has been typed into a real pane.** `sendInput` is wired to
+  `pane send-text` and `pane send-keys`, and tested against captured CLI output
+  including the case where the text lands and return does not. It has not been
+  fired at a live terminal, which is a deliberate choice rather than a gap in
+  the code: the first pane it types into should be one its owner expects.
+- **No rendered terminal.** The server can return a pane's text; showing a
+  terminal is a desktop client's job, which Phase 6 lists as blocked.
 - **One runtime.** `AdoptedRuntime` has a single member; a second is a contract
   change rather than a value somebody invents.
 - **No UI.** The fleet carries adopted sessions and the entry's state accounts
   for them, so they already move the "Needs me" count on both clients; neither
   client renders an adopted row of its own yet.
+- **Nothing polls.** Discovery runs when asked. An adopted session's state is
+  whatever the last `discover` or `refresh` said, so a pane that finished a
+  minute ago still reads `monitoring` until something asks again.
 
 ## Phase 10 — the capability plane, and hardening
 

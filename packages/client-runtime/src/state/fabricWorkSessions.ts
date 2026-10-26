@@ -14,6 +14,7 @@
 import {
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
+  FABRIC_HANDOFF_WS_METHODS,
   FABRIC_WS_METHODS,
   type WorkSession,
   type WorkSessionStreamItem,
@@ -168,6 +169,12 @@ export function createFabricWorkSessionAtoms<R, E>(
     startThread: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:fabric:work-session-start-thread",
       tag: FABRIC_WS_METHODS.workSessionStartThread,
+      scheduler,
+      concurrency,
+    }),
+    handoff: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:fabric:work-session-handoff",
+      tag: FABRIC_HANDOFF_WS_METHODS.workSessionHandoff,
       scheduler,
       concurrency,
     }),

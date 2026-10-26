@@ -10,6 +10,7 @@ import {
   FABRIC_INTENT_WS_METHODS,
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_ACCOUNT_WS_METHODS,
+  FABRIC_HANDOFF_WS_METHODS,
   FABRIC_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   type AuthEnvironmentScope,
@@ -187,6 +188,7 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_WS_METHODS.workSessionAttachThread]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionDetachThread]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionStartThread]: AuthOrchestrationOperateScope,
+  [FABRIC_HANDOFF_WS_METHODS.workSessionHandoff]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
   [FABRIC_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
@@ -218,6 +220,10 @@ export const RPC_REQUIRED_SCOPES = {
   [FABRIC_ADOPTED_WS_METHODS.adoptedRefresh]: AuthOrchestrationOperateScope,
   [FABRIC_ADOPTED_WS_METHODS.adoptedDetach]: AuthOrchestrationOperateScope,
   [FABRIC_ADOPTED_WS_METHODS.adoptedSendInput]: AuthOrchestrationOperateScope,
+  // Reading is a read scope even though what it reads is somebody's live
+  // terminal, because it changes nothing. Whether there is anything to read is
+  // decided by the capability check on the session itself.
+  [FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {
