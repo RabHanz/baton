@@ -87,7 +87,7 @@ describe("voice loop, WAV file as the microphone", () => {
     const heard: Array<{ text: string; route: string }> = [];
     const states: VoiceState[] = [];
     const loop = await startVoiceLoop({
-      audio: makeWavFileAudioInput(path),
+      audio: makeWavFileAudioInput([path]),
       core,
       deviceId: null,
       onState: (s) => states.push(s),
@@ -115,7 +115,7 @@ describe("voice loop, WAV file as the microphone", () => {
     const { core, frames } = makeEnergyCore();
     const states: VoiceState[] = [];
     const loop = await startVoiceLoop({
-      audio: makeWavFileAudioInput(path),
+      audio: makeWavFileAudioInput([path]),
       core,
       deviceId: null,
       muted: true,

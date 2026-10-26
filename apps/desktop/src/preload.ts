@@ -84,17 +84,29 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
   getFabricInjectionReport: (request) =>
     ipcRenderer.invoke(IpcChannels.FABRIC_INJECTION_REPORT_CHANNEL, request),
-  onFabricVoiceUtterance: (listener) => {
-    const handler = (_event: Electron.IpcRendererEvent, utterance: unknown) => {
-      if (typeof utterance !== "object" || utterance === null) return;
-      const { route, text } = utterance as { route?: unknown; text?: unknown };
-      if ((route === "focused_session" || route === "fabric_intent") && typeof text === "string") {
-        listener({ route, text });
-      }
+  onFabricVoiceRequest: (handler) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
+      if (typeof message !== "object" || message === null) return;
+      const { id, request } = message as { id?: unknown; request?: unknown };
+      if (typeof id !== "number" || typeof request !== "object" || request === null) return;
+      void Promise.resolve()
+        .then(() => handler(request as Parameters<typeof handler>[0]))
+        .then(
+          (value) =>
+            ipcRenderer.send(IpcChannels.FABRIC_VOICE_RESPONSE_CHANNEL, { id, ok: true, value }),
+          (error: unknown) =>
+            ipcRenderer.send(IpcChannels.FABRIC_VOICE_RESPONSE_CHANNEL, {
+              id,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+        );
     };
-    ipcRenderer.on(IpcChannels.FABRIC_VOICE_UTTERANCE_CHANNEL, handler);
-    return () => ipcRenderer.removeListener(IpcChannels.FABRIC_VOICE_UTTERANCE_CHANNEL, handler);
+    ipcRenderer.on(IpcChannels.FABRIC_VOICE_REQUEST_CHANNEL, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.FABRIC_VOICE_REQUEST_CHANNEL, listener);
   },
+  setFabricVoiceFocus: (workSessionId) =>
+    ipcRenderer.send(IpcChannels.FABRIC_VOICE_FOCUS_CHANNEL, workSessionId),
   getLocalEnvironmentBootstraps: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
     if (!Array.isArray(result)) {

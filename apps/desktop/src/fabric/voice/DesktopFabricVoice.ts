@@ -10,9 +10,14 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { FabricFocusTarget } from "@t3tools/contracts";
+import type { FabricVoiceCore, VoiceIntentClient } from "@t3tools/fabric-voice";
 import * as Electron from "electron";
 
-import { FABRIC_VOICE_UTTERANCE_CHANNEL } from "../../ipc/channels.ts";
+import {
+  FABRIC_VOICE_FOCUS_CHANNEL,
+  FABRIC_VOICE_REQUEST_CHANNEL,
+  FABRIC_VOICE_RESPONSE_CHANNEL,
+} from "../../ipc/channels.ts";
 import {
   choiceDeviceId,
   realDevices,
@@ -21,17 +26,16 @@ import {
   type DeviceChoice,
 } from "./audioDeviceSelection.ts";
 import { makeClipboardInjection } from "./clipboardInjection.ts";
+import {
+  desktopVoiceContext,
+  makeVoiceIntentClient,
+  type VoiceIntentRequest,
+} from "./desktopVoiceCore.ts";
 import { makeFramer, toVoicePcm } from "./pcm.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
-import {
-  HUD_DOCUMENT,
-  hudView,
-  renderHudHtml,
-  utteranceCaption,
-  type VoiceRoute,
-} from "./voiceHud.ts";
+import { HUD_DOCUMENT, hudView, renderHudHtml, utteranceCaption } from "./voiceHud.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
-import type { AudioInputDevice, AudioInputProvider, VoiceCore, VoiceState } from "./voiceTypes.ts";
+import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
 // Windows types into whatever has focus; there is no narrower target to name.
 const FOCUSED_FIELD: FabricFocusTarget = {
@@ -47,9 +51,23 @@ interface VoiceSettings {
   readonly enabled: boolean;
   readonly openAtLogin: boolean;
   readonly pinnedLabel: string | null;
+  /** Where the wake/VAD/STT models and whisper-cli are; null = `<state dir>/voice`. */
+  readonly modelsDir: string | null;
+  readonly whisperCli: string | null;
 }
 
-const DEFAULT_SETTINGS: VoiceSettings = { enabled: false, openAtLogin: false, pinnedLabel: null };
+const DEFAULT_SETTINGS: VoiceSettings = {
+  enabled: false,
+  openAtLogin: false,
+  pinnedLabel: null,
+  modelsDir: null,
+  whisperCli: null,
+};
+
+/** The renderer has this long to answer an intent call before the core is told it failed. */
+const REQUEST_TIMEOUT_MS = 20_000;
+/** Under the context bus's 30 s TTL, so what Fabric has open never expires while it is open. */
+const CONTEXT_REFRESH_MS = 10_000;
 
 const readSettings = (path: string): VoiceSettings => {
   try {
@@ -194,17 +212,22 @@ const trayIcon = (color: string): Electron.NativeImage => {
   return Electron.nativeImage.createFromBitmap(bitmap, { width: size, height: size });
 };
 
+export interface VoiceCoreHooks {
+  /** The core router's intent calls, answered by the Fabric window and the paste adapter. */
+  readonly intent: VoiceIntentClient;
+  /** Replies and confirmation prompts, shown on the HUD's line. */
+  readonly onReply: (text: string) => void;
+  readonly settings: { readonly modelsDir: string | null; readonly whisperCli: string | null };
+}
+
 export interface DesktopFabricVoiceInput {
   readonly stateDir: string;
   /** `HostProcessPlatform`, injected rather than read here. */
   readonly platform: string;
   /** The main window, created if needed — where session and intent words go. */
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
-  /**
-   * The voice core (`packages/fabric-voice`). Null until that lane lands; the
-   * tray then says so instead of holding a microphone nothing listens to.
-   */
-  readonly makeCore: (() => VoiceCore) | null;
+  /** The voice core (`@t3tools/fabric-voice`); null leaves the tray saying so. */
+  readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<FabricVoiceCore>) | null;
 }
 
 export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void => {
@@ -218,10 +241,13 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
   const tray = new Electron.Tray(trayIcon(hudView("sleeping").color));
   let hud: ReturnType<typeof makeHud> | null = null;
   let audio: ReturnType<typeof makeChromiumAudioInput> | null = null;
+  let core: FabricVoiceCore | null = null;
   const injection = makeClipboardInjection({
     platform: input.platform,
     clipboard: Electron.clipboard,
   });
+  // Only where this desktop can paste is the focused field a dictation target.
+  const field = injection.canInject(FOCUSED_FIELD) ? FOCUSED_FIELD : null;
 
   let state: VoiceState = "sleeping";
   let devices: ReadonlyArray<AudioInputDevice> = [];
@@ -229,6 +255,8 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
   let loop: VoiceLoop | null = null;
   let note: string | null = input.makeCore === null ? "Voice core not installed." : null;
   let captionTimer: ReturnType<typeof setTimeout> | null = null;
+  let focusedWorkSessionId: string | null = null;
+  let contextTimer: ReturnType<typeof setInterval> | null = null;
 
   const deviceName = () => (choice.kind === "pinned" ? choice.device.label : "System microphone");
   const render = (caption: string | null) => {
@@ -237,22 +265,55 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
     hud?.show(renderHudHtml({ state, caption: caption ?? note, device: deviceName() }));
     rebuildMenu();
   };
-
-  const route = async (text: string, target: VoiceRoute) => {
-    if (target === "focused_field") {
-      try {
-        await injection.insertText({
-          target: FOCUSED_FIELD,
-          text,
-        });
-      } catch (error) {
-        note = error instanceof Error ? error.message : "Could not type into that field.";
-      }
-      return;
-    }
-    const window = await input.ensureMainWindow();
-    window.webContents.send(FABRIC_VOICE_UTTERANCE_CHANNEL, { route: target, text });
+  const flash = (caption: string) => {
+    if (captionTimer !== null) clearTimeout(captionTimer);
+    render(caption);
+    captionTimer = setTimeout(() => render(null), 4000);
   };
+
+  // The intent RPCs live in the Fabric window's renderer: main asks, it answers.
+  let nextRequest = 0;
+  const pending = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
+  >();
+  let mainContents: Electron.WebContents | null = null;
+  const request = async (body: VoiceIntentRequest): Promise<unknown> => {
+    const window = await input.ensureMainWindow();
+    mainContents = window.webContents;
+    const id = ++nextRequest;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error("Fabric did not answer."));
+      }, REQUEST_TIMEOUT_MS);
+      pending.set(id, { resolve, reject, timer });
+      window.webContents.send(FABRIC_VOICE_REQUEST_CHANNEL, { id, request: body });
+    });
+  };
+  Electron.ipcMain.on(FABRIC_VOICE_RESPONSE_CHANNEL, (event, message: unknown) => {
+    if (event.sender !== mainContents || typeof message !== "object" || message === null) return;
+    const { id, ok, value, error } = message as {
+      id?: unknown;
+      ok?: unknown;
+      value?: unknown;
+      error?: unknown;
+    };
+    const entry = typeof id === "number" ? pending.get(id) : undefined;
+    if (entry === undefined) return;
+    pending.delete(id as number);
+    clearTimeout(entry.timer);
+    if (ok === true) entry.resolve(value);
+    else entry.reject(new Error(typeof error === "string" ? error : "That could not be done."));
+  });
+  const pushContext = () =>
+    core?.setContext(desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }));
+  Electron.ipcMain.on(FABRIC_VOICE_FOCUS_CHANNEL, (event, id: unknown) => {
+    // Our own windows only; preview panes load other people's pages.
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null) return;
+    focusedWorkSessionId = typeof id === "string" && id.length > 0 ? id : null;
+    pushContext();
+  });
 
   const onDeviceChange = () => {
     void (async () => {
@@ -270,6 +331,14 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
 
   const start = async () => {
     if (loop !== null || input.makeCore === null || !settings.enabled) return render(null);
+    // The models first: if they are missing, no microphone is opened.
+    core = await input.makeCore({
+      intent: makeVoiceIntentClient({ request, injection, field: FOCUSED_FIELD }),
+      onReply: flash,
+      settings,
+    });
+    pushContext();
+    contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
     audio = makeChromiumAudioInput(onDeviceChange);
     hud = makeHud();
     devices = await audio.listDevices();
@@ -277,24 +346,24 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
-      core: input.makeCore(),
+      core,
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
         state = next;
         render(null);
       },
-      onUtterance: (utterance, target) => {
-        void route(utterance.text, target);
-        if (captionTimer !== null) clearTimeout(captionTimer);
-        render(utteranceCaption(utterance));
-        captionTimer = setTimeout(() => render(null), 4000);
-      },
+      // The core's router has already sent the words on; this is the HUD's line.
+      onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
   };
 
   const stop = async () => {
     await loop?.stop();
+    if (loop === null) core?.dispose();
     loop = null;
+    core = null;
+    if (contextTimer !== null) clearInterval(contextTimer);
+    contextTimer = null;
     audio?.dispose();
     hud?.dispose();
     audio = null;
@@ -316,7 +385,7 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
           checked: settings.enabled,
           click: (item) => {
             save({ enabled: item.checked });
-            void (item.checked ? start() : stop());
+            void (item.checked ? start().catch(failed) : stop());
           },
         },
         {
@@ -374,6 +443,11 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
     );
   };
 
+  const failed = (error: unknown) => {
+    note = error instanceof Error ? error.message : "The microphone could not be opened.";
+    void stop();
+  };
+
   const restart = async () => {
     if (loop === null || audio === null) return render(null);
     devices = await audio.listDevices();
@@ -392,8 +466,5 @@ export const startDesktopFabricVoice = (input: DesktopFabricVoiceInput): void =>
   });
 
   render(null);
-  void start().catch((error: unknown) => {
-    note = error instanceof Error ? error.message : "The microphone could not be opened.";
-    render(null);
-  });
+  void start().catch(failed);
 };

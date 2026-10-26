@@ -18,6 +18,12 @@ describe("classifyDictation", () => {
     expect(command.text).toBe("Thanks, I'll send the revised version tomorrow.");
   });
 
+  it("drops the full stop speech-to-text puts after the command", () => {
+    // whisper.cpp hears "Hey Jarvis, dictate. Thanks, …"; the "." must not be pasted.
+    const command = classifyDictation("Hey Jarvis, dictate. Thanks, I will send it.", idle);
+    expect(command).toEqual({ kind: "start", text: "Thanks, I will send it." });
+  });
+
   it("starts with no text when the user only asks for the mode", () => {
     const command = classifyDictation("Jarvis, dictate", idle);
     expect(command).toEqual({ kind: "start", text: null });
