@@ -229,6 +229,11 @@ import {
   WorkSessionUpdateInput,
 } from "./fabric/workSession.ts";
 import {
+  FABRIC_LIVE_WS_METHODS,
+  FabricHerdrSendInput,
+  FabricHerdrSendResult,
+} from "./fabric/liveSessions.ts";
+import {
   FABRIC_HANDOFF_WS_METHODS,
   WorkSessionHandoffInput,
   WorkSessionHandoffRefusedError,
@@ -1536,6 +1541,12 @@ const WsFabricWorkSessionHandoffRpc = Rpc.make(FABRIC_HANDOFF_WS_METHODS.workSes
   ]),
 });
 
+const WsFabricHerdrSendRpc = Rpc.make(FABRIC_LIVE_WS_METHODS.herdrSend, {
+  payload: FabricHerdrSendInput,
+  success: FabricHerdrSendResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsFabricWorkSessionSettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -1824,6 +1835,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFabricWorkSessionDetachThreadRpc,
   WsFabricWorkSessionStartThreadRpc,
   WsFabricWorkSessionHandoffRpc,
+  WsFabricHerdrSendRpc,
   WsFabricWorkSessionSettleRpc,
   WsFabricWorkSessionUnsettleRpc,
   WsFabricWorkSessionArchiveRpc,

@@ -97,6 +97,22 @@ Node 26.12, one conflict area at a time), not a side step of a feature lane.
 6. **Deploy** exactly as `DEPLOY.md`, beside the previous version, rollback = restore the drop-in.
    Estimate: one lane-day.
 
+### Patch points in upstream-owned files (2026-10-26)
+
+Fabric logic lives in `apps/server/src/fabric/`, `packages/contracts/src/fabric/`,
+`apps/web/src/components/sidebar/Fabric*`, `scripts/fabric/`. These are the only lines it adds to
+files upstream owns; each is an isolated insertion:
+
+| File                                                      | Hook                                                                              |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `apps/server/src/ws.ts`                                   | method imports; the `fabric.workSession.handoff` and `fabric.herdr.send` handlers |
+| `apps/server/src/server.ts`                               | `FabricAccountRotationReactor.layer` in `ReactorLayerLive`                        |
+| `apps/server/src/auth/RpcAuthorization.ts`                | scopes for the two methods above                                                  |
+| `apps/server/src/terminal/Manager.ts`                     | `terminalShellCandidates` + the Herdr close in `closeSession` (D61)               |
+| `packages/contracts/src/rpc.ts`, `index.ts`               | the two Rpc definitions and the exports                                           |
+| `packages/client-runtime/src/state/fabricWorkSessions.ts` | `handoff`, `herdrSend` commands                                                   |
+| `apps/web/src/components/sidebar/FabricIntentBar.tsx`     | `id="fabric-intent-input"` (D64)                                                  |
+
 ## Remotes and rebasing
 
 The clone is a blobless partial clone (`--filter=blob:none`) with full commit history, which keeps

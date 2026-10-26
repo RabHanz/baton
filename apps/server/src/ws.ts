@@ -39,6 +39,7 @@ import {
   FABRIC_ORCHESTRATION_WS_METHODS,
   FABRIC_ACCOUNT_WS_METHODS,
   FABRIC_HANDOFF_WS_METHODS,
+  FABRIC_LIVE_WS_METHODS,
   FABRIC_WS_METHODS,
   buildHandoffCapsule,
   isProviderAvailable,
@@ -104,6 +105,7 @@ import * as FabricAdoptedSessionService from "./fabric/AdoptedSessionService.ts"
 import * as FabricIntentService from "./fabric/IntentService.ts";
 import * as FabricOrchestrationReactor from "./fabric/OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./fabric/OrchestrationRuleService.ts";
+import { herdrSend } from "./fabric/HerdrSend.ts";
 import * as WorkSessionService from "./fabric/WorkSessionService.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -3835,6 +3837,11 @@ const makeWsRpcLayer = (
         // §6.1: the same work on another provider instance. Refuses before
         // creating anything; once the thread exists, a failure detaches it and
         // gives the active slot back, so the work is never left between two.
+        // Fabric patch point (D66): one-field send to a Herdr pane.
+        [FABRIC_LIVE_WS_METHODS.herdrSend]: (input) =>
+          observeRpcEffect(FABRIC_LIVE_WS_METHODS.herdrSend, herdrSend(adopted, input), {
+            "rpc.aggregate": "fabric",
+          }),
         [FABRIC_HANDOFF_WS_METHODS.workSessionHandoff]: (input) =>
           observeRpcEffect(
             FABRIC_HANDOFF_WS_METHODS.workSessionHandoff,
