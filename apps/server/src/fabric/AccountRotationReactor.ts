@@ -28,6 +28,8 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
 import { AccountPoolService } from "./AccountPoolService.ts";
+import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
+import { respawnClaudeInPane } from "./HerdrRespawn.ts";
 
 export const FABRIC_ON_LIMIT_ENV = "T3CODE_FABRIC_ON_LIMIT";
 const DRIVER = ProviderDriverKind.make("claudeAgent");
@@ -79,6 +81,18 @@ export const make = Effect.gen(function* () {
       workSessionId: null,
     });
     lastAutoRotationAt = now;
+    // D69: sessions living in Herdr panes are restarted on the new account with
+    // the same conversation. Busy ones are left alone: a session that is still
+    // working has not hit the limit.
+    const live = yield* readClaudeLiveSessions({ account: decision.target.label });
+    for (const session of live) {
+      if (session.herdrPane === null || session.status === "busy") continue;
+      const result = yield* respawnClaudeInPane({
+        paneRef: session.herdrPane,
+        sessionId: session.sessionId,
+      });
+      yield* Effect.logInfo("Fabric respawned a Herdr Claude session", result);
+    }
     yield* Effect.logInfo("Fabric rotated the Claude account on a limit", {
       from: decision.from?.label ?? null,
       to: decision.target.label,

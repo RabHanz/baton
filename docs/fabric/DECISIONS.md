@@ -1909,3 +1909,31 @@ naudiodon (a Windows build dependency for something Chromium already does).
 **Not proven:** nothing has run on Windows. The loop is proven headless (`voiceLoop.test.ts`: a
 48 kHz stereo WAV as the microphone, resampled, framed, segmented, routed, and hard-muted), but the
 tray, HUD, `getUserMedia` capture and SendKeys paste have not been run on a Windows desktop.
+
+## D68 — One control surface for every session, independent of the account
+
+**Decided** 2026-10-26 on the Director's priority 1: Claude Remote Control is bound to an account,
+so every account change broke his control channel. Fabric's channel is the session's _place_, not
+its account:
+
+- **The list.** Each environment's fleet now also carries every interactive Claude Code process on
+  the machine, read from Claude Code's own `~/.claude/sessions/<pid>.json` descriptors (conversation
+  id, directory, name, busy/idle, entrypoint cli/VS Code, tmux) and, from `/proc/<pid>/environ`,
+  only the `HERDR_*` routing variables, which say which Herdr pane hosts it. The `.key` files and
+  the peer messaging socket beside them are never opened. The account is the pool's active account,
+  because every session shares one config directory (D57). The T3 client already merges both
+  boxes' environments, on the phone and the laptop.
+- **The send.** `fabric.herdr.send` types into any pane a fresh discovery sees, through the adopted
+  capability gate; the sidebar gives every Herdr row and every Claude session in Herdr one field.
+  A session in a plain terminal or VS Code is listed, not typed into: the only way into a running
+  CLI that is not in a pane is Claude Code's private peer socket, so its row says
+  `fab --resume <id>` instead.
+- **Birth inside Fabric.** `fab <project> [claude|codex]` (scripts/fabric/fab, installed to
+  `~/.local/bin/fab`) starts the agent in a tab of the project's Herdr space, so new work is
+  sendable and survivable from the start.
+
+## D69 — Rotation restarts Herdr-hosted sessions on the new account, same conversation
+
+After D63 rotates the account, each idle Claude session hosted in a Herdr pane gets `/exit` and,
+once its shell is back, `claude --resume <id>` in the same pane: same conversation, same pane, same
+send path, no Remote Control step. Busy sessions are skipped (still working means not limited).

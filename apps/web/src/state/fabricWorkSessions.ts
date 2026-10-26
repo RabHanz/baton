@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFabricWorkSessionAtoms } from "@t3tools/client-runtime/state/fabric-work-sessions";
 import type {
   AdoptedSessionCandidate,
+  ClaudeLiveSession,
   EnvironmentId,
   FabricFleetEntry,
   FabricIntentRecord,
@@ -49,6 +50,7 @@ export function useWorkSessions(environmentId: EnvironmentId | null): {
 
 const NO_FLEET_ENTRIES: ReadonlyArray<FabricFleetEntry> = [];
 const NO_HERDR: ReadonlyArray<AdoptedSessionCandidate> = [];
+const NO_CLAUDE: ReadonlyArray<ClaudeLiveSession> = [];
 
 /**
  * One environment's fleet, refreshed whenever its work sessions change.
@@ -61,14 +63,16 @@ const NO_HERDR: ReadonlyArray<AdoptedSessionCandidate> = [];
 export function useFleet(environmentId: EnvironmentId | null): {
   readonly entries: ReadonlyArray<FabricFleetEntry>;
   readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
+  readonly claude: ReadonlyArray<ClaudeLiveSession>;
   readonly loaded: boolean;
 } {
   const { workSessions } = useWorkSessions(environmentId);
   const [read, setRead] = useState<{
     readonly entries: ReadonlyArray<FabricFleetEntry>;
     readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
+    readonly claude: ReadonlyArray<ClaudeLiveSession>;
     readonly loaded: boolean;
-  }>({ entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, loaded: false });
+  }>({ entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, claude: NO_CLAUDE, loaded: false });
   // Herdr's agents change without any work session moving, and nothing streams
   // them to the client yet, so they are the one part of the fleet on a timer
   // (D65). shortcut: a 20 s tick; upgrade when the server pushes Herdr state.
@@ -102,9 +106,10 @@ export function useFleet(environmentId: EnvironmentId | null): {
           ? {
               entries: result.value.fleet.entries,
               herdr: result.value.fleet.herdr ?? NO_HERDR,
+              claude: result.value.fleet.claudeSessions ?? NO_CLAUDE,
               loaded: true,
             }
-          : { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, loaded: false },
+          : { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, claude: NO_CLAUDE, loaded: false },
       );
     });
     return () => {
@@ -114,8 +119,10 @@ export function useFleet(environmentId: EnvironmentId | null): {
 
   // Derived rather than stored, so a disconnected environment and an empty one
   // need no effect to clear what the last read left behind.
-  if (environmentId === null) return { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, loaded: false };
-  if (signature === "") return { entries: NO_FLEET_ENTRIES, herdr: read.herdr, loaded: true };
+  if (environmentId === null)
+    return { entries: NO_FLEET_ENTRIES, herdr: NO_HERDR, claude: NO_CLAUDE, loaded: false };
+  if (signature === "")
+    return { entries: NO_FLEET_ENTRIES, herdr: read.herdr, claude: read.claude, loaded: true };
   return read;
 }
 

@@ -14,6 +14,7 @@
  */
 import {
   type AdoptedSessionCandidate,
+  ProviderDriverKind,
   type FabricFleet,
   type FabricFleetAdopted,
 } from "@t3tools/contracts";
@@ -28,7 +29,9 @@ import * as Effect from "effect/Effect";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
+import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
+import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 /** A provider window at 100% is the account saying it is out, not a guess. */
@@ -38,7 +41,11 @@ const isExhausted = (usedPercent: number): boolean => usedPercent >= 100;
 // is read on every repaint and discovery is several CLI calls; upgrade to
 // Herdr's socket event stream when the adapter subscribes instead of polling.
 const HERDR_CACHE_MS = 15_000;
-let herdrCache: { at: number; candidates: ReadonlyArray<AdoptedSessionCandidate> } | null = null;
+let herdrCache: {
+  at: number;
+  candidates: ReadonlyArray<AdoptedSessionCandidate>;
+  account: string | null;
+} | null = null;
 
 export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
   readonly includeArchived?: boolean | undefined;
@@ -113,7 +120,17 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     const discovered = yield* adoptedSessions.discover.pipe(
       Effect.catchCause(() => Effect.succeed({ available: false, reason: "", candidates: [] })),
     );
-    herdrCache = { at: nowMs, candidates: discovered.candidates };
+    // Every session on this machine shares one config dir (D57), so the pool's
+    // active account is the account behind all of them.
+    const pool = yield* Effect.serviceOption(AccountPoolService);
+    const account =
+      pool._tag === "None"
+        ? null
+        : yield* pool.value.read(ProviderDriverKind.make("claudeAgent")).pipe(
+            Effect.map((read) => read.accounts.find((entry) => entry.active)?.label ?? null),
+            Effect.catchCause(() => Effect.succeed(null)),
+          );
+    herdrCache = { at: nowMs, candidates: discovered.candidates, account };
   }
 
   const built = buildFabricFleet({
@@ -127,7 +144,8 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
     observedAt: DateTime.formatIso(yield* DateTime.now),
   });
 
-  const fleet: FabricFleet = { ...built, herdr: herdrCache.candidates };
+  const claudeSessions = yield* readClaudeLiveSessions({ account: herdrCache.account });
+  const fleet: FabricFleet = { ...built, herdr: herdrCache.candidates, claudeSessions };
   const result: FabricFleet = input.needsUserOnly === true ? filterFleetNeedsUser(fleet) : fleet;
   return result;
 });

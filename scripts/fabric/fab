@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# fab — start (or rejoin) work inside Fabric + Herdr, so a session is owned from birth (D68).
+#
+#   fab <project|dir> [claude|codex|<command…>]   new agent in a new tab of that project's space
+#   fab --resume <claude-session-id> [dir]          bring an existing Claude conversation into Herdr
+#   fab                                             attach to the space for the current directory
+#
+# Every agent started this way lives in a Herdr session named fab-<project>: it survives the
+# terminal, T3 and ssh going away, appears in the Fabric fleet on every device, and takes input
+# from the fleet's send field. Nothing here touches an account; rotation happens underneath.
+set -euo pipefail
+
+roots=(${FAB_ROOTS:-"$PWD" "$HOME" /home/onnyx /mnt/HC_Volume_106652742/dev "$HOME/dev"})
+
+resolve_dir() {
+  local want="$1"
+  if [[ -d "$want" ]]; then (cd "$want" && pwd); return; fi
+  for root in "${roots[@]}"; do
+    [[ -d "$root/$want" ]] && { (cd "$root/$want" && pwd); return; }
+  done
+  echo "fab: no directory named '$want' under ${roots[*]}" >&2
+  exit 2
+}
+
+agent=()
+if [[ "${1:-}" == "--resume" ]]; then
+  [[ -n "${2:-}" ]] || { echo "usage: fab --resume <session-id> [dir]" >&2; exit 2; }
+  dir="$(resolve_dir "${3:-$PWD}")"
+  agent=(claude --resume "$2")
+elif [[ $# -eq 0 ]]; then
+  dir="$PWD"
+else
+  dir="$(resolve_dir "$1")"
+  shift
+  case "${1:-claude}" in
+    claude) agent=(claude) ;;
+    codex) agent=(codex) ;;
+    *) agent=("$@") ;;
+  esac
+fi
+
+name="fab-$(basename "$dir" | tr -c 'A-Za-z0-9_-\n' '-')"
+running() { herdr session list 2>/dev/null | awk -v n="$name" '$1 == n && $2 == "running" { found = 1 } END { exit !found }'; }
+
+if ((${#agent[@]} > 0)); then
+  cmd="$(printf '%q ' "${agent[@]}")"
+  if running; then
+    # A new tab in the existing space; the first pane of a fresh tab runs the agent.
+    herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]}" --focus >/dev/null
+    pane="$(herdr --session "$name" pane current 2>/dev/null | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p')"
+    [[ -n "$pane" ]] && herdr --session "$name" pane run "$pane" "$cmd" >/dev/null
+  else
+    # The server starts with the first client; run the agent once its first pane exists.
+    (
+      for _ in $(seq 1 50); do
+        sleep 0.2
+        pane="$(herdr --session "$name" pane list 2>/dev/null | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p' | head -1)"
+        if [[ -n "$pane" ]]; then herdr --session "$name" pane run "$pane" "$cmd" >/dev/null; exit 0; fi
+      done
+    ) &
+  fi
+fi
+
+if [[ -t 1 ]]; then
+  cd "$dir"
+  exec herdr --session "$name"
+fi
+echo "fab: $name ready in $dir (attach with: herdr --session $name)"
