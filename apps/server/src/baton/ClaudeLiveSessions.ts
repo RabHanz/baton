@@ -49,6 +49,9 @@ export const parseClaudeSessionDescriptor = (
   if (typeof pid !== "number" || sessionId === null || cwd === null) return null;
   // `claude -p` workers are not sessions anyone talks to.
   if (str(d["kind"]) !== "interactive") return null;
+  // SDK-driven sessions belong to the program that runs them (T3 threads, automation);
+  // nobody types into them and adopting one would kill its owner's work.
+  if ((str(d["entrypoint"]) ?? "").startsWith("sdk")) return null;
   if (!input.alive(pid)) return null;
   const updated = d["updatedAt"];
   return {
