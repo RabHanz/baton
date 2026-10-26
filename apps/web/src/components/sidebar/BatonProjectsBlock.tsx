@@ -54,6 +54,10 @@ const rowAccount = (props: BatonProjectsBlockProps, row: BatonSessionRow): strin
       ? props.resolveWorkAccount(row.environmentId, row.entry)
       : null;
 
+/** "VentureOS · Ventureos" says one thing twice; a session named like its project is the project. */
+const projectRowLabel = (project: string, session: string): string =>
+  project.toLowerCase() === session.toLowerCase() ? project : `${project} · ${session}`;
+
 const rowWhere = (row: BatonSessionRow): string =>
   row.kind === "claude" ? row.where : row.kind === "pane" ? "Herdr" : "T3";
 
@@ -111,7 +115,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
               row={selected.row}
               title={
                 selected.group.rows.length === 1
-                  ? `${selected.group.label} · ${selected.row.title}`
+                  ? projectRowLabel(selected.group.label, selected.row.title)
                   : selected.row.title
               }
               {...props}
@@ -144,7 +148,7 @@ function ProjectEntry(
         <SessionRow
           {...props}
           row={row}
-          label={`${group.label} · ${row.title}`}
+          label={projectRowLabel(group.label, row.title)}
           leading={icon}
           selected={props.selectedKey === row.key}
         />
@@ -397,8 +401,8 @@ function AdoptAction(props: {
   const adopt = useAtomCommand(batonWorkSessions.liveAdopt, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   return (
-    <div className="flex items-center gap-1.5 px-1">
-      <span className="min-w-0 flex-1 text-xs text-secondary-label">
+    <div className="flex flex-col items-start gap-1.5 px-1">
+      <span className="text-xs text-secondary-label">
         It runs in a terminal or VS Code, where Baton cannot type.
       </span>
       <Button
