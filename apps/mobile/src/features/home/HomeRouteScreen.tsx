@@ -197,7 +197,7 @@ export function HomeRouteScreen() {
               params: { screen: "Settings" },
             })
           }
-          onOpenFabric={() => navigation.navigate("Fabric")}
+          onOpenBaton={() => navigation.navigate("Baton")}
           onProjectSortOrderChange={setProjectSortOrder}
           onSearchQueryChange={setSearchQuery}
           onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}

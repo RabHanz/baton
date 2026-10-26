@@ -82,9 +82,9 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     const result = ipcRenderer.sendSync(IpcChannels.GET_SYSTEM_LOCALE_CHANNEL);
     return typeof result === "string" ? result : null;
   },
-  getFabricInjectionReport: (request) =>
-    ipcRenderer.invoke(IpcChannels.FABRIC_INJECTION_REPORT_CHANNEL, request),
-  onFabricVoiceRequest: (handler) => {
+  getBatonInjectionReport: (request) =>
+    ipcRenderer.invoke(IpcChannels.BATON_INJECTION_REPORT_CHANNEL, request),
+  onBatonVoiceRequest: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
       if (typeof message !== "object" || message === null) return;
       const { id, request } = message as { id?: unknown; request?: unknown };
@@ -93,20 +93,20 @@ contextBridge.exposeInMainWorld("desktopBridge", {
         .then(() => handler(request as Parameters<typeof handler>[0]))
         .then(
           (value) =>
-            ipcRenderer.send(IpcChannels.FABRIC_VOICE_RESPONSE_CHANNEL, { id, ok: true, value }),
+            ipcRenderer.send(IpcChannels.BATON_VOICE_RESPONSE_CHANNEL, { id, ok: true, value }),
           (error: unknown) =>
-            ipcRenderer.send(IpcChannels.FABRIC_VOICE_RESPONSE_CHANNEL, {
+            ipcRenderer.send(IpcChannels.BATON_VOICE_RESPONSE_CHANNEL, {
               id,
               ok: false,
               error: error instanceof Error ? error.message : String(error),
             }),
         );
     };
-    ipcRenderer.on(IpcChannels.FABRIC_VOICE_REQUEST_CHANNEL, listener);
-    return () => ipcRenderer.removeListener(IpcChannels.FABRIC_VOICE_REQUEST_CHANNEL, listener);
+    ipcRenderer.on(IpcChannels.BATON_VOICE_REQUEST_CHANNEL, listener);
+    return () => ipcRenderer.removeListener(IpcChannels.BATON_VOICE_REQUEST_CHANNEL, listener);
   },
-  setFabricVoiceFocus: (workSessionId) =>
-    ipcRenderer.send(IpcChannels.FABRIC_VOICE_FOCUS_CHANNEL, workSessionId),
+  setBatonVoiceFocus: (workSessionId) =>
+    ipcRenderer.send(IpcChannels.BATON_VOICE_FOCUS_CHANNEL, workSessionId),
   getLocalEnvironmentBootstraps: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
     if (!Array.isArray(result)) {

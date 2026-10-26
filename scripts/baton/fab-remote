@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# fab-remote — deprecated alias for `baton-remote` (D71). One notice on stderr, then baton-remote.
+echo "fab-remote: renamed to baton-remote; this alias will go away, use: baton-remote $*" >&2
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$here/baton-remote" ]]; then exec "$here/baton-remote" "$@"; fi
+exec baton-remote "$@"

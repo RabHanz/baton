@@ -357,11 +357,11 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
   /**
-   * Group the sidebar by Fabric work session — the user's work — instead of
+   * Group the sidebar by Baton work session — the user's work — instead of
    * listing provider threads flat.
    *
    * **On by default in this fork**, which is the whole reason the fork exists:
-   * a build of Fabric where the user has to find a setting before seeing any of
+   * a build of Baton where the user has to find a setting before seeing any of
    * it is a build nobody uses. It stays a client preference rather than an
    * environment setting because what it changes is this client's navigation,
    * and an environment that does not understand `fabric.*` is handled
@@ -369,6 +369,7 @@ export const ClientSettingsSchema = Schema.Struct({
    * capability before calling anything, so a client pointed at a stock T3
    * server still renders the stock sidebar.
    */
+  // Legacy name (D71): a persisted settings key; renaming it would reset the toggle.
   fabricWorkSessionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffFilesCollapsed: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),

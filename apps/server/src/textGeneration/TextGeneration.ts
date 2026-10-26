@@ -77,12 +77,12 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
-export interface FabricIntentInterpretationInput {
+export interface BatonIntentInterpretationInput {
   /** The sentence, verbatim. */
   readonly sentence: string;
   /** Everything the model is allowed to know: names and ids, no thread contents. */
   readonly prompt: string;
-  /** What model and provider to use. Fabric picks the cheapest tier that classifies. */
+  /** What model and provider to use. Baton picks the cheapest tier that classifies. */
   readonly modelSelection: ModelSelection;
 }
 
@@ -91,9 +91,9 @@ export interface FabricIntentInterpretationInput {
  *
  * Deliberately `unknown`-free but also deliberately unvalidated here: the
  * driver's only job is to get a shaped answer back. Whether the ids in it exist
- * is Fabric's question, and `@t3tools/shared/fabricIntentModel` answers it.
+ * is Baton's question, and `@t3tools/shared/batonIntentModel` answers it.
  */
-export interface FabricIntentInterpretationResult {
+export interface BatonIntentInterpretationResult {
   readonly kind: string;
   readonly statusQuestion: string | null;
   readonly workSessionId: string | null;
@@ -108,13 +108,13 @@ export interface FabricIntentInterpretationResult {
   readonly question: string | null;
 }
 
-export interface FabricSynopsisInput {
+export interface BatonSynopsisInput {
   /** Recent turns from the thread, oldest first, already trimmed by the caller. */
   readonly prompt: string;
   readonly modelSelection: ModelSelection;
 }
 
-export interface FabricSynopsisResult {
+export interface BatonSynopsisResult {
   /** What it is doing right now, one short sentence. */
   readonly currentAction: string;
   /** What happens next, one short sentence. */
@@ -154,21 +154,21 @@ export class TextGeneration extends Context.Service<
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
 
     /**
-     * Read one sentence into one Fabric command (`DECISIONS.md` D50).
+     * Read one sentence into one Baton command (`DECISIONS.md` D50).
      *
      * Optional on purpose. Only the drivers that can run a cheap structured
-     * one-shot implement it, and Fabric refuses by name when the chosen account
+     * one-shot implement it, and Baton refuses by name when the chosen account
      * cannot — which is a better answer than a build that will not compile
      * because a provider nobody uses for this lacks a method.
      */
-    readonly interpretFabricIntent?: (
-      input: FabricIntentInterpretationInput,
-    ) => Effect.Effect<FabricIntentInterpretationResult, TextGenerationError>;
+    readonly interpretBatonIntent?: (
+      input: BatonIntentInterpretationInput,
+    ) => Effect.Effect<BatonIntentInterpretationResult, TextGenerationError>;
 
     /** Write the two sentences of a §11 synopsis from a thread's recent turns (D51). */
-    readonly writeFabricSynopsis?: (
-      input: FabricSynopsisInput,
-    ) => Effect.Effect<FabricSynopsisResult, TextGenerationError>;
+    readonly writeBatonSynopsis?: (
+      input: BatonSynopsisInput,
+    ) => Effect.Effect<BatonSynopsisResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -177,8 +177,8 @@ type TextGenerationOp =
   | "generatePrContent"
   | "generateBranchName"
   | "generateThreadTitle"
-  | "interpretFabricIntent"
-  | "writeFabricSynopsis";
+  | "interpretBatonIntent"
+  | "writeBatonSynopsis";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -231,27 +231,27 @@ export const make = Effect.gen(function* () {
           }),
         ),
       ),
-    interpretFabricIntent: (input) =>
-      resolveInstance(registry, "interpretFabricIntent", input.modelSelection.instanceId).pipe(
+    interpretBatonIntent: (input) =>
+      resolveInstance(registry, "interpretBatonIntent", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) =>
-          textGeneration.interpretFabricIntent
-            ? textGeneration.interpretFabricIntent(input)
+          textGeneration.interpretBatonIntent
+            ? textGeneration.interpretBatonIntent(input)
             : Effect.fail(
                 new TextGenerationError({
-                  operation: "interpretFabricIntent",
+                  operation: "interpretBatonIntent",
                   detail: `Provider instance '${input.modelSelection.instanceId}' cannot read a sentence into a command.`,
                 }),
               ),
         ),
       ),
-    writeFabricSynopsis: (input) =>
-      resolveInstance(registry, "writeFabricSynopsis", input.modelSelection.instanceId).pipe(
+    writeBatonSynopsis: (input) =>
+      resolveInstance(registry, "writeBatonSynopsis", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) =>
-          textGeneration.writeFabricSynopsis
-            ? textGeneration.writeFabricSynopsis(input)
+          textGeneration.writeBatonSynopsis
+            ? textGeneration.writeBatonSynopsis(input)
             : Effect.fail(
                 new TextGenerationError({
-                  operation: "writeFabricSynopsis",
+                  operation: "writeBatonSynopsis",
                   detail: `Provider instance '${input.modelSelection.instanceId}' cannot write a synopsis.`,
                 }),
               ),

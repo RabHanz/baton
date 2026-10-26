@@ -1,13 +1,13 @@
 ## Codemagic CI for this fork's mobile app.
 ##
 ## One workflow, and deliberately only one:
-##   ios-fabric-walk  → build apps/mobile for the iOS Simulator on a Mac,
-##                      walk the screens including Fabric's fleet, and upload
+##   ios-baton-walk  → build apps/mobile for the iOS Simulator on a Mac,
+##                      walk the screens including Baton's fleet, and upload
 ##                      the frames as artifacts. Nothing is published.
 ##
 ## Why it exists: the Director's Codemagic account is the only Mac this
 ## programme has. Phase 7 built the fleet screen, the §20 status questions and
-## the deep links, and every one of them is unrun — `docs/fabric/STATUS.md`
+## the deep links, and every one of them is unrun — `docs/baton/STATUS.md`
 ## records that the mobile app has never been started. This workflow is the
 ## cheapest way to turn "typechecks" into "here is what it looks like".
 ##
@@ -22,23 +22,23 @@
 ##     only when a person asks for one. Mac minutes are the scarce resource.
 ##
 ## What the Director must do in the Codemagic UI, once:
-##   1. Applications → Add application → connect `RabHanz/t3code` (GitHub App
+##   1. Applications → Add application → connect `RabHanz/baton` (GitHub App
 ##      or personal token; the repo is private, so read access is required).
 ##      Codemagic finds this file at the repository root on its own.
 ##   2. Nothing else. No environment-variable group, no code-signing identity,
 ##      no App Store Connect integration, no Google Play service account. If
-##      the UI asks which workflow to run, it is `ios-fabric-walk`.
+##      the UI asks which workflow to run, it is `ios-baton-walk`.
 ##   3. Start a build manually: Start new build → branch `main` → workflow
-##      `iOS Fabric Walk (simulator, no publish)`.
+##      `iOS Baton Walk (simulator, no publish)`.
 ##   4. When it finishes, the screenshots are under Artifacts. They are also
-##      what gets committed to `docs/fabric/frames/` once somebody has looked
+##      what gets committed to `docs/baton/frames/` once somebody has looked
 ##      at them.
 ##
 ## Two optional variables, both unset by default and neither a secret:
-##   T3_FABRIC_WALK_DEVICE    a device id from `scripts/mobile-showcase.config.ts`
+##   T3_BATON_WALK_DEVICE    a device id from `scripts/mobile-showcase.config.ts`
 ##                            (default `iphone-6.9`). More devices means more
 ##                            minutes; the walk needs one.
-##   T3_FABRIC_WALK_SCENES    space-separated scene names, e.g. `fleet thread`.
+##   T3_BATON_WALK_SCENES    space-separated scene names, e.g. `fleet thread`.
 ##                            Unset captures every scene the device configures
 ##                            (the five upstream ones plus `fleet`); setting it
 ##                            to `fleet` alone is the cheapest useful run.
@@ -96,8 +96,8 @@ definitions:
         pnpm exec vp test scripts/mobile-showcase.test.ts
 
 workflows:
-  ios-fabric-walk:
-    name: iOS Fabric Walk (simulator, no publish)
+  ios-baton-walk:
+    name: iOS Baton Walk (simulator, no publish)
     # Prebuild + xcodebuild + a simulator boot per device. Sixty minutes is
     # generous for one device and stops a wedged simulator burning the plan.
     max_build_duration: 60
@@ -108,7 +108,7 @@ workflows:
       # not acquire any.
       vars:
         # Overridable in the UI without editing this file.
-        T3_FABRIC_WALK_DEVICE: iphone-6.9
+        T3_BATON_WALK_DEVICE: iphone-6.9
       node: 24.13.1
       xcode: latest
       cocoapods: default
@@ -134,13 +134,13 @@ workflows:
           # running, and one whose provider thread has ended, which is the row a
           # thread list cannot show.
           scene_args=""
-          for scene in ${T3_FABRIC_WALK_SCENES:-}; do
+          for scene in ${T3_BATON_WALK_SCENES:-}; do
             scene_args="$scene_args --scene $scene"
           done
           # shellcheck disable=SC2086 # scene_args is a deliberate word split.
           pnpm screenshots:mobile \
             --platform ios \
-            --device "$T3_FABRIC_WALK_DEVICE" \
+            --device "$T3_BATON_WALK_DEVICE" \
             --appearance dark \
             --theme t3-code \
             $scene_args
@@ -158,7 +158,7 @@ workflows:
             echo "::error:: the walk produced no frames"
             exit 1
           fi
-          case " ${T3_FABRIC_WALK_SCENES:-fleet} " in
+          case " ${T3_BATON_WALK_SCENES:-fleet} " in
             *" fleet "*)
               if ! find artifacts/app-store/screenshots -name '*fleet*' | grep -q .; then
                 echo "::error:: no fleet frame — the one screen this workflow exists for"

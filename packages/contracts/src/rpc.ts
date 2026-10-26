@@ -168,9 +168,9 @@ import {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project.ts";
-import { FabricFleetInput, FabricFleetResult } from "./fabric/fleet.ts";
+import { BatonFleetInput, BatonFleetResult } from "./baton/fleet.ts";
 import {
-  FABRIC_ADOPTED_WS_METHODS,
+  BATON_ADOPTED_WS_METHODS,
   AdoptedDiscoverInput,
   AdoptedDiscoverResult,
   AdoptedListInput,
@@ -184,18 +184,18 @@ import {
   AdoptedSessionError,
   AdoptedSessionListResult,
   AdoptedSessionResult,
-} from "./fabric/adoptedSession.ts";
+} from "./baton/adoptedSession.ts";
 import {
-  FABRIC_INTENT_WS_METHODS,
-  FabricIntentError,
-  FabricIntentInput,
-  FabricIntentListInput,
-  FabricIntentListResult,
-  FabricIntentResolveResult,
-  FabricIntentRunResult,
-} from "./fabric/intent.ts";
+  BATON_INTENT_WS_METHODS,
+  BatonIntentError,
+  BatonIntentInput,
+  BatonIntentListInput,
+  BatonIntentListResult,
+  BatonIntentResolveResult,
+  BatonIntentRunResult,
+} from "./baton/intent.ts";
 import {
-  FABRIC_ORCHESTRATION_WS_METHODS,
+  BATON_ORCHESTRATION_WS_METHODS,
   OrchestrationConfirmInput,
   OrchestrationRuleCreateInput,
   OrchestrationRuleError,
@@ -203,19 +203,19 @@ import {
   OrchestrationRuleListResult,
   OrchestrationRuleRefInput,
   OrchestrationRuleResult,
-} from "./fabric/orchestrationRule.ts";
+} from "./baton/orchestrationRule.ts";
 import {
-  FABRIC_ACCOUNT_WS_METHODS,
-  FabricAccountPoolInput,
-  FabricAccountPool,
-  FabricAccountPoolUnavailableError,
-  FabricAccountRotationFailedError,
-  FabricAccountRotationRefusedError,
-  FabricAccountUseInput,
-  FabricAccountUseResult,
-} from "./fabric/accountPool.ts";
+  BATON_ACCOUNT_WS_METHODS,
+  BatonAccountPoolInput,
+  BatonAccountPool,
+  BatonAccountPoolUnavailableError,
+  BatonAccountRotationFailedError,
+  BatonAccountRotationRefusedError,
+  BatonAccountUseInput,
+  BatonAccountUseResult,
+} from "./baton/accountPool.ts";
 import {
-  FABRIC_WS_METHODS,
+  BATON_WS_METHODS,
   WorkSessionAttachThreadInput,
   WorkSessionCreateInput,
   WorkSessionDetachThreadInput,
@@ -227,18 +227,18 @@ import {
   WorkSessionStartThreadInput,
   WorkSessionStreamItem,
   WorkSessionUpdateInput,
-} from "./fabric/workSession.ts";
+} from "./baton/workSession.ts";
 import {
-  FABRIC_LIVE_WS_METHODS,
-  FabricHerdrSendInput,
-  FabricHerdrSendResult,
-} from "./fabric/liveSessions.ts";
+  BATON_LIVE_WS_METHODS,
+  BatonHerdrSendInput,
+  BatonHerdrSendResult,
+} from "./baton/liveSessions.ts";
 import {
-  FABRIC_HANDOFF_WS_METHODS,
+  BATON_HANDOFF_WS_METHODS,
   WorkSessionHandoffInput,
   WorkSessionHandoffRefusedError,
   WorkSessionHandoffResult,
-} from "./fabric/handoff.ts";
+} from "./baton/handoff.ts";
 import {
   TerminalAttachInput,
   TerminalAttachStreamEvent,
@@ -1469,58 +1469,58 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
-// Fabric work sessions. `fabric.*` is the layer above provider threads: the
+// Baton work sessions. `fabric.*` is the layer above provider threads: the
 // user's work, which outlives the thread and the account running it. See
-// `packages/contracts/src/fabric/workSession.ts`.
+// `packages/contracts/src/baton/workSession.ts`.
 
-const WsFabricAccountPoolRpc = Rpc.make(FABRIC_ACCOUNT_WS_METHODS.accountPool, {
-  payload: FabricAccountPoolInput,
-  success: FabricAccountPool,
-  error: Schema.Union([FabricAccountPoolUnavailableError, EnvironmentAuthorizationError]),
+const WsBatonAccountPoolRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountPool, {
+  payload: BatonAccountPoolInput,
+  success: BatonAccountPool,
+  error: Schema.Union([BatonAccountPoolUnavailableError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAccountUseRpc = Rpc.make(FABRIC_ACCOUNT_WS_METHODS.accountUse, {
-  payload: FabricAccountUseInput,
-  success: FabricAccountUseResult,
+const WsBatonAccountUseRpc = Rpc.make(BATON_ACCOUNT_WS_METHODS.accountUse, {
+  payload: BatonAccountUseInput,
+  success: BatonAccountUseResult,
   error: Schema.Union([
-    FabricAccountPoolUnavailableError,
-    FabricAccountRotationRefusedError,
-    FabricAccountRotationFailedError,
+    BatonAccountPoolUnavailableError,
+    BatonAccountRotationRefusedError,
+    BatonAccountRotationFailedError,
     EnvironmentAuthorizationError,
   ]),
 });
 
-const WsFabricWorkSessionListRpc = Rpc.make(FABRIC_WS_METHODS.workSessionList, {
+const WsBatonWorkSessionListRpc = Rpc.make(BATON_WS_METHODS.workSessionList, {
   payload: WorkSessionListInput,
   success: WorkSessionListResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionCreateRpc = Rpc.make(FABRIC_WS_METHODS.workSessionCreate, {
+const WsBatonWorkSessionCreateRpc = Rpc.make(BATON_WS_METHODS.workSessionCreate, {
   payload: WorkSessionCreateInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionUpdateRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUpdate, {
+const WsBatonWorkSessionUpdateRpc = Rpc.make(BATON_WS_METHODS.workSessionUpdate, {
   payload: WorkSessionUpdateInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionAttachThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSessionAttachThread, {
+const WsBatonWorkSessionAttachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionAttachThread, {
   payload: WorkSessionAttachThreadInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionDetachThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSessionDetachThread, {
+const WsBatonWorkSessionDetachThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionDetachThread, {
   payload: WorkSessionDetachThreadInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionStartThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSessionStartThread, {
+const WsBatonWorkSessionStartThreadRpc = Rpc.make(BATON_WS_METHODS.workSessionStartThread, {
   payload: WorkSessionStartThreadInput,
   success: WorkSessionResult,
   error: Schema.Union([
@@ -1530,7 +1530,7 @@ const WsFabricWorkSessionStartThreadRpc = Rpc.make(FABRIC_WS_METHODS.workSession
   ]),
 });
 
-const WsFabricWorkSessionHandoffRpc = Rpc.make(FABRIC_HANDOFF_WS_METHODS.workSessionHandoff, {
+const WsBatonWorkSessionHandoffRpc = Rpc.make(BATON_HANDOFF_WS_METHODS.workSessionHandoff, {
   payload: WorkSessionHandoffInput,
   success: WorkSessionHandoffResult,
   error: Schema.Union([
@@ -1541,67 +1541,67 @@ const WsFabricWorkSessionHandoffRpc = Rpc.make(FABRIC_HANDOFF_WS_METHODS.workSes
   ]),
 });
 
-const WsFabricHerdrSendRpc = Rpc.make(FABRIC_LIVE_WS_METHODS.herdrSend, {
-  payload: FabricHerdrSendInput,
-  success: FabricHerdrSendResult,
+const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
+  payload: BatonHerdrSendInput,
+  success: BatonHerdrSendResult,
   error: EnvironmentAuthorizationError,
 });
 
-const WsFabricWorkSessionSettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionSettle, {
+const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionUnsettleRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUnsettle, {
+const WsBatonWorkSessionUnsettleRpc = Rpc.make(BATON_WS_METHODS.workSessionUnsettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionArchiveRpc = Rpc.make(FABRIC_WS_METHODS.workSessionArchive, {
+const WsBatonWorkSessionArchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionArchive, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricWorkSessionUnarchiveRpc = Rpc.make(FABRIC_WS_METHODS.workSessionUnarchive, {
+const WsBatonWorkSessionUnarchiveRpc = Rpc.make(BATON_WS_METHODS.workSessionUnarchive, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricFleetGetRpc = Rpc.make(FABRIC_WS_METHODS.fleetGet, {
-  payload: FabricFleetInput,
-  success: FabricFleetResult,
+const WsBatonFleetGetRpc = Rpc.make(BATON_WS_METHODS.fleetGet, {
+  payload: BatonFleetInput,
+  success: BatonFleetResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricOrchestrationRuleCreateRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleCreate, {
+const WsBatonOrchestrationRuleCreateRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleCreate, {
   payload: OrchestrationRuleCreateInput,
   success: OrchestrationRuleResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricOrchestrationRuleListRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleList, {
+const WsBatonOrchestrationRuleListRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleList, {
   payload: OrchestrationRuleListInput,
   success: OrchestrationRuleListResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricOrchestrationRuleDisableRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleDisable, {
+const WsBatonOrchestrationRuleDisableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleDisable, {
   payload: OrchestrationRuleRefInput,
   success: OrchestrationRuleResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricOrchestrationRuleEnableRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleEnable, {
+const WsBatonOrchestrationRuleEnableRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleEnable, {
   payload: OrchestrationRuleRefInput,
   success: OrchestrationRuleResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricOrchestrationRuleConfirmRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_METHODS.ruleConfirm, {
+const WsBatonOrchestrationRuleConfirmRpc = Rpc.make(BATON_ORCHESTRATION_WS_METHODS.ruleConfirm, {
   payload: OrchestrationConfirmInput,
   success: OrchestrationRuleListResult,
   error: Schema.Union([OrchestrationRuleError, EnvironmentAuthorizationError]),
@@ -1611,70 +1611,70 @@ const WsFabricOrchestrationRuleConfirmRpc = Rpc.make(FABRIC_ORCHESTRATION_WS_MET
 // methods so the scope map can say so: previewing what a sentence would do must
 // not need permission to do it.
 
-const WsFabricIntentResolveRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentResolve, {
-  payload: FabricIntentInput,
-  success: FabricIntentResolveResult,
-  error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
+const WsBatonIntentResolveRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentResolve, {
+  payload: BatonIntentInput,
+  success: BatonIntentResolveResult,
+  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricIntentRunRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentRun, {
-  payload: FabricIntentInput,
-  success: FabricIntentRunResult,
-  error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
+const WsBatonIntentRunRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentRun, {
+  payload: BatonIntentInput,
+  success: BatonIntentRunResult,
+  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricIntentListRpc = Rpc.make(FABRIC_INTENT_WS_METHODS.intentList, {
-  payload: FabricIntentListInput,
-  success: FabricIntentListResult,
-  error: Schema.Union([FabricIntentError, EnvironmentAuthorizationError]),
+const WsBatonIntentListRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentList, {
+  payload: BatonIntentListInput,
+  success: BatonIntentListResult,
+  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
 });
 
-// Sessions Fabric adopted rather than started (§9). Discovery reads; the rest
-// change what an external runtime is doing, or what Fabric believes about it.
+// Sessions Baton adopted rather than started (§9). Discovery reads; the rest
+// change what an external runtime is doing, or what Baton believes about it.
 
-const WsFabricAdoptedDiscoverRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedDiscover, {
+const WsBatonAdoptedDiscoverRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDiscover, {
   payload: AdoptedDiscoverInput,
   success: AdoptedDiscoverResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAdoptedRegisterRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedRegister, {
+const WsBatonAdoptedRegisterRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRegister, {
   payload: AdoptedRegisterInput,
   success: AdoptedSessionResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAdoptedListRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedList, {
+const WsBatonAdoptedListRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedList, {
   payload: AdoptedListInput,
   success: AdoptedSessionListResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAdoptedRefreshRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedRefresh, {
+const WsBatonAdoptedRefreshRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedRefresh, {
   payload: AdoptedRefreshInput,
   success: AdoptedSessionResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAdoptedDetachRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedDetach, {
+const WsBatonAdoptedDetachRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedDetach, {
   payload: AdoptedRefInput,
   success: AdoptedSessionResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAdoptedSendInputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedSendInput, {
+const WsBatonAdoptedSendInputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedSendInput, {
   payload: AdoptedSendInputInput,
   success: AdoptedSendInputResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricAdoptedReadOutputRpc = Rpc.make(FABRIC_ADOPTED_WS_METHODS.adoptedReadOutput, {
+const WsBatonAdoptedReadOutputRpc = Rpc.make(BATON_ADOPTED_WS_METHODS.adoptedReadOutput, {
   payload: AdoptedReadOutputInput,
   success: AdoptedReadOutputResult,
   error: Schema.Union([AdoptedSessionError, EnvironmentAuthorizationError]),
 });
 
-const WsFabricSubscribeWorkSessionsRpc = Rpc.make(FABRIC_WS_METHODS.subscribeWorkSessions, {
+const WsBatonSubscribeWorkSessionsRpc = Rpc.make(BATON_WS_METHODS.subscribeWorkSessions, {
   payload: Schema.Struct({}),
   success: WorkSessionStreamItem,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
@@ -1826,35 +1826,35 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
-  WsFabricAccountPoolRpc,
-  WsFabricAccountUseRpc,
-  WsFabricWorkSessionListRpc,
-  WsFabricWorkSessionCreateRpc,
-  WsFabricWorkSessionUpdateRpc,
-  WsFabricWorkSessionAttachThreadRpc,
-  WsFabricWorkSessionDetachThreadRpc,
-  WsFabricWorkSessionStartThreadRpc,
-  WsFabricWorkSessionHandoffRpc,
-  WsFabricHerdrSendRpc,
-  WsFabricWorkSessionSettleRpc,
-  WsFabricWorkSessionUnsettleRpc,
-  WsFabricWorkSessionArchiveRpc,
-  WsFabricWorkSessionUnarchiveRpc,
-  WsFabricFleetGetRpc,
-  WsFabricOrchestrationRuleCreateRpc,
-  WsFabricOrchestrationRuleListRpc,
-  WsFabricOrchestrationRuleDisableRpc,
-  WsFabricOrchestrationRuleEnableRpc,
-  WsFabricOrchestrationRuleConfirmRpc,
-  WsFabricIntentResolveRpc,
-  WsFabricIntentRunRpc,
-  WsFabricIntentListRpc,
-  WsFabricAdoptedDiscoverRpc,
-  WsFabricAdoptedRegisterRpc,
-  WsFabricAdoptedListRpc,
-  WsFabricAdoptedRefreshRpc,
-  WsFabricAdoptedDetachRpc,
-  WsFabricAdoptedSendInputRpc,
-  WsFabricAdoptedReadOutputRpc,
-  WsFabricSubscribeWorkSessionsRpc,
+  WsBatonAccountPoolRpc,
+  WsBatonAccountUseRpc,
+  WsBatonWorkSessionListRpc,
+  WsBatonWorkSessionCreateRpc,
+  WsBatonWorkSessionUpdateRpc,
+  WsBatonWorkSessionAttachThreadRpc,
+  WsBatonWorkSessionDetachThreadRpc,
+  WsBatonWorkSessionStartThreadRpc,
+  WsBatonWorkSessionHandoffRpc,
+  WsBatonHerdrSendRpc,
+  WsBatonWorkSessionSettleRpc,
+  WsBatonWorkSessionUnsettleRpc,
+  WsBatonWorkSessionArchiveRpc,
+  WsBatonWorkSessionUnarchiveRpc,
+  WsBatonFleetGetRpc,
+  WsBatonOrchestrationRuleCreateRpc,
+  WsBatonOrchestrationRuleListRpc,
+  WsBatonOrchestrationRuleDisableRpc,
+  WsBatonOrchestrationRuleEnableRpc,
+  WsBatonOrchestrationRuleConfirmRpc,
+  WsBatonIntentResolveRpc,
+  WsBatonIntentRunRpc,
+  WsBatonIntentListRpc,
+  WsBatonAdoptedDiscoverRpc,
+  WsBatonAdoptedRegisterRpc,
+  WsBatonAdoptedListRpc,
+  WsBatonAdoptedRefreshRpc,
+  WsBatonAdoptedDetachRpc,
+  WsBatonAdoptedSendInputRpc,
+  WsBatonAdoptedReadOutputRpc,
+  WsBatonSubscribeWorkSessionsRpc,
 );

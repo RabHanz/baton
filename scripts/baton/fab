@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# fab — deprecated alias for `baton` (D71). Prints one notice on stderr, then runs baton unchanged.
+echo "fab: renamed to baton; this alias will go away, use: baton $*" >&2
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$here/baton" ]]; then exec "$here/baton" "$@"; fi
+exec baton "$@"

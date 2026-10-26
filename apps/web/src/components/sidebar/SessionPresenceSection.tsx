@@ -33,7 +33,7 @@ import {
   sessionPresenceSummary,
   type SessionPresenceGroup,
   type SessionPresenceRow,
-} from "../../fabricSessionPresence";
+} from "../../batonSessionPresence";
 import { cn, newProjectId } from "../../lib/utils";
 import { agentSessionImportThread, agentSessionThreads } from "../../state/agentSessions";
 import { readProjects } from "../../state/entities";

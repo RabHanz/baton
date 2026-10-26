@@ -13,7 +13,7 @@ export const SHOWCASE_TERMINAL_ID = "term-1";
 
 /**
  * `fleet` is this fork's own scene: the §33 fleet on the phone, which is the
- * screen Fabric exists to put in a pocket. It is last because the harness
+ * screen Baton exists to put in a pocket. It is last because the harness
  * captures in order and this is the one a reviewer should end on.
  */
 export const SHOWCASE_SCENES = [
@@ -488,7 +488,7 @@ function insertThread(
 }
 
 /**
- * Fabric's own rows. Kept out of `seedDatabase`'s body only so that function
+ * Baton's own rows. Kept out of `seedDatabase`'s body only so that function
  * stays readable; it runs inside the same transaction.
  */
 function seedWorkSessions(
@@ -549,7 +549,7 @@ function seedWorkSessions(
 }
 
 const SEEDED_PROJECTION_TABLES = [
-  // Fabric's tables are seeded and cleared with the rest: the fleet scene is
+  // Baton's tables are seeded and cleared with the rest: the fleet scene is
   // only the fleet if it has work in it, and a stale work session left behind
   // by a previous run would show up in the next capture.
   "fabric_work_session_threads",
