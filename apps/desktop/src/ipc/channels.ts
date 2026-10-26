@@ -11,6 +11,7 @@ export const MENU_ACTION_CHANNEL = "desktop:menu-action";
 export const PASTE_AS_TEXT_CHANNEL = "desktop:paste-as-text";
 export const SNAP_SHOT_EVENT_CHANNEL = "desktop:snap-shot-event";
 export const QUIT_SHORTCUT_CHANNEL = "desktop:quit-shortcut";
+export const TRACKPAD_SCROLL_END_CHANNEL = "desktop:trackpad-scroll-end";
 export const GET_WINDOW_FULLSCREEN_STATE_CHANNEL = "desktop:get-window-fullscreen-state";
 export const WINDOW_FULLSCREEN_STATE_CHANNEL = "desktop:window-fullscreen-state";
 export const DESKTOP_APP_ACTIVATION_READY_CHANNEL = "desktop:app-activation-ready";
@@ -118,3 +119,7 @@ export const BATON_INJECTION_REPORT_CHANNEL = "desktop:baton-injection-report";
 export const BATON_VOICE_REQUEST_CHANNEL = "desktop:baton-voice-request";
 export const BATON_VOICE_RESPONSE_CHANNEL = "desktop:baton-voice-response";
 export const BATON_VOICE_FOCUS_CHANNEL = "desktop:baton-voice-focus";
+export const PREVIEW_RECORDING_INPUT_CHANNEL = "desktop:preview-recording-input";
+
+export const RECEIVE_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:receive-provider-auth-callback";
+export const CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:cancel-provider-auth-callback";
