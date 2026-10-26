@@ -46,7 +46,7 @@ if ((${#agent[@]} > 0)); then
   cmd="$(printf '%q ' "${agent[@]}")"
   if ! running; then
     # The session's server runs headless and outlives this shell.
-    (cd "$dir" && setsid herdr --session "$name" server >/dev/null 2>&1 &)
+    (cd "$dir" && setsid herdr --session "$name" server </dev/null >/dev/null 2>&1 &)
     for _ in $(seq 1 50); do running && break; sleep 0.2; done
   fi
   if herdr --session "$name" workspace list 2>/dev/null | grep -q '"workspace_id"'; then
