@@ -84,6 +84,17 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   },
   getFabricInjectionReport: (request) =>
     ipcRenderer.invoke(IpcChannels.FABRIC_INJECTION_REPORT_CHANNEL, request),
+  onFabricVoiceUtterance: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, utterance: unknown) => {
+      if (typeof utterance !== "object" || utterance === null) return;
+      const { route, text } = utterance as { route?: unknown; text?: unknown };
+      if ((route === "focused_session" || route === "fabric_intent") && typeof text === "string") {
+        listener({ route, text });
+      }
+    };
+    ipcRenderer.on(IpcChannels.FABRIC_VOICE_UTTERANCE_CHANNEL, handler);
+    return () => ipcRenderer.removeListener(IpcChannels.FABRIC_VOICE_UTTERANCE_CHANNEL, handler);
+  },
   getLocalEnvironmentBootstraps: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAPS_CHANNEL);
     if (!Array.isArray(result)) {
