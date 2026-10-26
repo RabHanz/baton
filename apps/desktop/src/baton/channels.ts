@@ -1,0 +1,5 @@
+/** Baton's desktop IPC channels, kept out of upstream's `ipc/channels.ts`. */
+export const BATON_INJECTION_REPORT_CHANNEL = "desktop:baton-injection-report";
+export const BATON_VOICE_REQUEST_CHANNEL = "desktop:baton-voice-request";
+export const BATON_VOICE_RESPONSE_CHANNEL = "desktop:baton-voice-response";
+export const BATON_VOICE_FOCUS_CHANNEL = "desktop:baton-voice-focus";
