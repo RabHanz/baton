@@ -17,7 +17,7 @@ const descriptor = (over: Record<string, unknown> = {}) =>
 
 const live = { alive: () => true, env: () => new Map<string, string>(), account: "signzart" };
 
-describe("live Claude Code sessions from their own descriptors (D66)", () => {
+describe("live Claude Code sessions from their own descriptors (D68)", () => {
   it("reads an interactive session with its account and state", () => {
     const session = parseClaudeSessionDescriptor(descriptor(), live);
     expect(session).toMatchObject({

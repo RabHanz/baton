@@ -81,7 +81,7 @@ export const make = Effect.gen(function* () {
       workSessionId: null,
     });
     lastAutoRotationAt = now;
-    // D67: sessions living in Herdr panes are restarted on the new account with
+    // D69: sessions living in Herdr panes are restarted on the new account with
     // the same conversation. Busy ones are left alone: a session that is still
     // working has not hit the limit.
     const live = yield* readClaudeLiveSessions({ account: decision.target.label });

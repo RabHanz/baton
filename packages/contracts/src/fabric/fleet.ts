@@ -86,7 +86,7 @@ export const FabricFleet = Schema.Struct({
    * the fleet is where they are seen. A blocked one carries its question.
    */
   herdr: Schema.optionalKey(Schema.Array(AdoptedSessionCandidate)),
-  /** Every interactive Claude Code process here, whoever started it (D66). */
+  /** Every interactive Claude Code process here, whoever started it (D68). */
   claudeSessions: Schema.optionalKey(Schema.Array(ClaudeLiveSession)),
   /** When the environment computed this. Every entry is as of this instant. */
   observedAt: IsoDateTime,

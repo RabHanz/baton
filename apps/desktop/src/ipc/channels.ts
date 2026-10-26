@@ -115,3 +115,4 @@ export const MAC_PERMISSION_HELPER_CHANNEL = "desktop:mac-permission-helper";
 export const CHECK_SYSTEM_PERMISSION_CHANNEL = "desktop:check-system-permission";
 
 export const FABRIC_INJECTION_REPORT_CHANNEL = "desktop:fabric-injection-report";
+export const FABRIC_VOICE_UTTERANCE_CHANNEL = "desktop:fabric-voice-utterance";

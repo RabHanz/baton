@@ -1,5 +1,5 @@
 /**
- * One-field send to any Herdr pane the fleet shows (D66).
+ * One-field send to any Herdr pane the fleet shows (D68).
  *
  * Goes through the adopted-session path rather than around it: the pane must
  * be in a fresh discovery (so a stale ref cannot type into whatever now holds

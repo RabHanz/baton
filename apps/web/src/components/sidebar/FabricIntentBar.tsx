@@ -25,6 +25,7 @@ import { classifyDictation } from "@t3tools/shared/fabricDictation";
 import { cn } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../fabricContextView";
 import { previewResolution } from "../../fabricIntentView";
+import { voiceUtteranceSentence } from "../../fabricVoiceView";
 import { fabricWorkSessions } from "../../state/fabricWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 
@@ -51,6 +52,8 @@ export interface FabricIntentBarProps {
   /** Called after a sentence runs, so the log and the fleet re-read. */
   readonly onRan: () => void;
 }
+
+let voiceListenerClaimed = false;
 
 export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
   const [text, setText] = useState("");
@@ -103,6 +106,35 @@ export function FabricIntentBar(props: FabricIntentBarProps): ReactNode {
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
+
+  const { environmentId, focusedWorkSessionId, onRan } = props;
+  // Speech from the desktop's voice service runs like a typed sentence: same
+  // grammar, same gates. Dictation never arrives here (the desktop types it).
+  useEffect(() => {
+    const subscribe = window.desktopBridge?.onFabricVoiceUtterance;
+    // The bar can be on screen twice (landing and sidebar); one sentence must run once.
+    if (subscribe === undefined || voiceListenerClaimed) return;
+    voiceListenerClaimed = true;
+    const unsubscribe = subscribe((utterance) => {
+      const sentence = voiceUtteranceSentence(utterance);
+      if (sentence === null) return;
+      void runIntent({
+        environmentId,
+        input: { text: sentence, focusedWorkSessionId: focusedWorkSessionId as never },
+      }).then((result) => {
+        setReply(
+          result._tag === "Success"
+            ? result.value.reply
+            : "That could not be done. Nothing changed.",
+        );
+        if (result._tag === "Success") onRan();
+      });
+    });
+    return () => {
+      unsubscribe();
+      voiceListenerClaimed = false;
+    };
+  }, [environmentId, focusedWorkSessionId, onRan, runIntent]);
 
   const submit = (): void => {
     const trimmed = text.trim();
