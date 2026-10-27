@@ -21,7 +21,7 @@ if [ -n "$host" ]; then
   key="${BATON_SSH_KEY:-$HOME/.config/venture-ssh/onnyx_ed25519}"
   ssh_opts=(-i "$key" -o IdentitiesOnly=yes -o BatchMode=yes)
   ssh "${ssh_opts[@]}" "$host" 'mkdir -p ~/dev/baton-deploy'
-  scp "${ssh_opts[@]}" "$archive" "$0" "$host:dev/baton-deploy/"
+  scp "${ssh_opts[@]}" "$archive" "$0" "$(dirname "$0")/live/baton-live-acp.mjs" "$host:dev/baton-deploy/"
   exec ssh "${ssh_opts[@]}" "$host" \
     "bash ~/dev/baton-deploy/deploy-beside.sh ~/dev/baton-deploy/$(basename "$archive") $version"
 fi
@@ -72,6 +72,11 @@ mkdir -p "$dest"
 tar -xzf "$archive" --strip-components=1 -C "$dest"
 "$dest/t3" --version
 printf '%s' "$version" > "$dest/.install-complete"
+
+# The live-session agent T3 runs as its "Live session" provider (D83); the server finds it here.
+for agent in "$(dirname "$0")/live/baton-live-acp.mjs" "$(dirname "$0")/baton-live-acp.mjs"; do
+  [ -f "$agent" ] && install -D -m 755 "$agent" "$t3home/baton/baton-live-acp.mjs" && break
+done
 
 printf '[Service]\nExecStart=\nExecStart=%%h/.t3/runtime/versions/%s/t3 __service-launcher\n' "$version" > "$dropins/fabric-runtime.conf"
 printf '{\n  "protocol": 3,\n  "activeVersion": "%s"\n}\n' "$version" > "$t3home/runtime/service-state.json"

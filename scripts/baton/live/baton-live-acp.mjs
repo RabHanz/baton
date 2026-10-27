@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* oxlint-disable t3code/no-low-value-comments -- Baton file (D82) */
 /**
  * Baton live-session agent (D83): an ACP agent that T3 runs through its own "ACP Registry → Local
  * command" provider, so a message typed into T3's ordinary composer reaches a Claude Code session
@@ -13,17 +14,18 @@
  *
  * Node built-ins only: T3 spawns it with whichever Node the box has.
  */
-import * as ChildProcess from "node:child_process";
-import * as FS from "node:fs";
-import * as OS from "node:os";
-import * as Path from "node:path";
-import * as Readline from "node:readline";
-import { fileURLToPath } from "node:url";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
+import * as NodeURL from "node:url";
 
 const SESSIONS_DIR =
-  process.env.BATON_CLAUDE_SESSIONS_DIR ?? Path.join(OS.homedir(), ".claude", "sessions");
-const HERDR = process.env.BATON_HERDR_BIN ?? Path.join(OS.homedir(), ".local", "bin", "herdr");
-const BATON = process.env.BATON_BIN ?? Path.join(OS.homedir(), ".local", "bin", "baton");
+  process.env.BATON_CLAUDE_SESSIONS_DIR ?? NodePath.join(NodeOS.homedir(), ".claude", "sessions");
+const HERDR =
+  process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
+const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
 const POLL_MS = Number(process.env.BATON_LIVE_POLL_MS ?? 500);
 /** How long a sent message may take before Claude Code says it is working on it. */
 const START_GRACE_MS = Number(process.env.BATON_LIVE_START_GRACE_MS ?? 20_000);
@@ -58,7 +60,7 @@ export function splitAttachments(text) {
 
 /** A file name that cannot leave the inbox or hide (same rule as LiveActions.safeInboxName). */
 export function safeInboxName(fileName, stamp) {
-  const base = Path.basename(fileName)
+  const base = NodePath.basename(fileName)
     .replace(/[^A-Za-z0-9._-]+/g, "-")
     .replace(/^[.-]+/, "");
   return `${stamp}-${base.length === 0 ? "file" : base.slice(0, 120)}`;
@@ -86,7 +88,7 @@ const alive = (pid) => {
 const herdrEnvOf = (pid) => {
   const map = new Map();
   try {
-    for (const entry of FS.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0")) {
+    for (const entry of NodeFS.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0")) {
       const at = entry.indexOf("=");
       if (at > 0 && entry.startsWith("HERDR_")) map.set(entry.slice(0, at), entry.slice(at + 1));
     }
@@ -98,14 +100,14 @@ const herdrEnvOf = (pid) => {
 export function findLiveSession(sessionId, dir = SESSIONS_DIR) {
   let names = [];
   try {
-    names = FS.readdirSync(dir).filter((name) => /^\d+\.json$/.test(name));
+    names = NodeFS.readdirSync(dir).filter((name) => /^\d+\.json$/.test(name));
   } catch {
     return null;
   }
   for (const name of names) {
     let d;
     try {
-      d = JSON.parse(FS.readFileSync(Path.join(dir, name), "utf8"));
+      d = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, name), "utf8"));
     } catch {
       continue;
     }
@@ -123,7 +125,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const run = (file, args, timeout = 15_000) =>
   new Promise((resolve) =>
-    ChildProcess.execFile(file, args, { timeout }, (error, stdout, stderr) =>
+    NodeChildProcess.execFile(file, args, { timeout }, (error, stdout, stderr) =>
       resolve({ ok: error === null, out: `${stdout}${stderr}`.trim() }),
     ),
   );
@@ -168,11 +170,11 @@ async function adopt(sessionId, live) {
 }
 
 function saveToInbox(cwd, name, bytes) {
-  const inbox = Path.join(cwd, ".baton", "inbox");
-  FS.mkdirSync(inbox, { recursive: true });
+  const inbox = NodePath.join(cwd, ".baton", "inbox");
+  NodeFS.mkdirSync(inbox, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = Path.join(inbox, safeInboxName(name, stamp));
-  FS.writeFileSync(path, bytes, { mode: 0o600 });
+  const path = NodePath.join(inbox, safeInboxName(name, stamp));
+  NodeFS.writeFileSync(path, bytes, { mode: 0o600 });
   return path;
 }
 
@@ -182,7 +184,7 @@ function composeForSession(blocks, cwd) {
   const refs = [];
   for (const path of paths) {
     try {
-      refs.push(saveToInbox(cwd, path, FS.readFileSync(path)));
+      refs.push(saveToInbox(cwd, path, NodeFS.readFileSync(path)));
     } catch {}
   }
   if (paths.length === 0) {
@@ -292,7 +294,7 @@ async function handle(message) {
 }
 
 function main() {
-  const lines = Readline.createInterface({ input: process.stdin });
+  const lines = NodeReadline.createInterface({ input: process.stdin });
   lines.on("line", (line) => {
     let message;
     try {
@@ -317,4 +319,5 @@ function main() {
   lines.on("close", () => process.exit(0));
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === Path.resolve(process.argv[1])) main();
+if (process.argv[1] && NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1]))
+  main();

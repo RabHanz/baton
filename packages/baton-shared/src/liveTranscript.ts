@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file (D82) */
 /**
  * Reading a live Claude Code transcript as conversation messages (D83).
  *
