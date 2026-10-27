@@ -1,7 +1,7 @@
 import { ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveThreadId, projectForDirectory } from "./LiveSessionMirror.ts";
+import { liveThreadId, liveThreadTitle, projectForDirectory } from "./LiveSessionMirror.ts";
 
 const project = (id: string, workspaceRoot: string, canonicalKey?: string) => ({
   id: ProjectId.make(id),
@@ -41,5 +41,14 @@ describe("which T3 project a live session belongs to", () => {
 
   it("names a thread by the conversation, so rotation and adoption keep it", () => {
     expect(liveThreadId("abc")).toBe("baton-live:abc");
+  });
+
+  it("titles a thread with the session's own name, its account and its box", () => {
+    expect(liveThreadTitle({ name: "ventureos-6c", account: "rabeehanzla", box: "onnyx" })).toBe(
+      "ventureos-6c · rabeehanzla · onnyx",
+    );
+    expect(liveThreadTitle({ name: " ", account: null, box: "signzart-prod" })).toBe(
+      "Live session · signzart-prod",
+    );
   });
 });
