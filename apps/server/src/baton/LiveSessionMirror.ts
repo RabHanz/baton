@@ -66,7 +66,13 @@ import { projectRefFor } from "./ProjectRef.ts";
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make("baton-live");
 const DRIVER = ProviderDriverKind.make("acpRegistry");
 const MODEL = "live";
-const PREFIX = "baton-live";
+/**
+ * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
+ * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
+ * this one (they are a mirror of the transcript, which is the record).
+ */
+const PREFIX = "baton-live2";
+const RETIRED_PREFIX = "baton-live:";
 const TICK = "2 seconds";
 /** How much of an existing transcript a new thread starts with. */
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
@@ -305,8 +311,9 @@ const make = Effect.gen(function* () {
         createdAt: now,
         updatedAt: now,
       };
+      // No `unlessNativeThreadOwned`: the only other owner of this native id under this instance
+      // is a retired mirror thread, which is deleted, not a conversation T3 runs.
       yield* engine.writeEvents({
-        unlessNativeThreadOwned: providerThread,
         events: [
           {
             id: EventId.make(`${PREFIX}:thread:${threadId}:created`),
@@ -650,13 +657,19 @@ const make = Effect.gen(function* () {
           return;
         }
       }
-      const known = new Set(
-        (yield* threadMessages(threadId)).flatMap((m) => {
-          const id = String(m.id);
-          const at = id.lastIndexOf(":");
-          return id.startsWith(`${PREFIX}:`) ? [id.slice(at + 1)] : [];
-        }),
+      const mirrored = (yield* threadMessages(threadId)).filter((m) =>
+        String(m.id).startsWith(`${PREFIX}:`),
       );
+      const known = new Set(
+        mirrored.map((m) => String(m.id).slice(String(m.id).lastIndexOf(":") + 1)),
+      );
+      // An existing thread only takes what is newer than its newest message: anything older
+      // written now would sort after it.
+      const newest = mirrored.reduce(
+        (max, m) => Math.max(max, DateTime.toEpochMillis(m.createdAt)),
+        Number.NEGATIVE_INFINITY,
+      );
+      if (shell !== null) history = history.filter((m) => Date.parse(m.createdAt) > newest);
       const follow: Follow = {
         threadId,
         path,
@@ -704,6 +717,15 @@ const make = Effect.gen(function* () {
         lines.flatMap((line) => parseLiveTranscriptLine(line) ?? []),
       );
     });
+
+  /** Delete the retired namespace's threads once, so each session has one thread. */
+  const retireOld = Effect.gen(function* () {
+    for (const shell of yield* engine.threadShells) {
+      if (String(shell.id).startsWith(RETIRED_PREFIX)) {
+        yield* engine.deleteThread({ tag: "live", threadId: shell.id });
+      }
+    }
+  });
 
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
@@ -753,6 +775,9 @@ const make = Effect.gen(function* () {
 
   if (!liveThreadsEnabled()) return;
   yield* ensureProviderInstance;
+  yield* retireOld.pipe(
+    Effect.catchCause((cause) => Effect.logWarning("Baton live threads: retiring failed", cause)),
+  );
   yield* tick.pipe(
     Effect.catchCause((cause) => Effect.logWarning("Baton live threads: tick failed", cause)),
     Effect.repeat(Schedule.spaced(TICK)),
