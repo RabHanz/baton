@@ -60,6 +60,7 @@ export const parseClaudeSessionDescriptor = (
     sessionId,
     cwd,
     name: str(d["name"]),
+    ...(str(d["nameSource"]) === null ? {} : { nameSource: str(d["nameSource"])! }),
     status: str(d["status"]),
     entrypoint: str(d["entrypoint"]),
     herdrPane: herdrPaneRef(input.env(pid)),

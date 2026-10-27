@@ -523,7 +523,12 @@ const make = Effect.gen(function* () {
         // A server restart cancels a running turn; a session still busy reopens it.
         const ended = ["completed", "cancelled", "interrupted"].includes(latest.status);
         if (!busy || !ours || !ended) return;
-        const reopened: OrchestrationV2Run = { ...latest, status: "running", completedAt: null };
+        const reopened: OrchestrationV2Run = {
+          ...latest,
+          status: "running",
+          completedAt: null,
+          workStartedAt: now,
+        };
         yield* engine.writeEvents({ events: [runEvent("run.updated", reopened)] });
         follow.open = reopened;
         follow.target = reopened.id;
@@ -587,12 +592,19 @@ const make = Effect.gen(function* () {
   /** Keep the session's own title, with its account and box; T3's auto-title does not stick. */
   const retitle = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
+      const shell = yield* engine.threadShell(follow.threadId);
+      // Claude Code derives a fresh name on every restart (rotation, adoption); a thread keeps the
+      // name it was first given unless someone names the session.
+      const kept = shell?.title.includes(" · ") ? shell.title.split(" · ")[0] : undefined;
+      const name =
+        session.nameSource === "user"
+          ? (session.name ?? kept)
+          : (kept ?? session.name ?? follow.name ?? undefined);
       const wanted = liveThreadTitle({
-        name: session.name ?? follow.name ?? "Live session",
+        name: name ?? "Live session",
         account: session.account,
         box: box(),
       });
-      const shell = yield* engine.threadShell(follow.threadId);
       if (shell !== null && shell.title !== wanted && shell.titleRegeneration == null) {
         yield* engine.renameThread({ tag: "live", threadId: follow.threadId, title: wanted });
       }
