@@ -2182,3 +2182,30 @@ inside that run, and the run's earlier reply folds under "Worked for…". Status
 composer turns (Working/Completed); a session working from its terminal does not read as Working.
 The account is not shown. Patch cost: one line in 0002 exposing the runtime's memoized `EventSink`
 to Baton. Off per machine with `BATON_LIVE_THREADS=off`. Frames: `frames/live-threads-2026-10-27/`.
+
+**D83 round 2 (2026-10-27, `0.1.2-baton.31` on both boxes).** Supersedes the "Known limits" above:
+
+- **No plumbing as messages.** T3 prefixes a context handoff as `<context>\n\nUser message:\n<text>`
+  when a thread holds history its provider has not seen; the agent now sends only the text after
+  the marker (the round-1 leak typed the handoff into Claude itself), and never types T3's restart
+  continuation ("Continue where you left off."). Claude Code's own user records
+  (`<task-notification>`, command echoes, local command output, reminders) are not mirrored.
+- **Terminal turns are turns.** A user message typed in the terminal opens a run
+  (`baton-live:run:<session>:<uuid>`, no provider attempt), so it renders as its own turn and the
+  thread reads **Working** while Claude Code reports busy; the run completes on idle and dispatches
+  `queue.resume` so a composer message queued behind it starts. T3's startup reconcile cancels such
+  a run; if the session is still busy Baton reopens it (timer from now). A thread with no runs gets
+  one around its last user message, so idle threads read Done, not Waiting.
+- **Title = session name · account · box** (T3's lists render only the title). The account is the
+  config directory's `oauthAccount`; a thread keeps its first name across restarts unless the
+  session was named by a person; T3's auto-title is re-asserted away.
+- **Sessions under every config dir**: `~/.claude`, claude-swap `cswap run` profiles, `~/.claude-*`,
+  `BATON_CLAUDE_CONFIG_DIRS`.
+- **Real rotation proven** on onnyx with an isolated profile: `CLAUDE_CONFIG_DIR=<profile> cswap
+  switch 3` (rabeehanzla → optimapacifist), `/exit`, `claude --resume <id>` in the same Herdr pane:
+  same thread id, history kept, title account updated, composer send answered. The orchestrator
+  session and the default profiles were not touched.
+
+Still not done: a terminal turn after a composer turn on a session busy _without_ a new user
+message (e.g. resumed work after a restart) shows Working only via the reopen rule; runs carry no
+provider attempt, so T3 features keyed to attempts (retry, checkpoints) do not apply to them.
