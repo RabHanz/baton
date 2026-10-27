@@ -40,7 +40,7 @@ describe("which T3 project a live session belongs to", () => {
   });
 
   it("names a thread by the conversation, so rotation and adoption keep it", () => {
-    expect(liveThreadId("abc")).toBe("baton-live:abc");
+    expect(liveThreadId("abc")).toBe("baton-live2:abc");
   });
 
   it("titles a thread with the session's own name, its account and its box", () => {

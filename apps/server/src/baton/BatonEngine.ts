@@ -119,6 +119,11 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
     readonly settled: boolean;
   }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.delete`. */
+  readonly deleteThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<boolean>;
   /** Upstream's `thread.archive` (reversible: unarchive). */
   readonly archiveThread: (input: {
     readonly tag: string;
@@ -391,6 +396,19 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
+  const deleteThread: BatonEngineShape["deleteThread"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        commandId: yield* commandId(`${input.tag}:delete`),
+        threadId: input.threadId,
+      });
+      return true;
+    }).pipe(
+      Effect.tapCause((cause) => Effect.logWarning("Baton could not delete a thread", cause)),
+      Effect.catchCause(() => Effect.succeed(false)),
+    );
+
   const archiveThread: BatonEngineShape["archiveThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -435,6 +453,7 @@ export const make = Effect.gen(function* () {
     resumeQueue,
     keepActive,
     archiveThread,
+    deleteThread,
     createProject,
     projects,
     changedThreads,
@@ -481,5 +500,6 @@ export const layerStatic = (input: {
     resumeQueue: () => Effect.void,
     keepActive: () => Effect.succeed(true),
     archiveThread: () => Effect.succeed(true),
+    deleteThread: () => Effect.succeed(true),
     createProject: () => Effect.succeed(null),
   });
