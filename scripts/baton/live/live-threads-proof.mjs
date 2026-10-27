@@ -69,6 +69,8 @@ let failed = false;
 // --open "<title>=<text>": open the thread and wait for the text (a state, a reply) to show.
 for (const [title, expected] of opens) {
   await openSidebar();
+  await page.mouse.move(380, 120); // hover shows row actions in place of the status pill
+  await page.waitForTimeout(300);
   await page.screenshot({ path: `${out}-${title}-sidebar.png` });
   await page.locator("li[data-thread-item]", { hasText: title }).first().click();
   let seen = false;
