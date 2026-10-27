@@ -1,0 +1,66 @@
+<!-- retrieved_at: 2026-10-27; source: https://raw.githubusercontent.com/Bitshank-2338/clicky-windows/6c6216b7f80a86830b967eff5edde59f4caee9c1/requirements.txt ; verbatim, unmodified below this line -->
+# Core UI
+PyQt6>=6.6.0
+
+# Screen capture
+mss>=9.0.1
+Pillow>=10.0.0
+
+# Global hotkeys
+keyboard>=0.13.5
+
+# AI providers
+anthropic>=0.34.0
+openai>=1.40.0
+ollama>=0.3.0
+
+# Audio capture + playback (no PyAudio — fails to build on Py 3.14)
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.26.0
+av>=12.0.0,<19
+
+# STT - local (free)
+faster-whisper>=1.0.0
+
+# STT - whisper.cpp via pywhispercpp (3-5x faster, same engine as Handy)
+# Optional — if installed, Clicky auto-picks this over faster-whisper.
+# pywhispercpp>=1.2.0
+
+# TTS - free
+edge-tts>=7.3.0,<8
+
+# TTS - premium (optional)
+elevenlabs>=1.0.0
+
+# Web search
+tavily-python>=0.3.0
+
+# Utilities
+python-dotenv>=1.0.0
+httpx>=0.27.0
+aiohttp>=3.9.0
+
+# ── Optional tutor enhancements (install only what you need) ─────────────────
+# Document context (drag-drop PDFs onto the panel)
+pypdf>=4.0.0
+python-docx>=1.1.0
+
+# OCR fallback for fine print (also needs Tesseract binary):
+#   https://github.com/UB-Mannheim/tesseract/wiki
+pytesseract>=0.3.10
+
+# Multilingual auto-detect
+langdetect>=1.0.9
+
+# Lesson recording (MP4 capture of the screen + Clicky's annotations)
+imageio>=2.34.0
+imageio-ffmpeg>=0.5.0
+
+# Reviewed desktop input and keystroke-free workflow summaries
+pynput>=1.7.7
+uiautomation>=2.0.18
+rapidocr-onnxruntime>=1.3.0
+opencv-python-headless>=4.8.0
+
+# Trusted-LAN sharing uses aiohttp above; no WebRTC dependency.
