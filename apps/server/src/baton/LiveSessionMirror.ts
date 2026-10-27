@@ -194,6 +194,8 @@ interface Follow {
   target: RunId | null;
   /** A terminal turn Baton opened that is still running. */
   open: OrchestrationV2Run | null;
+  /** When the newest mirrored message was written: a finished turn ends there, not at "now". */
+  lastAt: DateTime.Utc | null;
 }
 
 const make = Effect.gen(function* () {
@@ -461,6 +463,7 @@ const make = Effect.gen(function* () {
       for (const message of fresh) {
         follow.written.add(message.uuid);
         const at = DateTime.makeUnsafe(message.createdAt);
+        follow.lastAt = at;
         if (message.role === "user") {
           const echo = composerSent.find(
             (sent) =>
@@ -563,7 +566,7 @@ const make = Effect.gen(function* () {
         status: busy ? "running" : "completed",
         requestedAt: user.createdAt,
         startedAt: user.createdAt,
-        completedAt: busy ? null : now,
+        completedAt: busy ? null : (messages.at(-1)?.createdAt ?? now),
         checkpointId: null,
         contextHandoffId: null,
       };
@@ -592,7 +595,7 @@ const make = Effect.gen(function* () {
   const settle = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
       if (follow.open === null || session.status === "busy") return;
-      const done = completeRun(follow.open, yield* DateTime.now);
+      const done = completeRun(follow.open, follow.lastAt ?? (yield* DateTime.now));
       follow.open = null;
       yield* engine.writeEvents({ events: [runEvent("run.updated", done)] });
       yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
@@ -679,6 +682,7 @@ const make = Effect.gen(function* () {
         name: history.find((m) => m.role === "user")?.text.split("\n")[0] ?? null,
         target: null,
         open: null,
+        lastAt: null,
       };
       follows.set(session.sessionId, follow);
       // A running session is never filed away as settled, however long it has been quiet.
