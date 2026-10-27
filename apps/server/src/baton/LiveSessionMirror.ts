@@ -409,7 +409,7 @@ const make = Effect.gen(function* () {
     type: "run.created" | "run.updated",
     run: OrchestrationV2Run,
   ): OrchestrationV2DomainEvent => ({
-    id: EventId.make(`${PREFIX}:${type}:${run.id}:${run.status}`),
+    id: EventId.make(`${PREFIX}:${type}:${run.id}:${run.status}:${Date.now()}`),
     type,
     threadId: run.threadId,
     occurredAt: run.completedAt ?? run.startedAt ?? run.requestedAt,
@@ -495,6 +495,76 @@ const make = Effect.gen(function* () {
       if (events.length > 0) yield* engine.writeEvents({ events });
     });
 
+  /**
+   * A session busy from its terminal reads Working: its last terminal turn is reopened, and a
+   * thread with no turns yet (history mirrored before D83 round 2) gets one around its last user
+   * message. An idle thread with no turns gets the same turn, finished, so it does not read as
+   * waiting on anyone.
+   */
+  const ensureTurn = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      if (follow.open !== null) return;
+      const busy = session.status === "busy";
+      const runs = yield* engine.threadRuns(follow.threadId);
+      const latest = runs.reduce<OrchestrationV2Run | null>(
+        (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
+        null,
+      );
+      const now = yield* DateTime.now;
+      if (latest !== null) {
+        const ours = String(latest.id).startsWith(`${PREFIX}:run:`);
+        if (!busy || !ours || latest.status !== "completed") return;
+        const reopened: OrchestrationV2Run = { ...latest, status: "running", completedAt: null };
+        yield* engine.writeEvents({ events: [runEvent("run.updated", reopened)] });
+        follow.open = reopened;
+        follow.target = reopened.id;
+        return;
+      }
+      const messages = yield* threadMessages(follow.threadId);
+      const lastUser = messages.findLastIndex(
+        (m) => m.role === "user" && String(m.id).startsWith(`${PREFIX}:`),
+      );
+      if (lastUser < 0) return;
+      const user = messages[lastUser]!;
+      const uuid = String(user.id).slice(String(user.id).lastIndexOf(":") + 1);
+      const run: OrchestrationV2Run = {
+        id: RunId.make(`${PREFIX}:run:${session.sessionId}:${uuid}`),
+        threadId: follow.threadId,
+        ordinal: 1,
+        providerInstanceId: LIVE_INSTANCE_ID,
+        modelSelection: { instanceId: LIVE_INSTANCE_ID, model: MODEL },
+        providerThreadId: null,
+        userMessageId: user.id,
+        rootNodeId: null,
+        activeAttemptId: null,
+        status: busy ? "running" : "completed",
+        requestedAt: user.createdAt,
+        startedAt: user.createdAt,
+        completedAt: busy ? null : now,
+        checkpointId: null,
+        contextHandoffId: null,
+      };
+      // The same messages, now inside the turn (new event ids; message and item ids unchanged).
+      const rehomed = messages.slice(lastUser).flatMap((m) =>
+        String(m.id).startsWith(`${PREFIX}:`) && (m.role === "user" || m.role === "assistant")
+          ? messageEvents(
+              follow.threadId,
+              session.sessionId,
+              {
+                uuid: String(m.id).slice(String(m.id).lastIndexOf(":") + 1),
+                role: m.role,
+                text: m.text,
+                createdAt: DateTime.formatIso(m.createdAt),
+              },
+              run.id,
+            ).map((event) => ({ ...event, id: EventId.make(`${event.id}:turn`) }))
+          : [],
+      );
+      yield* engine.writeEvents({ events: [runEvent("run.created", run), ...rehomed] });
+      follow.target = run.id;
+      if (busy) follow.open = run;
+    });
+
   /** A terminal turn ends when Claude Code stops reporting busy; a queued composer send starts. */
   const settle = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
@@ -570,6 +640,7 @@ const make = Effect.gen(function* () {
       // restart whatever arrived while the server was down. History turns are finished turns.
       yield* writeMessages(follow, session, history);
       if (session.status !== "busy") yield* settle(follow, session);
+      yield* ensureTurn(follow, session);
     });
 
   const step = (session: ClaudeLiveSession, follow: Follow) =>
@@ -621,6 +692,7 @@ const make = Effect.gen(function* () {
             ? startFollowing(session)
             : step(session, follow).pipe(
                 Effect.andThen(settle(follow, session)),
+                Effect.andThen(ensureTurn(follow, session)),
                 Effect.andThen(retitle(follow, session)),
               )
         ).pipe(
