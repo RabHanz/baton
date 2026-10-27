@@ -2147,3 +2147,38 @@ port back. Each such file carries a first-line `oxlint-disable` (or `@effect-dia
 the rules it is exempt from and pointing here. New Baton files follow upstream's rules. Phase C
 rewrites the web block from T3's components and drops those headers there; the server files lose
 theirs as they are next touched.
+
+## D83 — Live Claude Code sessions are ordinary T3 threads, so the official apps show them
+
+The Director uses T3's official phone, desktop and web apps, which carry none of Baton's sidebar
+code, so he saw none of his sessions. The official apps render the server's read model and nothing
+else, so the fix is server-side: `apps/server/src/baton/LiveSessionMirror.ts` turns every session
+in Claude Code's registry (`~/.claude/sessions/*.json`, D68; SDK sessions excluded) into a thread
+`baton-live:<claude session id>` under the T3 project that holds its directory (deepest workspace
+root, else same repository key, else a new project), written with the same events upstream's
+agent-session import writes, and follows the transcript by Claude Code's record `uuid`.
+
+Sending uses T3's own extension point rather than a patch: the thread's provider is a "Live
+session" instance of upstream's **ACP Registry → Local command** driver, running
+`scripts/baton/live/baton-live-acp.mjs` (Node built-ins; installed to `~/.t3/baton/` by
+`deploy-beside.sh`; the server registers the instance in settings at start). `session/resume`
+binds to the conversation id; `session/prompt` strips T3's instruction wrappers, copies
+attachments into `<cwd>/.baton/inbox/` as `@path` (D73), types through `herdr agent prompt`
+(bracketed paste), adopts an idle plain-terminal session into Herdr first (D74), and ends the turn
+when Claude Code reports idle. The agent writes no content: the mirror is the one writer, and skips
+the transcript copy of a message T3's composer already recorded.
+
+Identity: the thread id is the conversation id, which rotation (`claude --resume`, D69) and
+adoption keep, so the thread survives both (rehearsed). Each box's threads sit under its own
+VentureOS project, which the official client already merges by repository identity.
+
+Rejected: a custom provider driver (needs `builtInDrivers.ts` patched); intercepting the composer
+send in `ThreadMessageIntake` (a patch on upstream's hottest path); synthetic runs for
+terminal-driven turns (T3's recovery services act on runs they did not start).
+
+Known limits: runless items sort before every run, so a message written after a composer turn is
+attached to the thread's latest run; a terminal-typed turn after a composer turn therefore shows
+inside that run, and the run's earlier reply folds under "Worked for…". Status is native only for
+composer turns (Working/Completed); a session working from its terminal does not read as Working.
+The account is not shown. Patch cost: one line in 0002 exposing the runtime's memoized `EventSink`
+to Baton. Off per machine with `BATON_LIVE_THREADS=off`. Frames: `frames/live-threads-2026-10-27/`.

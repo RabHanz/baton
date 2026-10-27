@@ -143,7 +143,7 @@ six patches over 13 upstream files, about 300 lines.
 | Patch                      | Upstream files                                                       |
 | -------------------------- | -------------------------------------------------------------------- |
 | `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Baton package deps)  |
-| `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts`                 |
+| `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts` (+1 line, D83)  |
 | `0003-herdr-terminal`      | `apps/server/src/terminal/Manager.ts` (D81)                          |
 | `0004-claude-account-home` | `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (D52) |
 | `0005-client-rpc`          | `packages/client-runtime/src/rpc/protocol.ts`, `rpc/client.ts`       |
