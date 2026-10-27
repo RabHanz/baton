@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
+// @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off globalConsole:off
 /**
  * A real run of the screen companion (D84) against a real window: look, teach and drive, with
  * his `claude` answering. Approval boxes are answered "yes" and logged, the "user" in teach mode

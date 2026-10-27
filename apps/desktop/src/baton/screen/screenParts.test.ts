@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -92,10 +93,9 @@ describe("claudeVision", () => {
     session.dispose();
   });
 
-  // The real thing, on the subscription: BATON_REAL_CLAUDE=1 with `claude` signed in.
+  // The real thing, on the subscription: BATON_REAL_CLAUDE=1 with `claude` signed in (Linux/macOS).
   it.runIf(process.env["BATON_REAL_CLAUDE"] === "1")(
     "answers a screenshot question with a point on the right element",
-    { timeout: 120_000 },
     async () => {
       const png = NodeFS.readFileSync(
         NodePath.join(
@@ -110,7 +110,7 @@ describe("claudeVision", () => {
         systemPrompt: LOOK_PROMPT,
         workDir: NodePath.join(process.env["TMPDIR"] ?? "/tmp", "baton-screen-real"),
         env: process.env,
-        platform: process.platform,
+        platform: "linux",
       });
       try {
         const reply = parseReply(

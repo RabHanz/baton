@@ -29,6 +29,26 @@ the request and are not saved.
 **Your subscription, not the API.** Answers come from your own Claude Code (`claude`) signed in
 to your plan. Baton strips `ANTHROPIC_API_KEY` from what it starts, so it can never bill the API.
 
+## Against what HeyClicky claims
+
+Their claims, verbatim and with frames: `research/clicky-videos-2026-10-27/`. These are the
+vendor's own words; none of it was installed or measured.
+
+| They claim                                                                                                             | Baton now                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Asks about anything on screen, by hotkey or voice, any app                                                             | **Has it** (Look; voice, F8 box, tray)                                                                                                       |
+| A triangle pointer flies to the target; the real cursor never moves while guiding                                      | **Has it** (farzaa's pointer and flight; the cursor only moves in Drive)                                                                     |
+| Teach: step labels beside each target, speaks the step, notices you did it, gives the next                             | **Has it**, by watching the screen change rather than the click itself; label pill and step card                                             |
+| Drive: one consent card, "Esc takes it back", narrates the current step, stops on mouse or speech, checks its own work | **Has it**, with the full plan listed and its clicks drawn before consent; Esc, "stop" or the mouse stop it; steps with `expect` are checked |
+| Drawing arrows, circles, explanation cards, 3D models                                                                  | Partly: caption card and numbered dots; no free drawing or 3D                                                                                |
+| "Spatial context": you paint on screen to show what you mean                                                           | Not built                                                                                                                                    |
+| Agents in your own Chrome, routines by voice                                                                           | Not here: Baton's sessions and rules (Phases 4, 9) do this through Claude Code instead                                                       |
+| Memory files (profile, recent screens hours back)                                                                      | Partly: a look conversation lasts five minutes, a lesson or drive its whole run; nothing kept across them                                    |
+| Skill files per program                                                                                                | Not built                                                                                                                                    |
+| Dictation, screen-aware                                                                                                | Dictation exists (Phase 6); not screen-aware                                                                                                 |
+| Mac and Windows                                                                                                        | Windows and Linux; macOS capture and pointing should work, Drive refuses there                                                               |
+| Free / $20 / $100 plans with message caps                                                                              | His own Claude subscription; no caps of Baton's                                                                                              |
+
 ## Settings
 
 `baton-screen.json` in Baton's state directory (next to `fabric-voice.json`):
