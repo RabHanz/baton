@@ -46,6 +46,15 @@ describe("a live transcript read as messages", () => {
       parseLiveTranscriptLine(line({ type: "user", message: { content: "no uuid" } })),
     ).toBeNull();
     expect(parseLiveTranscriptLine("{not json")).toBeNull();
+    for (const internal of [
+      "<task-notification> <task-id>b1</task-id> </task-notification>",
+      "<local-command-stdout>ok</local-command-stdout>",
+      "<command-name>/clear</command-name>",
+    ]) {
+      expect(
+        parseLiveTranscriptLine(line({ type: "user", uuid: "i", message: { content: internal } })),
+      ).toBeNull();
+    }
   });
 
   it("holds back a record cut mid-line until the rest arrives", () => {

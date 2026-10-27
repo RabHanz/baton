@@ -16,9 +16,11 @@ const { chromium } = require("playwright");
 
 const [pairFile, out, ...rest] = process.argv.slice(2);
 const sends = [];
+const opens = [];
 let width = 390;
 for (let i = 0; i < rest.length; i++) {
   if (rest[i] === "--send") sends.push(rest[++i].split("="));
+  else if (rest[i] === "--open") opens.push(rest[++i].split("="));
   else if (rest[i] === "--width") width = Number(rest[++i]);
 }
 const pairUrl = NodeFS.readFileSync(pairFile, "utf8").trim();
@@ -39,7 +41,7 @@ const openSidebar = async () => {
 };
 
 // The sidebar is ready when a thread title we expect is in it.
-const firstTitle = sends[0]?.[0];
+const firstTitle = sends[0]?.[0] ?? opens[0]?.[0];
 let ready = false;
 for (let waited = 0; waited < 90_000 && !ready; waited += 1000) {
   await openSidebar();
@@ -64,6 +66,20 @@ if (!ready) {
 }
 
 let failed = false;
+// --open "<title>=<text>": open the thread and wait for the text (a state, a reply) to show.
+for (const [title, expected] of opens) {
+  await openSidebar();
+  await page.screenshot({ path: `${out}-${title}-sidebar.png` });
+  await page.locator("li[data-thread-item]", { hasText: title }).first().click();
+  let seen = false;
+  for (let waited = 0; waited < 120_000 && !seen; waited += 2000) {
+    await page.waitForTimeout(2000);
+    seen = (await page.getByText(expected, { exact: false }).count()) > 0;
+  }
+  await page.screenshot({ path: `${out}-${title}-open.png` });
+  console.log(`${seen ? "OK" : "FAIL"} ${title}: "${expected}" ${seen ? "shown" : "not shown"}`);
+  failed ||= !seen;
+}
 for (const [title, message, expected] of sends) {
   await openSidebar();
   await page.locator("li[data-thread-item]", { hasText: title }).first().click();

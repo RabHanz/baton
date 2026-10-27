@@ -36,6 +36,9 @@ const textOf = (content: unknown): string => {
     .join("\n");
 };
 
+const CLAUDE_INTERNAL_USER_TEXT =
+  /^<(task-notification|local-command-[a-z]+|command-(name|message|args)|system-reminder|bash-(input|stdout|stderr)|user-memory-input)>/;
+
 /** One transcript line, or null when it is not a message a person would read. */
 export const parseLiveTranscriptLine = (line: string): LiveTranscriptMessage | null => {
   if (line.trim().length === 0) return null;
@@ -60,6 +63,9 @@ export const parseLiveTranscriptLine = (line: string): LiveTranscriptMessage | n
       : undefined,
   );
   if (text.length === 0) return null;
+  // Claude Code's own plumbing recorded as user turns: background-task notices, slash-command
+  // echoes, local command output, reminders. Not something a person typed.
+  if (type === "user" && CLAUDE_INTERNAL_USER_TEXT.test(text)) return null;
   const timestamp = record["timestamp"];
   return {
     uuid,
