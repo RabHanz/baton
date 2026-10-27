@@ -1,0 +1,17 @@
+Let Baton see your screen?
+To answer: “fill in the name field with Baton Test and submit the form for me”
+
+Screenshots are taken during this drive, after each step, until it ends. Nothing is stored after the answer.
+[Allow for this drive | Allow for an hour | Always allow | Cancel]
+
+---
+
+Fill in name and submit the waiting list form
+I'll type "Baton Test" into the name field and then click Submit. I'm leaving the email field empty since you didn't give one, so the form may ask for it.
+
+1. Click: Focus the name field
+2. Type “Baton Test”: Enter the name
+3. Click: Click Submit
+
+The numbered dots on screen are where it will click. Esc, “stop”, or moving the mouse stops it.
+[Run it | Cancel]

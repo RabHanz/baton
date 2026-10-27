@@ -1,4 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file (D82) */
+// @effect-diagnostics globalDate:off
 /**
  * Reading a live Claude Code transcript as conversation messages (D83).
  *

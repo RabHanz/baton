@@ -223,6 +223,11 @@ export interface VoiceCoreHooks {
   readonly settings: { readonly modelsDir: string | null; readonly whisperCli: string | null };
 }
 
+/** The screen companion's tray entries (D84), shown under the voice ones. */
+export interface TrayExtras {
+  readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
+}
+
 export interface DesktopBatonVoiceInput {
   readonly stateDir: string;
   /** `HostProcessPlatform`, injected rather than read here. */
@@ -231,9 +236,15 @@ export interface DesktopBatonVoiceInput {
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
+  readonly extras?: TrayExtras;
 }
 
-export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): void => {
+export interface DesktopBatonVoice {
+  /** Rebuild the tray menu, after the companion's state changed. */
+  readonly refresh: () => void;
+}
+
+export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
   const settingsPath = NodePath.join(input.stateDir, "fabric-voice.json");
   let settings = readSettings(settingsPath);
@@ -441,6 +452,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): void => {
           },
         },
         { type: "separator" },
+        ...(input.extras?.menuItems() ?? []),
+        ...(input.extras ? [{ type: "separator" as const }] : []),
         { label: "Open Baton", click: () => void input.ensureMainWindow().then((w) => w.show()) },
         { label: "Quit", click: () => Electron.app.quit() },
       ]),
@@ -471,4 +484,5 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): void => {
 
   render(null);
   void start().catch(failed);
+  return { refresh: rebuildMenu };
 };
