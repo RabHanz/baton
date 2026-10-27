@@ -619,6 +619,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
 ).pipe(
   // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
   Layer.provideMerge(BatonServerLayer.services),
+  // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
+  Layer.provideMerge(RuntimeLayer.layerEventSink),
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),

@@ -51,6 +51,7 @@ git fetch --quiet origin main
 git fetch --quiet upstream main
 git checkout --quiet --detach origin/main
 git reset --quiet --hard origin/main
+pre_sync_sha="$(git rev-parse HEAD)"
 
 pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
 behind="$(git rev-list --count "$pin..upstream/main")"
@@ -133,6 +134,21 @@ bash scripts/baton/disable-upstream-workflows.sh > /dev/null || true
 url="$(gh pr create -R "$repo" --base main --head "$branch" --title "sync: upstream to $(git rev-parse --short upstream/main) (daily)" --body-file "$report")"
 gh pr merge "$url" -R "$repo" --merge --admin
 echo "merged $url"
+
+# apps/desktop changed in this sync: cut a desktop release tag so
+# .github/workflows/baton-desktop-release.yml builds and publishes it.
+git fetch --quiet origin main
+if git diff --quiet "$pre_sync_sha" origin/main -- apps/desktop; then :; else
+  desktop_version="$(node -p 'require("./apps/desktop/package.json").version')"
+  if git ls-remote --exit-code --tags origin "baton-v$desktop_version" > /dev/null 2>&1; then
+    echo "apps/desktop changed; baton-v$desktop_version already tagged, skipping"
+  else
+    git tag "baton-v$desktop_version" origin/main
+    git push --quiet origin "baton-v$desktop_version"
+    echo "tagged baton-v$desktop_version (apps/desktop changed)"
+  fi
+fi
+
 [ "$deploy" -eq 1 ] || exit 0
 
 # The next version label: upstream's version, Baton's counter one past the highest installed.

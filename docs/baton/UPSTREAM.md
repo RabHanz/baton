@@ -68,6 +68,32 @@ conversations most worth resuming were exactly the ones that could not be.
 upstream file this fork touches is in it; everything else Baton contributes is a new file under a
 `baton` name, which cannot conflict with anything upstream writes.
 
+### Release build overrides (not a source edit)
+
+`.github/workflows/baton-desktop-release.yml` runs `scripts/baton/apply-release-branding.sh`
+(a new Baton file, not an edit) before building each platform's installer. It `sed`s three
+upstream constants in the release job's own ephemeral checkout only — nothing it touches is
+committed, so these three files stay byte-identical to upstream everywhere else (dev builds, the
+daily sync, `main`):
+
+- `scripts/build-desktop-artifact.ts`: `DESKTOP_APP_ID` (`com.t3tools.t3code` ->
+  `dev.rabee.baton`) and the `artifactName` template (`T3-Code-...` -> `Baton-...`).
+- `apps/desktop/package.json`: `productName` (`"T3 Code (Beta)"` -> `"Baton"`).
+- `apps/desktop/src/app/DesktopEnvironment.ts`: `APP_BASE_NAME` (`"T3 Code"` -> `"Baton"`), which
+  drives the packaged app's runtime name (`Electron.app.setName`) and therefore its userData
+  folder.
+
+Without this, a Baton installer would carry T3 Code's own identity end to end — the same
+electron-builder `appId`+`productName` NSIS uses for its uninstall registry key, so installing
+Baton on a machine with the official T3 Code app would be read as upgrading it, not adding a
+second app, and the two would also share one userData folder. This keeps the two installs and
+their data fully separate while leaving nothing for the daily sync to conflict on.
+
+If upstream renames `DESKTOP_APP_ID`, the `artifactName` template, `productName`, or
+`APP_BASE_NAME`, the `sed` in `apply-release-branding.sh` stops matching; the script's own
+`grep -q` checks after each `sed` fail loudly in that release job rather than silently shipping
+unbranded. Re-point the `sed` patterns at the new text.
+
 ### Sync, 2026-10-26: to the last commit before the v2 orchestrator
 
 Merged `52e4b44293..024d49520e`, 430 upstream commits, as `0.0.45-baton.20` (PR from
