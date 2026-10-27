@@ -1,0 +1,320 @@
+#!/usr/bin/env node
+/**
+ * Baton live-session agent (D83): an ACP agent that T3 runs through its own "ACP Registry → Local
+ * command" provider, so a message typed into T3's ordinary composer reaches a Claude Code session
+ * that is already running in a terminal.
+ *
+ * It does not run a model. `session/resume <claude session id>` binds to the live session found
+ * in Claude Code's own `~/.claude/sessions/<pid>.json`; `session/prompt` types the text into that
+ * session's Herdr pane (moving an idle plain-terminal session into Herdr first, the same
+ * `baton --resume` adoption as D74) and ends the turn when Claude Code reports itself idle again.
+ * The reply reaches the thread through Baton's transcript mirror, so there is one writer of the
+ * conversation and nothing is shown twice.
+ *
+ * Node built-ins only: T3 spawns it with whichever Node the box has.
+ */
+import * as ChildProcess from "node:child_process";
+import * as FS from "node:fs";
+import * as OS from "node:os";
+import * as Path from "node:path";
+import * as Readline from "node:readline";
+import { fileURLToPath } from "node:url";
+
+const SESSIONS_DIR =
+  process.env.BATON_CLAUDE_SESSIONS_DIR ?? Path.join(OS.homedir(), ".claude", "sessions");
+const HERDR = process.env.BATON_HERDR_BIN ?? Path.join(OS.homedir(), ".local", "bin", "herdr");
+const BATON = process.env.BATON_BIN ?? Path.join(OS.homedir(), ".local", "bin", "baton");
+const POLL_MS = Number(process.env.BATON_LIVE_POLL_MS ?? 500);
+/** How long a sent message may take before Claude Code says it is working on it. */
+const START_GRACE_MS = Number(process.env.BATON_LIVE_START_GRACE_MS ?? 20_000);
+const UNBOUND = "baton-unbound";
+
+// ---------------------------------------------------------------------------------------------
+// Pure parts (tested in baton-live-acp.test.ts)
+
+/** The user's words from T3's prompt blocks: T3's own instruction wrappers are not for Claude. */
+export function promptText(blocks) {
+  const texts = (Array.isArray(blocks) ? blocks : [])
+    .filter((block) => block && block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .filter((text) => !text.trimStart().startsWith("<runtime_info>"));
+  const first = texts.join("\n\n");
+  const wrapped = /<user_request>\n?([\s\S]*?)\n?<\/user_request>/.exec(first);
+  return (wrapped === null ? first : wrapped[1]).trim();
+}
+
+/** T3 lists each attachment as `[Attached <type> "<name>" is saved at: <path>...]`. */
+export function splitAttachments(text) {
+  const paths = [];
+  const kept = text.replace(
+    /\[Attached [^\]"]* "[^"]*" is saved at: ([^\]\s]+)(?: \(text extracted to: [^)]*\))?\]/g,
+    (_match, path) => {
+      paths.push(path);
+      return "";
+    },
+  );
+  return { text: kept.replace(/\n{3,}/g, "\n\n").trim(), paths };
+}
+
+/** A file name that cannot leave the inbox or hide (same rule as LiveActions.safeInboxName). */
+export function safeInboxName(fileName, stamp) {
+  const base = Path.basename(fileName)
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^[.-]+/, "");
+  return `${stamp}-${base.length === 0 ? "file" : base.slice(0, 120)}`;
+}
+
+export function herdrPaneRef(env) {
+  const pane = env.get("HERDR_PANE_ID");
+  if (!pane) return null;
+  const session = env.get("HERDR_SESSION");
+  return !session || session === "default" ? pane : `${session}~${pane}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The live session
+
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const herdrEnvOf = (pid) => {
+  const map = new Map();
+  try {
+    for (const entry of FS.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0")) {
+      const at = entry.indexOf("=");
+      if (at > 0 && entry.startsWith("HERDR_")) map.set(entry.slice(0, at), entry.slice(at + 1));
+    }
+  } catch {}
+  return map;
+};
+
+/** The running interactive process for a Claude conversation id, or null. */
+export function findLiveSession(sessionId, dir = SESSIONS_DIR) {
+  let names = [];
+  try {
+    names = FS.readdirSync(dir).filter((name) => /^\d+\.json$/.test(name));
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    let d;
+    try {
+      d = JSON.parse(FS.readFileSync(Path.join(dir, name), "utf8"));
+    } catch {
+      continue;
+    }
+    if (d?.sessionId !== sessionId || d.kind !== "interactive" || typeof d.pid !== "number")
+      continue;
+    if (!alive(d.pid)) continue;
+    const env = herdrEnvOf(d.pid);
+    const pane = process.env.BATON_TEST_HERDR_PANE ?? herdrPaneRef(env);
+    return { pid: d.pid, cwd: d.cwd, status: d.status ?? null, pane };
+  }
+  return null;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const run = (file, args, timeout = 15_000) =>
+  new Promise((resolve) =>
+    ChildProcess.execFile(file, args, { timeout }, (error, stdout, stderr) =>
+      resolve({ ok: error === null, out: `${stdout}${stderr}`.trim() }),
+    ),
+  );
+
+/** `herdr [--session S] agent <verb> <pane> ...` for a `<session>~<pane>` ref. */
+const herdrArgs = (paneRef, verb, rest) => {
+  const at = paneRef.indexOf("~");
+  return at < 0
+    ? ["agent", verb, paneRef, ...rest]
+    : ["--session", paneRef.slice(0, at), "agent", verb, paneRef.slice(at + 1), ...rest];
+};
+
+/** Herdr's `agent prompt` pastes with the terminal's bracketed-paste mode, then presses Enter. */
+async function typeInto(paneRef, text) {
+  const sent = await run(HERDR, herdrArgs(paneRef, "prompt", [text]));
+  if (sent.ok) return null;
+  return /agent_blocked/.test(sent.out)
+    ? "Claude Code is waiting on a question or an approval in its terminal; answer it there first."
+    : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
+}
+
+/** D74 adoption: an idle plain-terminal session is reopened in Herdr with the same conversation. */
+async function adopt(sessionId, live) {
+  if (live.status === "busy") {
+    return {
+      error:
+        "It is working in a plain terminal right now. Send again when it is idle and Baton will move it into Herdr.",
+    };
+  }
+  process.kill(live.pid, "SIGTERM");
+  for (let i = 0; i < 40 && alive(live.pid); i += 1) await sleep(250);
+  if (alive(live.pid)) return { error: "It did not exit, so it was left as it was." };
+  const out = await run(BATON, ["--resume", sessionId, live.cwd], 30_000);
+  if (!/running in (\S+) pane (\S+)/.test(out.out))
+    return { error: `baton --resume said: ${out.out.slice(0, 200)}` };
+  for (let i = 0; i < 60; i += 1) {
+    const next = findLiveSession(sessionId);
+    if (next?.pane && next.status !== "busy") return { live: next };
+    await sleep(500);
+  }
+  return { error: "It reopened in Herdr but did not report ready in 30 s." };
+}
+
+function saveToInbox(cwd, name, bytes) {
+  const inbox = Path.join(cwd, ".baton", "inbox");
+  FS.mkdirSync(inbox, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const path = Path.join(inbox, safeInboxName(name, stamp));
+  FS.writeFileSync(path, bytes, { mode: 0o600 });
+  return path;
+}
+
+/** The text Claude Code receives: the words, then `@path` for every file, copied into its inbox. */
+function composeForSession(blocks, cwd) {
+  const { text, paths } = splitAttachments(promptText(blocks));
+  const refs = [];
+  for (const path of paths) {
+    try {
+      refs.push(saveToInbox(cwd, path, FS.readFileSync(path)));
+    } catch {}
+  }
+  if (paths.length === 0) {
+    for (const block of Array.isArray(blocks) ? blocks : []) {
+      if (block?.type === "image" && typeof block.data === "string") {
+        const ext = String(block.mimeType ?? "image/png").split("/")[1] ?? "png";
+        refs.push(saveToInbox(cwd, `image.${ext}`, Buffer.from(block.data, "base64")));
+      }
+    }
+  }
+  return [text, ...refs.map((ref) => `@${ref}`)].filter((part) => part.length > 0).join("\n");
+}
+
+// ---------------------------------------------------------------------------------------------
+// ACP over stdio (newline-delimited JSON-RPC 2.0, protocol v1)
+
+const write = (message) =>
+  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+const say = (sessionId, text) =>
+  write({
+    method: "session/update",
+    params: {
+      sessionId,
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+    },
+  });
+
+const turns = new Map(); // sessionId -> { cancelled: boolean, pane: string | null }
+
+async function prompt(params) {
+  const sessionId = params.sessionId;
+  if (typeof sessionId !== "string" || sessionId.startsWith(UNBOUND)) {
+    say(sessionId, "This thread is not bound to a running Claude Code session.");
+    return { stopReason: "end_turn" };
+  }
+  let live = findLiveSession(sessionId);
+  if (live === null) {
+    say(sessionId, "That Claude Code session is not running on this machine now.");
+    return { stopReason: "end_turn" };
+  }
+  if (live.pane === null) {
+    const adopted = await adopt(sessionId, live);
+    if (adopted.error) {
+      say(sessionId, adopted.error);
+      return { stopReason: "end_turn" };
+    }
+    live = adopted.live;
+  }
+  const text = composeForSession(params.prompt, live.cwd);
+  if (text.length === 0) return { stopReason: "end_turn" };
+  const turn = { cancelled: false, pane: live.pane };
+  turns.set(sessionId, turn);
+  try {
+    const failure = await typeInto(live.pane, text);
+    if (failure !== null) {
+      say(sessionId, failure);
+      return { stopReason: "end_turn" };
+    }
+    // The run stays "working" in T3 while Claude Code reports busy, and ends when it stops.
+    const sentAt = Date.now();
+    let seenBusy = false;
+    for (;;) {
+      if (turn.cancelled) return { stopReason: "cancelled" };
+      await sleep(POLL_MS);
+      const now = findLiveSession(sessionId);
+      if (now === null) return { stopReason: "end_turn" };
+      if (now.status === "busy") seenBusy = true;
+      else if (seenBusy || Date.now() - sentAt > START_GRACE_MS) return { stopReason: "end_turn" };
+    }
+  } finally {
+    turns.delete(sessionId);
+  }
+}
+
+async function handle(message) {
+  const { id, method, params = {} } = message;
+  switch (method) {
+    case "initialize":
+      return {
+        protocolVersion: 1,
+        agentInfo: { name: "baton-live", title: "Baton live session", version: "1" },
+        agentCapabilities: {
+          loadSession: false,
+          promptCapabilities: { image: true, audio: false, embeddedContext: false },
+          sessionCapabilities: { resume: {} },
+        },
+        authMethods: [],
+      };
+    case "session/new":
+      return { sessionId: `${UNBOUND}-${process.pid}-${id}` };
+    case "session/resume":
+      return {};
+    case "session/prompt":
+      return prompt(params);
+    case "session/cancel": {
+      const turn = turns.get(params.sessionId);
+      if (turn) {
+        turn.cancelled = true;
+        if (turn.pane) await run(HERDR, herdrArgs(turn.pane, "send-keys", ["esc"]));
+      }
+      return undefined;
+    }
+    default:
+      if (id === undefined) return undefined;
+      throw Object.assign(new Error(`Method not found: ${method}`), { code: -32601 });
+  }
+}
+
+function main() {
+  const lines = Readline.createInterface({ input: process.stdin });
+  lines.on("line", (line) => {
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (!message || typeof message.method !== "string") return; // responses to us: none expected
+    handle(message).then(
+      (result) => {
+        if (message.id !== undefined) write({ id: message.id, result: result ?? null });
+      },
+      (error) => {
+        if (message.id !== undefined)
+          write({
+            id: message.id,
+            error: { code: error.code ?? -32603, message: String(error.message ?? error) },
+          });
+      },
+    );
+  });
+  lines.on("close", () => process.exit(0));
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === Path.resolve(process.argv[1])) main();

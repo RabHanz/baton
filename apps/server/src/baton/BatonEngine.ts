@@ -16,9 +16,10 @@ import {
   MessageId,
   type ModelSelection,
   type OrchestrationProjectShell,
+  type OrchestrationV2ConversationMessage,
+  ProjectId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadShell,
-  type ProjectId,
   type ProviderInteractionMode,
   type RuntimeMode,
   type ThreadId,
@@ -33,7 +34,9 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
+import { ProjectService } from "../project/ProjectService.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
@@ -83,6 +86,27 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
     readonly modelSelection: ModelSelection;
   }) => Effect.Effect<void, BatonEngineError>;
+  /**
+   * Live-session threads (D83): append events the way upstream's agent-session import does.
+   * Returns how many were stored; 0 when `unlessNativeThreadOwned` found another owner.
+   */
+  readonly writeEvents: (input: {
+    readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
+    readonly unlessNativeThreadOwned?: Parameters<
+      EventSink.EventSinkV2["Service"]["write"]
+    >[0]["unlessNativeThreadOwned"];
+  }) => Effect.Effect<number, BatonEngineError>;
+  /** The newest messages of a thread, oldest first. */
+  readonly threadMessages: (
+    threadId: ThreadId,
+    rowLimit: number,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>>;
+  /** A new T3 project for a directory, through upstream's project service; null when refused. */
+  readonly createProject: (input: {
+    readonly tag: string;
+    readonly title: string;
+    readonly workspaceRoot: string;
+  }) => Effect.Effect<ProjectId | null>;
   /** Upstream's settlement, so a settled work session reads settled in T3's own sidebar. */
   readonly settleThread: (input: {
     readonly tag: string;
@@ -166,6 +190,8 @@ export const make = Effect.gen(function* () {
   const projectStore = yield* ProjectStore.ProjectStoreV2;
   const launcher = yield* ThreadLaunch.ThreadLaunchService;
   const threads = yield* ThreadManagement.ThreadManagementService;
+  const eventSink = yield* EventSink.EventSinkV2;
+  const projectService = yield* Effect.serviceOption(ProjectService);
   const crypto = yield* Crypto.Crypto;
   const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
   const commandId = (tag: string) => Effect.map(uuid, (id) => CommandId.make(`baton:${tag}:${id}`));
@@ -277,9 +303,48 @@ export const make = Effect.gen(function* () {
       return true;
     }).pipe(Effect.catchCause(() => Effect.succeed(false)));
 
+  const writeEvents: BatonEngineShape["writeEvents"] = (input) =>
+    eventSink
+      .write({
+        events: input.events,
+        ...(input.unlessNativeThreadOwned === undefined
+          ? {}
+          : { unlessNativeThreadOwned: input.unlessNativeThreadOwned }),
+      })
+      .pipe(
+        Effect.map((stored) => stored.length),
+        Effect.mapError(
+          (cause) => new BatonEngineError({ operation: "events.write", detail: String(cause) }),
+        ),
+      );
+
+  const threadMessages: BatonEngineShape["threadMessages"] = (threadId, rowLimit) =>
+    orchestrator.getThreadSnapshotWindow(threadId, { rowLimit }).pipe(
+      Effect.map(({ projection }) => projection.messages),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
+  const createProject: BatonEngineShape["createProject"] = (input) =>
+    Effect.gen(function* () {
+      if (Option.isNone(projectService)) return null;
+      const project = yield* projectService.value.create({
+        commandId: yield* commandId(`${input.tag}:project`),
+        projectId: ProjectId.make(yield* uuid),
+        title: input.title,
+        workspaceRoot: input.workspaceRoot,
+      });
+      return project.id;
+    }).pipe(
+      Effect.tapCause((cause) => Effect.logWarning("Baton could not create a project", cause)),
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
+
   return {
     threadShells,
     threadShell,
+    writeEvents,
+    threadMessages,
+    createProject,
     projects,
     changedThreads,
     domainEvents,
@@ -318,4 +383,7 @@ export const layerStatic = (input: {
       }),
     switchProvider: () => Effect.void,
     settleThread: () => Effect.succeed(true),
+    writeEvents: (write) => Effect.succeed(write.events.length),
+    threadMessages: () => Effect.succeed([]),
+    createProject: () => Effect.succeed(null),
   });

@@ -5,7 +5,7 @@ upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds it
 its own scope middleware (upstream's throws for methods its table does not list).
 
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index f461a99186b3172ea0eae963e61dc1cfadb1e320..f23455cdf5ad613ca7454462cfd9e94297c34a0b 100644
+index f461a99186b3172ea0eae963e61dc1cfadb1e320..5b8a09148925a5cf612982d72894d210ef1a9cb8 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -4,6 +4,7 @@ import * as Random from "effect/Random";
@@ -16,7 +16,7 @@ index f461a99186b3172ea0eae963e61dc1cfadb1e320..f23455cdf5ad613ca7454462cfd9e942
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -614,7 +615,10 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -614,7 +615,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    layerProviderInstallationRefresh,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -24,6 +24,8 @@ index f461a99186b3172ea0eae963e61dc1cfadb1e320..f23455cdf5ad613ca7454462cfd9e942
  ).pipe(
 +  // Baton (vendor-patches/t3code/0002-server-hooks.patch): its services, on upstream's engine.
 +  Layer.provideMerge(BatonServerLayer.services),
++  // The same memoized sink the runtime uses, for Baton's live-session threads (D83).
++  Layer.provideMerge(RuntimeLayer.layerEventSink),
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
