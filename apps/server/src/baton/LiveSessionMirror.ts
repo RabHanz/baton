@@ -66,11 +66,20 @@ import { projectRefFor } from "./ProjectRef.ts";
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make("baton-live");
 const DRIVER = ProviderDriverKind.make("acpRegistry");
 const MODEL = "live";
-const PREFIX = "baton-live";
+/**
+ * Id namespace of live threads. "baton-live" (2026-10-27 rounds 1–2) back-filled older history
+ * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
+ * this one (they are a mirror of the transcript, which is the record).
+ */
+const PREFIX = "baton-live3";
+/** baton-live2 (round 3 first cut) closed old turns at server start; rebuilt too. */
+const RETIRED_PREFIXES = ["baton-live:", "baton-live2:"];
 const TICK = "2 seconds";
 /** How much of an existing transcript a new thread starts with. */
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
 const FIRST_MESSAGES = 120;
+/** How far back a new thread looks for those messages. */
+const MAX_BACKFILL_BYTES = 64 * 1024 * 1024;
 /** A busy session can write a lot between ticks; one tick reads at most this much. */
 const STEP_BYTES = 8 * 1024 * 1024;
 
@@ -186,6 +195,8 @@ interface Follow {
   target: RunId | null;
   /** A terminal turn Baton opened that is still running. */
   open: OrchestrationV2Run | null;
+  /** When the newest mirrored message was written: a finished turn ends there, not at "now". */
+  lastAt: DateTime.Utc | null;
 }
 
 const make = Effect.gen(function* () {
@@ -303,8 +314,9 @@ const make = Effect.gen(function* () {
         createdAt: now,
         updatedAt: now,
       };
+      // No `unlessNativeThreadOwned`: the only other owner of this native id under this instance
+      // is a retired mirror thread, which is deleted, not a conversation T3 runs.
       yield* engine.writeEvents({
-        unlessNativeThreadOwned: providerThread,
         events: [
           {
             id: EventId.make(`${PREFIX}:thread:${threadId}:created`),
@@ -452,6 +464,7 @@ const make = Effect.gen(function* () {
       for (const message of fresh) {
         follow.written.add(message.uuid);
         const at = DateTime.makeUnsafe(message.createdAt);
+        follow.lastAt = at;
         if (message.role === "user") {
           const echo = composerSent.find(
             (sent) =>
@@ -554,7 +567,7 @@ const make = Effect.gen(function* () {
         status: busy ? "running" : "completed",
         requestedAt: user.createdAt,
         startedAt: user.createdAt,
-        completedAt: busy ? null : now,
+        completedAt: busy ? null : (messages.at(-1)?.createdAt ?? now),
         checkpointId: null,
         contextHandoffId: null,
       };
@@ -583,7 +596,7 @@ const make = Effect.gen(function* () {
   const settle = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
       if (follow.open === null || session.status === "busy") return;
-      const done = completeRun(follow.open, yield* DateTime.now);
+      const done = completeRun(follow.open, follow.lastAt ?? (yield* DateTime.now));
       follow.open = null;
       yield* engine.writeEvents({ events: [runEvent("run.updated", done)] });
       yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
@@ -615,13 +628,22 @@ const make = Effect.gen(function* () {
       const threadId = liveThreadId(session.sessionId);
       const path = transcriptPath(session);
       const size = path === null ? 0 : NodeFS.statSync(path).size;
-      const from = Math.max(0, size - FIRST_READ_BYTES);
-      const chunk = path === null ? "" : readRange(path, from, size);
-      // A read from the middle of the file starts mid-record; the first line is dropped.
-      const lines = splitTranscriptChunk(chunk).lines.slice(from > 0 ? 1 : 0);
-      const history = lines
-        .flatMap((line) => parseLiveTranscriptLine(line) ?? [])
-        .slice(-FIRST_MESSAGES);
+      // Long tool-heavy sessions hold few messages per megabyte: read back until there are enough.
+      let from = size;
+      let history: Array<LiveTranscriptMessage> = [];
+      while (
+        path !== null &&
+        from > 0 &&
+        history.length < FIRST_MESSAGES &&
+        size - from < MAX_BACKFILL_BYTES
+      ) {
+        from = Math.max(0, from - FIRST_READ_BYTES);
+        const chunk = readRange(path, from, size);
+        // A read from the middle of the file starts mid-record; the first line is dropped.
+        const lines = splitTranscriptChunk(chunk).lines.slice(from > 0 ? 1 : 0);
+        history = lines.flatMap((line) => parseLiveTranscriptLine(line) ?? []);
+      }
+      history = history.slice(-FIRST_MESSAGES);
       const shell = yield* engine.threadShell(threadId);
       if (shell === null) {
         const firstUser = history.find((m) => m.role === "user")?.text.split("\n")[0];
@@ -639,13 +661,19 @@ const make = Effect.gen(function* () {
           return;
         }
       }
-      const known = new Set(
-        (yield* threadMessages(threadId)).flatMap((m) => {
-          const id = String(m.id);
-          const at = id.lastIndexOf(":");
-          return id.startsWith(`${PREFIX}:`) ? [id.slice(at + 1)] : [];
-        }),
+      const mirrored = (yield* threadMessages(threadId)).filter((m) =>
+        String(m.id).startsWith(`${PREFIX}:`),
       );
+      const known = new Set(
+        mirrored.map((m) => String(m.id).slice(String(m.id).lastIndexOf(":") + 1)),
+      );
+      // An existing thread only takes what is newer than its newest message: anything older
+      // written now would sort after it.
+      const newest = mirrored.reduce(
+        (max, m) => Math.max(max, DateTime.toEpochMillis(m.createdAt)),
+        Number.NEGATIVE_INFINITY,
+      );
+      if (shell !== null) history = history.filter((m) => Date.parse(m.createdAt) > newest);
       const follow: Follow = {
         threadId,
         path,
@@ -655,8 +683,16 @@ const make = Effect.gen(function* () {
         name: history.find((m) => m.role === "user")?.text.split("\n")[0] ?? null,
         target: null,
         open: null,
+        lastAt: null,
       };
       follows.set(session.sessionId, follow);
+      // A running session is never filed away as settled, however long it has been quiet.
+      const current = yield* engine.threadShell(threadId);
+      yield* engine.keepActive({
+        tag: "live",
+        threadId,
+        settled: current?.settledOverride === "settled",
+      });
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
       // restart whatever arrived while the server was down. History turns are finished turns.
       yield* writeMessages(follow, session, history);
@@ -687,21 +723,31 @@ const make = Effect.gen(function* () {
       );
     });
 
+  /** Delete the retired namespace's threads once, so each session has one thread. */
+  const retireOld = Effect.gen(function* () {
+    for (const shell of yield* engine.threadShells) {
+      if (RETIRED_PREFIXES.some((prefix) => String(shell.id).startsWith(prefix))) {
+        yield* engine.deleteThread({ tag: "live", threadId: shell.id });
+      }
+    }
+  });
+
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
     const fresh = live.filter((s) => !follows.has(s.sessionId) && !owned.has(s.sessionId));
     if (fresh.length > 0) {
-      // A session upstream's importer already turned into a thread is that thread's.
+      // A session upstream's importer copied is a snapshot, not the live conversation: the live
+      // thread replaces it, and an import nobody continued (no turns) is archived (reversible).
+      // An import someone continued in T3 is T3's own thread now, so Baton stays out of it.
       const shells = yield* engine.threadShells;
       for (const session of fresh) {
-        if (
-          shells.some(
-            (t) =>
-              String(t.id).startsWith("import:") && String(t.id).endsWith(`:${session.sessionId}`),
-          )
-        ) {
-          owned.add(session.sessionId);
-        }
+        const imported = shells.find(
+          (t) =>
+            String(t.id).startsWith("import:") && String(t.id).endsWith(`:${session.sessionId}`),
+        );
+        if (imported === undefined) continue;
+        if (imported.latestRunId !== null) owned.add(session.sessionId);
+        else yield* engine.archiveThread({ tag: "live", threadId: imported.id });
       }
     }
     yield* Effect.forEach(
@@ -734,6 +780,9 @@ const make = Effect.gen(function* () {
 
   if (!liveThreadsEnabled()) return;
   yield* ensureProviderInstance;
+  yield* retireOld.pipe(
+    Effect.catchCause((cause) => Effect.logWarning("Baton live threads: retiring failed", cause)),
+  );
   yield* tick.pipe(
     Effect.catchCause((cause) => Effect.logWarning("Baton live threads: tick failed", cause)),
     Effect.repeat(Schedule.spaced(TICK)),

@@ -110,6 +110,25 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
     readonly title: string;
   }) => Effect.Effect<boolean>;
+  /**
+   * A live session's thread stays where he looks for it: auto-settle off, and unsettled if it was
+   * settled. Upstream's own commands; false when refused.
+   */
+  readonly keepActive: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+    readonly settled: boolean;
+  }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.delete`. */
+  readonly deleteThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.archive` (reversible: unarchive). */
+  readonly archiveThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<boolean>;
   /** Upstream's `queue.resume`: start a message queued behind a run that just ended. */
   readonly resumeQueue: (input: {
     readonly tag: string;
@@ -355,6 +374,51 @@ export const make = Effect.gen(function* () {
       return true;
     }).pipe(Effect.catchCause(() => Effect.succeed(false)));
 
+  const keepActive: BatonEngineShape["keepActive"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.auto-settle.set",
+        commandId: yield* commandId(`${input.tag}:auto-settle`),
+        threadId: input.threadId,
+        enabled: false,
+      });
+      if (input.settled) {
+        yield* orchestrator.dispatch({
+          type: "thread.unsettle",
+          commandId: yield* commandId(`${input.tag}:unsettle`),
+          threadId: input.threadId,
+          reason: "user",
+        });
+      }
+      return true;
+    }).pipe(
+      Effect.tapCause((cause) => Effect.logWarning("Baton could not keep a thread active", cause)),
+      Effect.catchCause(() => Effect.succeed(false)),
+    );
+
+  const deleteThread: BatonEngineShape["deleteThread"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.delete",
+        commandId: yield* commandId(`${input.tag}:delete`),
+        threadId: input.threadId,
+      });
+      return true;
+    }).pipe(
+      Effect.tapCause((cause) => Effect.logWarning("Baton could not delete a thread", cause)),
+      Effect.catchCause(() => Effect.succeed(false)),
+    );
+
+  const archiveThread: BatonEngineShape["archiveThread"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.archive",
+        commandId: yield* commandId(`${input.tag}:archive`),
+        threadId: input.threadId,
+      });
+      return true;
+    }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+
   const resumeQueue: BatonEngineShape["resumeQueue"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -387,6 +451,9 @@ export const make = Effect.gen(function* () {
     threadRuns,
     renameThread,
     resumeQueue,
+    keepActive,
+    archiveThread,
+    deleteThread,
     createProject,
     projects,
     changedThreads,
@@ -431,5 +498,8 @@ export const layerStatic = (input: {
     threadRuns: () => Effect.succeed([]),
     renameThread: () => Effect.succeed(true),
     resumeQueue: () => Effect.void,
+    keepActive: () => Effect.succeed(true),
+    archiveThread: () => Effect.succeed(true),
+    deleteThread: () => Effect.succeed(true),
     createProject: () => Effect.succeed(null),
   });
