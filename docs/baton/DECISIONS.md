@@ -2210,6 +2210,19 @@ Still not done: a terminal turn after a composer turn on a session busy _without
 message (e.g. resumed work after a restart) shows Working only via the reopen rule; runs carry no
 provider attempt, so T3 features keyed to attempts (retry, checkpoints) do not apply to them.
 
+**D83 round 3 (2026-10-27, `0.1.2-baton.34` both boxes) — the Director's real sessions.** Misses
+found on his five long-running sessions: home-network was hidden behind an old upstream _import_
+snapshot of the same session (Baton treated it as owned) — the live thread now replaces an import
+nobody continued, and that import is archived; rabee.dev was auto-settled for age and filed under
+Settled — live threads now have auto-settle off and are unsettled; back-fill of older messages into
+existing threads sorted them after newer ones — threads were rebuilt (`baton-live3:` ids; retired
+ones deleted, the transcript is the record) and existing threads only take newer messages; finished
+turns end at their last message. Transcript mapping was correct for all five (rabee.dev's newer
+files are `sdk-cli` cron runs, not the live process). A plain-terminal / Remote Control session is
+never restarted by a send: the reply says it was not delivered and that `bring into Herdr` moves
+it (restart, Remote Control drops). No safe outside input path exists: Claude Code's peer socket is
+private, and TIOCSTI is off on kernel 6.8.
+
 ## D84 — The screen companion: look, teach and drive, on his subscription, with his yes
 
 The Director, 2026-10-27, after the Clicky research (`research/clicky-2026-10-27/`): build what

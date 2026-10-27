@@ -48,6 +48,23 @@ export function promptText(blocks) {
   return (at < 0 ? text : text.slice(at + marker.length)).trim();
 }
 
+/** The explicit request to move a plain-terminal session into Herdr. */
+export const isAdoptRequest = (text) => /^\s*bring (it )?into herdr\s*\.?\s*$/i.test(text);
+
+/** What a send to a plain-terminal session says instead of being delivered. */
+export const notSentNote = (live) =>
+  [
+    "Not sent. This session runs in a plain terminal" +
+      (live.remoteControl ? " with Remote Control on" : "") +
+      ", and Baton can only type into sessions inside Herdr.",
+    "Moving it into Herdr restarts it with the same conversation" +
+      (live.remoteControl
+        ? " (Remote Control on claude.ai disconnects until you turn it on again)"
+        : "") +
+      (live.status === "busy" ? ", and it is working right now, so wait until it is idle." : "."),
+    "To move it, send exactly: bring into Herdr",
+  ].join("\n\n");
+
 /** T3's own restart continuation: not the user's words, so never typed into the session. */
 export const isAppContinuation = (text) => text.trim() === "Continue where you left off.";
 
@@ -148,7 +165,13 @@ function findIn(sessionId, dir) {
     if (!alive(d.pid)) continue;
     const env = herdrEnvOf(d.pid);
     const pane = process.env.BATON_TEST_HERDR_PANE ?? herdrPaneRef(env);
-    return { pid: d.pid, cwd: d.cwd, status: d.status ?? null, pane };
+    return {
+      pid: d.pid,
+      cwd: d.cwd,
+      status: d.status ?? null,
+      pane,
+      remoteControl: typeof d.bridgeSessionId === "string" && d.bridgeSessionId.length > 0,
+    };
   }
   return null;
 }
@@ -259,12 +282,19 @@ async function prompt(params) {
     return { stopReason: "end_turn" };
   }
   if (live.pane === null) {
-    const adopted = await adopt(sessionId, live);
-    if (adopted.error) {
-      say(sessionId, adopted.error);
+    // A plain-terminal session (often one he drives through Remote Control) cannot take typed
+    // input from outside, and moving it into Herdr restarts it. That only happens when asked.
+    if (!isAdoptRequest(promptText(params.prompt))) {
+      say(sessionId, notSentNote(live));
       return { stopReason: "end_turn" };
     }
-    live = adopted.live;
+    const adopted = await adopt(sessionId, live);
+    say(
+      sessionId,
+      adopted.error ??
+        "Moved into Herdr with the same conversation. Messages sent here now reach it.",
+    );
+    return { stopReason: "end_turn" };
   }
   const text = composeForSession(params.prompt, live.cwd);
   if (text.length === 0) return { stopReason: "end_turn" };
