@@ -22,6 +22,7 @@ import {
   createWhisperCppStt,
   type BatonVoiceCore,
   type VoiceIntentClient,
+  type VoiceRouter,
 } from "@t3tools/baton-voice";
 import {
   applyContextSnapshot,
@@ -29,6 +30,7 @@ import {
   type ContextBusState,
 } from "@t3tools/baton-shared/contextBus";
 import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
+import { parseScreenIntent, type ScreenIntent } from "@t3tools/baton-shared/screenCompanion";
 
 export const VOICE_MODEL_FILES = [
   "melspectrogram.onnx",
@@ -152,6 +154,30 @@ export const desktopVoiceContext = (input: {
   return bus;
 };
 
+/** The screen companion as the voice router sees it (D84). */
+export interface ScreenVoiceHook {
+  readonly active: () => boolean;
+  readonly handle: (intent: ScreenIntent) => void;
+}
+
+/**
+ * Spoken commands that ask about, or to be taught or driven on, the screen go to the screen
+ * companion; everything else goes to Baton's intent path untouched. The companion answers
+ * aloud itself, so the router's reply is empty.
+ */
+export const withScreenRoutes = (inner: VoiceRouter, screen: ScreenVoiceHook): VoiceRouter => ({
+  route: async (effect, context) => {
+    if (effect.kind === "command") {
+      const intent = parseScreenIntent(effect.text, screen.active());
+      if (intent !== null) {
+        screen.handle(intent);
+        return { kind: "ran", reply: "", workSessionId: null, source: "screen" };
+      }
+    }
+    return inner.route(effect, context);
+  },
+});
+
 export const createDesktopVoiceCore = async (input: {
   readonly assets: VoiceAssets;
   readonly platform: NodeJS.Platform;
@@ -161,6 +187,7 @@ export const createDesktopVoiceCore = async (input: {
   /** Off in tests; on the desktop the OS voice reads replies back. */
   readonly speak?: boolean;
   readonly origin?: number;
+  readonly screen?: ScreenVoiceHook;
 }): Promise<{ readonly core: BatonVoiceCore; readonly drain: () => Promise<void> }> => {
   const missing = missingVoiceAssets(input.assets);
   if (missing.length > 0) {
@@ -184,7 +211,10 @@ export const createDesktopVoiceCore = async (input: {
       vocabulary: () => ["Baton", "Claude", "Codex", "VentureOS"],
     }),
     tts: input.speak === false ? null : createOsTts(input.platform),
-    router: createVoiceRouter(input.intent),
+    router:
+      input.screen === undefined
+        ? createVoiceRouter(input.intent)
+        : withScreenRoutes(createVoiceRouter(input.intent), input.screen),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
   });
   if (input.onReply !== undefined) {
