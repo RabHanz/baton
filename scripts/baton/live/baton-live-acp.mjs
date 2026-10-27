@@ -21,8 +21,6 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 
-const SESSIONS_DIR =
-  process.env.BATON_CLAUDE_SESSIONS_DIR ?? NodePath.join(NodeOS.homedir(), ".claude", "sessions");
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
@@ -42,7 +40,33 @@ export function promptText(blocks) {
     .filter((text) => !text.trimStart().startsWith("<runtime_info>"));
   const first = texts.join("\n\n");
   const wrapped = /<user_request>\n?([\s\S]*?)\n?<\/user_request>/.exec(first);
-  return (wrapped === null ? first : wrapped[1]).trim();
+  const text = wrapped === null ? first : wrapped[1];
+  // T3 prefixes a context handoff (and restart notes) as "<context>\n\nUser message:\n<text>".
+  // The live session already holds its own history, so only the user's words go through.
+  const marker = "\n\nUser message:\n";
+  const at = text.lastIndexOf(marker);
+  return (at < 0 ? text : text.slice(at + marker.length)).trim();
+}
+
+/** T3's own restart continuation: not the user's words, so never typed into the session. */
+export const isAppContinuation = (text) => text.trim() === "Continue where you left off.";
+
+/** Every Claude config directory's sessions folder (same list as ClaudeLiveSessions.ts). */
+export function sessionsDirs() {
+  if (process.env.BATON_CLAUDE_SESSIONS_DIR) return [process.env.BATON_CLAUDE_SESSIONS_DIR];
+  const home = NodeOS.homedir();
+  const dirs = [NodePath.join(home, ".claude")];
+  const add = (parent, filter) => {
+    try {
+      for (const name of NodeFS.readdirSync(parent))
+        if (filter(name)) dirs.push(NodePath.join(parent, name));
+    } catch {}
+  };
+  add(NodePath.join(home, ".local", "share", "claude-swap", "sessions"), () => true);
+  add(home, (name) => name.startsWith(".claude-"));
+  for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(":"))
+    if (extra) dirs.push(extra);
+  return [...new Set(dirs)].map((dir) => NodePath.join(dir, "sessions"));
 }
 
 /** T3 lists each attachment as `[Attached <type> "<name>" is saved at: <path>...]`. */
@@ -97,7 +121,15 @@ const herdrEnvOf = (pid) => {
 };
 
 /** The running interactive process for a Claude conversation id, or null. */
-export function findLiveSession(sessionId, dir = SESSIONS_DIR) {
+export function findLiveSession(sessionId) {
+  for (const dir of sessionsDirs()) {
+    const found = findIn(sessionId, dir);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+function findIn(sessionId, dir) {
   let names = [];
   try {
     names = NodeFS.readdirSync(dir).filter((name) => /^\d+\.json$/.test(name));
@@ -220,6 +252,7 @@ async function prompt(params) {
     say(sessionId, "This thread is not bound to a running Claude Code session.");
     return { stopReason: "end_turn" };
   }
+  if (isAppContinuation(promptText(params.prompt))) return { stopReason: "end_turn" };
   let live = findLiveSession(sessionId);
   if (live === null) {
     say(sessionId, "That Claude Code session is not running on this machine now.");

@@ -77,6 +77,8 @@ export const ClaudeLiveSession = Schema.Struct({
   sessionId: TrimmedNonEmptyString,
   cwd: TrimmedNonEmptyString,
   name: Schema.NullOr(Schema.String),
+  /** "user" when someone named the session; "derived" names change on every restart. */
+  nameSource: Schema.optionalKey(Schema.String),
   /** Claude Code's own word: "busy", "idle", or another it adds later. */
   status: Schema.NullOr(Schema.String),
   /** "cli", "vscode", … as Claude Code reports its entrypoint. */
@@ -87,6 +89,8 @@ export const ClaudeLiveSession = Schema.Struct({
   /** The account behind its config directory, when the pool knows it. */
   account: Schema.NullOr(Schema.String),
   project: Schema.optionalKey(BatonProjectRef),
+  /** The Claude config directory the session runs under, when it is not `~/.claude` (D83). */
+  configDir: Schema.optionalKey(Schema.String),
   updatedAt: Schema.NullOr(Schema.String),
 });
 export type ClaudeLiveSession = typeof ClaudeLiveSession.Type;
