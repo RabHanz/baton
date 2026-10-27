@@ -2222,3 +2222,72 @@ files are `sdk-cli` cron runs, not the live process). A plain-terminal / Remote 
 never restarted by a send: the reply says it was not delivered and that `bring into Herdr` moves
 it (restart, Remote Control drops). No safe outside input path exists: Claude Code's peer socket is
 private, and TIOCSTI is off on kernel 6.8.
+
+## D84 — The screen companion: look, teach and drive, on his subscription, with his yes
+
+The Director, 2026-10-27, after the Clicky research (`research/clicky-2026-10-27/`): build what
+Clicky does, reuse its MIT code, and do not limit what may be captured, because that depends on
+intent and his approval. The research's "never continuous, skip password windows" limits are not
+used. User guide and the Windows checklist: `SCREEN.md`.
+
+Built in `packages/baton-shared/src/screenCompanion.ts` (pure, tested without a display) and
+`apps/desktop/src/baton/screen/` (Electron):
+
+- **Look.** "What's this error?", "where is the export button", or anything typed into the
+  Ctrl+Alt+Shift+F8 box. Every display is captured once (cursor's first, long edge 1280 px, as
+  farzaa/clicky does), sent with the question, answered aloud (OS voice) and on a caption card,
+  and the blue pointer flies to `[POINT:x,y:label:screenN]`. Follow-ups within five minutes share
+  the conversation.
+- **Teach.** "Teach me / show me how / walk me through …": one step at a time, each pointed at.
+  Baton then watches a 320 px grey thumbnail, compared against the screenshot the step was judged
+  from. When it changes and then holds still for two polls, Baton captures again and the model
+  checks the previous step before giving the next, until `[DONE]`. "Next", "repeat" and "stop"
+  work by voice. Thresholds were measured under Xvfb: a typed name changes 0.05 % of the
+  thumbnail, a line of result text 0.15 %, a blinking caret 0.006 %.
+- **Drive.** "Drive: …", "take over", "… for me". The model returns a `baton-drive` JSON plan.
+  clicky-windows' validator (ported) refuses unknown kinds and fields, coordinates outside the
+  screenshot, multi-line typing, the Windows key and security chords, and more than 20 steps. The
+  plan's clicks are drawn as numbered dots, the steps are listed in an approval box, and nothing
+  runs without "Run it". A screen that changed since the plan refuses it. While running, Esc,
+  "stop" and moving the mouse more than 12 px stop it, a held button is always released, and each
+  step that names what it `expect`s is checked against a fresh screenshot (`[OK]` or
+  `[STOP: why]`). Input is one long-lived PowerShell calling user32 on Windows (per-monitor DPI
+  aware, text pasted so any keyboard layout works), xdotool on Linux; macOS refuses by name.
+
+**Approval.** Every capture asks first: allow once, for this lesson or drive, for an hour, or
+always (also a tray checkbox). A drive plan always asks again, whatever that setting says.
+Screenshots are held in memory for the request and never written to disk.
+
+**The model is his subscription (D1).** The companion runs his own `claude` binary as a
+long-lived `-p --input-format stream-json` conversation, screenshots as base64 image blocks, with
+`--safe-mode` (no hooks, CLAUDE.md, MCP servers or plugins; auth kept), `--tools ""`, its own
+system prompt, `--no-session-persistence`, and `ANTHROPIC_API_KEY` removed from the child's
+environment. Measured on the box: 3.6 s for a screenshot question, `apiKeySource: none`, and the
+subscription model's raw coordinates landed on the right element twice out of two (YouTube's
+search box, the form's name field), so clicky-windows' grid locator was not needed. That answers
+research C11/C12 for Sonnet.
+
+**Voice.** `withScreenRoutes` sits in front of the voice router. A command `parseScreenIntent`
+recognises goes to the companion; everything else goes to Baton's grammar unchanged. The parser
+is deliberately narrow, so "show me the scheduler session" stays §21's show.
+
+Rejected:
+
+- **Sending the screenshot to the focused work session through D73**, the research's suggested
+  first step. It puts screenshots into his work threads, cannot point, and a lesson needs its own
+  conversation.
+- **The Agent SDK or metered API calls**, Clicky's route: D1.
+- **clicky-windows as a sidecar**: GPL-3.0 UI, a second voice stack, no inbound control API.
+- **The `computer_*` computer-use tool**: API only, and plain vision on the subscription was
+  accurate enough.
+- **A native input module** (nut.js, robotjs): a native rebuild per Electron version, for what
+  user32 through one PowerShell already does.
+
+Proven on Linux with `scripts/baton/screen-smoke.sh` (Xvfb, a compositor, xdotool as the user, his
+claude answering). Look pointed at the right field in 14 s. Teach gave step 1, noticed the typing
+without a "next", confirmed it ("Rabee is in the name field, so that step worked"), pointed at the
+next field, and finished on submit. Drive planned three steps, drew them, and after approval
+filled the field and submitted ("Submitted: Baton Test"). Frames in
+`frames/screen-companion-2026-10-27/`. Not proven: anything on Windows (DPI maths, PowerShell input,
+SAPI voice, content protection keeping the overlay out of screenshots), more than one monitor, and
+the voice path end to end with a microphone.
