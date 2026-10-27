@@ -23,6 +23,7 @@ import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
 import * as IntentExecutor from "./IntentExecutorLive.ts";
 import * as IntentService from "./IntentService.ts";
+import * as LiveSessionMirror from "./LiveSessionMirror.ts";
 import * as OrchestrationEffects from "./OrchestrationEffectsLive.ts";
 import * as OrchestrationReactor from "./OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./OrchestrationRuleService.ts";
@@ -64,4 +65,8 @@ export const workers = Layer.effectDiscard(
     yield* (yield* SynopsisReactor.BatonSynopsisReactor).start();
     yield* (yield* OrchestrationReactor.BatonOrchestrationReactor).start();
   }),
-).pipe(Layer.provideMerge(AccountRotationReactor.layer));
+).pipe(
+  Layer.provideMerge(AccountRotationReactor.layer),
+  // Every live Claude Code session as a T3 thread, for T3's official apps (D83).
+  Layer.provideMerge(LiveSessionMirror.layer),
+);
