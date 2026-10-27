@@ -41,7 +41,8 @@ import {
   type OrchestrationV2AppThread,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderThread,
-  type RunId,
+  type OrchestrationV2Run,
+  RunId,
 } from "@t3tools/contracts";
 import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import {
@@ -59,7 +60,7 @@ import * as Schedule from "effect/Schedule";
 
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
+import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make("baton-live");
@@ -129,9 +130,28 @@ export const projectForDirectory = (
   return projects.find((p) => p.repositoryIdentity?.canonicalKey === repositoryKey)?.id ?? null;
 };
 
+/** The box, as the official apps' environment list names it: the host's first label. */
+const box = (): string => NodeOS.hostname().split(".")[0] ?? NodeOS.hostname();
+
+/**
+ * The thread title the official apps show: the session's own name, then the account and box it
+ * runs on. T3 renders only the title in its thread lists, so that is where they go.
+ */
+export const liveThreadTitle = (input: {
+  readonly name: string;
+  readonly account: string | null;
+  readonly box: string;
+}): string =>
+  [input.name.trim().slice(0, 60) || "Live session", input.account, input.box]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .join(" · ");
+
 /** Claude Code keeps a conversation at `<config>/projects/<slug>/<id>.jsonl`. */
 const transcriptPath = (session: ClaudeLiveSession): string | null => {
-  const root = NodePath.join(NodeOS.homedir(), ".claude", "projects");
+  const root = NodePath.join(
+    session.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"),
+    "projects",
+  );
   const direct = NodePath.join(root, claudeProjectSlug(session.cwd), `${session.sessionId}.jsonl`);
   if (NodeFS.existsSync(direct)) return direct;
   try {
@@ -160,6 +180,12 @@ interface Follow {
   offset: number;
   rest: string;
   readonly written: Set<string>;
+  /** The session's own name, once a first user message has given it one. */
+  name: string | null;
+  /** Where assistant messages go: the turn the last user message started (Baton's or T3's). */
+  target: RunId | null;
+  /** A terminal turn Baton opened that is still running. */
+  open: OrchestrationV2Run | null;
 }
 
 const make = Effect.gen(function* () {
@@ -379,38 +405,118 @@ const make = Effect.gen(function* () {
   /** Messages the thread already shows: Baton's own copies, and what T3's composer sent. */
   const threadMessages = (threadId: ThreadId) => engine.threadMessages(threadId, 400);
 
+  const runEvent = (
+    type: "run.created" | "run.updated",
+    run: OrchestrationV2Run,
+  ): OrchestrationV2DomainEvent => ({
+    id: EventId.make(`${PREFIX}:${type}:${run.id}:${run.status}`),
+    type,
+    threadId: run.threadId,
+    occurredAt: run.completedAt ?? run.startedAt ?? run.requestedAt,
+    payload: run,
+  });
+
+  const completeRun = (run: OrchestrationV2Run, at: DateTime.Utc): OrchestrationV2Run => ({
+    ...run,
+    status: "completed",
+    completedAt: at,
+  });
+
+  /**
+   * Transcript messages into the thread. A user message typed in the terminal opens its own turn
+   * (a run, so the official apps show it as a turn and the thread as Working while it runs);
+   * the copy of a message T3's composer sent is skipped and its replies join that composer turn.
+   */
   const writeMessages = (
     follow: Follow,
-    sessionId: string,
+    session: ClaudeLiveSession,
     messages: ReadonlyArray<LiveTranscriptMessage>,
   ) =>
     Effect.gen(function* () {
       const fresh = messages.filter((m) => !follow.written.has(m.uuid));
       if (fresh.length === 0) return;
-      const shell = yield* engine.threadShell(follow.threadId);
-      const runId = shell?.latestRunId ?? null;
+      const runs = yield* engine.threadRuns(follow.threadId);
+      let ordinal = runs.reduce((max, run) => Math.max(max, run.ordinal), 0);
+      const latest = runs.reduce<OrchestrationV2Run | null>(
+        (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
+        null,
+      );
+      follow.target ??= latest?.id ?? null;
       const existing = fresh.some((m) => m.role === "user")
         ? yield* threadMessages(follow.threadId)
         : [];
       const composerSent = existing.filter(
         (m) => m.role === "user" && !String(m.id).startsWith(`${PREFIX}:`),
       );
-      const events = fresh.flatMap((message) => {
+      const events: Array<OrchestrationV2DomainEvent> = [];
+      for (const message of fresh) {
         follow.written.add(message.uuid);
-        if (
-          message.role === "user" &&
-          composerSent.some(
+        const at = DateTime.makeUnsafe(message.createdAt);
+        if (message.role === "user") {
+          const echo = composerSent.find(
             (sent) =>
               isComposerEcho(message.text, sent.text) &&
               Math.abs(DateTime.toEpochMillis(sent.createdAt) - Date.parse(message.createdAt)) <
                 15 * 60_000,
-          )
-        ) {
-          return [];
+          );
+          if (follow.open !== null) {
+            events.push(runEvent("run.updated", completeRun(follow.open, at)));
+            follow.open = null;
+          }
+          if (echo !== undefined) {
+            follow.target = echo.runId ?? latest?.id ?? follow.target;
+            continue;
+          }
+          follow.name ??= message.text.split("\n")[0] ?? null;
+          ordinal += 1;
+          const run: OrchestrationV2Run = {
+            id: RunId.make(`${PREFIX}:run:${session.sessionId}:${message.uuid}`),
+            threadId: follow.threadId,
+            ordinal,
+            providerInstanceId: LIVE_INSTANCE_ID,
+            modelSelection: { instanceId: LIVE_INSTANCE_ID, model: MODEL },
+            providerThreadId: null,
+            userMessageId: MessageId.make(`${PREFIX}:${session.sessionId}:${message.uuid}`),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "running",
+            requestedAt: at,
+            startedAt: at,
+            completedAt: null,
+            checkpointId: null,
+            contextHandoffId: null,
+          };
+          events.push(runEvent("run.created", run));
+          follow.open = run;
+          follow.target = run.id;
         }
-        return messageEvents(follow.threadId, sessionId, message, runId);
-      });
+        events.push(...messageEvents(follow.threadId, session.sessionId, message, follow.target));
+      }
       if (events.length > 0) yield* engine.writeEvents({ events });
+    });
+
+  /** A terminal turn ends when Claude Code stops reporting busy; a queued composer send starts. */
+  const settle = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      if (follow.open === null || session.status === "busy") return;
+      const done = completeRun(follow.open, yield* DateTime.now);
+      follow.open = null;
+      yield* engine.writeEvents({ events: [runEvent("run.updated", done)] });
+      yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
+    });
+
+  /** Keep the session's own title, with its account and box; T3's auto-title does not stick. */
+  const retitle = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      const wanted = liveThreadTitle({
+        name: session.name ?? follow.name ?? "Live session",
+        account: session.account,
+        box: box(),
+      });
+      const shell = yield* engine.threadShell(follow.threadId);
+      if (shell !== null && shell.title !== wanted && shell.titleRegeneration == null) {
+        yield* engine.renameThread({ tag: "live", threadId: follow.threadId, title: wanted });
+      }
     });
 
   const startFollowing = (session: ClaudeLiveSession) =>
@@ -431,7 +537,11 @@ const make = Effect.gen(function* () {
         yield* createThread(
           session,
           threadId,
-          (session.name ?? firstUser ?? "Live session").slice(0, 80),
+          liveThreadTitle({
+            name: session.name ?? firstUser ?? "Live session",
+            account: session.account,
+            box: box(),
+          }),
         );
         if ((yield* engine.threadShell(threadId)) === null) {
           owned.add(session.sessionId); // another thread holds this native session
@@ -445,11 +555,21 @@ const make = Effect.gen(function* () {
           return id.startsWith(`${PREFIX}:`) ? [id.slice(at + 1)] : [];
         }),
       );
-      const follow: Follow = { threadId, path, offset: size, rest: "", written: known };
+      const follow: Follow = {
+        threadId,
+        path,
+        offset: size,
+        rest: "",
+        written: known,
+        name: history.find((m) => m.role === "user")?.text.split("\n")[0] ?? null,
+        target: null,
+        open: null,
+      };
       follows.set(session.sessionId, follow);
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
-      // restart whatever arrived while the server was down.
-      yield* writeMessages(follow, session.sessionId, history);
+      // restart whatever arrived while the server was down. History turns are finished turns.
+      yield* writeMessages(follow, session, history);
+      if (session.status !== "busy") yield* settle(follow, session);
     });
 
   const step = (session: ClaudeLiveSession, follow: Follow) =>
@@ -470,13 +590,13 @@ const make = Effect.gen(function* () {
       follow.rest = rest;
       yield* writeMessages(
         follow,
-        session.sessionId,
+        session,
         lines.flatMap((line) => parseLiveTranscriptLine(line) ?? []),
       );
     });
 
   const tick = Effect.gen(function* () {
-    const live = yield* readClaudeLiveSessions({ account: null });
+    const live = yield* readAllProfileLiveSessions();
     const fresh = live.filter((s) => !follows.has(s.sessionId) && !owned.has(s.sessionId));
     if (fresh.length > 0) {
       // A session upstream's importer already turned into a thread is that thread's.
@@ -496,7 +616,14 @@ const make = Effect.gen(function* () {
       live.filter((s) => !owned.has(s.sessionId)),
       (session) => {
         const follow = follows.get(session.sessionId);
-        return (follow === undefined ? startFollowing(session) : step(session, follow)).pipe(
+        return (
+          follow === undefined
+            ? startFollowing(session)
+            : step(session, follow).pipe(
+                Effect.andThen(settle(follow, session)),
+                Effect.andThen(retitle(follow, session)),
+              )
+        ).pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("Baton live threads: a session could not be mirrored", {
               sessionId: session.sessionId,

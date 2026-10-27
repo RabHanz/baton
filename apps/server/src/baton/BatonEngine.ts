@@ -17,6 +17,7 @@ import {
   type ModelSelection,
   type OrchestrationProjectShell,
   type OrchestrationV2ConversationMessage,
+  type OrchestrationV2Run,
   ProjectId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadShell,
@@ -101,6 +102,19 @@ export interface BatonEngineShape {
     threadId: ThreadId,
     rowLimit: number,
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>>;
+  /** The thread's runs, for live-session turns (D83). Empty on an engine error. */
+  readonly threadRuns: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<OrchestrationV2Run>>;
+  /** Upstream's `thread.metadata.update` with a title; false when refused. */
+  readonly renameThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+    readonly title: string;
+  }) => Effect.Effect<boolean>;
+  /** Upstream's `queue.resume`: start a message queued behind a run that just ended. */
+  readonly resumeQueue: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<void>;
   /** A new T3 project for a directory, through upstream's project service; null when refused. */
   readonly createProject: (input: {
     readonly tag: string;
@@ -324,6 +338,32 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed([])),
     );
 
+  const threadRuns: BatonEngineShape["threadRuns"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, ["runs"]).pipe(
+      Effect.map((records) => records.runs),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
+  const renameThread: BatonEngineShape["renameThread"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.metadata.update",
+        commandId: yield* commandId(`${input.tag}:rename`),
+        threadId: input.threadId,
+        title: input.title,
+      });
+      return true;
+    }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+
+  const resumeQueue: BatonEngineShape["resumeQueue"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "queue.resume",
+        commandId: yield* commandId(`${input.tag}:queue`),
+        threadId: input.threadId,
+      });
+    }).pipe(Effect.ignoreCause);
+
   const createProject: BatonEngineShape["createProject"] = (input) =>
     Effect.gen(function* () {
       if (Option.isNone(projectService)) return null;
@@ -344,6 +384,9 @@ export const make = Effect.gen(function* () {
     threadShell,
     writeEvents,
     threadMessages,
+    threadRuns,
+    renameThread,
+    resumeQueue,
     createProject,
     projects,
     changedThreads,
@@ -385,5 +428,8 @@ export const layerStatic = (input: {
     settleThread: () => Effect.succeed(true),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
+    threadRuns: () => Effect.succeed([]),
+    renameThread: () => Effect.succeed(true),
+    resumeQueue: () => Effect.void,
     createProject: () => Effect.succeed(null),
   });
