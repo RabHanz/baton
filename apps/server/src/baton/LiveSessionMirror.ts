@@ -503,9 +503,16 @@ const make = Effect.gen(function* () {
    */
   const ensureTurn = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      if (follow.open !== null) return;
       const busy = session.status === "busy";
+      if (follow.open !== null && !busy) return;
       const runs = yield* engine.threadRuns(follow.threadId);
+      if (follow.open !== null) {
+        // T3's startup reconcile can cancel a turn Baton holds open; the session decides.
+        const held = runs.find((run) => run.id === follow.open?.id);
+        if (held !== undefined && !["completed", "cancelled", "interrupted"].includes(held.status))
+          return;
+        follow.open = null;
+      }
       const latest = runs.reduce<OrchestrationV2Run | null>(
         (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
         null,
