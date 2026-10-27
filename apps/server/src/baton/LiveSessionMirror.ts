@@ -71,6 +71,8 @@ const TICK = "2 seconds";
 /** How much of an existing transcript a new thread starts with. */
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
 const FIRST_MESSAGES = 120;
+/** How far back a new thread looks for those messages. */
+const MAX_BACKFILL_BYTES = 64 * 1024 * 1024;
 /** A busy session can write a lot between ticks; one tick reads at most this much. */
 const STEP_BYTES = 8 * 1024 * 1024;
 
@@ -615,13 +617,22 @@ const make = Effect.gen(function* () {
       const threadId = liveThreadId(session.sessionId);
       const path = transcriptPath(session);
       const size = path === null ? 0 : NodeFS.statSync(path).size;
-      const from = Math.max(0, size - FIRST_READ_BYTES);
-      const chunk = path === null ? "" : readRange(path, from, size);
-      // A read from the middle of the file starts mid-record; the first line is dropped.
-      const lines = splitTranscriptChunk(chunk).lines.slice(from > 0 ? 1 : 0);
-      const history = lines
-        .flatMap((line) => parseLiveTranscriptLine(line) ?? [])
-        .slice(-FIRST_MESSAGES);
+      // Long tool-heavy sessions hold few messages per megabyte: read back until there are enough.
+      let from = size;
+      let history: Array<LiveTranscriptMessage> = [];
+      while (
+        path !== null &&
+        from > 0 &&
+        history.length < FIRST_MESSAGES &&
+        size - from < MAX_BACKFILL_BYTES
+      ) {
+        from = Math.max(0, from - FIRST_READ_BYTES);
+        const chunk = readRange(path, from, size);
+        // A read from the middle of the file starts mid-record; the first line is dropped.
+        const lines = splitTranscriptChunk(chunk).lines.slice(from > 0 ? 1 : 0);
+        history = lines.flatMap((line) => parseLiveTranscriptLine(line) ?? []);
+      }
+      history = history.slice(-FIRST_MESSAGES);
       const shell = yield* engine.threadShell(threadId);
       if (shell === null) {
         const firstUser = history.find((m) => m.role === "user")?.text.split("\n")[0];
@@ -657,6 +668,13 @@ const make = Effect.gen(function* () {
         open: null,
       };
       follows.set(session.sessionId, follow);
+      // A running session is never filed away as settled, however long it has been quiet.
+      const current = yield* engine.threadShell(threadId);
+      yield* engine.keepActive({
+        tag: "live",
+        threadId,
+        settled: current?.settledOverride === "settled",
+      });
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
       // restart whatever arrived while the server was down. History turns are finished turns.
       yield* writeMessages(follow, session, history);
@@ -691,17 +709,18 @@ const make = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
     const fresh = live.filter((s) => !follows.has(s.sessionId) && !owned.has(s.sessionId));
     if (fresh.length > 0) {
-      // A session upstream's importer already turned into a thread is that thread's.
+      // A session upstream's importer copied is a snapshot, not the live conversation: the live
+      // thread replaces it, and an import nobody continued (no turns) is archived (reversible).
+      // An import someone continued in T3 is T3's own thread now, so Baton stays out of it.
       const shells = yield* engine.threadShells;
       for (const session of fresh) {
-        if (
-          shells.some(
-            (t) =>
-              String(t.id).startsWith("import:") && String(t.id).endsWith(`:${session.sessionId}`),
-          )
-        ) {
-          owned.add(session.sessionId);
-        }
+        const imported = shells.find(
+          (t) =>
+            String(t.id).startsWith("import:") && String(t.id).endsWith(`:${session.sessionId}`),
+        );
+        if (imported === undefined) continue;
+        if (imported.latestRunId !== null) owned.add(session.sessionId);
+        else yield* engine.archiveThread({ tag: "live", threadId: imported.id });
       }
     }
     yield* Effect.forEach(

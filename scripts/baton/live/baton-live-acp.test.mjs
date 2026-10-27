@@ -10,6 +10,8 @@ import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
 import {
+  isAdoptRequest,
+  notSentNote,
   isAppContinuation,
   promptText,
   splitAttachments,
@@ -48,6 +50,16 @@ NodeTest.test("a context handoff T3 prepends never reaches the live session", ()
   NodeAssert.equal(promptText([{ type: "text", text: wrapped }]), "say ALPHA");
   NodeAssert.equal(isAppContinuation(" Continue where you left off. "), true);
   NodeAssert.equal(isAppContinuation("continue the refactor"), false);
+});
+
+NodeTest.test("a plain-terminal session is only moved into Herdr when asked", () => {
+  NodeAssert.equal(isAdoptRequest("bring into Herdr"), true);
+  NodeAssert.equal(isAdoptRequest(" Bring it into herdr. "), true);
+  NodeAssert.equal(isAdoptRequest("please fix the build"), false);
+  const note = notSentNote({ remoteControl: true, status: "idle" });
+  NodeAssert.match(note, /^Not sent\./);
+  NodeAssert.match(note, /Remote Control/);
+  NodeAssert.match(note, /bring into Herdr/);
 });
 
 NodeTest.test("attachment notes become paths", () => {
