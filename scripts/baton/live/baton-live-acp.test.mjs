@@ -9,7 +9,12 @@ import * as NodeReadline from "node:readline";
 import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
-import { promptText, splitAttachments, safeInboxName } from "./baton-live-acp.mjs";
+import {
+  isAppContinuation,
+  promptText,
+  splitAttachments,
+  safeInboxName,
+} from "./baton-live-acp.mjs";
 
 const AGENT = NodePath.join(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
@@ -33,6 +38,16 @@ NodeTest.test("only the user's words reach Claude, never T3's instruction wrappe
     ]),
     "plain",
   );
+});
+
+NodeTest.test("a context handoff T3 prepends never reaches the live session", () => {
+  const text =
+    "Context handoff (manual_context):\nProvider context handoff. Thread: baton-live:x.\n\nUser message:\nsay ALPHA";
+  NodeAssert.equal(promptText([{ type: "text", text }]), "say ALPHA");
+  const wrapped = `<t3_code_instructions>\nx\n</t3_code_instructions>\n\n<user_request>\n${text}\n</user_request>`;
+  NodeAssert.equal(promptText([{ type: "text", text: wrapped }]), "say ALPHA");
+  NodeAssert.equal(isAppContinuation(" Continue where you left off. "), true);
+  NodeAssert.equal(isAppContinuation("continue the refactor"), false);
 });
 
 NodeTest.test("attachment notes become paths", () => {

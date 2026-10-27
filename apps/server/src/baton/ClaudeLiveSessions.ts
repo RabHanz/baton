@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/prefer-effect-fn -- Baton file (D82) */
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDateInEffect:off globalDate:off
 /**
  * Live Claude Code sessions on this machine, read from Claude Code's own
@@ -59,6 +60,7 @@ export const parseClaudeSessionDescriptor = (
     sessionId,
     cwd,
     name: str(d["name"]),
+    ...(str(d["nameSource"]) === null ? {} : { nameSource: str(d["nameSource"])! }),
     status: str(d["status"]),
     entrypoint: str(d["entrypoint"]),
     herdrPane: herdrPaneRef(input.env(pid)),
@@ -91,6 +93,64 @@ const environOf = (pid: number): ReadonlyMap<string, string> => {
     return new Map();
   }
 };
+
+/**
+ * Every Claude config directory a session can run under (D83): `~/.claude`, each claude-swap
+ * account profile (`cswap run`), any `~/.claude-*` with a sessions folder, and
+ * `BATON_CLAUDE_CONFIG_DIRS` (colon-separated).
+ */
+export const claudeConfigDirs = (): ReadonlyArray<string> => {
+  const home = NodeOS.homedir();
+  const dirs = [NodePath.join(home, ".claude")];
+  const add = (parent: string, filter: (name: string) => boolean) => {
+    try {
+      for (const name of NodeFS.readdirSync(parent)) {
+        if (filter(name)) dirs.push(NodePath.join(parent, name));
+      }
+    } catch {}
+  };
+  add(NodePath.join(home, ".local", "share", "claude-swap", "sessions"), () => true);
+  add(home, (name) => name.startsWith(".claude-"));
+  for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(":")) {
+    if (extra.length > 0) dirs.push(extra);
+  }
+  return [...new Set(dirs)].filter((dir) => NodeFS.existsSync(NodePath.join(dir, "sessions")));
+};
+
+/** The signed-in account of a config directory: its `oauthAccount` address, before the `@`. */
+export const accountOfConfigDir = (dir: string): string | null => {
+  const home = NodeOS.homedir();
+  // Claude Code keeps the default profile's identity in ~/.claude.json, a custom one's inside it.
+  const file =
+    dir === NodePath.join(home, ".claude")
+      ? NodePath.join(home, ".claude.json")
+      : NodePath.join(dir, ".claude.json");
+  try {
+    const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as {
+      oauthAccount?: { emailAddress?: unknown };
+    };
+    const email = parsed.oauthAccount?.emailAddress;
+    return typeof email === "string" && email.includes("@") ? email.split("@")[0]! : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Sessions under every config directory, each with its own account (the live-thread mirror). */
+export const readAllProfileLiveSessions = (): Effect.Effect<ReadonlyArray<ClaudeLiveSession>> =>
+  Effect.gen(function* () {
+    const home = NodePath.join(NodeOS.homedir(), ".claude");
+    const all: Array<ClaudeLiveSession> = [];
+    for (const dir of claudeConfigDirs()) {
+      const found = yield* readClaudeLiveSessions({
+        account: accountOfConfigDir(dir),
+        dir: NodePath.join(dir, "sessions"),
+      });
+      for (const session of found)
+        all.push(dir === home ? session : { ...session, configDir: dir });
+    }
+    return all;
+  });
 
 export const readClaudeLiveSessions = (input: {
   readonly account: string | null;
