@@ -71,8 +71,9 @@ const MODEL = "live";
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
  * this one (they are a mirror of the transcript, which is the record).
  */
-const PREFIX = "baton-live2";
-const RETIRED_PREFIX = "baton-live:";
+const PREFIX = "baton-live3";
+/** baton-live2 (round 3 first cut) closed old turns at server start; rebuilt too. */
+const RETIRED_PREFIXES = ["baton-live:", "baton-live2:"];
 const TICK = "2 seconds";
 /** How much of an existing transcript a new thread starts with. */
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
@@ -725,7 +726,7 @@ const make = Effect.gen(function* () {
   /** Delete the retired namespace's threads once, so each session has one thread. */
   const retireOld = Effect.gen(function* () {
     for (const shell of yield* engine.threadShells) {
-      if (String(shell.id).startsWith(RETIRED_PREFIX)) {
+      if (RETIRED_PREFIXES.some((prefix) => String(shell.id).startsWith(prefix))) {
         yield* engine.deleteThread({ tag: "live", threadId: shell.id });
       }
     }
