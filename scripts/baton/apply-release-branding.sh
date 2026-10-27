@@ -18,15 +18,24 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
-sed -i 's/^const DESKTOP_APP_ID = "com\.t3tools\.t3code";$/const DESKTOP_APP_ID = "dev.rabee.baton";/' \
+# macOS ships BSD sed, where -i takes a (possibly empty) backup-suffix
+# argument; GNU sed (Linux, and Windows' Git Bash) takes none. Passing the
+# wrong form either corrupts the pattern or leaves a stray *.bak file.
+if [[ "$(uname)" == "Darwin" ]]; then
+  sedi() { sed -i '' "$@"; }
+else
+  sedi() { sed -i "$@"; }
+fi
+
+sedi 's/^const DESKTOP_APP_ID = "com\.t3tools\.t3code";$/const DESKTOP_APP_ID = "dev.rabee.baton";/' \
   scripts/build-desktop-artifact.ts
-sed -i 's/artifactName: "T3-Code-\${version}-\${arch}\.\${ext}",/artifactName: "Baton-${version}-${arch}.${ext}",/' \
+sedi 's/artifactName: "T3-Code-\${version}-\${arch}\.\${ext}",/artifactName: "Baton-${version}-${arch}.${ext}",/' \
   scripts/build-desktop-artifact.ts
 
-sed -i 's/"productName": "T3 Code (Beta)"/"productName": "Baton"/' \
+sedi 's/"productName": "T3 Code (Beta)"/"productName": "Baton"/' \
   apps/desktop/package.json
 
-sed -i 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Baton";/' \
+sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Baton";/' \
   apps/desktop/src/app/DesktopEnvironment.ts
 
 grep -q 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
