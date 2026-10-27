@@ -513,7 +513,9 @@ const make = Effect.gen(function* () {
       const now = yield* DateTime.now;
       if (latest !== null) {
         const ours = String(latest.id).startsWith(`${PREFIX}:run:`);
-        if (!busy || !ours || latest.status !== "completed") return;
+        // A server restart cancels a running turn; a session still busy reopens it.
+        const ended = ["completed", "cancelled", "interrupted"].includes(latest.status);
+        if (!busy || !ours || !ended) return;
         const reopened: OrchestrationV2Run = { ...latest, status: "running", completedAt: null };
         yield* engine.writeEvents({ events: [runEvent("run.updated", reopened)] });
         follow.open = reopened;
