@@ -4,10 +4,10 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index f57e709bca7afa03330b2351af731874bd69073d..152d43ccb41438ea619ff960e9df712d9854f728 100644
+index d49d2cdebb7019662d8e885034b6473721f4dac2..4f40d3a9c546c98e65dfb911288f85898b76135e 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -36,6 +36,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
+@@ -37,6 +37,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
  import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
  import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
  import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -15,7 +15,7 @@ index f57e709bca7afa03330b2351af731874bd69073d..152d43ccb41438ea619ff960e9df712d
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
-@@ -178,6 +179,7 @@ const bootstrap = Effect.gen(function* () {
+@@ -179,6 +180,7 @@ const bootstrap = Effect.gen(function* () {
      clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
    });
    yield* installDesktopIpcHandlers();
@@ -24,10 +24,10 @@ index f57e709bca7afa03330b2351af731874bd69073d..152d43ccb41438ea619ff960e9df712d
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 4d57b30e2139ae6840999e090480b31c55088764..b357fa45df3f8b845299d6fb63a346fc6e9c6eeb 100644
+index a3e1e711cb2d3d126f2a4c762e7b077467fb23fd..63efc67d8191dade37c78f0bdcc43dd7288661d2 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
-@@ -12,6 +12,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+@@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
  
  import * as IpcChannels from "./ipc/channels.ts";
  import { mergeLegacyLocalStorage } from "./legacyLocalStorageMerge.ts";
@@ -35,7 +35,7 @@ index 4d57b30e2139ae6840999e090480b31c55088764..b357fa45df3f8b845299d6fb63a346fc
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -441,3 +442,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -428,3 +429,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);

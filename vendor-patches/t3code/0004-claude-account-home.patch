@@ -3,10 +3,10 @@ Subject: providers: a second Claude account home shares the primary's (D52)
 One call when the Claude adapter is created; the work is in provider/Drivers/ClaudeAccountHome.ts.
 
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-index baf9a0b0a690b6186323dc6979d92d32c54f9678..ccbceb67f941e6671dcddb9191e5806854883acf 100644
+index 030fb5785e6d9c439bf46bbf432c3db8c90a8e82..8b5d994b5bffbc0e98c3cdf5a64211e11147de8c 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
-@@ -147,6 +147,7 @@ import {
+@@ -150,6 +150,7 @@ import {
    makeClaudeEnvironment,
    resolveClaudeHomePath,
  } from "../../provider/Drivers/ClaudeHome.ts";
@@ -14,7 +14,7 @@ index baf9a0b0a690b6186323dc6979d92d32c54f9678..ccbceb67f941e6671dcddb9191e58068
  import {
    BUNDLED_CLAUDE_MODEL_CATALOG,
    resolveClaudeCatalogContextWindowTokens,
-@@ -11023,6 +11024,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
+@@ -11165,6 +11166,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
      const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
      const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment, hostEnvironment);
      const claudeEnvironment = yield* makeClaudeEnvironment(config, baseEnvironment);

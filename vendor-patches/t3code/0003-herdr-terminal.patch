@@ -4,18 +4,18 @@ Two hooks: the spawn candidates gain `herdr --session <name>`, and closing a ter
 Herdr session. Not a PtyAdapter, because the adapter is not told which thread and terminal.
 
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index 5476e7964a46c99a00566b63b2a355216185bb61..bd930c30dab0117b0eb75a84930dae38902c9bf9 100644
+index 4c5229a7bae4ff99e27797971536393ea265c90c..20d7be5c8a0c0ee539f620e52215110276d77eaf 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
-@@ -73,6 +73,7 @@ import {
- } from "../observability/Metrics.ts";
+@@ -69,6 +69,7 @@ import * as ServerSettings from "../serverSettings.ts";
+ import { increment, terminalSessionsTotal } from "../observability/Metrics.ts";
  import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
  import * as ProcessRunner from "../processRunner.ts";
 +import * as HerdrTerminal from "../baton/HerdrTerminal.ts";
  import * as PortScanner from "../preview/PortScanner.ts";
  import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
- import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
-@@ -2299,7 +2300,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+ import { terminalOutputStream } from "./OutputProtocol.ts";
+@@ -2422,7 +2423,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
        increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
          Effect.andThen(
            Effect.gen(function* () {
@@ -29,7 +29,7 @@ index 5476e7964a46c99a00566b63b2a355216185bb61..bd930c30dab0117b0eb75a84930dae38
              const terminalEnv = createTerminalSpawnEnv(
                baseEnv,
                session.runtimeEnv,
-@@ -2444,6 +2450,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -2567,6 +2573,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
      if (Option.isSome(session)) {
        yield* stopProcess(session.value);
        yield* unregisterTerminal({ threadId, terminalId });

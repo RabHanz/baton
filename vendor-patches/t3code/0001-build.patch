@@ -4,10 +4,10 @@ The apps and client-runtime depend on @t3tools/baton-contracts and @t3tools/bato
 onnxruntime-node (packages/baton-voice) is allowed to skip its install script.
 
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index f87fa20453f366a89779f28f4ed44ff5a2e33840..38ee9e2616a53fa39401752885475a74bb3ca2fb 100644
+index 728ab36f7fcb2681023bae65162f30e86a627a0e..047570bc6d9f4cb190ca74796e7974e07bc15544 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
-@@ -16,6 +16,9 @@
+@@ -15,6 +15,9 @@
      "@crowecawcaw/xa11y": "0.13.0",
      "@effect/platform-node": "catalog:",
      "@napi-rs/keyring": "^1.3.0",
@@ -18,10 +18,10 @@ index f87fa20453f366a89779f28f4ed44ff5a2e33840..38ee9e2616a53fa39401752885475a74
      "@t3tools/contracts": "workspace:*",
      "@t3tools/shared": "workspace:*",
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index d60f6117e9967369c4f0433bc7dc6020a139ed38..6e0477d53c22c40bdd86e429f28ab301326f2305 100644
+index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d83868530f 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
-@@ -67,6 +67,8 @@
+@@ -68,6 +68,8 @@
      "@react-navigation/elements": "2.9.45",
      "@react-navigation/native": "7.5.1",
      "@react-navigation/native-stack": "7.21.0",
@@ -31,23 +31,31 @@ index d60f6117e9967369c4f0433bc7dc6020a139ed38..6e0477d53c22c40bdd86e429f28ab301
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 5cac8cefc525fb112df077410078b6421be1ed8b..c14f012a42827d51acd8bd69cdddba92292a24e9 100644
+index 5abc769412d1ab7a4b0c6e83f1f186fc288c3fcf..8fef3d30fbf4b29108ce8743d284bcbf65d9256a 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -40,6 +40,8 @@
+     "@ff-labs/fff-node": "0.11.0",
      "@muse-code/sdk": "1.4.6",
      "@napi-rs/keyring": "^1.3.0",
-     "@opencode-ai/sdk": "^1.3.15",
 +    "@t3tools/baton-contracts": "workspace:*",
 +    "@t3tools/baton-shared": "workspace:*",
      "@t3tools/provider-acp": "workspace:*",
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
+@@ -74,7 +76,6 @@
+   "devDependencies": {
+     "@effect/graphql-generator": "catalog:",
+     "@effect/vitest": "catalog:",
+-    "@opencode-ai/sdk": "^1.3.15",
+     "@t3tools/contracts": "workspace:*",
+     "@t3tools/provider-testing": "workspace:*",
+     "@t3tools/shared": "workspace:*",
 diff --git a/apps/web/package.json b/apps/web/package.json
-index 27565feebbadd9bb6d5f9c5c2b7b2b2a35c7a00c..8fa103f1da93caa31e4f2ffe131370a3520d0b04 100644
+index 729d44f8ea6cd68ab1d29c9d937f4f932fcb32f7..1dea4f9ea798bb9ea8b804d21b917695652c293d 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
-@@ -32,6 +32,8 @@
+@@ -31,6 +31,8 @@
      "@noble/hashes": "catalog:",
      "@pierre/diffs": "catalog:",
      "@pierre/trees": "1.0.0-beta.6",
@@ -55,24 +63,24 @@ index 27565feebbadd9bb6d5f9c5c2b7b2b2a35c7a00c..8fa103f1da93caa31e4f2ffe131370a3
 +    "@t3tools/baton-shared": "workspace:*",
      "@t3tools/client-runtime": "workspace:*",
      "@t3tools/contracts": "workspace:*",
-     "@t3tools/provider-acp-registry": "workspace:*",
+     "@t3tools/provider-core": "workspace:*",
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index 03779b627eea095bc681ee757be6a4ae8926c648..c0fe32601d49e5e4c668ef7d1933d99553fc599a 100644
+index 66e79c7492ae3967f75fb9e03384e6e4f770dafa..92ab8947f059b8d97f0c31d91ae31966e47f9a01 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -486,6 +486,7 @@
+@@ -510,6 +510,7 @@
    },
    "dependencies": {
      "@pierre/diffs": "catalog:",
 +    "@t3tools/baton-contracts": "workspace:*",
      "@t3tools/contracts": "workspace:*",
-     "@t3tools/shared": "workspace:*",
-     "@t3tools/source-control-core": "workspace:*",
+     "@t3tools/provider-acp-registry": "workspace:*",
+     "@t3tools/provider-core": "workspace:*",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 1d120a121a94dac9363cb873893ecc53924250a8..5393c64b9011e34452e26f58aea1869194294921 100644
+index a07ad2b008d792ae38b1a00b0d2ed619e44fded9..5c5dd3702ded4c4ea32efe311eb9baff098b6247 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
-@@ -20,6 +20,8 @@ allowBuilds:
+@@ -21,6 +21,8 @@ allowBuilds:
    msgpackr-extract: true
    msw: false
    node-pty: true
@@ -80,7 +88,7 @@ index 1d120a121a94dac9363cb873893ecc53924250a8..5393c64b9011e34452e26f58aea18691
 +  onnxruntime-node: false
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
-   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-558767d9.tgz": true
+   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
 index e6d38a17e2d876bf3a91fb368cf4397428c73b3b..3250b4ff7c96e907184ae6a546def1dcef00dc28 100644
 --- a/third-party-licenses.config.json

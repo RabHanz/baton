@@ -3,17 +3,18 @@ Subject: web: Baton's block in the sidebar
 One element, above upstream's thread list; everything else is in components/sidebar/Baton*.
 
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index 72f90e27a8e3a75b3e4be7aba37e0666b73b9d8c..e39f35d5efb7113213f75eeb05e29e32528856c3 100644
+index c4ba300a030c310496035b6903be81cd21e2bfba..24acc811950216472622db6f1ea7f2098d50f804 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -1,5 +1,6 @@
+@@ -1,6 +1,7 @@
+ import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
  import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
  import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 +import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
  import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
  import {
    dropThreadContext,
-@@ -2847,6 +2848,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -3061,6 +3062,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            </SidebarGroup>
          }
        >
