@@ -31,7 +31,7 @@ index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d8
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 5abc769412d1ab7a4b0c6e83f1f186fc288c3fcf..8fef3d30fbf4b29108ce8743d284bcbf65d9256a 100644
+index 5abc769412d1ab7a4b0c6e83f1f186fc288c3fcf..ac5eee1f5bd4abf8c9673b319cdf96fb5060c717 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -40,6 +40,8 @@
@@ -43,14 +43,6 @@ index 5abc769412d1ab7a4b0c6e83f1f186fc288c3fcf..8fef3d30fbf4b29108ce8743d284bcbf
      "@t3tools/provider-acp": "workspace:*",
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
-@@ -74,7 +76,6 @@
-   "devDependencies": {
-     "@effect/graphql-generator": "catalog:",
-     "@effect/vitest": "catalog:",
--    "@opencode-ai/sdk": "^1.3.15",
-     "@t3tools/contracts": "workspace:*",
-     "@t3tools/provider-testing": "workspace:*",
-     "@t3tools/shared": "workspace:*",
 diff --git a/apps/web/package.json b/apps/web/package.json
 index 729d44f8ea6cd68ab1d29c9d937f4f932fcb32f7..1dea4f9ea798bb9ea8b804d21b917695652c293d 100644
 --- a/apps/web/package.json
