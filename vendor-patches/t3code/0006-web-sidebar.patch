@@ -25,3 +25,16 @@ index c4ba300a030c310496035b6903be81cd21e2bfba..24acc811950216472622db6f1ea7f209
          <SidebarGroup className="flex-1" role="presentation">
            {isSearchingThreads ? (
              threadSearchResults.length > 0 ? (
+diff --git a/apps/web/src/components/ThreadStatusIndicators.tsx b/apps/web/src/components/ThreadStatusIndicators.tsx
+index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc3166715167007109fc36 100644
+--- a/apps/web/src/components/ThreadStatusIndicators.tsx
++++ b/apps/web/src/components/ThreadStatusIndicators.tsx
+@@ -603,7 +603,7 @@ export function ThreadWorktreeIndicator({
+   );
+ }
+ 
+-function ThreadStatusLabel({
++export function ThreadStatusLabel({
+   status,
+   compact = false,
+ }: {
