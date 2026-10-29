@@ -153,3 +153,87 @@ export const isComposerEcho = (transcriptText: string, composerText: string): bo
   const sent = normalize(composerText);
   return sent.length > 0 && normalize(transcriptText).startsWith(sent);
 };
+
+/** A tool call the session made, or its result, as Claude Code wrote it (D85). */
+export type LiveToolStep =
+  | {
+      readonly kind: "use";
+      readonly id: string;
+      readonly name: string;
+      readonly input: unknown;
+      readonly createdAt: string;
+    }
+  | {
+      readonly kind: "result";
+      readonly id: string;
+      readonly output: string;
+      readonly isError: boolean;
+      readonly createdAt: string;
+    };
+
+const resultText = (content: unknown): string =>
+  typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content
+          .map((block) =>
+            isRecord(block) && block["type"] === "text" && typeof block["text"] === "string"
+              ? block["text"]
+              : isRecord(block) && block["type"] === "image"
+                ? "[image]"
+                : "",
+          )
+          .filter((text) => text.length > 0)
+          .join("\n")
+      : "";
+
+/**
+ * The tool steps in one transcript line. Claude Code writes each call when the model emits it and
+ * each result when the tool returns, so these arrive while a turn is still running. `SendUserFile`
+ * is left out: it is shown as the message that carries the files.
+ */
+export const parseLiveToolSteps = (line: string): ReadonlyArray<LiveToolStep> => {
+  let record: unknown;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    return [];
+  }
+  if (!isRecord(record) || record["isSidechain"] === true) return [];
+  const type = record["type"];
+  const message = record["message"];
+  const content = isRecord(message) ? message["content"] : undefined;
+  if (!Array.isArray(content)) return [];
+  const timestamp = record["timestamp"];
+  const createdAt =
+    typeof timestamp === "string" && !Number.isNaN(Date.parse(timestamp))
+      ? new Date(timestamp).toISOString()
+      : new Date().toISOString();
+  return content.flatMap((block): Array<LiveToolStep> => {
+    if (!isRecord(block) || typeof (block["id"] ?? block["tool_use_id"]) !== "string") return [];
+    if (type === "assistant" && block["type"] === "tool_use" && typeof block["name"] === "string") {
+      if (block["name"] === "SendUserFile") return [];
+      return [
+        {
+          kind: "use",
+          id: block["id"] as string,
+          name: block["name"],
+          input: block["input"],
+          createdAt,
+        },
+      ];
+    }
+    if (type === "user" && block["type"] === "tool_result") {
+      return [
+        {
+          kind: "result",
+          id: block["tool_use_id"] as string,
+          output: resultText(block["content"]),
+          isError: block["is_error"] === true,
+          createdAt,
+        },
+      ];
+    }
+    return [];
+  });
+};
