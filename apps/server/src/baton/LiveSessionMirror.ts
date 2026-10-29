@@ -28,8 +28,10 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
+  type ChatAttachment,
   EventId,
   MessageId,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -58,6 +60,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
+import {
+  chatAttachmentStableKey,
+  createDeterministicAttachmentId,
+  resolveAttachmentPath,
+} from "../attachmentStore.ts";
+import * as ServerConfig from "../config.ts";
+import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
@@ -71,9 +80,12 @@ const MODEL = "live";
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
  * this one (they are a mirror of the transcript, which is the record).
  */
-const PREFIX = "baton-live3";
-/** baton-live2 (round 3 first cut) closed old turns at server start; rebuilt too. */
-const RETIRED_PREFIXES = ["baton-live:", "baton-live2:"];
+const PREFIX = "baton-live4";
+/**
+ * baton-live2 (round 3 first cut) closed old turns at server start; baton-live3 (round 3) dropped
+ * every image and sent file. Both are rebuilt from the transcript.
+ */
+const RETIRED_PREFIXES = ["baton-live:", "baton-live2:", "baton-live3:"];
 const TICK = "2 seconds";
 /** How much of an existing transcript a new thread starts with. */
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
@@ -82,6 +94,127 @@ const FIRST_MESSAGES = 120;
 const MAX_BACKFILL_BYTES = 64 * 1024 * 1024;
 /** A busy session can write a lot between ticks; one tick reads at most this much. */
 const STEP_BYTES = 8 * 1024 * 1024;
+/** A turn ends after this long idle: Claude Code can read idle for a moment inside one turn. */
+const IDLE_SETTLE_MS = 4_000;
+/** A sent file bigger than this is named in the thread, not copied. */
+const MAX_SENT_FILE_BYTES = 20 * 1024 * 1024;
+const INLINE_IMAGE_TYPES: Record<string, string> = {
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+const FILE_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".json": "application/json",
+  ".md": "text/markdown",
+  ".mp4": "video/mp4",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+};
+
+/** A file name as markdown link text: brackets would end the link. */
+const label = (name: string): string => name.replace(/[[\]\\]/g, "");
+
+/** What a message shows beyond its words: T3 attachments and, for sent files, markdown. */
+export interface LiveMedia {
+  readonly text: string;
+  readonly attachments: ReadonlyArray<ChatAttachment>;
+}
+
+/**
+ * Copies a message's media into T3's attachment store (ids from the bytes, so a second mirror of
+ * the same message writes nothing new). Pasted images become the user message's own image
+ * attachments, which every T3 client renders. Files the session sent go into the assistant
+ * message as markdown, because T3 renders an assistant message's images and file links from its
+ * markdown: images inline, anything else as a file link. Only what the transcript names is read:
+ * the bytes the user pasted, and the paths the session itself chose to send.
+ */
+export const liveMedia = (input: {
+  readonly attachmentsDir: string;
+  readonly threadId: string;
+  readonly messageId: string;
+  readonly message: LiveTranscriptMessage;
+}): LiveMedia => {
+  const { attachmentsDir, threadId, messageId, message } = input;
+  const store = (attachment: ChatAttachment, bytes: Uint8Array): string | null => {
+    const path = resolveAttachmentPath({ attachmentsDir, attachment });
+    if (path === null) return null;
+    if (!NodeFS.existsSync(path)) {
+      NodeFS.mkdirSync(attachmentsDir, { recursive: true });
+      NodeFS.writeFileSync(path, bytes);
+    }
+    return path;
+  };
+  const attachments: Array<ChatAttachment> = [];
+  const notes: Array<string> = [];
+  (message.images ?? []).forEach((image, index) => {
+    const bytes = Buffer.from(image.data, "base64");
+    const extension = inferImageExtension({ mimeType: image.mimeType });
+    const id = createDeterministicAttachmentId(
+      threadId,
+      chatAttachmentStableKey(messageId, index, bytes),
+    );
+    if (id === null || bytes.length === 0) return;
+    if (bytes.length > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+      notes.push(
+        `_An image (${Math.round(bytes.length / 1_048_576)} MB) is too big to show here._`,
+      );
+      return;
+    }
+    const attachment: ChatAttachment = {
+      type: "image",
+      id,
+      name: `image-${index + 1}${extension}`,
+      mimeType: image.mimeType,
+      sizeBytes: bytes.length,
+    };
+    if (store(attachment, bytes) !== null) attachments.push(attachment);
+  });
+  const links: Array<string> = [];
+  (message.files ?? []).forEach((file, index) => {
+    const name = NodePath.basename(file);
+    let stat: NodeFS.Stats | null = null;
+    try {
+      stat = NodeFS.statSync(file);
+    } catch {}
+    if (stat === null || !stat.isFile()) {
+      notes.push(`_${label(name)} is no longer on disk._`);
+      return;
+    }
+    if (stat.size === 0 || stat.size > MAX_SENT_FILE_BYTES) {
+      notes.push(`_${label(name)} (${Math.round(stat.size / 1_048_576)} MB) is not copied here._`);
+      return;
+    }
+    const bytes = NodeFS.readFileSync(file);
+    const extension = NodePath.extname(name).toLowerCase();
+    const id = createDeterministicAttachmentId(
+      threadId,
+      chatAttachmentStableKey(messageId, index, bytes),
+    );
+    if (id === null) return;
+    const imageType = INLINE_IMAGE_TYPES[extension];
+    const attachment: ChatAttachment =
+      imageType !== undefined && bytes.length <= PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+        ? { type: "image", id, name, mimeType: imageType, sizeBytes: bytes.length }
+        : {
+            type: "file",
+            id,
+            name,
+            mimeType: FILE_TYPES[extension] ?? "application/octet-stream",
+            sizeBytes: bytes.length,
+          };
+    const copy = store(attachment, bytes);
+    if (copy === null) return;
+    links.push(
+      attachment.type === "image" ? `![${label(name)}](<${copy}>)` : `[${label(name)}](<${copy}>)`,
+    );
+  });
+  const text = [message.text, ...links, ...notes].filter((part) => part.length > 0).join("\n\n");
+  // Sent files live in the markdown; only a user message carries T3 attachments.
+  return { text, attachments: message.role === "user" ? attachments : [] };
+};
 
 /** Off by machine with `BATON_LIVE_THREADS=off`. */
 export const liveThreadsEnabled = (): boolean => process.env.BATON_LIVE_THREADS !== "off";
@@ -197,11 +330,14 @@ interface Follow {
   open: OrchestrationV2Run | null;
   /** When the newest mirrored message was written: a finished turn ends there, not at "now". */
   lastAt: DateTime.Utc | null;
+  /** Since when the session has read idle while a terminal turn is open. */
+  idleSince: number | null;
 }
 
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const settings = yield* ServerSettingsService;
+  const { attachmentsDir } = yield* ServerConfig.ServerConfig;
 
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
@@ -344,9 +480,12 @@ const make = Effect.gen(function* () {
     sessionId: string,
     message: LiveTranscriptMessage,
     runId: RunId | null,
+    media?: LiveMedia,
   ): ReadonlyArray<OrchestrationV2DomainEvent> => {
     const key = `${sessionId}:${message.uuid}`;
     const messageId = MessageId.make(`${PREFIX}:${key}`);
+    const { text, attachments } =
+      media ?? liveMedia({ attachmentsDir, threadId, messageId, message });
     const at = DateTime.makeUnsafe(message.createdAt);
     const common = {
       id: TurnItemId.make(`${PREFIX}:turn-item:${key}`),
@@ -379,8 +518,8 @@ const make = Effect.gen(function* () {
           runId,
           nodeId: null,
           role: message.role,
-          text: message.text,
-          attachments: [],
+          text,
+          attachments,
           streaming: false,
           createdAt: at,
           updatedAt: at,
@@ -400,14 +539,14 @@ const make = Effect.gen(function* () {
                 type: "user_message",
                 messageId,
                 inputIntent: "turn_start",
-                text: message.text,
-                attachments: [],
+                text,
+                attachments,
               }
             : {
                 ...common,
                 type: "assistant_message",
                 messageId,
-                text: message.text,
+                text,
                 streaming: false,
               },
       },
@@ -533,9 +672,11 @@ const make = Effect.gen(function* () {
       const now = yield* DateTime.now;
       if (latest !== null) {
         const ours = String(latest.id).startsWith(`${PREFIX}:run:`);
-        // A server restart cancels a running turn; a session still busy reopens it.
-        const ended = ["completed", "cancelled", "interrupted"].includes(latest.status);
-        if (!busy || !ours || !ended) return;
+        // A server restart cancels a running turn; a session still busy reopens it. A completed
+        // turn stays completed: work with no new user message (a background task's report) is
+        // not a new turn, and reopening it made every such reply a fresh "completed" alert.
+        const cutShort = ["cancelled", "interrupted"].includes(latest.status);
+        if (!busy || !ours || !cutShort) return;
         const reopened: OrchestrationV2Run = {
           ...latest,
           status: "running",
@@ -584,6 +725,7 @@ const make = Effect.gen(function* () {
                 createdAt: DateTime.formatIso(m.createdAt),
               },
               run.id,
+              { text: m.text, attachments: m.attachments ?? [] },
             ).map((event) => ({ ...event, id: EventId.make(`${event.id}:turn`) }))
           : [],
       );
@@ -592,10 +734,16 @@ const make = Effect.gen(function* () {
       if (busy) follow.open = run;
     });
 
-  /** A terminal turn ends when Claude Code stops reporting busy; a queued composer send starts. */
-  const settle = (follow: Follow, session: ClaudeLiveSession) =>
+  /**
+   * A terminal turn ends when Claude Code has stopped reporting busy for a few seconds (history
+   * at start ends at once); a queued composer send then starts.
+   */
+  const settle = (follow: Follow, session: ClaudeLiveSession, now = false) =>
     Effect.gen(function* () {
+      if (session.status === "busy") follow.idleSince = null;
       if (follow.open === null || session.status === "busy") return;
+      follow.idleSince ??= Date.now();
+      if (!now && Date.now() - follow.idleSince < IDLE_SETTLE_MS) return;
       const done = completeRun(follow.open, follow.lastAt ?? (yield* DateTime.now));
       follow.open = null;
       yield* engine.writeEvents({ events: [runEvent("run.updated", done)] });
@@ -684,19 +832,16 @@ const make = Effect.gen(function* () {
         target: null,
         open: null,
         lastAt: null,
+        idleSince: null,
       };
       follows.set(session.sessionId, follow);
-      // A running session is never filed away as settled, however long it has been quiet.
-      const current = yield* engine.threadShell(threadId);
-      yield* engine.keepActive({
-        tag: "live",
-        threadId,
-        settled: current?.settledOverride === "settled",
-      });
+      // A running session is never filed away for age. Settling it by hand is the per-thread mute
+      // (T3's relay sends no alert for a settled thread), so Baton leaves that alone.
+      yield* engine.keepActive({ tag: "live", threadId, settled: false });
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
       // restart whatever arrived while the server was down. History turns are finished turns.
       yield* writeMessages(follow, session, history);
-      if (session.status !== "busy") yield* settle(follow, session);
+      if (session.status !== "busy") yield* settle(follow, session, true);
       yield* ensureTurn(follow, session);
     });
 
