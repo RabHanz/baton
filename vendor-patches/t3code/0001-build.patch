@@ -4,7 +4,7 @@ The apps and client-runtime depend on @t3tools/baton-contracts and @t3tools/bato
 onnxruntime-node (packages/baton-voice) is allowed to skip its install script.
 
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index f87fa20453f366a89779f28f4ed44ff5a2e33840..38ee9e2616a53fa39401752885475a74bb3ca2fb 100644
+index f87fa20453f366a89779f28f4ed44ff5a2e33840..9c89de17aff8a1630d1db9858ef3e75b021b42ea 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -16,6 +16,9 @@
@@ -17,6 +17,14 @@ index f87fa20453f366a89779f28f4ed44ff5a2e33840..38ee9e2616a53fa39401752885475a74
      "@t3tools/client-runtime": "workspace:*",
      "@t3tools/contracts": "workspace:*",
      "@t3tools/shared": "workspace:*",
+@@ -28,6 +31,7 @@
+     "electron-updater": "^6.8.9",
+     "electron-webauthn": "catalog:",
+     "ffi-rs": "1.3.2",
++    "onnxruntime-node": "1.30.0",
+     "playwright-core": "1.60.0",
+     "react-grab": "^0.1.32",
+     "tldts": "catalog:"
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
 index d60f6117e9967369c4f0433bc7dc6020a139ed38..6e0477d53c22c40bdd86e429f28ab301326f2305 100644
 --- a/apps/mobile/package.json
@@ -81,6 +89,53 @@ index 1d120a121a94dac9363cb873893ecc53924250a8..5393c64b9011e34452e26f58aea18691
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-558767d9.tgz": true
+diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
+index ac2ed7826f77cd46eed0780c44a3d3542937b364..b8287e19d9500b03402e72ffad0d92917b5cb348 100644
+--- a/scripts/build-desktop-artifact.ts
++++ b/scripts/build-desktop-artifact.ts
+@@ -1014,6 +1014,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+   const unusedArch = arch === "arm64" ? "x64" : "arm64";
+   return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/node-pty/prebuilds/darwin-${unusedArch}/**/*`];
+ }
++// onnxruntime-node ships ~290 MB of binaries for every OS; keep only the target's.
++export function resolveOnnxRuntimeFileExclusions(
++  platform: typeof BuildPlatform.Type,
++  arch?: typeof BuildArch.Type,
++): string[] {
++  const os = platform === "win" ? "win32" : platform === "mac" ? "darwin" : "linux";
++  const bin = "**/node_modules/onnxruntime-node/bin/napi-v6";
++  const exclusions = ["win32", "darwin", "linux"]
++    .filter((other) => other !== os)
++    .map((other) => `!${bin}/${other}/**/*`);
++  if (arch === "x64" || arch === "arm64") {
++    exclusions.push(`!${bin}/${os}/${arch === "x64" ? "arm64" : "x64"}/**/*`);
++  }
++  return exclusions;
++}
+ // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
+ export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
+ // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
+@@ -2782,6 +2797,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+         : platform === "linux"
+           ? LINUX_FILE_EXCLUSIONS
+           : []),
++      ...resolveOnnxRuntimeFileExclusions(platform, arch),
+     ],
+     directories: {
+       buildResources: "apps/desktop/resources",
+diff --git a/scripts/lib/desktop-external-packages.ts b/scripts/lib/desktop-external-packages.ts
+index b7dff1c2bad9a8910bfa23ef0573b71736a0b88f..b7b500e24fdb270fa7181537366153ba6deeccb1 100644
+--- a/scripts/lib/desktop-external-packages.ts
++++ b/scripts/lib/desktop-external-packages.ts
+@@ -8,6 +8,8 @@ export const DESKTOP_RUNTIME_EXTERNAL_PREFIXES = [
+   "@yuuang/",
+   // Playwright reads its runtime bundle/driver from disk; inlining cannot replace those files.
+   "playwright-core",
++  // Loads its .node binding by a relative path; bundled into main.cjs it crashed 0.1.4 at boot.
++  "onnxruntime-node",
+ ] as const;
+ 
+ export function isDesktopRuntimeExternalDependency(id: string): boolean {
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
 index e6d38a17e2d876bf3a91fb368cf4397428c73b3b..3250b4ff7c96e907184ae6a546def1dcef00dc28 100644
 --- a/third-party-licenses.config.json

@@ -1014,6 +1014,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
   const unusedArch = arch === "arm64" ? "x64" : "arm64";
   return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/node-pty/prebuilds/darwin-${unusedArch}/**/*`];
 }
+// onnxruntime-node ships ~290 MB of binaries for every OS; keep only the target's.
+export function resolveOnnxRuntimeFileExclusions(
+  platform: typeof BuildPlatform.Type,
+  arch?: typeof BuildArch.Type,
+): string[] {
+  const os = platform === "win" ? "win32" : platform === "mac" ? "darwin" : "linux";
+  const bin = "**/node_modules/onnxruntime-node/bin/napi-v6";
+  const exclusions = ["win32", "darwin", "linux"]
+    .filter((other) => other !== os)
+    .map((other) => `!${bin}/${other}/**/*`);
+  if (arch === "x64" || arch === "arm64") {
+    exclusions.push(`!${bin}/${os}/${arch === "x64" ? "arm64" : "x64"}/**/*`);
+  }
+  return exclusions;
+}
 // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
 export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
 // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
@@ -2782,6 +2797,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
         : platform === "linux"
           ? LINUX_FILE_EXCLUSIONS
           : []),
+      ...resolveOnnxRuntimeFileExclusions(platform, arch),
     ],
     directories: {
       buildResources: "apps/desktop/resources",
