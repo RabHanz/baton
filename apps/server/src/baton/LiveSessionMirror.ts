@@ -702,11 +702,25 @@ const make = Effect.gen(function* () {
         (m) => m.role === "user" && !String(m.id).startsWith(`${PREFIX}:`),
       );
       const events: Array<OrchestrationV2DomainEvent> = [];
+      // A reply belongs to the newest turn asked for before it: sends typed into a busy session
+      // are read by Claude Code together, and its answer follows the last of them.
+      const known = [...runs];
+      const ownerAt = (iso: string) => {
+        const owner = known
+          .filter((run) => DateTime.toEpochMillis(run.requestedAt) <= Date.parse(iso))
+          .reduce<OrchestrationV2Run | null>(
+            (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
+            null,
+          );
+        if (owner !== null) follow.target = owner.id;
+      };
       for (const message of fresh) {
         if (isStep(message)) {
+          ownerAt(message.createdAt);
           events.push(...toolEvents(follow, session.sessionId, message, follow.target));
           continue;
         }
+        if (message.role === "assistant") ownerAt(message.createdAt);
         follow.written.add(message.uuid);
         const at = DateTime.makeUnsafe(message.createdAt);
         follow.lastAt = at;
@@ -752,6 +766,7 @@ const make = Effect.gen(function* () {
             contextHandoffId: null,
           };
           events.push(runEvent("run.created", run));
+          known.push(run);
           if (history) follow.open = run;
           follow.target = run.id;
         }

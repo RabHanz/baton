@@ -98,6 +98,7 @@ NodeTest.test(
         BATON_CLAUDE_SESSIONS_DIR: sessions,
         BATON_HERDR_BIN: herdr,
         BATON_TEST_HERDR_PANE: "fab-x~p1",
+        BATON_LIVE_ATTACHMENT_ENTER_MS: "10",
         BATON_LIVE_POLL_MS: "50",
       },
       stdio: ["pipe", "pipe", "inherit"],
@@ -144,7 +145,7 @@ NodeTest.test(
       const calls = NodeFS.readFileSync(log, "utf8");
       NodeAssert.match(
         calls,
-        /^--session fab-x agent prompt p1 say ALPHA\n@.*\/work\/\.baton\/inbox\/.*shot\.png\n--session fab-x agent send-keys p1 esc\n$/s,
+        /^--session fab-x agent prompt p1 say ALPHA\n@.*\/work\/\.baton\/inbox\/.*shot\.png\n--session fab-x agent send-keys p1 enter\n--session fab-x agent send-keys p1 esc\n$/s,
       );
       const inbox = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox"));
       NodeAssert.equal(
