@@ -8,6 +8,8 @@ export const DESKTOP_RUNTIME_EXTERNAL_PREFIXES = [
   "@yuuang/",
   // Playwright reads its runtime bundle/driver from disk; inlining cannot replace those files.
   "playwright-core",
+  // Loads its .node binding by a relative path; bundled into main.cjs it crashed 0.1.4 at boot.
+  "onnxruntime-node",
 ] as const;
 
 export function isDesktopRuntimeExternalDependency(id: string): boolean {
