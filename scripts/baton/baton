@@ -43,13 +43,15 @@ fi
 name="fab-$(basename "$dir" | tr -c 'A-Za-z0-9_\n-' '-')"
 running() { herdr session list 2>/dev/null | awk -v n="$name" '$1 == n && $2 == "running" { found = 1 } END { exit !found }'; }
 
+# The session's server runs headless and outlives this shell, so a plain attach (VS Code's
+# terminal) never hosts it: closing the terminal leaves every agent in the space running.
+if ! running; then
+  (cd "$dir" && setsid herdr --session "$name" server </dev/null >/dev/null 2>&1 &)
+  for _ in $(seq 1 50); do running && break; sleep 0.2; done
+fi
+
 if ((${#agent[@]} > 0)); then
   cmd="$(printf '%q ' "${agent[@]}")"
-  if ! running; then
-    # The session's server runs headless and outlives this shell.
-    (cd "$dir" && setsid herdr --session "$name" server </dev/null >/dev/null 2>&1 &)
-    for _ in $(seq 1 50); do running && break; sleep 0.2; done
-  fi
   if herdr --session "$name" workspace list 2>/dev/null | grep -q '"workspace_id"'; then
     herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]}" --focus >/dev/null
   else
