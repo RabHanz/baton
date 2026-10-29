@@ -1,4 +1,3 @@
-/* oxlint-disable t3code/no-real-time-wait-in-tests -- drives a real subprocess through a polled file */
 // node --test scripts/baton/live/baton-live-acp.test.mjs
 import * as NodeAssert from "node:assert/strict";
 import * as NodeChildProcess from "node:child_process";
@@ -71,7 +70,7 @@ NodeTest.test("attachment notes become paths", () => {
 });
 
 NodeTest.test(
-  "a prompt is typed into the session's pane and the turn ends when Claude is idle again",
+  "a prompt is typed into a busy session's pane and the turn ends once it is delivered",
   async () => {
     const dir = NodeFS.mkdtempSync(
       NodePath.join(process.env.TMPDIR ?? NodeOS.tmpdir(), "baton-live-acp-"),
@@ -100,7 +99,6 @@ NodeTest.test(
         BATON_HERDR_BIN: herdr,
         BATON_TEST_HERDR_PANE: "fab-x~p1",
         BATON_LIVE_POLL_MS: "50",
-        BATON_LIVE_IDLE_SETTLE_MS: "100",
       },
       stdio: ["pipe", "pipe", "inherit"],
     });
@@ -128,7 +126,9 @@ NodeTest.test(
         {},
       );
 
-      const turn = call(4, "session/prompt", {
+      // Busy the whole time: the send must not wait for idle, or T3 queues the next message.
+      descriptor("busy");
+      const turn = await call(4, "session/prompt", {
         sessionId: sid,
         prompt: [
           {
@@ -137,19 +137,14 @@ NodeTest.test(
           },
         ],
       });
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      descriptor("busy");
-      let ended = false;
-      void turn.then(() => (ended = true));
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      NodeAssert.equal(ended, false, "the turn stays open while Claude Code is busy");
-      descriptor("idle");
-      NodeAssert.equal((await turn).result.stopReason, "end_turn");
+      NodeAssert.equal(turn.result.stopReason, "end_turn");
+      // Stop still reaches the pane after the send has ended.
+      NodeAssert.equal((await call(6, "session/cancel", { sessionId: sid })).result ?? null, null);
 
       const calls = NodeFS.readFileSync(log, "utf8");
       NodeAssert.match(
         calls,
-        /^--session fab-x agent prompt p1 say ALPHA\n@.*\/work\/\.baton\/inbox\/.*shot\.png\n$/s,
+        /^--session fab-x agent prompt p1 say ALPHA\n@.*\/work\/\.baton\/inbox\/.*shot\.png\n--session fab-x agent send-keys p1 esc\n$/s,
       );
       const inbox = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox"));
       NodeAssert.equal(

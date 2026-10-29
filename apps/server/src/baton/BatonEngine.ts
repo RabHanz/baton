@@ -17,6 +17,7 @@ import {
   type ModelSelection,
   type OrchestrationProjectShell,
   type OrchestrationV2ConversationMessage,
+  type OrchestrationV2ProviderThread,
   type OrchestrationV2Run,
   ProjectId,
   type OrchestrationV2DomainEvent,
@@ -104,6 +105,10 @@ export interface BatonEngineShape {
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>>;
   /** The thread's runs, for live-session turns (D83). Empty on an engine error. */
   readonly threadRuns: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<OrchestrationV2Run>>;
+  /** The thread's active provider thread, for live-session working state (D85). */
+  readonly activeProviderThread: (
+    threadId: ThreadId,
+  ) => Effect.Effect<OrchestrationV2ProviderThread | null>;
   /** Upstream's `thread.metadata.update` with a title; false when refused. */
   readonly renameThread: (input: {
     readonly tag: string;
@@ -357,6 +362,17 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed([])),
     );
 
+  const activeProviderThread: BatonEngineShape["activeProviderThread"] = (threadId) =>
+    orchestrator.getThreadSnapshotWindow(threadId, { rowLimit: 1 }).pipe(
+      Effect.map(
+        ({ projection }) =>
+          projection.providerThreads.find(
+            (thread) => thread.id === projection.thread.activeProviderThreadId,
+          ) ?? null,
+      ),
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
+
   const threadRuns: BatonEngineShape["threadRuns"] = (threadId) =>
     orchestrator.getThreadRecords(threadId, ["runs"]).pipe(
       Effect.map((records) => records.runs),
@@ -449,6 +465,7 @@ export const make = Effect.gen(function* () {
     writeEvents,
     threadMessages,
     threadRuns,
+    activeProviderThread,
     renameThread,
     resumeQueue,
     keepActive,
@@ -496,6 +513,7 @@ export const layerStatic = (input: {
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: () => Effect.succeed([]),
+    activeProviderThread: () => Effect.succeed(null),
     renameThread: () => Effect.succeed(true),
     resumeQueue: () => Effect.void,
     keepActive: () => Effect.succeed(true),
