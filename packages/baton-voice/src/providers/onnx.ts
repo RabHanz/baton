@@ -13,7 +13,7 @@
  *
  * @module baton-voice/providers/onnx
  */
-import * as ort from "onnxruntime-node";
+import type * as Ort from "onnxruntime-node";
 
 import type { VadProvider, WakeProvider } from "../types.ts";
 
@@ -22,14 +22,18 @@ const MEL_HISTORY = 480;
 const MEL_WINDOW = 76;
 const EMBED_WINDOW = 16;
 
-const open = (path: string) =>
-  ort.InferenceSession.create(path, {
+// Loaded on first use, so a missing native binding disables voice instead of crashing the app.
+let ortModule: Promise<typeof Ort> | undefined;
+const loadOrt = () => (ortModule ??= import("onnxruntime-node"));
+
+const open = async (path: string) =>
+  (await loadOrt()).InferenceSession.create(path, {
     intraOpNumThreads: 1,
     interOpNumThreads: 1,
     executionMode: "sequential",
   });
 
-const first = (output: ort.InferenceSession.OnnxValueMapType): Float32Array => {
+const first = (output: Ort.InferenceSession.OnnxValueMapType): Float32Array => {
   const value = Object.values(output)[0];
   if (value === undefined) throw new Error("model returned no output");
   return value.data as Float32Array;
@@ -47,6 +51,7 @@ export interface OpenWakeWordPaths {
  * wake score for each 1280-sample chunk fed in.
  */
 export const createOpenWakeWordScorer = async (paths: OpenWakeWordPaths) => {
+  const ort = await loadOrt();
   const [mel, embed, wake] = await Promise.all([
     open(paths.melspectrogram),
     open(paths.embedding),
@@ -191,6 +196,7 @@ export const createSileroVad = async (
   modelPath: string,
   threshold = 0.5,
 ): Promise<VadProvider & { readonly drain: () => Promise<void> }> => {
+  const ort = await loadOrt();
   const session = await open(modelPath);
   const WINDOW = 512;
   const CONTEXT = 64;

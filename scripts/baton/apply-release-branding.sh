@@ -35,6 +35,16 @@ sedi 's/artifactName: "T3-Code-\${version}-\${arch}\.\${ext}",/artifactName: "Ba
 sedi 's/"productName": "T3 Code (Beta)"/"productName": "Baton"/' \
   apps/desktop/package.json
 
+# The staged package name picks the per-user NSIS folder (%LOCALAPPDATA%\Programs\<name>).
+# Left as "t3code", 0.1.4 installed over stock T3 Code's folder and broke it (D86).
+sedi 's/^    name: "t3code",$/    name: "baton",/' scripts/build-desktop-artifact.ts
+# Own taskbar identity (matches the installer's shortcut AUMI) and own Electron profile:
+# a shared userData dir means a shared single-instance lock, so only one app could run.
+sedi 's/isDevelopment ? "com\.t3tools\.t3code\.dev" : "com\.t3tools\.t3code",/isDevelopment ? "dev.rabee.baton.dev" : "dev.rabee.baton",/' \
+  apps/desktop/src/app/DesktopEnvironment.ts
+sedi 's/{ current: "t3code-v2", legacy: "T3 Code (Alpha)" }/{ current: "baton", legacy: "T3 Code (Alpha)" }/' \
+  apps/desktop/src/app/DesktopUserData.ts
+
 sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Baton";/' \
   apps/desktop/src/app/DesktopEnvironment.ts
 
@@ -42,4 +52,7 @@ grep -q 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
 grep -q 'artifactName: "Baton-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
 grep -q '"productName": "Baton"' apps/desktop/package.json
 grep -q 'APP_BASE_NAME = "Baton"' apps/desktop/src/app/DesktopEnvironment.ts
-echo "Baton release branding applied (appId dev.rabee.baton, productName Baton, artifact Baton-<ver>-<arch>.<ext>, app name Baton)."
+grep -q '^    name: "baton",$' scripts/build-desktop-artifact.ts
+grep -q '"dev.rabee.baton",' apps/desktop/src/app/DesktopEnvironment.ts
+grep -q 'current: "baton"' apps/desktop/src/app/DesktopUserData.ts
+echo "Baton release branding applied (appId dev.rabee.baton, productName Baton, artifact Baton-<ver>-<arch>.<ext>, app name Baton, install dir Programs\\baton, AUMI dev.rabee.baton, userData %APPDATA%\\baton)."
