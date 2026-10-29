@@ -27,6 +27,7 @@
  * shortcut: polls the registry and each transcript every 2 s rather than watching files; a tick
  * costs a directory read plus one `stat` per live session. Upgrade to fs.watch if ticks show up.
  */
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -35,6 +36,8 @@ import {
   type ChatAttachment,
   EventId,
   MessageId,
+  NodeId,
+  RuntimeRequestId,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ProjectId,
   ProviderDriverKind,
@@ -48,6 +51,7 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2Run,
+  type OrchestrationV2RuntimeRequest,
   RunId,
 } from "@t3tools/contracts";
 import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
@@ -128,6 +132,37 @@ const FILE_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".pdf": "application/pdf",
   ".txt": "text/plain",
+};
+
+/** A prompt read off a Herdr pane by the agent script's `--pane-prompt` (D88). */
+interface PanePrompt {
+  readonly question: string;
+  readonly header: string | null;
+  readonly context: string;
+  readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
+  readonly customIndex: number | null;
+  readonly key: string;
+}
+
+const readPanePrompt = (pane: string): Effect.Effect<PanePrompt | null> => {
+  const node = findNode();
+  const script = agentScript();
+  if (node === null || !NodeFS.existsSync(script)) return Effect.succeed(null);
+  return Effect.callback<PanePrompt | null>((resume) => {
+    NodeChildProcess.execFile(
+      node,
+      [script, "--pane-prompt", pane],
+      { timeout: 10_000 },
+      (error, stdout) => {
+        if (error !== null) return resume(Effect.succeed(null));
+        try {
+          resume(Effect.succeed(JSON.parse(stdout) as PanePrompt | null));
+        } catch {
+          resume(Effect.succeed(null));
+        }
+      },
+    );
+  });
 };
 
 const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
@@ -356,6 +391,13 @@ interface Follow {
   /** What the thread last showed: working or not (null until read). */
   shown: boolean | null;
   checkedAt: number;
+  /** The terminal prompt shown in T3 as a question (D88), until it leaves the screen. */
+  ask: {
+    readonly key: string;
+    readonly requestId: RuntimeRequestId;
+    readonly itemId: TurnItemId;
+    readonly request: OrchestrationV2RuntimeRequest;
+  } | null;
   /** Tool calls shown as running, by Claude's tool-use id, until their result arrives. */
   readonly tools: Map<
     string,
@@ -847,7 +889,8 @@ const make = Effect.gen(function* () {
    */
   const working = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const busy = session.status === "busy";
+      // A question waiting on its answer is part of the turn, not the end of it (D88).
+      const busy = session.status === "busy" || session.status === "waiting";
       if (busy) follow.idleSince = null;
       else if (follow.turn) {
         follow.idleSince ??= Date.now();
@@ -887,6 +930,122 @@ const make = Effect.gen(function* () {
         ],
       });
       if (!want) yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
+    });
+
+  /**
+   * D88: a question or approval showing in a waiting session's pane becomes a T3 question with
+   * its options as buttons. T3 sends the answer back as a message ("message" response mode), and
+   * the agent turns it into the keystrokes. The question closes when it leaves the screen.
+   */
+  const relayPrompt = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      const found =
+        session.status === "waiting" && session.herdrPane !== null
+          ? yield* readPanePrompt(session.herdrPane)
+          : null;
+      if (follow.ask !== null && follow.ask.key === found?.key) return;
+      const now = yield* DateTime.now;
+      if (follow.ask !== null) {
+        const open = follow.ask;
+        follow.ask = null;
+        // Answered in T3, the request is resolved already; answered in the terminal, it expires.
+        if ((yield* engine.runtimeRequestStatus(follow.threadId, open.requestId)) === "pending") {
+          const item = yield* engine.turnItem(follow.threadId, open.itemId);
+          yield* engine.writeEvents({
+            events: [
+              {
+                id: EventId.make(`${open.requestId}:expired`),
+                type: "runtime-request.updated",
+                threadId: follow.threadId,
+                occurredAt: now,
+                payload: { ...open.request, status: "expired", resolvedAt: now },
+              },
+              ...(item === null
+                ? []
+                : [
+                    {
+                      id: EventId.make(`${open.itemId}:closed`),
+                      type: "turn-item.updated" as const,
+                      threadId: follow.threadId,
+                      occurredAt: now,
+                      payload: { ...item, status: "completed" as const, completedAt: now, updatedAt: now },
+                    },
+                  ]),
+            ],
+          });
+        }
+      }
+      if (found === null || found.options.length === 0) return;
+      const stamp = Date.now();
+      const requestId = RuntimeRequestId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
+      const itemId = TurnItemId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
+      const nodeId = NodeId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
+      // One line: T3 sends the answer back as "<question>\n<answer>".
+      const question = [found.context, found.question]
+        .filter((part) => part.length > 0)
+        .join(". ")
+        .replace(/\s+/g, " ")
+        .slice(0, 800);
+      const request = {
+        id: requestId,
+        nodeId,
+        providerTurnId: null,
+        nativeRequestRef: null,
+        kind: "user_input" as const,
+        status: "pending" as const,
+        responseCapability: { type: "message" as const },
+        createdAt: now,
+        resolvedAt: null,
+      };
+      follow.ask = { key: found.key, requestId, itemId, request };
+      yield* engine.writeEvents({
+        events: [
+          {
+            id: EventId.make(`${requestId}:item`),
+            type: "turn-item.updated",
+            threadId: follow.threadId,
+            occurredAt: now,
+            payload: {
+              id: itemId,
+              threadId: follow.threadId,
+              runId: follow.target,
+              nodeId,
+              providerThreadId: null,
+              providerTurnId: null,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 1,
+              status: "waiting",
+              title: found.header ?? "In the terminal",
+              startedAt: now,
+              completedAt: null,
+              updatedAt: now,
+              type: "user_input_request",
+              requestId,
+              responseMode: "message",
+              questions: [
+                {
+                  id: "answer",
+                  header: (found.header ?? "Terminal").slice(0, 60),
+                  question,
+                  options: found.options.map((option) => ({
+                    label: option.label,
+                    description: option.description.length > 0 ? option.description : option.label,
+                  })),
+                  ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
+                },
+              ],
+            },
+          },
+          {
+            id: EventId.make(`${requestId}:pending`),
+            type: "runtime-request.updated",
+            threadId: follow.threadId,
+            occurredAt: now,
+            payload: request,
+          },
+        ],
+      });
     });
 
   /** Keep the session's own title, with its account and box; T3's auto-title does not stick. */
@@ -976,6 +1135,7 @@ const make = Effect.gen(function* () {
         turn: session.status === "busy",
         shown: null,
         checkedAt: 0,
+        ask: null,
         tools: new Map(),
       };
       follows.set(session.sessionId, follow);
@@ -1052,6 +1212,7 @@ const make = Effect.gen(function* () {
             ? startFollowing(session)
             : step(session, follow).pipe(
                 Effect.andThen(working(follow, session)),
+                Effect.andThen(relayPrompt(follow, session)),
                 Effect.andThen(retitle(follow, session)),
               )
         ).pipe(
