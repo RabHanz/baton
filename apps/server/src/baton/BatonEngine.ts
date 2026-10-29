@@ -19,6 +19,10 @@ import {
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2Run,
+  type OrchestrationV2RuntimeRequest,
+  type OrchestrationV2TurnItem,
+  type RuntimeRequestId,
+  type TurnItemId,
   ProjectId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ThreadShell,
@@ -105,6 +109,16 @@ export interface BatonEngineShape {
   ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>>;
   /** The thread's runs, for live-session turns (D83). Empty on an engine error. */
   readonly threadRuns: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<OrchestrationV2Run>>;
+  /** A runtime request's status, for live-session terminal prompts (D88). Null when unknown. */
+  readonly runtimeRequestStatus: (
+    threadId: ThreadId,
+    requestId: RuntimeRequestId,
+  ) => Effect.Effect<OrchestrationV2RuntimeRequest["status"] | null>;
+  /** One turn item, or null. */
+  readonly turnItem: (
+    threadId: ThreadId,
+    itemId: TurnItemId,
+  ) => Effect.Effect<OrchestrationV2TurnItem | null>;
   /** The thread's active provider thread, for live-session working state (D85). */
   readonly activeProviderThread: (
     threadId: ThreadId,
@@ -374,6 +388,17 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
+  const runtimeRequestStatus: BatonEngineShape["runtimeRequestStatus"] = (threadId, requestId) =>
+    orchestrator.getThreadRecords(threadId, ["runtimeRequests"]).pipe(
+      Effect.map(
+        (records) => records.runtimeRequests.find((request) => request.id === requestId)?.status ?? null,
+      ),
+      Effect.catchCause(() => Effect.succeed(null)),
+    );
+
+  const turnItem: BatonEngineShape["turnItem"] = (threadId, itemId) =>
+    orchestrator.getTurnItem({ threadId, itemId }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+
   const threadRuns: BatonEngineShape["threadRuns"] = (threadId) =>
     orchestrator.getThreadRecords(threadId, ["runs"]).pipe(
       Effect.map((records) => records.runs),
@@ -466,6 +491,8 @@ export const make = Effect.gen(function* () {
     writeEvents,
     threadMessages,
     threadRuns,
+    runtimeRequestStatus,
+    turnItem,
     activeProviderThread,
     renameThread,
     resumeQueue,
@@ -514,6 +541,8 @@ export const layerStatic = (input: {
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
     threadRuns: () => Effect.succeed([]),
+    runtimeRequestStatus: () => Effect.succeed(null),
+    turnItem: () => Effect.succeed(null),
     activeProviderThread: () => Effect.succeed(null),
     renameThread: () => Effect.succeed(true),
     resumeQueue: () => Effect.void,

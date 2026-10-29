@@ -1,0 +1,40 @@
+ ▐▛███▛█   Claude Code v2.1.312
+▝▜██████▀  Opus 5.5 · Claude Max
+ ▝▝   ▝▝   /mnt/HC_Volume_106652742/tmp/lanes/baton-prompt-test
+
+
+❯ Use the Write tool to create the file probe-two.txt containing the word PROBE.
+
+● Write(probe-two.txt)
+  ⎿  Wrote 1 line to probe-two.txt
+      1 PROBE
+
+● I created probe-two.txt in the repo root. It holds the word PROBE followed by a newline.
+
+✻ Crunched for 7s · done 7:39 PM
+
+❯ Use the Bash tool to run exactly: echo PERM-TEST
+
+  Ran 1 shell command
+  ⎿  Interrupted · What should Claude do instead?
+
+✻ Cooked for 4s · done 7:40 PM
+
+❯ Use the AskUserQuestion tool to ask me one question: which colour do I prefer, with the options Red, Green and Blue.
+  Then reply with the colour I picked, in capitals.
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Colour
+
+Which colour do you prefer?
+
+❯ 1. Red
+     The colour red
+  2. Green
+     The colour green
+  3. Blue
+     The colour blue
+  4. Type something.
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

@@ -15,12 +15,69 @@ import {
   promptText,
   splitAttachments,
   safeInboxName,
+  parsePanePrompt,
+  answerKeys,
+  answerFrom,
 } from "./baton-live-acp.mjs";
 
 const AGENT = NodePath.join(
   NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)),
   "baton-live-acp.mjs",
 );
+
+const fixture = (name) =>
+  NodeFS.readFileSync(
+    NodePath.join(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "__fixtures__", name),
+    "utf8",
+  );
+
+NodeTest.test("a permission dialog on the screen is read with its options (D88)", () => {
+  const prompt = parsePanePrompt(fixture("pane-permission.txt"));
+  NodeAssert.equal(prompt.question, "Do you want to proceed?");
+  NodeAssert.match(prompt.context, /echo PERM-TEST/);
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Yes", "No"],
+  );
+  NodeAssert.deepEqual(answerKeys(prompt, "No"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "1"), { keys: ["enter"], text: null });
+  NodeAssert.equal(answerKeys(prompt, "maybe"), null, "no free text where none is offered");
+});
+
+NodeTest.test("an AskUserQuestion is read with its header, descriptions and free-text slot", () => {
+  const prompt = parsePanePrompt(fixture("pane-question.txt"));
+  NodeAssert.equal(prompt.header, "Colour");
+  NodeAssert.equal(prompt.question, "Which colour do you prefer?");
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => [o.label, o.description]),
+    [
+      ["Red", "The colour red"],
+      ["Green", "The colour green"],
+      ["Blue", "The colour blue"],
+    ],
+  );
+  NodeAssert.equal(prompt.customIndex, 3);
+  NodeAssert.deepEqual(answerKeys(prompt, "green"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Purple"), {
+    keys: ["down", "down", "down"],
+    text: "Purple",
+  });
+  NodeAssert.equal(answerFrom("Colour. Which colour do you prefer?\nBlue", prompt), "Blue");
+  NodeAssert.equal(answerFrom("Blue", prompt), "Blue");
+});
+
+NodeTest.test("unnumbered options are read too, and a plain screen has no prompt", () => {
+  const trust = parsePanePrompt(fixture("pane-trust.txt"));
+  NodeAssert.deepEqual(
+    trust.options.map((o) => o.label),
+    ["No, exit", "Yes, I trust this folder"],
+  );
+  NodeAssert.deepEqual(answerKeys(trust, "Yes, I trust this folder"), {
+    keys: ["down", "enter"],
+    text: null,
+  });
+  NodeAssert.equal(parsePanePrompt("❯ hello\n───────\n  ⏵⏵ bypass permissions on"), null);
+});
 
 NodeTest.test("only the user's words reach Claude, never T3's instruction wrappers", () => {
   const first =

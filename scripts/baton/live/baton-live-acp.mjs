@@ -25,6 +25,7 @@ const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
 const ATTACHMENT_ENTER_MS = Number(process.env.BATON_LIVE_ATTACHMENT_ENTER_MS ?? 1_500);
+const PROMPT_CLEAR_TRIES = Number(process.env.BATON_LIVE_PROMPT_CLEAR_TRIES ?? 30);
 const UNBOUND = "baton-unbound";
 
 // ---------------------------------------------------------------------------------------------
@@ -113,6 +114,134 @@ export function herdrPaneRef(env) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Terminal prompts (D88): a permission dialog, an AskUserQuestion or a mod's ui.ask, read from
+// the pane's screen so T3 can show it with its options and answer it with keystrokes.
+
+const FOOTER = /Esc to cancel|Enter to (confirm|select)|↑\/↓ to navigate/;
+const RULE = /^\s*[─━╌]{8,}\s*$/;
+const SOLID = /^\s*[─━]{8,}\s*$/;
+const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
+const CUSTOM = /^type something\.?$/i;
+const DROPPED = /^chat about this$/i;
+const clean = (text) => text.replace(/^[\s│┃|]+/, "").replace(/\s+/g, " ").trim();
+
+/**
+ * The prompt on a Claude Code screen, or null when none can be read. Options keep their screen
+ * order (`index`), so an answer is arrows from the highlighted one plus Enter.
+ */
+export function parsePanePrompt(screen) {
+  const lines = String(screen ?? "").replace(/\r/g, "").split("\n");
+  let footer = -1;
+  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
+    if (FOOTER.test(lines[i])) {
+      footer = i;
+      break;
+    }
+  if (footer < 0) return null;
+  const options = [];
+  let first = -1;
+  // Numbered options (permission dialogs, AskUserQuestion), read upward to option 1.
+  for (let i = footer - 1; i >= 0 && i >= footer - 60; i -= 1) {
+    const m = NUMBERED.exec(lines[i]);
+    if (m === null) continue;
+    options.unshift({ number: Number(m[3]), label: m[4], selected: m[2] !== undefined, line: i });
+    if (m[3] === "1") {
+      first = i;
+      break;
+    }
+  }
+  const ordered = options.every((option, index) => option.number === index + 1);
+  if (first < 0 || !ordered) {
+    // Unnumbered options (the folder-trust dialog): the highlighted line and its neighbours.
+    options.length = 0;
+    const marked = lines.slice(Math.max(0, footer - 20), footer).findLastIndex((l) => /^\s*❯\s/.test(l));
+    if (marked < 0) return null;
+    const at = Math.max(0, footer - 20) + marked;
+    const indent = lines[at].indexOf("❯");
+    const isOption = (l) =>
+      l.trim().length > 0 && (l.slice(indent).startsWith("❯ ") || l.slice(0, indent + 2).trim() === "");
+    let top = at;
+    while (top - 1 >= 0 && isOption(lines[top - 1]) && /^\s+$/.test(lines[top - 1].slice(0, indent + 2)))
+      top -= 1;
+    let bottom = at;
+    while (bottom + 1 < footer && isOption(lines[bottom + 1]) && /^\s+$/.test(lines[bottom + 1].slice(0, indent + 2)))
+      bottom += 1;
+    for (let i = top; i <= bottom; i += 1)
+      options.push({
+        number: i - top + 1,
+        label: clean(lines[i].replace("❯", "")),
+        selected: i === at,
+        line: i,
+      });
+    first = top;
+  }
+  if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
+  // Lines under an option, before the next one, describe it.
+  for (let k = 0; k < options.length; k += 1) {
+    const end = k + 1 < options.length ? options[k + 1].line : footer;
+    const text = lines
+      .slice(options[k].line + 1, end)
+      .filter((l) => !RULE.test(l))
+      .map(clean)
+      .filter((l) => l.length > 0)
+      .join(" ");
+    options[k].description = text;
+  }
+  // The question is the nearest text above the options; what it asks about runs up to a rule.
+  let q = first - 1;
+  while (q >= 0 && clean(lines[q]).length === 0) q -= 1;
+  if (q < 0 || RULE.test(lines[q])) return null;
+  const question = clean(lines[q]);
+  let top = q - 1;
+  while (top >= 0 && q - top < 30 && !SOLID.test(lines[top])) top -= 1;
+  const context = lines
+    .slice(top + 1, q)
+    .filter((l) => !RULE.test(l))
+    .map(clean)
+    .filter((l) => l.length > 0);
+  const header = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
+  const visible = options.filter((o) => !CUSTOM.test(o.label) && !DROPPED.test(o.label));
+  const custom = options.find((o) => CUSTOM.test(o.label));
+  return {
+    question,
+    header,
+    context: context.join(" · ").slice(0, 600),
+    options: visible.map((o) => ({
+      index: o.number - 1,
+      label: o.label,
+      description: o.description,
+    })),
+    selected: options.findIndex((o) => o.selected),
+    customIndex: custom === undefined ? null : custom.number - 1,
+    key: [question, ...options.map((o) => o.label)].join("\u0000"),
+  };
+}
+
+/** The keys that answer `prompt` with `answer` (an option's label or number, or free text). */
+export function answerKeys(prompt, answer) {
+  const wanted = String(answer ?? "").trim();
+  const byLabel = prompt.options.find((o) => o.label.toLowerCase() === wanted.toLowerCase());
+  const byNumber = /^\d+$/.test(wanted)
+    ? prompt.options.find((o) => o.index === Number(wanted) - 1)
+    : undefined;
+  const option = byLabel ?? byNumber;
+  const target = option?.index ?? (wanted.length > 0 ? prompt.customIndex : null);
+  if (target === null || target === undefined) return null;
+  const delta = target - prompt.selected;
+  const arrows = Array.from({ length: Math.abs(delta) }, () => (delta > 0 ? "down" : "up"));
+  return option === undefined ? { keys: arrows, text: wanted } : { keys: [...arrows, "enter"], text: null };
+}
+
+/** What T3 sends back for an answered question: "<question>\n<answer>". */
+export function answerFrom(text, prompt) {
+  const body = String(text ?? "").trim();
+  const asked = prompt.question;
+  const at = body.indexOf("\n");
+  if (at > 0 && body.slice(0, at).trim().endsWith(asked)) return body.slice(at + 1).trim();
+  return body;
+}
+
+// ---------------------------------------------------------------------------------------------
 // The live session
 
 const alive = (pid) => {
@@ -191,6 +320,44 @@ const herdrArgs = (paneRef, verb, rest) => {
     : ["--session", paneRef.slice(0, at), "agent", verb, paneRef.slice(at + 1), ...rest];
 };
 
+const BLOCKED_NOTE =
+  "Claude Code is waiting on a question or an approval in its terminal; answer it there first.";
+
+/** The prompt on the pane's screen now, or null. */
+export async function readPanePrompt(paneRef) {
+  const read = await run(HERDR, herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]));
+  return read.ok ? parsePanePrompt(read.out) : null;
+}
+
+/**
+ * D88: answer the prompt showing in the pane with keystrokes, then wait until it is gone. Returns
+ * what to tell the thread, or null when `text` is not an answer to it (nothing was pressed).
+ */
+async function answerPrompt(sessionId, paneRef, text) {
+  const shown = await readPanePrompt(paneRef);
+  if (shown === null) return null;
+  const answer = answerFrom(text, shown);
+  const plan = answerKeys(shown, answer);
+  if (plan === null) return null;
+  if (plan.keys.length > 0) await run(HERDR, herdrArgs(paneRef, "send-keys", plan.keys));
+  if (plan.text !== null) {
+    const at = paneRef.indexOf("~");
+    const session = at < 0 ? [] : ["--session", paneRef.slice(0, at)];
+    await sleep(300);
+    await run(HERDR, [...session, "pane", "send-text", at < 0 ? paneRef : paneRef.slice(at + 1), plan.text]);
+    await run(HERDR, herdrArgs(paneRef, "send-keys", ["enter"]));
+  }
+  for (let i = 0; i < PROMPT_CLEAR_TRIES; i += 1) {
+    await sleep(500);
+    const now = await readPanePrompt(paneRef);
+    if (now === null || now.key !== shown.key) {
+      const status = findLiveSession(sessionId)?.status ?? "gone";
+      return `Answered in the terminal: ${plan.text ?? answer}. The session is ${status === "waiting" ? "asking again" : status} now.`;
+    }
+  }
+  return `The answer "${plan.text ?? answer}" was pressed, but the terminal still shows the question.`;
+}
+
 /** Herdr's `agent prompt` pastes with the terminal's bracketed-paste mode, then presses Enter. */
 async function typeInto(paneRef, text) {
   const sent = await run(HERDR, herdrArgs(paneRef, "prompt", [text]));
@@ -204,7 +371,7 @@ async function typeInto(paneRef, text) {
     return null;
   }
   return /agent_blocked/.test(sent.out)
-    ? "Claude Code is waiting on a question or an approval in its terminal; answer it there first."
+    ? BLOCKED_NOTE
     : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
 }
 
@@ -307,7 +474,17 @@ async function prompt(params) {
   const turn = { cancelled: false, pane: live.pane };
   turns.set(sessionId, turn);
   try {
+    // A question or approval on the screen takes the message as its answer (D88).
+    if (live.status === "waiting") {
+      const answered = await answerPrompt(sessionId, live.pane, promptText(params.prompt));
+      say(sessionId, answered ?? BLOCKED_NOTE);
+      return { stopReason: "end_turn" };
+    }
     const failure = await typeInto(live.pane, text);
+    if (failure === BLOCKED_NOTE) {
+      say(sessionId, (await answerPrompt(sessionId, live.pane, promptText(params.prompt))) ?? failure);
+      return { stopReason: "end_turn" };
+    }
     if (failure !== null) {
       say(sessionId, failure);
       return { stopReason: "end_turn" };
@@ -381,5 +558,9 @@ function main() {
   lines.on("close", () => process.exit(0));
 }
 
-if (process.argv[1] && NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1]))
-  main();
+if (process.argv[1] && NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1])) {
+  // `--pane-prompt <pane>`: the server's mirror reads a waiting session's prompt through this (D88).
+  if (process.argv[2] === "--pane-prompt" && process.argv[3])
+    readPanePrompt(process.argv[3]).then((found) => process.stdout.write(`${JSON.stringify(found)}\n`));
+  else main();
+}
