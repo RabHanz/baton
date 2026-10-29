@@ -100,6 +100,7 @@ NodeTest.test(
         BATON_HERDR_BIN: herdr,
         BATON_TEST_HERDR_PANE: "fab-x~p1",
         BATON_LIVE_POLL_MS: "50",
+        BATON_LIVE_IDLE_SETTLE_MS: "100",
       },
       stdio: ["pipe", "pipe", "inherit"],
     });

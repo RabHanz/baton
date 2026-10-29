@@ -31,6 +31,52 @@ describe("a live transcript read as messages", () => {
     ).toMatchObject({ role: "user", text: "do it" });
   });
 
+  it("keeps pasted images and the files a session sent, not images inside tool results", () => {
+    const png = { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" };
+    expect(
+      parseLiveTranscriptLine(
+        line({
+          type: "user",
+          uuid: "p",
+          message: {
+            content: [
+              { type: "image", source: png },
+              { type: "text", text: "look" },
+            ],
+          },
+        }),
+      ),
+    ).toMatchObject({ text: "look", images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }] });
+    expect(
+      parseLiveTranscriptLine(
+        line({
+          type: "user",
+          uuid: "t",
+          message: {
+            content: [{ type: "tool_result", content: [{ type: "image", source: png }] }],
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseLiveTranscriptLine(
+        line({
+          type: "assistant",
+          uuid: "s",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "SendUserFile",
+                input: { files: ["/tmp/a.png", "/tmp/b.pdf"], caption: "Two files" },
+              },
+            ],
+          },
+        }),
+      ),
+    ).toMatchObject({ role: "assistant", text: "Two files", files: ["/tmp/a.png", "/tmp/b.pdf"] });
+  });
+
   it("drops tool results, side chains, meta, summaries and other record types", () => {
     const toolResult = { type: "user", uuid: "a", message: { content: [{ type: "tool_result" }] } };
     expect(parseLiveTranscriptLine(line(toolResult))).toBeNull();
