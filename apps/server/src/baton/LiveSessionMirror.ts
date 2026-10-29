@@ -20,6 +20,10 @@
  * Ordering: runless items sort before every run, so a message written after a composer turn is
  * attached to the thread's latest run and lands after it.
  *
+ * D85: pasted images and sent files show (`liveMedia`), each tool call shows as it runs, runs end
+ * at once so T3 never queues a send, and the session's working state is a background task on its
+ * provider thread, so T3 alerts once when a turn someone asked for has finished.
+ *
  * shortcut: polls the registry and each transcript every 2 s rather than watching files; a tick
  * costs a directory read plus one `stat` per live session. Upgrade to fs.watch if ticks show up.
  */
@@ -28,8 +32,10 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
+  type ChatAttachment,
   EventId,
   MessageId,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -48,8 +54,10 @@ import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import {
   claudeProjectSlug,
   isComposerEcho,
+  parseLiveToolSteps,
   parseLiveTranscriptLine,
   splitTranscriptChunk,
+  type LiveToolStep,
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
@@ -58,6 +66,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 
+import {
+  chatAttachmentStableKey,
+  createDeterministicAttachmentId,
+  resolveAttachmentPath,
+} from "../attachmentStore.ts";
+import * as ServerConfig from "../config.ts";
+import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
@@ -71,9 +86,12 @@ const MODEL = "live";
  * after newer and so showed it out of order; those threads are deleted at start and rebuilt under
  * this one (they are a mirror of the transcript, which is the record).
  */
-const PREFIX = "baton-live3";
-/** baton-live2 (round 3 first cut) closed old turns at server start; rebuilt too. */
-const RETIRED_PREFIXES = ["baton-live:", "baton-live2:"];
+const PREFIX = "baton-live4";
+/**
+ * baton-live2 (round 3 first cut) closed old turns at server start; baton-live3 (round 3) dropped
+ * every image and sent file. Both are rebuilt from the transcript.
+ */
+const RETIRED_PREFIXES = ["baton-live:", "baton-live2:", "baton-live3:"];
 const TICK = "2 seconds";
 /** How much of an existing transcript a new thread starts with. */
 const FIRST_READ_BYTES = 4 * 1024 * 1024;
@@ -82,6 +100,140 @@ const FIRST_MESSAGES = 120;
 const MAX_BACKFILL_BYTES = 64 * 1024 * 1024;
 /** A busy session can write a lot between ticks; one tick reads at most this much. */
 const STEP_BYTES = 8 * 1024 * 1024;
+/** A turn ends after this long idle: Claude Code can read idle for a moment inside one turn. */
+const IDLE_SETTLE_MS = 4_000;
+/** The background task that shows a live session working (D85). */
+const WORKING_TASK = {
+  taskId: "baton-live-turn",
+  kind: "background_task" as const,
+  description: "Working in its terminal",
+};
+/** How often a working thread's task is checked against what the runtime last wrote. */
+const RECHECK_MS = 10_000;
+/** A tool's output shown in the thread is cut to this many characters. */
+const MAX_TOOL_OUTPUT_CHARS = 4_000;
+/** A sent file bigger than this is named in the thread, not copied. */
+const MAX_SENT_FILE_BYTES = 20 * 1024 * 1024;
+const INLINE_IMAGE_TYPES: Record<string, string> = {
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+const FILE_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".json": "application/json",
+  ".md": "text/markdown",
+  ".mp4": "video/mp4",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+};
+
+const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
+  "kind" in entry;
+
+/** A file name as markdown link text: brackets would end the link. */
+const label = (name: string): string => name.replace(/[[\]\\]/g, "");
+
+/** What a message shows beyond its words: T3 attachments and, for sent files, markdown. */
+export interface LiveMedia {
+  readonly text: string;
+  readonly attachments: ReadonlyArray<ChatAttachment>;
+}
+
+/**
+ * Copies a message's media into T3's attachment store (ids from the bytes, so a second mirror of
+ * the same message writes nothing new). Pasted images become the user message's own image
+ * attachments, which every T3 client renders. Files the session sent go into the assistant
+ * message as markdown, because T3 renders an assistant message's images and file links from its
+ * markdown: images inline, anything else as a file link. Only what the transcript names is read:
+ * the bytes the user pasted, and the paths the session itself chose to send.
+ */
+export const liveMedia = (input: {
+  readonly attachmentsDir: string;
+  readonly threadId: string;
+  readonly messageId: string;
+  readonly message: LiveTranscriptMessage;
+}): LiveMedia => {
+  const { attachmentsDir, threadId, messageId, message } = input;
+  const store = (attachment: ChatAttachment, bytes: Uint8Array): string | null => {
+    const path = resolveAttachmentPath({ attachmentsDir, attachment });
+    if (path === null) return null;
+    if (!NodeFS.existsSync(path)) {
+      NodeFS.mkdirSync(attachmentsDir, { recursive: true });
+      NodeFS.writeFileSync(path, bytes);
+    }
+    return path;
+  };
+  const attachments: Array<ChatAttachment> = [];
+  const notes: Array<string> = [];
+  (message.images ?? []).forEach((image, index) => {
+    const bytes = Buffer.from(image.data, "base64");
+    const extension = inferImageExtension({ mimeType: image.mimeType });
+    const id = createDeterministicAttachmentId(
+      threadId,
+      chatAttachmentStableKey(messageId, index, bytes),
+    );
+    if (id === null || bytes.length === 0) return;
+    if (bytes.length > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
+      notes.push(
+        `_An image (${Math.round(bytes.length / 1_048_576)} MB) is too big to show here._`,
+      );
+      return;
+    }
+    const attachment: ChatAttachment = {
+      type: "image",
+      id,
+      name: `image-${index + 1}${extension}`,
+      mimeType: image.mimeType,
+      sizeBytes: bytes.length,
+    };
+    if (store(attachment, bytes) !== null) attachments.push(attachment);
+  });
+  const links: Array<string> = [];
+  (message.files ?? []).forEach((file, index) => {
+    const name = NodePath.basename(file);
+    let stat: NodeFS.Stats | null = null;
+    try {
+      stat = NodeFS.statSync(file);
+    } catch {}
+    if (stat === null || !stat.isFile()) {
+      notes.push(`_${label(name)} is no longer on disk._`);
+      return;
+    }
+    if (stat.size === 0 || stat.size > MAX_SENT_FILE_BYTES) {
+      notes.push(`_${label(name)} (${Math.round(stat.size / 1_048_576)} MB) is not copied here._`);
+      return;
+    }
+    const bytes = NodeFS.readFileSync(file);
+    const extension = NodePath.extname(name).toLowerCase();
+    const id = createDeterministicAttachmentId(
+      threadId,
+      chatAttachmentStableKey(messageId, index, bytes),
+    );
+    if (id === null) return;
+    const imageType = INLINE_IMAGE_TYPES[extension];
+    const attachment: ChatAttachment =
+      imageType !== undefined && bytes.length <= PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
+        ? { type: "image", id, name, mimeType: imageType, sizeBytes: bytes.length }
+        : {
+            type: "file",
+            id,
+            name,
+            mimeType: FILE_TYPES[extension] ?? "application/octet-stream",
+            sizeBytes: bytes.length,
+          };
+    const copy = store(attachment, bytes);
+    if (copy === null) return;
+    links.push(
+      attachment.type === "image" ? `![${label(name)}](<${copy}>)` : `[${label(name)}](<${copy}>)`,
+    );
+  });
+  const text = [message.text, ...links, ...notes].filter((part) => part.length > 0).join("\n\n");
+  // Sent files live in the markdown; only a user message carries T3 attachments.
+  return { text, attachments: message.role === "user" ? attachments : [] };
+};
 
 /** Off by machine with `BATON_LIVE_THREADS=off`. */
 export const liveThreadsEnabled = (): boolean => process.env.BATON_LIVE_THREADS !== "off";
@@ -197,11 +349,24 @@ interface Follow {
   open: OrchestrationV2Run | null;
   /** When the newest mirrored message was written: a finished turn ends there, not at "now". */
   lastAt: DateTime.Utc | null;
+  /** Since when the session has read idle while a terminal turn is open. */
+  idleSince: number | null;
+  /** A user message is being worked on (from it until the session has been idle a while). */
+  turn: boolean;
+  /** What the thread last showed: working or not (null until read). */
+  shown: boolean | null;
+  checkedAt: number;
+  /** Tool calls shown as running, by Claude's tool-use id, until their result arrives. */
+  readonly tools: Map<
+    string,
+    { readonly name: string; readonly input: unknown; readonly at: string }
+  >;
 }
 
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const settings = yield* ServerSettingsService;
+  const { attachmentsDir } = yield* ServerConfig.ServerConfig;
 
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
@@ -344,9 +509,12 @@ const make = Effect.gen(function* () {
     sessionId: string,
     message: LiveTranscriptMessage,
     runId: RunId | null,
+    media?: LiveMedia,
   ): ReadonlyArray<OrchestrationV2DomainEvent> => {
     const key = `${sessionId}:${message.uuid}`;
     const messageId = MessageId.make(`${PREFIX}:${key}`);
+    const { text, attachments } =
+      media ?? liveMedia({ attachmentsDir, threadId, messageId, message });
     const at = DateTime.makeUnsafe(message.createdAt);
     const common = {
       id: TurnItemId.make(`${PREFIX}:turn-item:${key}`),
@@ -379,8 +547,8 @@ const make = Effect.gen(function* () {
           runId,
           nodeId: null,
           role: message.role,
-          text: message.text,
-          attachments: [],
+          text,
+          attachments,
           streaming: false,
           createdAt: at,
           updatedAt: at,
@@ -400,15 +568,84 @@ const make = Effect.gen(function* () {
                 type: "user_message",
                 messageId,
                 inputIntent: "turn_start",
-                text: message.text,
-                attachments: [],
+                text,
+                attachments,
               }
             : {
                 ...common,
                 type: "assistant_message",
                 messageId,
-                text: message.text,
+                text,
                 streaming: false,
+              },
+      },
+    ];
+  };
+
+  /**
+   * A tool step as the turn item upstream's Claude adapter would write for it: `Bash` as a command,
+   * anything else as a named tool. A call shows running until its result replaces it in place.
+   */
+  const toolEvents = (
+    follow: Follow,
+    sessionId: string,
+    step: LiveToolStep,
+    runId: RunId | null,
+  ): ReadonlyArray<OrchestrationV2DomainEvent> => {
+    const call =
+      step.kind === "use"
+        ? { name: step.name, input: step.input, at: step.createdAt }
+        : follow.tools.get(step.id);
+    if (call === undefined) return [];
+    if (step.kind === "use") follow.tools.set(step.id, call);
+    else follow.tools.delete(step.id);
+    const done = step.kind === "result";
+    const output = done ? step.output.slice(0, MAX_TOOL_OUTPUT_CHARS) : undefined;
+    const startedAt = DateTime.makeUnsafe(call.at);
+    const at = DateTime.makeUnsafe(step.createdAt);
+    const input = (call.input ?? {}) as Record<string, unknown>;
+    const id = TurnItemId.make(`${PREFIX}:tool:${sessionId}:${step.id}`);
+    const common = {
+      id,
+      threadId: follow.threadId,
+      runId,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: done
+        ? step.isError
+          ? ("failed" as const)
+          : ("completed" as const)
+        : ("running" as const),
+      title: call.name,
+      startedAt,
+      completedAt: done ? at : null,
+      updatedAt: at,
+    };
+    return [
+      {
+        id: EventId.make(`${PREFIX}:tool:${sessionId}:${step.id}:${step.kind}`),
+        type: "turn-item.updated",
+        threadId: follow.threadId,
+        occurredAt: at,
+        payload:
+          call.name === "Bash" && typeof input["command"] === "string"
+            ? {
+                ...common,
+                type: "command_execution",
+                input: input["command"],
+                ...(output === undefined ? {} : { output }),
+                ...(done && step.isError ? { outputIndicatesFailure: true } : {}),
+              }
+            : {
+                ...common,
+                type: "dynamic_tool",
+                toolName: call.name,
+                input: call.input ?? {},
+                ...(output === undefined ? {} : { output }),
               },
       },
     ];
@@ -438,14 +675,18 @@ const make = Effect.gen(function* () {
    * Transcript messages into the thread. A user message typed in the terminal opens its own turn
    * (a run, so the official apps show it as a turn and the thread as Working while it runs);
    * the copy of a message T3's composer sent is skipped and its replies join that composer turn.
+   * Live, a message typed while a terminal turn is still running joins that turn, so the turn
+   * ends (and alerts) once, when the session goes idle; history keeps one turn per message.
    */
   const writeMessages = (
     follow: Follow,
     session: ClaudeLiveSession,
-    messages: ReadonlyArray<LiveTranscriptMessage>,
+    entries: ReadonlyArray<LiveTranscriptMessage | LiveToolStep>,
+    history = false,
   ) =>
     Effect.gen(function* () {
-      const fresh = messages.filter((m) => !follow.written.has(m.uuid));
+      // Tool steps only live: history shows the conversation, not every call it made.
+      const fresh = entries.filter((e) => (isStep(e) ? !history : !follow.written.has(e.uuid)));
       if (fresh.length === 0) return;
       const runs = yield* engine.threadRuns(follow.threadId);
       let ordinal = runs.reduce((max, run) => Math.max(max, run.ordinal), 0);
@@ -454,14 +695,32 @@ const make = Effect.gen(function* () {
         null,
       );
       follow.target ??= latest?.id ?? null;
-      const existing = fresh.some((m) => m.role === "user")
+      const existing = fresh.some((m) => !isStep(m) && m.role === "user")
         ? yield* threadMessages(follow.threadId)
         : [];
       const composerSent = existing.filter(
         (m) => m.role === "user" && !String(m.id).startsWith(`${PREFIX}:`),
       );
       const events: Array<OrchestrationV2DomainEvent> = [];
+      // A reply belongs to the newest turn asked for before it: sends typed into a busy session
+      // are read by Claude Code together, and its answer follows the last of them.
+      const known = [...runs];
+      const ownerAt = (iso: string) => {
+        const owner = known
+          .filter((run) => DateTime.toEpochMillis(run.requestedAt) <= Date.parse(iso))
+          .reduce<OrchestrationV2Run | null>(
+            (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
+            null,
+          );
+        if (owner !== null) follow.target = owner.id;
+      };
       for (const message of fresh) {
+        if (isStep(message)) {
+          ownerAt(message.createdAt);
+          events.push(...toolEvents(follow, session.sessionId, message, follow.target));
+          continue;
+        }
+        if (message.role === "assistant") ownerAt(message.createdAt);
         follow.written.add(message.uuid);
         const at = DateTime.makeUnsafe(message.createdAt);
         follow.lastAt = at;
@@ -475,6 +734,11 @@ const make = Effect.gen(function* () {
           if (follow.open !== null) {
             events.push(runEvent("run.updated", completeRun(follow.open, at)));
             follow.open = null;
+          }
+          // Someone asked for something: the session works on it until it is idle again.
+          if (!history) {
+            follow.turn = true;
+            follow.idleSince = null;
           }
           if (echo !== undefined) {
             follow.target = echo.runId ?? latest?.id ?? follow.target;
@@ -492,15 +756,18 @@ const make = Effect.gen(function* () {
             userMessageId: MessageId.make(`${PREFIX}:${session.sessionId}:${message.uuid}`),
             rootNodeId: null,
             activeAttemptId: null,
-            status: "running",
+            // Live, the run is the turn's record and ends at once: a running run makes T3 queue
+            // every later send. The working state is the provider thread's (see `working`).
+            status: history ? "running" : "completed",
             requestedAt: at,
             startedAt: at,
-            completedAt: null,
+            completedAt: history ? null : at,
             checkpointId: null,
             contextHandoffId: null,
           };
           events.push(runEvent("run.created", run));
-          follow.open = run;
+          known.push(run);
+          if (history) follow.open = run;
           follow.target = run.id;
         }
         events.push(...messageEvents(follow.threadId, session.sessionId, message, follow.target));
@@ -509,44 +776,13 @@ const make = Effect.gen(function* () {
     });
 
   /**
-   * A session busy from its terminal reads Working: its last terminal turn is reopened, and a
-   * thread with no turns yet (history mirrored before D83 round 2) gets one around its last user
-   * message. An idle thread with no turns gets the same turn, finished, so it does not read as
-   * waiting on anyone.
+   * A thread with no turns yet (history mirrored before D83 round 2) gets a finished one around
+   * its last user message, so it does not read as waiting on anyone.
    */
   const ensureTurn = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const busy = session.status === "busy";
-      if (follow.open !== null && !busy) return;
-      const runs = yield* engine.threadRuns(follow.threadId);
-      if (follow.open !== null) {
-        // T3's startup reconcile can cancel a turn Baton holds open; the session decides.
-        const held = runs.find((run) => run.id === follow.open?.id);
-        if (held !== undefined && !["completed", "cancelled", "interrupted"].includes(held.status))
-          return;
-        follow.open = null;
-      }
-      const latest = runs.reduce<OrchestrationV2Run | null>(
-        (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
-        null,
-      );
+      if ((yield* engine.threadRuns(follow.threadId)).length > 0) return;
       const now = yield* DateTime.now;
-      if (latest !== null) {
-        const ours = String(latest.id).startsWith(`${PREFIX}:run:`);
-        // A server restart cancels a running turn; a session still busy reopens it.
-        const ended = ["completed", "cancelled", "interrupted"].includes(latest.status);
-        if (!busy || !ours || !ended) return;
-        const reopened: OrchestrationV2Run = {
-          ...latest,
-          status: "running",
-          completedAt: null,
-          workStartedAt: now,
-        };
-        yield* engine.writeEvents({ events: [runEvent("run.updated", reopened)] });
-        follow.open = reopened;
-        follow.target = reopened.id;
-        return;
-      }
       const messages = yield* threadMessages(follow.threadId);
       const lastUser = messages.findLastIndex(
         (m) => m.role === "user" && String(m.id).startsWith(`${PREFIX}:`),
@@ -564,10 +800,10 @@ const make = Effect.gen(function* () {
         userMessageId: user.id,
         rootNodeId: null,
         activeAttemptId: null,
-        status: busy ? "running" : "completed",
+        status: "completed",
         requestedAt: user.createdAt,
         startedAt: user.createdAt,
-        completedAt: busy ? null : (messages.at(-1)?.createdAt ?? now),
+        completedAt: messages.at(-1)?.createdAt ?? now,
         checkpointId: null,
         contextHandoffId: null,
       };
@@ -584,22 +820,73 @@ const make = Effect.gen(function* () {
                 createdAt: DateTime.formatIso(m.createdAt),
               },
               run.id,
+              { text: m.text, attachments: m.attachments ?? [] },
             ).map((event) => ({ ...event, id: EventId.make(`${event.id}:turn`) }))
           : [],
       );
       yield* engine.writeEvents({ events: [runEvent("run.created", run), ...rehomed] });
       follow.target = run.id;
-      if (busy) follow.open = run;
     });
 
-  /** A terminal turn ends when Claude Code stops reporting busy; a queued composer send starts. */
-  const settle = (follow: Follow, session: ClaudeLiveSession) =>
+  /** History's last turn ends at its last message. */
+  const closeHistory = (follow: Follow) =>
     Effect.gen(function* () {
-      if (follow.open === null || session.status === "busy") return;
+      if (follow.open === null) return;
       const done = completeRun(follow.open, follow.lastAt ?? (yield* DateTime.now));
       follow.open = null;
       yield* engine.writeEvents({ events: [runEvent("run.updated", done)] });
-      yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
+    });
+
+  /**
+   * Working, the way T3 shows a turn whose agent still has work out: a background task on the
+   * provider thread, from a user message until the session has been idle a few seconds. Its
+   * runs are already finished, so T3 never queues a send behind it, and T3 sends one "completed"
+   * alert when the task clears. Work with no user message (a background agent's report) is not
+   * a turn and does not alert. Re-asserted every few seconds: the agent's own runtime rewrites
+   * the provider thread when a composer send goes through.
+   */
+  const working = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      const busy = session.status === "busy";
+      if (busy) follow.idleSince = null;
+      else if (follow.turn) {
+        follow.idleSince ??= Date.now();
+        if (Date.now() - follow.idleSince >= IDLE_SETTLE_MS) follow.turn = false;
+      }
+      const want = follow.turn;
+      if (want === follow.shown && (!want || Date.now() - follow.checkedAt < RECHECK_MS)) return;
+      follow.checkedAt = Date.now();
+      const provider = yield* engine.activeProviderThread(follow.threadId);
+      if (provider === null) return;
+      const others = (provider.pendingBackgroundTasks ?? []).filter(
+        (task) => task.taskId !== WORKING_TASK.taskId,
+      );
+      const has = others.length !== (provider.pendingBackgroundTasks ?? []).length;
+      // A changed state is always written: the read can lag the last write, and a skipped clear
+      // would leave the thread working (and its alert unsent) for good. A recheck writes only
+      // when the task is missing.
+      const changed = want !== follow.shown;
+      follow.shown = want;
+      if (!changed && has === want) return;
+      const now = yield* DateTime.now;
+      yield* engine.writeEvents({
+        events: [
+          {
+            id: EventId.make(`${PREFIX}:working:${follow.threadId}:${want}:${Date.now()}`),
+            type: "provider-thread.updated",
+            threadId: follow.threadId,
+            driver: provider.driver,
+            providerInstanceId: provider.providerInstanceId,
+            occurredAt: now,
+            payload: {
+              ...provider,
+              pendingBackgroundTasks: want ? [...others, WORKING_TASK] : others,
+              updatedAt: now,
+            },
+          },
+        ],
+      });
+      if (!want) yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
     });
 
   /** Keep the session's own title, with its account and box; T3's auto-title does not stick. */
@@ -684,20 +971,23 @@ const make = Effect.gen(function* () {
         target: null,
         open: null,
         lastAt: null,
+        idleSince: null,
+        // A session busy when Baton starts is taken to be working on something.
+        turn: session.status === "busy",
+        shown: null,
+        checkedAt: 0,
+        tools: new Map(),
       };
       follows.set(session.sessionId, follow);
-      // A running session is never filed away as settled, however long it has been quiet.
-      const current = yield* engine.threadShell(threadId);
-      yield* engine.keepActive({
-        tag: "live",
-        threadId,
-        settled: current?.settledOverride === "settled",
-      });
+      // A running session is never filed away for age. Settling it by hand is the per-thread mute
+      // (T3's relay sends no alert for a settled thread), so Baton leaves that alone.
+      yield* engine.keepActive({ tag: "live", threadId, settled: false });
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
       // restart whatever arrived while the server was down. History turns are finished turns.
-      yield* writeMessages(follow, session, history);
-      if (session.status !== "busy") yield* settle(follow, session);
+      yield* writeMessages(follow, session, history, true);
+      yield* closeHistory(follow);
       yield* ensureTurn(follow, session);
+      yield* working(follow, session);
     });
 
   const step = (session: ClaudeLiveSession, follow: Follow) =>
@@ -719,7 +1009,10 @@ const make = Effect.gen(function* () {
       yield* writeMessages(
         follow,
         session,
-        lines.flatMap((line) => parseLiveTranscriptLine(line) ?? []),
+        lines.flatMap((line) => [
+          ...parseLiveToolSteps(line),
+          ...[parseLiveTranscriptLine(line)].filter((m) => m !== null),
+        ]),
       );
     });
 
@@ -758,8 +1051,7 @@ const make = Effect.gen(function* () {
           follow === undefined
             ? startFollowing(session)
             : step(session, follow).pipe(
-                Effect.andThen(settle(follow, session)),
-                Effect.andThen(ensureTurn(follow, session)),
+                Effect.andThen(working(follow, session)),
                 Effect.andThen(retitle(follow, session)),
               )
         ).pipe(

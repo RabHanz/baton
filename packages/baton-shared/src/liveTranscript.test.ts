@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   claudeProjectSlug,
   isComposerEcho,
+  parseLiveToolSteps,
   parseLiveTranscriptLine,
   splitTranscriptChunk,
 } from "./liveTranscript.ts";
@@ -29,6 +30,52 @@ describe("a live transcript read as messages", () => {
     expect(
       parseLiveTranscriptLine(line({ type: "user", uuid: "u2", message: { content: "do it" } })),
     ).toMatchObject({ role: "user", text: "do it" });
+  });
+
+  it("keeps pasted images and the files a session sent, not images inside tool results", () => {
+    const png = { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" };
+    expect(
+      parseLiveTranscriptLine(
+        line({
+          type: "user",
+          uuid: "p",
+          message: {
+            content: [
+              { type: "image", source: png },
+              { type: "text", text: "look" },
+            ],
+          },
+        }),
+      ),
+    ).toMatchObject({ text: "look", images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }] });
+    expect(
+      parseLiveTranscriptLine(
+        line({
+          type: "user",
+          uuid: "t",
+          message: {
+            content: [{ type: "tool_result", content: [{ type: "image", source: png }] }],
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseLiveTranscriptLine(
+        line({
+          type: "assistant",
+          uuid: "s",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                name: "SendUserFile",
+                input: { files: ["/tmp/a.png", "/tmp/b.pdf"], caption: "Two files" },
+              },
+            ],
+          },
+        }),
+      ),
+    ).toMatchObject({ role: "assistant", text: "Two files", files: ["/tmp/a.png", "/tmp/b.pdf"] });
   });
 
   it("drops tool results, side chains, meta, summaries and other record types", () => {
@@ -75,5 +122,40 @@ describe("a live transcript read as messages", () => {
     expect(isComposerEcho("say  ALPHA\n@/w/.baton/inbox/a.png", "say ALPHA")).toBe(true);
     expect(isComposerEcho("something else", "say ALPHA")).toBe(false);
     expect(isComposerEcho("anything", "  ")).toBe(false);
+  });
+
+  it("reads tool calls and their results as steps, without the file sends", () => {
+    const at = "2026-10-29T10:00:00.000Z";
+    expect(
+      parseLiveToolSteps(
+        line({
+          type: "assistant",
+          timestamp: at,
+          message: {
+            content: [
+              { type: "text", text: "checking" },
+              { type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } },
+              { type: "tool_use", id: "t2", name: "SendUserFile", input: { files: [] } },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([{ kind: "use", id: "t1", name: "Bash", input: { command: "ls" }, createdAt: at }]);
+    expect(
+      parseLiveToolSteps(
+        line({
+          type: "user",
+          timestamp: at,
+          message: {
+            content: [
+              { type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "a b" }] },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([{ kind: "result", id: "t1", output: "a b", isError: false, createdAt: at }]);
+    expect(
+      parseLiveToolSteps(line({ type: "user", isSidechain: true, message: { content: [] } })),
+    ).toEqual([]);
   });
 });

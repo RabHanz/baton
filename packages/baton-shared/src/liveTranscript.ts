@@ -4,19 +4,68 @@
  * Reading a live Claude Code transcript as conversation messages (D83).
  *
  * The same rule upstream's agent-session import uses (`AgentSessionScanner`): user and assistant
- * records that are not side chains, meta or compact summaries, keeping only their text blocks. A
- * tool result is a `user` record with no text block, so it is not a message. Each record carries
+ * records that are not side chains, meta or compact summaries, keeping their text blocks, the
+ * images a user pasted, and the files the session sent with `SendUserFile`. A tool result is a
+ * `user` record with no text or image block of its own, so it is not a message. Each record carries
  * Claude Code's own `uuid`, which is what makes mirroring it twice a no-op.
  *
  * @module baton/liveTranscript
  */
+
+/** An image the user pasted, as Claude Code recorded it (base64). */
+export interface LiveTranscriptImage {
+  readonly mimeType: string;
+  readonly data: string;
+}
 
 export interface LiveTranscriptMessage {
   readonly uuid: string;
   readonly role: "user" | "assistant";
   readonly text: string;
   readonly createdAt: string;
+  /** User records: pasted images. */
+  readonly images?: ReadonlyArray<LiveTranscriptImage>;
+  /** Assistant records: the paths the session sent to the user (`SendUserFile`). */
+  readonly files?: ReadonlyArray<string>;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const imagesOf = (content: unknown): Array<LiveTranscriptImage> =>
+  Array.isArray(content)
+    ? content.flatMap((block) => {
+        if (!isRecord(block) || block["type"] !== "image" || !isRecord(block["source"])) return [];
+        const source = block["source"];
+        const mimeType = source["media_type"];
+        const data = source["data"];
+        return source["type"] === "base64" &&
+          typeof mimeType === "string" &&
+          mimeType.startsWith("image/") &&
+          typeof data === "string" &&
+          data.length > 0
+          ? [{ mimeType, data }]
+          : [];
+      })
+    : [];
+
+/** `SendUserFile` calls: the files and the caption the session showed the user. */
+const sentFilesOf = (content: unknown): { files: Array<string>; caption: string } => {
+  const files: Array<string> = [];
+  const captions: Array<string> = [];
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (!isRecord(block) || block["type"] !== "tool_use" || block["name"] !== "SendUserFile")
+        continue;
+      const input = isRecord(block["input"]) ? block["input"] : {};
+      const listed = Array.isArray(input["files"]) ? input["files"] : [];
+      files.push(...listed.filter((f): f is string => typeof f === "string" && f.length > 0));
+      if (typeof input["caption"] === "string" && input["caption"].trim().length > 0)
+        captions.push(input["caption"].trim());
+    }
+  }
+  return { files, caption: captions.join("\n") };
+};
 
 /** Claude Code's project folder for a directory: every non-alphanumeric becomes `-`. */
 export const claudeProjectSlug = (cwd: string): string => cwd.replace(/[^A-Za-z0-9]/g, "-");
@@ -58,12 +107,12 @@ export const parseLiveTranscriptLine = (line: string): LiveTranscriptMessage | n
   const uuid = record["uuid"];
   if (typeof uuid !== "string" || uuid.length === 0) return null;
   const message = record["message"];
-  const text = textOf(
-    typeof message === "object" && message !== null
-      ? (message as { content?: unknown }).content
-      : undefined,
-  );
-  if (text.length === 0) return null;
+  const content = isRecord(message) ? message["content"] : undefined;
+  const images = type === "user" ? imagesOf(content) : [];
+  const sent = type === "assistant" ? sentFilesOf(content) : { files: [], caption: "" };
+  const words = textOf(content);
+  const text = words.length > 0 ? words : sent.caption;
+  if (text.length === 0 && images.length === 0 && sent.files.length === 0) return null;
   // Claude Code's own plumbing recorded as user turns: background-task notices, slash-command
   // echoes, local command output, reminders. Not something a person typed.
   if (type === "user" && CLAUDE_INTERNAL_USER_TEXT.test(text)) return null;
@@ -76,6 +125,8 @@ export const parseLiveTranscriptLine = (line: string): LiveTranscriptMessage | n
       typeof timestamp === "string" && !Number.isNaN(Date.parse(timestamp))
         ? new Date(timestamp).toISOString()
         : new Date(0).toISOString(),
+    ...(images.length > 0 ? { images } : {}),
+    ...(sent.files.length > 0 ? { files: sent.files } : {}),
   };
 };
 
@@ -101,4 +152,88 @@ const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
 export const isComposerEcho = (transcriptText: string, composerText: string): boolean => {
   const sent = normalize(composerText);
   return sent.length > 0 && normalize(transcriptText).startsWith(sent);
+};
+
+/** A tool call the session made, or its result, as Claude Code wrote it (D85). */
+export type LiveToolStep =
+  | {
+      readonly kind: "use";
+      readonly id: string;
+      readonly name: string;
+      readonly input: unknown;
+      readonly createdAt: string;
+    }
+  | {
+      readonly kind: "result";
+      readonly id: string;
+      readonly output: string;
+      readonly isError: boolean;
+      readonly createdAt: string;
+    };
+
+const resultText = (content: unknown): string =>
+  typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content
+          .map((block) =>
+            isRecord(block) && block["type"] === "text" && typeof block["text"] === "string"
+              ? block["text"]
+              : isRecord(block) && block["type"] === "image"
+                ? "[image]"
+                : "",
+          )
+          .filter((text) => text.length > 0)
+          .join("\n")
+      : "";
+
+/**
+ * The tool steps in one transcript line. Claude Code writes each call when the model emits it and
+ * each result when the tool returns, so these arrive while a turn is still running. `SendUserFile`
+ * is left out: it is shown as the message that carries the files.
+ */
+export const parseLiveToolSteps = (line: string): ReadonlyArray<LiveToolStep> => {
+  let record: unknown;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    return [];
+  }
+  if (!isRecord(record) || record["isSidechain"] === true) return [];
+  const type = record["type"];
+  const message = record["message"];
+  const content = isRecord(message) ? message["content"] : undefined;
+  if (!Array.isArray(content)) return [];
+  const timestamp = record["timestamp"];
+  const createdAt =
+    typeof timestamp === "string" && !Number.isNaN(Date.parse(timestamp))
+      ? new Date(timestamp).toISOString()
+      : new Date().toISOString();
+  return content.flatMap((block): Array<LiveToolStep> => {
+    if (!isRecord(block) || typeof (block["id"] ?? block["tool_use_id"]) !== "string") return [];
+    if (type === "assistant" && block["type"] === "tool_use" && typeof block["name"] === "string") {
+      if (block["name"] === "SendUserFile") return [];
+      return [
+        {
+          kind: "use",
+          id: block["id"] as string,
+          name: block["name"],
+          input: block["input"],
+          createdAt,
+        },
+      ];
+    }
+    if (type === "user" && block["type"] === "tool_result") {
+      return [
+        {
+          kind: "result",
+          id: block["tool_use_id"] as string,
+          output: resultText(block["content"]),
+          isError: block["is_error"] === true,
+          createdAt,
+        },
+      ];
+    }
+    return [];
+  });
 };
