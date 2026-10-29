@@ -50,8 +50,10 @@ import type { ClaudeLiveSession } from "@t3tools/baton-contracts";
 import {
   claudeProjectSlug,
   isComposerEcho,
+  parseLiveToolSteps,
   parseLiveTranscriptLine,
   splitTranscriptChunk,
+  type LiveToolStep,
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
@@ -96,6 +98,8 @@ const MAX_BACKFILL_BYTES = 64 * 1024 * 1024;
 const STEP_BYTES = 8 * 1024 * 1024;
 /** A turn ends after this long idle: Claude Code can read idle for a moment inside one turn. */
 const IDLE_SETTLE_MS = 4_000;
+/** A tool's output shown in the thread is cut to this many characters. */
+const MAX_TOOL_OUTPUT_CHARS = 4_000;
 /** A sent file bigger than this is named in the thread, not copied. */
 const MAX_SENT_FILE_BYTES = 20 * 1024 * 1024;
 const INLINE_IMAGE_TYPES: Record<string, string> = {
@@ -113,6 +117,9 @@ const FILE_TYPES: Record<string, string> = {
   ".pdf": "application/pdf",
   ".txt": "text/plain",
 };
+
+const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
+  "kind" in entry;
 
 /** A file name as markdown link text: brackets would end the link. */
 const label = (name: string): string => name.replace(/[[\]\\]/g, "");
@@ -332,6 +339,11 @@ interface Follow {
   lastAt: DateTime.Utc | null;
   /** Since when the session has read idle while a terminal turn is open. */
   idleSince: number | null;
+  /** Tool calls shown as running, by Claude's tool-use id, until their result arrives. */
+  readonly tools: Map<
+    string,
+    { readonly name: string; readonly input: unknown; readonly at: string }
+  >;
 }
 
 const make = Effect.gen(function* () {
@@ -553,6 +565,75 @@ const make = Effect.gen(function* () {
     ];
   };
 
+  /**
+   * A tool step as the turn item upstream's Claude adapter would write for it: `Bash` as a command,
+   * anything else as a named tool. A call shows running until its result replaces it in place.
+   */
+  const toolEvents = (
+    follow: Follow,
+    sessionId: string,
+    step: LiveToolStep,
+    runId: RunId | null,
+  ): ReadonlyArray<OrchestrationV2DomainEvent> => {
+    const call =
+      step.kind === "use"
+        ? { name: step.name, input: step.input, at: step.createdAt }
+        : follow.tools.get(step.id);
+    if (call === undefined) return [];
+    if (step.kind === "use") follow.tools.set(step.id, call);
+    else follow.tools.delete(step.id);
+    const done = step.kind === "result";
+    const output = done ? step.output.slice(0, MAX_TOOL_OUTPUT_CHARS) : undefined;
+    const startedAt = DateTime.makeUnsafe(call.at);
+    const at = DateTime.makeUnsafe(step.createdAt);
+    const input = (call.input ?? {}) as Record<string, unknown>;
+    const id = TurnItemId.make(`${PREFIX}:tool:${sessionId}:${step.id}`);
+    const common = {
+      id,
+      threadId: follow.threadId,
+      runId,
+      nodeId: null,
+      providerThreadId: null,
+      providerTurnId: null,
+      nativeItemRef: null,
+      parentItemId: null,
+      ordinal: 1,
+      status: done
+        ? step.isError
+          ? ("failed" as const)
+          : ("completed" as const)
+        : ("running" as const),
+      title: call.name,
+      startedAt,
+      completedAt: done ? at : null,
+      updatedAt: at,
+    };
+    return [
+      {
+        id: EventId.make(`${PREFIX}:tool:${sessionId}:${step.id}:${step.kind}`),
+        type: "turn-item.updated",
+        threadId: follow.threadId,
+        occurredAt: at,
+        payload:
+          call.name === "Bash" && typeof input["command"] === "string"
+            ? {
+                ...common,
+                type: "command_execution",
+                input: input["command"],
+                ...(output === undefined ? {} : { output }),
+                ...(done && step.isError ? { outputIndicatesFailure: true } : {}),
+              }
+            : {
+                ...common,
+                type: "dynamic_tool",
+                toolName: call.name,
+                input: call.input ?? {},
+                ...(output === undefined ? {} : { output }),
+              },
+      },
+    ];
+  };
+
   /** Messages the thread already shows: Baton's own copies, and what T3's composer sent. */
   const threadMessages = (threadId: ThreadId) => engine.threadMessages(threadId, 400);
 
@@ -577,14 +658,18 @@ const make = Effect.gen(function* () {
    * Transcript messages into the thread. A user message typed in the terminal opens its own turn
    * (a run, so the official apps show it as a turn and the thread as Working while it runs);
    * the copy of a message T3's composer sent is skipped and its replies join that composer turn.
+   * Live, a message typed while a terminal turn is still running joins that turn, so the turn
+   * ends (and alerts) once, when the session goes idle; history keeps one turn per message.
    */
   const writeMessages = (
     follow: Follow,
     session: ClaudeLiveSession,
-    messages: ReadonlyArray<LiveTranscriptMessage>,
+    entries: ReadonlyArray<LiveTranscriptMessage | LiveToolStep>,
+    history = false,
   ) =>
     Effect.gen(function* () {
-      const fresh = messages.filter((m) => !follow.written.has(m.uuid));
+      // Tool steps only live: history shows the conversation, not every call it made.
+      const fresh = entries.filter((e) => (isStep(e) ? !history : !follow.written.has(e.uuid)));
       if (fresh.length === 0) return;
       const runs = yield* engine.threadRuns(follow.threadId);
       let ordinal = runs.reduce((max, run) => Math.max(max, run.ordinal), 0);
@@ -593,7 +678,7 @@ const make = Effect.gen(function* () {
         null,
       );
       follow.target ??= latest?.id ?? null;
-      const existing = fresh.some((m) => m.role === "user")
+      const existing = fresh.some((m) => !isStep(m) && m.role === "user")
         ? yield* threadMessages(follow.threadId)
         : [];
       const composerSent = existing.filter(
@@ -601,6 +686,10 @@ const make = Effect.gen(function* () {
       );
       const events: Array<OrchestrationV2DomainEvent> = [];
       for (const message of fresh) {
+        if (isStep(message)) {
+          events.push(...toolEvents(follow, session.sessionId, message, follow.target));
+          continue;
+        }
         follow.written.add(message.uuid);
         const at = DateTime.makeUnsafe(message.createdAt);
         follow.lastAt = at;
@@ -611,7 +700,8 @@ const make = Effect.gen(function* () {
               Math.abs(DateTime.toEpochMillis(sent.createdAt) - Date.parse(message.createdAt)) <
                 15 * 60_000,
           );
-          if (follow.open !== null) {
+          const joins = !history && follow.open !== null && echo === undefined;
+          if (follow.open !== null && !joins) {
             events.push(runEvent("run.updated", completeRun(follow.open, at)));
             follow.open = null;
           }
@@ -620,6 +710,12 @@ const make = Effect.gen(function* () {
             continue;
           }
           follow.name ??= message.text.split("\n")[0] ?? null;
+          if (joins) {
+            events.push(
+              ...messageEvents(follow.threadId, session.sessionId, message, follow.target),
+            );
+            continue;
+          }
           ordinal += 1;
           const run: OrchestrationV2Run = {
             id: RunId.make(`${PREFIX}:run:${session.sessionId}:${message.uuid}`),
@@ -833,6 +929,7 @@ const make = Effect.gen(function* () {
         open: null,
         lastAt: null,
         idleSince: null,
+        tools: new Map(),
       };
       follows.set(session.sessionId, follow);
       // A running session is never filed away for age. Settling it by hand is the per-thread mute
@@ -840,7 +937,7 @@ const make = Effect.gen(function* () {
       yield* engine.keepActive({ tag: "live", threadId, settled: false });
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
       // restart whatever arrived while the server was down. History turns are finished turns.
-      yield* writeMessages(follow, session, history);
+      yield* writeMessages(follow, session, history, true);
       if (session.status !== "busy") yield* settle(follow, session, true);
       yield* ensureTurn(follow, session);
     });
@@ -864,7 +961,10 @@ const make = Effect.gen(function* () {
       yield* writeMessages(
         follow,
         session,
-        lines.flatMap((line) => parseLiveTranscriptLine(line) ?? []),
+        lines.flatMap((line) => [
+          ...parseLiveToolSteps(line),
+          ...[parseLiveTranscriptLine(line)].filter((m) => m !== null),
+        ]),
       );
     });
 

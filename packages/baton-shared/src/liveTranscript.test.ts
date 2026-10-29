@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   claudeProjectSlug,
   isComposerEcho,
+  parseLiveToolSteps,
   parseLiveTranscriptLine,
   splitTranscriptChunk,
 } from "./liveTranscript.ts";
@@ -121,5 +122,40 @@ describe("a live transcript read as messages", () => {
     expect(isComposerEcho("say  ALPHA\n@/w/.baton/inbox/a.png", "say ALPHA")).toBe(true);
     expect(isComposerEcho("something else", "say ALPHA")).toBe(false);
     expect(isComposerEcho("anything", "  ")).toBe(false);
+  });
+
+  it("reads tool calls and their results as steps, without the file sends", () => {
+    const at = "2026-10-29T10:00:00.000Z";
+    expect(
+      parseLiveToolSteps(
+        line({
+          type: "assistant",
+          timestamp: at,
+          message: {
+            content: [
+              { type: "text", text: "checking" },
+              { type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } },
+              { type: "tool_use", id: "t2", name: "SendUserFile", input: { files: [] } },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([{ kind: "use", id: "t1", name: "Bash", input: { command: "ls" }, createdAt: at }]);
+    expect(
+      parseLiveToolSteps(
+        line({
+          type: "user",
+          timestamp: at,
+          message: {
+            content: [
+              { type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: "a b" }] },
+            ],
+          },
+        }),
+      ),
+    ).toEqual([{ kind: "result", id: "t1", output: "a b", isError: false, createdAt: at }]);
+    expect(
+      parseLiveToolSteps(line({ type: "user", isSidechain: true, message: { content: [] } })),
+    ).toEqual([]);
   });
 });
