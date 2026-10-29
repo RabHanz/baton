@@ -8,7 +8,7 @@
  * It does not run a model. `session/resume <claude session id>` binds to the live session found
  * in Claude Code's own `~/.claude/sessions/<pid>.json`; `session/prompt` types the text into that
  * session's Herdr pane (moving an idle plain-terminal session into Herdr first, the same
- * `baton --resume` adoption as D74) and ends the turn when Claude Code reports itself idle again.
+ * `baton --resume` adoption as D74) and ends the turn once Herdr has delivered the text (D85).
  * The reply reaches the thread through Baton's transcript mirror, so there is one writer of the
  * conversation and nothing is shown twice.
  *
@@ -24,10 +24,6 @@ import * as NodeURL from "node:url";
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
-const POLL_MS = Number(process.env.BATON_LIVE_POLL_MS ?? 500);
-/** How long a sent message may take before Claude Code says it is working on it. */
-const START_GRACE_MS = Number(process.env.BATON_LIVE_START_GRACE_MS ?? 20_000);
-const IDLE_SETTLE_MS = Number(process.env.BATON_LIVE_IDLE_SETTLE_MS ?? 4_000);
 const UNBOUND = "baton-unbound";
 
 // ---------------------------------------------------------------------------------------------
@@ -307,24 +303,10 @@ async function prompt(params) {
       say(sessionId, failure);
       return { stopReason: "end_turn" };
     }
-    // The run stays "working" in T3 while Claude Code reports busy, and ends when it stops.
-    const sentAt = Date.now();
-    // Idle must hold a few seconds: one ended turn is one "completed" alert (D85).
-    let seenBusy = false;
-    let idleSince = null;
-    for (;;) {
-      if (turn.cancelled) return { stopReason: "cancelled" };
-      await sleep(POLL_MS);
-      const now = findLiveSession(sessionId);
-      if (now === null) return { stopReason: "end_turn" };
-      if (now.status === "busy") {
-        seenBusy = true;
-        idleSince = null;
-      } else if (seenBusy || Date.now() - sentAt > START_GRACE_MS) {
-        idleSince ??= Date.now();
-        if (Date.now() - idleSince >= IDLE_SETTLE_MS) return { stopReason: "end_turn" };
-      }
-    }
+    // The turn ends once Herdr has delivered the text. Holding it open until Claude Code went idle
+    // made T3 queue every later message behind a session that is busy most of the time; Claude
+    // Code takes input mid-turn itself. The mirror shows the session working (D85).
+    return turn.cancelled ? { stopReason: "cancelled" } : { stopReason: "end_turn" };
   } finally {
     turns.delete(sessionId);
   }
@@ -351,11 +333,11 @@ async function handle(message) {
     case "session/prompt":
       return prompt(params);
     case "session/cancel": {
+      // Stop reaches Claude Code as Esc in its pane, during a send or after it.
       const turn = turns.get(params.sessionId);
-      if (turn) {
-        turn.cancelled = true;
-        if (turn.pane) await run(HERDR, herdrArgs(turn.pane, "send-keys", ["esc"]));
-      }
+      if (turn) turn.cancelled = true;
+      const pane = turn?.pane ?? findLiveSession(params.sessionId)?.pane ?? null;
+      if (pane) await run(HERDR, herdrArgs(pane, "send-keys", ["esc"]));
       return undefined;
     }
     default:

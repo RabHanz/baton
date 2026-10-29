@@ -20,6 +20,10 @@
  * Ordering: runless items sort before every run, so a message written after a composer turn is
  * attached to the thread's latest run and lands after it.
  *
+ * D85: pasted images and sent files show (`liveMedia`), each tool call shows as it runs, runs end
+ * at once so T3 never queues a send, and the session's working state is a background task on its
+ * provider thread, so T3 alerts once when a turn someone asked for has finished.
+ *
  * shortcut: polls the registry and each transcript every 2 s rather than watching files; a tick
  * costs a directory read plus one `stat` per live session. Upgrade to fs.watch if ticks show up.
  */
@@ -98,6 +102,14 @@ const MAX_BACKFILL_BYTES = 64 * 1024 * 1024;
 const STEP_BYTES = 8 * 1024 * 1024;
 /** A turn ends after this long idle: Claude Code can read idle for a moment inside one turn. */
 const IDLE_SETTLE_MS = 4_000;
+/** The background task that shows a live session working (D85). */
+const WORKING_TASK = {
+  taskId: "baton-live-turn",
+  kind: "background_task" as const,
+  description: "Working in its terminal",
+};
+/** How often a working thread's task is checked against what the runtime last wrote. */
+const RECHECK_MS = 10_000;
 /** A tool's output shown in the thread is cut to this many characters. */
 const MAX_TOOL_OUTPUT_CHARS = 4_000;
 /** A sent file bigger than this is named in the thread, not copied. */
@@ -339,6 +351,11 @@ interface Follow {
   lastAt: DateTime.Utc | null;
   /** Since when the session has read idle while a terminal turn is open. */
   idleSince: number | null;
+  /** A user message is being worked on (from it until the session has been idle a while). */
+  turn: boolean;
+  /** What the thread last showed: working or not (null until read). */
+  shown: boolean | null;
+  checkedAt: number;
   /** Tool calls shown as running, by Claude's tool-use id, until their result arrives. */
   readonly tools: Map<
     string,
@@ -700,22 +717,20 @@ const make = Effect.gen(function* () {
               Math.abs(DateTime.toEpochMillis(sent.createdAt) - Date.parse(message.createdAt)) <
                 15 * 60_000,
           );
-          const joins = !history && follow.open !== null && echo === undefined;
-          if (follow.open !== null && !joins) {
+          if (follow.open !== null) {
             events.push(runEvent("run.updated", completeRun(follow.open, at)));
             follow.open = null;
+          }
+          // Someone asked for something: the session works on it until it is idle again.
+          if (!history) {
+            follow.turn = true;
+            follow.idleSince = null;
           }
           if (echo !== undefined) {
             follow.target = echo.runId ?? latest?.id ?? follow.target;
             continue;
           }
           follow.name ??= message.text.split("\n")[0] ?? null;
-          if (joins) {
-            events.push(
-              ...messageEvents(follow.threadId, session.sessionId, message, follow.target),
-            );
-            continue;
-          }
           ordinal += 1;
           const run: OrchestrationV2Run = {
             id: RunId.make(`${PREFIX}:run:${session.sessionId}:${message.uuid}`),
@@ -727,15 +742,17 @@ const make = Effect.gen(function* () {
             userMessageId: MessageId.make(`${PREFIX}:${session.sessionId}:${message.uuid}`),
             rootNodeId: null,
             activeAttemptId: null,
-            status: "running",
+            // Live, the run is the turn's record and ends at once: a running run makes T3 queue
+            // every later send. The working state is the provider thread's (see `working`).
+            status: history ? "running" : "completed",
             requestedAt: at,
             startedAt: at,
-            completedAt: null,
+            completedAt: history ? null : at,
             checkpointId: null,
             contextHandoffId: null,
           };
           events.push(runEvent("run.created", run));
-          follow.open = run;
+          if (history) follow.open = run;
           follow.target = run.id;
         }
         events.push(...messageEvents(follow.threadId, session.sessionId, message, follow.target));
@@ -744,46 +761,13 @@ const make = Effect.gen(function* () {
     });
 
   /**
-   * A session busy from its terminal reads Working: its last terminal turn is reopened, and a
-   * thread with no turns yet (history mirrored before D83 round 2) gets one around its last user
-   * message. An idle thread with no turns gets the same turn, finished, so it does not read as
-   * waiting on anyone.
+   * A thread with no turns yet (history mirrored before D83 round 2) gets a finished one around
+   * its last user message, so it does not read as waiting on anyone.
    */
   const ensureTurn = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const busy = session.status === "busy";
-      if (follow.open !== null && !busy) return;
-      const runs = yield* engine.threadRuns(follow.threadId);
-      if (follow.open !== null) {
-        // T3's startup reconcile can cancel a turn Baton holds open; the session decides.
-        const held = runs.find((run) => run.id === follow.open?.id);
-        if (held !== undefined && !["completed", "cancelled", "interrupted"].includes(held.status))
-          return;
-        follow.open = null;
-      }
-      const latest = runs.reduce<OrchestrationV2Run | null>(
-        (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
-        null,
-      );
+      if ((yield* engine.threadRuns(follow.threadId)).length > 0) return;
       const now = yield* DateTime.now;
-      if (latest !== null) {
-        const ours = String(latest.id).startsWith(`${PREFIX}:run:`);
-        // A server restart cancels a running turn; a session still busy reopens it. A completed
-        // turn stays completed: work with no new user message (a background task's report) is
-        // not a new turn, and reopening it made every such reply a fresh "completed" alert.
-        const cutShort = ["cancelled", "interrupted"].includes(latest.status);
-        if (!busy || !ours || !cutShort) return;
-        const reopened: OrchestrationV2Run = {
-          ...latest,
-          status: "running",
-          completedAt: null,
-          workStartedAt: now,
-        };
-        yield* engine.writeEvents({ events: [runEvent("run.updated", reopened)] });
-        follow.open = reopened;
-        follow.target = reopened.id;
-        return;
-      }
       const messages = yield* threadMessages(follow.threadId);
       const lastUser = messages.findLastIndex(
         (m) => m.role === "user" && String(m.id).startsWith(`${PREFIX}:`),
@@ -801,10 +785,10 @@ const make = Effect.gen(function* () {
         userMessageId: user.id,
         rootNodeId: null,
         activeAttemptId: null,
-        status: busy ? "running" : "completed",
+        status: "completed",
         requestedAt: user.createdAt,
         startedAt: user.createdAt,
-        completedAt: busy ? null : (messages.at(-1)?.createdAt ?? now),
+        completedAt: messages.at(-1)?.createdAt ?? now,
         checkpointId: null,
         contextHandoffId: null,
       };
@@ -827,23 +811,63 @@ const make = Effect.gen(function* () {
       );
       yield* engine.writeEvents({ events: [runEvent("run.created", run), ...rehomed] });
       follow.target = run.id;
-      if (busy) follow.open = run;
     });
 
-  /**
-   * A terminal turn ends when Claude Code has stopped reporting busy for a few seconds (history
-   * at start ends at once); a queued composer send then starts.
-   */
-  const settle = (follow: Follow, session: ClaudeLiveSession, now = false) =>
+  /** History's last turn ends at its last message. */
+  const closeHistory = (follow: Follow) =>
     Effect.gen(function* () {
-      if (session.status === "busy") follow.idleSince = null;
-      if (follow.open === null || session.status === "busy") return;
-      follow.idleSince ??= Date.now();
-      if (!now && Date.now() - follow.idleSince < IDLE_SETTLE_MS) return;
+      if (follow.open === null) return;
       const done = completeRun(follow.open, follow.lastAt ?? (yield* DateTime.now));
       follow.open = null;
       yield* engine.writeEvents({ events: [runEvent("run.updated", done)] });
-      yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
+    });
+
+  /**
+   * Working, the way T3 shows a turn whose agent still has work out: a background task on the
+   * provider thread, from a user message until the session has been idle a few seconds. Its
+   * runs are already finished, so T3 never queues a send behind it, and T3 sends one "completed"
+   * alert when the task clears. Work with no user message (a background agent's report) is not
+   * a turn and does not alert. Re-asserted every few seconds: the agent's own runtime rewrites
+   * the provider thread when a composer send goes through.
+   */
+  const working = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      const busy = session.status === "busy";
+      if (busy) follow.idleSince = null;
+      else if (follow.turn) {
+        follow.idleSince ??= Date.now();
+        if (Date.now() - follow.idleSince >= IDLE_SETTLE_MS) follow.turn = false;
+      }
+      const want = follow.turn;
+      if (want === follow.shown && (!want || Date.now() - follow.checkedAt < RECHECK_MS)) return;
+      follow.checkedAt = Date.now();
+      const provider = yield* engine.activeProviderThread(follow.threadId);
+      if (provider === null) return;
+      const others = (provider.pendingBackgroundTasks ?? []).filter(
+        (task) => task.taskId !== WORKING_TASK.taskId,
+      );
+      const has = others.length !== (provider.pendingBackgroundTasks ?? []).length;
+      follow.shown = want;
+      if (has === want) return;
+      const now = yield* DateTime.now;
+      yield* engine.writeEvents({
+        events: [
+          {
+            id: EventId.make(`${PREFIX}:working:${follow.threadId}:${want}:${Date.now()}`),
+            type: "provider-thread.updated",
+            threadId: follow.threadId,
+            driver: provider.driver,
+            providerInstanceId: provider.providerInstanceId,
+            occurredAt: now,
+            payload: {
+              ...provider,
+              pendingBackgroundTasks: want ? [...others, WORKING_TASK] : others,
+              updatedAt: now,
+            },
+          },
+        ],
+      });
+      if (!want) yield* engine.resumeQueue({ tag: "live", threadId: follow.threadId });
     });
 
   /** Keep the session's own title, with its account and box; T3's auto-title does not stick. */
@@ -929,6 +953,10 @@ const make = Effect.gen(function* () {
         open: null,
         lastAt: null,
         idleSince: null,
+        // A session busy when Baton starts is taken to be working on something.
+        turn: session.status === "busy",
+        shown: null,
+        checkedAt: 0,
         tools: new Map(),
       };
       follows.set(session.sessionId, follow);
@@ -938,8 +966,9 @@ const make = Effect.gen(function* () {
       // What the thread lacks from the transcript's tail: all of it the first time, and after a
       // restart whatever arrived while the server was down. History turns are finished turns.
       yield* writeMessages(follow, session, history, true);
-      if (session.status !== "busy") yield* settle(follow, session, true);
+      yield* closeHistory(follow);
       yield* ensureTurn(follow, session);
+      yield* working(follow, session);
     });
 
   const step = (session: ClaudeLiveSession, follow: Follow) =>
@@ -1003,8 +1032,7 @@ const make = Effect.gen(function* () {
           follow === undefined
             ? startFollowing(session)
             : step(session, follow).pipe(
-                Effect.andThen(settle(follow, session)),
-                Effect.andThen(ensureTurn(follow, session)),
+                Effect.andThen(working(follow, session)),
                 Effect.andThen(retitle(follow, session)),
               )
         ).pipe(
