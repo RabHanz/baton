@@ -4,6 +4,70 @@ server.ts provides BatonServerLayer.services and starts BatonServerLayer.workers
 upstream's reactors. ws.ts merges BatonRpcGroup onto the socket's group, adds its handlers and
 its own scope middleware (upstream's throws for methods its table does not list).
 
+diff --git a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts b/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
+index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2037fd38e 100644
+--- a/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
++++ b/apps/server/src/orchestration-v2/Orchestrator.migration.test.ts
+@@ -2,6 +2,17 @@ import { assert, it } from "@effect/vitest";
+ 
+ import { shouldPrepareLegacyImportHandoff } from "./Orchestrator.ts";
+ 
++it("resumes an imported native session instead of replaying its history (Baton D87)", () => {
++  assert.isFalse(
++    shouldPrepareLegacyImportHandoff({
++      historyOrigin: "v1_import",
++      hasCompletedRun: false,
++      legacyImportItemCount: 2,
++      nativeSessionImported: true,
++    }),
++  );
++});
++
+ it("reissues imported context until a V2 run completes", () => {
+   assert.isTrue(
+     shouldPrepareLegacyImportHandoff({
+diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
+index 0c6ca268f1e048fd10a1c1ee2115dfe7a9e7fe38..76d9ead2b2063aba19b9841f4ef4e1eee66787bc 100644
+--- a/apps/server/src/orchestration-v2/Orchestrator.ts
++++ b/apps/server/src/orchestration-v2/Orchestrator.ts
+@@ -899,9 +899,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
+   readonly hasCompletedRun: boolean;
+   readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
+   readonly legacyImportItemCount: number;
++  // Baton D87: an imported Claude/Codex session is resumed natively and already holds its history.
++  readonly nativeSessionImported?: boolean;
+ }): boolean {
+   return (
+-    input.historyOrigin === "v1_import" && !input.hasCompletedRun && input.legacyImportItemCount > 0
++    input.historyOrigin === "v1_import" &&
++    input.nativeSessionImported !== true &&
++    !input.hasCompletedRun &&
++    input.legacyImportItemCount > 0
+   );
+ }
+ 
+@@ -5890,6 +5895,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+         historyOrigin: projection.thread.historyOrigin,
+         hasCompletedRun: latestCompletedRun !== undefined,
+         legacyImportItemCount: legacyImportItems.length,
++        nativeSessionImported: activeProviderThread?.nativeThreadRef?.strength === "strong",
+       })
+         ? yield* contextHandoffService
+             .prepareLegacyImport({
+diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
+index 97fdb7c85ca71143b1310725a60cc89247f90c8f..f9fe7b6564018a5002a7fda1253b49f9de95ef3d 100644
+--- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
++++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
+@@ -1334,6 +1334,9 @@ export const layer: Layer.Layer<
+           ) + 1,
+         nativeThreadHasTurns:
+           nativeInputRunIds.size > 0 ||
++          // Baton D87: an imported session exists on disk, so its first T3 turn resumes it.
++          (projection.thread.historyOrigin === "v1_import" &&
++            providerThread.nativeThreadRef?.strength === "strong") ||
+           (legacyInputRunIds.size > 0 &&
+             sameNativeThread &&
+             !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
 index f461a99186b3172ea0eae963e61dc1cfadb1e320..5b8a09148925a5cf612982d72894d210ef1a9cb8 100644
 --- a/apps/server/src/server.ts

@@ -1334,6 +1334,9 @@ export const layer: Layer.Layer<
           ) + 1,
         nativeThreadHasTurns:
           nativeInputRunIds.size > 0 ||
+          // Baton D87: an imported session exists on disk, so its first T3 turn resumes it.
+          (projection.thread.historyOrigin === "v1_import" &&
+            providerThread.nativeThreadRef?.strength === "strong") ||
           (legacyInputRunIds.size > 0 &&
             sameNativeThread &&
             !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
