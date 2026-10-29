@@ -2291,3 +2291,48 @@ filled the field and submitted ("Submitted: Baton Test"). Frames in
 `frames/screen-companion-2026-10-27/`. Not proven: anything on Windows (DPI maths, PowerShell input,
 SAPI voice, content protection keeping the overlay out of screenshots), more than one monitor, and
 the voice path end to end with a microphone.
+
+## D85 — Live threads: media, one alert per asked-for turn, sends that never queue, tool steps
+
+The Director, 2026-10-29: live-session threads were text only, every reply alerted, the session
+"still feels read-only through T3" with messages showing as queued, and replies arrived whole.
+
+- **Media.** The mirror keeps what the transcript holds besides text. A pasted image (a `user`
+  record's base64 `image` block) is copied into T3's attachment store under an id hashed from its
+  bytes and becomes the user message's own image attachment. Files the session sent
+  (`SendUserFile` `files: [...]`) are copied into the same store and added to the assistant
+  message as markdown, because T3 renders an assistant message's images and file links from its
+  markdown (upstream's `media-file` assets): images inline, anything else a file link. Only paths
+  the session itself sent or bytes the user pasted are read; a missing file is named in a quiet
+  note; images cap at T3's 10 MB, other files at 20 MB. Threads were rebuilt as `baton-live4:`
+  (the transcript is the record), so history shows its media too.
+- **Sends never queue.** The agent's `session/prompt` held the ACP turn open until Claude Code
+  went idle. A busy session (the orchestrator, nearly always) therefore had one running T3 run,
+  and T3 queued every later message in itself. The prompt now ends once Herdr has delivered the
+  text; Claude Code takes input mid-turn itself ("the user sent a new message while you were
+  working"). Stop sends Esc to the pane during or after a send. A send carrying files presses
+  Enter a second time: Claude Code reads a pasted `@image` while the paste's Enter arrives and
+  drops it.
+- **Working is a background task, not a running run.** Every live run is finished when written,
+  so nothing T3 owns is ever in progress for a live thread. While a turn someone asked for is
+  being worked on (a terminal or composer message, until the session has been idle 4 s), the
+  provider thread carries one `background_task` (`baton-live-turn`); T3 reads that as working
+  (upstream's `backgroundWorkHoldsCompletion`) and alerts once when it clears. Work with no new
+  user message (a background agent's report) is not a turn and does not alert. A thread the user
+  settles is muted (T3's relay sends no completion alert for a settled thread), and Baton no
+  longer unsettles it. T3's web client already skips the alert for the thread being viewed.
+- **Progress.** Each tool call is mirrored the moment Claude Code writes it, as the item upstream's
+  Claude adapter writes (`Bash` as a command, anything else a named tool), running until its
+  result replaces it in place. A reply is attached to the newest turn asked for before it.
+
+Rejected: streaming assistant text from the Herdr pane. `herdr agent read` does read the pane,
+but Claude Code draws an assistant text block only when the block is complete (a spinner and a
+token count until then), the same moment it writes the transcript, so the pane holds nothing the
+transcript does not, behind a wrapped TUI that would need scraping. Sessions T3 starts itself run
+on T3's own Claude provider, which streams. Also rejected: a per-thread mute of Baton's own (T3
+has Settle).
+
+Known limits: a turn's runs end at once, so T3's own Stop button on the run is gone; Stop on the
+working task reaches the pane as Esc only where T3 routes it to the provider. Settling to mute
+also files the thread under Settled. Images inside tool results (a `Read` of a PNG) are not shown.
+Sent-file copies are not listed on the message, so deleting the thread leaves them in the store.
