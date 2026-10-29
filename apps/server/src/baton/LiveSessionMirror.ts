@@ -862,8 +862,12 @@ const make = Effect.gen(function* () {
         (task) => task.taskId !== WORKING_TASK.taskId,
       );
       const has = others.length !== (provider.pendingBackgroundTasks ?? []).length;
+      // A changed state is always written: the read can lag the last write, and a skipped clear
+      // would leave the thread working (and its alert unsent) for good. A recheck writes only
+      // when the task is missing.
+      const changed = want !== follow.shown;
       follow.shown = want;
-      if (has === want) return;
+      if (!changed && has === want) return;
       const now = yield* DateTime.now;
       yield* engine.writeEvents({
         events: [
