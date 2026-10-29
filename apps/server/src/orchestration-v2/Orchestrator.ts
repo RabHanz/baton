@@ -899,9 +899,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
   readonly hasCompletedRun: boolean;
   readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
   readonly legacyImportItemCount: number;
+  // Baton D87: an imported Claude/Codex session is resumed natively and already holds its history.
+  readonly nativeSessionImported?: boolean;
 }): boolean {
   return (
-    input.historyOrigin === "v1_import" && !input.hasCompletedRun && input.legacyImportItemCount > 0
+    input.historyOrigin === "v1_import" &&
+    input.nativeSessionImported !== true &&
+    !input.hasCompletedRun &&
+    input.legacyImportItemCount > 0
   );
 }
 
@@ -5890,6 +5895,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         historyOrigin: projection.thread.historyOrigin,
         hasCompletedRun: latestCompletedRun !== undefined,
         legacyImportItemCount: legacyImportItems.length,
+        nativeSessionImported: activeProviderThread?.nativeThreadRef?.strength === "strong",
       })
         ? yield* contextHandoffService
             .prepareLegacyImport({
