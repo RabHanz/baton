@@ -2336,3 +2336,10 @@ Known limits: a turn's runs end at once, so T3's own Stop button on the run is g
 working task reaches the pane as Esc only where T3 routes it to the provider. Settling to mute
 also files the thread under Settled. Images inside tool results (a `Read` of a PNG) are not shown.
 Sent-file copies are not listed on the message, so deleting the thread leaves them in the store.
+
+## D86 — A plain `baton` attach starts the space headless
+
+The server-start block runs before the agent branch, so VS Code's terminal profile (a plain
+`baton`) starts a stopped space as a `setsid` server with no tty instead of hosting it; closing
+the terminal leaves every agent running. Installed on both boxes by the coordinator on
+2026-10-29 (onnyx backup `~/.local/bin/baton.bak-20261029`).
