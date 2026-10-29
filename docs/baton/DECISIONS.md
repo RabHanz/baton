@@ -2343,3 +2343,16 @@ The server-start block runs before the agent branch, so VS Code's terminal profi
 `baton`) starts a stopped space as a `setsid` server with no tty instead of hosting it; closing
 the terminal leaves every agent running. Installed on both boxes by the coordinator on
 2026-10-29 (onnyx backup `~/.local/bin/baton.bak-20261029`).
+
+## D87 — Make native: upstream's agent-session import, resumed rather than replayed
+
+A terminal Claude Code session becomes a native T3 thread through upstream's
+`agentSessions.import` (the onboarding wizard's RPC; `scripts/baton/live/agent-session-import.mjs`
+calls it as a paired client). The import writes an `import:<instance>:<sessionId>` thread whose
+provider thread names the session id. Upstream's first turn on it then failed every time: it
+opened the session with `sessionId` (a new session), which Claude Code refuses ("Session ID … is
+already in use"), and it also queued a text replay of the last 200 messages. Patched: a
+`v1_import` thread whose provider thread carries a strong native ref resumes that session
+(`nativeThreadHasTurns`), and skips the replay (`shouldPrepareLegacyImportHandoff`). The session
+file is the context, so nothing is lost and nothing is said twice. The terminal process must be
+stopped first, since two processes must not append to one session.
