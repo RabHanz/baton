@@ -24,6 +24,7 @@ import * as NodeURL from "node:url";
 const HERDR =
   process.env.BATON_HERDR_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "herdr");
 const BATON = process.env.BATON_BIN ?? NodePath.join(NodeOS.homedir(), ".local", "bin", "baton");
+const ATTACHMENT_ENTER_MS = Number(process.env.BATON_LIVE_ATTACHMENT_ENTER_MS ?? 1_500);
 const UNBOUND = "baton-unbound";
 
 // ---------------------------------------------------------------------------------------------
@@ -193,7 +194,15 @@ const herdrArgs = (paneRef, verb, rest) => {
 /** Herdr's `agent prompt` pastes with the terminal's bracketed-paste mode, then presses Enter. */
 async function typeInto(paneRef, text) {
   const sent = await run(HERDR, herdrArgs(paneRef, "prompt", [text]));
-  if (sent.ok) return null;
+  if (sent.ok) {
+    // Claude Code reads a pasted @image while the paste's Enter arrives and drops that Enter,
+    // so the message sat unsent in its input (D85). A second Enter on an empty input is a no-op.
+    if (/^@\//m.test(text)) {
+      await sleep(ATTACHMENT_ENTER_MS);
+      await run(HERDR, herdrArgs(paneRef, "send-keys", ["enter"]));
+    }
+    return null;
+  }
   return /agent_blocked/.test(sent.out)
     ? "Claude Code is waiting on a question or an approval in its terminal; answer it there first."
     : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
