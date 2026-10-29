@@ -195,6 +195,44 @@ for (const step of steps) {
     console.log(`${seen ? "OK" : "FAIL"} ${title}: "${expected}" ${seen ? "shown" : "missing"}`);
     failed ||= !seen;
     await shot(`wait-${expected.replace(/[^a-z0-9]+/gi, "-")}`);
+  } else if (verb === "answer") {
+    // answer=<thread>=<question>=<option>=<expected>: tap a relayed terminal prompt's option (D88).
+    const [title, question, option, expected] = args;
+    if (!(await openThread(title))) {
+      failed = true;
+      continue;
+    }
+    let shown = false;
+    for (let waited = 0; waited < 120_000 && !shown; waited += 2000) {
+      shown = await page
+        .getByText(question, { exact: false })
+        .last()
+        .isVisible()
+        .catch(() => false);
+      if (!shown) await page.waitForTimeout(2000);
+    }
+    await shot("question");
+    if (!shown) {
+      console.log(`FAIL ${title}: question "${question}" not shown`);
+      failed = true;
+      continue;
+    }
+    await page.getByText(option, { exact: true }).last().click();
+    await page.waitForTimeout(800);
+    await shot("picked");
+    const submit = page.getByRole("button", { name: /^(Submit|Send)/ }).last();
+    if (await submit.isVisible().catch(() => false))
+      await submit.click({ timeout: 3000 }).catch(() => {});
+    let seen = false;
+    for (let waited = 0; waited < 180_000 && !seen; waited += 2000) {
+      await page.waitForTimeout(2000);
+      seen = (await page.getByText(expected, { exact: false }).count()) > 0;
+    }
+    await shot("answered");
+    console.log(
+      `${seen ? "OK" : "FAIL"} ${title}: "${expected}" ${seen ? "after the answer" : "missing"}`,
+    );
+    failed ||= !seen;
   } else if (verb === "resize") {
     // resize=<width>=<text>: the same view at another width, scrolled back to that text.
     const [to, anchor] = args;

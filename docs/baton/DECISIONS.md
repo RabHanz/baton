@@ -2356,3 +2356,32 @@ already in use"), and it also queued a text replay of the last 200 messages. Pat
 (`nativeThreadHasTurns`), and skips the replay (`shouldPrepareLegacyImportHandoff`). The session
 file is the context, so nothing is lost and nothing is said twice. The terminal process must be
 stopped first, since two processes must not append to one session.
+
+## D88 — Terminal prompts are answered from T3
+
+The Director, 2026-10-29: when a live session showed a permission dialog, an AskUserQuestion or a
+mod's `ui.ask`, T3 only said to answer it in the terminal, so he could not answer from his phone.
+
+- **Detection.** Claude Code's own session record says `status: "waiting"` while a prompt shows.
+  For a waiting session with a Herdr pane, the mirror runs the agent script's `--pane-prompt`,
+  which reads the pane's screen and parses the prompt: the footer (`Esc to cancel`, `Enter to
+  select`), the options (numbered, or the unnumbered kind with a `❯` marker), their descriptions,
+  the highlighted one, the question above them, and what it asks about (up to the box's rule).
+  One parser, in the agent script, used by both sides.
+- **Shown as T3's own question.** The mirror writes a `user_input_request` turn item and a
+  `runtime-request` of kind `user_input` with upstream's `message` response mode (the shape
+  Codex's async questions use), so T3 renders the options as buttons on every client. "Type
+  something" becomes T3's free-text field; "Chat about this" is left out.
+- **Answering.** T3 sends the answer back as a message ("<question>\n<answer>"). The agent sees
+  the session waiting, re-reads the screen, and presses arrows from the highlighted option to the
+  chosen one, then Enter. Free text goes in with Herdr's `send-text`. It then waits until the
+  prompt has left the screen and says so in the thread, with the session's new state.
+- **Closing.** When the prompt leaves the screen still pending (answered in the terminal), the
+  mirror marks the request expired and the item completed, so no stale buttons stay. A waiting
+  session counts as working, so the turn's one alert waits for the answer.
+- **Fallback.** When the screen cannot be read, or the message is not one of the options, the
+  old line ("answer it there first") is kept.
+
+Known limits: a prompt is read from what the screen shows, so a dialog taller than the pane, or
+a layout Claude Code changes, falls back to the old line. Multi-select questions are answered
+one option at a time. Proof frames in `frames/prompts-2026-10-29/`.
