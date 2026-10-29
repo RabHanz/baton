@@ -19,6 +19,20 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 8 — Herdr adoption                             | **done for a terminal**             | Herdr 0.9.5 on both boxes; a real pane discovered, adopted, in the fleet and readable; T3 terminals can be Herdr-backed and outlive T3 (D61, proven live)                                    |
 | 10 — capability plane + hardening              | **partial**                         | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                           |
 
+## Live threads, 2026-10-29: media, one alert per turn, sends that never queue (D85, `0.1.2-baton.38`)
+
+| Piece                                   | State                                           | Evidence                                                                                                                                                       |
+| --------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Images the user pasted                  | **proven** on the orchestrator thread (cc828d1b) | `frames/media-notify-2026-10-29/orch-paste-*`: the 14:02 UTC screenshot renders in its message at 390 and 1440                                                  |
+| Files the session sent (`SendUserFile`) | **proven** on the orchestrator thread           | `orch-both-*`: the Speed Signz comparison sheet (14:10 UTC send) renders inline at 390 and 1440                                                                |
+| Images sent from T3 into a Herdr session | **proven** on a test session                    | `test-image-*`: the sheet shows on the user message and Claude described it; it needed a second Enter, added in baton.37                                        |
+| Sends while the session is busy         | **proven** on a test session                    | `test-390-busy-*` and `test-pane-busy-burst.txt`: three sends during a 70 s command all reached the pane in order, 0 queued in T3                               |
+| One alert per asked-for turn            | **proven on the relay log**                     | the busy turn (one terminal message, three T3 sends, four replies) published one `completed`, at 15:53:52 UTC; replies to background agents no longer alert   |
+| Working state                           | **built**                                       | a `background_task` on the provider thread while a turn runs; the orchestrator frame shows T3's "Running: Bash" bar. A stale-read bug that left it set is fixed in baton.38 |
+| Tool steps as they happen               | **built**                                       | each call shows running, then its result in place                                                                                                              |
+| Streaming assistant text                | **not possible from the pane**                  | Claude Code draws a text block only when it is complete, the moment it writes the transcript (D85). Sessions T3 starts on its own Claude provider stream       |
+| Per-thread mute                         | **T3's Settle**                                 | the relay sends no completion alert for a settled thread; Baton no longer unsettles it                                                                         |
+
 ## v2 port (resume here), started 2026-10-26
 
 The plan is `UPSTREAM.md` "The port plan". Four phases, each merged and deployable on its own.

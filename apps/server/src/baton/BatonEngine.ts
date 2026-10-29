@@ -363,11 +363,12 @@ export const make = Effect.gen(function* () {
     );
 
   const activeProviderThread: BatonEngineShape["activeProviderThread"] = (threadId) =>
-    orchestrator.getThreadSnapshotWindow(threadId, { rowLimit: 1 }).pipe(
+    // Not the snapshot window: it carries only provider threads whose status is active.
+    orchestrator.getThreadRecords(threadId, ["providerThreads"]).pipe(
       Effect.map(
-        ({ projection }) =>
-          projection.providerThreads.find(
-            (thread) => thread.id === projection.thread.activeProviderThreadId,
+        (records) =>
+          records.providerThreads.find(
+            (thread) => thread.id === records.thread.activeProviderThreadId,
           ) ?? null,
       ),
       Effect.catchCause(() => Effect.succeed(null)),
