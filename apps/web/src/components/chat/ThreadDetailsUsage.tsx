@@ -12,6 +12,7 @@ import {
   paceOf,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
+import { BatonLimitsAge } from "./BatonLimitsAge";
 import type { ReactNode } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
@@ -77,6 +78,9 @@ export function ThreadDetailsUsage({
         {limits && !notice
           ? limits.windows.map((window) => <LimitRow key={window.id} window={window} now={now} />)
           : null}
+        {limits && !notice ? (
+          <BatonLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
+        ) : null}
         {contextWindow ? <ContextRow usage={contextWindow} spaced={limits !== undefined} /> : null}
       </div>
     </ThreadDetailsSection>

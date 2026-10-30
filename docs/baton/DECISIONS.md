@@ -2439,3 +2439,28 @@ that moved us to tokens); anything needing TLS interception.
 stored, the shape T3 writes. `--pin-default` does the same for slot 4 on the default instance; used
 on the laptop only, where the CLI keeps a full login for Remote Control. On the boxes the default
 instance follows cswap, so rotation keeps reaching it.
+
+## D92 — T3's usage panel reads the probe; the thread view shows and switches the account
+
+T3 reported `unsupported` for a setup token, so `ClaudeDriver` now passes every status through
+`withProbeLimits`: where the provider has no windows, it takes cswap's reading for that instance
+(a token instance's own slot, the default instance's active account). `checkedAt` stays the time of
+the reading, not of the refresh, and `BatonLimitsAge` states it under the windows in the thread
+details and the composer's limits panel, turning to "Stale" past 15 minutes (three missed probe
+ticks, where cswap's hold lapses). Because windows now exist, T3's own exhausted-limit logic applies
+to token instances too.
+
+`BatonThreadAccount` sits in the thread header: the account label, and on the default instance a
+menu of the pool with room left and reading age. A click calls `fabric.account.use`. That is
+cswap's switch, so it moves every Claude thread on the environment at its next turn, and the toast
+says so; the menu is disabled during a running turn. A thread on a token instance shows its label
+only, since cswap cannot reach it. The sentence is `switch account to <name>` / `use the <name>
+account`, command `switch_account`, medium risk. It is the one command that carries a label instead
+of an id, because the pool is a process read and the vocabulary is pure.
+
+Rejected: a per-thread switch through `provider.switch` (a token instance has another config
+directory, so it is a handoff rather than a swap, and `Continue with` already offers that); a
+"probe" marker in the contract so only probe data shows an age (a new contract field for what a
+generic age line does for every provider).
+
+Not yet run live: a real switch needs a second account with quota, from 2 Nov.

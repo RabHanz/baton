@@ -39,6 +39,8 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonIntentExecutor, type IntentExecution } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
+import { ProviderDriverKind } from "@t3tools/contracts";
+import { AccountPoolService } from "./AccountPoolService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -63,6 +65,7 @@ export const make = Effect.gen(function* () {
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const hostname = yield* HostProcessHostname;
   const engine = yield* BatonEngine;
+  const accountPool = yield* AccountPoolService;
   // Named rather than inferred: `Effect.Effect.Context<...>` resolves to `any`
   // here and takes the requirement channel of every caller with it.
   const fleetContext = yield* Effect.context<
@@ -309,6 +312,32 @@ export const make = Effect.gen(function* () {
             } will fire at most three times.`,
             command.workSessionId,
           );
+        }
+
+        case "switch_account": {
+          const driver = ProviderDriverKind.make("claudeAgent");
+          const pool = yield* accountPool
+            .read(driver)
+            .pipe(Effect.catchCause(() => Effect.succeed(null)));
+          if (pool === null) return failed("No accounts can be switched on this environment.");
+          const wanted = command.accountLabel.toLowerCase();
+          const target = pool.accounts.find((account) => account.label.toLowerCase() === wanted);
+          if (target === undefined) {
+            const known = pool.accounts.map((account) => account.label).join(", ");
+            return failed(`There is no account called ${command.accountLabel}. Here: ${known}.`);
+          }
+          return yield* accountPool
+            .activate({ driver, key: target.key, reason: "manual", workSessionId: null })
+            .pipe(
+              Effect.as(
+                done(
+                  `Claude on this environment now runs as ${target.label}. Threads move at their next turn.`,
+                ),
+              ),
+              Effect.catchCause(() =>
+                Effect.succeed(failed(`Could not switch to ${target.label}.`)),
+              ),
+            );
         }
 
         case "answer_gate": {

@@ -1,0 +1,82 @@
+diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
+index e1fbcd30080fdfdebdca36b17c5e0e482615e430..e5ce733a1fd2bf90d16b64d0c59a93d90fb28e1f 100644
+--- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
++++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
+@@ -41,6 +41,7 @@ import {
+   type ProviderDriver,
+   type ProviderInstance,
+ } from "@t3tools/provider-core/server/driver";
++import { withProbeLimits } from "../../baton/ClaudeProbeLimits.ts";
+ import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
+ import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+ import {
+@@ -279,6 +280,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
+               ? Cache.invalidateAll(capabilitiesProbeCache)
+               : Effect.void,
+           ),
++          Effect.flatMap((provider) => withProbeLimits(instanceId, provider)),
+           Effect.map(stampIdentity),
+         ),
+       ),
+diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
+index 144402d1dfe9fc52caa766d69ba099d0f24df626..47c83636af11ce6e6b0b6a1b047b379ce4291ea8 100644
+--- a/apps/web/src/components/chat/ChatHeader.tsx
++++ b/apps/web/src/components/chat/ChatHeader.tsx
+@@ -20,6 +20,7 @@ import {
+   type MouseEvent as ReactMouseEvent,
+ } from "react";
+ import { isTrailingDoubleClick } from "../Sidebar.logic";
++import { BatonThreadAccount } from "./BatonThreadAccount";
+ import { Badge } from "../ui/badge";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { toastManager } from "../ui/toast";
+@@ -427,6 +428,7 @@ export const ChatHeader = memo(function ChatHeader({
+           ) : null}
+         </WorkspaceBreadcrumbItem>
+       </WorkspaceBreadcrumb>
++      {isServerThread ? <BatonThreadAccount threadRef={activeThreadRef} /> : null}
+       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
+     </div>
+   );
+diff --git a/apps/web/src/components/chat/ComposerUsageLimits.tsx b/apps/web/src/components/chat/ComposerUsageLimits.tsx
+index 12c11d213cdf706c0c50a0300b4722bb358e8e69..96af369f5f4be503b999b46908f0c78b18c3b907 100644
+--- a/apps/web/src/components/chat/ComposerUsageLimits.tsx
++++ b/apps/web/src/components/chat/ComposerUsageLimits.tsx
+@@ -1,6 +1,7 @@
+ import type { EnvironmentId, UsageLimitsReport } from "@t3tools/contracts";
+ import type { TimestampFormat } from "@t3tools/contracts/settings";
+ import { limitsNotice } from "@t3tools/shared/usageLimits";
++import { BatonLimitsAge } from "./BatonLimitsAge";
+ import { GaugeIcon } from "lucide-react";
+ 
+ import { ensureLocalApi } from "../../localApi";
+@@ -136,6 +137,7 @@ function UsageLimitsBannerBody({
+                   now={now}
+                 />
+               )}
++              {notice ? null : <BatonLimitsAge checkedAt={account.limits.checkedAt} now={now} />}
+               {externalUsage ? (
+                 <Button
+                   size="sm"
+diff --git a/apps/web/src/components/chat/ThreadDetailsUsage.tsx b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
+index e0f5c3afbe845741023fd98e08aec6e019d2a777..0b2b1e2d354822772c9f60748ec42fdcad1fdb3a 100644
+--- a/apps/web/src/components/chat/ThreadDetailsUsage.tsx
++++ b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
+@@ -12,6 +12,7 @@ import {
+   paceOf,
+   remainingPercent,
+ } from "@t3tools/shared/usageLimits";
++import { BatonLimitsAge } from "./BatonLimitsAge";
+ import type { ReactNode } from "react";
+ 
+ import { usePrimarySettings } from "../../hooks/useSettings";
+@@ -77,6 +78,9 @@ export function ThreadDetailsUsage({
+         {limits && !notice
+           ? limits.windows.map((window) => <LimitRow key={window.id} window={window} now={now} />)
+           : null}
++        {limits && !notice ? (
++          <BatonLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
++        ) : null}
+         {contextWindow ? <ContextRow usage={contextWindow} spaced={limits !== undefined} /> : null}
+       </div>
+     </ThreadDetailsSection>

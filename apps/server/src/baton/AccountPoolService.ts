@@ -199,13 +199,11 @@ const runCswapWith =
       return { stdout: stdout ?? "", stderr: stderr ?? "", code: exitCode };
     }).pipe(Effect.scoped);
 
-export const make = Effect.gen(function* () {
-  // Acquired once, so the service's own methods carry no requirement.
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const runCswap = runCswapWith(spawner);
-
-  const readPool = (driver: ProviderDriverKind) =>
+/** Reads cswap's pool. Exported for the provider snapshot, which needs the same reading (D92). */
+export const makePoolReader =
+  (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => (driver: ProviderDriverKind) =>
     Effect.gen(function* () {
+      const runCswap = runCswapWith(spawner);
       if (driver !== "claudeAgent") {
         return yield* new BatonAccountPoolUnavailableError({
           driver,
@@ -252,6 +250,12 @@ export const make = Effect.gen(function* () {
         checkedAt: DateTime.formatIso(yield* DateTime.now),
       } as BatonAccountPool;
     });
+
+export const make = Effect.gen(function* () {
+  // Acquired once, so the service's own methods carry no requirement.
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const runCswap = runCswapWith(spawner);
+  const readPool = makePoolReader(spawner);
 
   const activate: AccountPoolService["Service"]["activate"] = (input) =>
     Effect.gen(function* () {
