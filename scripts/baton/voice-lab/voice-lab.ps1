@@ -8,7 +8,7 @@ Voice lab for Baton. Run on the laptop, from this folder:
   .\voice-lab.ps1 report               every word on every mic against the targets
   .\voice-lab.ps1 mics                 what Windows calls the microphones right now
 
-Everything stays in D:\baton-voice-lab. Heavy steps run at idle priority.
+Everything stays in D:\baton-voice-lab. Heavy steps run below normal priority (idle starves Parakeet: 2.6x slower while he worked).
 #>
 param(
   [Parameter(Position = 0, Mandatory = $true)]
@@ -42,7 +42,7 @@ function Get-Mics {
 
 function Start-Idle([string]$File, [string[]]$ArgList, [string]$Out) {
   $process = Start-Process $File -ArgumentList $ArgList -NoNewWindow -PassThru -RedirectStandardOutput $Out
-  $process.PriorityClass = 'Idle'
+  $process.PriorityClass = 'BelowNormal'
   $process.WaitForExit()
 }
 
