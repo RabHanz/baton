@@ -1,0 +1,8 @@
+[Unit]
+Description=Baton: read Claude account limits from inference headers and hand them to cswap (D90)
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/share/pipx/venvs/claude-swap/bin/python %h/.t3/baton/limits-probe.py
+TimeoutStartSec=240

@@ -2406,3 +2406,36 @@ tailnet Serve URLs from the laptop); the client was the only broken part.
 Rejected: committing the values (upstream's environment as our source); asking the Director to
 re-add both boxes as direct tailnet connections (works around the client, leaves the relay path
 broken, and costs him a pairing per box).
+
+## D90 — Claude limits for setup tokens come from inference response headers
+
+Moving the three accounts to setup tokens left cswap with `usage unavailable (http-429)` and Baton's
+pool with no numbers, so rotation could only fire at the hard limit. `GET /api/oauth/usage` with a
+setup token answers `429 rate_limit_error` with a `retry-after`: a throttle, not a scope refusal, and
+what it would say once unthrottled is unproven. Claude Code's own `get_usage` returns no windows for
+a setup token at all (T3 shows `unsupported`); the same account on a full login shows live numbers.
+
+The inference API does report them: `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}` and
+`-status`, on a 200 and on a 429. Scale checked on real replies: 0..1 (0.21 beside cswap's 21%, 1.0
+on the rejected accounts).
+
+- `scripts/baton/limits-probe.py` (timer, five minutes, signzart only): one 1-token Haiku call per
+  account, 9 tokens on a 200 and none on a 429. An account already rejected is not called until its
+  reset. Output goes through `cswap import-usage --hold 900` here, on onnyx and on the laptop, and
+  the hold keeps cswap's own collectors off the throttled endpoint, so this lowers that traffic.
+- Headers are undocumented, so a missing or out-of-scale value fails visibly: that account is left
+  out, its hold lapses, the unit exits non-zero.
+- Side effect: a probe counts as a message, so it can open a 5h window on an idle account.
+
+Rejected: a local reverse proxy capturing real traffic (no data for idle accounts, which are exactly
+the rotation candidates, and it reroutes every session through a new process); a full login per
+account only for reading (works, but needs a login per account and is the refresh-token rotation
+that moved us to tokens); anything needing TLS interception.
+
+## D91 — Every Claude account is a T3 provider instance on its own setup token
+
+`scripts/baton/provider-token-instances.py` writes the slot's token to T3's secret store and adds
+`claudeAgent_optima` / `claudeAgent_signzart` with `CLAUDE_CODE_OAUTH_TOKEN` marked sensitive and
+stored, the shape T3 writes. `--pin-default` does the same for slot 4 on the default instance; used
+on the laptop only, where the CLI keeps a full login for Remote Control. On the boxes the default
+instance follows cswap, so rotation keeps reaching it.
