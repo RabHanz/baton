@@ -10,6 +10,7 @@ repo="${BATON_REPO:-RabHanz/baton}"
 keep=(
   baton.yml      # Baton's patch-series check, GitHub-hosted
   pr-size.yml    # labels PR size, GitHub-hosted, no secrets
+  baton-desktop-release.yml # the desktop release; the sync must not switch it off
   issue-labels.yml
 )
 
