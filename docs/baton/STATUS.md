@@ -19,6 +19,12 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 8 — Herdr adoption                             | **done for a terminal**             | Herdr 0.9.5 on both boxes; a real pane discovered, adopted, in the fleet and readable; T3 terminals can be Herdr-backed and outlive T3 (D61, proven live)                                    |
 | 10 — capability plane + hardening              | **partial**                         | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                           |
 
+## Limits and account in the thread, 2026-10-30 (D92)
+
+Usage panel on setup tokens from the probe, with age and stale state; account label and one-click
+switch in the thread header; the sentence "switch account to <name>". Unit-tested. A real switch
+waits for a second account with quota (2 Nov).
+
 ## Live threads, 2026-10-29: media, one alert per turn, sends that never queue (D85, `0.1.2-baton.39` on both boxes)
 
 | Piece                                    | State                                            | Evidence                                                                                                                                                                           |

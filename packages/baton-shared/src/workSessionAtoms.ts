@@ -13,6 +13,7 @@
  * and it belongs in the surface that renders it.
  */
 import {
+  BATON_ACCOUNT_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
@@ -209,6 +210,18 @@ export function createBatonWorkSessionAtoms<R, E>(
     herdrSend: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:herdr-send",
       tag: BATON_LIVE_WS_METHODS.herdrSend,
+      scheduler,
+      concurrency,
+    }),
+    accountPoolQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:baton:account-pool-query",
+      tag: BATON_ACCOUNT_WS_METHODS.accountPool,
+      staleTimeMs: 30_000,
+      refreshIntervalMs: 60_000,
+    }),
+    accountUse: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:account-use",
+      tag: BATON_ACCOUNT_WS_METHODS.accountUse,
       scheduler,
       concurrency,
     }),

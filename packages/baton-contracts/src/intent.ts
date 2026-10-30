@@ -138,6 +138,14 @@ export const BatonIntentCommand = Schema.Union([
     firingId: OrchestrationFiringId,
     confirmed: Schema.Boolean,
   }),
+  /**
+   * The one member that names its target in words: the pool is a process read, so the vocabulary
+   * does not carry it, and the executor matches the label against the live pool.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("switch_account"),
+    accountLabel: TrimmedNonEmptyString,
+  }),
 ]);
 export type BatonIntentCommand = typeof BatonIntentCommand.Type;
 

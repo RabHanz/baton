@@ -41,6 +41,7 @@ import {
   type ProviderDriver,
   type ProviderInstance,
 } from "@t3tools/provider-core/server/driver";
+import { withProbeLimits } from "../../baton/ClaudeProbeLimits.ts";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import {
@@ -279,6 +280,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
               ? Cache.invalidateAll(capabilitiesProbeCache)
               : Effect.void,
           ),
+          Effect.flatMap((provider) => withProbeLimits(instanceId, provider)),
           Effect.map(stampIdentity),
         ),
       ),
