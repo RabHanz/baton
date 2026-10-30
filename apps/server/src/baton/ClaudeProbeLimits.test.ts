@@ -1,7 +1,7 @@
 import type { BatonAccount } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { accountForInstance, limitsFromAccount } from "./ClaudeProbeLimits.ts";
+import { accountDisplayName, accountForInstance, limitsFromAccount } from "./ClaudeProbeLimits.ts";
 
 const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
   key: "4",
@@ -51,9 +51,19 @@ describe("limitsFromAccount", () => {
     expect(limits?.windows[1]).not.toHaveProperty("resetsAt");
   });
 
+  it("fingerprints the slot alone, so every machine's instance merges into one account", () => {
+    expect(limitsFromAccount(account({ key: "5" }))?.credentialFingerprint).toBe("5");
+  });
+
   it("offers nothing rather than an empty reading", () => {
     expect(limitsFromAccount(undefined)).toBeUndefined();
     expect(limitsFromAccount(account({ usageCheckedAt: null }))).toBeUndefined();
     expect(limitsFromAccount(account({ windows: [] }))).toBeUndefined();
+  });
+});
+
+describe("accountDisplayName", () => {
+  it("reads as a name", () => {
+    expect(accountDisplayName(account({}))).toBe("Rabee");
   });
 });

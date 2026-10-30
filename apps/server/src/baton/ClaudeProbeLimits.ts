@@ -57,12 +57,24 @@ export function limitsFromAccount(
   });
   return windows.length === 0
     ? undefined
-    : makeUsageLimits({ checkedAt: account.usageCheckedAt, windows });
+    : {
+        ...makeUsageLimits({ checkedAt: account.usageCheckedAt, windows }),
+        // The slot, never the token: slots match across machines, so T3 merges one tile per account.
+        credentialFingerprint: account.key,
+      };
+}
+
+/** A default instance has no name of its own, so it shows the account it is running as. */
+export function accountDisplayName(account: BatonAccount): string {
+  return `${account.label.charAt(0).toUpperCase()}${account.label.slice(1)}`;
 }
 
 /** Fills in limits only where the login reports none; a missing cswap changes nothing. */
 export const withProbeLimits = <
-  P extends { readonly usageLimits?: ServerProviderUsageLimits | undefined },
+  P extends {
+    readonly usageLimits?: ServerProviderUsageLimits | undefined;
+    readonly displayName?: string | undefined;
+  },
 >(
   instanceId: string,
   provider: P,
@@ -71,8 +83,11 @@ export const withProbeLimits = <
   return Effect.flatMap(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
     makePoolReader(spawner)(ProviderDriverKind.make("claudeAgent")).pipe(
       Effect.map((pool: BatonAccountPool) => {
-        const usageLimits = limitsFromAccount(accountForInstance(instanceId, pool.accounts));
-        return usageLimits === undefined ? provider : ({ ...provider, usageLimits } as P);
+        const account = accountForInstance(instanceId, pool.accounts);
+        const usageLimits = limitsFromAccount(account);
+        if (account === undefined || usageLimits === undefined) return provider;
+        const displayName = provider.displayName?.trim() || accountDisplayName(account);
+        return { ...provider, usageLimits, displayName } as P;
       }),
       Effect.catchCause(() => Effect.succeed(provider)),
     ),
