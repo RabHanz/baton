@@ -42,16 +42,18 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
   const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   const nowMinute = useNowMinute();
-  if (shell === null || provider?.driver !== "claudeAgent") return null;
+  // A mirrored terminal session has Baton's live instance, and runs on the same cswap account.
+  const live = threadRef.threadId.startsWith("baton-live");
+  if (shell === null || (!live && provider?.driver !== "claudeAgent")) return null;
 
-  const pinned = shell.providerInstanceId !== "claudeAgent";
+  const pinned = !live && shell.providerInstanceId !== "claudeAgent";
   if (pinned) {
     return (
       <Tooltip>
         <TooltipTrigger
           render={<span className={`${HEADER_CONTROL} text-xs text-muted-foreground`} />}
         >
-          {provider.displayName ?? shell.providerInstanceId}
+          {provider?.displayName ?? shell.providerInstanceId}
         </TooltipTrigger>
         <TooltipPopup>
           This thread is pinned to this account. Change it in the model picker.
