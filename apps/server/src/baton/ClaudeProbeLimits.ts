@@ -60,14 +60,14 @@ export function limitsFromAccount(
     : makeUsageLimits({ checkedAt: account.usageCheckedAt, windows });
 }
 
-/** Fills in limits only where the provider has none; a missing cswap changes nothing. */
+/** Fills in limits only where the login reports none; a missing cswap changes nothing. */
 export const withProbeLimits = <
   P extends { readonly usageLimits?: ServerProviderUsageLimits | undefined },
 >(
   instanceId: string,
   provider: P,
 ): Effect.Effect<P, never, ChildProcessSpawner.ChildProcessSpawner> => {
-  if (provider.usageLimits?.unavailable === undefined) return Effect.succeed(provider);
+  if (provider.usageLimits?.unavailable?.reason !== "unsupported") return Effect.succeed(provider);
   return Effect.flatMap(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
     makePoolReader(spawner)(ProviderDriverKind.make("claudeAgent")).pipe(
       Effect.map((pool: BatonAccountPool) => {
