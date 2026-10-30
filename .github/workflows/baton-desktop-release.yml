@@ -77,6 +77,11 @@ jobs:
         shell: bash
         run: bash scripts/baton/apply-release-branding.sh
 
+      # Without these the app cannot sign in to T3 Connect and relay environments never connect (D89).
+      - name: T3 Connect public config (read from app.t3.codes at build time, not committed)
+        shell: bash
+        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json
@@ -133,6 +138,11 @@ jobs:
         shell: bash
         run: bash scripts/baton/apply-release-branding.sh
 
+      # Without these the app cannot sign in to T3 Connect and relay environments never connect (D89).
+      - name: T3 Connect public config (read from app.t3.codes at build time, not committed)
+        shell: bash
+        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json
@@ -181,6 +191,11 @@ jobs:
       - name: Apply Baton branding (release build only, not committed)
         shell: bash
         run: bash scripts/baton/apply-release-branding.sh
+
+      # Without these the app cannot sign in to T3 Connect and relay environments never connect (D89).
+      - name: T3 Connect public config (read from app.t3.codes at build time, not committed)
+        shell: bash
+        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
