@@ -1,0 +1,30 @@
+name: Baton dictation build
+
+# Builds the Windows sidecar on its own, so it can be tried on the laptop without a desktop release.
+on:
+  push:
+    branches: [baton/native-voice]
+    paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        shell: bash
+        env:
+          # Portable AVX2 floor: the runner's own CPU may be newer than the laptop's i7-8550U.
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml || cargo build --release --manifest-path native/baton-dictation/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baton-dictation-win-x64
+          path: |
+            native/baton-dictation/target/release/baton-dictation.exe
+            native/baton-dictation/Cargo.lock
