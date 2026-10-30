@@ -21,7 +21,7 @@ use handy_recorder::{
 use keys::PasteMethod;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use transcribe_cpp::{init_backends_with, BackendMask, Model, RunOptions, Session};
+use transcribe_cpp::{init_backends_with, BackendMask, Model, RunOptions, Session, SessionOptions};
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
 const MIN_SAMPLES: usize = 16_000 / 4;
@@ -71,8 +71,13 @@ struct Job {
 
 fn load(model: &Path) -> Result<(Session, u64), String> {
     let started = Instant::now();
+    // ggml loses more than it gains on hyperthreads; BATON_THREADS is for measuring that.
+    let n_threads = std::env::var("BATON_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| thread::available_parallelism().map_or(4, |n| (n.get() / 2).max(2) as i32));
     let session = Model::load(model)
-        .and_then(|m| m.session())
+        .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
     Ok((session, started.elapsed().as_millis() as u64))
 }

@@ -436,8 +436,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "recording") {
       note = null;
       showDictation("Recording");
-    }
-    else if (event.ev === "transcribing") showDictation("Transcribing");
+    } else if (event.ev === "transcribing") showDictation("Transcribing");
     else if (event.ev === "idle") showDictation(null);
     else if (event.ev === "error") {
       note = event.message;
