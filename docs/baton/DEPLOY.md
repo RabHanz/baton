@@ -21,6 +21,8 @@ rules shape all of it:
 
 ## 0. Before anything
 
+The build box needs `patchelf`: upstream's archive step sets the binary's rpath with it since 2026-10.
+
 ```bash
 tar -czf <backups>/t3-userdata-$(date -u +%Y%m%dT%H%M%SZ).tar.gz -C ~/.t3 userdata
 ```

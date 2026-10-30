@@ -62,6 +62,29 @@ const vocabulary = (overrides?: Partial<IntentVocabulary>): IntentVocabulary => 
 const resolve = (text: string, overrides?: Partial<IntentVocabulary>) =>
   resolveBatonIntent(text, vocabulary(overrides));
 
+describe("resolveBatonIntent — switching the Claude account", () => {
+  it("reads the sentence and leaves the label for the live pool", () => {
+    for (const text of [
+      "switch account to optima",
+      "change the account to Optima.",
+      "switch to the optima account",
+      "use the optima account",
+      "Baton, rotate accounts to optima",
+    ]) {
+      const result = resolve(text);
+      expect(result.outcome, text).toBe("resolved");
+      if (result.outcome !== "resolved") continue;
+      expect(result.command).toEqual({ kind: "switch_account", accountLabel: "optima" });
+      expect(result.risk).toBe("medium");
+    }
+  });
+
+  it("does not take a session handoff or a focus request for one", () => {
+    expect(resolve("switch to the scheduler").outcome).toBe("refused");
+    expect(resolve("Hand this off to Claude B").outcome).toBe("refused");
+  });
+});
+
 describe("resolveBatonIntent — §20's status questions", () => {
   it("answers the specification's own status sentences", () => {
     // §20's examples, verbatim. These are the sentences the fleet must already
