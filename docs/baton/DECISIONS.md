@@ -2498,3 +2498,51 @@ reload moved the route).
 Known limit: moving focus to a pane does not put the caret in its composer, because doing so would
 cancel a text selection started in that pane. Upstream's thread details card follows the viewport
 width, so at 2560 each pane shows its own.
+
+## D94 — Dictation is Handy's engine stack in our own sidecar, not Handy beside the app
+
+Director, 2026-10-30: Handy's approach first, Wispr as the fallback (#45). Read Handy at `7bfb2e2c`
+before choosing. Its parts are already crates: `transcribe-cpp` runs Parakeet, `handy-recorder` opens
+the mic, `handy-keys` gives real key-up on a low-level hook, which Electron's `globalShortcut` cannot.
+So `native/baton-dictation` is a 6 MB exe on those three crates plus Handy's Windows paste, adapted
+under MIT, driven by JSON lines from the desktop main process.
+
+Rejected: running Handy alongside (a second tray app, its name on his screen, a second mic owner and
+no way to route the wake path through it); embedding Handy's Tauri app (a whole second UI);
+`onnxruntime-node` with hand-written Parakeet decoding (a decoder of our own to keep right, when the
+engine exists); keeping whisper.cpp for the wake path (two speech engines on one laptop).
+
+The same exe is the wake path's microphone (`record` piped into the core), replacing the hidden
+Chromium window on Windows. That removes AGC and noise suppression from the path and means the lab
+measures what the product hears. The static build pins a portable AVX2 floor, because a native build
+on the runner may use instructions his i7-8550U does not have.
+
+Wispr stays installed and untouched. Tray → Dictation chooses; on "Wispr Flow" Baton registers no
+dictation key. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (toggle), clear of the
+Ctrl+Win, Ctrl+Win+Space and Ctrl+Alt+Win read from his Wispr config.
+Ctrl+Alt+Shift+F8 toggles for Airdeck, whose mic button is a tap with no hold.
+
+## D95 — Three wake words, no "Hey", trained on free GitHub runners
+
+`.github/workflows/baton-wake-train.yml` runs openWakeWord's trainer on `ubuntu-24.04` (public repo,
+free, CPU only). Pinned: piper-sample-generator v2.0.0, because upstream's notebook still imports the
+layout it had then; AudioSet from its parquet files; a CMU pronunciation shim, because the trainer's
+fallback phonemizer is a dead S3 link. A new word: add it to `make_config.py`, push the
+`baton/wake-train` branch, drop `<word>.onnx` in `<state dir>/voice/models`, add it to `wakeWords` in
+`fabric-voice.json`.
+
+All enabled words run on one shared feature pipeline (mel, embedding) with one head each, so a third
+word costs almost nothing. Two-syllable names false-wake more than the 3 to 4 syllables openWakeWord
+recommends; the data decides, per word and per mic (`scripts/baton/voice-lab`).
+
+Rejected: Colab and Kaggle (an account in a browser, not repeatable); RunPod (paid); the server (a
+loaded box with earlyoom, and 17 GB of negative features on a tight disk).
+
+## D96 — Mics are an ordered list by part of the name
+
+`micOrder`: Scarlett Solo, Focusrite, Wireless Mic Rx, DJI, then the system default; an explicit pin
+outranks it. Checked every 5 s, so a vanished mic falls through and a returning one is taken back.
+Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
+not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
+the AT2020 is on it and mixing the empty input 2 halves the level.
+

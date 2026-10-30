@@ -16,7 +16,8 @@ param(
   [string]$Step,
   [double]$Hours = 4,
   [int]$Reps = 30,
-  [int]$Sample = 240,
+  [int]$Sample = 2000,
+  [int]$DictationClips = 240,
   [string]$Lab = 'D:\baton-voice-lab'
 )
 $ErrorActionPreference = 'Stop'
@@ -63,7 +64,8 @@ switch ($Step) {
 
   'dictation' {
     if (-not (Test-Path "$Lab\clips.txt")) { python $py export --lab $Lab --sample $Sample }
-    Start-Idle $exe @('transcribe', '--model', "`"$gguf`"", '--language', 'en', '--list', "`"$Lab\clips.txt`"") "$Lab\parakeet.jsonl"
+    Get-Content "$Lab\clips.txt" -TotalCount $DictationClips | Set-Content "$Lab\dictation.txt"
+    Start-Idle $exe @('transcribe', '--model', "`"$gguf`"", '--language', 'en', '--list', "`"$Lab\dictation.txt`"") "$Lab\parakeet.jsonl"
     python $py dictation --lab $Lab
   }
 

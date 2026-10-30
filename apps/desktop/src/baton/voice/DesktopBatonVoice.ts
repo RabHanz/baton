@@ -346,9 +346,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const render = (caption: string | null) => {
     tray.setImage(trayIcon(hudView(state).color));
     tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
-    hud?.show(
-      renderHudHtml({ state: shownState(), caption: caption ?? note, device: deviceName() }),
-    );
+    if (loop === null && dictating === null) hud?.hide();
+    else {
+      hud?.show(
+        renderHudHtml({ state: shownState(), caption: caption ?? note, device: deviceName() }),
+      );
+    }
     rebuildMenu();
   };
   const flash = (caption: string) => {
@@ -428,20 +431,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     dictating = caption;
     if (caption !== null) hud ??= makeHud();
     render(caption);
-    if (caption === null && loop === null) hud?.hide();
   };
   const onDictation = (event: DictationEvent) => {
-    if (event.ev === "recording") showDictation("Recording");
+    if (event.ev === "recording") {
+      note = null;
+      showDictation("Recording");
+    }
     else if (event.ev === "transcribing") showDictation("Transcribing");
     else if (event.ev === "idle") showDictation(null);
     else if (event.ev === "error") {
-      dictating = null;
-      if (loop === null) hud?.hide();
-      flash(event.message);
-    } else if (event.ev === "text") {
+      note = event.message;
       showDictation(null);
-      const failure = event.error ?? event.pasteError;
-      if (failure) flash(failure);
+    } else if (event.ev === "text") {
+      note = event.error ?? event.pasteError ?? note;
+      showDictation(null);
     }
   };
 
@@ -450,7 +453,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     void (async () => {
       const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
       if (source === null) return;
-      devices = await source.listDevices();
+      const listed = await source.listDevices();
+      if (listed.length === 0) return;
+      devices = listed;
       const next = reconcileDeviceChange({ current: choice, devices, preference: preference() });
       if (next !== null) {
         choice = next;
@@ -501,7 +506,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     audio =
       binary === null
         ? makeChromiumAudioInput(onDeviceChange)
-        : makeSidecarAudioInput({ binary, sidecar, channelFor, onLost: onDeviceChange });
+        : makeSidecarAudioInput({
+            binary,
+            sidecar,
+            channelFor,
+            // Back on the same mic if it was a hiccup, on the next one if it left.
+            onLost: () => void setTimeout(() => void restart(), 2_000),
+          });
     hud ??= makeHud();
     devices = await audio.listDevices();
     choice = selectInputDevice(devices, preference());
@@ -672,8 +683,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   /** Wake words are fixed when the core is built, so a change rebuilds it. */
   const relisten = async () => {
-    if (loop === null) return render(null);
-    await stop();
+    if (loop !== null) await stop();
     await start().catch(failed);
   };
 
@@ -699,7 +709,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     configureDictation();
     void relisten();
   });
-  setInterval(onDeviceChange, MIC_POLL_MS).unref();
+  // Not on the Chromium path: listing there opens the microphone.
+  if (binary !== null) setInterval(onDeviceChange, MIC_POLL_MS).unref();
 
   render(null);
   void startDictation().catch((error: unknown) => {

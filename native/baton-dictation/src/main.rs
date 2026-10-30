@@ -243,6 +243,7 @@ fn serve() {
     let mut enigo = None;
     let mut recording: Option<Recording> = None;
     let mut held = false;
+    let mut toggle_down = false;
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
     let begin = |config: &Config, recording: &mut Option<Recording>, tx: &Sender<Msg>| {
@@ -296,15 +297,17 @@ fn serve() {
                     "configure" => {
                         match serde_json::from_value::<Config>(value.clone()) {
                             Ok(next) => {
+                                let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
-                                keys = None;
-                                match start_keys(&config, &tx) {
-                                    Ok(next) => {
-                                        keys = next;
-                                        emit(json!({"ev": "configured"}));
+                                if rebind {
+                                    keys = None;
+                                    thread::sleep(Duration::from_millis(30));
+                                    match start_keys(&config, &tx) {
+                                        Ok(started) => keys = started,
+                                        Err(message) => emit(json!({"ev": "error", "message": message})),
                                     }
-                                    Err(message) => emit(json!({"ev": "error", "message": message})),
                                 }
+                                emit(json!({"ev": "configured"}));
                             }
                             Err(e) => emit(json!({"ev": "error", "message": e.to_string()})),
                         }
@@ -359,13 +362,16 @@ fn serve() {
                 }
             }
             Msg::Key { hold: false, pressed: true } => {
-                if recording.is_some() {
-                    finish(&config, &mut recording, &job_tx);
-                } else {
-                    begin(&config, &mut recording, &tx);
+                if !toggle_down {
+                    toggle_down = true;
+                    if recording.is_some() {
+                        finish(&config, &mut recording, &job_tx);
+                    } else {
+                        begin(&config, &mut recording, &tx);
+                    }
                 }
             }
-            Msg::Key { .. } => {}
+            Msg::Key { hold: false, pressed: false } => toggle_down = false,
             Msg::MicFailed(message) => {
                 recording = None;
                 held = false;

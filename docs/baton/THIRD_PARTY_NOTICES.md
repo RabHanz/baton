@@ -63,3 +63,46 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## cjpais/Handy and handy-computer crates (MIT)
+
+Handy commit `7bfb2e2c934b`. Adapted: the Windows reliable paste (`src-tauri/src/paste_tx/`) in
+`native/baton-dictation/src/paste_windows.rs`, the paste chords in `keys.rs`, and the pinned Parakeet
+revision and hash in `apps/desktop/src/baton/voice/voiceModels.ts`. Used as dependencies:
+`transcribe-cpp` 0.4.1, `handy-recorder` 0.1.0, `handy-keys` 0.3.4 (each MIT; transcribe.cpp vendors
+ggml, Silero VAD and miniz, all MIT). The Handy name and brand assets are not used.
+
+```text
+MIT License
+
+Copyright (c) 2025 CJ Pais
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Speech and wake models
+
+- Parakeet TDT 0.6B v3 (NVIDIA, CC BY 4.0), GGUF conversion `handy-computer/parakeet-tdt-0.6b-v3-gguf`,
+  downloaded on first use.
+- `melspectrogram.onnx`, `embedding_model.onnx` from openWakeWord v0.5.1, `silero_vad.onnx` from
+  Silero VAD v6.2.3 (MIT), shipped in `native/baton-dictation/models`. See
+  `docs/baton/research/voice-stack-2026-10-26.md` for their licence notes.
+- `sebastian.onnx`, `alfred.onnx`, `freya.onnx`: trained here (D95) on Piper's LibriTTS voices with
+  openWakeWord's published negative features, which came from datasets with their own terms. Check
+  those before any packaged or commercial release.

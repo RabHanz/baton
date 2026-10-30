@@ -140,6 +140,8 @@ export const startDictationSidecar = (input: {
       child = null;
       for (const entry of pending.values()) entry.reject(new Error("Dictation stopped."));
       pending.clear();
+      deviceWaiters.forEach((resolve) => resolve([]));
+      deviceWaiters = [];
       if (disposed) return;
       input.onEvent({ ev: "error", message: "Dictation stopped. Restarting it." });
       setTimeout(() => {
