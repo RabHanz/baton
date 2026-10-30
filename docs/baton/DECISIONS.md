@@ -2385,3 +2385,24 @@ mod's `ui.ask`, T3 only said to answer it in the terminal, so he could not answe
 Known limits: a prompt is read from what the screen shows, so a dialog taller than the pane, or
 a layout Claude Code changes, falls back to the old line. Multi-select questions are answered
 one option at a time. Proof frames in `frames/prompts-2026-10-29/`.
+
+## D89 — Desktop releases carry T3 Connect's public config, read from app.t3.codes
+
+Baton 0.1.5 on the Windows laptop reached neither box. Its trace showed every saved environment
+(onnyx, signzart-prod, both relay connections made by the stock T3 app) failing each attempt
+with `session-pending`: "Waiting for the T3 Connect sign-in to load." The desktop release was
+built with no Clerk publishable key, JWT template or relay URL, so the T3 Connect sign-in never
+loads and a relay connection can never authorize. Both boxes' servers were up (HTTP 200 on both
+tailnet Serve URLs from the laptop); the client was the only broken part.
+
+- `scripts/baton/hosted-public-config.sh` reads the four public values out of the official
+  hosted client's bundle at build time and the release workflow appends them to `$GITHUB_ENV` in
+  every build job; `loadRepoEnv` maps them to the `VITE_*` names the web build inlines.
+- Not committed, for the reason in `cloud-public-config.sh`: they are upstream's cloud. The relay
+  OTLP ingest token in the same bundle is a credential and is left out.
+- The step fails the build when a value is missing, so a desktop that cannot sign in is never
+  published again.
+
+Rejected: committing the values (upstream's environment as our source); asking the Director to
+re-add both boxes as direct tailnet connections (works around the client, leaves the relay path
+broken, and costs him a pairing per box).
