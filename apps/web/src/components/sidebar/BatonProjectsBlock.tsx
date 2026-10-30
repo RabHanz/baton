@@ -19,6 +19,8 @@ import {
   type BatonProjectGroup,
   type BatonSessionRow,
 } from "../../batonProjects";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { useThreadRouteTarget } from "../../hooks/useThreadRouteTarget";
 import { batonWorkSessions, useBatonFleets } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { cn } from "~/lib/utils";
@@ -28,6 +30,7 @@ import { Button } from "../ui/button";
 import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { Textarea } from "../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { openThreadInSplit } from "../panes/batonPanesStore";
 import { BatonContinueWith, type HandoffTarget } from "./BatonContinueWith";
 
 export interface BatonProjectsBlockProps {
@@ -250,6 +253,7 @@ function Composer(
   const [note, setNote] = useState<string | null>(null);
   const pane = row.kind === "work" ? null : row.pane;
   const prompt = row.kind === "work" ? null : row.prompt;
+  const routeTarget = useThreadRouteTarget();
   return (
     <div
       data-testid="sidebar-baton-composer"
@@ -280,6 +284,21 @@ function Composer(
             onClick={() => props.onOpenWorkSession(row.environmentId, row.entry)}
           >
             Open thread
+          </Button>
+          <Button
+            size="compact"
+            variant="outline"
+            data-testid="sidebar-baton-open-in-split"
+            onClick={() => {
+              const threadId = row.entry.activeThreadId ?? row.entry.threads[0]?.threadId ?? null;
+              if (threadId === null) return;
+              openThreadInSplit(routeTarget, {
+                kind: "server",
+                threadRef: scopeThreadRef(row.environmentId, threadId),
+              });
+            }}
+          >
+            Open in split
           </Button>
           <BatonContinueWith
             environmentId={row.environmentId}

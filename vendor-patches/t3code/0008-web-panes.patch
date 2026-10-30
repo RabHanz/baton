@@ -1,0 +1,67 @@
+Subject: web: split chat panes
+
+The route view renders panes/BatonPanes around its ChatView; unfocused panes stand down from
+focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
+
+diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
+index 4171499367550c52a8ef0513a5311298d6338ced..c8d56a95731c8ffe1eebeff45c1eaee720dc1d6d 100644
+--- a/apps/web/src/components/ChatView.tsx
++++ b/apps/web/src/components/ChatView.tsx
+@@ -1782,7 +1782,7 @@ export default function ChatView(props: ChatViewProps) {
+   });
+ 
+   const focusComposer = () => {
+-    composerRef.current?.focusAtEnd();
++    if (!backgroundThread) composerRef.current?.focusAtEnd();
+   };
+   const focusComposerStable = useStableCallback(focusComposer);
+   const canInterruptRunningThread =
+@@ -2620,8 +2620,8 @@ export default function ChatView(props: ChatViewProps) {
+   // composer effect above.
+   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
+   useEffect(() => {
+-    if (activeThreadRef) return focusTerminalOnThreadEnter(activeThreadRef);
+-  }, [activeThreadRef]);
++    if (activeThreadRef && !backgroundThread) return focusTerminalOnThreadEnter(activeThreadRef);
++  }, [activeThreadRef, backgroundThread]);
+ 
+   const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
+     terminalFocus: getTerminalFocusOwner() !== null,
+@@ -2706,12 +2706,13 @@ export default function ChatView(props: ChatViewProps) {
+   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
+   useEffect(() => {
+     return window.desktopBridge?.onMenuAction((action) => {
++      if (backgroundThread) return;
+       if (action === "rightPanel.toggle") toggleRightPanelStable();
+       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
+     });
+-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
++  }, [backgroundThread, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+ 
+-  usePasteToFocusComposer(activeThreadId, composerRef);
++  usePasteToFocusComposer(backgroundThread ? null : activeThreadId, composerRef);
+   const { onConfirmRevertStable, onForkFromRunStable, onRevertTimelineTurnStable } =
+     useTimelineRewind({
+       environmentId,
+diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
+index 79f4633ea545295b2d3caae4ef704075e37f6097..81e67ffc8dbe17b97abe42695f37b0b45b5f076c 100644
+--- a/apps/web/src/components/ThreadRouteView.tsx
++++ b/apps/web/src/components/ThreadRouteView.tsx
+@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
+ import { useEffect, useState } from "react";
+ 
+ import ChatView from "./ChatView";
+-import { BackgroundThreadContext } from "./chat/backgroundThread";
++import { BatonPanes } from "./panes/BatonPanes";
+ import { SidebarInset } from "./ui/sidebar";
+ import { useComposerDraftStore } from "../composerDraftStore";
+ import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
+@@ -153,7 +153,7 @@ export function ThreadRouteView({
+       className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+       inert={background}
+     >
+-      <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
++      <BatonPanes route={target} background={background} view={view} />
+       {background ? null : redirect}
+     </SidebarInset>
+   );

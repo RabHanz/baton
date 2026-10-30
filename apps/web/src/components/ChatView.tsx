@@ -1782,7 +1782,7 @@ export default function ChatView(props: ChatViewProps) {
   });
 
   const focusComposer = () => {
-    composerRef.current?.focusAtEnd();
+    if (!backgroundThread) composerRef.current?.focusAtEnd();
   };
   const focusComposerStable = useStableCallback(focusComposer);
   const canInterruptRunningThread =
@@ -2620,8 +2620,8 @@ export default function ChatView(props: ChatViewProps) {
   // composer effect above.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
   useEffect(() => {
-    if (activeThreadRef) return focusTerminalOnThreadEnter(activeThreadRef);
-  }, [activeThreadRef]);
+    if (activeThreadRef && !backgroundThread) return focusTerminalOnThreadEnter(activeThreadRef);
+  }, [activeThreadRef, backgroundThread]);
 
   const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
     terminalFocus: getTerminalFocusOwner() !== null,
@@ -2706,12 +2706,13 @@ export default function ChatView(props: ChatViewProps) {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
   useEffect(() => {
     return window.desktopBridge?.onMenuAction((action) => {
+      if (backgroundThread) return;
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     });
-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  }, [backgroundThread, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
 
-  usePasteToFocusComposer(activeThreadId, composerRef);
+  usePasteToFocusComposer(backgroundThread ? null : activeThreadId, composerRef);
   const { onConfirmRevertStable, onForkFromRunStable, onRevertTimelineTurnStable } =
     useTimelineRewind({
       environmentId,
