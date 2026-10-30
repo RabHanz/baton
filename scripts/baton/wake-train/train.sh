@@ -21,7 +21,7 @@ pip install -q --no-cache-dir --index-url https://download.pytorch.org/whl/cpu t
 pip install -q --no-cache-dir "numpy<2" "scipy<1.12" piper-phonemize==1.1.0 webrtcvad \
   mutagen==1.47.0 torchinfo==1.8.0 torchmetrics==1.2.0 speechbrain==0.5.14 \
   audiomentations==0.33.0 torch-audiomentations==0.11.0 acoustics==0.2.6 pronouncing==0.2.0 \
-  deep-phonemizer==0.0.19 onnx==1.15.0 onnxscript==0.1.0.dev20240101 pyyaml tqdm huggingface_hub soundfile \
+  deep-phonemizer==0.0.19 onnx==1.15.0 onnxscript==0.1.0.dev20240101 pyyaml tqdm huggingface_hub soundfile pyarrow \
   onnxruntime==1.17.3 scikit-learn requests
 pip install -q --no-cache-dir --no-deps -e ./openWakeWord
 
