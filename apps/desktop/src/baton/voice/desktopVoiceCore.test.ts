@@ -11,6 +11,7 @@
 import * as NodePath from "node:path";
 
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
+import { createWhisperCppStt } from "@t3tools/baton-voice";
 import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -20,6 +21,7 @@ import {
   makeVoiceIntentClient,
   missingVoiceAssets,
   resolveVoiceAssets,
+  resolveWakeModels,
   sessionMessageSentence,
   type VoiceIntentRequest,
 } from "./desktopVoiceCore.ts";
@@ -122,14 +124,35 @@ describe("the intent bridge", () => {
     expect(await client.insertText({ text: "hello" })).toEqual({ inserted: false });
   });
 
-  it("finds the models in the state dir unless told otherwise, and names what is missing", () => {
-    const assets = resolveVoiceAssets({ stateDir: "/s", platform: "win32", env: {} });
-    expect(assets.whisperCli).toBe(NodePath.join("/s", "voice", "whisper-cli.exe"));
-    expect(missingVoiceAssets(assets, () => false)).toHaveLength(6);
+  it("finds the shipped models unless told otherwise, and names what is missing", () => {
+    const assets = resolveVoiceAssets({ stateDir: "/s", resourcesPath: "/r", env: {} });
+    expect(assets.modelsDir).toBe(NodePath.join("/r", "baton-voice", "models"));
+    expect(missingVoiceAssets(assets, () => false)).toHaveLength(3);
     expect(
-      resolveVoiceAssets({ stateDir: "/s", platform: "linux", env: { BATON_VOICE_MODELS: "/m" } })
+      resolveVoiceAssets({ stateDir: "/s", resourcesPath: "/r", env: { BATON_VOICE_MODELS: "/m" } })
         .modelsDir,
     ).toBe("/m");
+  });
+
+  it("drops a switched-off word, prefers his own model, and names a word with none", () => {
+    const assets = { modelsDir: "/shipped", userModelsDir: "/mine" };
+    const words = [
+      { word: "Sebastian", enabled: true, threshold: 0.5 },
+      { word: "Alfred", enabled: false, threshold: 0.5 },
+      { word: "Mister Baker", enabled: true, threshold: 0.6 },
+      { word: "Freya", enabled: true, threshold: 0.7 },
+    ];
+    const present = new Set([
+      NodePath.join("/shipped", "sebastian.onnx"),
+      NodePath.join("/mine", "sebastian.onnx"),
+      NodePath.join("/shipped", "freya.onnx"),
+    ]);
+    const { models, missing } = resolveWakeModels(assets, words, (path) => present.has(path));
+    expect(models).toEqual([
+      { word: "Sebastian", path: NodePath.join("/mine", "sebastian.onnx"), threshold: 0.5 },
+      { word: "Freya", path: NodePath.join("/shipped", "freya.onnx"), threshold: 0.7 },
+    ]);
+    expect(missing).toEqual(["Mister Baker"]);
   });
 });
 
@@ -137,7 +160,7 @@ const env = {
   BATON_VOICE_MODELS: process.env.BATON_VOICE_MODELS,
   BATON_WHISPER_CLI: process.env.BATON_WHISPER_CLI,
 };
-const assets = resolveVoiceAssets({ stateDir: "/nonexistent", platform: "linux", env });
+const assets = resolveVoiceAssets({ stateDir: "/nonexistent", resourcesPath: "/nonexistent", env });
 const ready =
   env.BATON_VOICE_MODELS !== undefined &&
   env.BATON_WHISPER_CLI !== undefined &&
@@ -155,6 +178,11 @@ describe.skipIf(!ready)("WAV as the mic, through the real core", () => {
     const replies: string[] = [];
     const { core, drain } = await createDesktopVoiceCore({
       assets,
+      wakeWords: [{ word: "jarvis", enabled: true, threshold: 0.5 }],
+      stt: createWhisperCppStt({
+        binary: env.BATON_WHISPER_CLI!,
+        model: NodePath.join(assets.modelsDir, "ggml-base.en.bin"),
+      }),
       platform: "linux",
       speak: false,
       origin: Date.now(),

@@ -90,7 +90,7 @@ index be4d3c29ea763a8294a8ab765fcc46abd5096003..2a19711255896c99c97f0f757a8dd988
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..5048f5df63da20a181cdcd6d021a830aded5d5aa 100644
+index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..cacbe300cdf46242488254d04f965b56ca013ff5 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -1014,6 +1014,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
@@ -115,7 +115,66 @@ index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..5048f5df63da20a181cdcd6d021a830a
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -2782,6 +2797,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -1089,6 +1104,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
+     from: "apps/desktop/prod-resources/resource-monitor",
+     to: "resource-monitor",
+   },
++  {
++    from: "apps/desktop/prod-resources/baton-voice",
++    to: "baton-voice",
++  },
+ ] as const;
+ export const LINUX_CAPTURE_EXTRA_RESOURCES = [
+   {
+@@ -2338,6 +2357,47 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+   }
+ });
+ 
++// Baton voice: the wake and VAD models everywhere, the dictation sidecar on Windows.
++export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
++  readonly repoRoot: string;
++  readonly stageResourcesDir: string;
++  readonly platform: typeof BuildPlatform.Type;
++  readonly verbose: boolean;
++}) {
++  const fs = yield* FileSystem.FileSystem;
++  const path = yield* Path.Path;
++  const crate = path.join(input.repoRoot, "native/baton-dictation");
++  const destination = path.join(input.stageResourcesDir, "baton-voice");
++  yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
++  yield* fs.makeDirectory(destination, { recursive: true });
++  yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
++  if (input.platform !== "win") return;
++  const spawnCommand = yield* resolveSpawnCommand("cargo", [
++    "build",
++    "--locked",
++    "--release",
++    "--manifest-path",
++    path.join(crate, "Cargo.toml"),
++  ]);
++  yield* runCommand(
++    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
++      cwd: input.repoRoot,
++      shell: spawnCommand.shell,
++      env: {
++        ...process.env,
++        // A portable floor with AVX2: the runner's CPU may be newer than the user's.
++        TRANSCRIBE_CMAKE_ARGS:
++          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON",
++      },
++    }),
++    { label: "cargo build baton-dictation", verbose: input.verbose },
++  );
++  yield* fs.copyFile(
++    path.join(crate, "target/release/baton-dictation.exe"),
++    path.join(destination, "baton-dictation.exe"),
++  );
++});
++
+ export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
+   readonly repoRoot: string;
+   readonly stageResourcesDir: string;
+@@ -2782,6 +2842,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -123,6 +182,19 @@ index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..5048f5df63da20a181cdcd6d021a830a
      ],
      directories: {
        buildResources: "apps/desktop/resources",
+@@ -3761,6 +3822,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+     arch: options.arch,
+     verbose: options.verbose,
+   });
++  yield* stageBatonVoice({
++    repoRoot,
++    stageResourcesDir,
++    platform: options.platform,
++    verbose: options.verbose,
++  });
+   if (options.platform === "linux") {
+     for (const backend of ["kde", "hyprland"] as const)
+       yield* stageLinuxCaptureHelper({
 diff --git a/scripts/lib/desktop-external-packages.ts b/scripts/lib/desktop-external-packages.ts
 index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26bbdf9e99 100644
 --- a/scripts/lib/desktop-external-packages.ts

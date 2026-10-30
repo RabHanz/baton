@@ -21,7 +21,7 @@ jobs:
         env:
           # Portable AVX2 floor: the runner's own CPU may be newer than the laptop's i7-8550U.
           TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
-        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml || cargo build --release --manifest-path native/baton-dictation/Cargo.toml
+        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
       - uses: actions/upload-artifact@v4
         with:
           name: baton-dictation-win-x64

@@ -1104,6 +1104,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
   },
+  {
+    from: "apps/desktop/prod-resources/baton-voice",
+    to: "baton-voice",
+  },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {
@@ -2351,6 +2355,47 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
       path.join(destination, "protocols"),
     );
   }
+});
+
+// Baton voice: the wake and VAD models everywhere, the dictation sidecar on Windows.
+export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
+  readonly repoRoot: string;
+  readonly stageResourcesDir: string;
+  readonly platform: typeof BuildPlatform.Type;
+  readonly verbose: boolean;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const crate = path.join(input.repoRoot, "native/baton-dictation");
+  const destination = path.join(input.stageResourcesDir, "baton-voice");
+  yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
+  yield* fs.makeDirectory(destination, { recursive: true });
+  yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
+  if (input.platform !== "win") return;
+  const spawnCommand = yield* resolveSpawnCommand("cargo", [
+    "build",
+    "--locked",
+    "--release",
+    "--manifest-path",
+    path.join(crate, "Cargo.toml"),
+  ]);
+  yield* runCommand(
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      cwd: input.repoRoot,
+      shell: spawnCommand.shell,
+      env: {
+        ...process.env,
+        // A portable floor with AVX2: the runner's CPU may be newer than the user's.
+        TRANSCRIBE_CMAKE_ARGS:
+          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON",
+      },
+    }),
+    { label: "cargo build baton-dictation", verbose: input.verbose },
+  );
+  yield* fs.copyFile(
+    path.join(crate, "target/release/baton-dictation.exe"),
+    path.join(destination, "baton-dictation.exe"),
+  );
 });
 
 export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
@@ -3775,6 +3820,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     stageResourcesDir,
     platform: options.platform,
     arch: options.arch,
+    verbose: options.verbose,
+  });
+  yield* stageBatonVoice({
+    repoRoot,
+    stageResourcesDir,
+    platform: options.platform,
     verbose: options.verbose,
   });
   if (options.platform === "linux") {
