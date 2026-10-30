@@ -44,7 +44,7 @@ import {
 } from "./dictationSidecar.ts";
 import { makeFramer, toVoicePcm } from "./pcm.ts";
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
-import { ensureModel, PARAKEET_MODEL } from "./voiceModels.ts";
+import { ensureModel, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { HUD_DOCUMENT, hudView, renderHudHtml, utteranceCaption } from "./voiceHud.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -76,6 +76,8 @@ interface VoiceSettings {
   readonly micOrder: ReadonlyArray<MicSetting>;
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   readonly dictation: "baton" | "wispr";
+  /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
+  readonly speechModel: "v3" | "fast";
   readonly holdKey: string;
   readonly toggleKey: string;
   readonly paste: PasteMethod;
@@ -99,6 +101,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
     { name: "DJI", channel: null },
   ],
   dictation: "baton",
+  speechModel: "v3",
   // Clear of Wispr's Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win (read from his Wispr config).
   holdKey: "Ctrl+Alt+Space",
   toggleKey: "Ctrl+Alt+Shift+Space",
@@ -478,9 +481,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       choice.kind === "default" && choice.reason.includes("not connected") ? choice.reason : null;
     configureDictation();
     render(null);
+    await loadSpeechModel();
+  };
+
+  const loadSpeechModel = async () => {
     parakeetPath = await ensureModel({
       dir: modelsDir,
-      model: PARAKEET_MODEL,
+      model: settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL,
       onProgress: (fraction) => {
         note = fraction < 1 ? `Downloading the speech model: ${Math.round(fraction * 100)}%` : null;
         render(null);
@@ -601,6 +608,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               checked: settings.dictation === "wispr",
               click: () => setDictation("wispr"),
             },
+            { type: "separator" },
+            {
+              label: "Parakeet v3 (most languages, slower)",
+              type: "radio",
+              checked: settings.speechModel === "v3",
+              click: () => setSpeechModel("v3"),
+            },
+            {
+              label: "Parakeet Fast (English, 3x quicker)",
+              type: "radio",
+              checked: settings.speechModel === "fast",
+              click: () => setSpeechModel("fast"),
+            },
           ],
         },
         {
@@ -667,6 +687,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     save({ dictation });
     configureDictation();
     render(null);
+  };
+
+  const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
+    save({ speechModel });
+    void loadSpeechModel().catch(failed);
   };
 
   const restart = async () => {

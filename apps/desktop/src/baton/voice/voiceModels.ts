@@ -15,6 +15,17 @@ export const PARAKEET_MODEL = {
   sha256: "5859f77944efcd8eafa23a6350731960b2b55b2203df51f319665c807d802cc7",
 } as const;
 
+/**
+ * English only, 229 MB. On 240 of his clips it agreed with Wispr exactly as well as v3 (3.04% of
+ * words) and ran 3.4 times faster, so it is one tray click away.
+ */
+export const PARAKEET_FAST_MODEL = {
+  file: "parakeet-tdt_ctc-110m-F16.gguf",
+  url: "https://huggingface.co/handy-computer/parakeet-tdt_ctc-110m-gguf/resolve/9d66d34f9e1594075c5dd72c90c0f4c321b29f21/parakeet-tdt_ctc-110m-F16.gguf",
+  size: 229334560,
+  sha256: "965cc3f8e171286ecb4d4e6646b407a1782a97da9aed22f88d1e0ec6c96b2358",
+} as const;
+
 export interface DownloadableModel {
   readonly file: string;
   readonly url: string;
