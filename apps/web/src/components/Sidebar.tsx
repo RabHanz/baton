@@ -2,6 +2,8 @@ import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
+import { openThreadInSplit } from "./panes/batonPanesStore";
+import { BATON_SPLIT_MENU_ITEM, showWithSplitItem } from "./panes/batonSplitMenu";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -1503,6 +1505,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const isMac = isMacPlatform(navigator.platform);
     const isModClick = isMac ? event.metaKey : event.ctrlKey;
     const threadKey = scopedThreadKey(threadRef);
+    if (event.altKey) {
+      event.preventDefault();
+      openThreadInSplit(routeTarget, { kind: "server", threadRef });
+      return;
+    }
     if (isModClick) {
       event.preventDefault();
       toggleThreadSelection(threadKey);
@@ -2541,7 +2548,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             ),
           ) ?? null;
         const clicked = await settlePromise(() =>
-          api.contextMenu.show(
+          showWithSplitItem(
+            api,
+            routeTarget,
+            threadRef,
+          )(
             buildThreadActionMenuItems({
               canOperate: readEnvironmentScope(
                 threadRef.environmentId,
@@ -2578,6 +2589,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
+        if (clicked.value === BATON_SPLIT_MENU_ITEM) {
+          openThreadInSplit(routeTarget, { kind: "server", threadRef });
+          return;
+        }
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
