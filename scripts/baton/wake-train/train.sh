@@ -38,9 +38,9 @@ python "$here/make_config.py" "$WORD" "$N_SAMPLES" "$STEPS" > "$WORD.yaml"
 df -h . | tail -1
 
 common=(--training_config "$WORD.yaml")
-python -m openwakeword.train "${common[@]}" --generate_clips
-python -m openwakeword.train "${common[@]}" --augment_clips
-python -m openwakeword.train "${common[@]}" --train_model 2>&1 | tee "out/$WORD.train.log"
+python "$here/run_train.py" "${common[@]}" --generate_clips
+python "$here/run_train.py" "${common[@]}" --augment_clips
+python "$here/run_train.py" "${common[@]}" --train_model 2>&1 | tee "out/$WORD.train.log"
 
 cp "model/$WORD.onnx" "out/$WORD.onnx"
 python "$here/report.py" "$WORD" > "out/$WORD.metrics.txt"

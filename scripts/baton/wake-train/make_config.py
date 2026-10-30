@@ -5,19 +5,19 @@ import yaml
 
 WORDS = {
     "sebastian": {
-        "target": ["sebastian", "sebastian."],
+        "target": ["sebastian"],
         # Things he says all day that sound close, on top of the trainer's phonetic negatives.
         "negative": ["celebration", "suggestion", "the bastion", "sebastopol", "save a station",
                      "session", "the question", "a bastion", "see baton"],
     },
     "alfred": {
-        "target": ["alfred", "alfred."],
+        "target": ["alfred"],
         "negative": ["offered", "afraid", "altered", "alford", "all for it", "out for", "affront",
                      "albert", "alfa", "after", "oxford", "hold red", "welfare"],
     },
     "freya": {
         # FRAY-uh and FREE-uh are both in use; he has not said which he uses.
-        "target": ["freya", "freya.", "fray uh", "free uh"],
+        "target": ["freya", "fray uh", "free uh"],
         "negative": ["fire", "prayer", "freer", "for you", "fraying", "frame", "afraid", "friend",
                      "player", "free", "freight", "friday", "fair", "pray", "fray", "free up"],
     },
