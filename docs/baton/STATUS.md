@@ -19,6 +19,22 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 8 — Herdr adoption                             | **done for a terminal**             | Herdr 0.9.5 on both boxes; a real pane discovered, adopted, in the fleet and readable; T3 terminals can be Herdr-backed and outlive T3 (D61, proven live)                                    |
 | 10 — capability plane + hardening              | **partial**                         | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                           |
 
+## Limits and account in the thread, 2026-10-30 (D92)
+
+Usage panel on setup tokens from the probe, with age and stale state; account label and one-click
+switch in the thread header; the sentence "switch account to <name>". Unit-tested. A real switch
+waits for a second account with quota (2 Nov).
+## Split chat panes, 2026-10-30 (D93, Baton #40)
+
+| Piece                                                                          | State                                        | Evidence                                                                                      |
+| ------------------------------------------------------------------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Two to four threads side by side, resizable, restored on reload                | **proven** in Chromium on a throwaway server | `frames/split-panes-2026-10-30/01,04,05,06,07,09`; `scripts/baton/live/split-panes-proof.mjs` |
+| Independent composers, both running at once, the unfocused pane keeps updating | **proven** with real Haiku turns             | `02-both-streaming-1440`; text length of the unfocused pane grew while the other was focused  |
+| Closing a pane loses nothing                                                   | **proven**                                   | a typed draft came back when the thread was reopened; `08-closed-one-1440`                    |
+| Threads from two environments                                                  | **proven** on two local servers              | `11-two-environments-1440` (`echo` exists only on the second)                                 |
+| Phone width                                                                    | **proven** at 390                            | `10-phone-390`: one pane, no bar, slots kept for when the window widens                       |
+| Desktop app window controls                                                    | **not run**                                  | checked in the browser build only; the bar moved to a footer so nothing sits under them       |
+
 ## Live threads, 2026-10-29: media, one alert per turn, sends that never queue (D85, `0.1.2-baton.39` on both boxes)
 
 | Piece                                    | State                                            | Evidence                                                                                                                                                                           |

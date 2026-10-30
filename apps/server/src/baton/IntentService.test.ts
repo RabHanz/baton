@@ -34,6 +34,7 @@ import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
 import { ProviderRegistry } from "../provider/ProviderRegistry.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { AdoptedRuntimeAdapter, layer as adoptedSessionLayer } from "./AdoptedSessionService.ts";
+import { AccountPoolService } from "./AccountPoolService.ts";
 import { layer as intentExecutorLayer } from "./IntentExecutorLive.ts";
 import { BatonIntentService, layer as intentServiceLayer } from "./IntentService.ts";
 import { BatonOrchestrationReactor, OrchestrationEffectsService } from "./OrchestrationReactor.ts";
@@ -129,6 +130,22 @@ const textGenerationLayer = (reply: ModelReply, calls: Ref.Ref<ReadonlyArray<str
           )) as BatonOneShot["Service"]["run"],
   });
 
+/** Two accounts; `activated` records what the intent asked the pool to switch to. */
+const activated: Array<string> = [];
+const accountPoolLayer = Layer.mock(AccountPoolService)({
+  read: () =>
+    Effect.succeed({
+      accounts: [
+        { key: "4", label: "rabee", active: true },
+        { key: "5", label: "optima", active: false },
+      ],
+    } as never),
+  activate: (input) => {
+    activated.push(input.key);
+    return Effect.succeed({} as never);
+  },
+});
+
 const baseLayer = (
   effects: Layer.Layer<OrchestrationEffectsService>,
   model: { readonly reply: ModelReply; readonly calls: Ref.Ref<ReadonlyArray<string>> },
@@ -185,6 +202,7 @@ const baseLayer = (
       }),
     ),
     Layer.provide(Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([provider]) })),
+    Layer.provide(accountPoolLayer),
     Layer.provideMerge(SqlitePersistenceMemory),
   );
 
@@ -362,6 +380,26 @@ describe("a sentence the grammar cannot place (D50)", () => {
 });
 
 describe("the intent surface", () => {
+  it.effect("switches the account the sentence names, and refuses one it cannot find", () =>
+    run(() =>
+      Effect.gen(function* () {
+        const intents = yield* BatonIntentService;
+        const known = yield* intents.run({
+          text: "switch account to Optima",
+          focusedWorkSessionId: null,
+        });
+        assert.include(known.reply, "now runs as optima");
+        assert.deepStrictEqual(activated, ["5"]);
+
+        const unknown = yield* Effect.flip(
+          intents.run({ text: "use the nobody account", focusedWorkSessionId: null }),
+        );
+        assert.include(String(unknown), "There is no account called nobody");
+        assert.deepStrictEqual(activated, ["5"]);
+      }),
+    ),
+  );
+
   it.effect("answers §20's question from the fleet, and records that it did", () =>
     run(() =>
       Effect.gen(function* () {

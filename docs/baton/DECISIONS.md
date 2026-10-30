@@ -2439,3 +2439,62 @@ that moved us to tokens); anything needing TLS interception.
 stored, the shape T3 writes. `--pin-default` does the same for slot 4 on the default instance; used
 on the laptop only, where the CLI keeps a full login for Remote Control. On the boxes the default
 instance follows cswap, so rotation keeps reaching it.
+
+## D92 — T3's usage panel reads the probe; the thread view shows and switches the account
+
+T3 reported `unsupported` for a setup token, so `ClaudeDriver` now passes every status through
+`withProbeLimits`: where the provider has no windows, it takes cswap's reading for that instance
+(a token instance's own slot, the default instance's active account). `checkedAt` stays the time of
+the reading, not of the refresh, and `BatonLimitsAge` states it under the windows in the thread
+details and the composer's limits panel, turning to "Stale" past 15 minutes (three missed probe
+ticks, where cswap's hold lapses). Because windows now exist, T3's own exhausted-limit logic applies
+to token instances too.
+
+`BatonThreadAccount` sits in the thread header: the account label, and on the default instance a
+menu of the pool with room left and reading age. A click calls `fabric.account.use`. That is
+cswap's switch, so it moves every Claude thread on the environment at its next turn, and the toast
+says so; the menu is disabled during a running turn. A thread on a token instance shows its label
+only, since cswap cannot reach it. The sentence is `switch account to <name>` / `use the <name>
+account`, command `switch_account`, medium risk. It is the one command that carries a label instead
+of an id, because the pool is a process read and the vocabulary is pure.
+
+Rejected: a per-thread switch through `provider.switch` (a token instance has another config
+directory, so it is a handoff rather than a swap, and `Continue with` already offers that); a
+"probe" marker in the contract so only probe data shows an age (a new contract field for what a
+generic age line does for every provider).
+
+Not yet run live: a real switch needs a second account with quota, from 2 Nov.
+## D93 — Split chat panes are ChatViews side by side, and the route is the focused pane
+
+**Decided** 2026-10-30 (Baton #40). Upstream has split terminals and no split for chat; the requests
+(pingdotgg/t3code discussions 6746, 8149) have no shipped shape to follow. ChatView already takes
+`environmentId` and `threadId` as props, so a pane is a plain ChatView and the hook is one element in
+`ThreadRouteView` (`0008-web-panes.patch`), with the rest in `components/panes/`.
+
+- Up to four slots with fixed ids, persisted in the browser. Two side by side, three as two over one,
+  four as a grid; one column and one row divider, 25 to 75 percent, by pointer or arrow keys.
+- The route thread is the focused pane. A pointer press or a key in another pane moves the route with
+  `replace`. A route to a thread with no pane goes into the focused pane, so the sidebar behaves as it
+  always did. The focused pane renders the route's own ChatView element at the same tree position as
+  the pane's own, so a focus change never remounts one.
+- Unfocused panes sit under upstream's `BackgroundThreadContext`, made for threads kept mounted under
+  Settings; their shortcuts stand down and they keep streaming. A few lines in ChatView stop a
+  background pane taking DOM focus. Not `inert`, so they stay clickable.
+- Closing removes the slot only. The thread and its draft stay. When the focused pane closes the route
+  leaves first, because a slot closed under the route would hand its thread to the neighbour.
+- Open with **Open in split** on a sidebar thread's menu, Alt+click on the row (Ctrl/Cmd+click is
+  upstream's multi-select), or **Open in split** on a Baton session. A full grid gives up its last
+  unfocused pane.
+- Below 1024 px only the focused pane renders and the slots stay. The brief said `md` (768), but with
+  the sidebar open that leaves 250 px per pane.
+- The pane bar (environment, close) is a footer. At the top it collided with the right-panel controls,
+  which T3 pins to the top right of the whole inset, and with the window controls.
+
+Rejected: a route per pane (search params in every link, and a large patch to the router); separate
+windows (discussion 6740; no shared focus and a second renderer); `react-resizable-panels` (a
+dependency for two dividers); a focus-capture handler (an editor that restores its own focus after a
+reload moved the route).
+
+Known limit: moving focus to a pane does not put the caret in its composer, because doing so would
+cancel a text selection started in that pane. Upstream's thread details card follows the viewport
+width, so at 2560 each pane shows its own.

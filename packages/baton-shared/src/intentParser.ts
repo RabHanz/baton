@@ -256,6 +256,12 @@ const NOT_YET: ReadonlyArray<{
   },
 ];
 
+/** Ahead of NOT_YET, whose "switch to" and "move it to" would otherwise claim these sentences. */
+const SWITCH_ACCOUNT: ReadonlyArray<RegExp> = [
+  /^(?:switch|change|rotate|move)\s+(?:the\s+)?accounts?\s+to\s+(?:the\s+)?(.+?)(?:\s+account)?$/,
+  /^(?:switch\s+to|use)\s+(?:the\s+)?(.+?)\s+account$/,
+];
+
 // ---------------------------------------------------------------------------
 // Resolution
 // ---------------------------------------------------------------------------
@@ -616,6 +622,18 @@ export function resolveBatonIntent(
   const text = stripPrefixes(raw);
   if (text.length === 0) {
     return refuse("unrecognised", source, "That was a wake word and nothing else.");
+  }
+
+  for (const pattern of SWITCH_ACCOUNT) {
+    const accountLabel = pattern.exec(text)?.[1]?.trim();
+    if (accountLabel) {
+      return resolved({
+        command: { kind: "switch_account", accountLabel: accountLabel as never },
+        description: `Switch Claude on this environment to ${accountLabel}.`,
+        risk: "medium",
+        workSessionId: null,
+      });
+    }
   }
 
   for (const entry of NOT_YET) {

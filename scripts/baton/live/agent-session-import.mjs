@@ -1,8 +1,7 @@
 // Run upstream's agent-session import (`agentSessions.import`) for one project, as a paired
 // client: the RPC is reachable only from the web client's onboarding wizard otherwise (D87).
 //   node agent-session-import.mjs <pair-url-file> <projectId> [workspaceRoot]
-//   node agent-session-import.mjs <pair-url-file> scan      (lists candidates and their project ids)
-// Playwright comes from $PLAYWRIGHT_DIR.
+//   node agent-session-import.mjs <pair-url-file> scan      (lists candidates); Playwright from $PLAYWRIGHT_DIR
 import * as NodeFS from "node:fs";
 import * as NodeModule from "node:module";
 
