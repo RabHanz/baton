@@ -18,8 +18,8 @@ jobs:
       matrix:
         word: [sebastian, alfred, freya]
     env:
-      N_SAMPLES: 200
-      STEPS: 500
+      N_SAMPLES: 30000
+      STEPS: 50000
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v5

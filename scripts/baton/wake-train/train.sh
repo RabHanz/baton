@@ -13,6 +13,8 @@ cd "$WORK"
 # upstream's trainer imports generate_samples from the repo root, which only v2/v3 layouts have
 git clone -q https://github.com/dscripka/openWakeWord.git
 git -C openWakeWord checkout -q 368c037
+# The flag defaults to the string "False", which is truthy, and we want no TFLite.
+sed -i 's/default="False"/default=False/' openWakeWord/openwakeword/train.py
 git clone -q --branch v2.0.0 --depth 1 https://github.com/rhasspy/piper-sample-generator.git
 wget -q -O piper-sample-generator/models/en_US-libritts_r-medium.pt \
   https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt
