@@ -1,0 +1,10 @@
+[Unit]
+Description=Baton: Claude account limits every five minutes (D90)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
