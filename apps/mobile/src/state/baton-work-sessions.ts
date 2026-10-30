@@ -1,4 +1,4 @@
-/* oxlint-disable t3code/no-low-value-comments, t3code/react-effect-budget -- Baton file predating upstream's rule (D82) */
+/* oxlint-disable t3code/no-low-value-comments, t3code/no-unreasoned-state-sync -- Baton file predating upstream's rule (D82) */
 /**
  * Baton on the phone.
  *
