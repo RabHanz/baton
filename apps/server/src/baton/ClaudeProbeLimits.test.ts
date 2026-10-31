@@ -1,7 +1,12 @@
 import type { BatonAccount } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { accountDisplayName, accountForInstance, limitsFromAccount } from "./ClaudeProbeLimits.ts";
+import {
+  accountDisplayName,
+  accountForInstance,
+  limitsFromAccount,
+  withAccount,
+} from "./ClaudeProbeLimits.ts";
 
 const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
   key: "4",
@@ -65,5 +70,23 @@ describe("limitsFromAccount", () => {
 describe("accountDisplayName", () => {
   it("reads as a name", () => {
     expect(accountDisplayName(account({}))).toBe("Rabee");
+  });
+});
+
+describe("withAccount", () => {
+  const provider = { auth: { status: "authenticated", email: "someone@example.com" } };
+
+  it("names the instance and leaves only the fingerprint to key it", () => {
+    const next = withAccount(provider, account({})) as typeof provider & {
+      displayName: string;
+      usageLimits: { credentialFingerprint: string };
+    };
+    expect(next.displayName).toBe("Rabee");
+    expect(next.usageLimits.credentialFingerprint).toBe("4");
+    expect(next.auth).toEqual({ status: "authenticated" });
+  });
+
+  it("changes nothing without a reading", () => {
+    expect(withAccount(provider, account({ usageCheckedAt: null }))).toBe(provider);
   });
 });

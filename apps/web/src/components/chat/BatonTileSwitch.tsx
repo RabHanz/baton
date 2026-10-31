@@ -14,7 +14,7 @@ import { useAccountSwitch } from "./BatonThreadAccount";
 
 function blockedReason(account: BatonAccount): string | null {
   if (account.active) return "In use";
-  if (account.unusableReason === "spent") return "Spent";
+  if (account.headroomPercent === 0) return "Spent";
   if (account.unusableReason === "signed-out") return "Signed out";
   if (account.unusableReason === "disabled") return "Held out";
   return null;
