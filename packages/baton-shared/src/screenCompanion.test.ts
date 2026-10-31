@@ -41,7 +41,13 @@ describe("parseReply", () => {
       "see that source control menu up top? click that. [POINT:285,11:source control]",
     );
     expect(r.spoken).toBe("see that source control menu up top? click that.");
-    expect(r.point).toEqual({ x: 285, y: 11, label: "source control", screen: null, confidence: null });
+    expect(r.point).toEqual({
+      x: 285,
+      y: 11,
+      label: "source control",
+      screen: null,
+      confidence: null,
+    });
     expect(r.done).toBe(false);
   });
 
@@ -60,7 +66,13 @@ describe("parseReply", () => {
 
   it("accepts a tag without a label, and the last of several", () => {
     expect(parseReply("[POINT:1,2] no wait [POINT:30,40:save]").point?.x).toBe(30);
-    expect(parseReply("here [POINT:5,6]").point).toEqual({ x: 5, y: 6, label: null, screen: null, confidence: null });
+    expect(parseReply("here [POINT:5,6]").point).toEqual({
+      x: 5,
+      y: 6,
+      label: null,
+      screen: null,
+      confidence: null,
+    });
   });
 
   it("marks a finished lesson", () => {
