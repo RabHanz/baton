@@ -69,11 +69,26 @@ export function accountDisplayName(account: BatonAccount): string {
   return `${account.label.charAt(0).toUpperCase()}${account.label.slice(1)}`;
 }
 
+/**
+ * The instance as the account cswap reads for it. A login's own email is dropped: T3 keys on it
+ * before the fingerprint, so one box's login would split that account into its own tile. stampIdentity
+ * runs next and puts back a name the instance was configured with.
+ */
+export function withAccount<P extends { readonly auth: { readonly email?: string | undefined } }>(
+  provider: P,
+  account: BatonAccount | undefined,
+): P {
+  const usageLimits = limitsFromAccount(account);
+  if (account === undefined || usageLimits === undefined) return provider;
+  const { email: _email, ...auth } = provider.auth;
+  return { ...provider, auth, usageLimits, displayName: accountDisplayName(account) } as P;
+}
+
 /** Fills in limits only where the login reports none; a missing cswap changes nothing. */
 export const withProbeLimits = <
   P extends {
     readonly usageLimits?: ServerProviderUsageLimits | undefined;
-    readonly displayName?: string | undefined;
+    readonly auth: { readonly email?: string | undefined };
   },
 >(
   instanceId: string,
@@ -82,13 +97,9 @@ export const withProbeLimits = <
   if (provider.usageLimits?.unavailable?.reason !== "unsupported") return Effect.succeed(provider);
   return Effect.flatMap(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
     makePoolReader(spawner)(ProviderDriverKind.make("claudeAgent")).pipe(
-      Effect.map((pool: BatonAccountPool) => {
-        const account = accountForInstance(instanceId, pool.accounts);
-        const usageLimits = limitsFromAccount(account);
-        if (account === undefined || usageLimits === undefined) return provider;
-        const displayName = provider.displayName?.trim() || accountDisplayName(account);
-        return { ...provider, usageLimits, displayName } as P;
-      }),
+      Effect.map((pool: BatonAccountPool) =>
+        withAccount(provider, accountForInstance(instanceId, pool.accounts)),
+      ),
       Effect.catchCause(() => Effect.succeed(provider)),
     ),
   );
