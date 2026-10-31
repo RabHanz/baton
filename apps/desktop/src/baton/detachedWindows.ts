@@ -65,24 +65,28 @@ const writeWindows = (windows: ReadonlyArray<DetachedWindow>) => {
   }
 };
 
-/** Installs on the main window, once. `guard` is the navigation policy the main window has. */
+/** Windows open now, across re-creations of the main window, so none is opened twice. */
+const openWindows = new Set<string>();
+
+/** Installs on a main window. `guard` gives a window the main window's navigation policy. */
 export function installDetachedWindows(
   main: Electron.BrowserWindow,
   applicationUrl: string,
-  guard: (contents: Electron.WebContents) => void,
+  guard: (window: Electron.BrowserWindow) => void,
 ) {
   const saved = new Map(readWindows().map((entry) => [entry.id, entry]));
+  const save = () => writeWindows([...saved.values()]);
   let quitting = false;
   Electron.app.once("before-quit", () => {
     quitting = true;
   });
-  const save = () => writeWindows([...saved.values()]);
 
   const watch = (opener: Electron.WebContents) =>
     opener.on("did-create-window", (window, details) => {
       const id = detachedWindowId(details.url, applicationUrl);
       if (id === null) return;
-      guard(window.webContents);
+      openWindows.add(id);
+      guard(window);
       watch(window.webContents);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const remember = () => {
@@ -101,10 +105,15 @@ export function installDetachedWindows(
       window.on("move", rememberSoon);
       window.on("resize", rememberSoon);
       window.webContents.on("did-navigate-in-page", rememberSoon);
+      // destroy() skips "close", so an update's teardown leaves the window saved like a quit does.
+      let closedByHand = false;
+      window.on("close", () => {
+        closedByHand = !quitting;
+      });
       window.on("closed", () => {
         clearTimeout(timer);
-        // Closed by hand it is gone; closed by quitting it comes back.
-        if (quitting) return;
+        openWindows.delete(id);
+        if (!closedByHand) return;
         saved.delete(id);
         save();
       });
@@ -113,6 +122,7 @@ export function installDetachedWindows(
 
   main.webContents.once("did-finish-load", () => {
     for (const { id, url } of saved.values()) {
+      if (openWindows.has(id) || detachedWindowId(url, applicationUrl) !== id) continue;
       const open = `window.open(${JSON.stringify(url)}, ${JSON.stringify(`${WINDOW_NAME_PREFIX}${id}`)}, "popup")`;
       void main.webContents.executeJavaScript(`void ${open}`, true).catch(() => {});
     }
@@ -124,6 +134,8 @@ export function installDetachedWindows(
     const bounds = saved.get(id)?.bounds;
     return {
       action: "allow",
+      // A window on another monitor must not close with the one that opened it.
+      outlivesOpener: true,
       overrideBrowserWindowOptions: {
         ...bounds,
         minWidth: 480,

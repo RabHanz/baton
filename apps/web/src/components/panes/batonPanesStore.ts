@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { COMPOSER_DRAFT_STORAGE_KEY, useComposerDraftStore } from "../../composerDraftStore";
 import { resolveStorage } from "../../lib/storage";
 import type { ThreadRouteTarget } from "../../threadRoutes";
 import {
@@ -59,9 +60,14 @@ export const useBatonPanesStore = create<BatonPanesState>()(
           const next = resolvePaneLayout(state, route);
           const key = paneTargetKey(route);
           // Only a thread arriving here claims; a reload of a held pane must not take it back.
-          if (!state.slots.some((slot) => paneTargetKey(slot.target) === key)) announceClaim(key);
+          const arriving = !state.slots.some((slot) => paneTargetKey(slot.target) === key);
+          if (arriving) announceClaim(key);
           if (next.slots !== state.slots || next.focusedSlotId !== state.focusedSlotId) {
-            set({ slots: next.slots, focusedSlotId: next.focusedSlotId });
+            set({
+              slots: next.slots,
+              focusedSlotId: next.focusedSlotId,
+              ceded: arriving ? state.ceded.filter((entry) => entry !== key) : state.ceded,
+            });
           }
         },
         open: (route, target) => {
@@ -76,10 +82,12 @@ export const useBatonPanesStore = create<BatonPanesState>()(
         },
         close: (id) => {
           const { layout } = closePane(get(), id);
+          const held = new Set(layout.slots.map((slot) => paneTargetKey(slot.target)));
           set({
             slots: layout.slots,
             focusedSlotId: layout.focusedSlotId,
             arranged: layout.slots.length > 1 && get().arranged,
+            ceded: get().ceded.filter((entry) => held.has(entry)),
           });
         },
         resize: (path, index, at) => {
@@ -127,6 +135,25 @@ onThreadClaimed((key) => {
   if (ceded.includes(key) || !slots.some((slot) => paneTargetKey(slot.target) === key)) return;
   useBatonPanesStore.setState({ ceded: [...ceded, key] });
 });
+
+// Every window writes the whole drafts blob, so it would overwrite what another window saved. A
+// window owns the drafts of the threads it holds and takes the rest from storage.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== COMPOSER_DRAFT_STORAGE_KEY) return;
+    const drafts = useComposerDraftStore.getState().draftsByThreadKey;
+    const mine = useBatonPanesStore.getState().slots.flatMap((slot) => {
+      const key = paneTargetKey(slot.target);
+      const draft = drafts[key];
+      return draft === undefined ? [] : [[key, draft] as const];
+    });
+    void Promise.resolve(useComposerDraftStore.persist.rehydrate()).then(() =>
+      useComposerDraftStore.setState((state) => ({
+        draftsByThreadKey: { ...state.draftsByThreadKey, ...Object.fromEntries(mine) },
+      })),
+    );
+  });
+}
 
 /** Opens a thread beside the current one. Outside a thread route it has nothing to sit beside. */
 export function openThreadInSplit(route: ThreadRouteTarget | null, target: ThreadRouteTarget) {

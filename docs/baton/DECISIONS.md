@@ -2566,8 +2566,11 @@ docs.apiyi.com/en/faq/claude-thinking-signature-invalid, github.com/anthropics/c
 - Rabee gets a token instance (`claudeAgent_rabee`, `.claude-a`), or no thread could stay on Rabee
   while cswap rotates. `--pin-default` skips it, since there the default instance already is Rabee.
 - `thread.model-selection.set` releases the live session at once, so during a turn the move goes in
-  `fabric_thread_account_moves` and `ThreadAccountMoves` applies it when the turn ends. A queued run does
-  not count as a turn: a run held by a spent account is the thread that most needs to move.
+  `fabric_thread_account_moves` and `ThreadAccountMoves` applies it when the turn and any queue behind it
+  have ended. A queued run keeps its own selection and would put the thread back, and upstream has no
+  command to change it, so a queue with no turn in front of it (one held by a spent account) refuses the
+  move and asks for the message to be cancelled or sent. The composer's selection follows the move for
+  the same reason.
 - The server refuses a signed-out account and one with no headroom, naming when the full window resets;
   the menu shows the same and disables the row. `limits-unknown` is allowed, since a reading that failed
   says nothing about the account.
@@ -2578,7 +2581,10 @@ Rejected: a handoff through `provider.switch` (it summarises the conversation, a
 for it to carry on); copying transcripts per account (two sources of truth for one session); a client
 that waits and retries (the choice would die with the tab).
 
-Known limit: a pinned thread does not rotate. When its account runs out it waits or is moved by hand.
+Known limits: a pinned thread does not rotate; when its account runs out it waits or is moved by hand.
+A waiting move shows only in its toast and is not rechecked when it applies. The shared key also lets the
+composer's model picker choose any account, without this menu's refusal; T3's own limit logic still applies.
+A home whose `projects/` is a real directory cannot resume, so `.claude-a/b/c` were checked on each box.
 
 ## D96 — A thread can live in its own window
 
@@ -2591,6 +2597,8 @@ different monitors, and those two costs are what he is asking for.
   in to. The window keeps that id in `window.name`, which outlives reloads and route changes, and its
   panes persist under `t3code:baton-panes:v1:<id>`. The main window keeps its old key, so an existing
   layout survives.
+- **Drafts.** Every window writes the whole drafts blob, so on a `storage` event a window keeps the
+  drafts of the threads it holds and takes the rest from what was stored.
 - **One thread, one window.** A window that takes a thread in claims it over a `BroadcastChannel`, and
   any other window showing it drops its ChatView for "Bring it here", which claims it back. So a thread
   never has two composers: nothing can send twice from a stale draft, and focus stays per window. Only
@@ -2600,8 +2608,9 @@ different monitors, and those two costs are what he is asking for.
   window with it when that was its last pane. With no main window on a thread it says so and stays.
 - On the desktop app `setWindowOpenHandler` allows exactly this URL shape, so Electron gives the window
   the main window's preload and session. `baton/detachedWindows.ts` gives it the main window's navigation
-  policy, saves its route and bounds to `baton-detached-windows.json`, and has the main window reopen
-  them after a restart. Closed by hand it is forgotten; closed by quitting it returns.
+  and webview policy, saves its route and bounds to `baton-detached-windows.json`, and has the main window
+  reopen them after a restart. It outlives its opener, so closing the main window leaves it up. Closed by
+  hand it is forgotten; closed by quitting or an update it returns.
 
 Rejected: a second server or a login per window (he said the same one); a route per window; a lease
 with heartbeats to detect a dead holder ("Bring it here" is one click and needs no liveness).
