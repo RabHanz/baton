@@ -1,5 +1,5 @@
 // @effect-diagnostics globalTimers:off
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { pocketPlan } from "./pocketVoice.ts";
 import {
