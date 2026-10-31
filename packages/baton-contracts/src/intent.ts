@@ -46,6 +46,7 @@ export const BATON_INTENT_WS_METHODS = {
   /** Resolve without doing anything. What the input shows you before Enter. */
   intentResolve: "fabric.intent.resolve",
   intentRun: "fabric.intent.run",
+  brainDecide: "fabric.brain.decide",
   intentList: "fabric.intent.list",
 } as const;
 
@@ -294,6 +295,28 @@ export const BatonIntentInput = Schema.Struct({
   allowModel: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonIntentInput = typeof BatonIntentInput.Type;
+
+/**
+ * One sentence for the one brain (D100), from any client. The conversation so far travels with
+ * it, so a phone and a desktop share one decision and each keeps its own thread.
+ */
+export const BatonBrainInput = Schema.Struct({
+  said: TrimmedNonEmptyString,
+  /** "teach" or "drive" while one runs on this client. */
+  running: Schema.NullOr(Schema.String),
+  direct: Schema.Boolean,
+  recent: Schema.Array(Schema.String),
+});
+export type BatonBrainInput = typeof BatonBrainInput.Type;
+
+export const BatonBrainResult = Schema.Struct({
+  route: Schema.String,
+  /** The question, goal, command, clarifying question or refusal; null for a lesson control. */
+  text: Schema.NullOr(Schema.String),
+  control: Schema.NullOr(Schema.String),
+  source: Schema.String,
+});
+export type BatonBrainResult = typeof BatonBrainResult.Type;
 
 export const BatonIntentResolveResult = Schema.Struct({
   resolution: BatonIntentResolution,
