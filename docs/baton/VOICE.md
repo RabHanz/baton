@@ -98,7 +98,8 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | `dictation`                                | `baton`; `wispr` holds no key          | Dictation        |
 | `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space` |                |
 | `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v` |                |
-| `wakeWords`                                | Sebastian, Alfred, Freya, each with a threshold | Wake words |
+| `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words |
+| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
 | `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D96)              | Microphone       |
 | `enabled`                                  | `false`: listening is opt-in           | Always listening |
 

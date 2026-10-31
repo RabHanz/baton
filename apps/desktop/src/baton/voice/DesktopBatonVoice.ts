@@ -108,9 +108,12 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   paste: "ctrl_v",
   language: "en",
   wakeWords: [
-    { word: "Sebastian", enabled: true, threshold: 0.5 },
-    { word: "Alfred", enabled: true, threshold: 0.5 },
-    { word: "Freya", enabled: true, threshold: 0.5 },
+    // Thresholds from 6.6 hours of his own speech and held-out en-GB voices (D95).
+    { word: "Sebastian", enabled: true, threshold: 0.97 },
+    { word: "Alfred", enabled: true, threshold: 0.9 },
+    { word: "Freya", enabled: true, threshold: 0.95 },
+    // Off: he says Onnyx in ordinary speech, and half of those would wake it.
+    { word: "Onyx", enabled: false, threshold: 0.9 },
   ],
 };
 

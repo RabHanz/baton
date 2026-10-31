@@ -25,7 +25,7 @@ $here = $PSScriptRoot
 $exe = Join-Path $here 'baton-dictation.exe'
 $models = Join-Path $here 'models'
 $gguf = Join-Path $Lab 'models\parakeet-tdt-0.6b-v3-Q8_0.gguf'
-$words = 'sebastian,alfred,freya'
+$words = 'sebastian,alfred,freya,onyx'
 $score = Join-Path $here 'wake-score.mjs'
 $py = Join-Path $here 'lab.py'
 New-Item -ItemType Directory -Force $Lab | Out-Null

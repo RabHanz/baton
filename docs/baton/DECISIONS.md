@@ -2522,7 +2522,7 @@ dictation key. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (
 Ctrl+Win, Ctrl+Win+Space and Ctrl+Alt+Win read from his Wispr config.
 Ctrl+Alt+Shift+F8 toggles for Airdeck, whose mic button is a tap with no hold.
 
-## D95 — Three wake words, no "Hey", trained on free GitHub runners
+## D95 — Custom wake words, no "Hey", trained on free GitHub runners
 
 `.github/workflows/baton-wake-train.yml` runs openWakeWord's trainer on `ubuntu-24.04` (public repo,
 free, CPU only). Pinned: piper-sample-generator v2.0.0, because upstream's notebook still imports the
@@ -2531,12 +2531,38 @@ fallback phonemizer is a dead S3 link. A new word: add it to `make_config.py`, p
 `baton/wake-train` branch, drop `<word>.onnx` in `<state dir>/voice/models`, add it to `wakeWords` in
 `fabric-voice.json`.
 
-All enabled words run on one shared feature pipeline (mel, embedding) with one head each, so a third
-word costs almost nothing. Two-syllable names false-wake more than the 3 to 4 syllables openWakeWord
-recommends; the data decides, per word and per mic (`scripts/baton/voice-lab`).
+All enabled words run on one shared feature pipeline (mel, embedding) with one head each, so another
+word costs almost nothing.
+
+The Director's accent is closer to British, and he says FRAY-uh. Rounds three and four take 60% of the
+positives from Piper's en_GB voices (VCTK less ten speakers, aru, semaine, alba, jenny_dioco,
+northern_english_male, southern_english_female), the rest from the trainer's LibriTTS generator.
+espeak says Sebastian only as "se-BAS-chun", which fired 2 of 30 on en-GB test voices, so round four
+gives that word raw phonemes for both endings and takes all its positives from the en_GB voices.
+
+Chosen per word, from four rounds, on 6.6 hours of his AT2020 dictation and on Microsoft neural en-GB
+voices kept out of training (Sonia, Ryan, Libby, Maisie, Thomas; 30 clips a word):
+
+| Word      | Model   | Threshold | False wakes/h | en-GB hits | His own uses that fired |
+| --------- | ------- | --------- | ------------- | ---------- | ----------------------- |
+| Sebastian | round 4 | 0.97      | 0.45          | 24 of 30   | 2 of 2                  |
+| Alfred    | round 2 | 0.9       | 0.30          | 27 of 30   | 1 of 2                  |
+| Freya     | round 3 | 0.95      | 0.15          | 26 of 30   | 1 of 1                  |
+| Onyx      | round 3 | 0.9       | 0.30          | 29 of 30   | 6 of 12                 |
+
+Each count is a handful of events, so these are coarse. No word reaches under 5% misses on these test
+voices, and none of this is his own voice saying the words on request. The three enabled words together
+are 0.90 an hour. No DJI audio exists in his Wispr store, so that mic is unmeasured. Onyx ships off:
+he says Onnyx in ordinary speech, and six such uses in 6.6 hours would have woken it, about 0.9 an hour
+on top of the false wakes.
 
 Rejected: Colab and Kaggle (an account in a browser, not repeatable); RunPod (paid); the server (a
 loaded box with earlyoom, and 17 GB of negative features on a tight disk).
+
+Dictation result (D94), 240 of his AT2020 clips, 54 minutes: Parakeet v3 differs from Wispr's raw text
+on 3.0% of words and Parakeet 110M on 3.0%; they differ from each other on 3.9%. That is agreement, not
+accuracy. Median wait for a 5 to 15 s clip on the i7-8550U: v3 4.2 s, 110M 1.2 s, Wispr's own end to end
+0.6 s. v3 stays the default as ordered, and the tray switches to the fast model.
 
 ## D96 — Mics are an ordered list by part of the name
 

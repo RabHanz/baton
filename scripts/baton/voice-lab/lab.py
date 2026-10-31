@@ -16,6 +16,8 @@ import sys
 
 MICS = [("AT2020", "scarlett|focusrite"), ("DJI", "wireless mic rx|dji")]
 TARGET_FA = 0.5
+# A clip with any of these is a real use of the word, not a false wake.
+SPELLINGS = {"onyx": ("onyx", "onnyx", "onix")}
 TARGET_MISS = 0.05
 
 
@@ -145,6 +147,7 @@ def report(args):
     clips = {row["file"]: row for row in rows_of(os.path.join(args.lab, "clips.jsonl"))}
     false = collections.defaultdict(lambda: collections.Counter())
     hours = collections.Counter()
+    used = collections.Counter()
     # His stored dictation: real speech on his mics, excluding clips that say the word.
     for row in rows_of(os.path.join(args.lab, "replay.jsonl")):
         clip = clips.get(row["file"])
@@ -153,7 +156,8 @@ def report(args):
         said = " ".join(words(clip["asr"]))
         hours[(clip["mic"], "dictation")] += row["seconds"] / 3600
         for word, data in row["words"].items():
-            if word in said:
+            if any(form in said for form in SPELLINGS.get(word, (word,))):
+                used[(word, clip["mic"])] += 1
                 continue
             for t in thresholds:
                 false[(clip["mic"], word, "dictation")][t] += data["events"].get(t, 0)
@@ -176,6 +180,8 @@ def report(args):
         entry["n"] += 1
         for t in thresholds:
             entry[t] += int(data["peak"] < float(t))
+    for (word, mic), count in sorted(used.items()):
+        print(f"{word}: {count} clips on {mic} really contain the word, left out of the false wakes")
     words_seen = sorted({key[1] for key in false} | {key[1] for key in misses})
     mics = sorted({key[0] for key in false} | {key[0] for key in misses})
     print(f"Targets: under {TARGET_FA} false wakes an hour, under {TARGET_MISS:.0%} misses. '-' means not measured.\n")
