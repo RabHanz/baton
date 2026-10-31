@@ -54,9 +54,9 @@ import {
 } from "./dictationSidecar.ts";
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
-import { HUD_DOCUMENT, hudView, renderHudHtml, utteranceCaption } from "./voiceHud.ts";
+import { hudView, utteranceCaption } from "./voiceHud.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
-import { frameLevel, type TurnEvent } from "./voiceTurn.ts";
+import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -86,8 +86,11 @@ interface VoiceSettings {
   /** Tried in order when nothing is pinned, and when the pin is unplugged. */
   readonly micOrder: ReadonlyArray<MicSetting>;
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
-  /** The chimes on wake and at the end of a turn. */
+  /** The soft sounds on wake and at the end of a turn. */
   readonly sounds: boolean;
+  /** A small mark while idle; nothing on screen otherwise. */
+  readonly pillAtRest: boolean;
+  readonly pillEdge: "bottom" | "top";
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
   readonly speechModel: "v3" | "fast";
@@ -115,6 +118,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
     { name: "DJI", channel: null },
   ],
   sounds: true,
+  pillAtRest: false,
+  pillEdge: "bottom",
   dictation: "baton",
   speechModel: "v3",
   // Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
@@ -151,41 +156,7 @@ const readSettings = (path: string): VoiceSettings => {
 const CAPTURE_PARTITION = "fabric-voice";
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
-const HUD_TEXT_CHARS = 140;
-
-const makeHud = () => {
-  const area = Electron.screen.getPrimaryDisplay().workArea;
-  const width = 320;
-  const height = 72;
-  const window = new Electron.BrowserWindow({
-    width,
-    height,
-    x: area.x + area.width - width - 12,
-    y: area.y + area.height - height - 12,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    focusable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    webPreferences: { partition: CAPTURE_PARTITION },
-  });
-  window.setAlwaysOnTop(true, "screen-saver");
-  window.setIgnoreMouseEvents(true);
-  const ready = window.loadURL(`data:text/html,${encodeURIComponent(HUD_DOCUMENT)}`);
-  return {
-    show: (html: string) =>
-      void ready.then(() => {
-        if (window.isDestroyed()) return;
-        void window.webContents.executeJavaScript(
-          `document.getElementById("root").innerHTML = ${JSON.stringify(html)}`,
-        );
-        if (!window.isVisible()) window.showInactive();
-      }),
-    dispose: () => window.destroy(),
-  };
-};
+const PILL_TEXT_CHARS = 90;
 
 /** A 16×16 filled dot in the state's colour, drawn rather than shipped. */
 const trayIcon = (color: string): Electron.NativeImage => {
@@ -224,6 +195,14 @@ export interface TrayExtras extends BrainVoiceHook {
     readonly act: (command: string) => Promise<string>;
     readonly grammarPlaces: (said: string) => Promise<boolean>;
   }) => void;
+  readonly notice: (text: string) => void;
+  readonly writtenOnly: () => boolean;
+  readonly ask: (input: {
+    readonly title: string;
+    readonly detail: string;
+    readonly buttons: ReadonlyArray<string>;
+    readonly cancel: number;
+  }) => Promise<number>;
 }
 
 export interface DesktopBatonVoiceInput {
@@ -237,6 +216,11 @@ export interface DesktopBatonVoiceInput {
   /** `baton-dictation.exe`; null where it is not built (everything but Windows). */
   readonly dictationBinary: string | null;
   readonly extras?: TrayExtras;
+  readonly holdEscape: (onPress: () => void) => () => void;
+  /** What to do when he dismisses a turn: stop Baton's voice, and the same for the assistant. */
+  readonly onDismiss?: () => void;
+  /** Wake-to-pill, for the record. */
+  readonly onWakeShown?: (ms: number) => void;
 }
 
 export interface DesktopBatonVoice {
@@ -246,7 +230,16 @@ export interface DesktopBatonVoice {
   readonly onSpeaking: (active: boolean) => void;
   /** The assistant finished a turn. */
   readonly onTurnEnd: () => void;
+  /** The assistant is looking, planning or driving; null when it stops. */
+  readonly onActivity: (label: string | null, caption?: string) => void;
+  /** How loud Baton's voice is right now, for the pill. */
+  readonly onSpeechLevel: (level: number) => void;
+  /** He dismissed the assistant's output. */
+  readonly onDismissed: () => void;
 }
+
+const wordName = (word: string | null): string | null =>
+  word === null ? null : `${word[0]!.toUpperCase()}${word.slice(1)}`;
 
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
@@ -265,12 +258,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let modelJob: Promise<string> | null = null;
   let sidecarDevices: ReadonlyArray<SidecarDevice> = [];
   let dictating: string | null = null;
-  let recording = false;
+  let releaseRecordingEscape: (() => void) | null = null;
   let lastDictation: string | null = null;
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
   const shownState = (): VoiceState => (dictating === null ? state : "dictation");
-  let hud: ReturnType<typeof makeHud> | null = null;
   let audio: AudioInputProvider | null = null;
   let core: BatonVoiceCore | null = null;
   const clipboardInjection = makeClipboardInjection({
@@ -291,7 +283,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let choice: DeviceChoice = { kind: "default", deviceId: null, reason: "Not started." };
   let loop: VoiceLoop | null = null;
   let note: string | null = input.makeCore === null ? "Voice core not installed." : null;
-  let captionTimer: ReturnType<typeof setTimeout> | null = null;
   let focusedWorkSessionId: string | null = null;
   let contextTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -299,21 +290,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const render = (caption: string | null) => {
     tray.setImage(trayIcon(hudView(state).color));
     tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
-    // Destroyed, not hidden: a window left open stops "last window closed" quitting the app.
-    if (loop === null && dictating === null) {
-      hud?.dispose();
-      hud = null;
-    } else {
-      hud?.show(
-        renderHudHtml({ state: shownState(), caption: caption ?? note, device: deviceName() }),
-      );
-    }
     rebuildMenu();
   };
+  /** A reply to something said: on the pill, and in full when nothing will read it out. */
   const flash = (caption: string) => {
-    if (captionTimer !== null) clearTimeout(captionTimer);
-    render(caption);
-    captionTimer = setTimeout(() => render(null), 4000);
+    if (input.extras?.writtenOnly() === true) input.extras.notice(caption);
+    else pill.on({ type: "done", label: caption.slice(0, PILL_TEXT_CHARS) });
+    render(null);
   };
 
   // The intent RPCs live in the Baton window's renderer: main asks, it answers.
@@ -374,15 +357,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         routeContext(),
       );
       if (outcome.kind !== "needs_confirmation") return "reply" in outcome ? outcome.reply : "";
-      const { response } = await Electron.dialog.showMessageBox({
-        type: "question",
-        title: "Baton",
-        message: outcome.prompt.replace(/ Say "confirm" to go ahead\.$/, ""),
-        buttons: ["Go ahead", "Cancel"],
-        defaultId: 1,
-        cancelId: 1,
-        noLink: true,
-      });
+      const response = await (input.extras?.ask({
+        title: outcome.prompt.replace(/ Say "confirm" to go ahead\.$/, ""),
+        detail: "",
+        buttons: ["Go ahead", "Not now"],
+        cancel: 1,
+      }) ?? Promise.resolve(1));
       const next = await typedRouter.route(
         response === 0
           ? { kind: "confirmed", token: outcome.token }
@@ -430,21 +410,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const showDictation = (caption: string | null) => {
     dictating = caption;
-    if (caption !== null) hud ??= makeHud();
-    render(caption);
+    pill.on({ type: "dictating", caption });
+    render(null);
   };
   // Esc is taken only while the microphone is open, so it stays his the rest of the time.
   const setRecording = (next: boolean) => {
-    if (next === recording) return;
-    recording = next;
-    if (next) Electron.globalShortcut.register("Escape", () => sidecar?.cancel());
-    else Electron.globalShortcut.unregister("Escape");
+    if (next === (releaseRecordingEscape !== null)) return;
+    if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel());
+    else {
+      releaseRecordingEscape?.();
+      releaseRecordingEscape = null;
+    }
   };
-  /** Words that have no home yet: on the HUD for a while, and in the tray until the next ones. */
+  /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
     lastDictation = text;
-    const shown = text.length > HUD_TEXT_CHARS ? `${text.slice(0, HUD_TEXT_CHARS)}…` : text;
-    showDictation(`${why}: ${shown}`);
+    showDictation(`${why}. Tray: Copy last dictation.`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
@@ -453,12 +434,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (event.ev === "recording") {
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
-      showDictation("Recording. Esc cancels.");
-    } else if (event.ev === "transcribing") showDictation("Transcribing");
+      showDictation("Esc cancels");
+    } else if (event.ev === "transcribing") showDictation("Writing it out");
     else if (event.ev === "idle") showDictation(null);
     else if (event.ev === "error") {
       note = event.message;
       showDictation(null);
+      pill.on({ type: "trouble", message: event.message });
     } else if (event.ev === "unread") {
       keepText("Nothing took the paste. On your clipboard", event.text);
     } else if (event.ev === "text") {
@@ -466,7 +448,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const text = event.text ?? "";
       if (text.length > 0) lastDictation = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
-      else showDictation(null);
+      else {
+        showDictation(null);
+        if (text.length > 0) pill.on({ type: "done", label: "Pasted" });
+      }
     }
   };
 
@@ -507,16 +492,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const pill: VoicePill = createVoicePill({
     sounds: () => settings.sounds,
+    rest: () => settings.pillAtRest,
+    edge: () => settings.pillEdge,
+    holdEscape: input.holdEscape,
     onDismiss: () => {
       pill.on({ type: "dismissed" });
       loop?.activate("dismiss");
+      input.onDismiss?.();
     },
+    ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
   });
+  if (settings.pillAtRest) pill.setRest(true);
   const onCoreEvent = (event: VoiceCoreEvent) => {
     const turn = ((): TurnEvent | null => {
       switch (event.type) {
         case "wake":
-          return { type: "wake" };
+          return { type: "wake", word: wordName(event.word) };
         case "thinking":
           return { type: "thinking" };
         case "nothing":
@@ -526,7 +517,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "error":
           return { type: "failed", message: event.message };
         case "state":
-          return event.state === "sleeping" ? { type: "window_closed" } : null;
+          if (event.state === "sleeping") return { type: "window_closed" };
+          return event.target === null ? null : { type: "target", name: `to ${event.target}` };
         case "outcome":
           // The assistant reports its own end; everything else ends here, or with its speech.
           return "source" in event.outcome && event.outcome.source === "screen"
@@ -607,11 +599,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         recordFailures = ranMs >= HEALTHY_RUN_MS ? 1 : recordFailures + 1;
         const delay = restartDelayMs(recordFailures);
         note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
+        pill.on({ type: "trouble", message: "Reconnecting your mic" });
         render(null);
         setTimeout(() => void restart(), delay);
       },
     });
-    hud ??= makeHud();
+    pill.warm();
     devices = await audio.listDevices();
     choice = selectInputDevice(devices, preference());
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
@@ -623,7 +616,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         state = next;
         render(null);
       },
-      onLevel: (frame) => pill.level(frameLevel(frame)),
+      onLevel: (frame) => pill.micLevel(frameLevel(frame)),
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
@@ -637,9 +630,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (contextTimer !== null) clearInterval(contextTimer);
     contextTimer = null;
     await audio?.stop();
-    hud?.dispose();
     audio = null;
-    hud = null;
     state = "sleeping";
     render(null);
   };
@@ -667,7 +658,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           accelerator: VOICE_HOTKEYS[2]!.accelerator,
           checked: loop?.isMuted() ?? false,
           enabled: loop !== null,
-          click: () => loop?.activate("toggle_mute"),
+          click: () => toggleMute(),
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
         {
@@ -713,7 +704,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               : []),
             {
               label: "Cancel recording",
-              enabled: recording,
+              enabled: releaseRecordingEscape !== null,
               click: () => sidecar?.cancel(),
             },
             {
@@ -743,6 +734,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           type: "checkbox",
           checked: settings.sounds,
           click: (item) => save({ sounds: item.checked }),
+        },
+        {
+          label: "Pill",
+          submenu: [
+            {
+              label: "Show a small mark at rest",
+              type: "checkbox",
+              checked: settings.pillAtRest,
+              click: (item) => {
+                save({ pillAtRest: item.checked });
+                pill.setRest(item.checked);
+              },
+            },
+            { type: "separator" },
+            ...(["bottom", "top"] as const).map((edge) => ({
+              label: edge === "bottom" ? "Above the taskbar" : "At the top",
+              type: "radio" as const,
+              checked: settings.pillEdge === edge,
+              click: () => {
+                save({ pillEdge: edge });
+                pill.setEdge(edge);
+              },
+            })),
+          ],
         },
         {
           label: "Edit voice settings…",
@@ -834,9 +849,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     await start().catch(failed);
   };
 
+  const toggleMute = () => {
+    loop?.activate("toggle_mute");
+    pill.on({ type: "muted", on: loop?.isMuted() ?? false });
+  };
   for (const hotkey of VOICE_HOTKEYS) {
     // A chord another app already owns is skipped, not fatal; the tray still works.
-    Electron.globalShortcut.register(hotkey.accelerator, () => loop?.activate(hotkey.activation));
+    Electron.globalShortcut.register(hotkey.accelerator, () =>
+      hotkey.activation === "toggle_mute" ? toggleMute() : loop?.activate(hotkey.activation),
+    );
   }
   Electron.globalShortcut.register(DICTATION_TOGGLE_HOTKEY.accelerator, () => {
     if (settings.dictation !== "baton" || binary === null) return;
@@ -847,7 +868,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   Electron.app.on("will-quit", () => {
     for (const hotkey of VOICE_HOTKEYS) Electron.globalShortcut.unregister(hotkey.accelerator);
     Electron.globalShortcut.unregister(DICTATION_TOGGLE_HOTKEY.accelerator);
-    Electron.globalShortcut.unregister("Escape");
     void audio?.stop();
     sidecar?.dispose();
   });
@@ -873,5 +893,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     refresh: rebuildMenu,
     onSpeaking: (active) => pill.on({ type: "speaking", active }),
     onTurnEnd: () => pill.on({ type: "finished" }),
+    onActivity: (label, caption) =>
+      pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
+    onSpeechLevel: pill.speechLevel,
+    onDismissed: () => pill.on({ type: "dismissed" }),
   };
 };

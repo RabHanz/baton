@@ -46,6 +46,8 @@ export interface WakeProvider {
   /** Returns the score when the phrase fired on this frame, else null. */
   readonly process: (frame: Int16Array) => number | null;
   readonly reset: () => void;
+  /** The word behind the last fire, where the provider listens for several. */
+  readonly lastWord?: () => string | null;
 }
 
 /** Streaming: is this frame speech? */
