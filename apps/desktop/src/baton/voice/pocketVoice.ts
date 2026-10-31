@@ -151,8 +151,19 @@ export const createPocketEngine = (input: {
   readonly onProgress: (message: string | null) => void;
 }): PocketEngine => {
   const build = BINARIES[`${input.platform}-${input.arch}`];
-  const binary = NodePath.join(input.root, "bin", input.platform === "win32" ? "pocket-tts.exe" : "pocket-tts");
-  let server: { proc: NodeChildProcess.ChildProcess; port: number; voice: PocketVoice; up: Promise<void> } | null = null;
+  // The archive holds one folder named after itself.
+  const binary = NodePath.join(
+    input.root,
+    "bin",
+    (build?.asset ?? "").replace(/\.(zip|tar\.gz)$/, ""),
+    input.platform === "win32" ? "pocket-tts.exe" : "pocket-tts",
+  );
+  let server: {
+    proc: NodeChildProcess.ChildProcess;
+    port: number;
+    voice: PocketVoice;
+    up: Promise<void>;
+  } | null = null;
   let fetching = false;
   const ready = new Set<PocketVoice>();
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -182,7 +193,7 @@ export const createPocketEngine = (input: {
         done += file.size;
       }
       if (!NodeFS.existsSync(binary)) {
-        const bin = NodePath.dirname(binary);
+        const bin = NodePath.dirname(NodePath.dirname(binary));
         const archive = NodePath.join(bin, build.asset);
         await NodeFSP.mkdir(bin, { recursive: true });
         const response = await fetch(`${RELEASE}/${build.asset}`);
@@ -193,9 +204,14 @@ export const createPocketEngine = (input: {
           throw new Error("The voice did not match its checksum.");
         }
         await NodeFSP.writeFile(archive, bytes);
-        // tar ships with Windows 10 and later and reads zip.
+        // Windows' own tar reads zip. By full path and a bare name: a Git tar first on PATH takes
+        // "D:" for a remote host.
+        const tar =
+          input.platform === "win32"
+            ? NodePath.join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "tar.exe")
+            : "tar";
         await new Promise<void>((resolve, reject) =>
-          NodeChildProcess.execFile("tar", ["-xf", archive, "-C", bin], (error) =>
+          NodeChildProcess.execFile(tar, ["-xf", build.asset], { cwd: bin }, (error) =>
             error === null ? resolve() : reject(error),
           ),
         );

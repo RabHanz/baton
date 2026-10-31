@@ -2758,6 +2758,10 @@ of the overlay's own DOM (the overlay is excluded from capture, so a screenshot 
 | Target on the same display | Cleared by a fixed timer 0.3 s before the last sentence ended | 3.2 s past the end of speech |
 | Teach, busy screen | Any change replaced the step with "Looking…", possibly during speech | Step stays; nothing advances until it is spoken and readable |
 
+Real run on his desktop, his own `claude`, Anna aloud, 2026-10-31: the card was up 30.1 s and left 3.05 s
+after speech ended. In Written only nothing played, and a nine-sentence answer took four pages, the
+first held 17.6 s. The numbers in the table used a scripted model, on his real screen.
+
 Causes: `point()` cleared every other display and the card lived on the cursor's display; `clearLater`
 ran from the end of the reply regardless of speech; `watch` waited 1.5 s regardless of speech. Rules
 now, in `baton-shared/companionPacing`: a page gets 260 ms a word plus 1.2 s, 3 s minimum; the last page
@@ -2823,6 +2827,12 @@ the correct route needs a GPL-3.0 phonemiser in an MIT repo. Piper's bundled esp
 Cloud option, not signed up for: ElevenLabs, which the original Clicky uses. Its pricing page on
 2026-10-31: Starter $6 a month for 30,000 credits, Creator $22 for 121,000, Pro $99. Not heard or
 compared here, and every answer would leave the machine.
+
+In Baton's own process on the laptop, with the real speaker and player: cold start to first bytes 1.4 s,
+four sentences played in order with no fall-back to the OS voice, and the sentences read ahead joined with no gap
+at the boundary. The first-run path downloaded and hash-checked the Quick files; a real run found the Windows
+zip has a folder inside and that a Git tar on PATH fails on "D:", both fixed. The full model's
+download itself was seeded by copy, not fetched.
 
 How it runs: `pocket-tts serve` on a random loopback port with two threads, files fetched and
 hash-checked on first speech while the OS voice covers, stopped after ten quiet minutes because it holds 700 MB.

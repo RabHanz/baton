@@ -29,11 +29,11 @@ export const speakableText = (text: string): string =>
     .trim();
 
 /** Rate and where samples begin, from the header at the start of a stream. */
-export const wavFormat = (head: Buffer): { readonly rate: number; readonly start: number } | null => {
+export const wavFormat = (
+  head: Buffer,
+): { readonly rate: number; readonly start: number } | null => {
   const data = head.indexOf("data", 12, "latin1");
-  return data < 0 || head.length < 28
-    ? null
-    : { rate: head.readUInt32LE(24), start: data + 8 };
+  return data < 0 || head.length < 28 ? null : { rate: head.readUInt32LE(24), start: data + 8 };
 };
 
 /** Loudness of a run of mono 16-bit samples, 0..1. */
@@ -136,7 +136,8 @@ export const createSpeaker = (input: {
     queued += 1;
     const turn = tail.then(async () => {
       if (mine !== generation) return;
-      const played = source === null ? false : await input.player.play(source.stream).catch(() => false);
+      const played =
+        source === null ? false : await input.player.play(source.stream).catch(() => false);
       if (mine !== generation) return;
       if (!played) await input.os.speak(text).catch(() => undefined);
     });

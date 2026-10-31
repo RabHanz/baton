@@ -11,7 +11,10 @@ import * as NodePath from "node:path";
 import * as Electron from "electron";
 
 import { startScreenCompanion } from "../ScreenCompanion.ts";
+import { createPocketEngine } from "../../voice/pocketVoice.ts";
 import { createVoicePill } from "../../voice/voicePill.ts";
+import { createVoicePlayer } from "../../voice/voicePlayer.ts";
+import { createSpeaker } from "../../voice/voiceSpeaker.ts";
 
 const out = process.env["LAB_OUT"] ?? NodePath.join(process.cwd(), "lab-out");
 const scenarios = (process.env["LAB_SCENARIOS"] ?? "look,other,teach,written,pill").split(",");
@@ -128,6 +131,36 @@ Electron.app.whenReady().then(async () => {
     onShown: (ms) => note("pill.shown", { ms: Math.round(ms) }),
   });
   pill.warm();
+  // LAB_POCKET is a prepared voice folder: the real voice, aloud. Otherwise silent stand-in speech.
+  const pocketRoot = process.env["LAB_POCKET"];
+  const engine =
+    pocketRoot === undefined
+      ? null
+      : createPocketEngine({
+          root: pocketRoot,
+          platform: process.platform,
+          arch: process.arch,
+          onProgress: (message) => note("voice.progress", { message }),
+        });
+  const speaker =
+    engine === null
+      ? null
+      : createSpeaker({
+          os: {
+            name: "os",
+            speak: async () => {
+              note("FELL.BACK.TO.OS");
+            },
+          },
+          voice: () => engine.synthesise("anna"),
+          player: createVoicePlayer((level) => pill.speechLevel(level)),
+          silent: () => writtenNow,
+          onActive: (active) => {
+            note(active ? "speak.start" : "speak.end");
+            pill.on({ type: "speaking", active });
+          },
+        });
+  let writtenNow = false;
   // Speech that takes as long as the real voice, with no sound: 13 characters a second.
   const companion = startScreenCompanion({
     holdEscape: () => () => undefined,
@@ -136,7 +169,9 @@ Electron.app.whenReady().then(async () => {
     stateDir,
     platform: process.platform,
     env: process.env,
+    ...(speaker === null ? {} : { stopSpeech: speaker.cancel }),
     speak: async (text) => {
+      if (speaker !== null) return speaker.speak(text);
       note("speak.start", { chars: text.length });
       pill.on({ type: "speaking", active: true });
       const pulse = setInterval(() => pill.speechLevel(0.35 + Math.random() * 0.6), 45);
@@ -154,17 +189,16 @@ Electron.app.whenReady().then(async () => {
     other: ["what is on my other screen", 24_000],
     teach: ["teach me how to change the wallpaper", 40_000],
     long: ["give me the long answer about this screen", 40_000],
+    real: ["What is on my main screen right now? Answer in two short sentences.", 35_000],
+    realwritten: ["Describe what is on my main screen in about nine sentences.", 60_000],
   };
   for (const name of scenarios) {
     if (name === "written") {
-      NodeFS.writeFileSync(
-        NodePath.join(stateDir, "baton-screen.json"),
-        JSON.stringify({
-          captureApproval: "always",
-          claudeBinary: process.env["LAB_CLAUDE"],
-          output: "written",
-        }),
-      );
+      writtenNow = true;
+      // The tray's own entry, so this tests what he would press.
+      const answers = companion.menuItems().find((item) => item.label === "Answers");
+      const items = answers?.submenu as ReadonlyArray<Electron.MenuItemConstructorOptions>;
+      (items.find((item) => item.label === "Written only")?.click as () => void)();
       continue;
     }
     if (name === "pill") {
