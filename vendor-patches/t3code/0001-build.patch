@@ -314,6 +314,18 @@ index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26
  ] as const;
  
  export function isDesktopRuntimeExternalDependency(id: string): boolean {
+diff --git a/scripts/tsconfig.json b/scripts/tsconfig.json
+index 61307d2992e025a13693a423d81907bc2d645487..e2a7d8fbb865fe1caf23fcac3d004c30ceee8396 100644
+--- a/scripts/tsconfig.json
++++ b/scripts/tsconfig.json
+@@ -5,5 +5,6 @@
+     "types": ["node"],
+     "lib": ["ESNext", "esnext.disposable"]
+   },
+-  "include": ["**/*.ts"]
++  "include": ["**/*.ts"],
++  "exclude": ["baton/voice-lab"]
+ }
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
 index e6d38a17e2d876bf3a91fb368cf4397428c73b3b..3250b4ff7c96e907184ae6a546def1dcef00dc28 100644
 --- a/third-party-licenses.config.json
