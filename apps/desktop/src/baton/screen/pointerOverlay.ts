@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalTimers:off
 /**
  * The click-through layer the companion draws on (D84, D111): farzaa/clicky's pointer and bezier

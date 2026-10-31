@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Screen companion (D84), the pure half: prompts, the [POINT] tag, coordinates, drive plans.
  * Ported from farzaa/clicky and Bitshank-2338/clicky-windows, both MIT; notices in

@@ -75,8 +75,7 @@ describe("createSpeaker on the OS voice", () => {
       },
     });
     const run = Promise.all([speaker.speak("one."), speaker.speak("two.")]);
-    await new Promise((r) => setTimeout(r, 5));
-    expect(order).toEqual(["start one."]);
+    await vi.waitFor(() => expect(order).toEqual(["start one."]));
     release!();
     await run;
     expect(order).toEqual(["start one.", "end one.", "start two.", "end two."]);

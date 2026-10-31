@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalTimers:off
 /**
  * The pill: small dark glass above the taskbar of the active display, up only while something is

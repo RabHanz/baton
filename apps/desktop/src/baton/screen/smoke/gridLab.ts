@@ -38,7 +38,7 @@ const main = async () => {
   const truth = new Map<number, Array<{ n: number; x: number; y: number }>>();
   let n = 0;
   for (const display of Electron.screen.getAllDisplays()) {
-    const { x, y, width, height } = display.bounds;
+    const { width, height } = display.bounds;
     const marks = [0.08, 0.5, 0.92].flatMap((fy) =>
       [0.08, 0.5, 0.92].map((fx) => ({
         n: ++n,

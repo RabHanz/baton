@@ -77,7 +77,7 @@ default_temperature: 0.3
 # Replace characters that are absent from the training data.
 replace_characters:
   '–': ','
-  '—': ','
+  '-': ','
   '’': "'"
   '‘': "'"
 

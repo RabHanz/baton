@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * What happens to dictated text between speech-to-text and the paste. No platform in here, so a
  * phone runs the same rules: the writing mode comes from the focused app, deterministic steps run

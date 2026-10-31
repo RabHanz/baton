@@ -198,7 +198,7 @@ Electron.app.whenReady().then(async () => {
       // The tray's own entry, so this tests what he would press.
       const answers = companion.menuItems().find((item) => item.label === "Answers");
       const items = answers?.submenu as ReadonlyArray<Electron.MenuItemConstructorOptions>;
-      (items.find((item) => item.label === "Written only")?.click as () => void)();
+      (items.find((item) => item.label === "Written only")!.click as () => void)();
       continue;
     }
     if (name === "pill") {

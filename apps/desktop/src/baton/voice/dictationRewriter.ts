@@ -4,7 +4,7 @@
  * and has no tools (D84). It can never hold dictation up: past `HARD_LIMIT_MS` the local text goes
  * in, the session is dropped, and the next dictation starts another.
  */
-import * as NodeFS from "node:fs/promises";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 import {
@@ -139,7 +139,7 @@ export const readDictionary = async (
 ): Promise<ReadonlyArray<DictionaryEntry> | null> => {
   try {
     const parsed: unknown = JSON.parse(
-      await NodeFS.readFile(NodePath.join(stateDir, "voice", fileName), "utf8"),
+      await NodeFSP.readFile(NodePath.join(stateDir, "voice", fileName), "utf8"),
     );
     return Array.isArray(parsed) ? parsed.filter(isEntry) : [];
   } catch {
@@ -167,8 +167,8 @@ export const importWisprDictionary = async (input: {
         ? []
         : [{ phrase: row.phrase, replacement: row.replacement?.length ? row.replacement : null }],
     );
-    await NodeFS.mkdir(NodePath.join(input.stateDir, "voice"), { recursive: true });
-    await NodeFS.writeFile(
+    await NodeFSP.mkdir(NodePath.join(input.stateDir, "voice"), { recursive: true });
+    await NodeFSP.writeFile(
       NodePath.join(input.stateDir, "voice", fileName),
       JSON.stringify(entries, null, 2),
     );

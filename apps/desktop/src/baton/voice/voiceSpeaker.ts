@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * One voice for everything Baton says, one sentence after another. A local neural voice when its

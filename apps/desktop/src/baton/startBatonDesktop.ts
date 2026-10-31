@@ -31,6 +31,7 @@ export const startBatonDesktop = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const hostEnvironment = yield* HostProcess.Environment;
+  const hostArchitecture = yield* HostProcess.Architecture;
   const context = yield* Effect.context<never>();
   const { resourcesPath } = environment;
   yield* Effect.sync(() => {
@@ -39,7 +40,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     const pocket = createPocketEngine({
       root: NodePath.join(environment.stateDir, "voice", "pocket"),
       platform: environment.platform,
-      arch: process.arch,
+      arch: hostArchitecture,
       onProgress: (message) => voice?.onNote(message),
     });
     Electron.app.on("will-quit", pocket.dispose);

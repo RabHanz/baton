@@ -175,8 +175,6 @@ const readSettings = (path: string): VoiceSettings => {
   }
 };
 
-// Legacy name (D71): the Electron partition holds the mic grant, so it keeps "fabric".
-const CAPTURE_PARTITION = "fabric-voice";
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const PILL_TEXT_CHARS = 90;
@@ -283,7 +281,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let parakeetPath: string | null = null;
   let modelJob: Promise<string> | null = null;
   let sidecarDevices: ReadonlyArray<SidecarDevice> = [];
-  let dictating: string | null = null;
   let releaseRecordingEscape: (() => void) | null = null;
   let lastDictation: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
@@ -478,7 +475,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const showDictation = (caption: string | null) => {
-    dictating = caption;
     pill.on({ type: "dictating", caption });
     render();
   };
