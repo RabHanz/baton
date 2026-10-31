@@ -174,23 +174,46 @@ export interface Clipboard {
   readonly writeText: (text: string) => void | Promise<void>;
 }
 
+/**
+ * Text goes by the clipboard, and his own comes back once. Two steps close together share one
+ * restore: each with its own timer put the old clipboard back under the next step's paste, and
+ * that step typed nothing.
+ */
+export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
+  let saved: { readonly text: string; readonly timer: ReturnType<typeof setTimeout> } | null = null;
+  return async (text: string, chord: () => Promise<void>): Promise<void> => {
+    if (saved !== null) clearTimeout(saved.timer);
+    const previous = saved?.text ?? (await clipboard.readText());
+    saved = null;
+    await clipboard.writeText(text);
+    // A clipboard manager can hold it for a moment, and a write then fails without a word.
+    for (let i = 0; i < 10 && (await clipboard.readText()) !== text; i += 1) {
+      await sleep(20);
+      await clipboard.writeText(text);
+    }
+    try {
+      await chord();
+      await sleep(150);
+    } finally {
+      // The target reads the clipboard on its own schedule (clipboardInjection.ts: 400 ms).
+      saved = {
+        text: previous,
+        timer: setTimeout(() => {
+          saved = null;
+          void clipboard.writeText(previous);
+        }, restoreMs),
+      };
+    }
+  };
+};
+
 export const createInputDriver = (input: {
   readonly platform: string;
   /** Electron's `screen.dipToScreenPoint` on Windows; identity elsewhere. */
   readonly toPhysical: (p: { x: number; y: number }) => { x: number; y: number };
   readonly clipboard: Clipboard;
 }): InputDriver => {
-  const paste = async (text: string, chord: () => Promise<void>) => {
-    const previous = await input.clipboard.readText();
-    await input.clipboard.writeText(text);
-    try {
-      await chord();
-      await sleep(150);
-    } finally {
-      // The target reads the clipboard on its own schedule (clipboardInjection.ts: 400 ms).
-      setTimeout(() => void input.clipboard.writeText(previous), 400);
-    }
-  };
+  const paste = createPaster(input.clipboard);
 
   if (input.platform === "win32") {
     const ps = lineProcess("powershell.exe", [
