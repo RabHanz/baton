@@ -41,3 +41,82 @@ index 950ed972c6453bcfd61c293606cb9fa3913442f5..8541d572d782643e2046f904b165479e
  } satisfies DesktopBridge);
 +
 +exposeBatonDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
+diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
+index 8b6ab7c7d8a5ebe184aff870ca8820233a0548ed..720e1029484ce4214c54a0ee264f85ea005ff145 100644
+--- a/apps/desktop/src/window/DesktopWindow.test.ts
++++ b/apps/desktop/src/window/DesktopWindow.test.ts
+@@ -17,6 +17,7 @@ import { vi } from "vite-plus/test";
+ 
+ vi.mock("electron", async (importOriginal) => ({
+   ...(await importOriginal<typeof import("electron")>()),
++  app: { once: vi.fn(), getPath: () => "/nonexistent" },
+   session: {
+     fromPartition: vi.fn(() => ({
+       getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
+diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
+index c1c0cf5446cd256f604ffff82399e023d12412e6..605f6d16c507e648f26b905bca70be39a2601a1d 100644
+--- a/apps/desktop/src/window/DesktopWindow.ts
++++ b/apps/desktop/src/window/DesktopWindow.ts
+@@ -11,6 +11,7 @@ import * as Electron from "electron";
+ import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+ 
+ import * as DesktopAssets from "../app/DesktopAssets.ts";
++import { installDetachedWindows } from "../baton/detachedWindows.ts";
+ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
+ import { makeComponentLogger } from "../app/DesktopObservability.ts";
+ import * as DesktopState from "../app/DesktopState.ts";
+@@ -598,27 +599,34 @@ export const make = Effect.gen(function* () {
+       void runPromise(previewManager.prepareWebview(contents));
+     });
+ 
+-    window.webContents.setWindowOpenHandler(({ url }) => {
+-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+-        void runPromise(electronShell.openExternal(url));
+-      }
+-      return { action: "deny" };
+-    });
+-    window.webContents.on("will-navigate", (event, url) => {
+-      if (
+-        isSameOriginRendererNavigation({
+-          applicationUrl,
+-          navigationUrl: url,
+-        })
+-      ) {
+-        return;
+-      }
++    // Baton (0007-desktop.patch): detached thread windows get this same policy (D96).
++    const guardNavigation = (contents: Electron.WebContents) => {
++      contents.setWindowOpenHandler(({ url }) => {
++        const detached = allowDetachedWindow(url);
++        if (detached !== null) return detached;
++        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
++          void runPromise(electronShell.openExternal(url));
++        }
++        return { action: "deny" };
++      });
++      contents.on("will-navigate", (event, url) => {
++        if (
++          isSameOriginRendererNavigation({
++            applicationUrl,
++            navigationUrl: url,
++          })
++        ) {
++          return;
++        }
+ 
+-      event.preventDefault();
+-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+-        void runPromise(electronShell.openExternal(url));
+-      }
+-    });
++        event.preventDefault();
++        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
++          void runPromise(electronShell.openExternal(url));
++        }
++      });
++    };
++    const allowDetachedWindow = installDetachedWindows(window, applicationUrl, guardNavigation);
++    guardNavigation(window.webContents);
+ 
+     const quitShortcutHandler = makeQuitShortcutHandler({
+       platform: environment.platform,

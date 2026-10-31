@@ -16,7 +16,7 @@ export interface PaneLayout {
   readonly focusedSlotId: PaneSlotId | null;
 }
 
-export const MIN_PANE_FRACTION = 0.25;
+export const MIN_PANE_FRACTION = 0.15;
 
 export function paneTargetKey(target: ThreadRouteTarget): string {
   return target.kind === "server" ? scopedThreadKey(target.threadRef) : target.draftId;
@@ -77,13 +77,250 @@ export function closePane(
   };
 }
 
-export function clampPaneFraction(fraction: number): number {
-  if (!Number.isFinite(fraction)) return 0.5;
-  return Math.min(1 - MIN_PANE_FRACTION, Math.max(MIN_PANE_FRACTION, fraction));
+/**
+ * Where panes sit: a split tree whose leaves are slot ids. Rendering flattens it to rects under one
+ * parent, so a rearrange moves a pane without remounting its ChatView.
+ */
+export type PaneDirection = "row" | "column";
+export interface PaneSplit {
+  readonly dir: PaneDirection;
+  readonly sizes: ReadonlyArray<number>;
+  readonly children: ReadonlyArray<PaneTree>;
+}
+export type PaneTree = PaneSlotId | PaneSplit;
+export type PaneEdge = "left" | "right" | "top" | "bottom";
+export type PaneDropZone = PaneEdge | "center";
+
+export interface PaneBox {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+export interface PaneDivider {
+  readonly path: ReadonlyArray<number>;
+  readonly index: number;
+  readonly dir: PaneDirection;
+  /** The split this divider belongs to, as a fraction of the whole layout. */
+  readonly box: PaneBox;
+  /** Position inside `box`, 0 to 1 along `dir`. */
+  readonly at: number;
 }
 
-/** Grid placement: 2 side by side, 3 is two over one, 4 is two by two. */
-export function paneGridArea(index: number, count: number): string {
-  if (count === 3 && index === 2) return "2 / 1 / 3 / 3";
-  return `${Math.floor(index / 2) + 1} / ${(index % 2) + 1} / auto / auto`;
+const WHOLE: PaneBox = { left: 0, top: 0, width: 1, height: 1 };
+const equalSizes = (count: number) => Array.from({ length: count }, () => 1 / count);
+const split = (dir: PaneDirection, children: ReadonlyArray<PaneTree>): PaneSplit => ({
+  dir,
+  children,
+  sizes: equalSizes(children.length),
+});
+
+export function paneLeaves(tree: PaneTree | null): ReadonlyArray<PaneSlotId> {
+  if (tree === null) return [];
+  return typeof tree === "string" ? [tree] : tree.children.flatMap(paneLeaves);
+}
+
+/** The layout nobody arranged: columns up to three, then two by two. */
+export function presetPaneTree(ids: ReadonlyArray<PaneSlotId>): PaneTree | null {
+  const [a, b, c, d] = ids;
+  if (a === undefined) return null;
+  if (b === undefined) return a;
+  if (c === undefined) return split("row", [a, b]);
+  if (d === undefined) return split("row", [a, b, c]);
+  return split("row", [split("column", [a, c]), split("column", [b, d])]);
+}
+
+function removeLeaf(tree: PaneTree, id: PaneSlotId): PaneTree | null {
+  if (typeof tree === "string") return tree === id ? null : tree;
+  const kept = tree.children.flatMap((child, index) => {
+    const next = removeLeaf(child, id);
+    return next === null ? [] : [{ child: next, size: tree.sizes[index] ?? 0 }];
+  });
+  const [only] = kept;
+  if (only === undefined) return null;
+  if (kept.length === 1) return only.child;
+  const total = kept.reduce((sum, entry) => sum + entry.size, 0);
+  return {
+    dir: tree.dir,
+    children: kept.map((entry) => entry.child),
+    sizes: kept.map((entry) => entry.size / total),
+  };
+}
+
+function insertBeside(
+  tree: PaneTree,
+  target: PaneSlotId,
+  leaf: PaneSlotId,
+  edge: PaneEdge,
+): PaneTree {
+  const dir: PaneDirection = edge === "left" || edge === "right" ? "row" : "column";
+  const before = edge === "left" || edge === "top";
+  if (tree === target) return split(dir, before ? [leaf, target] : [target, leaf]);
+  if (typeof tree === "string") return tree;
+  const index = tree.children.indexOf(target);
+  if (index !== -1 && tree.dir === dir) {
+    const half = (tree.sizes[index] ?? 0) / 2;
+    const at = before ? index : index + 1;
+    return {
+      dir,
+      children: tree.children.toSpliced(at, 0, leaf),
+      sizes: tree.sizes.toSpliced(index, 1, half, half),
+    };
+  }
+  return {
+    ...tree,
+    children: tree.children.map((child) => insertBeside(child, target, leaf, edge)),
+  };
+}
+
+function swapLeaves(tree: PaneTree, a: PaneSlotId, b: PaneSlotId): PaneTree {
+  if (typeof tree === "string") return tree === a ? b : tree === b ? a : tree;
+  return { ...tree, children: tree.children.map((child) => swapLeaves(child, a, b)) };
+}
+
+/** The tree for these slots: kept while it still fits, else preset, or adapted once arranged. */
+export function fitPaneTree(
+  tree: PaneTree | null,
+  arranged: boolean,
+  ids: ReadonlyArray<PaneSlotId>,
+): PaneTree | null {
+  const held = paneLeaves(tree);
+  if (tree !== null && held.length === ids.length && held.every((id) => ids.includes(id))) {
+    return tree;
+  }
+  if (!arranged || tree === null) return presetPaneTree(ids);
+  let next: PaneTree | null = tree;
+  for (const id of held) {
+    if (next !== null && !ids.includes(id)) next = removeLeaf(next, id);
+  }
+  for (const id of ids) {
+    if (next === null) next = id;
+    else if (!held.includes(id)) next = insertBeside(next, paneLeaves(next).at(-1)!, id, "right");
+  }
+  return next;
+}
+
+/** Drop `moved` on `target`: the centre swaps them, an edge docks `moved` on that side. */
+export function dockPaneTree(
+  tree: PaneTree,
+  moved: PaneSlotId,
+  target: PaneSlotId,
+  zone: PaneDropZone,
+): PaneTree {
+  if (moved === target) return tree;
+  if (zone === "center") return swapLeaves(tree, moved, target);
+  const rest = removeLeaf(tree, moved);
+  return rest === null ? tree : insertBeside(rest, target, moved, zone);
+}
+
+/** The whole side of the layout goes to `moved`; everything else keeps its arrangement. */
+export function dockPaneTreeToEdge(tree: PaneTree, moved: PaneSlotId, edge: PaneEdge): PaneTree {
+  const rest = removeLeaf(tree, moved);
+  if (rest === null) return tree;
+  const dir: PaneDirection = edge === "left" || edge === "right" ? "row" : "column";
+  return split(dir, edge === "left" || edge === "top" ? [moved, rest] : [rest, moved]);
+}
+
+const nextBox = (box: PaneBox, dir: PaneDirection, from: number, size: number): PaneBox =>
+  dir === "row"
+    ? { ...box, left: box.left + from * box.width, width: size * box.width }
+    : { ...box, top: box.top + from * box.height, height: size * box.height };
+
+export function paneRects(
+  tree: PaneTree | null,
+  box: PaneBox = WHOLE,
+): ReadonlyArray<{ readonly id: PaneSlotId; readonly box: PaneBox }> {
+  if (tree === null) return [];
+  if (typeof tree === "string") return [{ id: tree, box }];
+  let from = 0;
+  return tree.children.flatMap((child, index) => {
+    const size = tree.sizes[index] ?? 0;
+    const rects = paneRects(child, nextBox(box, tree.dir, from, size));
+    from += size;
+    return rects;
+  });
+}
+
+export function paneDividers(
+  tree: PaneTree | null,
+  box: PaneBox = WHOLE,
+  path: ReadonlyArray<number> = [],
+): ReadonlyArray<PaneDivider> {
+  if (tree === null || typeof tree === "string") return [];
+  const dividers: PaneDivider[] = [];
+  let from = 0;
+  tree.children.forEach((child, index) => {
+    const size = tree.sizes[index] ?? 0;
+    dividers.push(...paneDividers(child, nextBox(box, tree.dir, from, size), [...path, index]));
+    from += size;
+    if (index < tree.children.length - 1) {
+      dividers.push({ path, index, dir: tree.dir, box, at: from });
+    }
+  });
+  return dividers;
+}
+
+/** Moves one divider; only the two panes beside it change size. */
+export function resizePaneTree(
+  tree: PaneTree,
+  path: ReadonlyArray<number>,
+  index: number,
+  at: number,
+): PaneTree {
+  if (typeof tree === "string" || !Number.isFinite(at)) return tree;
+  const [head, ...tail] = path;
+  if (head !== undefined) {
+    return {
+      ...tree,
+      children: tree.children.map((child, i) =>
+        i === head ? resizePaneTree(child, tail, index, at) : child,
+      ),
+    };
+  }
+  const before = tree.sizes.slice(0, index).reduce((sum, size) => sum + size, 0);
+  const pair = (tree.sizes[index] ?? 0) + (tree.sizes[index + 1] ?? 0);
+  if (pair <= 2 * MIN_PANE_FRACTION) return tree;
+  const size = Math.min(pair - MIN_PANE_FRACTION, Math.max(MIN_PANE_FRACTION, at - before));
+  return { ...tree, sizes: tree.sizes.toSpliced(index, 2, size, pair - size) };
+}
+
+/** The pane next to `id` on that side, for moving a pane from the keyboard. */
+export function paneNeighbour(
+  rects: ReadonlyArray<{ readonly id: PaneSlotId; readonly box: PaneBox }>,
+  id: PaneSlotId,
+  edge: PaneEdge,
+): PaneSlotId | null {
+  const from = rects.find((rect) => rect.id === id)?.box;
+  if (from === undefined) return null;
+  const centre = (box: PaneBox) => ({
+    x: box.left + box.width / 2,
+    y: box.top + box.height / 2,
+  });
+  const origin = centre(from);
+  const ahead = rects.flatMap((rect) => {
+    const point = centre(rect.box);
+    const along = {
+      left: origin.x - point.x,
+      right: point.x - origin.x,
+      top: origin.y - point.y,
+      bottom: point.y - origin.y,
+    }[edge];
+    const across = edge === "left" || edge === "right" ? point.y - origin.y : point.x - origin.x;
+    return rect.id === id || along <= 0.001
+      ? []
+      : [{ id: rect.id, cost: along + Math.abs(across) }];
+  });
+  return ahead.toSorted((a, b) => a.cost - b.cost)[0]?.id ?? null;
+}
+
+/** Near an edge docks there, the middle swaps. `x` and `y` are 0 to 1 within the pane. */
+export function paneDropZone(x: number, y: number): PaneDropZone {
+  const edges: ReadonlyArray<readonly [PaneEdge, number]> = [
+    ["left", x],
+    ["right", 1 - x],
+    ["top", y],
+    ["bottom", 1 - y],
+  ];
+  const [edge, distance] = edges.reduce((best, entry) => (entry[1] < best[1] ? entry : best));
+  return distance < 0.25 ? edge : "center";
 }

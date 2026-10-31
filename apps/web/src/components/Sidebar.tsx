@@ -3,7 +3,12 @@ import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
 import { openThreadInSplit } from "./panes/batonPanesStore";
-import { BATON_SPLIT_MENU_ITEM, showWithSplitItem } from "./panes/batonSplitMenu";
+import {
+  BATON_DETACH_MENU_ITEM,
+  BATON_SPLIT_MENU_ITEM,
+  showWithSplitItem,
+} from "./panes/batonSplitMenu";
+import { openDetachedWindow } from "./panes/batonWindows";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
   dropThreadContext,
@@ -2591,6 +2596,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         if (clicked._tag === "Failure" || clicked.value === null) return;
         if (clicked.value === BATON_SPLIT_MENU_ITEM) {
           openThreadInSplit(routeTarget, { kind: "server", threadRef });
+          return;
+        }
+        if (clicked.value === BATON_DETACH_MENU_ITEM) {
+          if (!openDetachedWindow({ kind: "server", threadRef })) {
+            toastManager.add({ type: "error", title: "The browser blocked the new window" });
+          }
           return;
         }
         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;

@@ -2471,8 +2471,14 @@ Not yet run live: a real switch needs a second account with quota, from 2 Nov.
 `environmentId` and `threadId` as props, so a pane is a plain ChatView and the hook is one element in
 `ThreadRouteView` (`0008-web-panes.patch`), with the rest in `components/panes/`.
 
-- Up to four slots with fixed ids, persisted in the browser. Two side by side, three as two over one,
-  four as a grid; one column and one row divider, 25 to 75 percent, by pointer or arrow keys.
+- Up to four slots with fixed ids, persisted per window (D96). Two side by side, three as three
+  columns, four as a two-by-two grid. The layout is a split tree (`batonPaneLayout.ts`) flattened to
+  rects under one parent, so a rearrange never remounts a ChatView. Every gap is a divider, by pointer
+  or arrow keys; it moves only the two panes beside it, and none goes below 15 percent of its split.
+- A pane's bar drags onto another pane: near an edge docks it on that side, the middle swaps them. From
+  the keyboard the bar's grip takes an arrow to swap with that neighbour, and Shift with an arrow to
+  give the pane that whole side. Once rearranged, opening a pane adapts the layout instead of resetting
+  it; going back to one pane clears that. Native drag events, no dependency.
 - The route thread is the focused pane. A pointer press or a key in another pane moves the route with
   `replace`. A route to a thread with no pane goes into the focused pane, so the sidebar behaves as it
   always did. The focused pane renders the route's own ChatView element at the same tree position as
@@ -2480,6 +2486,11 @@ Not yet run live: a real switch needs a second account with quota, from 2 Nov.
 - Unfocused panes sit under upstream's `BackgroundThreadContext`, made for threads kept mounted under
   Settings; their shortcuts stand down and they keep streaming. A few lines in ChatView stop a
   background pane taking DOM focus. Not `inert`, so they stay clickable.
+- Only the focused pane renders the window-level controls (Toggle thread details, Terminal, right
+  panel, maximize). They are `position: fixed` at the window's top right, so with one set per pane all
+  of them stacked at one point and every click reached the last pane: measured on `0.1.5-baton.43` with
+  three panes at `[1335,12]`, pane a focused and the hit test landing on pane c. Each pane's own header
+  (account, Open in, git actions) sits in that pane and always acted on its own thread.
 - Closing removes the slot only. The thread and its draft stay. When the focused pane closes the route
   leaves first, because a slot closed under the route would hand its thread to the neighbour.
 - Open with **Open in split** on a sidebar thread's menu, Alt+click on the row (Ctrl/Cmd+click is
@@ -2498,3 +2509,70 @@ reload moved the route).
 Known limit: moving focus to a pane does not put the caret in its composer, because doing so would
 cancel a text selection started in that pane. Upstream's thread details card follows the viewport
 width, so at 2560 each pane shows its own.
+
+## D95 — A thread picks its own account, and keeps its conversation
+
+**Decided** 2026-10-31. Every account is a provider instance, so a thread's account is its
+`modelSelection.instanceId`. D92 rejected this because a token instance has its own config directory,
+which made an instance change a handoff. That was a property of one key, not of the storage:
+`ClaudeAccountHome` links every account's `projects/` to the primary's, so all accounts see one
+transcript tree, and upstream's `canResumeAcrossInstances` ("Account overlays share native history")
+already resumes when two instances share a continuation key. Claude's key was the account's own home,
+so it never fired. `makeClaudeContinuationGroupKey` now returns the shared home for an account overlay,
+as `CodexHomeLayout` does.
+
+The evidence, because nothing published settles it. Anthropic documents no cross-account resume; a
+third-party guide warns that changing key or token route can fail thinking signatures. So it was run:
+on onnyx on 2026-10-30, three transcripts written while Optima was active (2026-10-15 to 10-20, 7 to 8
+signed thinking blocks each) were resumed with `--fork-session` under Rabee's token with
+`CLAUDE_CONFIG_DIR=~/.claude-c`. All three answered from their own context with exit 0. Sources:
+docs.apiyi.com/en/faq/claude-thinking-signature-invalid, github.com/anthropics/claude-code/issues/48511.
+
+- `fabric.account.useForThread` takes a thread and an account key, or null to follow the machine's
+  active account again. The header menu calls it; only that thread moves. It survives a restart because
+  the selection is the thread's own, in upstream's event store.
+- Rabee gets a token instance (`claudeAgent_rabee`, `.claude-a`), or no thread could stay on Rabee
+  while cswap rotates. `--pin-default` skips it, since there the default instance already is Rabee.
+- `thread.model-selection.set` releases the live session at once, so during a turn the move goes in
+  `fabric_thread_account_moves` and `ThreadAccountMoves` applies it when the turn ends. A queued run does
+  not count as a turn: a run held by a spent account is the thread that most needs to move.
+- The server refuses a signed-out account and one with no headroom, naming when the full window resets;
+  the menu shows the same and disables the row. `limits-unknown` is allowed, since a reading that failed
+  says nothing about the account.
+- A mirrored terminal session is not T3's process to restart, so it keeps cswap's switch (D92). So does
+  the limits tile's switch (D94), which is a machine-wide action by design.
+
+Rejected: a handoff through `provider.switch` (it summarises the conversation, and the Director asked
+for it to carry on); copying transcripts per account (two sources of truth for one session); a client
+that waits and retries (the choice would die with the tab).
+
+Known limit: a pinned thread does not rotate. When its account runs out it waits or is moved by hand.
+
+## D96 — A thread can live in its own window
+
+**Decided** 2026-10-31. D93 rejected separate windows as the way to do splits (no shared focus, a
+second renderer), and that stands: splits stay in one renderer. This is a different feature, for
+different monitors, and those two costs are what he is asking for.
+
+- **Detach to window** on a pane's bar and on a sidebar thread's menu is `window.open` on the thread's
+  route with `?batonWindow=<id>`, on both web and desktop. Same app, server and session, nothing to sign
+  in to. The window keeps that id in `window.name`, which outlives reloads and route changes, and its
+  panes persist under `t3code:baton-panes:v1:<id>`. The main window keeps its old key, so an existing
+  layout survives.
+- **One thread, one window.** A window that takes a thread in claims it over a `BroadcastChannel`, and
+  any other window showing it drops its ChatView for "Bring it here", which claims it back. So a thread
+  never has two composers: nothing can send twice from a stale draft, and focus stays per window. Only
+  a thread arriving claims, so a reload cannot take one back. Two plain tabs of the main window share a
+  layout and are not covered, as before.
+- **Attach to main window** asks the main window to open it in a pane. The detached pane closes, and the
+  window with it when that was its last pane. With no main window on a thread it says so and stays.
+- On the desktop app `setWindowOpenHandler` allows exactly this URL shape, so Electron gives the window
+  the main window's preload and session. `baton/detachedWindows.ts` gives it the main window's navigation
+  policy, saves its route and bounds to `baton-detached-windows.json`, and has the main window reopen
+  them after a restart. Closed by hand it is forgotten; closed by quitting it returns.
+
+Rejected: a second server or a login per window (he said the same one); a route per window; a lease
+with heartbeats to detect a dead holder ("Bring it here" is one click and needs no liveness).
+
+Known limits: a closed web window leaves its small layout entry in localStorage. Web windows are
+restored by the browser, not by Baton.

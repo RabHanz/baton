@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString } from "@t3tools/contracts";
+import { IsoDateTime, ThreadId, TrimmedNonEmptyString } from "@t3tools/contracts";
 import { ProviderDriverKind } from "@t3tools/contracts";
 import { WorkSessionId } from "./workSession.ts";
 
@@ -23,7 +23,18 @@ export const BATON_ACCOUNT_WS_METHODS = {
   accountPool: "fabric.account.pool",
   /** Swap the credential in the config directory, between turns. */
   accountUse: "fabric.account.use",
+  /** Move one thread to an account's provider instance (D95). Nothing else moves. */
+  threadAccountUse: "fabric.account.useForThread",
 } as const;
+
+export const BATON_DEFAULT_CLAUDE_INSTANCE = "claudeAgent";
+
+/** cswap slots of the token instances; the same table as scripts/baton/provider-token-instances.py. */
+export const BATON_CLAUDE_ACCOUNT_INSTANCES: Readonly<Record<string, string>> = {
+  claudeAgent_rabee: "4",
+  claudeAgent_optima: "5",
+  claudeAgent_signzart: "6",
+};
 
 /** Identifies an account inside a pool. Opaque: the adapter chooses the form. */
 export const BatonAccountKey = TrimmedNonEmptyString;
@@ -117,6 +128,69 @@ export const BatonAccountUseResult = Schema.Struct({
   pool: BatonAccountPool,
 });
 export type BatonAccountUseResult = typeof BatonAccountUseResult.Type;
+
+export const BatonThreadAccountUseInput = Schema.Struct({
+  threadId: ThreadId,
+  /** Null puts the thread back on whatever cswap has active on this machine. */
+  key: Schema.NullOr(BatonAccountKey),
+});
+export type BatonThreadAccountUseInput = typeof BatonThreadAccountUseInput.Type;
+
+export const BatonThreadAccountUseResult = Schema.Struct({
+  instanceId: TrimmedNonEmptyString,
+  /** `next-turn` when a turn is running: it is never cut, and the move waits for it to end. */
+  timing: Schema.Literals(["now", "next-turn"]),
+});
+export type BatonThreadAccountUseResult = typeof BatonThreadAccountUseResult.Type;
+
+/** The instance that runs as this account: its token instance, else the default if it is active. */
+export function instanceForAccount(
+  account: Pick<BatonAccount, "key" | "active">,
+  isAvailable: (instanceId: string) => boolean,
+): string | null {
+  const pinned = Object.keys(BATON_CLAUDE_ACCOUNT_INSTANCES).find(
+    (instanceId) => BATON_CLAUDE_ACCOUNT_INSTANCES[instanceId] === account.key,
+  );
+  if (pinned !== undefined && isAvailable(pinned)) return pinned;
+  return account.active ? BATON_DEFAULT_CLAUDE_INSTANCE : null;
+}
+
+/** The account an instance runs as: its token's slot, else whatever cswap has active. */
+export function accountForInstance<A extends Pick<BatonAccount, "key" | "active">>(
+  instanceId: string,
+  accounts: ReadonlyArray<A>,
+): A | undefined {
+  const key = BATON_CLAUDE_ACCOUNT_INSTANCES[instanceId];
+  return key === undefined
+    ? accounts.find((account) => account.active)
+    : accounts.find((account) => account.key === key);
+}
+
+/** When a spent account has quota again: the last of its full windows to reset. */
+export function accountReturnsAt(
+  account: Pick<BatonAccount, "headroomPercent" | "windows">,
+): string | null {
+  if (account.headroomPercent !== 0) return null;
+  return (
+    account.windows
+      .filter((window) => window.usedPercent >= 100 && window.resetsAt !== null)
+      .map((window) => window.resetsAt as string)
+      .toSorted()
+      .at(-1) ?? null
+  );
+}
+
+/** Why no thread may move to this account now, or null when it may. */
+export function accountRefusal(
+  account: Pick<BatonAccount, "label" | "unusableReason" | "headroomPercent" | "windows">,
+): string | null {
+  if (account.unusableReason === "signed-out") return `${account.label} is signed out`;
+  if (account.headroomPercent !== 0) return null;
+  const returnsAt = accountReturnsAt(account);
+  return returnsAt === null
+    ? `${account.label} has no quota left`
+    : `${account.label} has no quota left until ${returnsAt.slice(0, 16).replace("T", " ")} UTC`;
+}
 
 export class BatonAccountPoolUnavailableError extends Schema.TaggedError<BatonAccountPoolUnavailableError>()(
   "FabricAccountPoolUnavailableError",

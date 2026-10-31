@@ -11,6 +11,7 @@ import * as Electron from "electron";
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
+import { installDetachedWindows } from "../baton/detachedWindows.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
@@ -598,27 +599,34 @@ export const make = Effect.gen(function* () {
       void runPromise(previewManager.prepareWebview(contents));
     });
 
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-      return { action: "deny" };
-    });
-    window.webContents.on("will-navigate", (event, url) => {
-      if (
-        isSameOriginRendererNavigation({
-          applicationUrl,
-          navigationUrl: url,
-        })
-      ) {
-        return;
-      }
+    // Baton (0007-desktop.patch): detached thread windows get this same policy (D96).
+    const guardNavigation = (contents: Electron.WebContents) => {
+      contents.setWindowOpenHandler(({ url }) => {
+        const detached = allowDetachedWindow(url);
+        if (detached !== null) return detached;
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+          void runPromise(electronShell.openExternal(url));
+        }
+        return { action: "deny" };
+      });
+      contents.on("will-navigate", (event, url) => {
+        if (
+          isSameOriginRendererNavigation({
+            applicationUrl,
+            navigationUrl: url,
+          })
+        ) {
+          return;
+        }
 
-      event.preventDefault();
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-    });
+        event.preventDefault();
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+          void runPromise(electronShell.openExternal(url));
+        }
+      });
+    };
+    const allowDetachedWindow = installDetachedWindows(window, applicationUrl, guardNavigation);
+    guardNavigation(window.webContents);
 
     const quitShortcutHandler = makeQuitShortcutHandler({
       platform: environment.platform,
