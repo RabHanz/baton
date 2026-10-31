@@ -2581,6 +2581,12 @@ docs.apiyi.com/en/faq/claude-thinking-signature-invalid, github.com/anthropics/c
 - A mirrored terminal session is not T3's process to restart, so it keeps cswap's switch (D92). So does
   the limits tile's switch (D94), which is a machine-wide action by design.
 
+Seen live on `0.1.5-baton.46`: one thread went from the default instance to `claudeAgent_rabee` and
+back, keeping one native session id and answering from its earlier context; a move requested during a
+turn waited, the turn completed, and the move applied after it. On a rehearsal copy a pinned thread stayed
+pinned through a server restart and answered from context. Not run in T3: a move onto Optima or Signzart,
+both spent until 2 Nov, so cross-account resume in T3 itself is proven only by the CLI run above.
+
 Rejected: a handoff through `provider.switch` (it summarises the conversation, and the Director asked
 for it to carry on); copying transcripts per account (two sources of truth for one session); a client
 that waits and retries (the choice would die with the tab).

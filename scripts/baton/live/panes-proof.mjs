@@ -9,6 +9,8 @@ const { chromium } = require("playwright");
 const [target, frames, ...flags] = process.argv.slice(2);
 const base = process.env.BASE_URL ?? "http://localhost:3773/";
 const fromState = target.startsWith("state:");
+const WIDTH = Number(process.env.WIDTH ?? 1440);
+const HEIGHT = WIDTH > 2000 ? 1440 : 900;
 const results = [];
 const check = (name, ok, detail = "") => {
   results.push([ok, name]);
@@ -17,7 +19,7 @@ const check = (name, ok, detail = "") => {
 
 const browser = await chromium.launch();
 const context = await browser.newContext({
-  viewport: { width: 1440, height: 900 },
+  viewport: { width: WIDTH, height: HEIGHT },
   storageState: fromState ? target.slice(6) : undefined,
 });
 const page = await context.newPage();
@@ -29,7 +31,7 @@ const BLUR =
   "li[data-thread-item], [data-timeline-root], [data-chat-header] h2, [data-chat-header] [title], section[data-focused] > div:last-of-type span.truncate { filter: blur(5px); }";
 const shot = async (name, on = page) => {
   await on.addStyleTag({ content: BLUR });
-  await on.screenshot({ path: `${frames}/${name}.png` });
+  await on.screenshot({ path: `${frames}/${name.replace("-1440", `-${WIDTH}`)}.png` });
 };
 const rows = page.locator("li[data-thread-item]");
 await rows.first().waitFor({ timeout: 60_000 });
@@ -81,11 +83,6 @@ await page.waitForTimeout(2500);
 const [ga, gd] = [await rect("a"), await rect("d")];
 check("four panes are a two by two grid", gd.x > ga.x + 50 && gd.y > ga.y + 50);
 await shot("03-grid-1440");
-await page.setViewportSize({ width: 2560, height: 1440 });
-await page.waitForTimeout(1200);
-await shot("04-grid-2560");
-await page.setViewportSize({ width: 1440, height: 900 });
-await page.waitForTimeout(800);
 const rowDividers = page.locator('[data-testid="baton-pane-divider-row"]');
 check("the grid has a row divider per column", (await rowDividers.count()) === 2);
 {
@@ -136,7 +133,7 @@ await page.waitForTimeout(500);
 const afterKey = await rect("b");
 check(
   "Shift and an arrow gives a pane that whole side",
-  near(afterKey.w, 1440 - afterKey.x, 8) || afterKey.w > beforeKey.w,
+  near(afterKey.w, WIDTH - afterKey.x, 8) || afterKey.w > beforeKey.w,
 );
 const arranged = JSON.stringify([
   await rect("a"),
@@ -306,6 +303,28 @@ check(
 );
 await page.bringToFront();
 await shot("17-reattached-1440");
+
+// The sidebar's own way out.
+const menuRow = page.locator("li[data-thread-item]").nth(4);
+await menuRow.click({ button: "right" });
+await page.waitForTimeout(800);
+const menuItem = page.getByText("Detach to window", { exact: true }).first();
+check("the thread menu offers Detach to window", (await menuItem.count()) === 1);
+await shot("18-thread-menu-1440");
+const [fromMenu] = await Promise.all([
+  context.waitForEvent("page", { timeout: 15_000 }),
+  menuItem.click(),
+]);
+await fromMenu.waitForSelector('[data-testid="baton-pane-a"]', { timeout: 60_000 });
+check(
+  "it opens that thread in its own window",
+  (await fromMenu.evaluate(() => window.name)).startsWith("baton-window-"),
+);
+await fromMenu.close();
+
+await page.goto(new URL("usage", base).href, { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(6000);
+await shot("19-usage-1440");
 
 await browser.close();
 const failed = results.filter(([ok]) => !ok);
