@@ -2784,6 +2784,13 @@ Added delay, idle laptop, warm session: under 1 ms for the local pass; for the 6
 model, median 1.72 s, p95 3.29 s, no timeouts. 53 were used and 7 refused by `checkRewrite`. So a flagged
 dictation takes about 2.4 s from release on v3, and the other 86% take 0.7 s.
 
+Written cases on the final code, real `claude`: default 34 of 34, adversarial 14 of 14, modes 5 of 5. That is one
+run of a model that varies: an earlier run turned "fast fast, not fast slow" into "fast, not slow", which is why
+`checkRewrite` now refuses a lost doubled word. Two of the 53 passed through the check's fallback to local text.
+The model read the rule on digits ("9 days" stays) and still broke it once, and the check caught it. These cases
+prove the check as much as the model. A lowercase dictionary entry with no replacement teaches a word and no
+longer lowers a capital: his `stripe` entry was turning "Stripe" into "stripe".
+
 The model is his own `claude` on `haiku` through `startVisionSession`: subscription, no tools. A hard limit
 of 2.5 s plus 8 ms a character, capped at 6 s, pastes the local text instead. A timeout replaces the session
 at once, because leaving that to the next dictation made one timeout cause the next (60 of 80 in the first

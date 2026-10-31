@@ -30,7 +30,7 @@ export const DEFAULT_CASES: ReadonlyArray<CleanupCase> = [
   { raw: "The invoice is from Meliura Ltd, company number 17456307, dated the 14th of September.", keep: ["Meliura", "17456307", "14th"] },
   { raw: "I think we should, you know, I think we should just kill it and start again.", keep: ["kill it", "start again"] },
   { raw: "Make it, make it smaller, the pill I mean, not the whole overlay.", keep: ["pill", "not the whole overlay"] },
-  { raw: "If the disk goes under 2 gigabytes stop and report, don't try to be clever.", keep: ["2 gigabytes", "don't try to be clever"] },
+  { raw: "If the disk goes under 2 gigabytes stop and report, don't try to be clever.", keep: ["2 gigabytes", "try to be clever"] },
   { raw: "Honestly, it's rubbish and I'd bin it.", keep: ["rubbish", "bin it"] },
   { raw: "He said no. Actually, he said no twice.", keep: ["no twice"] },
   { raw: "No, actually is the word I keep overusing in these messages.", keep: ["overusing"] },

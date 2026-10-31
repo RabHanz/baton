@@ -51,10 +51,16 @@ describe("localClean", () => {
 
   it("applies his dictionary, and only to whole words", () => {
     const dictionary = [
-      { phrase: "onnyx", replacement: null },
+      { phrase: "Onnyx", replacement: null },
+      { phrase: "stripe", replacement: null },
       { phrase: "meta ads", replacement: "Meta Ads" },
     ];
-    expect(localClean("Ask ONNYX about meta ads.", "default", dictionary)).toBe("Ask onnyx about Meta Ads.");
+    expect(localClean("Ask ONNYX about meta ads.", "default", dictionary)).toBe(
+      "Ask Onnyx about Meta Ads.",
+    );
+    expect(localClean("Pay the Stripe invoice.", "default", dictionary)).toBe(
+      "Pay the Stripe invoice.",
+    );
     expect(localClean("metadata", "default", dictionary)).toBe("Metadata");
   });
 
@@ -106,6 +112,12 @@ describe("checkRewrite", () => {
     expect(checkRewrite(input, input.replace("Freya", "freya")).ok).toBe(false);
     const known = [{ phrase: "freya", replacement: null }];
     expect(checkRewrite(input, input.replace("Freya", "freya"), known).ok).toBe(true);
+  });
+
+  it("keeps a deliberately doubled word", () => {
+    const said = "I want it fast fast, not fast slow.";
+    expect(checkRewrite(said, "I want it fast, not slow.").ok).toBe(false);
+    expect(checkRewrite(said, said).ok).toBe(true);
   });
 
   it("refuses a reply, a summary or padding", () => {

@@ -152,7 +152,10 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, Strin
 const applyDictionary = (text: string, dictionary: ReadonlyArray<DictionaryEntry>): string => {
   let next = text;
   for (const { phrase, replacement } of dictionary) {
-    if (phrase.trim().length === 0) continue;
+    // An all-lowercase word with no replacement teaches a word, not a spelling: it must not
+    // take the capital off "Stripe".
+    if (phrase.trim().length === 0 || (replacement === null && phrase === phrase.toLowerCase()))
+      continue;
     const pattern = new RegExp(String.raw`(?<![\w-])${escapeRegExp(phrase)}(?![\w-])`, "gi");
     next = next.replace(pattern, () => replacement ?? phrase);
   }
@@ -321,6 +324,11 @@ export const checkRewrite = (
   }
   for (const token of input.match(CODE_TOKEN) ?? [])
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
+
+  // A doubled word that got past the stutter step is deliberate: "fast fast".
+  for (const [doubled] of input.matchAll(/\b([a-z]{2,})\s+\1\b/gi))
+    if (!outLower.includes(doubled.toLowerCase().replace(/\s+/g, " ")))
+      return fail(`lost phrase ${doubled}`);
 
   const words = contentWords(input);
   const present = words.filter((word) => outLower.includes(word)).length;
