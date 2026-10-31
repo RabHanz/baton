@@ -1,7 +1,7 @@
 import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { limitsFromAccount } from "./ClaudeProbeLimits.ts";
+import { accountDisplayName, limitsFromAccount, withAccount } from "./ClaudeProbeLimits.ts";
 
 const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
   key: "4",
@@ -51,9 +51,37 @@ describe("limitsFromAccount", () => {
     expect(limits?.windows[1]).not.toHaveProperty("resetsAt");
   });
 
+  it("fingerprints the slot alone, so every machine's instance merges into one account", () => {
+    expect(limitsFromAccount(account({ key: "5" }))?.credentialFingerprint).toBe("5");
+  });
+
   it("offers nothing rather than an empty reading", () => {
     expect(limitsFromAccount(undefined)).toBeUndefined();
     expect(limitsFromAccount(account({ usageCheckedAt: null }))).toBeUndefined();
     expect(limitsFromAccount(account({ windows: [] }))).toBeUndefined();
+  });
+});
+
+describe("accountDisplayName", () => {
+  it("reads as a name", () => {
+    expect(accountDisplayName(account({}))).toBe("Rabee");
+  });
+});
+
+describe("withAccount", () => {
+  const provider = { auth: { status: "authenticated", email: "someone@example.com" } };
+
+  it("names the instance and leaves only the fingerprint to key it", () => {
+    const next = withAccount(provider, account({})) as typeof provider & {
+      displayName: string;
+      usageLimits: { credentialFingerprint: string };
+    };
+    expect(next.displayName).toBe("Rabee");
+    expect(next.usageLimits.credentialFingerprint).toBe("4");
+    expect(next.auth).toEqual({ status: "authenticated" });
+  });
+
+  it("changes nothing without a reading", () => {
+    expect(withAccount(provider, account({ usageCheckedAt: null }))).toBe(provider);
   });
 });
