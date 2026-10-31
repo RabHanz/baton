@@ -54,6 +54,7 @@ import {
   WindowsDesktopBuildPrerequisitesMissingError,
   WindowsPackagedPayloadValidationError,
   stageCursorSdkPlatformPackages,
+  BATON_VOICE_PAYLOAD_FILES,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
   WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
   WINDOWS_SERVER_ASAR_RESOURCE,
@@ -156,6 +157,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
   const stageDistDir = path.join(tempDir, "dist");
   const packagedAppDir = path.join(stageDistDir, "win-unpacked");
   const resourcesDir = path.join(packagedAppDir, "resources");
+  yield* fs.makeDirectory(path.join(resourcesDir, "baton-voice/models"), { recursive: true });
+  for (const file of BATON_VOICE_PAYLOAD_FILES) {
+    yield* fs.writeFileString(path.join(resourcesDir, "baton-voice", file), "voice");
+  }
   yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
   yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
   if (input.copyUnpackedNatives) {
@@ -1263,6 +1268,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         assert.deepStrictEqual(resourceMonitorError.missingFiles, [
           "resource-monitor/t3-resource-monitor.exe",
         ]);
+
+        yield* fs.remove(resourceMonitorPath, { recursive: true });
+        yield* fs.writeFileString(resourceMonitorPath, "monitor");
+        yield* fs.remove(
+          path.join(fixture.packagedAppDir, "resources/baton-voice/baton-dictation.exe"),
+        );
+        const voiceError = yield* validateWindowsPackagedPayload({
+          stageDistDir: fixture.stageDistDir,
+          appExecutableName: fixture.appExecutableName,
+          targetArch: "x64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
+        }).pipe(Effect.flip);
+        assert.instanceOf(voiceError, WindowsPackagedPayloadValidationError);
+        assert.equal(voiceError.reason, "baton-voice-missing");
+        assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/baton-dictation.exe"]);
       }),
     ),
   );

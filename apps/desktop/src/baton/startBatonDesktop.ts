@@ -8,6 +8,7 @@ import { createOsTts } from "@t3tools/baton-voice";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 
+import { resolveDictationBinary } from "./voice/dictationSidecar.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
@@ -23,6 +24,7 @@ export const startBatonDesktop = Effect.gen(function* () {
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const hostEnvironment = yield* HostProcess.Environment;
   const context = yield* Effect.context<never>();
+  const { resourcesPath } = environment;
   yield* Effect.sync(() => {
     let voice: { readonly refresh: () => void } | null = null;
     let screen: ScreenCompanion | null = null;
@@ -42,19 +44,18 @@ export const startBatonDesktop = Effect.gen(function* () {
       platform: environment.platform,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
-      makeCore: async ({ intent, onReply, settings }) =>
+      dictationBinary: resolveDictationBinary({ resourcesPath, env: hostEnvironment }),
+      makeCore: async ({ intent, onReply, settings, stt }) =>
         (
           await createDesktopVoiceCore({
             assets: resolveVoiceAssets({
               stateDir: environment.stateDir,
-              platform: environment.platform,
-              env: {
-                BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"],
-                BATON_WHISPER_CLI: hostEnvironment["BATON_WHISPER_CLI"],
-              },
+              resourcesPath,
+              env: { BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"] },
               modelsDir: settings.modelsDir,
-              whisperCli: settings.whisperCli,
             }),
+            wakeWords: settings.wakeWords,
+            stt,
             platform: environment.platform,
             intent,
             onReply,

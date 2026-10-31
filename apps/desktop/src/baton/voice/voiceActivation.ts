@@ -5,7 +5,8 @@
  * These are also Airdeck's seam (D64, D65). Airdeck profiles already have a
  * `"keys"` action, so a remote button bound to one of these chords wakes,
  * toggles or mutes Baton with no Airdeck code change. Chosen clear of
- * Airdeck's own Ctrl+Alt+Shift+F9…F12.
+ * Airdeck's own Ctrl+Alt+Shift+F9…F12. Dictation's toggle is F8 here: the remote's mic button
+ * is a tap, not a hold, so it cannot drive the hold key.
  */
 import type { VoiceActivation } from "./voiceTypes.ts";
 
@@ -27,3 +28,8 @@ export const VOICE_HOTKEYS: ReadonlyArray<{
     activation: "toggle_mute",
   },
 ];
+
+export const DICTATION_TOGGLE_HOTKEY = {
+  accelerator: "Control+Alt+Shift+F8",
+  airdeckKeys: "ctrl+alt+shift+f8",
+} as const;

@@ -12,6 +12,8 @@ keep=(
   pr-size.yml    # labels PR size, GitHub-hosted, no secrets
   baton-desktop-release.yml # the desktop release; the sync must not switch it off
   issue-labels.yml
+  baton-dictation-build.yml # the Windows dictation sidecar on its own
+  baton-wake-train.yml # wake word models on free runners
 )
 
 gh api "repos/$repo/actions/workflows" --paginate --jq '.workflows[] | "\(.state) \(.path)"' |

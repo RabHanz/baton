@@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
   "sidecar-invalid",
   "unpacked-native-missing",
   "resource-monitor-missing",
+  "baton-voice-missing",
   "wsl-runtime-missing",
   "wsl-runtime-invalid",
   "file-limit-exceeded",
@@ -765,6 +766,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     }
     if (this.reason === "resource-monitor-missing") {
       return "Windows packaged payload is missing the resource monitor executable.";
+    }
+    if (this.reason === "baton-voice-missing") {
+      return `Windows packaged payload is missing Baton voice files: ${(this.missingFiles ?? []).join(", ")}.`;
     }
     if (this.reason === "wsl-runtime-missing") {
       return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
@@ -985,6 +989,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   "!**/*.d.cts",
   "!apps/desktop/resources/browser-secret",
   "!apps/desktop/resources/browser-secret/**/*",
+  "!apps/desktop/prod-resources/baton-voice",
+  "!apps/desktop/prod-resources/baton-voice/**/*",
   "!apps/desktop/prod-resources/browser-secret",
   "!apps/desktop/prod-resources/browser-secret/**/*",
   "!apps/desktop/prod-resources/windows-server",
@@ -1103,6 +1109,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
+  },
+  {
+    from: "apps/desktop/prod-resources/baton-voice",
+    to: "baton-voice",
   },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
@@ -2353,6 +2363,60 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
   }
 });
 
+export const BATON_VOICE_PAYLOAD_FILES = [
+  "baton-dictation.exe",
+  "models/melspectrogram.onnx",
+  "models/embedding_model.onnx",
+  "models/silero_vad.onnx",
+  "models/sebastian.onnx",
+  "models/alfred.onnx",
+  "models/freya.onnx",
+  "models/onyx.onnx",
+] as const;
+
+// Baton voice: the wake and VAD models everywhere, the dictation sidecar on Windows.
+export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
+  readonly repoRoot: string;
+  readonly stageResourcesDir: string;
+  readonly platform: typeof BuildPlatform.Type;
+  readonly verbose: boolean;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const crate = path.join(input.repoRoot, "native/baton-dictation");
+  const destination = path.join(input.stageResourcesDir, "baton-voice");
+  yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
+  yield* fs.makeDirectory(destination, { recursive: true });
+  yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
+  if (input.platform !== "win") return;
+  const spawnCommand = yield* resolveSpawnCommand("cargo", [
+    "build",
+    "--locked",
+    "--release",
+    "--manifest-path",
+    path.join(crate, "Cargo.toml"),
+  ]);
+  yield* runCommand(
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      cwd: input.repoRoot,
+      shell: spawnCommand.shell,
+      env: {
+        ...process.env,
+        // A portable floor with AVX2: the runner's CPU may be newer than the user's.
+        TRANSCRIBE_CMAKE_ARGS:
+          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+        // Nothing installs the VC++ redistributable, so the exe must not need it.
+        RUSTFLAGS: "-C target-feature=+crt-static",
+      },
+    }),
+    { label: "cargo build baton-dictation", verbose: input.verbose },
+  );
+  yield* fs.copyFile(
+    path.join(crate, "target/release/baton-dictation.exe"),
+    path.join(destination, "baton-dictation.exe"),
+  );
+});
+
 export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
   readonly repoRoot: string;
   readonly stageResourcesDir: string;
@@ -3416,6 +3480,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
     });
   }
 
+  const missingVoiceFiles: string[] = [];
+  for (const file of BATON_VOICE_PAYLOAD_FILES) {
+    if (!(yield* isFile(path.join(resourcesDir, "baton-voice", file)))) {
+      missingVoiceFiles.push(`baton-voice/${file}`);
+    }
+  }
+  if (missingVoiceFiles.length > 0) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "baton-voice-missing",
+      packagedAppDir,
+      missingFiles: missingVoiceFiles,
+    });
+  }
+
   const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
   const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
   const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
@@ -3775,6 +3853,12 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     stageResourcesDir,
     platform: options.platform,
     arch: options.arch,
+    verbose: options.verbose,
+  });
+  yield* stageBatonVoice({
+    repoRoot,
+    stageResourcesDir,
+    platform: options.platform,
     verbose: options.verbose,
   });
   if (options.platform === "linux") {

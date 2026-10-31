@@ -19,10 +19,12 @@ import {
   createSileroVad,
   createVoiceCore,
   createVoiceRouter,
-  createWhisperCppStt,
+  DEFAULT_TIMINGS,
   type BatonVoiceCore,
+  type SttProvider,
   type VoiceIntentClient,
   type VoiceRouter,
+  type WakeWordModel,
 } from "@t3tools/baton-voice";
 import {
   applyContextSnapshot,
@@ -32,47 +34,65 @@ import {
 import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
 import { parseScreenIntent, type ScreenIntent } from "@t3tools/baton-shared/screenCompanion";
 
-export const VOICE_MODEL_FILES = [
-  "melspectrogram.onnx",
-  "embedding_model.onnx",
-  "hey_jarvis_v0.1.onnx",
-  "silero_vad.onnx",
-  "ggml-base.en.bin",
-] as const;
+const VOICE_FEATURE_FILES = ["melspectrogram.onnx", "embedding_model.onnx", "silero_vad.onnx"];
 
-export interface VoiceAssets {
-  readonly modelsDir: string;
-  readonly whisperCli: string;
+/** One wake word as the tray and `fabric-voice.json` hold it. */
+export interface WakeWordSetting {
+  readonly word: string;
+  readonly enabled: boolean;
+  readonly threshold: number;
 }
 
-/** Settings win, then the same env vars the core's own tests read, then the state dir. */
+export interface VoiceAssets {
+  /** The bundled models; a user's own `<word>.onnx` in `userModelsDir` wins. */
+  readonly modelsDir: string;
+  readonly userModelsDir: string;
+}
+
+/** Settings win, then the env var the core's own tests read, then what shipped with the app. */
 export const resolveVoiceAssets = (input: {
   readonly stateDir: string;
-  readonly platform: string;
+  readonly resourcesPath: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly modelsDir?: string | null;
-  readonly whisperCli?: string | null;
 }): VoiceAssets => {
-  const voiceDir = NodePath.join(input.stateDir, "voice");
+  const userModelsDir = NodePath.join(input.stateDir, "voice", "models");
   return {
     modelsDir:
-      input.modelsDir ?? input.env["BATON_VOICE_MODELS"] ?? NodePath.join(voiceDir, "models"),
-    whisperCli:
-      input.whisperCli ??
-      input.env["BATON_WHISPER_CLI"] ??
-      NodePath.join(voiceDir, input.platform === "win32" ? "whisper-cli.exe" : "whisper-cli"),
+      input.modelsDir ??
+      input.env["BATON_VOICE_MODELS"] ??
+      NodePath.join(input.resourcesPath, "baton-voice", "models"),
+    userModelsDir,
   };
+};
+
+/** Wake words the app can actually load: a word with no model is dropped, not a startup failure. */
+export const resolveWakeModels = (
+  assets: VoiceAssets,
+  words: ReadonlyArray<WakeWordSetting>,
+  exists: (path: string) => boolean = NodeFS.existsSync,
+): { readonly models: ReadonlyArray<WakeWordModel>; readonly missing: ReadonlyArray<string> } => {
+  const models: WakeWordModel[] = [];
+  const missing: string[] = [];
+  for (const { word, enabled, threshold } of words) {
+    if (!enabled) continue;
+    const file = `${word.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.onnx`;
+    const path = [assets.userModelsDir, assets.modelsDir]
+      .map((dir) => NodePath.join(dir, file))
+      .find(exists);
+    if (path === undefined) missing.push(word);
+    else models.push({ word, path, threshold });
+  }
+  return { models, missing };
 };
 
 export const missingVoiceAssets = (
   assets: VoiceAssets,
   exists: (path: string) => boolean = NodeFS.existsSync,
-): ReadonlyArray<string> => [
-  ...VOICE_MODEL_FILES.map((file) => NodePath.join(assets.modelsDir, file)).filter(
-    (p) => !exists(p),
-  ),
-  ...(exists(assets.whisperCli) ? [] : [assets.whisperCli]),
-];
+): ReadonlyArray<string> =>
+  VOICE_FEATURE_FILES.map((file) => NodePath.join(assets.modelsDir, file)).filter(
+    (path) => !exists(path),
+  );
 
 /** What the desktop's renderer answers: the intent bar's own two RPCs. */
 export type VoiceIntentRequest =
@@ -180,6 +200,9 @@ export const withScreenRoutes = (inner: VoiceRouter, screen: ScreenVoiceHook): V
 
 export const createDesktopVoiceCore = async (input: {
   readonly assets: VoiceAssets;
+  readonly wakeWords: ReadonlyArray<WakeWordSetting>;
+  /** Parakeet in the desktop's dictation sidecar; a test can pass anything. */
+  readonly stt: SttProvider;
   readonly platform: NodeJS.Platform;
   readonly intent: VoiceIntentClient;
   /** Replies and confirmation prompts, for the HUD's line. */
@@ -195,21 +218,26 @@ export const createDesktopVoiceCore = async (input: {
       `Voice models missing: ${missing.map((p) => NodePath.basename(p)).join(", ")} (in ${input.assets.modelsDir}).`,
     );
   }
+  const { models, missing: noModel } = resolveWakeModels(input.assets, input.wakeWords);
+  if (models.length === 0) {
+    throw new Error(
+      noModel.length > 0
+        ? `No wake model for ${noModel.join(", ")}.`
+        : "Every wake word is switched off.",
+    );
+  }
   const at = (file: string) => NodePath.join(input.assets.modelsDir, file);
   const wake = await createOpenWakeWordProvider({
     melspectrogram: at("melspectrogram.onnx"),
     embedding: at("embedding_model.onnx"),
-    wake: at("hey_jarvis_v0.1.onnx"),
+    wakes: models,
   });
   const vad = await createSileroVad(at("silero_vad.onnx"));
   const core = createVoiceCore({
     wake,
     vad,
-    stt: createWhisperCppStt({
-      binary: input.assets.whisperCli,
-      model: at("ggml-base.en.bin"),
-      vocabulary: () => ["Baton", "Claude", "Codex", "VentureOS"],
-    }),
+    stt: input.stt,
+    timings: { ...DEFAULT_TIMINGS, wakeWords: models.map((model) => model.word) },
     tts: input.speak === false ? null : createOsTts(input.platform),
     router:
       input.screen === undefined

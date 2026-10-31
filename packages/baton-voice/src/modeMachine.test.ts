@@ -23,6 +23,21 @@ const play = (
 };
 
 describe("voice mode machine (§12.3)", () => {
+  it("takes any configured word, with no Hey, off the front of what was heard", () => {
+    const timings = { ...DEFAULT_TIMINGS, wakeWords: ["Sebastian", "Alfred", "Freya"] };
+    let state = initialVoiceState();
+    const heard = reduceVoice(state, { type: "wake", at: 0 }, timings);
+    state = heard.state;
+    const { effects } = reduceVoice(
+      state,
+      { type: "utterance", text: "Alfred, what needs me?", at: 10 },
+      timings,
+    );
+    expect(effects).toContainEqual(
+      expect.objectContaining({ kind: "command", text: "what needs me?" }),
+    );
+  });
+
   it("sleeping ignores speech without a wake", () => {
     const { state, effects } = play([
       { type: "utterance", text: "what is VentureOS doing", at: 0 },

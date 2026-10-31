@@ -4,15 +4,14 @@
  * Baton voice on the desktop: the microphone, the tray, the HUD, the hotkeys
  * and where finished words go (§12.1, §12.3, Phase 5). D65.
  *
- * Capture runs in a hidden window because the OS audio stack Electron exposes
- * is Chromium's (`getUserMedia`), which is also what makes a DJI receiver
- * "just an audio device": no native module, no driver, the same on every OS.
+ * Windows only for now (D97): capture, speech and paste are `baton-dictation.exe`, which is built
+ * for no other platform, so elsewhere the tray says so and no microphone opens.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
-import type { BatonVoiceCore, VoiceIntentClient } from "@t3tools/baton-voice";
+import type { BatonVoiceCore, SttProvider, VoiceIntentClient } from "@t3tools/baton-voice";
 import * as Electron from "electron";
 
 import {
@@ -22,6 +21,7 @@ import {
 } from "../channels.ts";
 import {
   choiceDeviceId,
+  micChannel,
   realDevices,
   reconcileDeviceChange,
   selectInputDevice,
@@ -32,9 +32,21 @@ import {
   desktopVoiceContext,
   makeVoiceIntentClient,
   type VoiceIntentRequest,
+  type WakeWordSetting,
 } from "./desktopVoiceCore.ts";
-import { makeFramer, toVoicePcm } from "./pcm.ts";
-import { VOICE_HOTKEYS } from "./voiceActivation.ts";
+import {
+  HEALTHY_RUN_MS,
+  makeSidecarAudioInput,
+  makeSidecarStt,
+  restartDelayMs,
+  startDictationSidecar,
+  type DictationEvent,
+  type DictationSidecar,
+  type PasteMethod,
+  type SidecarDevice,
+} from "./dictationSidecar.ts";
+import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
+import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { HUD_DOCUMENT, hudView, renderHudHtml, utteranceCaption } from "./voiceHud.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -48,14 +60,33 @@ const FOCUSED_FIELD: BatonFocusTarget = {
   origin: null,
 };
 
+interface MicSetting {
+  /** Part of the device name, as Windows shows it. */
+  readonly name: string;
+  /** One input of a multi-input interface, zero-based; null mixes them. */
+  readonly channel: number | null;
+}
+
 interface VoiceSettings {
   /** Always-listening is opt-in: a microphone that opens itself is not a default. */
   readonly enabled: boolean;
   readonly openAtLogin: boolean;
   readonly pinnedLabel: string | null;
-  /** Where the wake/VAD/STT models and whisper-cli are; null = `<state dir>/voice`. */
+  /** Where the wake and VAD models are; null = the ones that shipped with the app. */
   readonly modelsDir: string | null;
-  readonly whisperCli: string | null;
+  /** Tried in order when nothing is pinned, and when the pin is unplugged. */
+  readonly micOrder: ReadonlyArray<MicSetting>;
+  /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
+  readonly dictation: "baton" | "wispr";
+  /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
+  readonly speechModel: "v3" | "fast";
+  readonly holdKey: string;
+  readonly toggleKey: string;
+  readonly paste: PasteMethod;
+  /** null lets Parakeet detect the language. */
+  readonly language: string | null;
+  /** All enabled words listen at once. A new word needs `<word>.onnx` in `<state dir>/voice/models`. */
+  readonly wakeWords: ReadonlyArray<WakeWordSetting>;
 }
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -63,13 +94,38 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   openAtLogin: false,
   pinnedLabel: null,
   modelsDir: null,
-  whisperCli: null,
+  micOrder: [
+    // Applies only to devices that are present. A Scarlett Solo's mic input is its input 1;
+    // mixing in the empty input 2 halves the level.
+    { name: "Scarlett Solo", channel: 0 },
+    { name: "Focusrite", channel: 0 },
+    // How Windows names a DJI receiver.
+    { name: "Wireless Mic Rx", channel: null },
+    { name: "DJI", channel: null },
+  ],
+  dictation: "baton",
+  speechModel: "v3",
+  // Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
+  holdKey: "Ctrl+Alt+Space",
+  toggleKey: "Ctrl+Alt+Shift+Space",
+  paste: "ctrl_v",
+  language: "en",
+  wakeWords: [
+    // Thresholds measured on 6.6 hours of real speech and held-out en-GB voices (D98).
+    { word: "Sebastian", enabled: true, threshold: 0.97 },
+    { word: "Alfred", enabled: true, threshold: 0.9 },
+    { word: "Freya", enabled: true, threshold: 0.95 },
+    // Off: as an ordinary word in speech it wakes too easily (D98).
+    { word: "Onyx", enabled: false, threshold: 0.9 },
+  ],
 };
 
 /** The renderer has this long to answer an intent call before the core is told it failed. */
 const REQUEST_TIMEOUT_MS = 20_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
+/** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
+const MIC_POLL_MS = 5_000;
 
 const readSettings = (path: string): VoiceSettings => {
   try {
@@ -81,90 +137,9 @@ const readSettings = (path: string): VoiceSettings => {
 
 // Legacy name (D71): the Electron partition holds the mic grant, so it keeps "fabric".
 const CAPTURE_PARTITION = "fabric-voice";
-
-// The capture page is ours, inline, and never navigates; node integration is
-// what lets it hand PCM back without a second preload bundle.
-const CAPTURE_SCRIPT = `
-const { ipcRenderer } = require("electron");
-let stream = null, ctx = null, node = null;
-window.batonVoice = {
-  async list() {
-    try { (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach(t => t.stop()); } catch {}
-    return (await navigator.mediaDevices.enumerateDevices())
-      .filter(d => d.kind === "audioinput").map(d => ({ deviceId: d.deviceId, label: d.label }));
-  },
-  async start(deviceId) {
-    await this.stop();
-    stream = await navigator.mediaDevices.getUserMedia({ audio: {
-      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-      channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true } });
-    ctx = new AudioContext();
-    const source = ctx.createMediaStreamSource(stream);
-    // shortcut: ScriptProcessor is deprecated; move to an AudioWorklet if Chromium drops it.
-    node = ctx.createScriptProcessor(2048, 1, 1);
-    node.onaudioprocess = e => ipcRenderer.send("baton-voice:pcm", ctx.sampleRate, e.inputBuffer.getChannelData(0).slice().buffer);
-    source.connect(node); node.connect(ctx.destination);
-  },
-  async stop() {
-    node?.disconnect(); stream?.getTracks().forEach(t => t.stop()); await ctx?.close();
-    stream = ctx = node = null;
-  },
-};
-navigator.mediaDevices.addEventListener("devicechange", () => ipcRenderer.send("baton-voice:devicechange"));
-`;
-
-// Created only while listening is on and destroyed when it goes off: a hidden
-// window left open would stop Windows' "last window closed" quit.
-const makeChromiumAudioInput = (
-  onDeviceChange: () => void,
-): AudioInputProvider & { readonly dispose: () => void } => {
-  const voiceSession = Electron.session.fromPartition(CAPTURE_PARTITION);
-  voiceSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === "media"));
-  voiceSession.setPermissionCheckHandler((_wc, permission) => permission === "media");
-  const window = new Electron.BrowserWindow({
-    show: false,
-    webPreferences: {
-      partition: CAPTURE_PARTITION,
-      nodeIntegration: true,
-      contextIsolation: false,
-      backgroundThrottling: false,
-    },
-  });
-  const ready = window.loadURL(
-    `data:text/html,${encodeURIComponent(`<!doctype html><script>${CAPTURE_SCRIPT}</script>`)}`,
-  );
-  let onFrame: ((frame: Int16Array) => void) | null = null;
-  const framer = makeFramer((frame) => onFrame?.(frame));
-  const onPcm = (event: Electron.IpcMainEvent, sampleRate: number, buffer: ArrayBuffer) => {
-    if (event.sender !== window.webContents) return;
-    framer(toVoicePcm(new Float32Array(buffer), 1, sampleRate));
-  };
-  const onChange = (event: Electron.IpcMainEvent) => {
-    if (event.sender === window.webContents) onDeviceChange();
-  };
-  Electron.ipcMain.on("baton-voice:pcm", onPcm);
-  Electron.ipcMain.on("baton-voice:devicechange", onChange);
-  const call = async <T>(expression: string): Promise<T> => {
-    await ready;
-    return window.webContents.executeJavaScript(expression) as Promise<T>;
-  };
-  return {
-    listDevices: () => call<ReadonlyArray<AudioInputDevice>>("window.batonVoice.list()"),
-    start: async (input) => {
-      onFrame = input.onFrame;
-      await call(`window.batonVoice.start(${JSON.stringify(input.deviceId)})`);
-    },
-    stop: async () => {
-      onFrame = null;
-      await call("window.batonVoice.stop()");
-    },
-    dispose: () => {
-      Electron.ipcMain.removeListener("baton-voice:pcm", onPcm);
-      Electron.ipcMain.removeListener("baton-voice:devicechange", onChange);
-      window.destroy();
-    },
-  };
-};
+/** Long enough to read a sentence that did not land where it was meant to. */
+const KEPT_TEXT_MS = 20_000;
+const HUD_TEXT_CHARS = 140;
 
 const makeHud = () => {
   const area = Electron.screen.getPrimaryDisplay().workArea;
@@ -220,7 +195,12 @@ export interface VoiceCoreHooks {
   readonly intent: VoiceIntentClient;
   /** Replies and confirmation prompts, shown on the HUD's line. */
   readonly onReply: (text: string) => void;
-  readonly settings: { readonly modelsDir: string | null; readonly whisperCli: string | null };
+  readonly settings: {
+    readonly modelsDir: string | null;
+    readonly wakeWords: ReadonlyArray<WakeWordSetting>;
+  };
+  /** Parakeet, in the dictation sidecar. */
+  readonly stt: SttProvider;
 }
 
 /** The screen companion's tray entries (D84), shown under the voice ones. */
@@ -236,6 +216,8 @@ export interface DesktopBatonVoiceInput {
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
+  /** `baton-dictation.exe`; null where it is not built (everything but Windows). */
+  readonly dictationBinary: string | null;
   readonly extras?: TrayExtras;
 }
 
@@ -254,13 +236,31 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const tray = new Electron.Tray(trayIcon(hudView("sleeping").color));
+  const modelsDir = NodePath.join(input.stateDir, "voice", "models");
+  const binary = input.dictationBinary;
+  let sidecar: DictationSidecar | null = null;
+  let parakeetPath: string | null = null;
+  let modelJob: Promise<string> | null = null;
+  let sidecarDevices: ReadonlyArray<SidecarDevice> = [];
+  let dictating: string | null = null;
+  let recording = false;
+  let lastDictation: string | null = null;
+  let keptTimer: ReturnType<typeof setTimeout> | null = null;
+  let recordFailures = 0;
+  const shownState = (): VoiceState => (dictating === null ? state : "dictation");
   let hud: ReturnType<typeof makeHud> | null = null;
-  let audio: ReturnType<typeof makeChromiumAudioInput> | null = null;
+  let audio: AudioInputProvider | null = null;
   let core: BatonVoiceCore | null = null;
-  const injection = makeClipboardInjection({
+  const clipboardInjection = makeClipboardInjection({
     platform: input.platform,
     clipboard: Electron.clipboard,
   });
+  const injection: typeof clipboardInjection = {
+    ...clipboardInjection,
+    // Handy's paste keeps his clipboard; PowerShell's stays for when the sidecar is not there.
+    insertText: (request) =>
+      sidecar === null ? clipboardInjection.insertText(request) : sidecar.paste(request.text),
+  };
   // Only where this desktop can paste is the focused field a dictation target.
   const field = injection.canInject(FOCUSED_FIELD) ? FOCUSED_FIELD : null;
 
@@ -277,7 +277,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const render = (caption: string | null) => {
     tray.setImage(trayIcon(hudView(state).color));
     tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
-    hud?.show(renderHudHtml({ state, caption: caption ?? note, device: deviceName() }));
+    // Destroyed, not hidden: a window left open stops "last window closed" quitting the app.
+    if (loop === null && dictating === null) {
+      hud?.dispose();
+      hud = null;
+    } else {
+      hud?.show(
+        renderHudHtml({ state: shownState(), caption: caption ?? note, device: deviceName() }),
+      );
+    }
     rebuildMenu();
   };
   const flash = (caption: string) => {
@@ -330,34 +338,183 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pushContext();
   });
 
+  const preference = () => ({
+    pinnedLabel: settings.pinnedLabel,
+    micOrder: settings.micOrder.map((mic) => mic.name),
+  });
+  const channelFor = (device: string): number | null =>
+    micChannel(
+      device,
+      sidecarDevices.find((known) => known.name === device)?.channels ?? null,
+      settings.micOrder,
+    );
+
+  const configureDictation = () => {
+    if (sidecar === null) return;
+    const device = choice.kind === "pinned" ? choice.device.label : null;
+    const baton = settings.dictation === "baton" && parakeetPath !== null;
+    sidecar.configure({
+      model: parakeetPath,
+      hold: baton ? settings.holdKey : null,
+      toggle: baton ? settings.toggleKey : null,
+      device,
+      channel: device === null ? null : channelFor(device),
+      paste: settings.paste,
+      language: settings.language,
+    });
+  };
+
+  const showDictation = (caption: string | null) => {
+    dictating = caption;
+    if (caption !== null) hud ??= makeHud();
+    render(caption);
+  };
+  // Esc is taken only while the microphone is open, so it stays his the rest of the time.
+  const setRecording = (next: boolean) => {
+    if (next === recording) return;
+    recording = next;
+    if (next) Electron.globalShortcut.register("Escape", () => sidecar?.cancel());
+    else Electron.globalShortcut.unregister("Escape");
+  };
+  /** Words that have no home yet: on the HUD for a while, and in the tray until the next ones. */
+  const keepText = (why: string, text: string) => {
+    lastDictation = text;
+    const shown = text.length > HUD_TEXT_CHARS ? `${text.slice(0, HUD_TEXT_CHARS)}…` : text;
+    showDictation(`${why}: ${shown}`);
+    if (keptTimer !== null) clearTimeout(keptTimer);
+    keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
+  };
+  const onDictation = (event: DictationEvent) => {
+    setRecording(event.ev === "recording");
+    if (event.ev === "recording") {
+      if (keptTimer !== null) clearTimeout(keptTimer);
+      note = null;
+      showDictation("Recording. Esc cancels.");
+    } else if (event.ev === "transcribing") showDictation("Transcribing");
+    else if (event.ev === "idle") showDictation(null);
+    else if (event.ev === "error") {
+      note = event.message;
+      showDictation(null);
+    } else if (event.ev === "unread") {
+      keepText("Nothing took the paste. On your clipboard", event.text);
+    } else if (event.ev === "text") {
+      note = event.error ?? event.pasteError ?? note;
+      const text = event.text ?? "";
+      if (text.length > 0) lastDictation = text;
+      if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
+      else showDictation(null);
+    }
+  };
+
+  // Both the wake capture and the dictation recorder follow the same choice.
   const onDeviceChange = () => {
     void (async () => {
-      if (audio === null) return;
-      devices = await audio.listDevices();
-      const next = reconcileDeviceChange({ current: choice, devices, preference: settings });
+      const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
+      if (source === null) return;
+      const listed = await source.listDevices();
+      if (listed.length === 0) return;
+      devices = listed;
+      const next = reconcileDeviceChange({ current: choice, devices, preference: preference() });
       if (next !== null) {
         choice = next;
         note = next.kind === "default" ? next.reason : null;
+        configureDictation();
         await loop?.switchDevice(choiceDeviceId(next));
+        render(null);
       }
-      render(null);
     })();
   };
+  const listSidecarDevices = async (): Promise<ReadonlyArray<AudioInputDevice>> => {
+    sidecarDevices = (await sidecar?.devices()) ?? [];
+    return sidecarDevices.map((d) => ({ deviceId: d.name, label: d.name }));
+  };
+
+  /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
+  const startSidecar = async () => {
+    if (binary === null || sidecar !== null) return;
+    sidecar = startDictationSidecar({ binary, onEvent: onDictation });
+    devices = await listSidecarDevices();
+    choice = selectInputDevice(devices, preference());
+    note =
+      choice.kind === "default" && choice.reason.includes("not connected") ? choice.reason : null;
+    configureDictation();
+    render(null);
+  };
+
+  const speechModel = () =>
+    settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL;
+
+  /** One at a time; if the choice changed while it ran, the one now chosen is fetched next. */
+  const loadSpeechModel = (): Promise<string> => {
+    modelJob ??= (async () => {
+      try {
+        await startSidecar();
+        for (;;) {
+          const model = speechModel();
+          const path = await ensureModel({
+            dir: modelsDir,
+            model,
+            onProgress: (fraction) => {
+              note =
+                fraction < 1
+                  ? `Downloading the speech model: ${Math.round(fraction * 100)}%`
+                  : null;
+              render(null);
+            },
+          });
+          if (model === speechModel()) {
+            parakeetPath = path;
+            note = null;
+            configureDictation();
+            render(null);
+            return path;
+          }
+        }
+      } catch (error) {
+        note = `${error instanceof Error ? error.message : "The download failed."} Tray: Download speech model.`;
+        render(null);
+        throw error;
+      } finally {
+        modelJob = null;
+      }
+    })();
+    return modelJob;
+  };
+  const requestDictation = () => void loadSpeechModel().catch(() => {});
 
   const start = async () => {
+    if (binary === null) {
+      note = "Voice is Windows only for now.";
+      return render(null);
+    }
     if (loop !== null || input.makeCore === null || !settings.enabled) return render(null);
     // The models first: if they are missing, no microphone is opened.
+    await loadSpeechModel();
+    if (sidecar === null) throw new Error("Speech recognition is not installed.");
     core = await input.makeCore({
       intent: makeVoiceIntentClient({ request, injection, field: FOCUSED_FIELD }),
       onReply: flash,
       settings,
+      stt: makeSidecarStt(sidecar),
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
-    audio = makeChromiumAudioInput(onDeviceChange);
-    hud = makeHud();
+    audio = makeSidecarAudioInput({
+      binary,
+      listDevices: listSidecarDevices,
+      channelFor,
+      // Back on the same mic if it was a hiccup, on the next one if it left.
+      onLost: (reason, ranMs) => {
+        recordFailures = ranMs >= HEALTHY_RUN_MS ? 1 : recordFailures + 1;
+        const delay = restartDelayMs(recordFailures);
+        note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
+        render(null);
+        setTimeout(() => void restart(), delay);
+      },
+    });
+    hud ??= makeHud();
     devices = await audio.listDevices();
-    choice = selectInputDevice(devices, settings);
+    choice = selectInputDevice(devices, preference());
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
@@ -379,7 +536,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     core = null;
     if (contextTimer !== null) clearInterval(contextTimer);
     contextTimer = null;
-    audio?.dispose();
+    await audio?.stop();
     hud?.dispose();
     audio = null;
     hud = null;
@@ -397,6 +554,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         {
           label: "Always listening",
           type: "checkbox",
+          enabled: binary !== null,
           checked: settings.enabled,
           click: (item) => {
             save({ enabled: item.checked });
@@ -413,6 +571,81 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
         {
+          label: "Wake words",
+          submenu: settings.wakeWords.map((wake) => ({
+            label: wake.word,
+            type: "checkbox" as const,
+            checked: wake.enabled,
+            click: (item: Electron.MenuItem) => {
+              save({
+                wakeWords: settings.wakeWords.map((other) =>
+                  other.word === wake.word ? { ...other, enabled: item.checked } : other,
+                ),
+              });
+              void relisten();
+            },
+          })),
+        },
+        {
+          label: "Dictation",
+          enabled: binary !== null,
+          submenu: [
+            {
+              label: `Baton (${settings.holdKey})`,
+              type: "radio",
+              checked: settings.dictation === "baton",
+              click: () => setDictation("baton"),
+            },
+            {
+              label: "Wispr Flow",
+              type: "radio",
+              checked: settings.dictation === "wispr",
+              click: () => setDictation("wispr"),
+            },
+            ...(settings.dictation === "baton" && parakeetPath === null
+              ? [
+                  {
+                    label: `Download speech model (${Math.round(speechModel().size / 1e6)} MB)`,
+                    enabled: modelJob === null,
+                    click: requestDictation,
+                  },
+                ]
+              : []),
+            {
+              label: "Cancel recording",
+              enabled: recording,
+              click: () => sidecar?.cancel(),
+            },
+            {
+              label: "Copy last dictation",
+              enabled: lastDictation !== null,
+              click: () => {
+                if (lastDictation !== null) void Electron.clipboard.writeText(lastDictation);
+              },
+            },
+            { type: "separator" },
+            {
+              label: "Parakeet v3 (most languages, slower)",
+              type: "radio",
+              checked: settings.speechModel === "v3",
+              click: () => setSpeechModel("v3"),
+            },
+            {
+              label: "Parakeet Fast (English, 3x quicker)",
+              type: "radio",
+              checked: settings.speechModel === "fast",
+              click: () => setSpeechModel("fast"),
+            },
+          ],
+        },
+        {
+          label: "Edit voice settings…",
+          click: () => {
+            save({});
+            void Electron.shell.openPath(settingsPath);
+          },
+        },
+        {
           label: "Direct to focused session",
           type: "checkbox",
           checked: state === "direct_session",
@@ -423,7 +656,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           label: "Microphone",
           submenu: [
             {
-              label: "System default",
+              label: "Automatic",
               type: "radio",
               checked: settings.pinnedLabel === null,
               click: () => {
@@ -465,24 +698,70 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     void stop();
   };
 
-  const restart = async () => {
-    if (loop === null || audio === null) return render(null);
-    devices = await audio.listDevices();
-    choice = selectInputDevice(devices, settings);
-    note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
-    await loop.switchDevice(choiceDeviceId(choice));
+  const setDictation = (dictation: VoiceSettings["dictation"]) => {
+    save({ dictation });
+    configureDictation();
     render(null);
+    if (dictation === "baton") requestDictation();
+  };
+
+  const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
+    save({ speechModel });
+    if (parakeetPath !== null || settings.enabled) requestDictation();
+    else render(null);
+  };
+
+  const restart = async () => {
+    const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
+    if (source === null) return render(null);
+    devices = await source.listDevices();
+    choice = selectInputDevice(devices, preference());
+    note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
+    configureDictation();
+    await loop?.switchDevice(choiceDeviceId(choice));
+    render(null);
+  };
+
+  /** Wake words are fixed when the core is built, so a change rebuilds it. */
+  const relisten = async () => {
+    if (loop !== null) await stop();
+    await start().catch(failed);
   };
 
   for (const hotkey of VOICE_HOTKEYS) {
     // A chord another app already owns is skipped, not fatal; the tray still works.
     Electron.globalShortcut.register(hotkey.accelerator, () => loop?.activate(hotkey.activation));
   }
+  Electron.globalShortcut.register(DICTATION_TOGGLE_HOTKEY.accelerator, () => {
+    if (settings.dictation !== "baton" || binary === null) return;
+    // The first press is the opt-in: it fetches the model, and the next one records.
+    if (parakeetPath === null) requestDictation();
+    else sidecar?.toggle();
+  });
   Electron.app.on("will-quit", () => {
     for (const hotkey of VOICE_HOTKEYS) Electron.globalShortcut.unregister(hotkey.accelerator);
+    Electron.globalShortcut.unregister(DICTATION_TOGGLE_HOTKEY.accelerator);
+    Electron.globalShortcut.unregister("Escape");
+    void audio?.stop();
+    sidecar?.dispose();
   });
 
+  // Hand edits to the settings file take effect without a restart.
+  NodeFS.watchFile(settingsPath, { interval: 2_000 }, () => {
+    const before = JSON.stringify(settings);
+    settings = readSettings(settingsPath);
+    const after = JSON.stringify(settings);
+    if (before === after) return;
+    configureDictation();
+    void relisten();
+  });
+  setInterval(onDeviceChange, MIC_POLL_MS).unref();
+
   render(null);
+  // Keys and the sidecar only once the model is here: nothing global before he asks for it.
+  if (binary !== null && settings.dictation === "baton" && modelPresent(modelsDir, speechModel())) {
+    requestDictation();
+  }
   void start().catch(failed);
   return { refresh: rebuildMenu };
 };
