@@ -4,7 +4,7 @@ The apps and client-runtime depend on @t3tools/baton-contracts and @t3tools/bato
 onnxruntime-node (packages/baton-voice) is allowed to skip its install script.
 
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 886ccf3cd798fd6621826addc11c62fe2fad36f0..7acea656ed2a8afb23902dad69ba035544101a66 100644
+index 68321456683eb2b1757468a416e819757121002b..7603290d54d86800b6e185cb308cba330afbd1f5 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -15,6 +15,9 @@
@@ -26,7 +26,7 @@ index 886ccf3cd798fd6621826addc11c62fe2fad36f0..7acea656ed2a8afb23902dad69ba0355
      "react-grab": "^0.1.32",
      "tldts": "catalog:"
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d83868530f 100644
+index a49c3856864f1566947e5b715f32b9d028fe531c..4b9c9ae0a392e0bfa821469e39a0e882ed17c5d5 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -68,6 +68,8 @@
@@ -39,7 +39,7 @@ index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d8
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 789d612e6fe3b7af16c7bd384e5c1b5bbe8141eb..2ec97f7b116bba923bd350ee4ff45c0ae008f03b 100644
+index 0dacbbe90720ccad80813a13b75addd8a8c7ba12..d6d20f910829a9676e1bc8dff3c79e71d17e697d 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -40,6 +40,8 @@
@@ -52,7 +52,7 @@ index 789d612e6fe3b7af16c7bd384e5c1b5bbe8141eb..2ec97f7b116bba923bd350ee4ff45c0a
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/apps/web/package.json b/apps/web/package.json
-index b2ad7e1c687449d64780456c722cb7db43996098..85c229aedc9462e64a5c88d62ad458f00ba2332c 100644
+index 4407645ea143f22275e4db2b64b07d330d2400cc..3254f29af3bd168684c1720614e5f670564c02e3 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
 @@ -31,6 +31,8 @@
@@ -65,10 +65,10 @@ index b2ad7e1c687449d64780456c722cb7db43996098..85c229aedc9462e64a5c88d62ad458f0
      "@t3tools/contracts": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index 9600ad7ad356d0e842193bfe06e1e83d6deaaa45..13caf79ca6c140e7c764fdfcbd95166b7a62640b 100644
+index d1b48e1d76f4f4eec09424703b03cde988717316..130c0b327e62918f9e93c3db8f734c80b8c361c8 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -522,6 +522,7 @@
+@@ -526,6 +526,7 @@
    },
    "dependencies": {
      "@pierre/diffs": "catalog:",
@@ -90,10 +90,10 @@ index be4d3c29ea763a8294a8ab765fcc46abd5096003..2a19711255896c99c97f0f757a8dd988
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..5c16b76796dce2f1f8c51bfe14ce422f50e1734c 100644
+index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..cbf891abeba0c08ba4e903cc203474baf752337a 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -54,6 +54,7 @@ import {
+@@ -55,6 +55,7 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
@@ -101,7 +101,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..5c16b76796dce2f1f8c51bfe14ce422f
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -156,6 +157,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -157,6 +158,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -112,7 +112,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..5c16b76796dce2f1f8c51bfe14ce422f
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1263,6 +1268,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1267,6 +1272,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -135,7 +135,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..5c16b76796dce2f1f8c51bfe14ce422f
      ),
    );
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..1d9eac62b7c364b3c1a34076da9a1575fd5dee5f 100644
+index 8ba7f1adcbbd296f62fce8659493e493f8ae6c13..d06e094a6aaff04efa75d40ead7b2ba1b67d54de 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
