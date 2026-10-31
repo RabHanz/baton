@@ -2985,18 +2985,30 @@ which loses "what's the craic with the Margin".
 
 Titles go to Anthropic only where a screenshot may, so with capture on "ask" the router works without them.
 
-A plan is held to the high-risk list across its title, reasons and typed text, and Run it shows typed text
-whole. A plan touching a command line asks a second time and lists what it would type. Drive sees the mouse
-from its first step and stops if the keyboard moves to another window between steps. Ctrl+Esc,
-Ctrl+Shift+Esc, Alt+F4, Alt+Tab and Ctrl+Alt+anything are refused.
+A plan is held to the high-risk list across its title, reasons and typed text, joined across steps, and to a
+list of destructive commands. Both lists are a second layer behind Run it, not a boundary: no list catches
+every spelling. Run it shows typed text whole, only plain spaces may be typed, and Run it stays disabled until
+a long box has been scrolled to its end. A paste is typing nobody has read, so its step shows the clipboard, a
+changed clipboard stops the drive, and a paste or right-click into a command line is refused. Reaching a
+command line asks a second time, as does not knowing where the keys will go, and editors count, because their
+terminal has the editor's name. A drive that reaches a command line without that yes stops.
+
+Drive sees the mouse from its first step. Before each keyboard step it reads the window: a change stops it, no
+reading stops it, and a switch during a long type is not accepted afterwards. Ctrl+Esc, Ctrl+Shift+Esc, Alt+F4,
+Alt+Tab and Ctrl+Alt+anything are refused.
+
+Esc goes to the most urgent holder only: a drive, then a recording, then a card, so closing a card cannot lose a
+recording, and a holder that throws passes to the next.
 
 Every sentence reaches the speaker when it exists, so a cancel covers the queue, and an answer still streaming
 stays quiet after he silences it. A wake word over speech holds what he says next against the echo gate. A
 "confirm" that starts over Baton's own voice is ignored, since a reply can say the wake word and the word
-itself; he says it again after the voice stops.
+itself; he says it again after the voice stops. Stop and cancel still count. Limit: with nothing pending, a
+reply that says a wake word and then a command is heard as far as the cancel lets it, which is a fragment.
 
-Dictation clean-up is local until the Director rules (D105). Even on `claude`, password managers, sign-in and
-banking pages, private windows and any app Baton cannot name stay on this machine.
+Dictation clean-up is local until he rules otherwise (D105), and a "claude" saved by an earlier build of this
+branch does not stick: it needs his own click. Even on `claude`, password managers, sign-in and bank pages,
+private windows and any app Baton cannot name stay on this machine, judged where he spoke and where he is now.
 
 Coordinator, relaying the Director, 2026-10-31: dictation clean-up stays local by default, and v3 stays the
 default model with 110M in the tray. "Black display" on the laptop was his FlipIt screen saver, which takes the

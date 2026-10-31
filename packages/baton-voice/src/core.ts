@@ -22,6 +22,8 @@ import {
   type VoiceEvent,
   type VoiceMachineState,
   type VoiceTimings,
+  isAffirmative,
+  stripWake,
 } from "./modeMachine.ts";
 import type { RouteOutcome, VoiceRouter } from "./router.ts";
 import {
@@ -248,6 +250,11 @@ export const createVoiceCore = (input: {
     const spoken = speechSamples;
     const overItself = barged;
     barged = false;
+    if (speakingLater !== null) {
+      const latest = speakingLater;
+      speakingLater = null;
+      setSpeaking(latest);
+    }
     segment = null;
     speechSamples = 0;
     silenceSamples = 0;
@@ -266,7 +273,14 @@ export const createVoiceCore = (input: {
       const cleaned = text.trim();
       if (NOISE.test(cleaned)) return emit({ type: "nothing" });
       // Baton's own reply can say a wake word and "confirm": a yes must not start over its voice.
-      if (overItself && machine.pending !== null) return emit({ type: "nothing" });
+      // Stop and cancel still count, and the question just runs out.
+      if (
+        overItself &&
+        machine.pending !== null &&
+        isAffirmative(stripWake(cleaned, timings.wakeWords))
+      ) {
+        return emit({ type: "nothing" });
+      }
       lastTranscript = cleaned;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
@@ -278,8 +292,13 @@ export const createVoiceCore = (input: {
   let echoUntil = 0;
   /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
   let barged = false;
+  /** What the speaker did while his words were being heard, applied when they end. */
+  let speakingLater: boolean | null = null;
   const setSpeaking = (active: boolean) => {
-    if (barged) return;
+    if (barged) {
+      speakingLater = active;
+      return;
+    }
     speaking = active;
     if (active) {
       // What was being heard is now mixed with Baton's own voice.
@@ -300,7 +319,8 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     if (score !== null) {
-      if (hearingItself()) {
+      const overItself = hearingItself();
+      if (overItself) {
         speaking = false;
         echoUntil = 0;
         barged = true;
@@ -309,8 +329,9 @@ export const createVoiceCore = (input: {
       emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });
       // Start the utterance at the wake: "hey jarvis, what's…" is one breath.
       if (segment === null) {
-        segment = [...preRoll];
-        segmentSamples = preRollSamples;
+        // Over its own voice the pre-roll is Baton's words, so his start here.
+        segment = overItself ? [] : [...preRoll];
+        segmentSamples = overItself ? 0 : preRollSamples;
         speechSamples = msToSamples(seg.minSpeechMs);
       }
       silenceSamples = 0;

@@ -12,7 +12,9 @@ import * as NodePath from "node:path";
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
 import {
   chooseMode,
+  cleanupFromSaved,
   cleanupLevelFor,
+  strictestCleanup,
   modeMenu,
   type CleanupLevel,
   type DictationMode,
@@ -25,6 +27,7 @@ import {
   type VoiceCoreEvent,
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
+import type { EscapeRank } from "../screen/escapeKey.ts";
 import * as Electron from "electron";
 
 import {
@@ -111,6 +114,8 @@ interface VoiceSettings {
   readonly language: string | null;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
+  /** He picked it himself; a value this branch saved for him does not count (D114). */
+  readonly dictationCleanupChosen?: boolean;
   /** A family alias, on his subscription. */
   readonly cleanupModel: string;
   readonly claudeBinary: string;
@@ -171,7 +176,10 @@ const LOCATE_MAX_DIP = 160;
 
 const readSettings = (path: string): VoiceSettings => {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(NodeFS.readFileSync(path, "utf8")) };
+    return {
+      ...DEFAULT_SETTINGS,
+      ...cleanupFromSaved(JSON.parse(NodeFS.readFileSync(path, "utf8"))),
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -179,6 +187,7 @@ const readSettings = (path: string): VoiceSettings => {
 
 /** Longer than the spoken 15 s, for reading; a typed yes must still run out. */
 const TYPED_CONFIRM_MS = 30_000;
+const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const PILL_TEXT_CHARS = 90;
@@ -243,7 +252,7 @@ export interface DesktopBatonVoiceInput {
   /** A wake word cut across Baton's voice. */
   readonly onBargeIn?: () => void;
   readonly extras?: TrayExtras;
-  readonly holdEscape: (onPress: () => void) => () => void;
+  readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** What to do when he dismisses a turn: stop Baton's voice, and the same for the assistant. */
   readonly onDismiss?: () => void;
   /** Wake-to-pill, for the record. */
@@ -306,6 +315,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     platform: input.platform,
     dictionary: () => dictionary,
   });
+  /** Held to where the words came from and where he is now. Unknown counts as secret. */
+  const levelNow = async (spokenIn: { readonly exe: string; readonly title: string }) => {
+    const now = await Promise.race([
+      sidecar?.foreground().catch(() => null) ?? Promise.resolve(null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
+    ]);
+    return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
+  };
   const injection: typeof clipboardInjection = {
     ...clipboardInjection,
     // The sidecar pastes on every platform, where Electron alone cannot.
@@ -318,7 +335,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const { text } = await rewriter.clean({
         raw: request.text,
         mode: chooseMode(app, settings.appModes),
-        level: cleanupLevelFor(settings.dictationCleanup, app),
+        level: await levelNow(app),
       });
       return sidecar.paste(text);
     },
@@ -493,7 +510,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // Esc is taken only while the microphone is open, so it stays his the rest of the time.
   const setRecording = (next: boolean) => {
     if (next === (releaseRecordingEscape !== null)) return;
-    if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel());
+    if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel(), "recording");
     else {
       releaseRecordingEscape?.();
       releaseRecordingEscape = null;
@@ -511,7 +528,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const { text } = await rewriter.clean({
       raw,
       mode: chooseMode(focusedApp, settings.appModes),
-      level: cleanupLevelFor(settings.dictationCleanup, focusedApp),
+      level: await levelNow(focusedApp),
     });
     lastDictation = text;
     const pasted =
@@ -832,7 +849,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 label,
                 type: "radio" as const,
                 checked: settings.dictationCleanup === level,
-                click: () => save({ dictationCleanup: level }),
+                click: () => save({ dictationCleanupChosen: true, dictationCleanup: level }),
               })),
             },
             {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  cleanupFromSaved,
   cleanupLevelFor,
+  strictestCleanup,
   checkRewrite,
   chooseMode,
   cleanDictation,
@@ -180,5 +182,30 @@ describe("what may leave the machine", () => {
     );
     expect(cleanupLevelFor("claude", { exe: "", title: "" })).toBe("local");
     expect(cleanupLevelFor("claude", { exe: "winword.exe", title: "Report.docx" })).toBe("claude");
+  });
+});
+
+describe("the cloud path, closer", () => {
+  it.each([
+    ["firefox.exe", "Mozilla Firefox Private Browsing"],
+    ["chrome.exe", "Passwords - Google"],
+    ["chrome.exe", "Log on to your account"],
+    ["chrome.exe", "Barclays Online"],
+    ["KeeperPasswordManager.exe", "Vault"],
+  ])("keeps %s %s local", (exe, title) => {
+    expect(cleanupLevelFor("claude", { exe, title })).toBe("local");
+  });
+
+  it("is held to where he is now, as well as where he spoke", () => {
+    const word = { exe: "winword.exe", title: "Report" };
+    expect(strictestCleanup("claude", [word, { exe: "1Password.exe", title: "" }])).toBe("local");
+    expect(strictestCleanup("claude", [word, { exe: "", title: "" }])).toBe("local");
+    expect(strictestCleanup("claude", [word, word])).toBe("claude");
+  });
+
+  it("does not keep a claude he never chose", () => {
+    expect(cleanupFromSaved({ dictationCleanup: "claude" })["dictationCleanup"]).toBe("local");
+    const chosen = { dictationCleanup: "claude", dictationCleanupChosen: true };
+    expect(cleanupFromSaved(chosen)["dictationCleanup"]).toBe("claude");
   });
 });

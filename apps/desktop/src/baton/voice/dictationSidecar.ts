@@ -118,6 +118,22 @@ export const resolveDictationBinary = (input: {
   return candidates.find((path): path is string => path !== undefined && exists(path)) ?? null;
 };
 
+/** The sidecar's foreground event. Without `window` a drive cannot see the keyboard move. */
+export const focusedFrom = (event: Readonly<Record<string, unknown>>): FocusedApp => {
+  const { app, title, rect, window } = event as {
+    app?: string;
+    title?: string;
+    rect?: FocusedApp["rect"];
+    window?: number;
+  };
+  return {
+    exe: app ?? "",
+    title: title ?? "",
+    rect: rect ?? null,
+    ...(typeof window === "number" && window !== 0 ? { window } : {}),
+  };
+};
+
 const CALL_TIMEOUT_MS = 120_000;
 /** A process that lived this long was working, so its next failure starts the backoff again. */
 export const HEALTHY_RUN_MS = 30_000;
@@ -194,14 +210,7 @@ export const startDictationSidecar = (input: {
         );
       }
       if (event["ev"] === "foreground") {
-        const { app, title, rect } = event as {
-          app?: string;
-          title?: string;
-          rect?: FocusedApp["rect"];
-        };
-        return settle(event["id"] as number, {
-          value: { exe: app ?? "", title: title ?? "", rect: rect ?? null } satisfies FocusedApp,
-        });
+        return settle(event["id"] as number, { value: focusedFrom(event) });
       }
       if (event["ev"] === "located") {
         return settle(event["id"] as number, { value: event });

@@ -39,7 +39,7 @@ import {
   type ScreenMode,
   type ScreenShot,
   planHighRisk,
-  shellTyping,
+  shellCheck,
 } from "@t3tools/baton-shared/screenCompanion";
 import * as Electron from "electron";
 
@@ -60,6 +60,7 @@ import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts
 import { createInputDriver } from "./inputDriver.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { createPointerOverlay, type OverlayCard, type OverlayMarker } from "./pointerOverlay.ts";
+import type { EscapeRank } from "./escapeKey.ts";
 import { captureScreens, screenFingerprint, type CapturedScreen } from "./screenCapture.ts";
 
 // F5 to F8 are voice and dictation, and Airdeck has F9 to F12.
@@ -103,6 +104,7 @@ const ROUTER_TIMEOUT_MS = 20_000;
 const ROUTER_MAX_TURNS = 6;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
 const FOCUS_WAIT_MS = 400;
+const KEYBOARD_WAIT_MS = 1_500;
 const RECENT_LINES = 8;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
@@ -216,7 +218,7 @@ export const startScreenCompanion = (input: {
   readonly onChange?: () => void;
   /** Stop speech at once: he has moved on. */
   readonly stopSpeech?: () => void;
-  readonly holdEscape: (onPress: () => void) => () => void;
+  readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** Tells the pill what is going on; null when it stops. */
   readonly onActivity?: (label: string | null, caption?: string) => void;
   /** The answer's words were cancelled by him: the pill goes too. */
@@ -407,6 +409,7 @@ export const startScreenCompanion = (input: {
         "Not now",
       ],
       cancel: 3,
+      scoped: true,
     });
     if (response === 1) allowedUntil = Date.now() + 60 * 60_000;
     if (response === 2) save({ captureApproval: "always" });
@@ -712,9 +715,14 @@ export const startScreenCompanion = (input: {
     }
     const plan = parsed.plan;
     // Held to the list a sentence is held to, whatever routed here. Run it is not enough.
-    const subject = planHighRisk(plan);
-    if (subject !== null) {
-      const message = refusedReply(subject);
+    const clipboard = Electron.clipboard.readText();
+    const subject = planHighRisk(plan, clipboard);
+    const shell = shellCheck(plan, focus?.label ?? null);
+    if (subject !== null || shell.refused) {
+      const message =
+        subject === null
+          ? "That would paste into a command line, where nobody reads it first. I won't do that."
+          : refusedReply(subject);
       say(message);
       input.onActivity?.(null);
       linger("Baton", message);
@@ -727,19 +735,26 @@ export const startScreenCompanion = (input: {
     say(reply.spoken);
     const response = await windows.ask({
       title: plan.title,
-      detail: `${reply.spoken}\n\n${describeDrivePlan(plan)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or moving the mouse stops it.`,
+      detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or moving the mouse stops it.`,
       buttons: ["Run it", "Not now"],
       cancel: 1,
+      scoped: true,
     });
-    const typed = shellTyping(plan, focus?.label ?? null);
     const shellYes =
-      response !== 0 || run !== current || typed.length === 0
+      response !== 0 || run !== current || !shell.ask
         ? 0
         : await windows.ask({
-            title: "This plan types into a command line",
-            detail: `A command line runs what it is given. Baton would type:\n\n${typed.join("\n")}`,
+            title: shell.shell
+              ? "This plan reaches a command line"
+              : "I can't tell where these keys will go",
+            detail: `A command line runs what it is given. ${
+              shell.typed.length === 0
+                ? "This plan types nothing itself."
+                : `Baton would type:\n\n${shell.typed.join("\n")}`
+            }`,
             buttons: ["Type it", "Not now"],
             cancel: 1,
+            scoped: true,
           });
     if (response !== 0 || shellYes !== 0 || run !== current) {
       input.onActivity?.(null);
@@ -760,7 +775,7 @@ export const startScreenCompanion = (input: {
     }
     // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
     if (run !== current) return;
-    current.release = input.holdEscape(() => (current.cancelled = true));
+    current.release = input.holdEscape(() => (current.cancelled = true), "drive");
     driver ??= createInputDriver({
       platform: input.platform,
       toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
@@ -776,7 +791,12 @@ export const startScreenCompanion = (input: {
       type: d.type,
       press: d.press,
       cursor: () => Electron.screen.getCursorScreenPoint(),
-      foreground: async () => (await focusSoon())?.window ?? null,
+      ...(input.platform === "win32" && actions?.focus !== undefined
+        ? { foreground: keyboardWindow }
+        : {}),
+      shellAllowed: shell.ask,
+      pasteText: clipboard,
+      clipboard: () => Electron.clipboard.readText(),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       cancelled: () => current.cancelled || run !== current,
       progress: (i, action) => {
@@ -891,6 +911,15 @@ export const startScreenCompanion = (input: {
     void go().catch(fail).finally(finished);
   };
 
+  /** Null stops a drive, so it waits longer than a sentence does. */
+  const keyboardWindow = async () => {
+    const seen = await Promise.race([
+      actions?.focus?.().catch(() => null) ?? Promise.resolve(null),
+      sleep(KEYBOARD_WAIT_MS).then(() => null),
+    ]);
+    return seen?.window === undefined ? null : { window: seen.window, label: seen.label };
+  };
+
   const focusSoon = (): Promise<AssistantFocus | null> =>
     Promise.race([
       actions?.focus?.().catch(() => null) ?? Promise.resolve(null),
@@ -902,8 +931,8 @@ export const startScreenCompanion = (input: {
     // A stop never waits on the sidecar, and needs no window.
     if (instantDecision(text, runningMode() !== null) === null) {
       focus = askFocus ?? (await focusSoon());
-      askFocus = null;
     }
+    askFocus = null;
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
     input.onTrace?.({ said: text, focused: focus?.label ?? null, decision, recent: recent.length });

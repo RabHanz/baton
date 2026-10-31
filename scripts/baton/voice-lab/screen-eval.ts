@@ -69,7 +69,9 @@ const main = async () => {
   const image = NodeFS.readFileSync(flag("--image"));
   const workDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-eval-"));
   const base = { claudeBinary: "claude", workDir, env: process.env, platform: process.platform };
-  const after = arm === "after";
+  // "ask": capture on ask, so the router has no title, and only a look may carry one.
+  const noTitle = arm === "ask";
+  const after = arm !== "before";
   const prompt = after
     ? `${ASSISTANT_PROMPT_INTRO}\n\n${LOOK_PROMPT}`
     : NodeFS.readFileSync(flag("--before-prompt"), "utf8");
@@ -83,7 +85,7 @@ const main = async () => {
       running: null,
       direct: false,
       recent: [],
-      focused: after ? focused : null,
+      focused: after && !noTitle ? focused : null,
     });
     const routed = await router
       .ask([{ type: "text", text: turn }])
@@ -105,7 +107,10 @@ const main = async () => {
         { type: "image", mediaType: "image/jpeg", data: image },
         {
           type: "text",
-          text: after ? `${test.said}\n\n(the window he is using: ${focused})` : test.said,
+          text:
+            after && (!noTitle || routed?.route === "look")
+              ? `${test.said}\n\n(the window he is using: ${focused})`
+              : test.said,
         },
       ])
       .catch((error: Error) => `[failed: ${error.message}]`);

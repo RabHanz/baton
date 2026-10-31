@@ -43,19 +43,22 @@ html,body{overflow:hidden}
 body{padding:12px;box-sizing:border-box}
 #b{padding:15px 18px 14px;border-radius:16px}
 h1{margin:0;font-size:15.5px;font-weight:600;line-height:1.35}
-p{margin:6px 0 0;color:var(--soft);font-size:13.5px;line-height:1.5;white-space:pre-line;max-height:320px;overflow:auto}
+p{margin:6px 0 0;color:var(--soft);font-size:13.5px;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere;max-height:320px;overflow:auto}
 nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
 button{all:unset;padding:6px 14px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--text);background:rgba(255,255,255,.1);cursor:default}
 button.main{background:#fff;color:#111}
 button:hover{background:rgba(255,255,255,.18)}
 button.main:hover{background:#e8e8ec}
+button:disabled{opacity:.45}
 button:focus-visible{outline:2px solid var(--blue-soft);outline-offset:2px}
 </style></head><body><div id="b" class="glass" role="alertdialog" aria-labelledby="h" aria-describedby="d"><h1 id="h"></h1><p id="d"></p><nav id="n"></nav></div>
 <script>const {ipcRenderer}=require('electron');
 window.fill=(o)=>{document.getElementById('h').textContent=o.title;document.getElementById('d').textContent=o.detail;const n=document.getElementById('n');
  o.buttons.forEach((text,i)=>{const b=document.createElement('button');b.textContent=text;if(i===0)b.className='main';b.onclick=()=>ipcRenderer.send('baton-screen:prompt',i);n.appendChild(b);});
  addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:prompt',o.cancel);});
- n.firstChild.focus();return document.body.scrollHeight;};</script></body></html>`;
+ const d=document.getElementById('d'),m=n.firstChild,more=()=>d.scrollHeight-d.scrollTop-d.clientHeight>2;
+ if(more()){m.disabled=true;d.tabIndex=0;d.focus();d.addEventListener('scroll',()=>{if(!more())m.disabled=false;});}else m.focus();
+ return document.body.scrollHeight;};</script></body></html>`;
 
 export interface PromptInput {
   readonly title: string;
@@ -65,6 +68,8 @@ export interface PromptInput {
   /** Esc, the box being closed some other way, or running out of time. */
   readonly cancel: number;
   readonly expiresMs?: number;
+  /** Belongs to the lesson or drive: it goes when that ends. */
+  readonly scoped?: boolean;
 }
 
 /** A prompt nobody answers must not block the next one, and an old yes must not stand ready. */
@@ -104,6 +109,7 @@ export const createCompanionWindows = (input: {
     win: Electron.BrowserWindow;
     done: (index: number) => void;
     cancel: number;
+    scoped: boolean;
   } | null = null;
   let queue: Promise<unknown> = Promise.resolve();
 
@@ -175,7 +181,7 @@ export const createCompanionWindows = (input: {
             if (promptBox?.win === win) promptBox = null;
             if (!win.isDestroyed()) win.destroy();
           };
-          promptBox = { win, done, cancel: options.cancel };
+          promptBox = { win, done, cancel: options.cancel, scoped: options.scoped === true };
           win.on("closed", () => done(options.cancel));
           void win
             .loadURL(`data:text/html,${encodeURIComponent(PROMPT_DOCUMENT)}`)
@@ -207,7 +213,9 @@ export const createCompanionWindows = (input: {
     openAsk,
     ask,
     /** The thing it was asking about has ended. */
-    closePrompt: () => promptBox?.done(promptBox.cancel),
+    closePrompt: () => {
+      if (promptBox?.scoped === true) promptBox.done(promptBox.cancel);
+    },
     dispose: () => {
       closeAsk();
       promptBox?.done(promptBox.cancel);

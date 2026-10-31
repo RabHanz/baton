@@ -93,3 +93,75 @@ describe("a wake word over a long reply", () => {
     expect(r.heard[0]! / 16_000).toBeGreaterThan(5);
   });
 });
+
+describe("a pending yes, with Baton talking over it", () => {
+  const rigged = (heard: string) => {
+    let fire = false;
+    const effects: string[] = [];
+    const core = createVoiceCore({
+      wake: {
+        name: "fake",
+        reset: () => {},
+        process: () => {
+          const score = fire ? 1 : null;
+          fire = false;
+          return score;
+        },
+      },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => true },
+      stt: { name: "fake", transcribe: async () => heard },
+      router: {
+        route: async (effect) => {
+          effects.push(effect.kind);
+          return effect.kind === "command"
+            ? { kind: "needs_confirmation", token: "t", prompt: "Sure?", workSessionId: null }
+            : { kind: "none" };
+        },
+      },
+    });
+    const push = (seconds: number) => {
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    return { core, push, effects, wake: () => (fire = true) };
+  };
+  const overItsVoice = async (r: ReturnType<typeof rigged>) => {
+    r.core.activate("wake");
+    await r.core.idle();
+    await r.core.hear("send it to backend");
+    await r.core.idle();
+    r.core.setSpeaking(true);
+    r.push(0.5);
+    r.wake();
+    r.push(14);
+    await r.core.idle();
+  };
+
+  it("ignores a confirm that started over its voice", async () => {
+    const r = rigged("Freya, confirm.");
+    await overItsVoice(r);
+    expect(r.effects).not.toContain("confirmed");
+  });
+
+  it("still hears cancel", async () => {
+    const r = rigged("cancel");
+    await overItsVoice(r);
+    expect(r.effects).toContain("cancelled");
+  });
+});
+
+describe("speech that starts while he is cutting in", () => {
+  it("closes the gate when his words end", async () => {
+    const r = rig();
+    r.core.setSpeaking(true);
+    r.push(1);
+    r.wake();
+    r.push(0.2);
+    r.core.setSpeaking(true);
+    r.push(16);
+    await r.core.idle();
+    const after = r.heard.length;
+    r.push(16);
+    await r.core.idle();
+    expect(r.heard.length).toBe(after);
+  });
+});

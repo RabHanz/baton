@@ -79,9 +79,9 @@ export const modeForApp = (app: {
 };
 
 const SECRET_APP =
-  /^(1password|bitwarden|keepass(xc)?|lastpass|dashlane|nordpass|enpass|protonpass|proton pass|roboform|keeper|authy|credentialuibroker|consent|logonui|mstsc)$/;
+  /^(1password|bitwarden|keepass(xc)?|lastpass|dashlane|nordpass|enpass|protonpass|proton pass|roboform|keeper\w*|authy|credentialuibroker|consent|logonui|mstsc)$/;
 const SECRET_TITLE =
-  /\b(password|passcode|sign[ -]?in|log[ -]?in|banking|online bank|inprivate|incognito)\b/i;
+  /\b(passwords?|passcode|sign[ -]?in|log[ -]?(in|on)|bank|banking|barclays|chase|hsbc|lloyds|natwest|santander|monzo|revolut|paypal|private browsing|inprivate|incognito)\b/i;
 
 /**
  * The most a dictation here may do. Password managers and sign-in pages stay on this machine
@@ -94,6 +94,19 @@ export const cleanupLevelFor = <Level extends string>(
   const exe = app.exe.toLowerCase().replace(/\.(exe|app)$/, "");
   return exe.length === 0 || SECRET_APP.test(exe) || SECRET_TITLE.test(app.title) ? "local" : level;
 };
+
+/** The strictest any of these apps allows. */
+export const strictestCleanup = <Level extends string>(
+  level: Level | "local",
+  apps: ReadonlyArray<{ readonly exe: string; readonly title: string }>,
+): Level | "local" =>
+  apps.reduce<Level | "local">((most, app) => cleanupLevelFor(most, app), level);
+
+/** A "claude" saved by a build where it was the default was never his choice. */
+export const cleanupFromSaved = <Saved extends Record<string, unknown>>(saved: Saved): Saved =>
+  saved["dictationCleanup"] === "claude" && saved["dictationCleanupChosen"] !== true
+    ? { ...saved, dictationCleanup: "local" }
+    : saved;
 
 /** The tray's choices for one app. Choosing Automatic forgets his choice for it. */
 export const modeMenu = (input: {

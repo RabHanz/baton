@@ -370,9 +370,11 @@ export const validateDrivePlan = (value: unknown, shots: ReadonlyArray<ScreenSho
         typeof text !== "string" ||
         text.length === 0 ||
         text.length > 2000 ||
-        /[\u0000-\u001f]/.test(text)
+        /[\u0000-\u001f\u2028\u2029]|\p{Cf}|(?! )\p{Zs}/u.test(text)
       )
-        throw new Error(`${where}: typed text must be one line of at most 2000 characters.`);
+        throw new Error(
+          `${where}: typed text must be one line of at most 2000 characters, with plain spaces only.`,
+        );
     }
     if (kind === "press") {
       const keys = action["keys"];
@@ -450,43 +452,130 @@ export const describeAction = (action: DriveAction, whole = false): string => {
   );
 };
 
-export const describeDrivePlan = (plan: DrivePlan): string =>
-  plan.actions.map((a, i) => `${i + 1}. ${describeAction(a, true)}`).join("\n");
+const isPaste = (action: DriveAction): boolean => {
+  if (action.kind !== "press") return false;
+  const keys = new Set(action.keys.map((k) => k.toLowerCase()));
+  return (
+    ((keys.has("ctrl") || keys.has("control")) && keys.has("v")) ||
+    (keys.has("shift") && keys.has("insert"))
+  );
+};
+export const planPastes = (plan: DrivePlan): boolean => plan.actions.some(isPaste);
+const rightClicks = (plan: DrivePlan): boolean =>
+  plan.actions.some((a) => a.kind === "click" && a.button === "right");
 
-/** Every word a plan carries: its title, each reason, and all it would type. */
-const planWords = (plan: DrivePlan): ReadonlyArray<string> => [
-  plan.title,
-  ...plan.actions.flatMap((a) => [a.why ?? "", a.kind === "type" ? a.text : ""]),
-];
+/** A paste is typing text the plan does not contain, so its step shows that text. */
+export const describeDrivePlan = (plan: DrivePlan, clipboard = ""): string =>
+  plan.actions
+    .map((a, i) => {
+      const line = `${i + 1}. ${describeAction(a, true)}`;
+      if (!isPaste(a)) return line;
+      return `${line}, which pastes ${clipboard.length === 0 ? "nothing: the clipboard is empty" : `“${clipboard}”`}`;
+    })
+    .join("\n");
+
+/** Single keys pressed in a row spell a word as surely as typing it. */
+const typedRuns = (plan: DrivePlan): ReadonlyArray<string> => {
+  const runs: string[] = [];
+  let spelled = "";
+  const flush = () => {
+    if (spelled.length > 0) runs.push(spelled);
+    spelled = "";
+  };
+  for (const a of plan.actions) {
+    if (a.kind === "press" && a.keys.length === 1 && a.keys[0]!.length === 1) spelled += a.keys[0];
+    else if (a.kind === "press" && a.keys[0]?.toLowerCase() === "space" && a.keys.length === 1)
+      spelled += " ";
+    else {
+      flush();
+      if (a.kind === "type") runs.push(a.text);
+    }
+  }
+  flush();
+  return runs;
+};
+
+/** Every word a plan carries. Typed text also joined, so a command split across steps is whole. */
+const planWords = (plan: DrivePlan): ReadonlyArray<string> => {
+  const typed = typedRuns(plan);
+  return [
+    plan.title,
+    ...plan.actions.map((a) => a.why ?? ""),
+    ...typed,
+    typed.join(""),
+    typed.join(" "),
+  ];
+};
 
 /** What the sentence list never needed: commands as typed, not as said. */
-const DANGEROUS_COMMAND =
-  /\brm\s+-\w*[rf]|\bgit\s+push\b.*(--force|\s-f\b)|\bgit\s+reset\s+--hard|\b(del|rd|rmdir)\s+\/[sq]|\bformat\s+[a-z]:|\b(iex|invoke-expression)\b|\|\s*(sh|bash|iex|powershell|pwsh)\b/i;
+const DANGEROUS_COMMAND = new RegExp(
+  [
+    String.raw`\brm\s+(-\w*[rf]|--recursive|--force)`,
+    String.raw`\bgit\s+push\b.*(--force|\s-f\b|\s\+\S)`,
+    String.raw`\bgit\s+reset\s+--hard`,
+    String.raw`\b(del|erase|rd|rmdir)\b.*\/[sqf]\b`,
+    String.raw`\bremove-item\b.*-(recurse|force)`,
+    String.raw`\bformat\s+[a-z]:`,
+    String.raw`\bformat-volume\b`,
+    String.raw`\b(iex|invoke-expression|mshta|certutil|bitsadmin|regsvr32|rundll32)\b`,
+    String.raw`\|\s*(sudo\s+)?(sh|bash|zsh|iex|powershell|pwsh|python)\b`,
+  ].join("|"),
+  "i",
+);
 
-/** The high-risk subject anywhere in a plan, or null. The same list a sentence is held to, and more. */
-export const planHighRisk = (plan: DrivePlan): string | null => {
-  for (const words of planWords(plan)) {
-    const subject = highRiskSubject(words);
+/** Quoting tricks a shell removes before it runs anything. */
+const unquoted = (text: string): string =>
+  text.replace(/\$\{?IFS\}?/g, " ").replace(/['"\`^+()]/g, (mark) => (mark === "+" ? "+" : ""));
+
+/**
+ * The high-risk subject anywhere in a plan or what it would paste, or null. A second layer behind
+ * Run it, not a boundary: no list catches every spelling of a command (D114).
+ */
+export const planHighRisk = (plan: DrivePlan, clipboard = ""): string | null => {
+  const words = planPastes(plan) ? [...planWords(plan), clipboard] : planWords(plan);
+  for (const text of words) {
+    const subject = highRiskSubject(text);
     if (subject !== null) return subject;
-    if (DANGEROUS_COMMAND.test(words)) return "a destructive command";
+    if (DANGEROUS_COMMAND.test(text) || DANGEROUS_COMMAND.test(unquoted(text))) {
+      return "a destructive command";
+    }
   }
   return null;
 };
 
 const SHELL_NAME =
-  /^\s*(cmd|powershell|pwsh|wt|bash|wsl|terminal|windows terminal|command prompt)(\.exe)?\s*$/i;
-const SHELL_WORD = /\b(command prompt|powershell|pwsh|terminal|cmd|shell|bash|wsl)\b/i;
+  /^\s*(cmd|powershell|pwsh|wt|bash|zsh|wsl|ssh|python\d?|node|ubuntu|debian|kali|terminal|windows terminal|command prompt)(\.exe)?\b/i;
+const SHELL_WORD =
+  /\b(command prompt|powershell|pwsh|terminal|console|cmd|shell|bash|zsh|wsl|ssh|python|node|ubuntu|debian)\b/i;
+/** Editors count: their terminal shares the app's window and name. */
 const SHELL_APP =
-  /^(cmd|powershell|pwsh|windowsterminal|wt|conhost|bash|wsl|mintty|alacritty|wezterm)(\.exe)?\s*:/i;
+  /^(cmd|powershell|powershell_ise|pwsh|windowsterminal|wt|conhost|openconsole|bash|zsh|wsl|wslhost|mintty|alacritty|wezterm|wezterm-gui|ssh|putty|python\d?|pythonw?|node|ubuntu\d*|debian|kali|code|cursor|windsurf|idea64|pycharm64)(\.exe)?\s*:/i;
 
-/** What a plan would type into a command line, for a second yes. Empty when it types into none. */
-export const shellTyping = (plan: DrivePlan, focused: string | null): ReadonlyArray<string> => {
-  const typed = plan.actions.flatMap((a) => (a.kind === "type" ? [a.text] : []));
+export const isShellWindow = (label: string): boolean => SHELL_APP.test(label);
+
+export interface ShellCheck {
+  /** A command line is in reach of this plan. */
+  readonly shell: boolean;
+  /** He must say yes a second time. Also when Baton could not tell what has the keyboard. */
+  readonly ask: boolean;
+  /** Pasting or right-clicking in one: text nobody read would run. Refused. */
+  readonly refused: boolean;
+  readonly typed: ReadonlyArray<string>;
+}
+
+export const shellCheck = (plan: DrivePlan, focused: string | null): ShellCheck => {
+  const typed = typedRuns(plan);
   const shell =
-    (focused !== null && SHELL_APP.test(focused)) ||
+    (focused !== null && isShellWindow(focused)) ||
     typed.some((text) => SHELL_NAME.test(text)) ||
     planWords(plan).some((words) => SHELL_WORD.test(words));
-  return shell ? typed : [];
+  const keyboard = plan.actions.some((a) => a.kind === "type" || a.kind === "press");
+  return {
+    shell,
+    ask: shell || (focused === null && keyboard),
+    refused: shell && (planPastes(plan) || rightClicks(plan)),
+    typed,
+  };
 };
 
 // ── Running a plan ──────────────────────────────────────────────────────────
@@ -502,7 +591,15 @@ export interface DriveHost {
   readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
   readonly cursor: () => { readonly x: number; readonly y: number };
   /** The window with the keyboard, or null when unknown. */
-  readonly foreground?: () => Promise<number | null>;
+  readonly foreground?: () => Promise<{
+    readonly window: number;
+    readonly label: string;
+  } | null>;
+  /** He said yes to a command line. Without it a drive stops on reaching one. */
+  readonly shellAllowed?: boolean;
+  /** What Run it showed for a paste, and the clipboard now: a page may have swapped it. */
+  readonly pasteText?: string;
+  readonly clipboard?: () => string;
   readonly sleep: (ms: number) => Promise<void>;
   /** Esc, the tray, or "stop" by voice. */
   readonly cancelled: () => boolean;
@@ -532,7 +629,7 @@ export const runDrivePlan = async (
 ): Promise<DriveResult> => {
   // From the start, so a plan with no pointer step still sees his hand on the mouse.
   let expected: { x: number; y: number } | null = host.cursor();
-  let window = (await host.foreground?.()) ?? null;
+  let window = (await host.foreground?.())?.window ?? null;
   let held = false;
   const guard = (): string | null => {
     if (host.cancelled()) return "Stopped.";
@@ -554,11 +651,25 @@ export const runDrivePlan = async (
       if (stop !== null) return { kind: "stopped", step: i, reason: stop };
       host.progress?.(i, action);
       const shot = shotFor(shots, action.screen ?? null);
-      if (action.kind === "type" || action.kind === "press") {
-        const now = (await host.foreground?.()) ?? null;
-        if (window !== null && now !== null && now !== window) {
+      if ((action.kind === "type" || action.kind === "press") && host.foreground !== undefined) {
+        const now = await host.foreground();
+        if (now === null) {
+          return { kind: "stopped", step: i, reason: "I couldn't tell where the keys would go." };
+        }
+        if (window !== null && now.window !== window) {
           return { kind: "stopped", step: i, reason: "The window changed, so I stopped." };
         }
+        if (host.shellAllowed !== true && isShellWindow(now.label)) {
+          return { kind: "stopped", step: i, reason: "That reached a command line, so I stopped." };
+        }
+        window = now.window;
+      }
+      if (isPaste(action) && host.clipboard !== undefined && host.clipboard() !== host.pasteText) {
+        return {
+          kind: "stopped",
+          step: i,
+          reason: "The clipboard changed since you said yes, so I stopped.",
+        };
       }
       switch (action.kind) {
         case "click":
@@ -594,8 +705,8 @@ export const runDrivePlan = async (
           break;
       }
       await host.sleep(250);
-      // A step may rightly open a window; only a change between steps is someone else's.
-      window = (await host.foreground?.()) ?? null;
+      // A click may rightly open a window. Typing never does, so a switch during it stays caught.
+      if (action.kind !== "type") window = (await host.foreground?.())?.window ?? null;
       if (action.expect !== undefined) {
         const verdict = await host.verify(action, i);
         if (!verdict.ok) return { kind: "stopped", step: i, reason: verdict.reason };

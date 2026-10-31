@@ -93,21 +93,34 @@ const main = async () => {
     env: process.env,
     platform: process.platform,
   };
-  const router = startVisionSession({
-    ...base,
-    model: "haiku",
-    systemPrompt: BRAIN_ROUTER_PROMPT,
-    timeoutMs: 30_000,
-  });
+  const startRouter = () =>
+    startVisionSession({
+      ...base,
+      model: "haiku",
+      systemPrompt: BRAIN_ROUTER_PROMPT,
+      timeoutMs: 30_000,
+    });
+  let router = startRouter();
+  let turns = 0;
+  // As the app: a title is sent only with capture allowed, and the router is dropped every 6 turns.
+  const focused = flag("--focused", "");
   const out = NodeFS.createWriteStream(flag("--out", "brain-table.jsonl"));
   const write = (value: unknown) => out.write(`${JSON.stringify(value)}\n`);
   for (const [sentence, expected, note] of SENTENCES) {
     const started = Date.now();
     const decision = await decide(
       sentence,
-      { running: null, direct: false, recent: [] },
+      { running: null, direct: false, recent: [], focused: focused === "" ? null : focused },
       {
-        ask: (turn) => router.ask([{ type: "text", text: turn }]),
+        ask: (turn) => {
+          if (turns >= 6) {
+            router.dispose();
+            router = startRouter();
+            turns = 0;
+          }
+          turns += 1;
+          return router.ask([{ type: "text", text: turn }]);
+        },
         grammarPlaces: async (said) => resolveBatonIntent(said, fleet).outcome === "resolved",
       },
     );
@@ -125,7 +138,11 @@ const main = async () => {
               ? "router refuses high risk"
               : resolution.risk === "medium"
                 ? "read back, needs confirm"
-                : "runs: low risk";
+                : "restated" in decision &&
+                    decision.restated === true &&
+                    !resolution.command.kind.startsWith("status_")
+                  ? "reworded, needs confirm"
+                  : "runs: low risk";
     write({
       sentence,
       expected,

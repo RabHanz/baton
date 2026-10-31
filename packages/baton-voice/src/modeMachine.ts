@@ -121,6 +121,7 @@ const wakePrefix = (words: ReadonlyArray<string>): RegExp => {
 };
 const AFFIRM =
   /^(?:confirm(?:ed)?|yes(?:,? (?:do it|confirm|go ahead))?|go ahead|do it|approve(?:d)?)[.!]?$/i;
+export const isAffirmative = (text: string): boolean => AFFIRM.test(text);
 const DECLINE = /^(?:no|cancel|stop|don't|do not|never mind|nevermind|abort)\b/i;
 const SLEEP =
   /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|goodbye)[.!]?$/i;
