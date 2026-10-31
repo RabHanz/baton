@@ -191,6 +191,9 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: [
+      // Baton's lab and proof scripts run by hand on a laptop, not in the app.
+      "scripts/baton/voice-lab/**",
+      "scripts/baton/live/**",
       ".repos",
       ".repos/**",
       "infra/task-cache/vendor/**",

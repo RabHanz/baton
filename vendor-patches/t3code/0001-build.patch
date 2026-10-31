@@ -353,3 +353,17 @@ index e6d38a17e2d876bf3a91fb368cf4397428c73b3b..3250b4ff7c96e907184ae6a546def1dc
      {
        "name": "entities",
        "version": "8.1.0",
+diff --git a/vite.config.ts b/vite.config.ts
+index 468837c2556863ee8e9f462d2a7edaa8c2a20fa1..e15612d4471c7219c20b6b1ad126802a41d5af68 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -191,6 +191,9 @@ export default defineConfig({
+   },
+   lint: {
+     ignorePatterns: [
++      // Baton's lab and proof scripts run by hand on a laptop, not in the app.
++      "scripts/baton/voice-lab/**",
++      "scripts/baton/live/**",
+       ".repos",
+       ".repos/**",
+       "infra/task-cache/vendor/**",
