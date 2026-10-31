@@ -137,7 +137,7 @@ describe("validateDrivePlan (clicky-windows' rules)", () => {
     [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, script: "x" }] }, "unexpected fields"],
     [{ title: "x", actions: [{ kind: "click", x: 1 }] }, "missing y"],
     [{ title: "x", actions: [{ kind: "click", x: 1281, y: 1 }] }, "outside the screenshot"],
-    [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, screen: 3, confidence: null }] }, "not captured"],
+    [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, screen: 3 }] }, "not captured"],
     [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, button: "middle" }] }, "mouse button"],
     [{ title: "x", actions: [{ kind: "type", text: "a\nb" }] }, "one line"],
     [{ title: "x", actions: [{ kind: "press", keys: ["win", "r"] }] }, "Windows key"],
@@ -210,7 +210,7 @@ describe("runDrivePlan", () => {
         { kind: "click", x: 640, y: 360, why: "search box", expect: "box focused" },
         { kind: "type", text: "baton" },
         { kind: "press", keys: ["Enter"] },
-        { kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2, confidence: null },
+        { kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2 },
       ],
     },
     shots,
@@ -275,7 +275,7 @@ describe("runDrivePlan", () => {
       cursor: () => ({ x: 1707, y: 0 }),
     });
     const dragOnly = validateDrivePlan(
-      { title: "d", actions: [{ kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2, confidence: null }] },
+      { title: "d", actions: [{ kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2 }] },
       shots,
     );
     await expect(runDrivePlan(dragOnly, shots, host)).rejects.toThrow("driver died");
