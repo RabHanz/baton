@@ -426,6 +426,8 @@ export const startScreenCompanion = (input: {
 
   const fail = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
+    // He stopped it, and that ended the conversation under the question in flight.
+    if (run === null && message.startsWith("Claude stopped")) return;
     say(message);
     linger("Baton", message);
     input.onActivity?.(null);

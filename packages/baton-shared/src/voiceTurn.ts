@@ -64,7 +64,7 @@ export const TURN_LIMIT_MS = 90_000;
 export const SILENT_AFTER_MS = 4_000;
 
 const NOTHING_HEARD = "Didn't catch that";
-const NOT_HEARING = "Not hearing anything. Check your mic.";
+const NOT_HEARING = "Not hearing your mic";
 const CAPTION_CHARS = 90;
 
 const short = (text: string): string =>

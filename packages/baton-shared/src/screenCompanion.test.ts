@@ -51,6 +51,7 @@ describe("parseReply", () => {
       y: 300,
       label: "terminal",
       screen: 2,
+      confidence: null,
     });
     const none = parseReply("html is the skeleton of a page. [POINT:none]");
     expect(none.point).toBeNull();

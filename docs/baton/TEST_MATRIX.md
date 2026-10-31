@@ -142,3 +142,9 @@ first phase onward and are checked on every PR rather than at the end:
   directory each proof ran against being named in the PR.
 - **§30.14** — no provider auth secret is copied to a client to make something work. Checked by the
   diff: nothing under `baton/` reads a credential file or forwards one over the wire.
+
+## Queued: companion and pill off Windows (2026-10-31)
+
+Windows only for now, by the Director's order. Not run on macOS or Linux: pill, overlay, prompt and ask
+windows, hidden-page playback, TTS. Also queued: macOS Drive with Accessibility, signing, Wayland portal
+consent for capture, and whether `focusable: false` and always-on-top hold on each compositor.

@@ -103,6 +103,9 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
 | `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)              | Microphone       |
 | `enabled`                                  | `false`: listening is opt-in           | Always listening |
+| `sounds`                                   | `true`                                 | Sounds           |
+| `pillAtRest`                               | `false`                                | Pill             |
+| `pillEdge`                                 | `bottom`; `top`                        | Pill             |
 
 Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
 "Always listening" off. The wake, VAD and feature models ship with the app. Parakeet (740 MB,
@@ -111,7 +114,7 @@ Download speech model, a first press of Ctrl+Alt+Shift+F8, or ticking "Always li
 toggle keys exist only after that. Ctrl+Alt+Shift+F8 toggles dictation for Airdeck.
 
 Text pastes only into the window focused when recording began. If that changed, or nothing read the
-clipboard, it shows on the HUD for 20 s and stays under Tray → Dictation → Copy last dictation. Esc
+clipboard, the pill says so and the text stays under Tray → Dictation → Copy last dictation. Esc
 cancels a recording; five minutes stops it and the text is kept, not pasted.
 
 ## Measuring it
@@ -143,3 +146,9 @@ word accuracy: 1.00 1.00 1.00 1.00 mean=1.00
 Wake: 1 of 1 true wake detected, 0 false wakes on the no-wake fixture. Four synthetic
 clips from one synthetic voice is a smoke test. It says nothing yet about the DJI mic,
 room noise or the Director's own voice.
+
+## The pill and speech
+
+The HUD is gone: at rest nothing is on screen. The pill (D112) shows the state, the wake word, the
+routing target and what was heard. Speech plays from a hidden page (`voicePlayer.ts`), one path for
+every platform, and the pill follows the voice's real level.

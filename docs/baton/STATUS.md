@@ -1067,3 +1067,8 @@ What the review did **not** cover, and should before daily use: a dependency
 audit of the fork against upstream, a look at the pairing/token lifetimes T3
 ships with, and a second pair of eyes on the WebSocket authentication path,
 which Baton inherits unchanged and did not test.
+
+## Queued: companion off Windows (2026-10-31)
+
+See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages/baton-shared`
+(`companionPacing`, `voiceTurn`), so those platforms need wiring, not a rewrite.
