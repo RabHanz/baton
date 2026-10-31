@@ -135,7 +135,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..5c16b76796dce2f1f8c51bfe14ce422f
      ),
    );
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..f8cf150d7f56d07285d87dc565529e7853f19f40 100644
+index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..1d9eac62b7c364b3c1a34076da9a1575fd5dee5f 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -243,7 +243,7 @@ index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..f8cf150d7f56d07285d87dc565529e78
 +        ...process.env,
 +        // A portable floor with AVX2: the runner's CPU may be newer than the user's.
 +        TRANSCRIBE_CMAKE_ARGS:
-+          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON",
++          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
 +        // Nothing installs the VC++ redistributable, so the exe must not need it.
 +        RUSTFLAGS: "-C target-feature=+crt-static",
 +      },

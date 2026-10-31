@@ -2404,7 +2404,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
         ...process.env,
         // A portable floor with AVX2: the runner's CPU may be newer than the user's.
         TRANSCRIBE_CMAKE_ARGS:
-          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON",
+          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
         // Nothing installs the VC++ redistributable, so the exe must not need it.
         RUSTFLAGS: "-C target-feature=+crt-static",
       },
