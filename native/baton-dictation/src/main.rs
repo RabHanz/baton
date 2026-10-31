@@ -856,6 +856,15 @@ fn cli_record(args: &[String]) -> Result<(), String> {
 }
 
 fn main() {
+    // Without this Windows scales every coordinate here, so at 175 % the window and the element
+    // under a physical point are the wrong ones.
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::UI::HiDpi::{
+            SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        };
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
     if let Err(e) = init_backends_with(None::<&Path>, BackendMask::CPU) {
         emit(json!({"ev": "error", "message": format!("backend: {e}")}));
         std::process::exit(2);

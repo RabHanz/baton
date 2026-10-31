@@ -46,7 +46,9 @@ unsafe fn at_point(automation: &IUIAutomation, label: &str, x: i32, y: i32) -> w
                 "width": rect.right - rect.left, "height": rect.bottom - rect.top,
             }));
         }
-        element = walker.GetParentElement(&element)?;
+        // The top of the tree answers with no element, which is simply the end of the walk.
+        let Ok(parent) = walker.GetParentElement(&element) else { break };
+        element = parent;
     }
     Ok(json!({"found": false, "elements": 1}))
 }

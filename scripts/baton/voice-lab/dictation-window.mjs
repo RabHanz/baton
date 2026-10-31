@@ -115,7 +115,10 @@ const windows = async () => {
   // The About box also never reads the clipboard.
   spawn("winver.exe", [], { detached: true });
   await sleep(2_000);
+  ps(`(New-Object -ComObject WScript.Shell).AppActivate('About Windows') | Out-Null`);
+  await sleep(500);
   const other = await foreground(s, 4);
+  if (other.window === a.window) return check("the About box took the keyboard", false, other);
   const before = a.title;
   s.send({ cmd: "paste", id: 5, text: "must not arrive", target: a.window });
   const moved = await s.until((e) => e.ev === "pasted" && e.id === 5, 5_000);
