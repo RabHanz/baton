@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
- * `baton-dictation.exe` (native/baton-dictation): Handy's engine stack as a child process. It owns
+ * `baton-dictation` (native/baton-dictation): Handy's engine stack as a child process. It owns
  * the hold and toggle keys, the recording, Parakeet and the paste; this file is the line protocol.
  * The same binary is the wake path's microphone (`makeSidecarAudioInput`), so what voice-lab
  * measures is exactly what the product hears.
@@ -28,12 +28,19 @@ export interface DictationConfig {
   readonly channel: number | null;
   readonly paste: PasteMethod;
   readonly language: string | null;
+  /** The sidecar leaves the paste to the desktop, which cleans the text up first. */
+  readonly cleanup: boolean;
+}
+
+export interface FocusedApp {
+  readonly exe: string;
+  readonly title: string;
 }
 
 export type DictationEvent =
   | { readonly ev: "ready" }
   | { readonly ev: "configured" }
-  | { readonly ev: "recording" }
+  | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
   | { readonly ev: "idle" }
   | { readonly ev: "error"; readonly message: string }
@@ -47,6 +54,9 @@ export type DictationEvent =
       readonly pasteError?: string | null;
       readonly dictated?: boolean;
       readonly pasted?: boolean;
+      /** The window it was spoken for; null when it must not be pasted. */
+      readonly target?: number | null;
+      readonly releaseMs?: number | null;
     };
 
 export interface SidecarDevice {
@@ -61,19 +71,27 @@ export interface DictationSidecar {
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   readonly transcribe: (wavPath: string) => Promise<string>;
   readonly paste: (text: string) => Promise<void>;
+  /** False when that window is no longer the focused one, and nothing was pasted. */
+  readonly pasteInto: (text: string, target: number) => Promise<boolean>;
+  readonly foreground: () => Promise<FocusedApp>;
   readonly dispose: () => void;
 }
 
-/** Packaged next to the app; BATON_DICTATION points a dev build at a local exe. */
+/** Packaged next to the app; BATON_DICTATION points a dev build at a local binary. */
 export const resolveDictationBinary = (input: {
   readonly resourcesPath: string;
+  readonly platform: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly exists?: (path: string) => boolean;
 }): string | null => {
   const exists = input.exists ?? NodeFS.existsSync;
   const candidates = [
     input.env["BATON_DICTATION"],
-    NodePath.join(input.resourcesPath, "baton-voice", "baton-dictation.exe"),
+    NodePath.join(
+      input.resourcesPath,
+      "baton-voice",
+      input.platform === "win32" ? "baton-dictation.exe" : "baton-dictation",
+    ),
   ];
   return candidates.find((path): path is string => path !== undefined && exists(path)) ?? null;
 };
@@ -148,7 +166,16 @@ export const startDictationSidecar = (input: {
       }
       if (event["ev"] === "pasted") {
         const error = typeof event["error"] === "string" ? event["error"] : undefined;
-        return settle(event["id"] as number, error === undefined ? {} : { error });
+        return settle(
+          event["id"] as number,
+          error === undefined ? { value: event["moved"] !== true } : { error },
+        );
+      }
+      if (event["ev"] === "foreground") {
+        const { app, title } = event as { app?: string; title?: string };
+        return settle(event["id"] as number, {
+          value: { exe: app ?? "", title: title ?? "" } satisfies FocusedApp,
+        });
       }
       if (event["ev"] === "text" && event["dictated"] !== true) {
         const error = typeof event["error"] === "string" ? event["error"] : undefined;
@@ -196,6 +223,8 @@ export const startDictationSidecar = (input: {
       }),
     transcribe: (wav) => call<string>({ cmd: "transcribe", wav }),
     paste: (text) => call<void>({ cmd: "paste", text }),
+    pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
+    foreground: () => call<FocusedApp>({ cmd: "foreground" }),
     dispose: () => {
       disposed = true;
       child?.stdin.end();

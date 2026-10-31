@@ -1,6 +1,8 @@
 //! Baton's native dictation: Handy's engine stack (transcribe.cpp, handy-recorder, handy-keys) and
 //! its Windows paste, behind JSON lines on stdin/stdout, so Electron stays out of the audio path.
 //! See docs/baton/VOICE.md. Run with no arguments it serves; the subcommands are for voice-lab.
+#[cfg(unix)]
+mod desktop_unix;
 mod keys;
 mod live;
 #[cfg(windows)]
@@ -14,7 +16,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use enigo::{Enigo, Settings};
+use enigo::Enigo;
+#[cfg(not(target_os = "linux"))]
+use enigo::Settings;
 use handy_keys::{Hotkey, HotkeyManager, HotkeyState};
 use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
@@ -295,16 +299,22 @@ fn recorder_config(device: Option<&str>, channel: Option<u16>) -> Result<Recorde
 }
 
 fn paste_text(enigo: &mut Option<Enigo>, text: &str, method: PasteMethod) -> Result<(), String> {
-    if enigo.is_none() {
-        *enigo = Some(Enigo::new(&Settings::default()).map_err(|e| e.to_string())?);
-    }
-    let enigo = enigo.as_mut().expect("set above");
-    #[cfg(windows)]
-    return paste_windows::run(text, method, enigo);
-    #[cfg(not(windows))]
+    // Linux sends its chord through external tools: enigo there is X11 only.
+    #[cfg(target_os = "linux")]
     {
-        let _ = (text, method, enigo);
-        Err("paste is Windows only".to_string())
+        let _ = enigo;
+        desktop_unix::paste(text, method)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        if enigo.is_none() {
+            *enigo = Some(Enigo::new(&Settings::default()).map_err(|e| e.to_string())?);
+        }
+        let enigo = enigo.as_mut().expect("set above");
+        #[cfg(windows)]
+        return paste_windows::run(text, method, enigo);
+        #[cfg(not(windows))]
+        return desktop_unix::paste(text, method, enigo);
     }
 }
 
@@ -414,7 +424,10 @@ fn foreground_window() -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 as isize }
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+use desktop_unix::{foreground_window, window_app};
+
+#[cfg(not(any(windows, unix)))]
 fn foreground_window() -> isize {
     0
 }
@@ -447,7 +460,7 @@ fn window_app(window: isize) -> (String, String) {
     (exe, title)
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, unix)))]
 fn window_app(_window: isize) -> (String, String) {
     (String::new(), String::new())
 }
@@ -596,6 +609,10 @@ fn serve() {
                         }
                     }
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
+                    "foreground" => {
+                        let (app, title) = window_app(foreground_window());
+                        emit(json!({"ev": "foreground", "id": value["id"].as_u64(), "app": app, "title": title}));
+                    }
                     "toggle" => {
                         if recording.is_some() {
                             finish(&mut recording, &job_tx, true);
@@ -812,6 +829,12 @@ fn main() {
         }
         Some("devices") => {
             println!("{}", devices_json());
+            Ok(())
+        }
+        Some("foreground") => {
+            let window = foreground_window();
+            let (app, title) = window_app(window);
+            println!("{}", json!({"window": window, "app": app, "title": title}));
             Ok(())
         }
         Some("transcribe") => cli_transcribe(&args[1..]),
