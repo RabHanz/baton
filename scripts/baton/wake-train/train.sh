@@ -26,6 +26,7 @@ pip install -q --no-cache-dir "numpy<2" "scipy<1.12" piper-phonemize==1.1.0 webr
   deep-phonemizer==0.0.19 onnx==1.15.0 onnxscript==0.1.0.dev20240101 pyyaml tqdm huggingface_hub soundfile pyarrow \
   onnxruntime==1.17.3 scikit-learn requests
 pip install -q --no-cache-dir --no-deps -e ./openWakeWord
+pip install -q --no-cache-dir --no-deps piper-tts==1.2.0
 
 mkdir -p openWakeWord/openwakeword/resources/models
 for f in embedding_model melspectrogram; do
@@ -39,6 +40,7 @@ python "$here/fetch_data.py"
 python "$here/make_config.py" "$WORD" "$N_SAMPLES" "$STEPS" > "$WORD.yaml"
 df -h . | tail -1
 
+PYTHONPATH="$here" python "$here/british_clips.py" "$WORD" "$N_SAMPLES"
 common=(--training_config "$WORD.yaml")
 python "$here/run_train.py" "${common[@]}" --generate_clips
 python "$here/run_train.py" "${common[@]}" --augment_clips
