@@ -3004,7 +3004,8 @@ Every sentence reaches the speaker when it exists, so a cancel covers the queue,
 stays quiet after he silences it. A wake word over speech holds what he says next against the echo gate. A
 "confirm" that starts over Baton's own voice is ignored, since a reply can say the wake word and the word
 itself; he says it again after the voice stops. Stop and cancel still count. Limit: with nothing pending, a
-reply that says a wake word and then a command is heard as far as the cancel lets it, which is a fragment.
+reply that says a wake word and then a command is heard as far as the cancel lets it, and the pre-roll can add
+Baton's own words. Dropping the pre-roll over its voice was tried on real audio and lost his first words.
 
 Dictation clean-up is local until he rules otherwise (D105), and a "claude" saved by an earlier build of this
 branch does not stick: it needs his own click. Even on `claude`, password managers, sign-in and bank pages,

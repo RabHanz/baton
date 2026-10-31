@@ -319,8 +319,7 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     if (score !== null) {
-      const overItself = hearingItself();
-      if (overItself) {
+      if (hearingItself()) {
         speaking = false;
         echoUntil = 0;
         barged = true;
@@ -329,9 +328,10 @@ export const createVoiceCore = (input: {
       emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });
       // Start the utterance at the wake: "hey jarvis, what's…" is one breath.
       if (segment === null) {
-        // Over its own voice the pre-roll is Baton's words, so his start here.
-        segment = overItself ? [] : [...preRoll];
-        segmentSamples = overItself ? 0 : preRollSamples;
+        // Kept over its own voice too: the detector fires late, and dropping this cost his first
+        // words ("what needs me" came out "hate me").
+        segment = [...preRoll];
+        segmentSamples = preRollSamples;
         speechSamples = msToSamples(seg.minSpeechMs);
       }
       silenceSamples = 0;

@@ -100,15 +100,15 @@ const main = async () => {
   // "Run it" is pressed the way he would, on the real prompt, and logged.
   const pressRun = setInterval(() => {
     // Without LAB_RUN_PLANS every prompt is declined, so a lab run can never type anything.
-    const wanted = process.env["LAB_RUN_PLANS"] === "1" ? "run it" : "not now";
+    const plans = process.env["LAB_RUN_PLANS"] === "1";
     for (const win of Electron.BrowserWindow.getAllWindows()) {
       void win.webContents
         .executeJavaScript(
-          `(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.toLowerCase()===${JSON.stringify(wanted)});if(b){b.click();return true}return false})()`,
+          `(()=>{const b=[...document.querySelectorAll('button')].find(x=>${JSON.stringify(plans ? ["run it", "type it"] : ["not now"])}.includes(x.textContent.toLowerCase()));if(b){b.click();return true}return false})()`,
         )
         .then((pressed) => {
           if (!pressed) return;
-          write({ pressed: wanted, at: Date.now() });
+          write({ pressed: plans ? "yes" : "not now", at: Date.now() });
           stopSoon();
         })
         .catch(() => undefined);
