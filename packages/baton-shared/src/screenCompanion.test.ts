@@ -41,7 +41,7 @@ describe("parseReply", () => {
       "see that source control menu up top? click that. [POINT:285,11:source control]",
     );
     expect(r.spoken).toBe("see that source control menu up top? click that.");
-    expect(r.point).toEqual({ x: 285, y: 11, label: "source control", screen: null });
+    expect(r.point).toEqual({ x: 285, y: 11, label: "source control", screen: null, confidence: null });
     expect(r.done).toBe(false);
   });
 
@@ -59,7 +59,7 @@ describe("parseReply", () => {
 
   it("accepts a tag without a label, and the last of several", () => {
     expect(parseReply("[POINT:1,2] no wait [POINT:30,40:save]").point?.x).toBe(30);
-    expect(parseReply("here [POINT:5,6]").point).toEqual({ x: 5, y: 6, label: null, screen: null });
+    expect(parseReply("here [POINT:5,6]").point).toEqual({ x: 5, y: 6, label: null, screen: null, confidence: null });
   });
 
   it("marks a finished lesson", () => {
@@ -103,9 +103,9 @@ describe("coordinates", () => {
     expect(shotFor(shots, 9)).toBe(laptop);
   });
 
-  it("caps the long edge at 1280 and never upscales", () => {
-    expect(captureSize(2560, 1440)).toEqual({ width: 1280, height: 720 });
-    expect(captureSize(1080, 1920)).toEqual({ width: 720, height: 1280 });
+  it("caps the long edge at 1568 and never upscales", () => {
+    expect(captureSize(2560, 1440)).toEqual({ width: 1568, height: 882 });
+    expect(captureSize(1080, 1920)).toEqual({ width: 882, height: 1568 });
     expect(captureSize(800, 600)).toEqual({ width: 800, height: 600 });
   });
 
@@ -137,7 +137,7 @@ describe("validateDrivePlan (clicky-windows' rules)", () => {
     [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, script: "x" }] }, "unexpected fields"],
     [{ title: "x", actions: [{ kind: "click", x: 1 }] }, "missing y"],
     [{ title: "x", actions: [{ kind: "click", x: 1281, y: 1 }] }, "outside the screenshot"],
-    [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, screen: 3 }] }, "not captured"],
+    [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, screen: 3, confidence: null }] }, "not captured"],
     [{ title: "x", actions: [{ kind: "click", x: 1, y: 1, button: "middle" }] }, "mouse button"],
     [{ title: "x", actions: [{ kind: "type", text: "a\nb" }] }, "one line"],
     [{ title: "x", actions: [{ kind: "press", keys: ["win", "r"] }] }, "Windows key"],
@@ -210,7 +210,7 @@ describe("runDrivePlan", () => {
         { kind: "click", x: 640, y: 360, why: "search box", expect: "box focused" },
         { kind: "type", text: "baton" },
         { kind: "press", keys: ["Enter"] },
-        { kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2 },
+        { kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2, confidence: null },
       ],
     },
     shots,
@@ -275,7 +275,7 @@ describe("runDrivePlan", () => {
       cursor: () => ({ x: 1707, y: 0 }),
     });
     const dragOnly = validateDrivePlan(
-      { title: "d", actions: [{ kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2 }] },
+      { title: "d", actions: [{ kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2, confidence: null }] },
       shots,
     );
     await expect(runDrivePlan(dragOnly, shots, host)).rejects.toThrow("driver died");

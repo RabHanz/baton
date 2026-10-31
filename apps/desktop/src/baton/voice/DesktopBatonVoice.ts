@@ -64,6 +64,7 @@ import { importWisprDictionary, makeRewriter, readDictionary } from "./dictation
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
+import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -213,10 +214,7 @@ export interface VoiceCoreHooks {
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
-  readonly setActions: (actions: {
-    readonly act: (command: string) => Promise<string>;
-    readonly grammarPlaces: (said: string) => Promise<boolean>;
-  }) => void;
+  readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
   readonly writtenOnly: () => boolean;
   readonly ask: (input: {
@@ -229,6 +227,7 @@ export interface TrayExtras extends BrainVoiceHook {
 
 export interface DesktopBatonVoiceInput {
   readonly stateDir: string;
+  readonly env: NodeJS.ProcessEnv;
   /** `HostProcessPlatform`, injected rather than read here. */
   readonly platform: string;
   /** The main window, created if needed — where session and intent words go. */

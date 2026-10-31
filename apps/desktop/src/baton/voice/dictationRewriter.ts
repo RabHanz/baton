@@ -152,7 +152,7 @@ export const importWisprDictionary = async (input: {
     });
     const rows = db
       .prepare("select phrase, replacement from Dictionary where isDeleted = 0")
-      .all() as ReadonlyArray<{ phrase: string | null; replacement: string | null }>;
+      .all() as unknown as ReadonlyArray<{ phrase: string | null; replacement: string | null }>;
     db.close();
     const entries = rows.flatMap((row): ReadonlyArray<DictionaryEntry> =>
       row.phrase === null || row.phrase.length === 0

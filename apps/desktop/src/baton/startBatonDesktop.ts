@@ -69,6 +69,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     voice = startDesktopBatonVoice({
       stateDir: environment.stateDir,
       platform: environment.platform,
+      env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
       holdEscape,
