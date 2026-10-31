@@ -42,8 +42,8 @@ print(yaml.safe_dump({
     "feature_data_files": {"ACAV100M_sample": "./openwakeword_features_ACAV100M_2000_hrs_16bit.npy"},
     "batch_n_per_class": {"ACAV100M_sample": 1024, "adversarial_negative": 70, "positive": 70},
     "model_type": "dnn",
-    "layer_size": 32,
+    "layer_size": 64,
     "steps": steps,
-    "max_negative_weight": 1500,
+    "max_negative_weight": 3000,
     "target_false_positives_per_hour": 0.2,
 }))
