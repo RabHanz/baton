@@ -93,6 +93,15 @@ export interface BatonEngineShape {
     readonly modelSelection: ModelSelection;
   }) => Effect.Effect<void, BatonEngineError>;
   /**
+   * Upstream's `thread.model-selection.set`: the next turn starts on this selection. It releases
+   * the live session at once, so a caller must not use it during a turn (D95).
+   */
+  readonly setThreadSelection: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+    readonly modelSelection: ModelSelection;
+  }) => Effect.Effect<void, BatonEngineError>;
+  /**
    * Live-session threads (D83): append events the way upstream's agent-session import does.
    * Returns how many were stored; 0 when `unlessNativeThreadOwned` found another owner.
    */
@@ -345,6 +354,21 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const setThreadSelection: BatonEngineShape["setThreadSelection"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.model-selection.set",
+        commandId: yield* commandId(`${input.tag}:select`),
+        threadId: input.threadId,
+        modelSelection: input.modelSelection,
+      });
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BatonEngineError({ operation: "thread.model-selection.set", detail: String(cause) }),
+      ),
+    );
+
   const settleThread: BatonEngineShape["settleThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -391,13 +415,16 @@ export const make = Effect.gen(function* () {
   const runtimeRequestStatus: BatonEngineShape["runtimeRequestStatus"] = (threadId, requestId) =>
     orchestrator.getThreadRecords(threadId, ["runtimeRequests"]).pipe(
       Effect.map(
-        (records) => records.runtimeRequests.find((request) => request.id === requestId)?.status ?? null,
+        (records) =>
+          records.runtimeRequests.find((request) => request.id === requestId)?.status ?? null,
       ),
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
   const turnItem: BatonEngineShape["turnItem"] = (threadId, itemId) =>
-    orchestrator.getTurnItem({ threadId, itemId }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+    orchestrator
+      .getTurnItem({ threadId, itemId })
+      .pipe(Effect.catchCause(() => Effect.succeed(null)));
 
   const threadRuns: BatonEngineShape["threadRuns"] = (threadId) =>
     orchestrator.getThreadRecords(threadId, ["runs"]).pipe(
@@ -507,6 +534,7 @@ export const make = Effect.gen(function* () {
     launchThread,
     sendMessage,
     switchProvider,
+    setThreadSelection,
     settleThread,
   } satisfies BatonEngineShape;
 });
@@ -537,6 +565,7 @@ export const layerStatic = (input: {
         return true;
       }),
     switchProvider: () => Effect.void,
+    setThreadSelection: () => Effect.void,
     settleThread: () => Effect.succeed(true),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),

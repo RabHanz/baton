@@ -1,12 +1,7 @@
-import type { BatonAccount } from "@t3tools/baton-contracts";
+import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  accountDisplayName,
-  accountForInstance,
-  limitsFromAccount,
-  withAccount,
-} from "./ClaudeProbeLimits.ts";
+import { accountDisplayName, limitsFromAccount, withAccount } from "./ClaudeProbeLimits.ts";
 
 const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
   key: "4",

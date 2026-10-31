@@ -18,11 +18,19 @@ import {
   BATON_WS_METHODS,
   BatonRpcGroup,
   isProviderAvailable,
+  accountRefusal,
+  BATON_CLAUDE_ACCOUNT_INSTANCES,
+  BATON_DEFAULT_CLAUDE_INSTANCE,
+  BatonAccountRotationFailedError,
+  BatonAccountRotationRefusedError,
+  instanceForAccount,
+  type BatonThreadAccountUseInput,
   OrchestrationFiringNotFoundError,
   ProviderDriverKind,
   WorkSessionHandoffRefusedError,
   type WorkSessionHandoffInput,
 } from "@t3tools/baton-contracts";
+import { ProviderInstanceId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -40,6 +48,7 @@ import { BatonIntentService } from "./IntentService.ts";
 import { liveAdopt, liveAttach } from "./LiveActions.ts";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
+import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
 import { WorkSessionService, workSessionStream } from "./WorkSessionService.ts";
 
 /** Only Claude keeps several accounts behind one config directory today. */
@@ -55,6 +64,7 @@ export type BatonServices =
   | BatonIntentService
   | AdoptedSessionService
   | BatonEngine
+  | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry;
 
@@ -68,6 +78,43 @@ export const BatonRuntime = Context.Reference<Context.Context<BatonServices> | n
 export const runtimeLayer = Layer.effect(BatonRuntime, Effect.context<BatonServices>());
 
 const unavailable = () => new Error("Baton's services are not running on this server.");
+
+/** One thread's account (D95): refused here, so no client's menu is the only check. */
+const threadAccountUse = Effect.fn("fabric.account.useForThread")(function* (
+  input: BatonThreadAccountUseInput,
+) {
+  const key = input.key ?? "active";
+  const refuse = (reason: "unknown-account" | "unusable", detail: string | null) =>
+    new BatonAccountRotationRefusedError({ key, reason, detail });
+  const providerInstances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+  const pool = yield* Effect.flatMap(AccountPoolService, (service) =>
+    service.read(DEFAULT_ROTATION_DRIVER),
+  );
+  const account = pool.accounts.find((entry) =>
+    input.key === null ? entry.active : entry.key === input.key,
+  );
+  if (account === undefined) return yield* refuse("unknown-account", null);
+  const refusal = accountRefusal(account);
+  if (refusal !== null) return yield* refuse("unusable", refusal);
+  const pinned = Object.keys(BATON_CLAUDE_ACCOUNT_INSTANCES);
+  const available = new Set<string>();
+  for (const instanceId of pinned) {
+    const instance = yield* providerInstances.getInstance(ProviderInstanceId.make(instanceId));
+    if (instance?.enabled === true) available.add(instanceId);
+  }
+  const instanceId =
+    input.key === null
+      ? BATON_DEFAULT_CLAUDE_INSTANCE
+      : instanceForAccount(account, (id) => available.has(id));
+  if (instanceId === null) {
+    return yield* refuse("unusable", `${account.label} has no provider instance on this machine`);
+  }
+  return yield* Effect.flatMap(ThreadAccountMoves, (moves) =>
+    moves.request({ threadId: input.threadId, instanceId }),
+  ).pipe(
+    Effect.mapError((error) => new BatonAccountRotationFailedError({ key, detail: error.message })),
+  );
+});
 
 /** §6.1 through upstream's provider.switch (D80): same thread, upstream's context handoff. */
 const handoff = Effect.fn("fabric.workSession.handoff")(function* (input: WorkSessionHandoffInput) {
@@ -148,6 +195,7 @@ export const make = Effect.gen(function* () {
           ),
         ),
       ),
+    [BATON_ACCOUNT_WS_METHODS.threadAccountUse]: (input) => run(threadAccountUse(input)),
     [BATON_WS_METHODS.workSessionList]: (input) =>
       run(
         Effect.flatMap(WorkSessionService, (ws) =>
