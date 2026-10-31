@@ -2713,3 +2713,35 @@ devices. Checked every 5 s, so a vanished mic falls through and a returning one 
 Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
 not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
 the AT2020 is on it and mixing the empty input 2 halves the level.
+
+## D100 — One brain decides what was said, and code keeps the last word
+
+Director, 2026-10-31: "route everything through that intelligence layer so it's not making dumb
+actions." Before this, `withScreenRoutes` ran regexes first, so words chose the action, and a plain
+question fell into the command path, where it was refused or sent to a session.
+
+Now every utterance and typed ask outside dictation goes through `decide` in
+`packages/baton-shared/src/brain.ts`, which returns answer, look, teach, drive, act or clarify. The
+order: lesson controls and his own `drive:`, `teach:`, `look:` prefixes; then a sentence the grammar
+places; then a warm `haiku` session on his subscription. The old word rules are the fallback when no
+model can be reached. `guardDecision` then checks what he said and what the model turned it into, so
+rewording cannot pass the high-risk list. A clarify counts, because "which project should I deploy?"
+invites the order it must refuse. A question about a dangerous thing is answered: an answer does
+nothing. The medium-risk read-back, the later "confirm" and the drive plan's Run it are unchanged, and
+the model has no route that confirms anything. `dictate` effects never reach the brain.
+
+Answers come from a `sonnet` conversation, also on his subscription, spoken sentence by sentence as
+they stream. The same conversation serves looks, so a follow-up keeps its thread either way. It decides
+for itself that it needs the screen, by replying `[LOOK]`, and the capture rules still apply.
+
+Measured on his laptop: a routed sentence takes a median 1.6 s; first spoken sentence 1.2 to 1.4 s on a
+warm session and 2.8 to 4.7 s on a cold one. The intent table is 48 sentences in
+`scripts/baton/voice-lab/brain-table.ts`.
+
+Rejected: letting the model confirm or refuse (a reply could then widen a guard); one model for both
+jobs (sonnet on every sentence spends quota to classify, and haiku answers too thinly); keeping the
+regexes first (the failure he named).
+
+The ask box moves to Ctrl+Alt+Shift+B. F8 was bound twice, the ask box won, and Airdeck's dictation
+toggle did nothing on 0.1.9 (seen on the laptop: the chord opened the box).
+

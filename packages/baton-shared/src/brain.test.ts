@@ -55,6 +55,12 @@ describe("guardDecision", () => {
     ).toMatchObject(refused);
   });
 
+  it("does not ask which project to deploy: it refuses", () => {
+    expect(
+      guardDecision({ route: "clarify", text: "Which one?", source: "model" }, "deploy to production"),
+    ).toMatchObject({ route: "refused" });
+  });
+
   it("lets a question about a dangerous thing be answered", () => {
     const answer = { route: "answer", text: "what does force push do", source: "model" } as const;
     expect(guardDecision(answer, "what does force push do")).toEqual(answer);

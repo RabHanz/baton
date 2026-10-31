@@ -39,7 +39,7 @@ Reply with one JSON object and nothing else: {"route":"...","text":"..."}
 Routes:
 - "answer": a question or request a knowledgeable assistant can answer from general knowledge or the conversation so far. Facts, advice, maths, writing, explaining, chat. text = the question, tidied.
 - "look": answering needs seeing his screen. "what's this error", "is this right", "where's the export button", "read that to me", "what am I looking at", anything pointing at something visible. text = the question.
-- "teach": he wants to learn to do something on this computer, step by step, doing it himself. "show me how to", "walk me through", "how do I change the wallpaper on here". text = the goal.
+- "teach": he wants to learn to do something on this computer, step by step, doing it himself. "show me how to", "walk me through", "how do I change the wallpaper on here". Anything in software on a computer counts, such as spreadsheets. text = the goal.
 - "drive": he wants you to operate this computer for him: clicking, typing, opening apps or folders. "open notepad and type hello", "pop open my downloads folder". text = the goal.
 - "act": he is commanding Baton's coding sessions and agents: asking what they are doing or what needs him, starting or resuming work, telling a session something, setting a rule for when one finishes, answering a pending approval, switching Claude account. Project and session names, "the agents", "the tests", "Claude", "Codex" point here. text = the command in plain words, keeping every name he used.
 - "clarify": you truly cannot tell what he wants, or it was too garbled to act on safely. text = one short question back to him. Prefer this over guessing when acting would change something.
@@ -114,7 +114,10 @@ export const refusedReply = (subject: string): string =>
  * and what the model turned it into, so rewording cannot talk its way past the high-risk list.
  */
 export const guardDecision = (decision: BrainDecision, said: string): BrainDecision => {
-  if (decision.route !== "act" && decision.route !== "drive") return decision;
+  // A clarifying question counts: "which project should I deploy?" invites the order it must refuse.
+  if (decision.route !== "act" && decision.route !== "drive" && decision.route !== "clarify") {
+    return decision;
+  }
   const subject = highRiskSubject(said) ?? highRiskSubject(decision.text);
   return subject === null
     ? decision
