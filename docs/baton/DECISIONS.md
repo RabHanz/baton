@@ -3056,3 +3056,13 @@ reached him as an error popup. The coordinator now mounts only in the main windo
 trusting detached windows, as two coordinators would race to deliver one capture, and catching the error, which
 would leave a loop that fails on every event.
 
+## D117 — What the first installed build showed
+
+Baton can run with no main window: 0.1.10 did after install. A question then opened the ask box and the card, and
+when the last of them closed, "last window closed" quit the whole app, 27 s after the answer. Quitting now needs a
+window he opened to have been the last of its kind to close. The companion windows no longer count. Closing the
+main window still quits, including with the pill up. Rejected: keeping a hidden window open (it hides real quits).
+
+"Stop" during an answer went to the model, which asked what he meant. With no lesson or drive running the word was
+not treated as a control. While an answer is coming or being read out it now stops at once, with no model.
+

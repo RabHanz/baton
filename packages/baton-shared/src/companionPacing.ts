@@ -41,10 +41,16 @@ export const pageText = (text: string, chars: number = PAGE_CHARS): ReadonlyArra
  */
 export const queueSpeech = (speak: (text: string) => Promise<void>) => {
   let last: Promise<void> = Promise.resolve();
+  let pending = 0;
   return {
     add: (text: string): void => {
-      last = Promise.all([last, speak(text).catch(() => undefined)]).then(() => undefined);
+      pending += 1;
+      const said = speak(text)
+        .catch(() => undefined)
+        .finally(() => (pending -= 1));
+      last = Promise.all([last, said]).then(() => undefined);
     },
     finished: (): Promise<void> => last,
+    busy: (): boolean => pending > 0,
   };
 };

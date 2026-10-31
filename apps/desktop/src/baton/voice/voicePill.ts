@@ -9,6 +9,7 @@
  */
 import * as Electron from "electron";
 
+import { markCompanionWindow } from "../lastAppWindow.ts";
 import { COMPANION_CSS } from "../screen/companionStyle.ts";
 import { PILL_PARTIAL, PILL_SOUNDS, type PillSound } from "./pillSounds.ts";
 import {
@@ -135,6 +136,7 @@ export const createVoicePill = (input: {
       webPreferences: { autoplayPolicy: "no-user-gesture-required", backgroundThrottling: false },
     });
     created.setAlwaysOnTop(true, "screen-saver");
+    markCompanionWindow(created);
     created.setIgnoreMouseEvents(true);
     created.setContentProtection(true);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });

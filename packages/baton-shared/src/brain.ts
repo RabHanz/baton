@@ -146,6 +146,8 @@ export interface BrainContext {
   readonly focused?: string | null;
   /** "teach" or "drive" while one is running. */
   readonly running: string | null;
+  /** An answer is coming or being read out: "stop" means that, and needs no model. */
+  readonly answering?: boolean;
   readonly direct: boolean;
   readonly recent: ReadonlyArray<string>;
 }
@@ -162,8 +164,11 @@ export const decide = async (
   host: BrainHost,
 ): Promise<BrainDecision> => {
   const active = context.running !== null;
-  const instant = instantDecision(said, active);
-  if (instant !== null) return guardDecision(instant, said);
+  const instant = instantDecision(said, active || context.answering === true);
+  const stopsAnAnswer = instant?.route === "control" && instant.control === "stop";
+  if (instant !== null && (active || stopsAnAnswer || instant.route !== "control")) {
+    return guardDecision(instant, said);
+  }
   // Straight to the focused session, word for word: no model decides what it meant.
   if (context.direct) return guardDecision({ route: "act", text: said, source: "instant" }, said);
   // Exactly what an instant command is for; the guard still sees it.
