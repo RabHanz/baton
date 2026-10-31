@@ -2,7 +2,7 @@
 //! under the model's point. A pointer lands on something that exists or says it could not check.
 use serde_json::{json, Value};
 use windows::Win32::Foundation::{POINT, RECT};
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
+use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_Descendants};
 use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetWindowRect, WindowFromPoint, GA_ROOT};
 
@@ -36,7 +36,7 @@ fn centre(rect: &RECT) -> (f32, f32) {
 pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     unsafe {
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
         let top = GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT);

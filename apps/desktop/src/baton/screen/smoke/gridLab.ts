@@ -15,6 +15,7 @@ import * as Electron from "electron";
 import { startVisionSession } from "../claudeVision.ts";
 import { captureScreens } from "../screenCapture.ts";
 
+
 const out = process.env["LAB_OUT"] ?? process.cwd();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const report = NodeFS.createWriteStream(NodePath.join(out, "timeline.jsonl"));
@@ -30,6 +31,8 @@ const page = (marks: ReadonlyArray<{ n: number; x: number; y: number }>) =>
 
 const main = async () => {
   await Electron.app.whenReady();
+  // The markers close before the model runs, and the app must outlive them.
+  Electron.app.on("window-all-closed", () => {});
   const windows: Electron.BrowserWindow[] = [];
   const truth = new Map<number, Array<{ n: number; x: number; y: number }>>();
   let n = 0;
@@ -58,6 +61,9 @@ const main = async () => {
     await win.loadURL(page(marks));
     win.setBounds(display.bounds);
     win.showInactive();
+    win.setAlwaysOnTop(true, "screen-saver");
+    win.setBounds(display.bounds);
+    write({ asked: display.bounds, got: win.getBounds(), visible: win.isVisible() });
     windows.push(win);
   }
   await sleep(900);
@@ -107,28 +113,39 @@ const main = async () => {
         ),
       });
     }
-    if (process.env["LAB_GRID_MODEL"] === "1") {
-      const vision = startVisionSession({
-        claudeBinary: claude,
-        model: "sonnet",
-        systemPrompt: LOOK_PROMPT,
-        workDir: NodePath.join(out, "state"),
-        env: process.env,
-        platform: process.platform,
-      });
+  }
+  if (process.env["LAB_GRID_MODEL"] === "1") {
+    for (const { shot, jpeg } of captured) {
+      const display = Electron.screen
+        .getAllDisplays()
+        .find((d) => d.bounds.x === shot.bounds.x && d.bounds.y === shot.bounds.y)!;
       for (const mark of (truth.get(display.id) ?? []).filter((_, i) => i % 2 === 0)) {
+        // A fresh session each time, so one marker's answer cannot help the next.
+        const vision = startVisionSession({
+          claudeBinary: claude,
+          model: "sonnet",
+          systemPrompt: LOOK_PROMPT,
+          workDir: NodePath.join(out, "state"),
+          env: process.env,
+          platform: process.platform,
+          timeoutMs: 40_000,
+        });
         const started = Date.now();
-        const raw = await vision.ask([
-          { type: "text", text: `screen ${shot.screen}, image ${shot.width}x${shot.height}` },
-          { type: "image", mediaType: "image/jpeg", data: jpeg },
-          { type: "text", text: `point at the magenta circle numbered ${mark.n}` },
-        ]);
+        const raw = await vision
+          .ask([
+            { type: "text", text: `screen ${shot.screen}, image ${shot.width}x${shot.height}` },
+            { type: "image", mediaType: "image/jpeg", data: jpeg },
+            { type: "text", text: `point at the magenta circle numbered ${mark.n}` },
+          ])
+          .catch((error: Error) => `[failed ${error.message}]`);
+        vision.dispose();
         const point = parseReply(raw).point;
         const landed = point === null ? null : toDesktop(point, shot);
         write({
           screen: shot.screen,
           mark: mark.n,
           model: point,
+          raw: point === null ? raw.slice(0, 120) : undefined,
           modelErrorDip:
             landed === null
               ? null
@@ -138,7 +155,6 @@ const main = async () => {
           ms: Date.now() - started,
         });
       }
-      vision.dispose();
     }
   }
   report.end(() => Electron.app.exit(0));
