@@ -310,7 +310,7 @@ describe("runDrivePlan", () => {
       shots,
     );
     await expect(runDrivePlan(dragOnly, shots, host)).rejects.toThrow("driver died");
-    expect(log.at(-1)).toBe("up");
+    expect(log.at(-1)).toBe("up at 1722,15");
   });
 });
 
