@@ -23,6 +23,31 @@ index d49d2cdebb7019662d8e885034b6473721f4dac2..4f40d3a9c546c98e65dfb911288f8589
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
+diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
+index 93347949e00fa77a8d320074d32ca7b54f572ea5..9cb79996ac4657c2e1e1157b8de93a4a28df89d9 100644
+--- a/apps/desktop/src/app/DesktopLifecycle.ts
++++ b/apps/desktop/src/app/DesktopLifecycle.ts
+@@ -17,6 +17,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
+ import * as ElectronWindow from "../electron/ElectronWindow.ts";
+ import * as DesktopState from "./DesktopState.ts";
+ import * as DesktopWindow from "../window/DesktopWindow.ts";
++import { shouldQuitOnAllClosed } from "../baton/lastAppWindow.ts";
+ 
+ export class DesktopLifecycleRelaunchError extends Schema.TaggedError<DesktopLifecycleRelaunchError>()(
+   "DesktopLifecycleRelaunchError",
+@@ -287,7 +288,11 @@ export const make = DesktopLifecycle.of({
+         Effect.gen(function* () {
+           const app = yield* ElectronApp.ElectronApp;
+           const state = yield* DesktopState.DesktopState;
+-          if (environment.platform !== "darwin" && !(yield* Ref.get(state.quitting))) {
++          if (
++            environment.platform !== "darwin" &&
++            !(yield* Ref.get(state.quitting)) &&
++            shouldQuitOnAllClosed()
++          ) {
+             yield* app.quit;
+           }
+         }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
 index 950ed972c6453bcfd61c293606cb9fa3913442f5..8541d572d782643e2046f904b165479e1874ba72 100644
 --- a/apps/desktop/src/preload.ts
