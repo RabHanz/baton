@@ -55,7 +55,13 @@ export const DEFAULT_SEGMENTER: SegmenterConfig = {
 
 export type VoiceCoreEvent =
   | { readonly type: "state"; readonly state: VoiceState; readonly target: string | null }
-  | { readonly type: "wake"; readonly score: number; readonly at: number }
+  | {
+      readonly type: "wake";
+      readonly score: number;
+      readonly at: number;
+      /** Null for a hotkey, or a provider with one word. */
+      readonly word: string | null;
+    }
   /** A segment went to speech recognition. */
   | { readonly type: "thinking" }
   /** Speech recognition came back with nothing usable. */
@@ -260,7 +266,7 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     if (score !== null) {
-      emit({ type: "wake", score, at: now() });
+      emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });
       // Start the utterance at the wake: "hey jarvis, what's…" is one breath.
       if (segment === null) {
         segment = [...preRoll];
@@ -308,7 +314,7 @@ export const createVoiceCore = (input: {
 
   const activate = (activation: VoiceActivation) => {
     if (activation === "wake") {
-      emit({ type: "wake", score: 1, at: now() });
+      emit({ type: "wake", score: 1, at: now(), word: null });
       enqueue(() => dispatch({ type: "wake", at: now() }));
     } else if (activation === "dismiss") enqueue(() => dispatch({ type: "dismiss", at: now() }));
     else if (activation === "toggle_direct_session") {

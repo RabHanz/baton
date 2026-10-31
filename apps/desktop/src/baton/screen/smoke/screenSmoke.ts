@@ -98,6 +98,7 @@ const main = async () => {
   };
 
   const companion = startScreenCompanion({
+    holdEscape: () => () => undefined,
     stateDir,
     platform: process.platform,
     env: process.env,
