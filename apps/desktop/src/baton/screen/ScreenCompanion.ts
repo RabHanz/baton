@@ -179,18 +179,6 @@ type Run =
 
 const LOOK_REPLY = "[LOOK]";
 
-const ASK_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:transparent;font:15px system-ui,-apple-system,"Segoe UI",sans-serif}
-form{display:flex;flex-direction:column;gap:6px;margin:8px;padding:12px 14px;border-radius:14px;background:rgba(17,17,20,.94);box-shadow:0 10px 30px rgba(0,0,0,.45)}
-input{all:unset;color:#f4f4f5;font-size:16px;padding:4px 0}
-input::placeholder{color:#71717a}
-small{color:#a1a1aa;font-size:12px}
-b{color:#8db8ff;font-weight:600}
-</style></head><body><form id="f"><input id="q" autofocus placeholder="Ask Baton anything…" aria-label="Ask Baton anything"><small><b>Enter</b> ask · <b>Esc</b> close</small></form>
-<script>const {ipcRenderer}=require('electron');const q=document.getElementById('q');
-document.getElementById('f').onsubmit=e=>{e.preventDefault();ipcRenderer.send('baton-screen:ask',q.value);};
-addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:ask','');});</script></body></html>`;
-
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
   readonly platform: string;
@@ -204,7 +192,7 @@ export const startScreenCompanion = (input: {
   readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
   readonly onChange?: () => void;
-  /** Stop speech at once: Esc, or he has moved on. */
+  /** Stop speech at once: he has moved on. */
   readonly stopSpeech?: () => void;
   readonly holdEscape: (onPress: () => void) => () => void;
   /** Tells the pill what is going on; null when it stops. */
