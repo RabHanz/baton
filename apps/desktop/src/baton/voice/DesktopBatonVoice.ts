@@ -260,6 +260,8 @@ export interface DesktopBatonVoice {
   readonly onSpeechLevel: (level: number) => void;
   /** He dismissed the assistant's output. */
   readonly onDismissed: () => void;
+  /** A line for the tray: a voice downloading, or why it could not. */
+  readonly onNote: (message: string | null) => void;
 }
 
 const wordName = (word: string | null): string | null =>
@@ -1025,5 +1027,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
     onSpeechLevel: pill.speechLevel,
     onDismissed: () => pill.on({ type: "dismissed" }),
+    onNote: (message) => {
+      note = message;
+      render(null);
+    },
   };
 };

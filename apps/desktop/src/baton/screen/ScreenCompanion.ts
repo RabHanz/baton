@@ -44,6 +44,7 @@ import { holdAfterSpeechMs, pageText, readingMs } from "@t3tools/baton-shared/co
 import { startVisionSession, type VisionContent, type VisionSession } from "./claudeVision.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { createInputDriver } from "./inputDriver.ts";
+import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { createPointerOverlay, type OverlayCard, type OverlayMarker } from "./pointerOverlay.ts";
 import { captureScreens, screenFingerprint, type CapturedScreen } from "./screenCapture.ts";
 
@@ -60,6 +61,8 @@ interface ScreenSettings {
   readonly routerModel: string;
   /** Written only shows everything and plays nothing. */
   readonly output: AnswerOutput;
+  /** "system" is the OS voice, for a machine that should fetch nothing. */
+  readonly voice: PocketVoice | "system";
 }
 
 const DEFAULTS: ScreenSettings = {
@@ -68,6 +71,7 @@ const DEFAULTS: ScreenSettings = {
   model: "sonnet",
   routerModel: "haiku",
   output: "spoken",
+  voice: "anna",
 };
 
 const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): ScreenSettings => ({
@@ -145,6 +149,7 @@ export interface ScreenCompanion {
   readonly notice: (text: string) => void;
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
+  readonly voice: () => PocketVoice | "system";
   readonly stop: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
@@ -174,18 +179,6 @@ type Run =
 
 const LOOK_REPLY = "[LOOK]";
 
-const ASK_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:transparent;font:15px system-ui,-apple-system,"Segoe UI",sans-serif}
-form{display:flex;flex-direction:column;gap:6px;margin:8px;padding:12px 14px;border-radius:14px;background:rgba(17,17,20,.94);box-shadow:0 10px 30px rgba(0,0,0,.45)}
-input{all:unset;color:#f4f4f5;font-size:16px;padding:4px 0}
-input::placeholder{color:#71717a}
-small{color:#a1a1aa;font-size:12px}
-b{color:#8db8ff;font-weight:600}
-</style></head><body><form id="f"><input id="q" autofocus placeholder="Ask Baton anything…" aria-label="Ask Baton anything"><small><b>Enter</b> ask · <b>Esc</b> close</small></form>
-<script>const {ipcRenderer}=require('electron');const q=document.getElementById('q');
-document.getElementById('f').onsubmit=e=>{e.preventDefault();ipcRenderer.send('baton-screen:ask',q.value);};
-addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:ask','');});</script></body></html>`;
-
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
   readonly platform: string;
@@ -199,7 +192,7 @@ export const startScreenCompanion = (input: {
   readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
   readonly onChange?: () => void;
-  /** Stop speech at once: Esc, or he has moved on. */
+  /** Stop speech at once: he has moved on. */
   readonly stopSpeech?: () => void;
   readonly holdEscape: (onPress: () => void) => () => void;
   /** Tells the pill what is going on; null when it stops. */
@@ -234,7 +227,6 @@ export const startScreenCompanion = (input: {
   let driver: ReturnType<typeof createInputDriver> | null = null;
   let run: Run | null = null;
   let allowedUntil = 0;
-  let releaseEscape: (() => void) | null = null;
   /** Bumped by anything new on screen; a hold that finds it moved quietly gives up. */
   let showing = 0;
 
@@ -292,20 +284,12 @@ export const startScreenCompanion = (input: {
 
   const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-  const escapeOff = () => {
-    releaseEscape?.();
-    releaseEscape = null;
-  };
-  /** Esc takes down whatever is up, and the voice with it. */
-  const escapeOn = () => {
-    releaseEscape ??= input.holdEscape(() => dismiss());
-  };
   const wipe = async () => {
     showing += 1;
     spokenFrom = null;
-    escapeOff();
     await overlay.clear();
   };
+  /** Takes down whatever is up, and the voice with it. Esc stays his: this is the tray's. */
   const dismiss = () => {
     input.stopSpeech?.();
     input.onDismissed?.();
@@ -324,7 +308,6 @@ export const startScreenCompanion = (input: {
     extra: Partial<OverlayCard> = {},
   ) => {
     showing += 1;
-    escapeOn();
     await overlay.card({ kicker, text, hint, ...extra });
   };
 
@@ -337,7 +320,6 @@ export const startScreenCompanion = (input: {
     const mine = ++showing;
     const pages = pageText(text);
     const current = () => mine === showing;
-    escapeOn();
     void (async () => {
       for (const [i, page] of pages.entries()) {
         const label = pages.length > 1 ? `${i + 1} of ${pages.length}` : undefined;
@@ -358,7 +340,6 @@ export const startScreenCompanion = (input: {
       if (!current()) return;
       showing += 1;
       spokenFrom = null;
-      escapeOff();
       await overlay.retreat();
     })().catch(() => undefined);
   };
@@ -560,7 +541,7 @@ export const startScreenCompanion = (input: {
       await show(
         `Step ${lesson.step}`,
         reply.spoken,
-        "Do it and I'll notice, or say next. Stop ends the lesson. Esc closes it.",
+        "Do it and I'll notice, or say next. Stop ends the lesson.",
       );
       watch(lesson, baseline, reply.spoken);
     } finally {
@@ -862,10 +843,12 @@ export const startScreenCompanion = (input: {
       if (text.trim().length > 0) linger("Baton", text);
     },
     writtenOnly: () => settings.output === "written",
+    voice: () => settings.voice,
     ask: windows.ask,
     stop,
     menuItems: () => [
       { label: "Ask Baton…", accelerator: ASK_HOTKEY, click: openAskBox },
+      { label: "Clear the screen", click: dismiss },
       ...(run !== null && run.mode !== "look"
         ? [
             {
@@ -880,6 +863,30 @@ export const startScreenCompanion = (input: {
         checked: settings.captureApproval === "always",
         click: (item: Electron.MenuItem) =>
           save({ captureApproval: item.checked ? "always" : "ask" }),
+      },
+      {
+        label: "Voice",
+        submenu: [
+          ...POCKET_VOICES.map((voice) => ({
+            label: `${voice[0]!.toUpperCase()}${voice.slice(1)}`,
+            type: "radio" as const,
+            checked: settings.voice === voice,
+            click: () => save({ voice }),
+          })),
+          { type: "separator" as const },
+          {
+            label: "Quick (smaller, less accurate)",
+            type: "radio" as const,
+            checked: settings.voice === "quick",
+            click: () => save({ voice: "quick" }),
+          },
+          {
+            label: "System voice",
+            type: "radio" as const,
+            checked: settings.voice === "system",
+            click: () => save({ voice: "system" }),
+          },
+        ],
       },
       {
         label: "Answers",
@@ -907,7 +914,6 @@ export const startScreenCompanion = (input: {
       dropRouter();
       if (routerIdle !== null) clearTimeout(routerIdle);
       Electron.globalShortcut.unregister(ASK_HOTKEY);
-      escapeOff();
       windows.dispose();
       driver?.dispose();
       overlay.dispose();

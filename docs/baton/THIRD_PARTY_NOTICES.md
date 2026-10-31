@@ -100,6 +100,8 @@ SOFTWARE.
 
 - Parakeet TDT 0.6B v3 (NVIDIA, CC BY 4.0), GGUF conversion `handy-computer/parakeet-tdt-0.6b-v3-gguf`,
   downloaded on first use.
+- Pocket TTS (Kyutai, MIT) binary, and its weights and VCTK-derived voices (CC-BY-4.0), downloaded on
+  first use from `kyutai/pocket-tts-without-voice-cloning`.
 - `melspectrogram.onnx`, `embedding_model.onnx` from openWakeWord v0.5.1, `silero_vad.onnx` from
   Silero VAD v6.2.3 (MIT), shipped in `native/baton-dictation/models`. See
   `docs/baton/research/voice-stack-2026-10-26.md` for their licence notes.

@@ -4,6 +4,7 @@ import {
   frameLevel,
   IDLE_TURN,
   reduceTurn,
+  turnHoldsEscape,
   turnLimitMs,
   turnView,
   type TurnEvent,
@@ -102,6 +103,15 @@ describe("the pill's other states", () => {
     expect(play([{ type: "dictating", caption: "Esc cancels" }, { type: "finished" }]).phase).toBe(
       "dictating",
     );
+  });
+});
+
+describe("who gets Esc", () => {
+  it("is his apps' unless the microphone is live", () => {
+    expect(turnHoldsEscape("listening")).toBe(true);
+    for (const phase of ["idle", "thinking", "speaking", "working", "done", "error"] as const) {
+      expect(turnHoldsEscape(phase)).toBe(false);
+    }
   });
 });
 

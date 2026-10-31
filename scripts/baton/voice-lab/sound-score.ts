@@ -3,7 +3,11 @@
  * louder, so "the chime cannot wake it" is a measurement. Prints the peak score per sound and gain.
  *   node sound-score.mjs --models native/baton-dictation/models
  */
-import { renderSound, PILL_SOUNDS, type PillSound } from "../../../apps/desktop/src/baton/voice/pillSounds.ts";
+import {
+  renderSound,
+  PILL_SOUNDS,
+  type PillSound,
+} from "../../../apps/desktop/src/baton/voice/pillSounds.ts";
 import { createOpenWakeWordScorer } from "../../../packages/baton-voice/src/providers/onnx.ts";
 import * as Ort from "onnxruntime-node";
 import * as NodePath from "node:path";
