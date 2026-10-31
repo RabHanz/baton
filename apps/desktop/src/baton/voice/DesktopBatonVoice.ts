@@ -254,6 +254,8 @@ export interface DesktopBatonVoiceInput {
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
+  /** His environment, for the `claude` that cleans text up. */
+  readonly env: NodeJS.ProcessEnv;
   /** `baton-dictation`; null only in a build that left it out. */
   readonly dictationBinary: string | null;
   readonly extras?: TrayExtras;

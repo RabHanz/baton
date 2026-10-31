@@ -54,6 +54,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       platform: environment.platform,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
+      env: hostEnvironment,
       dictationBinary: resolveDictationBinary({
         resourcesPath,
         platform: environment.platform,

@@ -25,7 +25,7 @@ const state = NodePath.join(NodeOS.tmpdir(), "baton-cleanup-lab");
 const dictionary: ReadonlyArray<DictionaryEntry> =
   (await readDictionary(state)) ??
   (await importWisprDictionary({ stateDir: state, appData: process.env["APPDATA"] }));
-const rewriter = (always: boolean, limitMs: number) =>
+const rewriter = (always: boolean, limitMs?: number) =>
   makeRewriter({
     claudeBinary: "claude",
     model: process.env["BATON_CLEANUP_MODEL"] ?? "haiku",
@@ -33,7 +33,7 @@ const rewriter = (always: boolean, limitMs: number) =>
     env: process.env,
     platform: process.platform,
     dictionary: () => dictionary,
-    limitMs,
+    ...(limitMs === undefined ? {} : { limitMs }),
     always,
   });
 
@@ -89,7 +89,7 @@ const clips = async (lab: string, out: string, count: number) => {
   const locals = usable.map((asr) => localClean(asr, "default", dictionary));
   const localMs = Number(process.hrtime.bigint() - started) / 1e6 / usable.length;
   const flagged = usable.filter((_, i) => needsModel(locals[i] as string, "default"));
-  const r = rewriter(false, 3_000);
+  const r = rewriter(false);
   r.warm();
   await new Promise((resolve) => setTimeout(resolve, 8_000));
   const stages: Record<string, number> = {};
@@ -103,6 +103,8 @@ const clips = async (lab: string, out: string, count: number) => {
       why[key] = (why[key] ?? 0) + 1;
     }
     ms.push(result.ms);
+    // He is speaking again before the next one, which is when a replaced session comes up.
+    if (result.why === "timed out") await new Promise((resolve) => setTimeout(resolve, 6_000));
   }
   r.dispose();
   const report = {

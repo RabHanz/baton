@@ -19,7 +19,8 @@ import {
 
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 
-export const HARD_LIMIT_MS = 3_000;
+/** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
+export const hardLimitMs = (text: string): number => Math.min(6_000, 2_500 + text.length * 8);
 const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
@@ -42,11 +43,11 @@ export const makeRewriter = (input: {
   readonly env: NodeJS.ProcessEnv;
   readonly platform: string;
   readonly dictionary: () => ReadonlyArray<DictionaryEntry>;
+  /** Replaces `hardLimitMs`, for the lab and for tests. */
   readonly limitMs?: number;
   readonly start?: typeof startVisionSession;
   readonly always?: boolean;
 }): Rewriter => {
-  const limitMs = input.limitMs ?? HARD_LIMIT_MS;
   let session: VisionSession | null = null;
   let turns = 0;
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -68,9 +69,17 @@ export const makeRewriter = (input: {
       workDir: input.workDir,
       env: input.env,
       platform: input.platform,
-      timeoutMs: limitMs * 3,
+      timeoutMs: 18_000,
     });
     return session;
+  };
+
+  const warm = () => {
+    try {
+      get();
+    } catch {
+      drop();
+    }
   };
 
   const ask = async (text: string, mode: DictationMode): Promise<string> => {
@@ -79,14 +88,19 @@ export const makeRewriter = (input: {
       const answer = await Promise.race([
         get().ask([{ type: "text", text: rewriteMessage(text, mode) }]),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("timed out")), limitMs);
+          timer = setTimeout(
+            () => reject(new Error("timed out")),
+            input.limitMs ?? hardLimitMs(text),
+          );
         }),
       ]);
       turns += 1;
       return answer.trim();
     } catch (error) {
-      // A late answer would be read as the next dictation's.
+      // A late answer would be read as the next dictation's. The next session starts now: left
+      // to the next dictation, its cold start would use up that one's limit too.
       drop();
+      warm();
       throw error;
     } finally {
       clearTimeout(timer);
@@ -95,13 +109,7 @@ export const makeRewriter = (input: {
   };
 
   return {
-    warm: () => {
-      try {
-        get();
-      } catch {
-        drop();
-      }
-    },
+    warm,
     clean: async ({ raw, mode, level }) => {
       const started = Date.now();
       const cleaned = await cleanDictation({
@@ -152,7 +160,7 @@ export const importWisprDictionary = async (input: {
     });
     const rows = db
       .prepare("select phrase, replacement from Dictionary where isDeleted = 0")
-      .all() as ReadonlyArray<{ phrase: string | null; replacement: string | null }>;
+      .all() as unknown as ReadonlyArray<{ phrase: string | null; replacement: string | null }>;
     db.close();
     const entries = rows.flatMap((row): ReadonlyArray<DictionaryEntry> =>
       row.phrase === null || row.phrase.length === 0

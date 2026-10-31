@@ -2645,6 +2645,7 @@ engine exists); keeping whisper.cpp for the wake path (two speech engines on one
 
 Voice is Windows only for now, wake included: the exe is built for no other platform, the whisper-cli
 and hidden Chromium capture paths are gone, and on macOS and Linux the tray says so and opens no mic.
+**Reopened 2026-10-31: Windows first, the others queued, not Windows only. See D106.**
 
 The same exe is the wake path's microphone (`record` piped into the core), replacing the hidden
 Chromium window. That removes AGC and noise suppression from the path and means the lab
@@ -2713,3 +2714,71 @@ devices. Checked every 5 s, so a vanished mic falls through and a returning one 
 Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
 not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
 the AT2020 is on it and mixing the empty input 2 halves the level.
+
+## D103 — Dictation decodes while he speaks, by chunks cut at pauses
+
+Goal: Wispr's 0.6 s from key release. Neither Parakeet TDT build can stream: transcribe.cpp offers
+`session.stream` only to cache-aware models (`src/arch/parakeet`), which is why Handy also falls back
+to live chunks for these. Handy cuts at 30 s for accuracy; here the cut is 2.5 to 8 s for latency, so
+only the last piece is left at release. A piece carries 1 s of the audio before it and keeps only the
+words past that, so the model has context and a pause does not become a false sentence end. Pauses are
+measured against the audio's own floor, so a whisper pauses as clearly as a shout. A failed piece falls
+back to decoding the whole recording, which is still held.
+
+Rejected: a cache-aware streaming model (a third model to fetch, and not what was measured against
+Wispr); re-decoding the whole clip while he speaks (work grows with every second). The cloud engines in
+VentureOS `docs/research/live-stt-2026-10-28` were not reused: they need a metered key or a network hop.
+That research's Silero defaults informed the thinking, but no VAD is used here.
+
+Status: built and on the laptop, **not yet timed**. See the numbers in VOICE.md.
+
+## D104 — Quiet speech gets gain; the fast model is not the default yet
+
+Measured 2026-10-31 on the laptop, 60 AT2020 clips against Wispr's raw text, before any gain:
+
+| Condition                          | v3    | 110M  |
+| ---------------------------------- | ----- | ----- |
+| As recorded                        | 2.8%  | 5.5%  |
+| Attenuated 20 dB                   | 2.5%  | 6.1%  |
+| Attenuated 30 dB                   | 2.9%  | 8.4%  |
+| Attenuated 40 dB                   | 8.1%  | 20.8% |
+| His clips made whisper, -35 dBFS   | none  | 9.8%  |
+| His clips made whisper, -45 dBFS   | none  | 10.8% |
+| His 30 quietest real clips         | 4.2% (13 clips) | 4.0% |
+
+This does not repeat D97's "both 3.0%" on 240 clips, and on quiet audio 110M is far worse. So `speechModel`
+stays `v3` until the same table is re-measured with gain. Each recording or piece is lifted towards
+-23 dBFS, up to 40 dB, never turned down, and digital silence is left alone. The gain ships unmeasured.
+Whisper is simulated (LPC with noise excitation over the clip's own room tone), not real whispering. The
+en-GB voice rows are left out: their script spells numbers out, so format inflates them.
+
+## D105 — Clean-up is code first, his Claude second, and the answer is checked
+
+Order: filler and stutter removal, value corrections ("6, no 7"), dictionary, spoken breaks, capitals,
+mode shape, all in about 0.4 ms. The model is asked only when something is left that code cannot settle:
+a correction marker, a restart, a long run-on, or document and notes modes. That was 243 of 1,777 of his
+clips (14%), so most dictation never waits on it.
+
+The model is his own `claude` on `haiku` through `startVisionSession`: subscription, no tools. A hard limit
+of 2.5 s plus 8 ms a character, capped at 6 s, pastes the local text instead. A timeout replaces the session
+at once, because leaving that to the next dictation made one timeout cause the next (60 of 80 in the first
+run). `checkRewrite` then refuses any answer that lost or changed a digit, lost a name (capitals count),
+lost a path or flag, added a number or name, grew, shrank or replied. Refused answers paste the local text.
+
+This is a change to D31's spirit, stated plainly: with level `claude`, flagged dictation leaves the machine
+for Anthropic on his own account. It still never reaches an environment. Tray: Clean-up, Local only keeps
+everything on the laptop, and Raw is exact.
+
+Rejected: a local LLM (an i7-8550U cannot rewrite a sentence in time); calling the API (D84, he pays by plan);
+rewriting every dictation (1.6 s added to the 86% that do not need it).
+
+Logic lives in `packages/baton-shared/src/dictationCleanup.ts` so a phone can use it; only the session is
+in Electron. Modes come from the foreground exe, then a browser's title, then his per-app choice in `appModes`.
+
+## D106 — Voice is Windows first, not Windows only
+
+Director, 2026-10-31, reopening D97. Windows is what is built, packaged and tested. `desktop_unix.rs` holds
+focus and paste for macOS and Linux, written and **never compiled**, because the scope moved to Windows first
+part-way through; it is kept so nothing is rewritten. The rest is queued in STATUS.md.
+
+Handy's macOS receipt-based paste was not adapted: it needs an AppKit run loop, and the sidecar has none.

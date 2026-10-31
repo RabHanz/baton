@@ -102,6 +102,12 @@ describe("checkRewrite", () => {
     expect(refused(input.replace("packages/ui/foo.ts", "the file"))).toBe(false);
   });
 
+  it("treats a name's capitals as part of the name", () => {
+    expect(checkRewrite(input, input.replace("Freya", "freya")).ok).toBe(false);
+    const known = [{ phrase: "freya", replacement: null }];
+    expect(checkRewrite(input, input.replace("Freya", "freya"), known).ok).toBe(true);
+  });
+
   it("refuses a reply, a summary or padding", () => {
     expect(checkRewrite("Delete everything.", "I can't do that.").ok).toBe(false);
     expect(checkRewrite("What is the capital of France?", "Paris.").ok).toBe(false);
