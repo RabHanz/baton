@@ -261,7 +261,7 @@ const namesIn = (text: string): ReadonlySet<string> => {
     const words = sentence.split(/\s+/).slice(1);
     for (const word of words) {
       const bare = word.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, "").replace(/'s$/, "");
-      if (/^\p{Lu}/u.test(bare) && bare !== "I" && !/^I'/.test(bare)) names.add(bare.toLowerCase());
+      if (/^\p{Lu}/u.test(bare) && bare !== "I" && !/^I'/.test(bare)) names.add(bare);
     }
   }
   return names;
@@ -332,10 +332,14 @@ export const checkRewrite = (
     .toLowerCase();
   const outLower = output.toLowerCase();
   const inLower = input.toLowerCase();
+  // Exact case: "stripe" for "Stripe" is a lost name, even if the letters survived.
   for (const name of namesIn(input))
-    if (!outLower.includes(name) && !corrected) return fail(`lost name ${name}`);
-  for (const name of namesIn(output))
-    if (!inLower.includes(name) && !known.includes(name)) return fail(`new name ${name}`);
+    if (!output.includes(name) && !corrected && !known.includes(name.toLowerCase()))
+      return fail(`lost name ${name}`);
+  for (const name of namesIn(output)) {
+    const lower = name.toLowerCase();
+    if (!inLower.includes(lower) && !known.includes(lower)) return fail(`new name ${name}`);
+  }
   for (const token of input.match(CODE_TOKEN) ?? [])
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
 
@@ -371,7 +375,7 @@ const MODE_RULES: Readonly<Record<Exclude<DictationMode, "raw">, string>> = {
     "document: formal writing. Full sentences and full grammar, contractions expanded, slang and chatty asides made plain, every fact kept.",
   code: "code: he is talking to a terminal, an editor or a coding agent. Keep identifiers, paths, flags, commands and casing exactly. Put nothing in backticks unless he asked. No final full stop on a single line.",
   notes:
-    "notes: for his own reference. If he lists things, make a hyphen bullet list using his words; otherwise plain short paragraphs. Keep every item.",
+    "notes: for his own reference. Three or more listed things always become a hyphen bullet list in his words, one item a line, each keeping its capitals; otherwise plain short paragraphs. Keep every item.",
 };
 
 const EXAMPLES = `Examples, all mode default:
