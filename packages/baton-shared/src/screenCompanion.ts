@@ -459,11 +459,16 @@ const planWords = (plan: DrivePlan): ReadonlyArray<string> => [
   ...plan.actions.flatMap((a) => [a.why ?? "", a.kind === "type" ? a.text : ""]),
 ];
 
-/** The high-risk subject anywhere in a plan, or null. The same list a sentence is held to. */
+/** What the sentence list never needed: commands as typed, not as said. */
+const DANGEROUS_COMMAND =
+  /\brm\s+-\w*[rf]|\bgit\s+push\b.*(--force|\s-f\b)|\bgit\s+reset\s+--hard|\b(del|rd|rmdir)\s+\/[sq]|\bformat\s+[a-z]:|\b(iex|invoke-expression)\b|\|\s*(sh|bash|iex|powershell|pwsh)\b/i;
+
+/** The high-risk subject anywhere in a plan, or null. The same list a sentence is held to, and more. */
 export const planHighRisk = (plan: DrivePlan): string | null => {
   for (const words of planWords(plan)) {
     const subject = highRiskSubject(words);
     if (subject !== null) return subject;
+    if (DANGEROUS_COMMAND.test(words)) return "a destructive command";
   }
   return null;
 };

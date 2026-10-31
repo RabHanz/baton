@@ -224,6 +224,7 @@ export interface TrayExtras extends BrainVoiceHook {
     readonly detail: string;
     readonly buttons: ReadonlyArray<string>;
     readonly cancel: number;
+    readonly expiresMs?: number;
   }) => Promise<number>;
 }
 

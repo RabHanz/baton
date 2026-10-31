@@ -157,7 +157,7 @@ export interface ScreenCompanion {
     text: string,
     input: { readonly direct: boolean },
   ) => Promise<
-    | { readonly kind: "act"; readonly text: string }
+    | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
     | { readonly kind: "handled" }
     | { readonly kind: "refused"; readonly reply: string }
   >;
@@ -625,7 +625,7 @@ export const startScreenCompanion = (input: {
     let polling = false;
     // A step is never replaced under him: it has been said and could have been read first.
     let armed = false;
-    void Promise.all([speaking, sleep(readingMs(step))]).then(() => (armed = true));
+    void Promise.all([speech.finished(), sleep(readingMs(step))]).then(() => (armed = true));
     lesson.watcher = setInterval(() => {
       if (polling || !armed || run !== lesson || lesson.busy) return;
       polling = true;
