@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { createEscapeKey } from "./escapeKey.ts";
 
 describe("the shared Esc key", () => {
-  it("goes to the newest holder and frees the key when the last lets go", () => {
+  it("reaches every holder and frees the key when the last lets go", () => {
     const calls: string[] = [];
     let press: (() => void) | null = null;
     const hold = createEscapeKey({
@@ -21,7 +21,7 @@ describe("the shared Esc key", () => {
     press!();
     first();
     first();
-    expect(heard).toEqual(["second", "first"]);
+    expect(heard).toEqual(["first", "second", "first"]);
     expect(calls).toEqual(["register", "unregister"]);
   });
 });

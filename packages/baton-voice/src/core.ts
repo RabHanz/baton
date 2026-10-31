@@ -246,6 +246,8 @@ export const createVoiceCore = (input: {
   const finishSegment = () => {
     const parts = segment;
     const spoken = speechSamples;
+    const overItself = barged;
+    barged = false;
     segment = null;
     speechSamples = 0;
     silenceSamples = 0;
@@ -263,6 +265,8 @@ export const createVoiceCore = (input: {
       const text = await input.stt.transcribe(pcm);
       const cleaned = text.trim();
       if (NOISE.test(cleaned)) return emit({ type: "nothing" });
+      // Baton's own reply can say a wake word and "confirm": a yes must not start over its voice.
+      if (overItself && machine.pending !== null) return emit({ type: "nothing" });
       lastTranscript = cleaned;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
@@ -272,7 +276,10 @@ export const createVoiceCore = (input: {
 
   let speaking = false;
   let echoUntil = 0;
+  /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
+  let barged = false;
   const setSpeaking = (active: boolean) => {
+    if (barged) return;
     speaking = active;
     if (active) {
       // What was being heard is now mixed with Baton's own voice.
@@ -296,6 +303,7 @@ export const createVoiceCore = (input: {
       if (hearingItself()) {
         speaking = false;
         echoUntil = 0;
+        barged = true;
         emit({ type: "barge_in" });
       }
       emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });

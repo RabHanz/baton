@@ -9,9 +9,11 @@ import {
   parseScreenIntent,
   parseVerify,
   planFromReply,
+  planHighRisk,
   runDrivePlan,
   screenDifference,
   screensDifference,
+  shellTyping,
   shotFor,
   toDesktop,
   validateDrivePlan,
@@ -362,5 +364,89 @@ describe("needsCaptureApproval", () => {
     expect(needsCaptureApproval({ ...base, sessionApproved: true })).toBe(false);
     expect(needsCaptureApproval({ ...base, allowedUntil: 2000 })).toBe(false);
     expect(needsCaptureApproval({ ...base, policy: "always" })).toBe(false);
+  });
+});
+
+describe("what Run it answers for", () => {
+  const typing = (text: string, title = "Do what the note says") =>
+    validateDrivePlan({ title, actions: [{ kind: "type", text }] }, shots);
+  const payload = `cd projects; ${"x".repeat(70)}; rm -rf . ; git push --force origin main`;
+
+  it("shows the whole of what it will type, past 59 characters", () => {
+    expect(describeDrivePlan(typing(payload))).toContain("git push --force origin main");
+  });
+
+  it("holds typed text to the high-risk list", () => {
+    expect(planHighRisk(typing(payload))).not.toBeNull();
+    expect(planHighRisk(typing("hello"))).toBeNull();
+  });
+
+  it("wants a second yes for a command line, not for Notepad", () => {
+    expect(shellTyping(typing("dir"), "powershell.exe: Windows PowerShell")).toEqual(["dir"]);
+    expect(shellTyping(typing("hello", "Open PowerShell and say hello"), null)).toEqual(["hello"]);
+    expect(shellTyping(typing("hello"), "notepad.exe: notes.txt")).toEqual([]);
+  });
+
+  it.each([
+    [["ctrl", "escape"]],
+    [["ctrl", "shift", "escape"]],
+    [["alt", "f4"]],
+    [["alt", "tab"]],
+    [["ctrl", "alt", "delete"]],
+  ])("refuses %j", (keys) => {
+    const plan = { title: "t", actions: [{ kind: "press", keys }] };
+    expect(() => validateDrivePlan(plan, shots)).toThrow("does not press");
+  });
+});
+
+describe("a drive with his hand on the keyboard or mouse", () => {
+  const pressOnly = validateDrivePlan(
+    {
+      title: "t",
+      actions: [
+        { kind: "press", keys: ["enter"] },
+        { kind: "type", text: "a" },
+      ],
+    },
+    shots,
+  );
+  const quiet = {
+    moveTo: async () => undefined,
+    click: async () => undefined,
+    mouseDown: async () => undefined,
+    mouseUp: async () => undefined,
+    scroll: async () => undefined,
+    sleep: async () => undefined,
+    cancelled: () => false,
+    verify: async () => ({ ok: true }),
+  };
+
+  it("notices the mouse in a plan with no pointer step", async () => {
+    let at = { x: 0, y: 0 };
+    const typed: string[] = [];
+    const result = await runDrivePlan(pressOnly, shots, {
+      ...quiet,
+      type: async (t) => void typed.push(t),
+      press: async () => void (at = { x: 300, y: 300 }),
+      cursor: () => at,
+    } as DriveHost);
+    expect(result.kind).toBe("stopped");
+    expect(typed).toEqual([]);
+  });
+
+  it("stops before typing when another window took the keyboard", async () => {
+    let window = 1;
+    let pressed = 0;
+    const typed: string[] = [];
+    const result = await runDrivePlan(pressOnly, shots, {
+      ...quiet,
+      type: async (t) => void typed.push(t),
+      press: async () => void (pressed += 1),
+      cursor: () => ({ x: 0, y: 0 }),
+      // He Alt+Tabs after the step has been judged, just before the next.
+      foreground: async () => (pressed === 0 ? window : window++),
+    } as DriveHost);
+    expect(result).toMatchObject({ kind: "stopped", step: 1 });
+    expect(typed).toEqual([]);
   });
 });

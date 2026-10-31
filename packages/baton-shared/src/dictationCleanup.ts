@@ -78,6 +78,23 @@ export const modeForApp = (app: {
   return byTitle?.[1] ?? "default";
 };
 
+const SECRET_APP =
+  /^(1password|bitwarden|keepass(xc)?|lastpass|dashlane|nordpass|enpass|protonpass|proton pass|roboform|keeper|authy|credentialuibroker|consent|logonui|mstsc)$/;
+const SECRET_TITLE =
+  /\b(password|passcode|sign[ -]?in|log[ -]?in|banking|online bank|inprivate|incognito)\b/i;
+
+/**
+ * The most a dictation here may do. Password managers and sign-in pages stay on this machine
+ * whatever he chose, and so does an app Baton could not name.
+ */
+export const cleanupLevelFor = <Level extends string>(
+  level: Level | "local",
+  app: { readonly exe: string; readonly title: string },
+): Level | "local" => {
+  const exe = app.exe.toLowerCase().replace(/\.(exe|app)$/, "");
+  return exe.length === 0 || SECRET_APP.test(exe) || SECRET_TITLE.test(app.title) ? "local" : level;
+};
+
 /** The tray's choices for one app. Choosing Automatic forgets his choice for it. */
 export const modeMenu = (input: {
   readonly exe: string;

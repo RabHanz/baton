@@ -447,6 +447,7 @@ export const make = Effect.gen(function* () {
         text: "text" in decision ? decision.text : null,
         control: "control" in decision ? decision.control : null,
         source: decision.source,
+        ...("restated" in decision && decision.restated === true ? { restated: true } : {}),
       } satisfies BatonBrainResult;
     });
 

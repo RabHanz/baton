@@ -11,6 +11,8 @@ import {
   ASSISTANT_PROMPT_INTRO,
   BRAIN_ROUTER_PROMPT,
   decide,
+  instantDecision,
+  refusedReply,
   makeSentenceStream,
   type BrainDecision,
 } from "@t3tools/baton-shared/brain";
@@ -36,12 +38,24 @@ import {
   type DrivePlan,
   type ScreenMode,
   type ScreenShot,
+  planHighRisk,
+  shellTyping,
 } from "@t3tools/baton-shared/screenCompanion";
 import * as Electron from "electron";
 
-import { holdAfterSpeechMs, pageText, readingMs } from "@t3tools/baton-shared/companionPacing";
+import {
+  holdAfterSpeechMs,
+  pageText,
+  queueSpeech,
+  readingMs,
+} from "@t3tools/baton-shared/companionPacing";
 
-import { startVisionSession, type VisionContent, type VisionSession } from "./claudeVision.ts";
+import {
+  SessionClosed,
+  startVisionSession,
+  type VisionContent,
+  type VisionSession,
+} from "./claudeVision.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { createInputDriver } from "./inputDriver.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
@@ -85,6 +99,10 @@ const LOOK_MEMORY_MS = 15 * 60_000;
 const ROUTER_IDLE_MS = 15 * 60_000;
 /** A router this slow has already lost; the word rules answer instead. */
 const ROUTER_TIMEOUT_MS = 20_000;
+/** A warm router keeps its history: this bounds how long one bad turn can colour the next. */
+const ROUTER_MAX_TURNS = 6;
+/** He said stop or the box must open: neither waits for a sidecar that is restarting. */
+const FOCUS_WAIT_MS = 400;
 const RECENT_LINES = 8;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
@@ -107,6 +125,8 @@ export interface AssistantFocus {
   readonly label: string;
   /** Its middle in desktop coordinates, which picks the display. */
   readonly centre: { readonly x: number; readonly y: number } | null;
+  /** The window itself, so a drive sees the keyboard move. */
+  readonly window?: number;
 }
 
 export interface AssistantActions {
@@ -118,7 +138,7 @@ export interface AssistantActions {
     near: { readonly x: number; readonly y: number },
   ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
   /** A command through the intent path and all its guards; the reply to speak. */
-  readonly act: (command: string) => Promise<string>;
+  readonly act: (command: string, restated?: boolean) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
 }
 
@@ -144,6 +164,8 @@ export interface ScreenCompanion {
   readonly setActions: (actions: AssistantActions) => void;
   /** A lesson or a drive is running. */
   readonly active: () => boolean;
+  /** Silences what is queued and what an answer has yet to say. */
+  readonly hush: () => void;
   readonly openAskBox: () => void;
   /** A reply from outside the assistant, shown in full when answers are written only. */
   readonly notice: (text: string) => void;
@@ -216,13 +238,19 @@ export const startScreenCompanion = (input: {
   };
 
   const overlay = createPointerOverlay(input.platform);
-  let speaking: Promise<void> = Promise.resolve();
+  const speech = queueSpeech(input.speak);
+  /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
+  let hushes = 0;
+  const hush = () => {
+    hushes += 1;
+    input.stopSpeech?.();
+  };
   /** When the current speech began, for how much reading it has already covered. */
   let spokenFrom: number | null = null;
   const say = (text: string) => {
     if (settings.output === "written" || text.trim().length === 0) return;
     spokenFrom ??= Date.now();
-    speaking = speaking.then(() => input.speak(text).catch(() => undefined));
+    speech.add(text);
   };
   let driver: ReturnType<typeof createInputDriver> | null = null;
   let run: Run | null = null;
@@ -251,11 +279,16 @@ export const startScreenCompanion = (input: {
   // Kept warm between sentences: a cold start costs 2 s more, and it holds no conversation of use.
   let router: VisionSession | null = null;
   let routerIdle: ReturnType<typeof setTimeout> | null = null;
+  let routerTurns = 0;
   const dropRouter = () => {
     router?.dispose();
     router = null;
+    routerTurns = 0;
   };
   const routerAsk = async (turn: string): Promise<string> => {
+    // Whatever a page's title talked it into stops at the cap.
+    if (routerTurns >= ROUTER_MAX_TURNS) dropRouter();
+    routerTurns += 1;
     router ??= session(settings.routerModel, BRAIN_ROUTER_PROMPT, ROUTER_TIMEOUT_MS);
     if (routerIdle !== null) clearTimeout(routerIdle);
     routerIdle = setTimeout(dropRouter, ROUTER_IDLE_MS);
@@ -291,7 +324,7 @@ export const startScreenCompanion = (input: {
   };
   /** Takes down whatever is up, and the voice with it. Esc stays his: this is the tray's. */
   const dismiss = () => {
-    input.stopSpeech?.();
+    hush();
     input.onDismissed?.();
     if (run !== null && run.mode !== "look") {
       say("Stopped.");
@@ -330,7 +363,7 @@ export const startScreenCompanion = (input: {
         await sleep(ms);
         if (!current()) return;
       }
-      await speaking;
+      await speech.finished();
       if (!current()) return;
       const lastPage = pages.at(-1)!;
       const spokenMs = spokenFrom === null ? 0 : Date.now() - spokenFrom;
@@ -343,6 +376,15 @@ export const startScreenCompanion = (input: {
       await overlay.retreat();
     })().catch(() => undefined);
   };
+
+  /** A title can hold an email subject or a bank's name: it goes where a screenshot may. */
+  const titlesAllowed = (): boolean =>
+    !needsCaptureApproval({
+      policy: settings.captureApproval,
+      allowedUntil,
+      sessionApproved: false,
+      now: Date.now(),
+    });
 
   /** His yes for a capture, or false. `forWhat` names the lesson or drive the yes covers. */
   const approveCapture = async (question: string, forWhat: string | null): Promise<boolean> => {
@@ -411,6 +453,7 @@ export const startScreenCompanion = (input: {
   const fail = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     // He stopped it, and that ended the conversation under the question in flight.
+    if (error instanceof SessionClosed) return;
     if (run === null && message.startsWith("Claude stopped")) return;
     say(message);
     linger("Baton", message);
@@ -419,6 +462,7 @@ export const startScreenCompanion = (input: {
   };
 
   const end = () => {
+    windows.closePrompt();
     const current = run;
     run = null;
     if (current === null) return;
@@ -441,6 +485,10 @@ export const startScreenCompanion = (input: {
       run = { mode: "look", vision: visionFor("look"), lastAt: Date.now() };
     }
     const current = run;
+    const voiceTurn = hushes;
+    const sayHere = (text: string) => {
+      if (voiceTurn === hushes) say(text);
+    };
     const stream = makeSentenceStream();
     let spoken = 0;
     let soFar = "";
@@ -448,7 +496,7 @@ export const startScreenCompanion = (input: {
       for (const sentence of stream.feed(delta)) {
         if (spoken === 0) firstSentence();
         spoken += 1;
-        say(sentence);
+        sayHere(sentence);
         soFar = `${soFar} ${sentence}`.trim();
         // Text keeps pace with the voice instead of waiting for the end of the answer.
         void show("Baton", soFar);
@@ -463,7 +511,8 @@ export const startScreenCompanion = (input: {
       input.onActivity?.(screen ? "Looking" : "Thinking");
       void show(screen ? "Looking" : "Thinking", question);
       const captured = screen ? await capture() : [];
-      const window = focus === null ? "" : `\n\n(the window he is using: ${focus.label})`;
+      const title = screen || titlesAllowed() ? focus : null;
+      const window = title === null ? "" : `\n\n(the window he is using: ${title.label})`;
       const raw = await current.vision.ask(
         content(captured, `${question}${window}`),
         speakAsItComes,
@@ -488,12 +537,12 @@ export const startScreenCompanion = (input: {
     const rest = stream.flush();
     if (rest.length > 0) {
       if (spoken === 0) firstSentence();
-      say(rest);
+      sayHere(rest);
     }
     remember(`He said: ${question}`);
     remember(`You answered: ${reply.spoken}`);
     // A retry after [LOOK] streamed nothing, so the whole answer is spoken here.
-    if (spoken === 0 && rest.length === 0) say(reply.spoken);
+    if (spoken === 0 && rest.length === 0) sayHere(reply.spoken);
     input.onActivity?.(null);
     await pointAt(reply.point, turn.shots);
     linger("Baton", reply.spoken);
@@ -625,6 +674,10 @@ export const startScreenCompanion = (input: {
       release: null,
     };
     run = current;
+    // Never ends a newer run that replaced this one while it waited.
+    const finish = () => {
+      if (run === current) end();
+    };
     input.onChange?.();
     input.onActivity?.("Planning");
     void show("Planning", goal);
@@ -655,9 +708,18 @@ export const startScreenCompanion = (input: {
       say(parsed.error);
       input.onActivity?.(null);
       linger("Baton", parsed.error);
-      return end();
+      return finish();
     }
     const plan = parsed.plan;
+    // Held to the list a sentence is held to, whatever routed here. Run it is not enough.
+    const subject = planHighRisk(plan);
+    if (subject !== null) {
+      const message = refusedReply(subject);
+      say(message);
+      input.onActivity?.(null);
+      linger("Baton", message);
+      return finish();
+    }
     current.lastSpoken = reply.spoken;
     const marks = planMarkers(plan, shots);
     await overlay.markers(marks);
@@ -669,10 +731,20 @@ export const startScreenCompanion = (input: {
       buttons: ["Run it", "Not now"],
       cancel: 1,
     });
-    if (response !== 0 || run !== current) {
+    const typed = shellTyping(plan, focus?.label ?? null);
+    const shellYes =
+      response !== 0 || run !== current || typed.length === 0
+        ? 0
+        : await windows.ask({
+            title: "This plan types into a command line",
+            detail: `A command line runs what it is given. Baton would type:\n\n${typed.join("\n")}`,
+            buttons: ["Type it", "Not now"],
+            cancel: 1,
+          });
+    if (response !== 0 || shellYes !== 0 || run !== current) {
       input.onActivity?.(null);
       await wipe();
-      return end();
+      return finish();
     }
     await sleep(350); // the prompt leaves the screen first
     const afterPrompt = await fingerprint();
@@ -684,10 +756,11 @@ export const startScreenCompanion = (input: {
       say(message);
       input.onActivity?.(null);
       linger("Drive", message);
-      return end();
+      return finish();
     }
-    const releaseDrive = input.holdEscape(() => (current.cancelled = true));
-    current.release = releaseDrive;
+    // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
+    if (run !== current) return;
+    current.release = input.holdEscape(() => (current.cancelled = true));
     driver ??= createInputDriver({
       platform: input.platform,
       toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
@@ -703,6 +776,7 @@ export const startScreenCompanion = (input: {
       type: d.type,
       press: d.press,
       cursor: () => Electron.screen.getCursorScreenPoint(),
+      foreground: async () => (await focusSoon())?.window ?? null,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       cancelled: () => current.cancelled || run !== current,
       progress: (i, action) => {
@@ -732,13 +806,16 @@ export const startScreenCompanion = (input: {
       step: -1,
       reason: (error as Error).message,
     }));
+    current.release?.();
+    current.release = null;
+    if (run !== current) return;
     const message = result.kind === "finished" ? "Done. Have a look." : result.reason;
     input.onTrace?.({ driveResult: result });
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
     linger("Drive", message);
-    end();
+    finish();
   };
 
   const planMarkers = (plan: DrivePlan, shots: ReadonlyArray<ScreenShot>) =>
@@ -753,7 +830,12 @@ export const startScreenCompanion = (input: {
   const decideSaid = (text: string, direct: boolean): Promise<BrainDecision> =>
     decide(
       text,
-      { running: runningMode(), direct, recent, focused: focus?.label ?? null },
+      {
+        running: runningMode(),
+        direct,
+        recent,
+        focused: titlesAllowed() ? (focus?.label ?? null) : null,
+      },
       {
         ask: routerAsk,
         grammarPlaces: (said) => actions?.grammarPlaces(said) ?? Promise.resolve(false),
@@ -796,7 +878,7 @@ export const startScreenCompanion = (input: {
             if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
             return Promise.resolve();
           }
-          input.stopSpeech?.();
+          hush();
           void wipe();
           say("Stopped.");
           end();
@@ -809,10 +891,19 @@ export const startScreenCompanion = (input: {
     void go().catch(fail).finally(finished);
   };
 
+  const focusSoon = (): Promise<AssistantFocus | null> =>
+    Promise.race([
+      actions?.focus?.().catch(() => null) ?? Promise.resolve(null),
+      sleep(FOCUS_WAIT_MS).then(() => null),
+    ]);
+
   const said: ScreenCompanion["said"] = async (text, { direct }) => {
     const started = Date.now();
-    focus = askFocus ?? (await actions?.focus?.().catch(() => null)) ?? null;
-    askFocus = null;
+    // A stop never waits on the sidecar, and needs no window.
+    if (instantDecision(text, runningMode() !== null) === null) {
+      focus = askFocus ?? (await focusSoon());
+      askFocus = null;
+    }
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
     input.onTrace?.({ said: text, focused: focus?.label ?? null, decision, recent: recent.length });
@@ -824,7 +915,11 @@ export const startScreenCompanion = (input: {
         firstSentenceMs: null,
         totalMs: decidedAt - started,
       });
-      return { kind: "act", text: decision.text };
+      return {
+        kind: "act",
+        text: decision.text,
+        ...(decision.restated === true ? { restated: true } : {}),
+      };
     }
     if (decision.route === "refused") return { kind: "refused", reply: decision.text };
     perform(decision, started, decidedAt);
@@ -840,7 +935,7 @@ export const startScreenCompanion = (input: {
         ? result.reply
         : actions === null
           ? "Baton's sessions aren't reachable from here yet."
-          : await actions.act(result.text);
+          : await actions.act(result.text, result.restated === true);
     say(reply);
     linger("Baton", reply);
   };
@@ -854,12 +949,10 @@ export const startScreenCompanion = (input: {
   // Taken first: once the box is up, it is the focused window.
   let askFocus: AssistantFocus | null = null;
   const openAskBox = () => {
-    void (actions?.focus?.() ?? Promise.resolve(null))
-      .catch(() => null)
-      .then((window) => {
-        askFocus = window;
-        windows.openAsk();
-      });
+    void focusSoon().then((window) => {
+      askFocus = window;
+      windows.openAsk();
+    });
   };
 
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
@@ -872,6 +965,7 @@ export const startScreenCompanion = (input: {
       actions = next;
     },
     active: () => runningMode() !== null,
+    hush,
     openAskBox,
     notice: (text) => {
       if (text.trim().length > 0) linger("Baton", text);
@@ -936,7 +1030,7 @@ export const startScreenCompanion = (input: {
             type: "radio" as const,
             checked: settings.output === "written",
             click: () => {
-              input.stopSpeech?.();
+              hush();
               save({ output: "written" });
             },
           },

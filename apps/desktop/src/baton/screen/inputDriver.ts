@@ -147,6 +147,7 @@ const lineProcess = (file: string, args: ReadonlyArray<string>) => {
     chain = turn.catch(() => undefined);
     return turn;
   };
+  child.stdin.on("error", () => undefined);
   return { send, dispose: () => (child.stdin.end(), child.kill()) };
 };
 

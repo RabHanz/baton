@@ -80,7 +80,13 @@ export type VoiceEvent =
 
 export type VoiceEffect =
   /** A command for the intent path, with the target a follow-up inherits. */
-  | { readonly kind: "command"; readonly text: string; readonly inheritedTarget: string | null }
+  | {
+      readonly kind: "command";
+      readonly text: string;
+      readonly inheritedTarget: string | null;
+      /** The words are a model's, not his: anything but a read waits for his "confirm". */
+      readonly restated?: boolean;
+    }
   /** Direct-session speech: a user message to the focused session. */
   | { readonly kind: "session_message"; readonly text: string }
   /** Text for the focused editable field. Never leaves the client. */

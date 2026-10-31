@@ -1,4 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
+import { highRiskSubject } from "./intentParser.ts";
 /**
  * Screen companion (D84), the pure half: prompts, the [POINT] tag, coordinates, drive plans.
  * Ported from farzaa/clicky and Bitshank-2338/clicky-windows, both MIT; notices in
@@ -296,6 +297,17 @@ export const DRIVE_KEYS: ReadonlySet<string> = new Set([
   ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`),
 ]);
 
+/** Start, Task Manager, closing a window, switching windows, and the secure sequences. */
+const forbiddenChord = (keys: ReadonlyArray<string>): boolean => {
+  const held = new Set(keys);
+  const modified = held.has("ctrl") || held.has("control") || held.has("alt");
+  return (
+    (modified && held.has("escape")) ||
+    (held.has("alt") && (held.has("f4") || held.has("tab"))) ||
+    ((held.has("ctrl") || held.has("control")) && held.has("alt"))
+  );
+};
+
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
@@ -371,7 +383,8 @@ export const validateDrivePlan = (value: unknown, shots: ReadonlyArray<ScreenSho
         keys.some(
           (k) =>
             typeof k !== "string" || !(DRIVE_KEYS.has(k.toLowerCase()) || /^[a-z0-9]$/i.test(k)),
-        )
+        ) ||
+        forbiddenChord(keys.map((k: string) => k.toLowerCase()))
       )
         throw new Error(
           `${where} presses a key Baton does not press (the Windows key and security chords are excluded).`,
@@ -416,10 +429,10 @@ const ACTION_VERB: Record<DriveAction["kind"], string> = {
 };
 
 /** One line per step, for the approval dialog and the overlay's numbered markers. */
-export const describeAction = (action: DriveAction): string => {
+export const describeAction = (action: DriveAction, whole = false): string => {
   const what =
     action.kind === "type"
-      ? `“${action.text.length > 60 ? `${action.text.slice(0, 59)}…` : action.text}”`
+      ? `“${whole || action.text.length <= 60 ? action.text : `${action.text.slice(0, 59)}…`}”`
       : action.kind === "press"
         ? action.keys.join("+")
         : action.kind === "scroll"
@@ -438,7 +451,38 @@ export const describeAction = (action: DriveAction): string => {
 };
 
 export const describeDrivePlan = (plan: DrivePlan): string =>
-  plan.actions.map((a, i) => `${i + 1}. ${describeAction(a)}`).join("\n");
+  plan.actions.map((a, i) => `${i + 1}. ${describeAction(a, true)}`).join("\n");
+
+/** Every word a plan carries: its title, each reason, and all it would type. */
+const planWords = (plan: DrivePlan): ReadonlyArray<string> => [
+  plan.title,
+  ...plan.actions.flatMap((a) => [a.why ?? "", a.kind === "type" ? a.text : ""]),
+];
+
+/** The high-risk subject anywhere in a plan, or null. The same list a sentence is held to. */
+export const planHighRisk = (plan: DrivePlan): string | null => {
+  for (const words of planWords(plan)) {
+    const subject = highRiskSubject(words);
+    if (subject !== null) return subject;
+  }
+  return null;
+};
+
+const SHELL_NAME =
+  /^\s*(cmd|powershell|pwsh|wt|bash|wsl|terminal|windows terminal|command prompt)(\.exe)?\s*$/i;
+const SHELL_WORD = /\b(command prompt|powershell|pwsh|terminal|cmd|shell|bash|wsl)\b/i;
+const SHELL_APP =
+  /^(cmd|powershell|pwsh|windowsterminal|wt|conhost|bash|wsl|mintty|alacritty|wezterm)(\.exe)?\s*:/i;
+
+/** What a plan would type into a command line, for a second yes. Empty when it types into none. */
+export const shellTyping = (plan: DrivePlan, focused: string | null): ReadonlyArray<string> => {
+  const typed = plan.actions.flatMap((a) => (a.kind === "type" ? [a.text] : []));
+  const shell =
+    (focused !== null && SHELL_APP.test(focused)) ||
+    typed.some((text) => SHELL_NAME.test(text)) ||
+    planWords(plan).some((words) => SHELL_WORD.test(words));
+  return shell ? typed : [];
+};
 
 // ── Running a plan ──────────────────────────────────────────────────────────
 
@@ -452,6 +496,8 @@ export interface DriveHost {
   readonly type: (text: string) => Promise<void>;
   readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
   readonly cursor: () => { readonly x: number; readonly y: number };
+  /** The window with the keyboard, or null when unknown. */
+  readonly foreground?: () => Promise<number | null>;
   readonly sleep: (ms: number) => Promise<void>;
   /** Esc, the tray, or "stop" by voice. */
   readonly cancelled: () => boolean;
@@ -479,7 +525,9 @@ export const runDrivePlan = async (
   shots: ReadonlyArray<ScreenShot>,
   host: DriveHost,
 ): Promise<DriveResult> => {
-  let expected: { x: number; y: number } | null = null;
+  // From the start, so a plan with no pointer step still sees his hand on the mouse.
+  let expected: { x: number; y: number } | null = host.cursor();
+  let window = (await host.foreground?.()) ?? null;
   let held = false;
   const guard = (): string | null => {
     if (host.cancelled()) return "Stopped.";
@@ -501,6 +549,12 @@ export const runDrivePlan = async (
       if (stop !== null) return { kind: "stopped", step: i, reason: stop };
       host.progress?.(i, action);
       const shot = shotFor(shots, action.screen ?? null);
+      if (action.kind === "type" || action.kind === "press") {
+        const now = (await host.foreground?.()) ?? null;
+        if (window !== null && now !== null && now !== window) {
+          return { kind: "stopped", step: i, reason: "The window changed, so I stopped." };
+        }
+      }
       switch (action.kind) {
         case "click":
         case "double_click":
@@ -535,6 +589,8 @@ export const runDrivePlan = async (
           break;
       }
       await host.sleep(250);
+      // A step may rightly open a window; only a change between steps is someone else's.
+      window = (await host.foreground?.()) ?? null;
       if (action.expect !== undefined) {
         const verdict = await host.verify(action, i);
         if (!verdict.ok) return { kind: "stopped", step: i, reason: verdict.reason };

@@ -301,11 +301,13 @@ export type BatonIntentInput = typeof BatonIntentInput.Type;
  * it, so a phone and a desktop share one decision and each keeps its own thread.
  */
 export const BatonBrainInput = Schema.Struct({
-  said: TrimmedNonEmptyString,
+  said: TrimmedNonEmptyString.check(Schema.isMaxLength(4_000)),
   /** "teach" or "drive" while one runs on this client. */
   running: Schema.NullOr(Schema.String),
   direct: Schema.Boolean,
-  recent: Schema.Array(Schema.String),
+  recent: Schema.Array(Schema.String.check(Schema.isMaxLength(1_000))).check(
+    Schema.isMaxLength(20),
+  ),
 });
 export type BatonBrainInput = typeof BatonBrainInput.Type;
 
@@ -315,6 +317,8 @@ export const BatonBrainResult = Schema.Struct({
   text: Schema.NullOr(Schema.String),
   control: Schema.NullOr(Schema.String),
   source: Schema.String,
+  /** "act" text the model reworded: a client must not run it without his yes. */
+  restated: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonBrainResult = typeof BatonBrainResult.Type;
 

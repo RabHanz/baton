@@ -18,6 +18,13 @@ import { virtualKeys, xdotoolChord } from "./inputDriver.ts";
 
 describe("claudeVision", () => {
   it("never passes an API key to the child", () => {
+    const metered = subscriptionEnv({
+      ANTHROPIC_BASE_URL: "https://proxy",
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      CLAUDE_CODE_USE_VERTEX: "1",
+      KEEP: "yes",
+    });
+    expect(metered).toEqual({ KEEP: "yes" });
     const env = subscriptionEnv({
       PATH: "/bin",
       ANTHROPIC_API_KEY: "sk",

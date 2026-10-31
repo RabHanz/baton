@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  cleanupLevelFor,
   checkRewrite,
   chooseMode,
   cleanDictation,
@@ -168,5 +169,16 @@ describe("cleanDictation", () => {
     expect((await clean({ level: "local" })).stage).toBe("local");
     expect((await clean({ mode: "raw" })).stage).toBe("raw");
     expect((await clean({ level: "off" })).stage).toBe("raw");
+  });
+});
+
+describe("what may leave the machine", () => {
+  it("keeps password managers, sign-in pages and unknown apps local", () => {
+    expect(cleanupLevelFor("claude", { exe: "1Password.exe", title: "Vault" })).toBe("local");
+    expect(cleanupLevelFor("claude", { exe: "chrome.exe", title: "Sign in - Barclays" })).toBe(
+      "local",
+    );
+    expect(cleanupLevelFor("claude", { exe: "", title: "" })).toBe("local");
+    expect(cleanupLevelFor("claude", { exe: "winword.exe", title: "Report.docx" })).toBe("claude");
   });
 });

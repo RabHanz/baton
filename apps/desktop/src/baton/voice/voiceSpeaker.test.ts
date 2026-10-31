@@ -1,6 +1,8 @@
 // @effect-diagnostics globalTimers:off
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { queueSpeech } from "@t3tools/baton-shared/companionPacing";
+
 import { pocketPlan } from "./pocketVoice.ts";
 import {
   createSpeaker,
@@ -150,5 +152,33 @@ describe("pocketPlan", () => {
     expect(plan.files.map((f) => f.file)).toContain("vera.safetensors");
     expect(plan.files.map((f) => f.file)).not.toContain("anna.safetensors");
     expect(pocketPlan("x", "quick").files.map((f) => f.file)).toContain("tokenizer.model");
+  });
+});
+
+describe("silencing a reply of several sentences", () => {
+  it("stops the ones still waiting", async () => {
+    const said: string[] = [];
+    let release: (() => void) | null = null;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const speaker = createSpeaker({
+      os: {
+        name: "os",
+        speak: async (text) => {
+          said.push(text);
+          await held;
+        },
+      },
+      voice: () => null,
+      player,
+    });
+    const queue = queueSpeech(speaker.speak);
+    queue.add("one.");
+    queue.add("two.");
+    queue.add("three.");
+    await vi.waitFor(() => expect(said).toEqual(["one."]));
+    speaker.cancel();
+    release!();
+    await queue.finished();
+    expect(said).toEqual(["one."]);
   });
 });

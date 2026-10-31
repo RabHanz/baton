@@ -34,3 +34,17 @@ export const pageText = (text: string, chars: number = PAGE_CHARS): ReadonlyArra
   if (page.trim().length > 0) pages.push(page.trim());
   return pages.length > 0 ? pages : [text];
 };
+
+/**
+ * Every sentence reaches the speaker the moment it exists, so a cancel can reach it. Chaining the
+ * calls instead hid the waiting sentences from cancel, and they played on after a stop.
+ */
+export const queueSpeech = (speak: (text: string) => Promise<void>) => {
+  let last: Promise<void> = Promise.resolve();
+  return {
+    add: (text: string): void => {
+      last = Promise.all([last, speak(text).catch(() => undefined)]).then(() => undefined);
+    },
+    finished: (): Promise<void> => last,
+  };
+};

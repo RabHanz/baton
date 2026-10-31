@@ -185,7 +185,7 @@ export interface BrainVoiceHook {
     text: string,
     input: { readonly direct: boolean },
   ) => Promise<
-    | { readonly kind: "act"; readonly text: string }
+    | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
     | { readonly kind: "handled" }
     | { readonly kind: "refused"; readonly reply: string }
   >;
@@ -194,7 +194,8 @@ export interface BrainVoiceHook {
 /**
  * Everything said outside dictation goes through the brain. Only "act" reaches the intent path,
  * and there every guard still applies: high risk refused, medium risk read back and confirmed.
- * Dictation is never in here: `dictate` effects pass straight through and reach no model.
+ * Dictation is never in here: `dictate` effects pass straight through. Its only model is the
+ * clean-up pass, when he has chosen it (D105).
  */
 export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): VoiceRouter => ({
   route: async (effect, context) => {
@@ -209,8 +210,17 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
     if (decision.kind === "refused") {
       return { kind: "refused", reply: decision.reply, reason: "high_risk" };
     }
-    // Direct speech keeps his own words; a command takes the model's plain restatement.
-    return inner.route(direct ? effect : { ...effect, text: decision.text }, context);
+    // Direct speech keeps his own words. A command may take the model's plain restatement, and
+    // then it only reads or waits for his "confirm" (D114).
+    if (effect.kind !== "command") return inner.route(effect, context);
+    return inner.route(
+      {
+        ...effect,
+        text: decision.text,
+        ...(decision.restated === true ? { restated: true } : {}),
+      },
+      context,
+    );
   },
 });
 

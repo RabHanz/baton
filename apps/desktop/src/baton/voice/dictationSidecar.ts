@@ -35,6 +35,7 @@ export interface DictationConfig {
 export interface FocusedApp {
   readonly exe: string;
   readonly title: string;
+  readonly window?: number;
   /** Physical pixels; null when the OS would not say. */
   readonly rect?: {
     readonly x: number;

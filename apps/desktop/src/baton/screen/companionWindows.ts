@@ -62,9 +62,13 @@ export interface PromptInput {
   readonly detail: string;
   /** The first is the default. */
   readonly buttons: ReadonlyArray<string>;
-  /** Esc, or the box being closed some other way. */
+  /** Esc, the box being closed some other way, or running out of time. */
   readonly cancel: number;
+  readonly expiresMs?: number;
 }
+
+/** A prompt nobody answers must not block the next one, and an old yes must not stand ready. */
+const PROMPT_EXPIRY_MS = 60_000;
 
 const companionWindow = (bounds: Electron.Rectangle): Electron.BrowserWindow => {
   const win = new Electron.BrowserWindow({
@@ -78,6 +82,9 @@ const companionWindow = (bounds: Electron.Rectangle): Electron.BrowserWindow => 
     show: false,
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
+  // These pages have Node: only the page written here may ever load in them.
+  win.webContents.on("will-navigate", (event) => event.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.setAlwaysOnTop(true, "screen-saver");
   win.setContentProtection(true);
   return win;
@@ -93,7 +100,11 @@ export const createCompanionWindows = (input: {
   readonly onAsk: (text: string) => void;
 }) => {
   let askBox: Electron.BrowserWindow | null = null;
-  let promptBox: { win: Electron.BrowserWindow; done: (index: number) => void } | null = null;
+  let promptBox: {
+    win: Electron.BrowserWindow;
+    done: (index: number) => void;
+    cancel: number;
+  } | null = null;
   let queue: Promise<unknown> = Promise.resolve();
 
   const closeAsk = () => {
@@ -153,13 +164,18 @@ export const createCompanionWindows = (input: {
             width: PROMPT_WIDTH,
             height: 200,
           });
+          const expiry = setTimeout(
+            () => done(options.cancel),
+            options.expiresMs ?? PROMPT_EXPIRY_MS,
+          );
           const done = (index: number) => {
+            clearTimeout(expiry);
             // First: destroying fires "closed", which would answer Cancel over his yes.
             resolve(index);
             if (promptBox?.win === win) promptBox = null;
             if (!win.isDestroyed()) win.destroy();
           };
-          promptBox = { win, done };
+          promptBox = { win, done, cancel: options.cancel };
           win.on("closed", () => done(options.cancel));
           void win
             .loadURL(`data:text/html,${encodeURIComponent(PROMPT_DOCUMENT)}`)
@@ -168,7 +184,8 @@ export const createCompanionWindows = (input: {
             )
             .then((height: number) => {
               if (win.isDestroyed()) return;
-              const tall = Math.ceil(height);
+              // A long plan scrolls inside the box; the buttons stay on the screen.
+              const tall = Math.min(Math.ceil(height), area.height - 120);
               win.setBounds({
                 x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
                 y: Math.round(area.y + area.height - tall - 96),
@@ -189,9 +206,11 @@ export const createCompanionWindows = (input: {
   return {
     openAsk,
     ask,
+    /** The thing it was asking about has ended. */
+    closePrompt: () => promptBox?.done(promptBox.cancel),
     dispose: () => {
       closeAsk();
-      promptBox?.done(0 as never);
+      promptBox?.done(promptBox.cancel);
       Electron.ipcMain.removeListener("baton-screen:ask", onAskIpc);
       Electron.ipcMain.removeListener("baton-screen:output", onOutputIpc);
       Electron.ipcMain.removeListener("baton-screen:prompt", onPromptIpc);

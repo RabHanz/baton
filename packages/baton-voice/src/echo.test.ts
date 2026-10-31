@@ -76,3 +76,20 @@ describe("Baton hearing itself", () => {
     expect(r.heard.length).toBeGreaterThan(0);
   });
 });
+
+describe("a wake word over a long reply", () => {
+  it("keeps what he says next, though the next sentence starts", async () => {
+    const r = rig();
+    r.core.setSpeaking(true);
+    r.push(1);
+    r.wake();
+    r.push(0.2);
+    // The rest of the reply's queue ending, or one more sentence starting.
+    r.core.setSpeaking(true);
+    r.core.setSpeaking(false);
+    r.push(16);
+    await r.core.idle();
+    expect(r.heard.length).toBeGreaterThan(0);
+    expect(r.heard[0]! / 16_000).toBeGreaterThan(5);
+  });
+});

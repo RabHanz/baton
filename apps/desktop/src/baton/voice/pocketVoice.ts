@@ -134,6 +134,8 @@ export const pocketPlan = (root: string, voice: PocketVoice): PocketPlan => {
 };
 
 const IDLE_STOP_MS = 10 * 60_000;
+const TTS_STALL_MS = 20_000;
+const DOWNLOAD_MS = 10 * 60_000;
 const READY_MS = 30_000;
 /** Two threads gave the same first audio as four at a third less memory. */
 const THREADS = "2";
@@ -196,7 +198,9 @@ export const createPocketEngine = (input: {
         const bin = NodePath.dirname(NodePath.dirname(binary));
         const archive = NodePath.join(bin, build.asset);
         await NodeFSP.mkdir(bin, { recursive: true });
-        const response = await fetch(`${RELEASE}/${build.asset}`);
+        const response = await fetch(`${RELEASE}/${build.asset}`, {
+          signal: AbortSignal.timeout(DOWNLOAD_MS),
+        });
         if (!response.ok) throw new Error(`Could not download the voice (${response.status}).`);
         const bytes = Buffer.from(await response.arrayBuffer());
         const { createHash } = await import("node:crypto");
@@ -260,14 +264,25 @@ export const createPocketEngine = (input: {
         windowsHide: true,
         stdio: "ignore",
         cwd: plan.dir,
-        env: { ...process.env, RAYON_NUM_THREADS: THREADS },
+        // A downloaded binary gets what a process needs to start, and none of his variables.
+        env: {
+          ...Object.fromEntries(
+            ["SystemRoot", "TEMP", "TMP", "HOME", "USERPROFILE"].flatMap((key) => {
+              const value = process.env[key];
+              return value === undefined ? [] : [[key, value]];
+            }),
+          ),
+          RAYON_NUM_THREADS: THREADS,
+        },
       },
     );
     const up = (async () => {
       const deadline = Date.now() + READY_MS;
       for (;;) {
         if (proc.exitCode !== null) throw new Error("The voice stopped.");
-        const ok = await fetch(`http://127.0.0.1:${port}/health`).then(
+        const ok = await fetch(`http://127.0.0.1:${port}/health`, {
+          signal: AbortSignal.timeout(2_000),
+        }).then(
           (r) => r.ok,
           () => false,
         );
@@ -297,9 +312,16 @@ export const createPocketEngine = (input: {
         if (idle !== null) clearTimeout(idle);
         idle = setTimeout(stop, IDLE_STOP_MS);
         const abort = new AbortController();
+        // A wedged engine must not leave Baton believing it is still speaking.
+        let stall: ReturnType<typeof setTimeout> | null = null;
+        const alive = () => {
+          if (stall !== null) clearTimeout(stall);
+          stall = setTimeout(() => abort.abort(), TTS_STALL_MS);
+        };
         const stream = (async function* () {
           const { port, up } = start(voice);
           await up;
+          alive();
           const response = await fetch(`http://127.0.0.1:${port}/tts`, {
             method: "POST",
             headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -309,8 +331,13 @@ export const createPocketEngine = (input: {
           if (!response.ok || response.body === null) {
             throw new Error(`The voice answered ${response.status}.`);
           }
-          for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-            yield Buffer.from(chunk);
+          try {
+            for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+              alive();
+              yield Buffer.from(chunk);
+            }
+          } finally {
+            if (stall !== null) clearTimeout(stall);
           }
         })();
         return { stream, cancel: () => abort.abort() };

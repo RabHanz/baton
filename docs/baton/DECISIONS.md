@@ -2973,3 +2973,28 @@ within 1 DIP on markers.
 Rejected: raising the threshold or dropping the second-display watch (either loses steps on his setup),
 and retrying the whole search (the same provider fails again).
 
+## D114 — What a page, a plan or a reply can no longer do
+
+An independent review of PR #51 confirmed these against the code.
+
+A window title and the recent lines reach the router as quoted, untrusted data. A command the model
+reworded is marked restated: it may read, and anything else waits for his later "confirm", because a low-risk
+`message_work_session` would otherwise reach an agent with tools unconfirmed. The warm router is dropped after
+six turns. Direct speech skips the model and stays word for word. Rejected: always running his exact words,
+which loses "what's the craic with the Margin".
+
+Titles go to Anthropic only where a screenshot may, so with capture on "ask" the router works without them.
+
+A plan is held to the high-risk list across its title, reasons and typed text, and Run it shows typed text
+whole. A plan touching a command line asks a second time and lists what it would type. Drive sees the mouse
+from its first step and stops if the keyboard moves to another window between steps. Ctrl+Esc,
+Ctrl+Shift+Esc, Alt+F4, Alt+Tab and Ctrl+Alt+anything are refused.
+
+Every sentence reaches the speaker when it exists, so a cancel covers the queue, and an answer still streaming
+stays quiet after he silences it. A wake word over speech holds what he says next against the echo gate. A
+"confirm" that starts over Baton's own voice is ignored, since a reply can say the wake word and the word
+itself; he says it again after the voice stops.
+
+Dictation clean-up is local until the Director rules (D105). Even on `claude`, password managers, sign-in and
+banking pages, private windows and any app Baton cannot name stay on this machine.
+

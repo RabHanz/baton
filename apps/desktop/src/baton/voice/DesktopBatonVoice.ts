@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
 import {
   chooseMode,
+  cleanupLevelFor,
   modeMenu,
   type CleanupLevel,
   type DictationMode,
@@ -143,7 +144,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   language: "en",
-  dictationCleanup: "claude",
+  // Local until the Director rules on D31: "claude" sends flagged dictation to Anthropic (D105).
+  dictationCleanup: "local",
   cleanupModel: "haiku",
   claudeBinary: "claude",
   appModes: {},
@@ -175,6 +177,8 @@ const readSettings = (path: string): VoiceSettings => {
   }
 };
 
+/** Longer than the spoken 15 s, for reading; a typed yes must still run out. */
+const TYPED_CONFIRM_MS = 30_000;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const PILL_TEXT_CHARS = 90;
@@ -313,7 +317,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const { text } = await rewriter.clean({
         raw: request.text,
         mode: chooseMode(app, settings.appModes),
-        level: settings.dictationCleanup,
+        level: cleanupLevelFor(settings.dictationCleanup, app),
       });
       return sidecar.paste(text);
     },
@@ -391,6 +395,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
       return {
         label: `${app.exe}: ${app.title}`,
+        ...(app.window === undefined ? {} : { window: app.window }),
         centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
       };
     },
@@ -416,9 +421,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
       return resolution.outcome === "resolved";
     },
-    act: async (command) => {
+    act: async (command, restated) => {
       const outcome = await typedRouter.route(
-        { kind: "command", text: command, inheritedTarget: null },
+        {
+          kind: "command",
+          text: command,
+          inheritedTarget: null,
+          ...(restated === true ? { restated } : {}),
+        },
         routeContext(),
       );
       if (outcome.kind !== "needs_confirmation") return "reply" in outcome ? outcome.reply : "";
@@ -427,6 +437,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         detail: "",
         buttons: ["Go ahead", "Not now"],
         cancel: 1,
+        expiresMs: TYPED_CONFIRM_MS,
       }) ?? Promise.resolve(1));
       const next = await typedRouter.route(
         response === 0
@@ -499,7 +510,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const { text } = await rewriter.clean({
       raw,
       mode: chooseMode(focusedApp, settings.appModes),
-      level: settings.dictationCleanup,
+      level: cleanupLevelFor(settings.dictationCleanup, focusedApp),
     });
     lastDictation = text;
     const pasted =

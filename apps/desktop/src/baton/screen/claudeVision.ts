@@ -55,11 +55,18 @@ export const visionArgs = (systemPromptFile: string, model: string): ReadonlyArr
   systemPromptFile,
 ];
 
+const METERED_ENV =
+  /^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|ANTHROPIC_BEDROCK_.*|ANTHROPIC_VERTEX_.*)$/;
+
+/** The session was closed on purpose, by Baton. Nothing went wrong. */
+export class SessionClosed extends Error {}
+
 /** The child's environment: his, minus anything that would bill the API instead of the plan. */
 export const subscriptionEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
   const next = { ...env };
-  delete next["ANTHROPIC_API_KEY"];
-  delete next["ANTHROPIC_AUTH_TOKEN"];
+  for (const key of Object.keys(next)) {
+    if (METERED_ENV.test(key)) delete next[key];
+  }
   return next;
 };
 
@@ -184,6 +191,18 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       ),
     ),
   );
+  child.stdin.on("error", (error) => fail(error));
+  // `claude.cmd` runs under cmd.exe, so killing the child alone leaves claude running.
+  const kill = () => {
+    if (options.platform === "win32" && child.pid !== undefined) {
+      NodeChildProcess.execFile(
+        "taskkill",
+        ["/pid", String(child.pid), "/T", "/F"],
+        { windowsHide: true },
+        () => undefined,
+      );
+    } else child.kill();
+  };
   child.on("exit", (code) =>
     fail(
       new Error(
@@ -212,7 +231,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
           // A late answer would be taken as the next question's, so a timeout ends the session.
           const timer = setTimeout(() => {
             fail(new Error("Claude took too long to answer."));
-            child.kill();
+            kill();
           }, options.timeoutMs ?? 90_000);
           waiting.push({
             resolve: (text) => (clearTimeout(timer), resolve(text)),
@@ -229,8 +248,9 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
   return {
     ask,
     dispose: () => {
+      fail(new SessionClosed("Claude session closed."));
       child.stdin.end();
-      child.kill();
+      kill();
       NodeFS.rmSync(promptFile, { force: true });
     },
   };

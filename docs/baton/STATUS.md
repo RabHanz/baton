@@ -1088,6 +1088,13 @@ Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven chec
 Queued: live mic, his speakers and whispered speech through chunks on Windows, then V2 macOS, V3 Linux and V4 phone over
 the environment, in the V table above and in `TEST_MATRIX.md`.
 
+**Open before release:** the openWakeWord licence. The notices say its training sets are partly non-commercial,
+so check before any packaged or commercial release.
+
+**Windows packaging, read not built:** `stageBatonVoice` builds the sidecar and copies it and the wake models into
+`baton-voice`, and a missing exe fails the build. Pocket TTS is not packaged: it downloads at first use, pinned and
+checksummed. `baton-dictation-build.yml` now also runs on `main`.
+
 ## Queued: companion off Windows (2026-10-31)
 
 See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages/baton-shared`
