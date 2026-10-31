@@ -373,6 +373,17 @@ export const make = Effect.gen(function* () {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
     }
     if (yield* Ref.get(desktopState.quitting)) return Option.none();
+    const rendererPreferences = {
+      preload: environment.preloadPath,
+      // Hidden-renderer throttling stalls first paint; re-enable it after the first reveal.
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: true,
+      // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
+      disableHtmlFullscreenWindowResize: true,
+    };
     const window = yield* electronWindow.create({
       ...initialBounds,
       minWidth: 840,
@@ -384,17 +395,7 @@ export const make = Effect.gen(function* () {
       ...iconOption,
       title: environment.displayName,
       ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
-      webPreferences: {
-        preload: environment.preloadPath,
-        // Hidden-renderer throttling stalls first paint; re-enable it after the first reveal.
-        backgroundThrottling: false,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webviewTag: true,
-        // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
-        disableHtmlFullscreenWindowResize: true,
-      },
+      webPreferences: rendererPreferences,
     });
     if (yield* Ref.get(desktopState.quitting)) {
       yield* electronWindow.destroyAll;
@@ -625,7 +626,12 @@ export const make = Effect.gen(function* () {
         }
       });
     };
-    const allowDetachedWindow = installDetachedWindows(window, applicationUrl, guardWindow);
+    const allowDetachedWindow = installDetachedWindows(
+      window,
+      applicationUrl,
+      rendererPreferences,
+      guardWindow,
+    );
     guardWindow(window);
 
     const quitShortcutHandler = makeQuitShortcutHandler({

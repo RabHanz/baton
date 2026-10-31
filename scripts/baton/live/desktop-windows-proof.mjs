@@ -63,9 +63,6 @@ const opened = app.waitForEvent("window", { timeout: 30_000 });
 await page.locator('[data-testid="baton-pane-detach-b"]').click();
 const child = await opened;
 await child.waitForLoadState("domcontentloaded");
-await child.waitForTimeout(8000);
-console.log("child", child.url().replace(/[0-9a-f-]{20,}/g, "<id>"));
-await child.screenshot({ path: `${frames}/child-debug.png` });
 await child.waitForSelector('[data-testid="baton-pane-a"]', { timeout: 60_000 });
 await child.waitForTimeout(3000);
 check("detach opens a second BrowserWindow", app.windows().length >= 2, child.url().slice(0, 60));
@@ -80,8 +77,12 @@ await child.waitForTimeout(1500);
 await shot(page, "21-desktop-main-after-detach");
 await shot(child, "22-desktop-detached");
 
+const stateFile = NodePath.join(
+  await app.evaluate(({ app: electronApp }) => electronApp.getPath("userData")),
+  "baton-detached-windows.json",
+);
 await app.close();
-const state = JSON.parse(NodeFS.readFileSync(`${userData}/baton-detached-windows.json`, "utf8"));
+const state = JSON.parse(NodeFS.readFileSync(stateFile, "utf8"));
 check("the window is saved", state.length === 1, JSON.stringify(state[0].bounds));
 
 app = await launch();
@@ -110,7 +111,7 @@ if (restored !== undefined) {
   check("attach closes it and the main window holds the thread", (await page.locator("section[data-focused]").count()) === 2);
   await shot(page, "24-desktop-reattached");
   await page.waitForTimeout(800);
-  const after = JSON.parse(NodeFS.readFileSync(`${userData}/baton-detached-windows.json`, "utf8"));
+  const after = JSON.parse(NodeFS.readFileSync(stateFile, "utf8"));
   check("a window closed by hand is forgotten", after.length === 0);
 }
 await app.close();

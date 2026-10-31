@@ -54,7 +54,7 @@ index 8b6ab7c7d8a5ebe184aff870ca8820233a0548ed..720e1029484ce4214c54a0ee264f85ea
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index c1c0cf5446cd256f604ffff82399e023d12412e6..556bd4fc16f8b244c6954921174475c56f953599 100644
+index c1c0cf5446cd256f604ffff82399e023d12412e6..c720ea6cceaee31ef2afb6fa92028a385f3bfa0d 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -11,6 +11,7 @@ import * as Electron from "electron";
@@ -65,7 +65,44 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..556bd4fc16f8b244c6954921174475c5
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
-@@ -496,26 +497,6 @@ export const make = Effect.gen(function* () {
+@@ -372,6 +373,17 @@ export const make = Effect.gen(function* () {
+       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
+     }
+     if (yield* Ref.get(desktopState.quitting)) return Option.none();
++    const rendererPreferences = {
++      preload: environment.preloadPath,
++      // Hidden-renderer throttling stalls first paint; re-enable it after the first reveal.
++      backgroundThrottling: false,
++      contextIsolation: true,
++      nodeIntegration: false,
++      sandbox: true,
++      webviewTag: true,
++      // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
++      disableHtmlFullscreenWindowResize: true,
++    };
+     const window = yield* electronWindow.create({
+       ...initialBounds,
+       minWidth: 840,
+@@ -383,17 +395,7 @@ export const make = Effect.gen(function* () {
+       ...iconOption,
+       title: environment.displayName,
+       ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
+-      webPreferences: {
+-        preload: environment.preloadPath,
+-        // Hidden-renderer throttling stalls first paint; re-enable it after the first reveal.
+-        backgroundThrottling: false,
+-        contextIsolation: true,
+-        nodeIntegration: false,
+-        sandbox: true,
+-        webviewTag: true,
+-        // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
+-        disableHtmlFullscreenWindowResize: true,
+-      },
++      webPreferences: rendererPreferences,
+     });
+     if (yield* Ref.get(desktopState.quitting)) {
+       yield* electronWindow.destroyAll;
+@@ -496,26 +498,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -92,7 +129,7 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..556bd4fc16f8b244c6954921174475c5
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -592,33 +573,60 @@ export const make = Effect.gen(function* () {
+@@ -592,33 +574,65 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };
@@ -174,7 +211,12 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..556bd4fc16f8b244c6954921174475c5
 +        }
 +      });
 +    };
-+    const allowDetachedWindow = installDetachedWindows(window, applicationUrl, guardWindow);
++    const allowDetachedWindow = installDetachedWindows(
++      window,
++      applicationUrl,
++      rendererPreferences,
++      guardWindow,
++    );
 +    guardWindow(window);
  
      const quitShortcutHandler = makeQuitShortcutHandler({

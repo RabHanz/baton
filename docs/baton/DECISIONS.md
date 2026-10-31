@@ -2610,11 +2610,13 @@ different monitors, and those two costs are what he is asking for.
   layout and are not covered, as before.
 - **Attach to main window** asks the main window to open it in a pane. The detached pane closes, and the
   window with it when that was its last pane. With no main window on a thread it says so and stays.
-- On the desktop app `setWindowOpenHandler` allows exactly this URL shape, so Electron gives the window
+- On the desktop app `setWindowOpenHandler` allows exactly this URL shape, so the window has
   the main window's preload and session. `baton/detachedWindows.ts` gives it the main window's navigation
   and webview policy, saves its route and bounds to `baton-detached-windows.json`, and has the main window
-  reopen them after a restart. It outlives its opener, so closing the main window leaves it up. Closed by
-  hand it is forgotten; closed by quitting or an update it returns.
+  reopen them after a restart. It outlives its opener, so closing the main window leaves it up. Closed
+  while the main window is up it is forgotten; torn down with the main window by a quit or an update it
+  returns. Electron does not pass the opener's preload to a child here, so the main window's web
+  preferences are passed explicitly; without them the window fails before its first request.
 
 Rejected: a second server or a login per window (he said the same one); a route per window; a lease
 with heartbeats to detect a dead holder ("Bring it here" is one click and needs no liveness).
