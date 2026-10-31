@@ -940,7 +940,7 @@ export const startScreenCompanion = (input: {
   const said: ScreenCompanion["said"] = async (text, { direct }) => {
     const started = Date.now();
     // A stop never waits on the sidecar, and needs no window.
-    if (instantDecision(text, runningMode() !== null) === null) {
+    if (instantDecision(text, runningMode() !== null)?.route !== "control") {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;

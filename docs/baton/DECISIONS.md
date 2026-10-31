@@ -3034,3 +3034,8 @@ could not tell. There is a gap of milliseconds between the read and the click, a
 Rejected: blocking his input during a step (needs elevation, and takes his mouse away), and moving the pointer
 back after each step (still racy).
 
+Measured on the laptop: a real 2-step and a 6-step Notepad drive finished, and a pointer moved mid-drive stopped
+nothing. In the runs where the lab moved the pointer, one typed word was lost, and Drive's own check reported it.
+The lab started a PowerShell for that move, so a stolen moment of focus is the likely cause, but a pointer moving
+throughout a typed step is not proven safe. The run that would settle it found him at the laptop and was stopped.
+

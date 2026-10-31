@@ -98,7 +98,9 @@ const main = async () => {
         : "Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.SendKeys]::SendWait('{ESC}')";
     setTimeout(() => {
       write({ stop: how, at: Date.now() });
-      NodeChildProcess.execFile("powershell.exe", ["-NoProfile", "-Command", script]);
+      NodeChildProcess.execFile("powershell.exe", ["-NoProfile", "-Command", script], {
+        windowsHide: true,
+      });
     }, 1_500);
   };
   // "Run it" is pressed the way he would, on the real prompt, and logged.
