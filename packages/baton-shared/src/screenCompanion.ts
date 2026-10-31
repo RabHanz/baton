@@ -525,7 +525,7 @@ const DANGEROUS_COMMAND = new RegExp(
 
 /** Quoting tricks a shell removes before it runs anything. */
 const unquoted = (text: string): string =>
-  text.replace(/\$\{?IFS\}?/g, " ").replace(/['"\`^+()]/g, (mark) => (mark === "+" ? "+" : ""));
+  text.replace(/\$\{?IFS\}?/g, " ").replace(/['"`^()]/g, "");
 
 /**
  * The high-risk subject anywhere in a plan or what it would paste, or null. A second layer behind
@@ -599,7 +599,7 @@ export interface DriveHost {
   readonly shellAllowed?: boolean;
   /** What Run it showed for a paste, and the clipboard now: a page may have swapped it. */
   readonly pasteText?: string;
-  readonly clipboard?: () => string;
+  readonly clipboard?: () => string | Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
   /** Esc, the tray, or "stop" by voice. */
   readonly cancelled: () => boolean;
@@ -664,7 +664,11 @@ export const runDrivePlan = async (
         }
         window = now.window;
       }
-      if (isPaste(action) && host.clipboard !== undefined && host.clipboard() !== host.pasteText) {
+      if (
+        isPaste(action) &&
+        host.clipboard !== undefined &&
+        (await host.clipboard()) !== host.pasteText
+      ) {
         return {
           kind: "stopped",
           step: i,

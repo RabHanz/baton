@@ -715,7 +715,7 @@ export const startScreenCompanion = (input: {
     }
     const plan = parsed.plan;
     // Held to the list a sentence is held to, whatever routed here. Run it is not enough.
-    const clipboard = Electron.clipboard.readText();
+    const clipboard = await Electron.clipboard.readText();
     const subject = planHighRisk(plan, clipboard);
     const shell = shellCheck(plan, focus?.label ?? null);
     if (subject !== null || shell.refused) {

@@ -3,7 +3,6 @@
  * The Run it box with the worst plan it can be given, in real Chromium: a long spoken reply, 20
  * steps and padding that once ran off the side. Nothing is pressed and no model runs.
  */
-/* oxlint-disable t3code/no-global-process-runtime -- standalone lab harness, no Effect runtime */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 

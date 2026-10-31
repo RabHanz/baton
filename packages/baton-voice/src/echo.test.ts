@@ -97,6 +97,7 @@ describe("a wake word over a long reply", () => {
 describe("a pending yes, with Baton talking over it", () => {
   const rigged = (heard: string) => {
     let fire = false;
+    let speech = true;
     const effects: string[] = [];
     const core = createVoiceCore({
       wake: {
@@ -108,7 +109,7 @@ describe("a pending yes, with Baton talking over it", () => {
           return score;
         },
       },
-      vad: { name: "fake", reset: () => {}, isSpeech: () => true },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
       stt: { name: "fake", transcribe: async () => heard },
       router: {
         route: async (effect) => {
@@ -122,7 +123,13 @@ describe("a pending yes, with Baton talking over it", () => {
     const push = (seconds: number) => {
       for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
     };
-    return { core, push, effects, wake: () => (fire = true) };
+    return {
+      core,
+      push,
+      effects,
+      wake: () => (fire = true),
+      quiet: () => (speech = false),
+    };
   };
   const overItsVoice = async (r: ReturnType<typeof rigged>) => {
     r.core.activate("wake");
@@ -132,7 +139,10 @@ describe("a pending yes, with Baton talking over it", () => {
     r.core.setSpeaking(true);
     r.push(0.5);
     r.wake();
-    r.push(14);
+    r.push(1);
+    // He stops talking: inside the window, so the question has not run out.
+    r.quiet();
+    r.push(1.5);
     await r.core.idle();
   };
 

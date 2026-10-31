@@ -13,7 +13,6 @@ import type { BatonFocusTarget } from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
-  cleanupLevelFor,
   strictestCleanup,
   modeMenu,
   type CleanupLevel,
