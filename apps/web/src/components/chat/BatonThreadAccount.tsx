@@ -71,28 +71,6 @@ export function useAccountSwitch(environmentId: EnvironmentId) {
   return { busy, switchTo };
 }
 
-/** cswap's switch on one environment; it moves every session that follows the active account. */
-export function useAccountSwitch(environmentId: EnvironmentId) {
-  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
-  const [busy, setBusy] = useState(false);
-  const switchTo = (account: BatonAccount) => {
-    setBusy(true);
-    void use({ environmentId, input: { key: account.key, reason: "manual" } }).then((result) => {
-      setBusy(false);
-      toastManager.add(
-        result._tag === "Success"
-          ? {
-              type: "success",
-              title: `Now running as ${account.label}`,
-              description: "Sessions on this environment that follow it move at their next turn.",
-            }
-          : { type: "error", title: `Could not switch to ${account.label}` },
-      );
-    });
-  };
-  return { busy, switchTo };
-}
-
 export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const shell = useQuietThreadShell(threadRef);
   const providers = useEnvironmentProviders().get(threadRef.environmentId) ?? [];
