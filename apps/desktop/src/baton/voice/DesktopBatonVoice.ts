@@ -1,4 +1,3 @@
-/* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 // @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
  * Baton voice on the desktop: the microphone, the tray, the HUD, the hotkeys
@@ -291,7 +290,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let dictionary: ReadonlyArray<DictionaryEntry> = [];
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
-  const shownState = (): VoiceState => (dictating === null ? state : "dictation");
   let audio: AudioInputProvider | null = null;
   let core: BatonVoiceCore | null = null;
   const clipboardInjection = makeClipboardInjection({
@@ -335,7 +333,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let contextTimer: ReturnType<typeof setInterval> | null = null;
 
   const deviceName = () => (choice.kind === "pinned" ? choice.device.label : "System microphone");
-  const render = (caption: string | null) => {
+  const render = () => {
     tray.setImage(trayIcon(hudView(state).color));
     tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
     rebuildMenu();
@@ -344,7 +342,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const flash = (caption: string) => {
     if (input.extras?.writtenOnly() === true) input.extras.notice(caption);
     else pill.on({ type: "done", label: caption.slice(0, PILL_TEXT_CHARS) });
-    render(null);
+    render();
   };
 
   // The intent RPCs live in the Baton window's renderer: main asks, it answers.
@@ -482,7 +480,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const showDictation = (caption: string | null) => {
     dictating = caption;
     pill.on({ type: "dictating", caption });
-    render(null);
+    render();
   };
   // Esc is taken only while the microphone is open, so it stays his the rest of the time.
   const setRecording = (next: boolean) => {
@@ -562,7 +560,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         note = next.kind === "default" ? next.reason : null;
         configureDictation();
         await loop?.switchDevice(choiceDeviceId(next));
-        render(null);
+        render();
       }
     })();
   };
@@ -583,7 +581,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note =
       choice.kind === "default" && choice.reason.includes("not connected") ? choice.reason : null;
     configureDictation();
-    render(null);
+    render();
   };
 
   const pill: VoicePill = createVoicePill({
@@ -648,20 +646,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 fraction < 1
                   ? `Downloading the speech model: ${Math.round(fraction * 100)}%`
                   : null;
-              render(null);
+              render();
             },
           });
           if (model === speechModel()) {
             parakeetPath = path;
             note = null;
             configureDictation();
-            render(null);
+            render();
             return path;
           }
         }
       } catch (error) {
         note = `${error instanceof Error ? error.message : "The download failed."} Tray: Download speech model.`;
-        render(null);
+        render();
         throw error;
       } finally {
         modelJob = null;
@@ -674,9 +672,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const start = async () => {
     if (binary === null) {
       note = "Voice is Windows only for now.";
-      return render(null);
+      return render();
     }
-    if (loop !== null || input.makeCore === null || !settings.enabled) return render(null);
+    if (loop !== null || input.makeCore === null || !settings.enabled) return render();
     // The models first: if they are missing, no microphone is opened.
     await loadSpeechModel();
     if (sidecar === null) throw new Error("Speech recognition is not installed.");
@@ -699,7 +697,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const delay = restartDelayMs(recordFailures);
         note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
         pill.on({ type: "trouble", message: "Reconnecting your mic" });
-        render(null);
+        render();
         setTimeout(() => void restart(), delay);
       },
     });
@@ -713,7 +711,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
         state = next;
-        render(null);
+        render();
       },
       onLevel: (frame) => pill.micLevel(frameLevel(frame)),
       // The core's router has already sent the words on; this is the HUD's line.
@@ -731,7 +729,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     await audio?.stop();
     audio = null;
     state = "sleeping";
-    render(null);
+    render();
   };
 
   const rebuildMenu = () => {
@@ -949,25 +947,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const setDictation = (dictation: VoiceSettings["dictation"]) => {
     save({ dictation });
     configureDictation();
-    render(null);
+    render();
     if (dictation === "baton") requestDictation();
   };
 
   const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
     save({ speechModel });
     if (parakeetPath !== null || settings.enabled) requestDictation();
-    else render(null);
+    else render();
   };
 
   const restart = async () => {
     const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
-    if (source === null) return render(null);
+    if (source === null) return render();
     devices = await source.listDevices();
     choice = selectInputDevice(devices, preference());
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     configureDictation();
     await loop?.switchDevice(choiceDeviceId(choice));
-    render(null);
+    render();
   };
 
   /** Wake words are fixed when the core is built, so a change rebuilds it. */
@@ -1011,7 +1009,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   setInterval(onDeviceChange, MIC_POLL_MS).unref();
 
-  render(null);
+  render();
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   if (binary !== null && settings.dictation === "baton" && modelPresent(modelsDir, speechModel())) {
     requestDictation();
@@ -1030,7 +1028,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onDismissed: () => pill.on({ type: "dismissed" }),
     onNote: (message) => {
       note = message;
-      render(null);
+      render();
     },
   };
 };

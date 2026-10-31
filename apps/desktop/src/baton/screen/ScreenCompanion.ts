@@ -556,7 +556,11 @@ export const startScreenCompanion = (input: {
   };
 
   /** Waits for the screen to change and settle, then checks it and gives the next step. */
-  const watch = (lesson: Extract<Run, { mode: "teach" }>, baseline: Uint8Array, step: string) => {
+  const watch = (
+    lesson: Extract<Run, { mode: "teach" }>,
+    baseline: ReadonlyArray<Uint8Array>,
+    step: string,
+  ) => {
     if (lesson.idle !== null) clearTimeout(lesson.idle);
     lesson.idle = setTimeout(() => {
       if (run === lesson) {
@@ -566,7 +570,7 @@ export const startScreenCompanion = (input: {
         end();
       }
     }, TEACH_IDLE_MS);
-    let previous: Uint8Array | null = null;
+    let previous: ReadonlyArray<Uint8Array> | null = null;
     let moved = false;
     let still = 0;
     let polling = false;
