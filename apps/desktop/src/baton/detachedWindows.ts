@@ -72,6 +72,8 @@ const openWindows = new Set<string>();
 export function installDetachedWindows(
   main: Electron.BrowserWindow,
   applicationUrl: string,
+  // Electron does not pass the opener's preload to a child, and the renderer needs its bridge.
+  webPreferences: Electron.WebPreferences,
   guard: (window: Electron.BrowserWindow) => void,
 ) {
   const saved = new Map(readWindows().map((entry) => [entry.id, entry]));
@@ -105,17 +107,16 @@ export function installDetachedWindows(
       window.on("move", rememberSoon);
       window.on("resize", rememberSoon);
       window.webContents.on("did-navigate-in-page", rememberSoon);
-      // destroy() skips "close", so an update's teardown leaves the window saved like a quit does.
-      let closedByHand = false;
-      window.on("close", () => {
-        closedByHand = !quitting;
-      });
       window.on("closed", () => {
         clearTimeout(timer);
         openWindows.delete(id);
-        if (!closedByHand) return;
-        saved.delete(id);
-        save();
+        // Next tick: a quit or an update tears every window down at once, the main one included,
+        // and those windows must come back. With the main window still up this one was closed.
+        setTimeout(() => {
+          if (quitting || main.isDestroyed()) return;
+          saved.delete(id);
+          save();
+        }, 0);
       });
     });
   watch(main.webContents);
@@ -138,6 +139,7 @@ export function installDetachedWindows(
       outlivesOpener: true,
       overrideBrowserWindowOptions: {
         ...bounds,
+        webPreferences,
         minWidth: 480,
         minHeight: 400,
         autoHideMenuBar: true,
