@@ -15,4 +15,11 @@ describe("typing by the clipboard", () => {
     await vi.waitFor(() => expect(clip).toBe("his"));
     expect(pasted).toEqual(["one", "two"]);
   });
+
+  it("presses nothing when the clipboard cannot be written", async () => {
+    let pressed = false;
+    const paste = createPaster({ readText: () => "old password", writeText: () => undefined }, 40);
+    await expect(paste("npm test", async () => void (pressed = true))).rejects.toThrow("clipboard");
+    expect(pressed).toBe(false);
+  });
 });

@@ -1088,6 +1088,11 @@ Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven chec
 Queued: live mic, his speakers and whispered speech through chunks on Windows, then V2 macOS, V3 Linux and V4 phone over
 the environment, in the V table above and in `TEST_MATRIX.md`.
 
+**Queued, Linux Drive:** `window_at` returns nothing there and `foreground` is not wired, so xdotool clicks have no
+window check and keys have no focus or shell check.
+
+**Lab, moving-pointer run:** `labcfg.ps1` must set `$env:BATON_LAB='1'`. Waits until he says he is away.
+
 **Open before release:** the openWakeWord licence. The notices say its training sets are partly non-commercial,
 so check before any packaged or commercial release.
 

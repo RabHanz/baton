@@ -681,7 +681,9 @@ fn serve() {
                     ),
                     "window_at" => {
                         let (x, y) = (value["x"].as_i64().unwrap_or(0) as i32, value["y"].as_i64().unwrap_or(0) as i32);
-                        emit(json!({"ev": "window_at", "id": value["id"].as_u64(), "window": window_at(x, y) as i64}));
+                        let window = window_at(x, y);
+                        let (app, title) = window_app(window);
+                        emit(json!({"ev": "window_at", "id": value["id"].as_u64(), "window": window as i64, "app": app, "title": title}));
                     }
                     "locate" => {
                         let id = value["id"].as_u64();

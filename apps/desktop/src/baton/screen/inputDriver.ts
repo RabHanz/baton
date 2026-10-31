@@ -191,6 +191,10 @@ export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
       await sleep(20);
       await clipboard.writeText(text);
     }
+    // Pressing on would paste whatever is there, unseen.
+    if ((await clipboard.readText()) !== text) {
+      throw new Error("I couldn't reach the clipboard, so nothing was typed.");
+    }
     try {
       await chord();
       await sleep(150);

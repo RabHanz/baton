@@ -57,7 +57,9 @@ window.fill=(o)=>{document.getElementById('h').textContent=o.title;document.getE
  o.buttons.forEach((text,i)=>{const b=document.createElement('button');b.textContent=text;if(i===0)b.className='main';b.onclick=()=>ipcRenderer.send('baton-screen:prompt',i);n.appendChild(b);});
  addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:prompt',o.cancel);});
  const d=document.getElementById('d'),m=n.firstChild,more=()=>d.scrollHeight-d.scrollTop-d.clientHeight>2;
- if(more()){m.disabled=true;d.tabIndex=0;d.focus();d.addEventListener('scroll',()=>{if(!more())m.disabled=false;});}else m.focus();
+ let armed=!o.armMs;const ready=()=>{if(armed&&!more())m.disabled=false;};
+ if(o.armMs)setTimeout(()=>{armed=true;ready();},o.armMs);
+ if(more()||o.armMs){m.disabled=true;d.tabIndex=0;d.focus();d.addEventListener('scroll',ready);}else m.focus();
  return document.body.scrollHeight;};</script></body></html>`;
 
 export interface PromptInput {
@@ -68,6 +70,8 @@ export interface PromptInput {
   /** Esc, the box being closed some other way, or running out of time. */
   readonly cancel: number;
   readonly expiresMs?: number;
+  /** It came unasked: no default focus, and its yes stays disabled this long. */
+  readonly armMs?: number;
   /** Belongs to the lesson or drive: it goes when that ends. */
   readonly scoped?: boolean;
 }

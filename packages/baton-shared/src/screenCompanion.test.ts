@@ -13,6 +13,7 @@ import {
   runDrivePlan,
   screenDifference,
   screensDifference,
+  pasteTooLong,
   planPastes,
   shellCheck,
   shotFor,
@@ -401,6 +402,7 @@ describe("what Run it answers for", () => {
   it("asks when it cannot tell where the keys go, and in an editor's terminal", () => {
     expect(shellCheck(typing("hello"), null).ask).toBe(true);
     expect(shellCheck(typing("hello"), "Code.exe: main.ts - project").ask).toBe(true);
+    expect(shellCheck(typing("hello"), "baton.exe: Baton").ask).toBe(true);
     for (const name of ["python", "node", "ssh", "ubuntu"]) {
       expect(shellCheck(typing(name), "notepad.exe: notes.txt").ask).toBe(true);
     }
@@ -554,5 +556,100 @@ describe("a paste is typing nobody has read", () => {
     "certutil -urlcache x",
   ])("knows %s", (text) => {
     expect(planHighRisk(typed(text))).not.toBeNull();
+  });
+});
+
+describe("the third review", () => {
+  const quiet = {
+    clickAt: async () => undefined,
+    pressAt: async () => undefined,
+    releaseAt: async () => undefined,
+    scrollAt: async () => undefined,
+    type: async () => undefined,
+    press: async () => undefined,
+    sleep: async () => undefined,
+    cancelled: () => false,
+    verify: async () => ({ ok: true }),
+  };
+  const pasteKeys = validateDrivePlan(
+    { title: "t", actions: [{ kind: "press", keys: ["ctrl", "v"] }] },
+    shots,
+  );
+
+  it("refuses a paste into a real terminal even after a yes", async () => {
+    const result = await runDrivePlan(pasteKeys, shots, {
+      ...quiet,
+      shellAllowed: true,
+      foreground: async () => ({ window: 1, label: "WindowsTerminal.exe: PS" }),
+    } as DriveHost);
+    expect(result).toMatchObject({ kind: "stopped", step: 0 });
+  });
+
+  it("stops a right-click that lands on a terminal", async () => {
+    const clicked: string[] = [];
+    const right = validateDrivePlan(
+      { title: "t", actions: [{ kind: "click", x: 1, y: 1, button: "right" }] },
+      shots,
+    );
+    const result = await runDrivePlan(right, shots, {
+      ...quiet,
+      clickAt: async () => void clicked.push("click"),
+      windowAt: async () => ({ window: 2, label: "wezterm-gui.exe: x" }),
+    } as DriveHost);
+    expect(result.kind).toBe("stopped");
+    expect(clicked).toEqual([]);
+  });
+
+  it("does not call an editor a shell, nor refuse on a word", () => {
+    expect(shellCheck(pasteKeys, "Code.exe: main.ts").refused).toBe(false);
+    const titled = validateDrivePlan(
+      { title: "Paste the node notes", actions: [{ kind: "press", keys: ["ctrl", "v"] }] },
+      shots,
+    );
+    expect(shellCheck(titled, "notepad.exe: notes").refused).toBe(false);
+    expect(shellCheck(pasteKeys, "tabby.exe: x").refused).toBe(true);
+  });
+
+  it("asks after a wait if the window changed, and does not adopt it", async () => {
+    const plan = validateDrivePlan(
+      {
+        title: "t",
+        actions: [
+          { kind: "wait", seconds: 1 },
+          { kind: "type", text: "secret" },
+        ],
+      },
+      shots,
+    );
+    const seen = [1, 2, 2];
+    const typed: string[] = [];
+    const asked: string[] = [];
+    const result = await runDrivePlan(plan, shots, {
+      ...quiet,
+      type: async (t) => void typed.push(t),
+      foreground: async () => ({ window: seen.shift() ?? 2, label: "app.exe: a" }),
+      pause: async (reason) => (asked.push(reason), false),
+    } as DriveHost);
+    expect(result).toMatchObject({ kind: "stopped", step: 0 });
+    expect(asked).toHaveLength(1);
+    expect(typed).toEqual([]);
+  });
+
+  it("refuses a paste it could not show", () => {
+    expect(pasteTooLong(pasteKeys, "x".repeat(2_001))).toBe(true);
+    expect(pasteTooLong(pasteKeys, "x".repeat(2_000))).toBe(false);
+  });
+
+  it("reads a long line in linear time", () => {
+    const plan = validateDrivePlan(
+      {
+        title: "t",
+        actions: Array.from({ length: 20 }, () => ({ kind: "type", text: "del ".repeat(500) })),
+      },
+      shots,
+    );
+    const started = performance.now();
+    planHighRisk(plan);
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });

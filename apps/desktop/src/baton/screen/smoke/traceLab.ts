@@ -140,6 +140,9 @@ const main = async () => {
     }
     stopWith = said.includes("(esc)") ? "(esc)" : null;
     // His hand on the mouse for the whole turn: real input, and no process starting mid-drive.
+    if (said.includes("(mouse)") && process.env["BATON_LAB"] === undefined) {
+      throw new Error("(mouse) needs BATON_LAB, or the sidecar drops every nudge and it passes.");
+    }
     let swing = 1;
     const hand = said.includes("(mouse)")
       ? setInterval(() => {

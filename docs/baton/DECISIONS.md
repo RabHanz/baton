@@ -3038,7 +3038,15 @@ Measured on the laptop: a real 2-step and a 6-step Notepad drive finished, and a
 nothing. In the runs where the lab moved the pointer, one typed word was lost, and Drive's own check reported it.
 The lab started a PowerShell for that move, so a stolen moment of focus is the likely cause, but a pointer moving
 throughout a typed step is not proven safe. The run that settles it uses real input from inside the sidecar
-(`nudge`, only with BATON_LAB set), with no process starting, and waits until he is away.
+(`nudge`, only with BATON_LAB set), with no process starting, and waits until he is away. None of the D115 runs
+had BATON_LAB: they moved the pointer through PowerShell, and `nudge` has never run. A `(mouse)` turn now fails
+without it, because the sidecar would drop every nudge and the run would pass with nothing moved.
+
+Third review: a paste or right-click on a window seen to be a terminal is refused at the moment it would happen,
+even after a yes. Editors and Baton's own terminal drawer ask rather than refuse, and words in a plan's title
+never refuse, because he should not be blocked from pasting into an editor. A window change during a wait or
+scroll asks instead of being adopted. "Carry on?" takes no default focus, arms after 900 ms, and goes with Esc or
+Stop. A clipboard that cannot be written stops the drive, and a paste over 2,000 characters is refused.
 
 ## D116 — Work for the whole app belongs to the main window
 

@@ -511,10 +511,10 @@ const planWords = (plan: DrivePlan): ReadonlyArray<string> => {
 const DANGEROUS_COMMAND = new RegExp(
   [
     String.raw`\brm\s+(-\w*[rf]|--recursive|--force)`,
-    String.raw`\bgit\s+push\b.*(--force|\s-f\b|\s\+\S)`,
+    String.raw`\bgit\s+push\b.{0,200}(--force|\s-f\b|\s\+\S)`,
     String.raw`\bgit\s+reset\s+--hard`,
-    String.raw`\b(del|erase|rd|rmdir)\b.*\/[sqf]\b`,
-    String.raw`\bremove-item\b.*-(recurse|force)`,
+    String.raw`\b(del|erase|rd|rmdir)\b.{0,200}\/[sqf]\b`,
+    String.raw`\bremove-item\b.{0,200}-(recurse|force)`,
     String.raw`\bformat\s+[a-z]:`,
     String.raw`\bformat-volume\b`,
     String.raw`\b(iex|invoke-expression|mshta|certutil|bitsadmin|regsvr32|rundll32)\b`,
@@ -547,11 +547,20 @@ const SHELL_NAME =
   /^\s*(cmd|powershell|pwsh|wt|bash|zsh|wsl|ssh|python\d?|node|ubuntu|debian|kali|terminal|windows terminal|command prompt)(\.exe)?\b/i;
 const SHELL_WORD =
   /\b(command prompt|powershell|pwsh|terminal|console|cmd|shell|bash|zsh|wsl|ssh|python|node|ubuntu|debian)\b/i;
-/** Editors count: their terminal shares the app's window and name. */
+/** Real terminals: a paste or right-click here runs what nobody read. */
 const SHELL_APP =
-  /^(cmd|powershell|powershell_ise|pwsh|windowsterminal|wt|conhost|openconsole|bash|zsh|wsl|wslhost|mintty|alacritty|wezterm|wezterm-gui|ssh|putty|python\d?|pythonw?|node|ubuntu\d*|debian|kali|code|cursor|windsurf|idea64|pycharm64)(\.exe)?\s*:/i;
+  /^(cmd|powershell|powershell_ise|pwsh|windowsterminal|windowsterminalpreview|windowsterminalcanary|wt|terminal|conhost|openconsole|bash|zsh|wsl|wslhost|mintty|alacritty|wezterm|wezterm-gui|tabby|warp|hyper|ssh|putty|python\d?|pythonw?|node|ubuntu\d*|debian|kali)(\.exe)?\s*:/i;
+/** They may hold a terminal, Baton's own drawer included, so they ask. They are not one. */
+const TERMINAL_HOST_APP =
+  /^(code|code - insiders|cursor|windsurf|idea64|pycharm64|webstorm64|goland64|clion64|rider64|phpstorm64|rubymine64|datagrip64|baton|t3code|t3 code)(\.exe)?\s*:/i;
 
 export const isShellWindow = (label: string): boolean => SHELL_APP.test(label);
+const hostsTerminal = (label: string): boolean => TERMINAL_HOST_APP.test(label);
+
+/** The same limit as typed text. It bounds the box, and the lists read over it. */
+export const PASTE_LIMIT = 2_000;
+export const pasteTooLong = (plan: DrivePlan, clipboard: string): boolean =>
+  planPastes(plan) && clipboard.length > PASTE_LIMIT;
 
 export interface ShellCheck {
   /** A command line is in reach of this plan. */
@@ -566,14 +575,15 @@ export interface ShellCheck {
 export const shellCheck = (plan: DrivePlan, focused: string | null): ShellCheck => {
   const typed = typedRuns(plan);
   const shell =
-    (focused !== null && isShellWindow(focused)) ||
+    (focused !== null && (isShellWindow(focused) || hostsTerminal(focused))) ||
     typed.some((text) => SHELL_NAME.test(text)) ||
     planWords(plan).some((words) => SHELL_WORD.test(words));
   const keyboard = plan.actions.some((a) => a.kind === "type" || a.kind === "press");
   return {
     shell,
     ask: shell || (focused === null && keyboard),
-    refused: shell && (planPastes(plan) || rightClicks(plan)),
+    // Only a window really seen to be one: words in a title must not refuse a paste into an editor.
+    refused: focused !== null && isShellWindow(focused) && (planPastes(plan) || rightClicks(plan)),
     typed,
   };
 };
@@ -596,7 +606,10 @@ export interface DriveHost {
     amount: number,
   ) => Promise<void>;
   /** The top-level window under a point; null when unknown. */
-  readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<number | null>;
+  readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<{
+    readonly window: number;
+    readonly label: string;
+  } | null>;
   /** Something moved under a click. True to carry on; a click is never guessed at. */
   readonly pause?: (reason: string) => Promise<boolean>;
   readonly type: (text: string) => Promise<void>;
@@ -621,6 +634,9 @@ export interface DriveHost {
   ) => Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
   readonly progress?: (index: number, action: DriveAction) => void;
 }
+
+/** After "Carry on", so the baseline is not a window still arriving. */
+const SETTLE_MS = 400;
 
 export type DriveResult =
   | { readonly kind: "finished"; readonly steps: number }
@@ -647,22 +663,26 @@ export const runDrivePlan = async (
   /** The window this click is meant for: what is under its point once the last step has settled. */
   const aim = async (action: DriveAction | undefined) => {
     const point = pointOf(action);
-    intended = point === null ? null : ((await host.windowAt?.(point)) ?? null);
+    intended = point === null ? null : ((await host.windowAt?.(point))?.window ?? null);
   };
   /** Null to click now, or why not. */
-  const clearToClick = async (point: { x: number; y: number }, i: number) => {
+  const clearToClick = async (point: { x: number; y: number }, i: number, right = false) => {
     if (host.cancelled()) return "Stopped.";
     if (host.windowAt === undefined) return null;
     const under = await host.windowAt(point);
+    if (right && under !== null && isShellWindow(under.label)) {
+      return "A right-click there would paste into a command line, so I stopped.";
+    }
     const now = host.foreground === undefined ? undefined : await host.foreground();
     const moved =
       under === null ||
-      (intended !== null && under !== intended) ||
+      (intended !== null && under.window !== intended) ||
       now === null ||
       (now !== undefined && window !== null && now.window !== window);
     if (!moved) return null;
     const on = (await host.pause?.(`Step ${i + 1}: that window moved or lost focus.`)) ?? false;
     if (!on) return "The window under that click changed, so I stopped.";
+    await host.sleep(SETTLE_MS);
     if (host.cancelled()) return "Stopped.";
     window = (await host.foreground?.())?.window ?? window;
     return null;
@@ -681,6 +701,13 @@ export const runDrivePlan = async (
         }
         if (window !== null && now.window !== window) {
           return { kind: "stopped", step: i, reason: "The window changed, so I stopped." };
+        }
+        if (isPaste(action) && isShellWindow(now.label)) {
+          return {
+            kind: "stopped",
+            step: i,
+            reason: "That would paste into a command line, so I stopped.",
+          };
         }
         if (host.shellAllowed !== true && isShellWindow(now.label)) {
           return { kind: "stopped", step: i, reason: "That reached a command line, so I stopped." };
@@ -702,7 +729,8 @@ export const runDrivePlan = async (
         case "click":
         case "double_click": {
           const point = pointOf(action)!;
-          const held_up = await clearToClick(point, i);
+          const right = action.kind === "click" && action.button === "right";
+          const held_up = await clearToClick(point, i, right);
           if (held_up !== null) return { kind: "stopped", step: i, reason: held_up };
           await host.clickAt(
             point,
@@ -742,7 +770,18 @@ export const runDrivePlan = async (
       }
       await host.sleep(250);
       // A click may rightly open a window. Typing never does, so a switch during it stays caught.
-      if (action.kind !== "type") window = (await host.foreground?.())?.window ?? null;
+      if (action.kind === "wait" || action.kind === "scroll") {
+        // Nothing here should move the keyboard, so if it did, he may have: ask, don't adopt it.
+        const now = (await host.foreground?.()) ?? null;
+        if (window !== null && now !== null && now.window !== window) {
+          const on = (await host.pause?.(`Step ${i + 1}: the window changed.`)) ?? false;
+          if (!on) {
+            return { kind: "stopped", step: i, reason: "The window changed, so I stopped." };
+          }
+          await host.sleep(SETTLE_MS);
+          window = (await host.foreground?.())?.window ?? window;
+        }
+      } else if (action.kind !== "type") window = (await host.foreground?.())?.window ?? null;
       await aim(plan.actions[i + 1]);
       if (action.expect !== undefined) {
         const verdict = await host.verify(action, i);

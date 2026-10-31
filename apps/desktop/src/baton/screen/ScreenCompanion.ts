@@ -38,6 +38,7 @@ import {
   type DrivePlan,
   type ScreenMode,
   type ScreenShot,
+  pasteTooLong,
   planHighRisk,
   shellCheck,
 } from "@t3tools/baton-shared/screenCompanion";
@@ -105,6 +106,8 @@ const ROUTER_MAX_TURNS = 6;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
 const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
+/** It arrives unasked while he may be typing, so a stray key cannot answer it. */
+const PAUSE_ARM_MS = 900;
 const RECENT_LINES = 8;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
@@ -140,7 +143,10 @@ export interface AssistantActions {
     near: { readonly x: number; readonly y: number },
   ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
   /** The top-level window under a desktop point, for a drive's click. */
-  readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<number | null>;
+  readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<{
+    readonly window: number;
+    readonly label: string;
+  } | null>;
   /** A command through the intent path and all its guards; the reply to speak. */
   readonly act: (command: string, restated?: boolean) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
@@ -718,11 +724,13 @@ export const startScreenCompanion = (input: {
     const plan = parsed.plan;
     // Held to the list a sentence is held to, whatever routed here. Run it is not enough.
     const clipboard = await Electron.clipboard.readText();
-    const subject = planHighRisk(plan, clipboard);
+    const tooLong = pasteTooLong(plan, clipboard);
+    const subject = tooLong ? null : planHighRisk(plan, clipboard);
     const shell = shellCheck(plan, focus?.label ?? null);
-    if (subject !== null || shell.refused) {
-      const message =
-        subject === null
+    if (tooLong || subject !== null || shell.refused) {
+      const message = tooLong
+        ? "That would paste more than I can show you first, so I won't."
+        : subject === null
           ? "That would paste into a command line, where nobody reads it first. I won't do that."
           : refusedReply(subject);
       say(message);
@@ -777,8 +785,13 @@ export const startScreenCompanion = (input: {
     }
     // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
     if (run !== current) return;
-    current.release = input.holdEscape(() => (current.cancelled = true), "drive");
-    const hideStop = windows.showStop(() => (current.cancelled = true));
+    // A pause box waiting for an answer goes too.
+    const stopDrive = () => {
+      current.cancelled = true;
+      windows.closePrompt();
+    };
+    current.release = input.holdEscape(stopDrive, "drive");
+    const hideStop = windows.showStop(stopDrive);
     driver ??= createInputDriver({
       platform: input.platform,
       toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
@@ -795,7 +808,9 @@ export const startScreenCompanion = (input: {
       ...(input.platform === "win32" && actions?.focus !== undefined
         ? { foreground: keyboardWindow }
         : {}),
-      ...(actions?.windowAt === undefined ? {} : { windowAt: actions.windowAt }),
+      ...(input.platform === "win32" && actions?.windowAt !== undefined
+        ? { windowAt: actions.windowAt }
+        : {}),
       pause: async (reason) =>
         (await windows.ask({
           title: "Carry on?",
@@ -803,6 +818,7 @@ export const startScreenCompanion = (input: {
           buttons: ["Carry on", "Stop"],
           cancel: 1,
           scoped: true,
+          armMs: PAUSE_ARM_MS,
         })) === 0,
       shellAllowed: shell.ask,
       pasteText: clipboard,
