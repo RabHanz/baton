@@ -71,14 +71,17 @@ describe("accountDisplayName", () => {
 describe("withAccount", () => {
   const provider = { auth: { status: "authenticated", email: "someone@example.com" } };
 
-  it("names the instance and leaves only the fingerprint to key it", () => {
-    const next = withAccount(provider, account({})) as typeof provider & {
+  it("names the instance and keys it on the account, not the box's login", () => {
+    const next = withAccount(
+      provider,
+      account({ email: "setup-token-4@token.local" }),
+    ) as typeof provider & {
       displayName: string;
       usageLimits: { credentialFingerprint: string };
     };
     expect(next.displayName).toBe("Rabee");
     expect(next.usageLimits.credentialFingerprint).toBe("4");
-    expect(next.auth).toEqual({ status: "authenticated" });
+    expect(next.auth).toEqual({ status: "authenticated", email: "setup-token-4@token.local" });
   });
 
   it("changes nothing without a reading", () => {
