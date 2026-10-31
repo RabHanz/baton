@@ -2520,8 +2520,11 @@ instance named "C" (T3's driver name "Claude", truncated).
   T3's existing merge does the rest. No token or anything derived from one goes in it.
 - `withAccount` sets the instance's `displayName` to the account's name; `stampIdentity` runs next and
   restores a configured name. T3's snapshot always carries a driver name, so "only if empty" never fired.
-- A probe-filled instance drops `auth.email`. T3 keys on email first, so onnyx's own login split Rabee
-  into a separate tile.
+- A probe-filled instance reports the slot's email from cswap, not the box's login. T3 keys on email
+  first, so onnyx's own login split Rabee into a separate tile. Dropping the email instead broke
+  `switchedAccount`, the signed-in check in `IntentService` and the picker's account line.
+- `accountUse` refreshes the provider, so the name and limits follow a switch at once. A rotation by
+  the reactor still waits for the 5-minute check.
 - `applyUsageLimitsUpdate` keeps the fingerprint (`0008-claude-account-limits`), or a live turn's
   rate-limit event would pull that instance out of the merge until the next refresh.
 - `BatonTileSwitch` adds a row per environment to the tile popover, on the same `useAccountSwitch` as
@@ -2537,7 +2540,8 @@ Rejected: grouping by display name in the client (new merge logic for a thing th
 Known limits. The default instance follows the active account, so when every environment rotates off
 Rabee no instance reports slot 4 and that tile is gone until one does. A pinned default (`--pin-default`,
 laptop) reads as cswap's active account, as it has since D92. The laptop's server is part of the
-desktop app, so its tiles merge only once it runs a build with this. `signzart-prod`'s unit now has
+desktop app, so its tiles merge only once it runs a build with this. A default instance rotated onto
+Optima shows that name beside `claudeAgent_optima` in the model picker. `signzart-prod`'s unit now has
 nvm's bin on PATH: under load T3's login-shell PATH read timed out and `claude` was "not found".
 
 Not yet run live: pressing Switch. Rabee is in use and the other two are spent until 2 Nov.

@@ -186,6 +186,13 @@ export const make = Effect.gen(function* () {
             reason: input.reason ?? "manual",
             workSessionId: input.workSessionId ?? null,
           }),
+        ).pipe(
+          // The default instance's name and limits follow the switch now, not at the next 5-minute check.
+          Effect.tap(() =>
+            Effect.flatMap(ProviderRegistry.ProviderRegistry, (registry) =>
+              Effect.forkDetach(registry.refresh(input.driver ?? DEFAULT_ROTATION_DRIVER)),
+            ),
+          ),
         ),
       ),
     [BATON_ACCOUNT_WS_METHODS.threadAccountUse]: (input) => run(threadAccountUse(input)),

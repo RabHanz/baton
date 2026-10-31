@@ -57,9 +57,9 @@ export function accountDisplayName(account: BatonAccount): string {
 }
 
 /**
- * The instance as the account cswap reads for it. A login's own email is dropped: T3 keys on it
- * before the fingerprint, so one box's login would split that account into its own tile. stampIdentity
- * runs next and puts back a name the instance was configured with.
+ * The instance as the account cswap reads for it. A box's own login gives way to the account's email:
+ * T3 keys on email first, so one login would split that account into its own tile. stampIdentity runs
+ * next and puts back a name the instance was configured with.
  */
 export function withAccount<P extends { readonly auth: { readonly email?: string | undefined } }>(
   provider: P,
@@ -67,8 +67,13 @@ export function withAccount<P extends { readonly auth: { readonly email?: string
 ): P {
   const usageLimits = limitsFromAccount(account);
   if (account === undefined || usageLimits === undefined) return provider;
-  const { email: _email, ...auth } = provider.auth;
-  return { ...provider, auth, usageLimits, displayName: accountDisplayName(account) } as P;
+  const { email: _login, ...auth } = provider.auth;
+  return {
+    ...provider,
+    auth: account.email === null ? auth : { ...auth, email: account.email },
+    usageLimits,
+    displayName: accountDisplayName(account),
+  } as P;
 }
 
 /** Fills in limits only where the login reports none; a missing cswap changes nothing. */
