@@ -3,7 +3,10 @@
  * a move is `thread.model-selection.set` and the next turn resumes the conversation. That releases
  * the live session at once, so during a turn the move is stored and applied when the turn ends.
  */
-import type { BatonThreadAccountUseResult } from "@t3tools/baton-contracts";
+import {
+  BATON_DEFAULT_CLAUDE_INSTANCE,
+  type BatonThreadAccountUseResult,
+} from "@t3tools/baton-contracts";
 import { ProviderInstanceId, ThreadId, type ModelSelection } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -24,7 +27,6 @@ export class ThreadAccountMoveError extends Schema.TaggedError<ThreadAccountMove
   }
 }
 
-// Not "queued": a run held by a spent account is exactly the thread that needs to move.
 const TURN_RUN_STATUSES: ReadonlySet<string> = new Set([
   "preparing",
   "starting",
@@ -36,6 +38,10 @@ const isMoveError = Schema.is(ThreadAccountMoveError);
 
 export const threadHasRunningTurn = (runs: ReadonlyArray<{ readonly status: string }>): boolean =>
   runs.some((run) => TURN_RUN_STATUSES.has(run.status));
+
+// A queued run keeps its own selection and would put the thread back, so it holds the move too.
+export const threadHasQueuedRun = (runs: ReadonlyArray<{ readonly status: string }>): boolean =>
+  runs.some((run) => run.status === "queued");
 
 /** The same conversation and model, on another instance. */
 export const selectionOnInstance = (
@@ -88,9 +94,11 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
   const applyWhenIdle = Effect.fn("ThreadAccountMoves.applyWhenIdle")(
     function* (threadId: string, instanceId: string) {
       const id = ThreadId.make(threadId);
-      if (threadHasRunningTurn(yield* engine.threadRuns(id))) return;
-      yield* forget(threadId);
+      const runs = yield* engine.threadRuns(id);
+      if (threadHasRunningTurn(runs) || threadHasQueuedRun(runs)) return;
+      // Forgotten only after it worked, so a failed move is tried again on the next change.
       yield* move(id, instanceId);
+      yield* forget(threadId);
       yield* Effect.logInfo("Baton moved a thread to another account", { threadId, instanceId });
     },
     Effect.ignoreCause({ log: true }),
@@ -98,7 +106,12 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
 
   const request: ThreadAccountMovesShape["request"] = Effect.fn("ThreadAccountMoves.request")(
     function* ({ threadId, instanceId }) {
-      if (threadHasRunningTurn(yield* engine.threadRuns(threadId))) {
+      const shell = yield* engine.threadShell(threadId);
+      if (!shell?.modelSelection.instanceId.startsWith(BATON_DEFAULT_CLAUDE_INSTANCE)) {
+        return yield* new ThreadAccountMoveError({ detail: "This is not a Claude thread." });
+      }
+      const runs = yield* engine.threadRuns(threadId);
+      if (threadHasRunningTurn(runs)) {
         const now = DateTime.formatIso(yield* DateTime.now);
         yield* sql`
           INSERT INTO fabric_thread_account_moves (thread_id, instance_id, requested_at)
@@ -110,9 +123,14 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
         pending.set(threadId, instanceId);
         return { instanceId, timing: "next-turn" as const };
       }
+      if (threadHasQueuedRun(runs)) {
+        return yield* new ThreadAccountMoveError({
+          detail: "A queued message is waiting on this thread. Cancel or send it, then switch.",
+        });
+      }
       // A later choice replaces a waiting one.
-      yield* forget(threadId);
       yield* move(threadId, instanceId);
+      yield* forget(threadId);
       return { instanceId, timing: "now" as const };
     },
     Effect.mapError((cause) =>

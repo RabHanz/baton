@@ -157,22 +157,23 @@ check("the layout survives a reload", arranged === reloaded);
 await shot("07-after-reload-1440");
 
 // 4. The window-level controls act on the focused pane, whichever it is.
-const toggles = () =>
+const windowControls = () =>
   page.evaluate(() =>
-    [...document.querySelectorAll("[data-panel-layout-controls]")].map((el) => ({
-      fixed: getComputedStyle(el.parentElement).position === "fixed",
-      pane: el.closest("[data-focused]")?.dataset.focused,
-    })),
+    [...document.querySelectorAll('[aria-label="Toggle terminal drawer"]')].flatMap((toggle) =>
+      toggle.getBoundingClientRect().width === 0
+        ? []
+        : [toggle.closest("[data-focused]")?.dataset.focused],
+    ),
   );
 for (const id of ["a", "c"]) {
   await page.locator(`[data-testid="baton-pane-${id}"] [data-chat-header]`).click({
     position: { x: 40, y: 12 },
   });
   await page.waitForTimeout(1200);
-  const controls = (await toggles()).filter((entry) => entry.fixed);
+  const controls = await windowControls();
   check(
-    `one set of window controls with pane ${id} focused`,
-    controls.length === 1,
+    `one set of window controls, the focused pane's, with pane ${id} focused`,
+    controls.length === 1 && controls[0] === "true",
     JSON.stringify(controls),
   );
   const focused = page.locator(`[data-testid="baton-pane-${id}"]`);

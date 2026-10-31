@@ -337,15 +337,17 @@ function BatonPane(props: {
               <PanelLeftCloseIcon />
             </Button>
           ) : null}
-          <Button
-            size="icon-micro"
-            variant="ghost"
-            aria-label={`Detach to window: ${title}`}
-            data-testid={`baton-pane-detach-${slot.id}`}
-            onClick={() => onDetachPane(slot)}
-          >
-            <ExternalLinkIcon />
-          </Button>
+          {split ? (
+            <Button
+              size="icon-micro"
+              variant="ghost"
+              aria-label={`Detach to window: ${title}`}
+              data-testid={`baton-pane-detach-${slot.id}`}
+              onClick={() => onDetachPane(slot)}
+            >
+              <ExternalLinkIcon />
+            </Button>
+          ) : null}
           {split ? (
             <Button
               size="icon-micro"

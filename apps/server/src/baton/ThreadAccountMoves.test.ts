@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { selectionOnInstance, threadHasRunningTurn } from "./ThreadAccountMoves.ts";
+import {
+  selectionOnInstance,
+  threadHasQueuedRun,
+  threadHasRunningTurn,
+} from "./ThreadAccountMoves.ts";
 
-describe("threadHasRunningTurn", () => {
-  it("holds a move for a turn in progress, not for a queued or finished run", () => {
+describe("what holds a move", () => {
+  it("tells a turn in progress from a queued run", () => {
     expect(threadHasRunningTurn([{ status: "running" }])).toBe(true);
     expect(threadHasRunningTurn([{ status: "waiting" }])).toBe(true);
     expect(threadHasRunningTurn([{ status: "queued" }, { status: "completed" }])).toBe(false);
+    expect(threadHasQueuedRun([{ status: "queued" }, { status: "completed" }])).toBe(true);
+    expect(threadHasQueuedRun([{ status: "failed" }])).toBe(false);
   });
 });
 

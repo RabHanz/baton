@@ -14,12 +14,19 @@ import {
   type BatonAccount,
 } from "@t3tools/baton-contracts";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  type EnvironmentId,
+  type ModelSelection,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { CheckIcon, ChevronDownIcon, RotateCwIcon, UserRoundIcon } from "lucide-react";
 import { useState } from "react";
 
+import { useComposerDraftStore } from "../../composerDraftStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useQuietThreadShell } from "../../state/entities";
@@ -71,6 +78,11 @@ export function useAccountSwitch(environmentId: EnvironmentId) {
   return { busy, switchTo };
 }
 
+function failureMessage(cause: Cause.Cause<unknown>): string | undefined {
+  const failure = Cause.squash(cause);
+  return failure instanceof Error ? failure.message : undefined;
+}
+
 export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const shell = useQuietThreadShell(threadRef);
   const providers = useEnvironmentProviders().get(threadRef.environmentId) ?? [];
@@ -102,6 +114,13 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
       input: { threadId: threadRef.threadId, key },
     }).then((result) => {
       setBusy(false);
+      if (result._tag === "Success") {
+        // The composer sends its own selection first, and a stale one would move the thread back.
+        useComposerDraftStore.getState().setModelSelection(threadRef, {
+          ...shell.modelSelection,
+          instanceId: ProviderInstanceId.make(result.value.instanceId),
+        } as ModelSelection);
+      }
       toastManager.add(
         result._tag === "Success"
           ? result.value.timing === "now"
@@ -111,7 +130,11 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
                 title: `This thread moves to ${label} when the turn ends`,
                 description: "The running turn is not interrupted.",
               }
-          : { type: "error", title: `Could not switch to ${label}` },
+          : {
+              type: "error",
+              title: `Could not switch to ${label}`,
+              description: failureMessage(result.cause),
+            },
       );
     });
   };
@@ -136,10 +159,13 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
       <MenuPopup align="end">
         {accounts.map((account) => {
           const isCurrent = account.key === current.key;
+          const instanceId = instanceForAccount(account, isAvailable);
+          // The active row stays open on the default instance: clicking it pins this thread there.
           const blocked =
-            isCurrent ||
             accountRefusal(account) !== null ||
-            (live ? running : instanceForAccount(account, isAvailable) === null);
+            (live
+              ? isCurrent || running
+              : instanceId === null || instanceId === shell.providerInstanceId);
           return (
             <MenuItem
               key={account.key}
