@@ -58,7 +58,7 @@ import {
 } from "@t3tools/baton-voice";
 
 const core = createVoiceCore({
-  wake: await createOpenWakeWordProvider({ melspectrogram, embedding, wake: heyJarvis }),
+  wake: await createOpenWakeWordProvider({ melspectrogram, embedding, wakes: [{ word: "Alfred", path: alfred, threshold: 0.9 }] }),
   vad: await createSileroVad(sileroPath),
   stt: createWhisperCppStt({
     binary: whisperCli,
@@ -89,8 +89,8 @@ desktop main process imports this package directly.
 
 ## On the desktop
 
-`apps/desktop/src/baton/voice`. Windows only for now (D97); on macOS and Linux the tray says so and no
-microphone opens. Everything audio goes through
+`apps/desktop/src/baton/voice`. Windows first (D97, D106): macOS and Linux are queued, and there the
+tray says so and no microphone opens. Everything audio goes through
 `baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
 Parakeet and paste; `record` piped in as the wake path's microphone.
 
@@ -101,8 +101,14 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v` |                |
 | `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words |
 | `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
+| `dictationCleanup`                         | `claude`; `local`, `off`               | Dictation, Clean-up |
+| `cleanupModel`, `claudeBinary`             | `haiku`, `claude`                      |                  |
+| `appModes`                                 | `{}`; his writing mode per app, by exe | Dictation, Writing mode |
 | `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)              | Microphone       |
 | `enabled`                                  | `false`: listening is opt-in           | Always listening |
+| `sounds`                                   | `true`                                 | Sounds           |
+| `pillAtRest`                               | `false`                                | Pill             |
+| `pillEdge`                                 | `bottom`; `top`                        | Pill             |
 
 Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
 "Always listening" off. The wake, VAD and feature models ship with the app. Parakeet (740 MB,
@@ -111,10 +117,26 @@ Download speech model, a first press of Ctrl+Alt+Shift+F8, or ticking "Always li
 toggle keys exist only after that. Ctrl+Alt+Shift+F8 toggles dictation for Airdeck.
 
 Text pastes only into the window focused when recording began. If that changed, or nothing read the
-clipboard, it shows on the HUD for 20 s and stays under Tray → Dictation → Copy last dictation. Esc
+clipboard, the pill says so and the text stays under Tray → Dictation → Copy last dictation. Esc
 cancels a recording; five minutes stops it and the text is kept, not pasted.
 
+## Clean-up and writing modes (D105)
+
+Text goes through `packages/baton-shared/src/dictationCleanup.ts`, hold key and wake-word dictation alike.
+Modes: default, chat, email, formal document, code and terminal, notes, raw. Chosen from the foreground app,
+then a browser's title, and his tray choice for that app outranks both. Default mode makes sentences make
+sense and changes nothing else; dictated text is text, never instructions.
+
+The dictionary is `<state dir>/voice/dictionary.json`, a list of `{phrase, replacement}` he can edit. If it is
+missing, Wispr's table is read once, read-only.
+
 ## Measuring it
+
+`scripts/baton/voice-lab`, all headless and nothing pasted: `whisper_lab.py` (quiet and whisper-like audio,
+`make` then `score`), `replay_lab.py` (release to text at real-time pace through `BATON_FAKE_MIC`),
+`cleanup-lab.ts` with `cleanup-cases.ts`, bundled by `bundle-cleanup.sh` (the rewrite on written cases and on
+his clips, aggregates only). One CPU-heavy laptop job at a time: a speed figure taken beside other work is void.
+Quiet-speech numbers are in D104.
 
 `scripts/baton/voice-lab/voice-lab.ps1` on the laptop: `replay` and `dictation` use his stored Wispr
 clips and need nothing from him; `samples` has him say each word 30 times; `ambient` counts false wakes
@@ -143,3 +165,9 @@ word accuracy: 1.00 1.00 1.00 1.00 mean=1.00
 Wake: 1 of 1 true wake detected, 0 false wakes on the no-wake fixture. Four synthetic
 clips from one synthetic voice is a smoke test. It says nothing yet about the DJI mic,
 room noise or the Director's own voice.
+
+## The pill and speech
+
+The HUD is gone: at rest nothing is on screen. The pill (D112) shows the state, the wake word, the
+routing target and what was heard. Speech plays from a hidden page (`voicePlayer.ts`), one path for
+every platform, and the pill follows the voice's real level.

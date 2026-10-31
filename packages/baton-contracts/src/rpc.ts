@@ -38,6 +38,8 @@ import {
   BatonIntentInput,
   BatonIntentListInput,
   BatonIntentListResult,
+  BatonBrainInput,
+  BatonBrainResult,
   BatonIntentResolveResult,
   BatonIntentRunResult,
 } from "./intent.ts";
@@ -264,6 +266,12 @@ const WsBatonIntentResolveRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentResolve, 
   error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
 });
 
+const WsBatonBrainDecideRpc = Rpc.make(BATON_INTENT_WS_METHODS.brainDecide, {
+  payload: BatonBrainInput,
+  success: BatonBrainResult,
+  error: Schema.Union([BatonIntentError, EnvironmentAuthorizationError]),
+});
+
 const WsBatonIntentRunRpc = Rpc.make(BATON_INTENT_WS_METHODS.intentRun, {
   payload: BatonIntentInput,
   success: BatonIntentRunResult,
@@ -358,6 +366,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonOrchestrationRuleEnableRpc,
   WsBatonOrchestrationRuleConfirmRpc,
   WsBatonIntentResolveRpc,
+  WsBatonBrainDecideRpc,
   WsBatonIntentRunRpc,
   WsBatonIntentListRpc,
   WsBatonAdoptedDiscoverRpc,

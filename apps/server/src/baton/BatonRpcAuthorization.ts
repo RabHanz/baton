@@ -69,6 +69,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // scope cannot depend on the words, or a read-only client would be one
   // phrasing away from an operate-level effect.
   [BATON_INTENT_WS_METHODS.intentResolve]: AuthOrchestrationReadScope,
+  // It acts on nothing, but each call spends his subscription on a model turn.
+  [BATON_INTENT_WS_METHODS.brainDecide]: AuthOrchestrationOperateScope,
   [BATON_INTENT_WS_METHODS.intentRun]: AuthOrchestrationOperateScope,
   [BATON_INTENT_WS_METHODS.intentList]: AuthOrchestrationReadScope,
   // Adopting a terminal is an operate act even though discovery is a read:

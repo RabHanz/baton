@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { hudView, renderHudHtml, routeFor, utteranceCaption } from "./voiceHud.ts";
+import { hudView, routeFor, utteranceCaption } from "./voiceHud.ts";
 import { VOICE_STATES } from "./voiceTypes.ts";
 
 describe("HUD", () => {
@@ -30,17 +30,5 @@ describe("HUD", () => {
     expect(utteranceCaption({ text: "a".repeat(200), mode: "dictation" }, 10)).toBe(
       "“aaaaaaaaa…” typed into the focused field",
     );
-  });
-
-  it("renders the state and escapes what was said", () => {
-    const html = renderHudHtml({
-      state: "dictation",
-      caption: '<img src=x onerror="alert(1)">',
-      device: "Microphone (DJI MIC MINI)",
-    });
-    expect(html).toContain('data-state="dictation"');
-    expect(html).toContain("Dictating");
-    expect(html).not.toContain("<img");
-    expect(html).toContain('title="Microphone (DJI MIC MINI)"');
   });
 });

@@ -968,7 +968,12 @@ const make = Effect.gen(function* () {
                       type: "turn-item.updated" as const,
                       threadId: follow.threadId,
                       occurredAt: now,
-                      payload: { ...item, status: "completed" as const, completedAt: now, updatedAt: now },
+                      payload: {
+                        ...item,
+                        status: "completed" as const,
+                        completedAt: now,
+                        updatedAt: now,
+                      },
                     },
                   ]),
             ],

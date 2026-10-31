@@ -184,7 +184,7 @@ describe.skipIf(!ready)("WAV as the mic, through the real core", () => {
         model: NodePath.join(assets.modelsDir, "ggml-base.en.bin"),
       }),
       platform: "linux",
-      speak: false,
+      tts: null,
       origin: Date.now(),
       onReply: (text) => replies.push(text),
       intent: makeVoiceIntentClient({

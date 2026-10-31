@@ -50,6 +50,8 @@ import {
   type BatonIntentRecord,
   type BatonIntentResolution,
   type WorkSessionId,
+  type BatonBrainInput,
+  type BatonBrainResult,
 } from "@t3tools/baton-contracts";
 import { expiredRecords } from "@t3tools/baton-shared/retention";
 import {
@@ -59,6 +61,7 @@ import {
   type IntentProvider,
   type IntentVocabulary,
 } from "@t3tools/baton-shared/intentParser";
+import { decide } from "@t3tools/baton-shared/brain";
 import { Hostname as HostProcessHostname } from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -119,6 +122,8 @@ export class BatonIntentService extends Context.Service<
       /** Absent or false: grammar and learned phrasings only, never a model. */
       readonly allowModel?: boolean | undefined;
     }) => Effect.Effect<BatonIntentResolution, BatonIntentError>;
+    /** The one brain's decision for a sentence (D100). Decides and does nothing. */
+    readonly decide: (input: BatonBrainInput) => Effect.Effect<BatonBrainResult, BatonIntentError>;
     readonly run: (input: {
       readonly text: string;
       readonly focusedWorkSessionId: WorkSessionId | null;
@@ -426,6 +431,26 @@ export const make = Effect.gen(function* () {
   const resolve: BatonIntentService["Service"]["resolve"] = (input) =>
     Effect.map(resolveWithSource(input), (read) => read.resolution);
 
+  const decideSaid: BatonIntentService["Service"]["decide"] = (input) =>
+    Effect.gen(function* () {
+      const vocabulary = yield* buildVocabulary(null);
+      const context = yield* Effect.context<never>();
+      const decision = yield* Effect.promise(() =>
+        decide(input.said, input, {
+          ask: (turn) => Effect.runPromiseWith(context)(interpreter.route({ turn, vocabulary })),
+          grammarPlaces: async (said) =>
+            resolveBatonIntent(said, vocabulary).outcome === "resolved",
+        }),
+      );
+      return {
+        route: decision.route,
+        text: "text" in decision ? decision.text : null,
+        control: "control" in decision ? decision.control : null,
+        source: decision.source,
+        ...("restated" in decision && decision.restated === true ? { restated: true } : {}),
+      } satisfies BatonBrainResult;
+    });
+
   const record = (row: BatonIntentRow) =>
     repository
       .insert(row)
@@ -571,6 +596,7 @@ export const make = Effect.gen(function* () {
 
   return {
     resolve,
+    decide: decideSaid,
     run,
     list,
     subscribe: PubSub.subscribe(events),

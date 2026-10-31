@@ -98,6 +98,7 @@ const main = async () => {
   };
 
   const companion = startScreenCompanion({
+    holdEscape: () => () => undefined,
     stateDir,
     platform: process.platform,
     env: process.env,
@@ -107,7 +108,7 @@ const main = async () => {
 
   if (only.includes("fingerprint")) {
     const { screenFingerprint } = await import("../screenCapture.ts");
-    const { screenDifference } = await import("@t3tools/baton-shared/screenCompanion");
+    const { screensDifference } = await import("@t3tools/baton-shared/screenCompanion");
     const a = await screenFingerprint();
     const a2 = await screenFingerprint();
     await clickOn("n");
@@ -115,13 +116,13 @@ const main = async () => {
     await sleep(500);
     const b = await screenFingerprint();
     results["fingerprint"] =
-      `length ${a.length}; same screen ${screenDifference(a, a2)}; after typing ${screenDifference(a, b)}`;
+      `displays ${a.length}; same screen ${screensDifference(a, a2)}; after typing ${screensDifference(a, b)}`;
     await reset();
   }
 
   if (only.includes("look")) {
     const t0 = Date.now();
-    companion.handle({ kind: "look", text: "where do I type my name on this form?" });
+    void companion.said(`look: ${"where do I type my name on this form?"}`, { direct: false });
     await sleep(14_000);
     await frame("01-look-points-at-name-field");
     results["look"] =
@@ -130,9 +131,8 @@ const main = async () => {
 
   if (only.includes("teach")) {
     await reset();
-    companion.handle({
-      kind: "teach",
-      text: "teach me how to sign up on this form with the name Rabee",
+    void companion.said("teach: how to sign up on this form with the name Rabee", {
+      direct: false,
     });
     await sleep(15_000);
     await frame("02-teach-step-1");
@@ -155,9 +155,8 @@ const main = async () => {
 
   if (only.includes("drive")) {
     await reset();
-    companion.handle({
-      kind: "drive",
-      text: "fill in the name field with Baton Test and submit the form for me",
+    void companion.said("drive: fill in the name field with Baton Test and submit the form", {
+      direct: false,
     });
     await sleep(40_000);
     await frame("06-drive-finished");

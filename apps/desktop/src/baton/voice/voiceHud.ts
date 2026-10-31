@@ -1,6 +1,6 @@
 /**
- * What the HUD and the tray say, as pure functions of the state, so the words
- * and colours are tested rather than eyeballed.
+ * What the tray says, as pure functions of the state, so the words and colours
+ * are tested rather than eyeballed. The pill's words are in voiceTurn.
  */
 import type { VoiceState, VoiceUtterance } from "./voiceTypes.ts";
 
@@ -48,29 +48,3 @@ export const utteranceCaption = (utterance: VoiceUtterance, maxLength = 80): str
       : utterance.text;
   return `“${text}” ${ROUTE_LABEL[routeFor(utterance)]}`;
 };
-
-const escapeHtml = (value: string): string =>
-  value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-
-/** The HUD's markup for one moment. Rendered into a tiny always-on-top window. */
-export const renderHudHtml = (input: {
-  readonly state: VoiceState;
-  readonly caption: string | null;
-  readonly device: string | null;
-}): string => {
-  const view = hudView(input.state);
-  const caption =
-    input.caption === null ? "" : `<div class="cap">${escapeHtml(input.caption)}</div>`;
-  const device = input.device === null ? "" : ` title="${escapeHtml(input.device)}"`;
-  return `<div class="hud" data-state="${input.state}"${device}><span class="dot${view.pulsing ? " pulse" : ""}" style="background:${view.color}"></span><span class="label">${escapeHtml(view.label)}</span>${caption}</div>`;
-};
-
-export const HUD_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:transparent;overflow:hidden;font:12px system-ui,sans-serif;-webkit-user-select:none;user-select:none}
-.hud{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:300px;padding:5px 9px;border-radius:12px;background:rgba(17,17,20,.82);color:#f4f4f5;-webkit-app-region:drag}
-.dot{width:9px;height:9px;border-radius:50%;flex:none}
-.pulse{animation:p 1.4s ease-in-out infinite}
-@keyframes p{50%{opacity:.35}}
-@media (prefers-reduced-motion:reduce){.pulse{animation:none}}
-.cap{flex-basis:100%;color:#d4d4d8;line-height:1.35}
-</style></head><body><div id="root"></div></body></html>`;

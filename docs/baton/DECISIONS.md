@@ -2249,7 +2249,7 @@ Built in `packages/baton-shared/src/screenCompanion.ts` (pure, tested without a 
   screenshot, multi-line typing, the Windows key and security chords, and more than 20 steps. The
   plan's clicks are drawn as numbered dots, the steps are listed in an approval box, and nothing
   runs without "Run it". A screen that changed since the plan refuses it. While running, Esc,
-  "stop" and moving the mouse more than 12 px stop it, a held button is always released, and each
+  "stop" and (until D115) moving the mouse more than 12 px stop it, a held button is always released, and each
   step that names what it `expect`s is checked against a fresh screenshot (`[OK]` or
   `[STOP: why]`). Input is one long-lived PowerShell calling user32 on Windows (per-monitor DPI
   aware, text pasted so any keyboard layout works), xdotool on Linux; macOS refuses by name.
@@ -2645,6 +2645,7 @@ engine exists); keeping whisper.cpp for the wake path (two speech engines on one
 
 Voice is Windows only for now, wake included: the exe is built for no other platform, the whisper-cli
 and hidden Chromium capture paths are gone, and on macOS and Linux the tray says so and opens no mic.
+**Reopened 2026-10-31: Windows first, the others queued, not Windows only. See D106.**
 
 The same exe is the wake path's microphone (`record` piped into the core), replacing the hidden
 Chromium window. That removes AGC and noise suppression from the path and means the lab
@@ -2713,3 +2714,345 @@ devices. Checked every 5 s, so a vanished mic falls through and a returning one 
 Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
 not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
 the AT2020 is on it and mixing the empty input 2 halves the level.
+
+## D100 — One brain decides what was said, and code keeps the last word
+
+Director, 2026-10-31: "route everything through that intelligence layer so it's not making dumb
+actions." Before this, `withScreenRoutes` ran regexes first, so words chose the action, and a plain
+question fell into the command path, where it was refused or sent to a session.
+
+Now every utterance and typed ask outside dictation goes through `decide` in
+`packages/baton-shared/src/brain.ts`, which returns answer, look, teach, drive, act or clarify. The
+order: lesson controls and his own `drive:`, `teach:`, `look:` prefixes; then a sentence the grammar
+places; then a warm `haiku` session on his subscription. The old word rules are the fallback when no
+model can be reached. `guardDecision` then checks what he said and what the model turned it into, so
+rewording cannot pass the high-risk list. A clarify counts, because "which project should I deploy?"
+invites the order it must refuse. A question about a dangerous thing is answered: an answer does
+nothing. The medium-risk read-back, the later "confirm" and the drive plan's Run it are unchanged, and
+the model has no route that confirms anything. `dictate` effects never reach the brain.
+
+Answers come from a `sonnet` conversation, also on his subscription, spoken sentence by sentence as
+they stream. The same conversation serves looks, so a follow-up keeps its thread either way. It decides
+for itself that it needs the screen, by replying `[LOOK]`, and the capture rules still apply.
+
+Measured on his laptop: a routed sentence takes a median 1.6 s; first spoken sentence 1.2 to 1.4 s on a
+warm session and 2.8 to 4.7 s on a cold one. The intent table is 48 sentences in
+`scripts/baton/voice-lab/brain-table.ts`.
+
+Rejected: letting the model confirm or refuse (a reply could then widen a guard); one model for both
+jobs (sonnet on every sentence spends quota to classify, and haiku answers too thinly); keeping the
+regexes first (the failure he named).
+
+The ask box moves to Ctrl+Alt+Shift+B. F8 was bound twice, the ask box won, and Airdeck's dictation
+toggle did nothing on 0.1.9 (seen on the laptop: the chord opened the box).
+
+
+## D110 — The hold is tied to the words, not to a clock
+
+Director, 2026-10-31: pointing and cards "last barely a fraction of a second". Reproduced on his
+Windows desktop with `screen/smoke/overlayLab.ts`: the real companion, a scripted model, 50 ms polling
+of the overlay's own DOM (the overlay is excluded from capture, so a screenshot cannot show this).
+
+| Case | Before | After |
+| --- | --- | --- |
+| Target on the other display | Answer card up under 50 ms, wiped by `point()`; never shown on the target display | Card moves with the pointer, 14.9 s on screen, 3.06 s past the end of speech |
+| Target on the same display | Cleared by a fixed timer 0.3 s before the last sentence ended | 3.2 s past the end of speech |
+| Teach, busy screen | Any change replaced the step with "Looking…", possibly during speech | Step stays; nothing advances until it is spoken and readable |
+
+Real run on his desktop, his own `claude`, Anna aloud, 2026-10-31: the card was up 30.1 s and left 3.05 s
+after speech ended. In Written only nothing played, and a nine-sentence answer took four pages, the
+first held 17.6 s. The numbers in the table used a scripted model, on his real screen.
+
+Causes: `point()` cleared every other display and the card lived on the cursor's display; `clearLater`
+ran from the end of the reply regardless of speech; `watch` waited 1.5 s regardless of speech. Rules
+now, in `baton-shared/companionPacing`: a page gets 260 ms a word plus 1.2 s, 3 s minimum; the last page
+holds until speech ends plus the larger of 3 s (Clicky's number) and whatever reading is left; a
+countdown line shows the hold. Long answers turn pages at sentence ends. Pointer and card share one
+display.
+
+Rejected: longer timers. Any fixed number is wrong for some answer, and it would not have touched the
+multi-display wipe, which was the fraction of a second.
+
+Esc stays his apps' while a card is merely showing: the overlay cannot take focus, and a global grab
+swallowed the key. It is held only while the microphone is live and during a running drive, as its
+safety stop; the ask box and prompts hear it through their own focus. Tray, Clear the screen takes
+down a card, and "stop" does by voice.
+
+## D111 — One look, and text beside the pointer
+
+Pill, pointer label, card, prompt and ask box share `companionStyle.ts`. The card rides beside the
+pointer once it lands, as the paid Clicky does; with no pointer it sits low on the display above the
+pill. System dialogs became `companionWindows.ts`, excluded from capture. Overlay windows are built
+lazily and go after two idle minutes, so the layer never stops "last window closed" quitting.
+
+The HUD window is removed. It kept a dot on screen at rest, and the pill says all of it.
+
+## D112 — The pill
+
+Bottom centre of the cursor's display, 44 px above the work area, because Wispr's own bar owns the edge
+and he runs both. States against Wispr's: `research/companion-ui-2026-10-31.md`.
+
+Sounds are three warm two-note figures (350 to 780 Hz with a soft second harmonic, 0.2 s, about -27
+dBFS peak), replacing 1.3 to 1.8 kHz sines. `scripts/baton/voice-lab/sound-score.ts` puts the same
+samples through `createOpenWakeWordScorer` and Silero, six repeats, at normal level and 9.5 and 18 dB
+louder: every wake word's peak is at most 0.0009 against thresholds of 0.9 and up, and Silero peaks at
+0.47 at the loudest, under its 0.5.
+
+Wake to pill: 0 to 9 ms from the wake event to the call that shows the window (15 wakes on his laptop),
+because the window is built ahead. Paint was not measured separately, and the wake model's own
+detection time comes before that event.
+
+## D113 — Speech is Pocket TTS, kept loaded, streamed into a hidden page
+
+Director, 2026-10-31: the OS voice is old-fashioned and generic; real voices, free and local. Bake-off on
+his i7-8550U, fixed sentences, BelowNormal, one job at a time, warm medians:
+
+| Model | First audible | RTF | Peak RSS | Download | British | Off Windows without Python |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pocket `english` | 334 ms | 0.37 | 737 MB | 227 MB | VCTK voices | Official binaries |
+| Pocket 7m | 138 ms | 0.15 | 217 MB | 74 MB with binary | same | same |
+| Piper jenny | 433 ms, whole sentence | 0.12 | 210 MB | 63 MB | Yes | Repo archived |
+| Piper cori | 2,556 ms | 0.66 | 266 MB | 114 MB | Yes | same |
+| Supertonic 3, 5 steps | 2,080 ms | 0.44 | 381 MB | 129 MB | No | Weights OpenRAIL-M, repo archived |
+| Kokoro v1.0 fp32 bf_emma | 3,982 ms | 1.11 | 774 MB | 350 MB | Yes | Needs a GPL phonemiser for right words |
+| Kitten mini | 5,245 ms, run not clean | 1.51 | 395 MB | 68 MB | No | Espeak |
+| Chatterbox Nano, community ONNX | 8,935 ms | 2.60 | 1,283 MB | 570 MB | Reference clip | No official route |
+| MeloTTS | Blocked: install over 10 min | | | about 1 GB | Yes | Python only |
+
+Default Pocket `english`, voice Anna: word-perfect in transcription on all five sentences, 1,345 read
+right. Fallback Pocket 7m, offered as Quick: faster and much smaller, but it misread words, including
+that number. Tray, Voice offers Anna, Vera, Charles, Paul, Quick and System voice. The transcription
+was a machine's; how they sound is his call. Samples: `D:\baton-voice-lab\voice-samples`.
+
+Kokoro lost on speed on this CPU, not quality. Through sherpa's lexicon it silently dropped words, and
+the correct route needs a GPL-3.0 phonemiser in an MIT repo. Piper's bundled espeak is GPL-3.0 and the
+`alan` voice's source says All Rights Reserved, so Piper is removed from Baton's code.
+
+Cloud option, not signed up for: ElevenLabs, which the original Clicky uses. Its pricing page on
+2026-10-31: Starter $6 a month for 30,000 credits, Creator $22 for 121,000, Pro $99. Not heard or
+compared here, and every answer would leave the machine.
+
+In Baton's own process on the laptop, with the real speaker and player: cold start to first bytes 1.4 s,
+four sentences played in order with no fall-back to the OS voice, and the sentences read ahead joined with no gap
+at the boundary. The first-run path downloaded and hash-checked the Quick files; a real run found the Windows
+zip has a folder inside and that a Git tar on PATH fails on "D:", both fixed. The full model's
+download itself was seeded by copy, not fetched.
+
+How it runs: `pocket-tts serve` on a random loopback port with two threads, files fetched and
+hash-checked on first speech while the OS voice covers, stopped after ten quiet minutes because it holds 700 MB.
+Each sentence generates once the one before has finished generating, and plays as bytes arrive. Credit
+CC-BY-4.0 for weights and voices (THIRD_PARTY_NOTICES). The weights used are Kyutai's set without voice
+cloning, and Baton offers none.
+
+## D101 — What was on screen, and what a pointer may do
+
+The Director watched a test ask for an Export button that was not there, and the pointer flew anyway.
+That run used a scripted stand-in for the model, which replied with a fixed point whatever was on
+screen. No scripted model runs where he can watch it again. Real traces then found real defects, and
+these are the rules that came from them.
+
+A point needs a named element and a confidence of at least 0.75, and the tag says both. A thing that
+is not visible is called not visible, and the pointer stays still. On Windows the sidecar looks the
+label up in UI Automation inside the top-level window under the point. A real element of at least
+8 px within 160 DIP takes over from the model's pixels. Further away, or smaller, it is another
+thing. When the tree cannot answer, as on the taskbar, the model's point stands.
+
+The display he means is the one with the focused window, read when he spoke or before the ask box
+took focus, not the cursor's. The router cannot see, so it is told the window's app and title, and
+anything that could depend on the screen goes to look, where a fresh 1568 px shot goes to the stronger
+model. 1568 is the most it reads; 1280 lost small text at 4K. The router's tidy-up never replaces his
+words for an answer. A drive names the target it found, or asks.
+
+Proved with markers at known positions on both displays (175 % and 125 %): capture to desktop within
+1 DIP on 18 of 18, the model within 1 DIP on 10 of 10. `screen-eval.ts` and `gridLab.ts` stay as
+regression checks. Rejected: routing with a screenshot on every sentence (a capture needs his yes, and
+most sentences do not need one).
+
+## D102 — Baton does not hear itself
+
+While Baton speaks, and for 500 ms after, the core runs only the wake detector. VAD and speech
+recognition get nothing, so its own voice cannot open a turn in a conversation window. A wake word over
+its voice cuts it off and listens. The desktop feeds `setSpeaking` from the one speaker, so this covers
+assistant answers as well as the core's own replies. Rejected: a lower wake threshold or echo
+cancellation (no reference signal for Pocket's page on this path yet, and a gate is enough for a first
+live test).
+
+Audio through the real wake, VAD and Parakeet path, with a spoken reply fed back at -9 dB: 0 transcripts from
+its own 11.9 s of speech, and a wake word over it cut in. Limit: the reply plays on until the wake word has
+been detected, so a command said straight after it can pick up reply words ("What needs me? And about ten.").
+The grammar still resolved that one. Removing them needs echo cancellation, which is the rejected option above.
+
+## D103 — Dictation decodes while he speaks, by chunks cut at pauses
+
+Goal: Wispr's 0.6 s from key release. Neither Parakeet TDT build can stream: transcribe.cpp offers
+`session.stream` only to cache-aware models (`src/arch/parakeet`), which is why Handy also falls back
+to live chunks for these. Handy cuts at 30 s for accuracy; here the cut is 2.5 to 8 s for latency, so
+only the last piece is left at release. A piece carries 1 s of the audio before it and keeps only the
+words past that, so the model has context and a pause does not become a false sentence end. Pauses are
+measured against the audio's own floor, so a whisper pauses as clearly as a shout. A failed piece falls
+back to decoding the whole recording, which is still held.
+
+Rejected: a cache-aware streaming model (a third model to fetch, and not what was measured against
+Wispr); re-decoding the whole clip while he speaks (work grows with every second). The cloud engines in
+VentureOS `docs/research/live-stt-2026-10-28` were not reused: they need a metered key or a network hop.
+That research's Silero defaults informed the thinking, but no VAD is used here.
+
+Status: built and on the laptop, **not yet timed**. See the numbers in VOICE.md.
+
+## D104 — Quiet speech gets gain; the fast model is not the default yet
+
+Measured 2026-10-31 on the laptop, 60 AT2020 clips against Wispr's raw text, before any gain:
+
+| Condition                          | v3    | 110M  |
+| ---------------------------------- | ----- | ----- |
+| As recorded                        | 2.8%  | 5.5%  |
+| Attenuated 20 dB                   | 2.5%  | 6.1%  |
+| Attenuated 30 dB                   | 2.9%  | 8.4%  |
+| Attenuated 40 dB                   | 8.1%  | 20.8% |
+| His clips made whisper, -35 dBFS   | none  | 9.8%  |
+| His clips made whisper, -45 dBFS   | none  | 10.8% |
+| His 30 quietest real clips         | 4.2% (13 clips) | 4.0% |
+
+This does not repeat D97's "both 3.0%" on 240 clips, and on quiet audio 110M is far worse. So `speechModel`
+stays `v3` until the same table is re-measured with gain. Each recording or piece is lifted towards
+-23 dBFS, up to 40 dB, never turned down, and digital silence is left alone. The gain ships unmeasured.
+Whisper is simulated (LPC with noise excitation over the clip's own room tone), not real whispering. The
+en-GB voice rows are left out: their script spells numbers out, so format inflates them.
+
+## D105 — Clean-up is code first, his Claude second, and the answer is checked
+
+Order: filler and stutter removal, value corrections ("6, no 7"), dictionary, spoken breaks, capitals,
+mode shape, all in about 0.4 ms. The model is asked only when something is left that code cannot settle:
+a correction marker, a restart, a long run-on, or document and notes modes. That was 243 of 1,777 of his
+clips (14%), so most dictation never waits on it.
+
+The model is his own `claude` on `haiku` through `startVisionSession`: subscription, no tools. A hard limit
+of 2.5 s plus 8 ms a character, capped at 6 s, pastes the local text instead. A timeout replaces the session
+at once, because leaving that to the next dictation made one timeout cause the next (60 of 80 in the first
+run). `checkRewrite` then refuses any answer that lost or changed a digit, lost a name (capitals count),
+lost a path or flag, added a number or name, grew, shrank or replied. Refused answers paste the local text.
+
+This is a change to D31's spirit, stated plainly: with level `claude`, flagged dictation leaves the machine
+for Anthropic on his own account. It still never reaches an environment. Tray: Clean-up, Local only keeps
+everything on the laptop, and Raw is exact.
+
+Rejected: a local LLM (an i7-8550U cannot rewrite a sentence in time); calling the API (D84, he pays by plan);
+rewriting every dictation (1.6 s added to the 86% that do not need it).
+
+Logic lives in `packages/baton-shared/src/dictationCleanup.ts` so a phone can use it; only the session is
+in Electron. Modes come from the foreground exe, then a browser's title, then his per-app choice in `appModes`.
+
+## D106 — Voice is Windows first, not Windows only
+
+Director, 2026-10-31, reopening D97. Windows is what is built, packaged and tested. `desktop_unix.rs` holds
+focus and paste for macOS and Linux, written and **never compiled**, because the scope moved to Windows first
+part-way through; it is kept so nothing is rewritten. The rest is queued in STATUS.md.
+
+Handy's macOS receipt-based paste was not adapted: it needs an AppKit run loop, and the sidecar has none.
+
+## D107 — What the real laptop broke in Drive and Teach
+
+Each of these passed every unit test and failed on his machine.
+
+Run it and Allow counted as Cancel. The prompt destroyed its window before recording the answer, and the
+window's "closed" handler answered first. Most Windows drive runs before this fix never had a real yes.
+
+The drive model planned the Windows key, which the rules refuse, so the drive ended. It is now told to
+click Start, and a refused plan gets one retry, told why. The same rules read the second plan.
+
+Teach watched only the cursor's display, so a step done on his other screen was never noticed. The
+fingerprint now covers every display in a fixed order, and each display is judged alone, because a line of
+text on one display averaged with a quiet second one falls under the threshold. A video on either display
+reads as change that never settles, so that lesson waits for "next". That limit is in the code.
+
+UI Automation returns 0x80040201 from a whole-window search when one provider fails: 14 of 18 lookups up to
+now. That was a symptom. The sidecar was not DPI aware, so at 175 % Windows scaled its coordinates and it asked
+about the wrong window. It now declares per-monitor awareness. "View" and "File" in Notepad on the 125 %
+display then snapped on real elements, 70 in the tree. The search also falls back to the element at the point
+and up to three parents. When nothing answers, the model's point stands.
+
+Rejected: raising the threshold or dropping the second-display watch (either loses steps on his setup).
+
+## D114 — What a page, a plan or a reply can no longer do
+
+An independent review of PR #51 confirmed these against the code.
+
+A window title and the recent lines reach the router as quoted, untrusted data. A command the model
+reworded is marked restated: it may read, and anything else waits for his later "confirm", because a low-risk
+`message_work_session` would otherwise reach an agent with tools unconfirmed. The warm router is dropped after
+six turns. Direct speech skips the model and stays word for word. Rejected: always running his exact words,
+which loses "what's the craic with the Margin".
+
+Titles go to Anthropic only where a screenshot may, so with capture on "ask" the router works without them.
+
+A plan is held to the high-risk list across its title, reasons and typed text, joined across steps, and to a
+list of destructive commands. Both lists are a second layer behind Run it, not a boundary: no list catches
+every spelling. Run it shows typed text whole, only plain spaces may be typed, and Run it stays disabled until
+a long box has been scrolled to its end. A paste is typing nobody has read, so its step shows the clipboard, a
+changed clipboard stops the drive, and a paste or right-click into a command line is refused. Reaching a
+command line asks a second time, as does not knowing where the keys will go, and editors count, because their
+terminal has the editor's name. A drive that reaches a command line without that yes stops.
+
+Before each keyboard step Drive reads the window: a change stops it, no reading stops it, and a switch during a
+long type is not accepted afterwards. Ctrl+Esc, Ctrl+Shift+Esc, Alt+F4, Alt+Tab and Ctrl+Alt+anything are refused.
+
+Esc goes to the most urgent holder only: a drive, then a recording, then a card, so closing a card cannot lose a
+recording, and a holder that throws passes to the next.
+
+Every sentence reaches the speaker when it exists, so a cancel covers the queue, and an answer still streaming
+stays quiet after he silences it. A wake word over speech holds what he says next against the echo gate. A
+"confirm" that starts over Baton's own voice is ignored, since a reply can say the wake word and the word
+itself; he says it again after the voice stops. Stop and cancel still count. Limit: with nothing pending, a
+reply that says a wake word and then a command is heard as far as the cancel lets it, and the pre-roll can add
+Baton's own words. Dropping the pre-roll over its voice was tried on real audio and lost his first words.
+
+Dictation clean-up is local until he rules otherwise (D105), and a "claude" saved by an earlier build of this
+branch does not stick: it needs his own click. Even on `claude`, password managers, sign-in and bank pages,
+private windows and any app Baton cannot name stay on this machine, judged where he spoke and where he is now.
+
+Coordinator, relaying the Director, 2026-10-31: dictation clean-up stays local by default, and v3 stays the
+default model with 110M in the tray. "Black display" on the laptop was his FlipIt screen saver, which takes the
+input desktop away after 10 minutes idle, so nothing can be captured or pasted under it.
+
+## D115 — The mouse stays his during a drive
+
+Director, 2026-10-31: "Don't tie the stop cue with the mouse movements because, of course, I will be moving it
+using the mouse while these actions are being performed." Mouse movement stops nothing now, and this replaces
+the 12 px rule in D84.
+
+The stops are Esc, the Stop button shown during a drive, a spoken stop, and the keyboard's focus check. The Stop
+button takes no focus, so pressing it leaves the keys where they were.
+
+His hand must not misdirect a click, so pointer and button go in one `SendInput` call, which Windows does not
+interleave with his own input. Just before that, the sidecar reads the top-level window under the point and the
+foreground window. If the window differs from the one read when the last step settled, or focus moved, or either
+cannot be read, Baton clicks nothing and asks "Carry on?". A wheel step goes back to the plan's last point first.
+
+The check runs before the click, not after, because a good click may open a new window and a check afterwards
+could not tell. There is a gap of milliseconds between the read and the click, and that gap remains.
+
+Rejected: blocking his input during a step (needs elevation, and takes his mouse away), and moving the pointer
+back after each step (still racy).
+
+Measured on the laptop: a real 2-step and a 6-step Notepad drive finished, and a pointer moved mid-drive stopped
+nothing. In the runs where the lab moved the pointer, one typed word was lost, and Drive's own check reported it.
+The lab started a PowerShell for that move, so a stolen moment of focus is the likely cause, but a pointer moving
+throughout a typed step is not proven safe. The run that settles it uses real input from inside the sidecar
+(`nudge`, only with BATON_LAB set), with no process starting, and waits until he is away. None of the D115 runs
+had BATON_LAB: they moved the pointer through PowerShell, and `nudge` has never run. A `(mouse)` turn now fails
+without it, because the sidecar would drop every nudge and the run would pass with nothing moved.
+
+Third review: a paste or right-click on a window seen to be a terminal is refused at the moment it would happen,
+even after a yes. Editors and Baton's own terminal drawer ask rather than refuse, and words in a plan's title
+never refuse, because he should not be blocked from pasting into an editor. A window change during a wait or
+scroll asks instead of being adopted. "Carry on?" takes no default focus, arms after 900 ms, and goes with Esc or
+Stop. A clipboard that cannot be written stops the drive, and a paste over 2,000 characters is refused.
+
+## D116 — Work for the whole app belongs to the main window
+
+Detached thread windows (D96) run the same app with the same preload, so each mounted `SnapShotCoordinator` and
+asked for pending snapshots. The main process rightly refuses any sender but the main window, and that refusal
+reached him as an error popup. The coordinator now mounts only in the main window, and the refusal stays. Rejected:
+trusting detached windows, as two coordinators would race to deliver one capture, and catching the error, which
+would leave a loop that fails on every event.
+

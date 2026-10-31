@@ -58,7 +58,7 @@ export interface VoiceUtterance {
 }
 
 /** Why the core is being woken without a wake word. */
-export type VoiceActivation = "wake" | "toggle_direct_session" | "toggle_mute";
+export type VoiceActivation = "wake" | "toggle_direct_session" | "toggle_mute" | "dismiss";
 
 export interface VoiceCore {
   readonly pushAudio: (frame: Int16Array) => void;

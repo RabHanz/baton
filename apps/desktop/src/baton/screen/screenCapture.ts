@@ -11,9 +11,12 @@ export interface CapturedScreen {
   readonly jpeg: Buffer;
 }
 
-const orderedDisplays = (): ReadonlyArray<{ display: Electron.Display; cursorHere: boolean }> => {
-  const cursor = Electron.screen.getCursorScreenPoint();
-  const here = Electron.screen.getDisplayNearestPoint(cursor).id;
+/** The display he means: the one with the window he is using, else the cursor's. */
+const orderedDisplays = (
+  anchor?: { readonly x: number; readonly y: number } | null,
+): ReadonlyArray<{ display: Electron.Display; cursorHere: boolean }> => {
+  const point = anchor ?? Electron.screen.getCursorScreenPoint();
+  const here = Electron.screen.getDisplayNearestPoint(point).id;
   return Electron.screen
     .getAllDisplays()
     .map((display) => ({ display, cursorHere: display.id === here }))
@@ -29,8 +32,10 @@ const sourceFor = (
   sources.find((s) => s.display_id === String(display.id)) ??
   (sources.every((s) => s.display_id === "") ? sources[index] : undefined);
 
-export const captureScreens = async (): Promise<ReadonlyArray<CapturedScreen>> => {
-  const ordered = orderedDisplays();
+export const captureScreens = async (
+  anchor?: { readonly x: number; readonly y: number } | null,
+): Promise<ReadonlyArray<CapturedScreen>> => {
+  const ordered = orderedDisplays(anchor);
   const all = Electron.screen.getAllDisplays();
   const largest = Math.max(
     ...all.map((d) => Math.max(d.size.width, d.size.height) * d.scaleFactor),
@@ -73,19 +78,21 @@ export const captureScreens = async (): Promise<ReadonlyArray<CapturedScreen>> =
 };
 
 /** A tiny grayscale picture of the cursor's display, for noticing that the screen changed. */
-export const screenFingerprint = async (): Promise<Uint8Array> => {
+export const screenFingerprint = async (): Promise<ReadonlyArray<Uint8Array>> => {
   const sources = await Electron.desktopCapturer.getSources({
     types: ["screen"],
     thumbnailSize: { width: 320, height: 320 },
   });
-  const { display } = orderedDisplays()[0]!;
-  const source =
-    sourceFor(sources, display, Electron.screen.getAllDisplays().indexOf(display)) ?? sources[0];
-  if (source === undefined) return new Uint8Array();
-  const bitmap = source.thumbnail.toBitmap(); // BGRA
-  const gray = new Uint8Array(bitmap.length / 4);
-  for (let i = 0; i < gray.length; i++) {
-    gray[i] = (bitmap[i * 4]! + bitmap[i * 4 + 1]! * 2 + bitmap[i * 4 + 2]!) >> 2;
-  }
-  return gray;
+  // Every display, in a fixed order: the cursor moving must not read as the screen changing, and
+  // his step may land on the display the cursor is not on.
+  return Electron.screen.getAllDisplays().flatMap((display, index) => {
+    const source = sourceFor(sources, display, index);
+    if (source === undefined) return [];
+    const bitmap = source.thumbnail.toBitmap(); // BGRA
+    const gray = new Uint8Array(bitmap.length / 4);
+    for (let i = 0; i < gray.length; i++) {
+      gray[i] = (bitmap[i * 4]! + bitmap[i * 4 + 1]! * 2 + bitmap[i * 4 + 2]!) >> 2;
+    }
+    return [gray];
+  });
 };

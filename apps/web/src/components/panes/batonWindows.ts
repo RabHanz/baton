@@ -24,6 +24,12 @@ export function batonWindowId(): string {
     : MAIN_WINDOW_ID;
 }
 
+/**
+ * A detached window runs this same app with the same preload, but work for the whole desktop app
+ * belongs to one window: the main process only answers the main one.
+ */
+export const isMainWindow = (): boolean => batonWindowId() === MAIN_WINDOW_ID;
+
 export function detachedWindowUrl(
   target: ThreadRouteTarget,
   id: string,
