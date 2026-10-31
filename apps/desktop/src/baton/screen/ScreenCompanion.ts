@@ -489,8 +489,17 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  let answering = 0;
   /** One conversation for answers and looks, so a follow-up keeps its thread either way. */
   const answer = async (question: string, withScreen: boolean, firstSentence: () => void) => {
+    answering += 1;
+    try {
+      await answerTurn(question, withScreen, firstSentence);
+    } finally {
+      answering -= 1;
+    }
+  };
+  const answerTurn = async (question: string, withScreen: boolean, firstSentence: () => void) => {
     if (run?.mode !== "look" || Date.now() - run.lastAt > LOOK_MEMORY_MS) {
       end();
       run = { mode: "look", vision: visionFor("look"), lastAt: Date.now() };
@@ -879,6 +888,7 @@ export const startScreenCompanion = (input: {
       text,
       {
         running: runningMode(),
+        answering: answering > 0 || speech.busy(),
         direct,
         recent,
         focused: titlesAllowed() ? (focus?.label ?? null) : null,
@@ -956,7 +966,8 @@ export const startScreenCompanion = (input: {
   const said: ScreenCompanion["said"] = async (text, { direct }) => {
     const started = Date.now();
     // A stop never waits on the sidecar, and needs no window.
-    if (instantDecision(text, runningMode() !== null)?.route !== "control") {
+    const busy = runningMode() !== null || answering > 0 || speech.busy();
+    if (instantDecision(text, busy)?.route !== "control") {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;

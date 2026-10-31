@@ -9,6 +9,8 @@
  */
 import * as Electron from "electron";
 
+import { markCompanionWindow } from "../lastAppWindow.ts";
+
 import { COMPANION_CSS } from "./companionStyle.ts";
 
 export const OVERLAY_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
@@ -150,6 +152,7 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
       },
     });
     win.setAlwaysOnTop(true, "screen-saver");
+    markCompanionWindow(win);
     win.setIgnoreMouseEvents(true);
     // Made on the primary's scale; set again so a 125 % display's window is the display's size.
     win.setBounds(display.bounds);
