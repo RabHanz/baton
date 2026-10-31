@@ -75,7 +75,7 @@ vendor's own words; none of it was installed or measured.
 | --- | --- | --- |
 | 1 | Claude found and signed in | **Pass.** 24 real requests traced, `D:\baton-voice-lab\lab\trace2` |
 | 2 | Pointer lands, 175 % and 125 %, both displays | **Pass.** Mapping 18 of 18 and the model 10 of 10 within 1 DIP on known markers (D101) |
-| 3 | Overlay stays out of a capture | **Main display pass**, 9 markers absent. Second display not checked |
+| 3 | Overlay stays out of a capture | **Pass on both displays.** 18 markers visible without protection, 0 with |
 | 4 | Teach notices him | **Pass after a fix.** It watched only the cursor's display; it now watches all of them (D107). Step 2 came with no "next" |
 | 5 | Drive, Esc, mouse | **Pass after two fixes** (D107). Typed "hello" into Notepad; a real mouse move and a real Esc each stopped a longer plan at step 1 |
 | 6 | Voice reaches the companion, reads answers | **Path passes from WAVs**, wake to brain to router. Nothing has been heard through his speakers |

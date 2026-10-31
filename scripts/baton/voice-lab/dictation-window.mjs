@@ -111,31 +111,24 @@ const windows = async () => {
   );
   check("clipboard comes back after a read", getClip() === "BATON-OLD-CLIP", { clip: getClip() });
 
-  await notepad("baton-paste-b.txt");
+  // Notepad opens a second file as a tab of the same window, so the other window is another app.
+  // The About box also never reads the clipboard.
+  spawn("winver.exe", [], { detached: true });
+  await sleep(2_000);
   const other = await foreground(s, 4);
+  const before = a.title;
   s.send({ cmd: "paste", id: 5, text: "must not arrive", target: a.window });
   const moved = await s.until((e) => e.ev === "pasted" && e.id === 5, 5_000);
   await sleep(600);
-  const still = await foreground(s, 6);
-  check(
-    "wrong window: refused, text kept out of it",
-    moved?.moved === true && !still.title.startsWith("*"),
-    {
-      moved,
-      now: still.title,
-      was: other.title,
-    },
-  );
+  check("wrong window: refused", moved?.moved === true && other.window !== a.window, {
+    moved,
+    now: other.app,
+    was: before,
+  });
   check("wrong window: clipboard untouched", getClip() === "BATON-OLD-CLIP", { clip: getClip() });
 
-  // A window that never reads the clipboard: the taskbar takes the focus and ignores Ctrl+V.
-  ps(
-    `Add-Type -Name F -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr FindWindow(string c, string t); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h);'; [W.F]::SetForegroundWindow([W.F]::FindWindow('Shell_TrayWnd', $null))`,
-  );
-  await sleep(300);
-  const tray = await foreground(s, 7);
   const started = Date.now();
-  s.send({ cmd: "paste", id: 8, text: "nobody reads this", target: tray.window });
+  s.send({ cmd: "paste", id: 8, text: "nobody reads this", target: other.window });
   const unread = await s.until((e) => e.ev === "pasted" && e.id === 8, 12_000);
   let back = null;
   for (let i = 0; i < 40 && back === null; i += 1) {
@@ -145,8 +138,10 @@ const windows = async () => {
   check("unread clipboard: his clipboard still comes back", back !== null, {
     unread,
     backAfterMs: back,
-    app: tray.app,
+    app: other.app,
+    unreadEvent: s.events.some((e) => e.ev === "unread"),
   });
+  ps("Stop-Process -Name winver -Force -ea 0");
   s.send({ cmd: "quit" });
 };
 

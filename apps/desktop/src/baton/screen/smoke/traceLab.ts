@@ -63,6 +63,7 @@ const main = async () => {
       const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
       return {
         label: `${app.exe}: ${app.title}`,
+        ...(app.window === undefined ? {} : { window: app.window }),
         centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
       };
     },

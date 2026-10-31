@@ -2967,7 +2967,7 @@ reads as change that never settles, so that lesson waits for "next". That limit 
 
 UI Automation returns 0x80040201 from a whole-window search when one provider fails: 14 of 18 lookups up to
 now. It now falls back to the element at the point and up to three of its parents. **Built on Windows, not
-yet seen working**, as the laptop's screen was off. Until then the model's point stands, which measured
+yet seen working** at the time of writing. Until then the model's point stands, which measured
 within 1 DIP on markers.
 
 Rejected: raising the threshold or dropping the second-display watch (either loses steps on his setup),
@@ -2997,4 +2997,8 @@ itself; he says it again after the voice stops.
 
 Dictation clean-up is local until the Director rules (D105). Even on `claude`, password managers, sign-in and
 banking pages, private windows and any app Baton cannot name stay on this machine.
+
+Coordinator, relaying the Director, 2026-10-31: dictation clean-up stays local by default, and v3 stays the
+default model with 110M in the tray. "Black display" on the laptop was his FlipIt screen saver, which takes the
+input desktop away after 10 minutes idle, so nothing can be captured or pasted under it.
 

@@ -59,12 +59,18 @@ pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
         let top = GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT);
-        let root = automation.ElementFromHandle(top).map_err(err)?;
         let condition = automation.ControlViewCondition().map_err(err)?;
-        // One bad provider fails the whole search (0x80040201), so ask for the element at the point.
-        let all = match root.FindAll(TreeScope_Descendants, &condition) {
+        // 0x80040201 can come from the window or any one provider in it, and fails the whole
+        // search, so ask for the element at the point instead.
+        let searched = automation
+            .ElementFromHandle(top)
+            .and_then(|root| root.FindAll(TreeScope_Descendants, &condition));
+        let all = match searched {
             Ok(all) => all,
-            Err(whole) => return at_point(&automation, label, x, y).map_err(|_| whole.to_string()),
+            Err(whole) => {
+                return at_point(&automation, label, x, y)
+                    .map_err(|inner| format!("{whole}; at the point: {inner}"))
+            }
         };
         let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
         let mut best: Option<(f32, String, RECT)> = None;
