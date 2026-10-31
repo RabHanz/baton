@@ -1081,7 +1081,7 @@ Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven chec
 | One brain for voice and typed asks | built, in `baton-shared`, reachable by `fabric.brain.decide` | `INTENT_TABLE.md`, 48 of 48, model median 1.5 s |
 | Screen context | built | scored set 22 of 24 before, 24 of 24 after, all 5 must-say-not-found cases right; 24 real traces |
 | Echo gate | built | 0 transcripts from its own voice, barge-in fired, from audio (D102) |
-| Dictation paste, real window | **not run** | laptop screen off during the run; `scripts/baton/voice-lab/dictation-window.mjs` is ready |
+| Dictation paste, real window | passed for the right window and clipboard restore; wrong window by a stale handle | `scripts/baton/voice-lab/dictation-window.mjs`. A live window switch and a window that never reads the clipboard need him there, as Windows will not give a lab window the foreground |
 | Dictation cancel, five-minute limit | passed | real exe with a fake mic: stopped at 300.8 s, 4,869 characters kept, nothing pasted |
 | Live microphone | **not run** | V1 below |
 

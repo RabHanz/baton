@@ -81,7 +81,7 @@ vendor's own words; none of it was installed or measured.
 | 6 | Voice reaches the companion, reads answers | **Path passes from WAVs**, wake to brain to router. Nothing has been heard through his speakers |
 | 7 | Ctrl+Alt+Shift+B free | **Pass.** Registered on his desktop |
 
-Still needs a live screen: the UI Automation fallback, and paste into a real window (`TEST_MATRIX.md`).
+UI Automation now snaps on real elements on the 125 % display; the 175 % display and the taskbar are not rerun.
 
 ## Windows lab
 

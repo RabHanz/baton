@@ -2966,12 +2966,12 @@ text on one display averaged with a quiet second one falls under the threshold. 
 reads as change that never settles, so that lesson waits for "next". That limit is in the code.
 
 UI Automation returns 0x80040201 from a whole-window search when one provider fails: 14 of 18 lookups up to
-now. It now falls back to the element at the point and up to three of its parents. **Built on Windows, not
-yet seen working** at the time of writing. Until then the model's point stands, which measured
-within 1 DIP on markers.
+now. That was a symptom. The sidecar was not DPI aware, so at 175 % Windows scaled its coordinates and it asked
+about the wrong window. It now declares per-monitor awareness. "View" and "File" in Notepad on the 125 %
+display then snapped on real elements, 70 in the tree. The search also falls back to the element at the point
+and up to three parents. When nothing answers, the model's point stands.
 
-Rejected: raising the threshold or dropping the second-display watch (either loses steps on his setup),
-and retrying the whole search (the same provider fails again).
+Rejected: raising the threshold or dropping the second-display watch (either loses steps on his setup).
 
 ## D114 — What a page, a plan or a reply can no longer do
 
