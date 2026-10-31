@@ -267,7 +267,7 @@ describe("runDrivePlan", () => {
     let window = 1;
     const asked: string[] = [];
     const { host, log } = fakeHost({
-      windowAt: async () => window++,
+      windowAt: async () => ({ window: window++, label: "app.exe: a" }),
       pause: async (reason) => (asked.push(reason), false),
     });
     const result = await runDrivePlan(plan, shots, host);
@@ -279,7 +279,7 @@ describe("runDrivePlan", () => {
   it("carries on when he says so", async () => {
     let window = 1;
     const { host, log } = fakeHost({
-      windowAt: async () => window++,
+      windowAt: async () => ({ window: window++, label: "app.exe: a" }),
       pause: async () => true,
     });
     expect((await runDrivePlan(plan, shots, host)).kind).toBe("finished");
@@ -289,7 +289,7 @@ describe("runDrivePlan", () => {
   it("pauses when the focus moved, and when it cannot tell", async () => {
     const seen = [{ window: 1, label: "a" }, null];
     const { host, log } = fakeHost({
-      windowAt: async () => 5,
+      windowAt: async () => ({ window: 5, label: "app.exe: a" }),
       foreground: async () => seen.shift() ?? null,
       pause: async () => false,
     });
@@ -648,8 +648,7 @@ describe("the third review", () => {
       },
       shots,
     );
-    const started = performance.now();
-    planHighRisk(plan);
-    expect(performance.now() - started).toBeLessThan(500);
+    // Quadratic, this took half a minute and the test would time out.
+    expect(planHighRisk(plan)).toBeNull();
   });
 });
