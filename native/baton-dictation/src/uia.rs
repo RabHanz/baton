@@ -32,6 +32,25 @@ fn centre(rect: &RECT) -> (f32, f32) {
     ((rect.left + rect.right) as f32 / 2.0, (rect.top + rect.bottom) as f32 / 2.0)
 }
 
+/// The element under the model's point, or an ancestor of it, when it carries the label.
+unsafe fn at_point(automation: &IUIAutomation, label: &str, x: i32, y: i32) -> windows::core::Result<Value> {
+    let walker = automation.ControlViewWalker()?;
+    let mut element = automation.ElementFromPoint(POINT { x, y })?;
+    for _ in 0..4 {
+        let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        let rect = element.CurrentBoundingRectangle().unwrap_or_default();
+        if name_score(label, &name) > 0.0 && rect.right - rect.left >= MIN_SIDE && rect.bottom - rect.top >= MIN_SIDE {
+            return Ok(json!({
+                "found": true, "name": name, "elements": 1,
+                "x": (rect.left + rect.right) / 2, "y": (rect.top + rect.bottom) / 2,
+                "width": rect.right - rect.left, "height": rect.bottom - rect.top,
+            }));
+        }
+        element = walker.GetParentElement(&element)?;
+    }
+    Ok(json!({"found": false, "elements": 1}))
+}
+
 /// Physical pixels in and out. `found: false` means the tree has no such element.
 pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
@@ -42,7 +61,11 @@ pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
         let top = GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT);
         let root = automation.ElementFromHandle(top).map_err(err)?;
         let condition = automation.ControlViewCondition().map_err(err)?;
-        let all = root.FindAll(TreeScope_Descendants, &condition).map_err(err)?;
+        // One bad provider fails the whole search (0x80040201), so ask for the element at the point.
+        let all = match root.FindAll(TreeScope_Descendants, &condition) {
+            Ok(all) => all,
+            Err(whole) => return at_point(&automation, label, x, y).map_err(|_| whole.to_string()),
+        };
         let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
         let mut best: Option<(f32, String, RECT)> = None;
         for i in 0..count {

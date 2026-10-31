@@ -48,8 +48,13 @@ const main = async () => {
     speak: async () => {},
     onTrace: (entry: unknown) => write(entry),
     onTurnEnd: () => ended?.(),
-    holdEscape: () => {},
+    holdEscape: (onPress: () => void) => {
+      // The real key, as the app holds it, pressed below by SendKeys.
+      Electron.globalShortcut.register("Escape", onPress);
+      return () => Electron.globalShortcut.unregister("Escape");
+    },
   } as never);
+  write({ askChordHeld: Electron.globalShortcut.isRegistered(ASK_HOTKEY) });
   companion.setActions({
     grammarPlaces: async () => false,
     act: async (command) => `(would run: ${command})`,
@@ -72,6 +77,26 @@ const main = async () => {
       return { ...real, name: found.name ?? label };
     },
   });
+  const NOTEPAD_FILE = process.env["LAB_NOTEPAD"];
+  if (NOTEPAD_FILE !== undefined) {
+    NodeFS.writeFileSync(NOTEPAD_FILE, "");
+    NodeChildProcess.spawn("notepad.exe", [NOTEPAD_FILE], { detached: true });
+    await sleep(2_500);
+  }
+  let stopWith: "(mouse)" | "(esc)" | null = null;
+  const stopSoon = () => {
+    const how = stopWith;
+    stopWith = null;
+    if (how === null) return;
+    const script =
+      how === "(mouse)"
+        ? "Add-Type -AssemblyName System.Windows.Forms; $p=[Windows.Forms.Cursor]::Position; [Windows.Forms.Cursor]::Position=New-Object Drawing.Point(($p.X+200),($p.Y+200))"
+        : "Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.SendKeys]::SendWait('{ESC}')";
+    setTimeout(() => {
+      write({ stop: how, at: Date.now() });
+      NodeChildProcess.execFile("powershell.exe", ["-NoProfile", "-Command", script]);
+    }, 1_500);
+  };
   // "Run it" is pressed the way he would, on the real prompt, and logged.
   const pressRun = setInterval(() => {
     if (process.env["LAB_RUN_PLANS"] !== "1") return;
@@ -80,7 +105,11 @@ const main = async () => {
         .executeJavaScript(
           `(()=>{const b=[...document.querySelectorAll('button')].find(x=>/run it/i.test(x.textContent));if(b){b.click();return true}return false})()`,
         )
-        .then((pressed) => pressed && write({ pressed: "Run it", at: Date.now() }))
+        .then((pressed) => {
+          if (!pressed) return;
+          write({ pressed: "Run it", at: Date.now() });
+          stopSoon();
+        })
         .catch(() => undefined);
     }
   }, 400);
@@ -90,29 +119,28 @@ const main = async () => {
     if (said.startsWith("teach:")) {
       // He does the step: a window appears, settles, and the lesson should notice unprompted.
       setTimeout(() => {
-        const win = new Electron.BrowserWindow({ width: 500, height: 400, x: 200, y: 200 });
+        const win = new Electron.BrowserWindow({
+          width: 500,
+          height: 400,
+          x: 200,
+          y: 200,
+          alwaysOnTop: true,
+        });
         void win.loadURL("data:text/html,<body style='background:%23246;color:white'>a step was done");
         write({ userActed: Date.now() });
         setTimeout(() => win.destroy(), 25_000);
-      }, 22_000);
+      }, 14_000);
     }
-    if (said.includes("the mouse moves")) {
-      setTimeout(() => {
-        write({ movedMouse: Date.now() });
-        NodeChildProcess.execFile("powershell.exe", [
-          "-NoProfile",
-          "-Command",
-          "Add-Type -AssemblyName System.Windows.Forms; $p=[Windows.Forms.Cursor]::Position; [Windows.Forms.Cursor]::Position=New-Object Drawing.Point(($p.X+200),($p.Y+200))",
-        ]);
-      }, 27_000);
-    }
+    stopWith = said.includes("(mouse)") ? "(mouse)" : said.includes("(esc)") ? "(esc)" : null;
     const done = new Promise<void>((resolve) => {
       ended = resolve;
     });
-    const result = await companion.said(said, { direct: false });
+    const result = await companion.said(said.replace(/\((mouse|esc)\)/, "").trim(), {
+      direct: false,
+    });
     if (result.kind === "handled") {
       await Promise.race([done, sleep(Number(process.env["LAB_TURN_MS"] ?? 45_000))]);
-      await sleep(1_500);
+      await sleep(said.startsWith("teach:") ? 45_000 : said.startsWith("drive:") ? 25_000 : 1_500);
     }
     write({ said, result: result.kind, ms: Date.now() - started });
   }

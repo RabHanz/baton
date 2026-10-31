@@ -643,7 +643,7 @@ fn serve() {
                     "foreground" => {
                         let window = foreground_window();
                         let (app, title) = window_app(window);
-                        emit(json!({"ev": "foreground", "id": value["id"].as_u64(), "rect": window_rect(window), "app": app, "title": title}));
+                        emit(json!({"ev": "foreground", "id": value["id"].as_u64(), "rect": window_rect(window), "app": app, "title": title, "window": window as i64}));
                     }
                     "locate" => {
                         let id = value["id"].as_u64();

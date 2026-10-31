@@ -89,6 +89,8 @@ reply with one or two spoken sentences saying what you'll do, then exactly one f
 {"title":"Open the Downloads folder","actions":[{"kind":"click","x":512,"y":300,"why":"File Explorer icon","expect":"File Explorer window is open"}]}
 \`\`\`
 
+the windows key and security chords are refused, so to open an app click the start button you can see, type its name, and press enter.
+
 actions (at most 20):
 - click {x,y,screen?,button?: "left"|"right"}; double_click {x,y,screen?}; drag {x,y,to_x,to_y,screen?}
 - scroll {amount: -10..10, negative scrolls down}; type {text: one line}; press {keys: e.g. ["ctrl","l"] or ["enter"]}; wait {seconds: 0..5}
@@ -210,6 +212,19 @@ export const screenDifference = (a: Uint8Array, b: Uint8Array, threshold = 24): 
   let changed = 0;
   for (let i = 0; i < a.length; i++) if (Math.abs(a[i]! - b[i]!) > threshold) changed++;
   return changed / a.length;
+};
+
+/**
+ * The display that changed most. Each display is judged alone: a line typed on one is a share of
+ * that display, and averaging in a quiet second screen would halve it below the threshold.
+ */
+export const screensDifference = (
+  a: ReadonlyArray<Uint8Array>,
+  b: ReadonlyArray<Uint8Array>,
+  threshold = 24,
+): number => {
+  if (a.length !== b.length || a.length === 0) return 1;
+  return Math.max(...a.map((screen, i) => screenDifference(screen, b[i]!, threshold)));
 };
 
 // ── Drive plans ─────────────────────────────────────────────────────────────

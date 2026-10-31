@@ -26,7 +26,7 @@ import {
   parseVerify,
   planFromReply,
   runDrivePlan,
-  screenDifference,
+  screensDifference,
   screenLabel,
   shotFor,
   teachTurn,
@@ -377,7 +377,7 @@ export const startScreenCompanion = (input: {
   let focus: AssistantFocus | null = null;
   const capture = (): Promise<ReadonlyArray<CapturedScreen>> =>
     overlay.hiddenFor(() => captureScreens(focus?.centre ?? null));
-  const fingerprint = (): Promise<Uint8Array> => overlay.hiddenFor(screenFingerprint);
+  const fingerprint = () => overlay.hiddenFor(screenFingerprint);
 
   const content = (
     captured: ReadonlyArray<CapturedScreen>,
@@ -531,6 +531,7 @@ export const startScreenCompanion = (input: {
       input.onActivity?.(null);
       if (run !== lesson) return;
       lesson.lastSpoken = reply.spoken;
+      input.onTrace?.({ teachStep: lesson.step, note: note ?? null, reply: reply.spoken, at: Date.now() });
       if (reply.done) {
         say(reply.spoken);
         linger("Done", reply.spoken);
@@ -572,10 +573,12 @@ export const startScreenCompanion = (input: {
       polling = true;
       void fingerprint()
         .then((now) => {
-          if (!moved && screenDifference(baseline, now, PIXEL) > CHANGED) moved = true;
+          // shortcut: a video playing on either display reads as change and never settles, so that
+          // lesson waits for "next"; judge only the step's own display if he hits it.
+          if (!moved && screensDifference(baseline, now, PIXEL) > CHANGED) moved = true;
           else if (moved && previous !== null) {
             // Two quiet polls (~2 s), so a pause between typed words is not "done".
-            still = screenDifference(previous, now, PIXEL) < SETTLED ? still + 1 : 0;
+            still = screensDifference(previous, now, PIXEL) < SETTLED ? still + 1 : 0;
             if (still >= 2) void teachStep("the screen just changed.").catch(fail);
           }
           previous = now;
@@ -619,9 +622,23 @@ export const startScreenCompanion = (input: {
     const captured = await capture();
     const shots = captured.map((c) => c.shot);
     const before = await fingerprint();
-    const reply = parseReply(await current.vision.ask(content(captured, goal)));
+    let reply = parseReply(await current.vision.ask(content(captured, goal)));
     if (run !== current) return;
-    const parsed = planFromReply(reply, shots);
+    let parsed = planFromReply(reply, shots);
+    // A plan the rules refused gets one more try, told why. The rules still read the new one.
+    if ("error" in parsed && reply.planText !== null) {
+      reply = parseReply(
+        await current.vision.ask([
+          { type: "text", text: `that plan was refused: ${parsed.error} propose one that avoids it.` },
+        ]),
+      );
+      if (run !== current) return;
+      parsed = planFromReply(reply, shots);
+    }
+    input.onTrace?.({
+      driveReply: reply.spoken,
+      plan: "plan" in parsed ? parsed.plan : parsed.error,
+    });
     if ("error" in parsed) {
       say(parsed.error);
       input.onActivity?.(null);
@@ -646,7 +663,11 @@ export const startScreenCompanion = (input: {
       return end();
     }
     await sleep(350); // the prompt leaves the screen first
-    if (screenDifference(before, await fingerprint()) > STALE) {
+    const afterPrompt = await fingerprint();
+    input.onTrace?.({
+      staleCheck: screensDifference(before, afterPrompt),
+    });
+    if (screensDifference(before, afterPrompt) > STALE) {
       const message = "The screen changed since I made the plan, so I didn't run it. Ask again.";
       say(message);
       input.onActivity?.(null);
@@ -700,6 +721,7 @@ export const startScreenCompanion = (input: {
       reason: (error as Error).message,
     }));
     const message = result.kind === "finished" ? "Done. Have a look." : result.reason;
+    input.onTrace?.({ driveResult: result });
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);

@@ -11,6 +11,7 @@ import {
   planFromReply,
   runDrivePlan,
   screenDifference,
+  screensDifference,
   shotFor,
   toDesktop,
   validateDrivePlan,
@@ -129,6 +130,10 @@ describe("coordinates", () => {
     b.fill(200, 0, 25);
     expect(screenDifference(a, b)).toBe(0.25);
     expect(screenDifference(a, new Uint8Array(4))).toBe(1);
+    // A change on either display counts in full, and a display appearing counts as everything.
+    const quiet = new Uint8Array(4);
+    expect(screensDifference([quiet, a], [quiet, b])).toBe(0.25);
+    expect(screensDifference([quiet, a], [a])).toBe(1);
   });
 });
 

@@ -106,7 +106,14 @@ const main = async () => {
     router: withBrainRoutes(createVoiceRouter(client), brain),
     timings: { ...DEFAULT_TIMINGS, wakeWords: words.map((w) => w.word) },
   });
+  let heard = 0;
+  let bargeIns = 0;
   core.subscribe((event) => {
+    if (event.type === "transcript") heard += 1;
+    if (event.type === "barge_in") {
+      bargeIns += 1;
+      stamp("barge in");
+    }
     if (event.type === "wake") stamp(`wake (${wake.lastWord()})`);
     if (event.type === "thinking") stamp("to speech recognition");
     if (event.type === "transcript") stamp(`heard: ${event.text}`);
@@ -138,6 +145,45 @@ const main = async () => {
     await feed(silence);
     await new Promise((r) => setTimeout(r, 6_000));
     log.push(`   model calls this clip: ${modelCalls - before}`);
+  }
+  // --echo reply.wav,wake.wav: his question opens the window, then Baton's own reply comes back
+  // through the mic. It must start no turn; the wake word said over it must cut in.
+  if (process.argv.includes("--echo")) {
+    const [replyFile, wakeFile] = flag("--echo").split(",") as [string, string];
+    const reply = readPcm(replyFile).map((sample) => sample * 0.35) as Int16Array;
+    log.push(`\n== echo: own reply, ${(reply.length / 16_000).toFixed(1)} s, conversation window open`);
+    await feed(readPcm(wakeFile));
+    await feed(silence);
+    await new Promise((r) => setTimeout(r, 6_000));
+    mark = Date.now();
+    const heardBefore = heard;
+    core.setSpeaking(true);
+    await feed(reply);
+    core.setSpeaking(false);
+    await feed(new Int16Array(8_000));
+    await new Promise((r) => setTimeout(r, 2_000));
+    log.push(`   transcripts from its own voice: ${heard - heardBefore}`);
+    log.push("\n== echo: he says the wake word over the reply");
+    mark = Date.now();
+    const wakeClip = readPcm(wakeFile);
+    const before = bargeIns;
+    const mixed = reply.slice();
+    const at = 16_000 * 2;
+    wakeClip.forEach((sample, i) => {
+      if (at + i < mixed.length) mixed[at + i] = Math.max(-32_768, Math.min(32_767, mixed[at + i]! + sample));
+    });
+    core.setSpeaking(true);
+    // The app stops playback on barge_in, so from there only his voice reaches the mic.
+    let fed = 0;
+    while (bargeIns === before && fed < mixed.length) {
+      await feed(mixed.subarray(fed, fed + FRAME * 4));
+      fed += FRAME * 4;
+    }
+    await feed(wakeClip.subarray(Math.max(0, fed - at)));
+    core.setSpeaking(false);
+    await feed(silence);
+    await new Promise((r) => setTimeout(r, 6_000));
+    log.push(`   barge-ins: ${bargeIns}`);
   }
   log.push(`\nleft the client: ${JSON.stringify(calls.map((c) => [c.kind, c.text]))}`);
   console.log(log.join("\n"));

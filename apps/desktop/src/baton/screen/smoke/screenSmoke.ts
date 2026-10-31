@@ -108,7 +108,7 @@ const main = async () => {
 
   if (only.includes("fingerprint")) {
     const { screenFingerprint } = await import("../screenCapture.ts");
-    const { screenDifference } = await import("@t3tools/baton-shared/screenCompanion");
+    const { screensDifference } = await import("@t3tools/baton-shared/screenCompanion");
     const a = await screenFingerprint();
     const a2 = await screenFingerprint();
     await clickOn("n");
@@ -116,7 +116,7 @@ const main = async () => {
     await sleep(500);
     const b = await screenFingerprint();
     results["fingerprint"] =
-      `length ${a.length}; same screen ${screenDifference(a, a2)}; after typing ${screenDifference(a, b)}`;
+      `displays ${a.length}; same screen ${screensDifference(a, a2)}; after typing ${screensDifference(a, b)}`;
     await reset();
   }
 

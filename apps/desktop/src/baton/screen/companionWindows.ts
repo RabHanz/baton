@@ -154,9 +154,10 @@ export const createCompanionWindows = (input: {
             height: 200,
           });
           const done = (index: number) => {
+            // First: destroying fires "closed", which would answer Cancel over his yes.
+            resolve(index);
             if (promptBox?.win === win) promptBox = null;
             if (!win.isDestroyed()) win.destroy();
-            resolve(index);
           };
           promptBox = { win, done };
           win.on("closed", () => done(options.cancel));
