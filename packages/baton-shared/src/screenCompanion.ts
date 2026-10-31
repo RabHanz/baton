@@ -117,7 +117,7 @@ export const screenLabel = (shot: ScreenShot, count: number): string =>
 
 // farzaa's end-anchored pattern, loosened to accept the tag anywhere and a missing label.
 const POINT_RE =
-  /\[POINT:(?:none|(\d+)\s*,\s*(\d+)(?::([^\]:]*?))?(?::screen(\d+))?(?::(0?\.\d+|[01](?:\.0+)?))?)\]/gi;
+  /\[POINT:(?:none|(\d+)\s*,\s*(\d+)(?::([^\]]*?))?(?::screen(\d+))?(?::(0?\.\d+|[01](?:\.0+)?))?)\]/gi;
 const DONE_RE = /\[DONE\]/gi;
 const DRIVE_BLOCK_RE = /```(?:baton-drive|clicky-drive|json)?\s*\n([\s\S]*?)```/i;
 

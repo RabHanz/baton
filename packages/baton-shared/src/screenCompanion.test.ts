@@ -322,6 +322,12 @@ describe("parseScreenIntent", () => {
 });
 
 describe("pointing only at what it can vouch for", () => {
+  it("takes a label with a colon in it and never leaves the tag in the words", () => {
+    const reply = parseReply("It says 7:20. [POINT:1517,864:7:20 PM:screen1:0.9]");
+    expect(reply.spoken).toBe("It says 7:20.");
+    expect(reply.point).toMatchObject({ label: "7:20 PM", screen: 1, confidence: 0.9 });
+  });
+
   it("reads confidence and refuses a low or missing one", () => {
     const sure = parseReply("There. [POINT:10,20:Save:screen2:0.9]").point;
     expect(sure).toMatchObject({ label: "Save", screen: 2, confidence: 0.9 });

@@ -7,6 +7,7 @@ use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_
 use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetWindowRect, WindowFromPoint, GA_ROOT};
 
 const MAX_ELEMENTS: i32 = 4000;
+const MIN_SIDE: i32 = 8;
 
 /// Lowercase words, so "Export..." and "export" are the same name.
 fn tokens(text: &str) -> Vec<String> {
@@ -53,6 +54,10 @@ pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
                 continue;
             }
             let Ok(rect) = element.CurrentBoundingRectangle() else { continue };
+            // A window's own 1 px title element has the right name and is nothing to point at.
+            if rect.right - rect.left < MIN_SIDE || rect.bottom - rect.top < MIN_SIDE {
+                continue;
+            }
             let (cx, cy) = centre(&rect);
             let distance = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2)).sqrt();
             // Name first; among equals the one nearest the model's point.

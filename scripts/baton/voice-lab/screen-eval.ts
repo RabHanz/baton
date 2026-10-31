@@ -48,7 +48,7 @@ export const CASES: ReadonlyArray<Case> = [
   { said: "where's the paperclip", kind: "point", box: [553, 722, 569, 738] },
   { said: "where's the waiting label", kind: "point", box: [94, 181, 142, 195] },
   { said: "which project is this thread in", kind: "read", contains: "ventureos" },
-  { said: "how many projects does it say I've got", kind: "read", contains: "10" },
+  { said: "how many projects does it say I've got", kind: "read", contains: "10|ten" },
   { said: "what time does the clock say", kind: "read", contains: "6:12" },
   { said: "what's the date down in the corner", kind: "read", contains: "31" },
   { said: "which account am I on, top right", kind: "read", contains: "rabee" },
@@ -114,7 +114,7 @@ const main = async () => {
     let good: boolean;
     let missPx: number | null = null;
     if (test.kind === "absent") good = !flies && SAID_ABSENT.test(reply.spoken);
-    else if (test.kind === "read") good = reply.spoken.toLowerCase().includes(test.contains!);
+    else if (test.kind === "read") good = new RegExp(test.contains!).test(reply.spoken.toLowerCase());
     else {
       const [l, t, r, b] = test.box!.map((v) => v * scale) as [number, number, number, number];
       const p = reply.point;

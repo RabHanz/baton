@@ -166,6 +166,7 @@ const CONTEXT_REFRESH_MS = 10_000;
 const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
 const LOCATE_TIMEOUT_MS = 1_500;
+const LOCATE_MAX_DIP = 160;
 
 const readSettings = (path: string): VoiceSettings => {
   try {
@@ -401,10 +402,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS)),
       ]).catch(() => null);
       if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
-      return {
-        ...Electron.screen.screenToDipPoint({ x: found.x, y: found.y }),
-        name: found.name ?? label,
-      };
+      const real = Electron.screen.screenToDipPoint({ x: found.x, y: found.y });
+      // Same name far from where the model saw it is a different thing.
+      if (Math.hypot(real.x - near.x, real.y - near.y) > LOCATE_MAX_DIP) return null;
+      return { ...real, name: found.name ?? label };
     },
     grammarPlaces: async (said) => {
       if (mainContents === null) return false;

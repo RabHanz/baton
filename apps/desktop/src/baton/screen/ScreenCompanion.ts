@@ -195,6 +195,8 @@ export const startScreenCompanion = (input: {
   /** A turn finished with nothing further coming, for the cue after a wake word. */
   readonly onTurnEnd?: () => void;
   readonly onTimings?: (timings: TurnTimings) => void;
+  /** What each turn was given and did, for the lab's trace table. */
+  readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
   readonly onChange?: () => void;
   /** Stop speech at once: Esc, or he has moved on. */
@@ -420,6 +422,7 @@ export const startScreenCompanion = (input: {
     const guess = toDesktop(point, shot);
     // The accessibility tree has the real rectangle; the model's pixels only say where to look.
     const found = point.label === null ? null : await actions?.locate?.(point.label, guess);
+    input.onTrace?.({ pointedAt: found ?? guess, snapped: found != null });
     const here = await overlay.point(found ?? guess, found?.name ?? point.label);
     if (!here) input.onActivity?.("Pointing", "on your other screen");
   };
@@ -496,6 +499,11 @@ export const startScreenCompanion = (input: {
       return void (await wipe());
     }
     const reply = parseReply(turn.raw);
+    input.onTrace?.({
+      images: turn.shots.map((s) => [s.screen, s.width, s.height, s.cursorHere]),
+      point: reply.point,
+      reply: reply.spoken,
+    });
     const rest = stream.flush();
     if (rest.length > 0) {
       if (spoken === 0) firstSentence();
@@ -792,6 +800,7 @@ export const startScreenCompanion = (input: {
     askFocus = null;
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
+    input.onTrace?.({ said: text, focused: focus?.label ?? null, decision, recent: recent.length });
     if (decision.route === "act") {
       input.onTimings?.({
         route: "act",
