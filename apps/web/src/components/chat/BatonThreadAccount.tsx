@@ -6,7 +6,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { BatonAccount } from "@t3tools/baton-contracts";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { CheckIcon, ChevronDownIcon, UserRoundIcon } from "lucide-react";
@@ -32,6 +32,28 @@ export function accountRow(account: BatonAccount, now: number): string {
   return age === null ? room : `${room} · ${age.text.toLowerCase()}`;
 }
 
+/** cswap's switch on one environment; it moves every Claude thread there at its next turn. */
+export function useAccountSwitch(environmentId: EnvironmentId) {
+  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const [busy, setBusy] = useState(false);
+  const switchTo = (account: BatonAccount) => {
+    setBusy(true);
+    void use({ environmentId, input: { key: account.key, reason: "manual" } }).then((result) => {
+      setBusy(false);
+      toastManager.add(
+        result._tag === "Success"
+          ? {
+              type: "success",
+              title: `Now running as ${account.label}`,
+              description: "Claude threads on this environment move at their next turn.",
+            }
+          : { type: "error", title: `Could not switch to ${account.label}` },
+      );
+    });
+  };
+  return { busy, switchTo };
+}
+
 export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const shell = useQuietThreadShell(threadRef);
   const providers = useEnvironmentProviders().get(threadRef.environmentId) ?? [];
@@ -39,8 +61,7 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
   const pool = useAtomValue(
     batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} }),
   );
-  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
-  const [busy, setBusy] = useState(false);
+  const { busy, switchTo } = useAccountSwitch(threadRef.environmentId);
   const nowMinute = useNowMinute();
   // A mirrored terminal session has Baton's live instance, and runs on the same cswap account.
   const live = threadRef.threadId.startsWith("baton-live");
@@ -67,25 +88,6 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
   if (active === undefined) return null;
   const running = threadRuntimeIsActive(shell.runtime);
   const now = Date.parse(`${nowMinute}:00Z`);
-
-  const switchTo = (account: BatonAccount) => {
-    setBusy(true);
-    void use({
-      environmentId: threadRef.environmentId,
-      input: { key: account.key, reason: "manual" },
-    }).then((result) => {
-      setBusy(false);
-      toastManager.add(
-        result._tag === "Success"
-          ? {
-              type: "success",
-              title: `Now running as ${account.label}`,
-              description: "Claude threads on this environment move at their next turn.",
-            }
-          : { type: "error", title: `Could not switch to ${account.label}` },
-      );
-    });
-  };
 
   return (
     <Menu>

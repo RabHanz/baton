@@ -2498,3 +2498,39 @@ reload moved the route).
 Known limit: moving focus to a pane does not put the caret in its composer, because doing so would
 cancel a text selection started in that pane. Upstream's thread details card follows the viewport
 width, so at 2560 each pane shows its own.
+
+## D94 — One limits tile per Claude account, and the tile can switch to it
+
+**Decided** 2026-10-31. Setup tokens have no email, so T3's `accountKey` had nothing to merge on and
+every machine's instance got its own tile: eight cramped tiles on three environments, the default
+instance named "C" (T3's driver name "Claude", truncated).
+
+- `limitsFromAccount` sets `credentialFingerprint` to the cswap slot. Slots match on all machines, and
+  T3's existing merge does the rest. No token or anything derived from one goes in it.
+- `withAccount` sets the instance's `displayName` to the account's name; `stampIdentity` runs next and
+  restores a configured name. T3's snapshot always carries a driver name, so "only if empty" never fired.
+- A probe-filled instance reports the slot's email from cswap, not the box's login. T3 keys on email
+  first, so onnyx's own login split Rabee into a separate tile. Dropping the email instead broke
+  `switchedAccount`, the signed-in check in `IntentService` and the picker's account line.
+- `accountUse` refreshes the provider, so the name and limits follow a switch at once. A rotation by
+  the reactor still waits for the 5-minute check.
+- `applyUsageLimitsUpdate` keeps the fingerprint (`0008-claude-account-limits`), or a live turn's
+  rate-limit event would pull that instance out of the merge until the next refresh.
+- `BatonTileSwitch` adds a row per environment to the tile popover, on the same `useAccountSwitch` as
+  the thread header. cswap is per machine, so one button across all machines would hide a broad action.
+  A row says In use, Spent, Signed out or Held out and the button is disabled. Spent is new here: the
+  thread menu and the server leave a spent account clickable, but a misclick in a hover popover would
+  stall every thread on that machine.
+- With three tiles T3's own layout reads properly at 1440, 1775 and 2560, so no layout change.
+
+Rejected: grouping by display name in the client (new merge logic for a thing the server knows); one
+"switch everywhere" button.
+
+Known limits. The default instance follows the active account, so when every environment rotates off
+Rabee no instance reports slot 4 and that tile is gone until one does. A pinned default (`--pin-default`,
+laptop) reads as cswap's active account, as it has since D92. The laptop's server is part of the
+desktop app, so its tiles merge only once it runs a build with this. A default instance rotated onto
+Optima shows that name beside `claudeAgent_optima` in the model picker. `signzart-prod`'s unit now has
+nvm's bin on PATH: under load T3's login-shell PATH read timed out and `claude` was "not found".
+
+Not yet run live: pressing Switch. Rabee is in use and the other two are spent until 2 Nov.

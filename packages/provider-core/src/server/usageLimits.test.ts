@@ -50,6 +50,17 @@ describe("applyUsageLimitsUpdate", () => {
     });
   });
 
+  it("keeps the credential fingerprint a live update does not carry", () => {
+    const next = applyUsageLimitsUpdate({
+      previous: { ...published, credentialFingerprint: "5" },
+      checkedAt: "2026-09-03T12:00:05.000Z",
+      update: {
+        windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent: 55 }],
+      },
+    });
+    expect(next?.credentialFingerprint).toBe("5");
+  });
+
   it("leaves an unsupported account and an empty update alone", () => {
     const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };
     expect(
