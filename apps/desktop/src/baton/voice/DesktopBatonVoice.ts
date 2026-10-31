@@ -416,6 +416,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
       };
     },
+    windowAt: async (point) => {
+      if (sidecar === null) return null;
+      const physical = Electron.screen.dipToScreenPoint(point);
+      return Promise.race([
+        sidecar.windowAt(physical).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
+      ]);
+    },
     locate: async (label, near) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);

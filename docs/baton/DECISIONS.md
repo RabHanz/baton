@@ -2249,7 +2249,7 @@ Built in `packages/baton-shared/src/screenCompanion.ts` (pure, tested without a 
   screenshot, multi-line typing, the Windows key and security chords, and more than 20 steps. The
   plan's clicks are drawn as numbered dots, the steps are listed in an approval box, and nothing
   runs without "Run it". A screen that changed since the plan refuses it. While running, Esc,
-  "stop" and moving the mouse more than 12 px stop it, a held button is always released, and each
+  "stop" and (until D115) moving the mouse more than 12 px stop it, a held button is always released, and each
   step that names what it `expect`s is checked against a fresh screenshot (`[OK]` or
   `[STOP: why]`). Input is one long-lived PowerShell calling user32 on Windows (per-monitor DPI
   aware, text pasted so any keyboard layout works), xdotool on Linux; macOS refuses by name.
@@ -2993,9 +2993,8 @@ changed clipboard stops the drive, and a paste or right-click into a command lin
 command line asks a second time, as does not knowing where the keys will go, and editors count, because their
 terminal has the editor's name. A drive that reaches a command line without that yes stops.
 
-Drive sees the mouse from its first step. Before each keyboard step it reads the window: a change stops it, no
-reading stops it, and a switch during a long type is not accepted afterwards. Ctrl+Esc, Ctrl+Shift+Esc, Alt+F4,
-Alt+Tab and Ctrl+Alt+anything are refused.
+Before each keyboard step Drive reads the window: a change stops it, no reading stops it, and a switch during a
+long type is not accepted afterwards. Ctrl+Esc, Ctrl+Shift+Esc, Alt+F4, Alt+Tab and Ctrl+Alt+anything are refused.
 
 Esc goes to the most urgent holder only: a drive, then a recording, then a card, so closing a card cannot lose a
 recording, and a holder that throws passes to the next.
@@ -3014,4 +3013,24 @@ private windows and any app Baton cannot name stay on this machine, judged where
 Coordinator, relaying the Director, 2026-10-31: dictation clean-up stays local by default, and v3 stays the
 default model with 110M in the tray. "Black display" on the laptop was his FlipIt screen saver, which takes the
 input desktop away after 10 minutes idle, so nothing can be captured or pasted under it.
+
+## D115 — The mouse stays his during a drive
+
+Director, 2026-10-31: "Don't tie the stop cue with the mouse movements because, of course, I will be moving it
+using the mouse while these actions are being performed." Mouse movement stops nothing now, and this replaces
+the 12 px rule in D84.
+
+The stops are Esc, the Stop button shown during a drive, a spoken stop, and the keyboard's focus check. The Stop
+button takes no focus, so pressing it leaves the keys where they were.
+
+His hand must not misdirect a click, so pointer and button go in one `SendInput` call, which Windows does not
+interleave with his own input. Just before that, the sidecar reads the top-level window under the point and the
+foreground window. If the window differs from the one read when the last step settled, or focus moved, or either
+cannot be read, Baton clicks nothing and asks "Carry on?". A wheel step goes back to the plan's last point first.
+
+The check runs before the click, not after, because a good click may open a new window and a check afterwards
+could not tell. There is a gap of milliseconds between the read and the click, and that gap remains.
+
+Rejected: blocking his input during a step (needs elevation, and takes his mouse away), and moving the pointer
+back after each step (still racy).
 

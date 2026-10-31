@@ -91,6 +91,8 @@ export interface DictationSidecar {
   /** False when that window is no longer the focused one, and nothing was pasted. */
   readonly pasteInto: (text: string, target: number) => Promise<boolean>;
   readonly foreground: () => Promise<FocusedApp>;
+  /** The top-level window under a physical point. */
+  readonly windowAt: (point: { readonly x: number; readonly y: number }) => Promise<number | null>;
   readonly locate: (input: {
     readonly label: string;
     readonly x: number;
@@ -212,6 +214,12 @@ export const startDictationSidecar = (input: {
       if (event["ev"] === "foreground") {
         return settle(event["id"] as number, { value: focusedFrom(event) });
       }
+      if (event["ev"] === "window_at") {
+        const window = event["window"];
+        return settle(event["id"] as number, {
+          value: typeof window === "number" && window !== 0 ? window : null,
+        });
+      }
       if (event["ev"] === "located") {
         return settle(event["id"] as number, { value: event });
       }
@@ -263,6 +271,7 @@ export const startDictationSidecar = (input: {
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),
+    windowAt: ({ x, y }) => call<number | null>({ cmd: "window_at", x, y }),
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
     dispose: () => {
       disposed = true;

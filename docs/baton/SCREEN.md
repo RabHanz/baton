@@ -47,7 +47,7 @@ vendor's own words; none of it was installed or measured.
 | Asks about anything on screen, by hotkey or voice, any app                                                             | **Has it** (Look; voice, ask box, tray)                                                                                                       |
 | A triangle pointer flies to the target; the real cursor never moves while guiding                                      | **Has it** (farzaa's pointer and flight; the cursor only moves in Drive)                                                                     |
 | Teach: step labels beside each target, speaks the step, notices you did it, gives the next                             | **Has it**, by watching the screen change rather than the click itself; label pill and step card                                             |
-| Drive: one consent card, "Esc takes it back", narrates the current step, stops on mouse or speech, checks its own work | **Has it**, with the full plan listed and its clicks drawn before consent; Esc, "stop" or the mouse stop it; steps with `expect` are checked |
+| Drive: one consent card, "Esc takes it back", narrates the current step, stops on Esc, a Stop button or speech; the mouse stays his, checks its own work | **Has it**, with the full plan listed and its clicks drawn before consent; Esc, "stop" or the mouse stop it; steps with `expect` are checked |
 | Drawing arrows, circles, explanation cards, 3D models                                                                  | Partly: caption card and numbered dots; no free drawing or 3D                                                                                |
 | "Spatial context": you paint on screen to show what you mean                                                           | Not built                                                                                                                                    |
 | Agents in your own Chrome, routines by voice                                                                           | Not here: Baton's sessions and rules (Phases 4, 9) do this through Claude Code instead                                                       |
@@ -77,7 +77,7 @@ vendor's own words; none of it was installed or measured.
 | 2 | Pointer lands, 175 % and 125 %, both displays | **Pass.** Mapping 18 of 18 and the model 10 of 10 within 1 DIP on known markers (D101) |
 | 3 | Overlay stays out of a capture | **Pass on both displays.** 18 markers visible without protection, 0 with |
 | 4 | Teach notices him | **Pass after a fix.** It watched only the cursor's display; it now watches all of them (D107). Step 2 came with no "next" |
-| 5 | Drive, Esc, mouse | **Pass after two fixes** (D107). Typed "hello" into Notepad; a real mouse move and a real Esc each stopped a longer plan at step 1 |
+| 5 | Drive, Esc | **Pass after two fixes** (D107). A real Esc stopped a longer plan at step 1. The mouse no longer stops anything (D115) |
 | 6 | Voice reaches the companion, reads answers | **Path passes from WAVs**, wake to brain to router. Nothing has been heard through his speakers |
 | 7 | Ctrl+Alt+Shift+B free | **Pass.** Registered on his desktop |
 

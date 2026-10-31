@@ -58,7 +58,9 @@ const main = async () => {
     grammarPlaces: async () => false,
     act: async (command) => `(would run: ${command})`,
     focus: async () => {
+      const asked = Date.now();
       const app = await sidecar.foreground();
+      write({ foreground: app, ms: Date.now() - asked });
       if (app.exe.length === 0) return null;
       const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
       return {
@@ -67,6 +69,8 @@ const main = async () => {
         centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
       };
     },
+    windowAt: (point) =>
+      sidecar.windowAt(Electron.screen.dipToScreenPoint(point)).catch(() => null),
     locate: async (label, near) => {
       const physical = Electron.screen.dipToScreenPoint(near);
       const found = await sidecar.locate({ label, x: physical.x, y: physical.y }).catch(() => null);
@@ -104,7 +108,7 @@ const main = async () => {
     for (const win of Electron.BrowserWindow.getAllWindows()) {
       void win.webContents
         .executeJavaScript(
-          `(()=>{const b=[...document.querySelectorAll('button')].find(x=>${JSON.stringify(plans ? ["run it", "type it"] : ["not now"])}.includes(x.textContent.toLowerCase()));if(b){b.click();return true}return false})()`,
+          `(()=>{const b=[...document.querySelectorAll('button')].find(x=>${JSON.stringify(plans ? ["run it", "type it", "carry on"] : ["not now"])}.includes(x.textContent.toLowerCase()));if(b){b.click();return true}return false})()`,
         )
         .then((pressed) => {
           if (!pressed) return;

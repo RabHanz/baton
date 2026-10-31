@@ -139,6 +139,8 @@ export interface AssistantActions {
     label: string,
     near: { readonly x: number; readonly y: number },
   ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
+  /** The top-level window under a desktop point, for a drive's click. */
+  readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<number | null>;
   /** A command through the intent path and all its guards; the reply to speak. */
   readonly act: (command: string, restated?: boolean) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
@@ -735,7 +737,7 @@ export const startScreenCompanion = (input: {
     say(reply.spoken);
     const response = await windows.ask({
       title: plan.title,
-      detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or moving the mouse stops it.`,
+      detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
       buttons: ["Run it", "Not now"],
       cancel: 1,
       scoped: true,
@@ -776,6 +778,7 @@ export const startScreenCompanion = (input: {
     // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
     if (run !== current) return;
     current.release = input.holdEscape(() => (current.cancelled = true), "drive");
+    const hideStop = windows.showStop(() => (current.cancelled = true));
     driver ??= createInputDriver({
       platform: input.platform,
       toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
@@ -783,17 +786,24 @@ export const startScreenCompanion = (input: {
     });
     const d = driver;
     const result = await runDrivePlan(plan, shots, {
-      moveTo: d.moveTo,
-      click: d.click,
-      mouseDown: d.mouseDown,
-      mouseUp: d.mouseUp,
-      scroll: d.scroll,
+      clickAt: d.clickAt,
+      pressAt: d.pressAt,
+      releaseAt: d.releaseAt,
+      scrollAt: d.scrollAt,
       type: d.type,
       press: d.press,
-      cursor: () => Electron.screen.getCursorScreenPoint(),
       ...(input.platform === "win32" && actions?.focus !== undefined
         ? { foreground: keyboardWindow }
         : {}),
+      ...(actions?.windowAt === undefined ? {} : { windowAt: actions.windowAt }),
+      pause: async (reason) =>
+        (await windows.ask({
+          title: "Carry on?",
+          detail: `${reason} I haven't clicked. Make sure the right window is up, then carry on.`,
+          buttons: ["Carry on", "Stop"],
+          cancel: 1,
+          scoped: true,
+        })) === 0,
       shellAllowed: shell.ask,
       pasteText: clipboard,
       clipboard: () => Electron.clipboard.readText(),
@@ -809,7 +819,7 @@ export const startScreenCompanion = (input: {
         void show(
           `Step ${i + 1} of ${plan.actions.length}`,
           describeAction(action),
-          "Esc stops it.",
+          "Esc or Stop ends it.",
           {
             dots: { at: i, of: plan.actions.length },
           },
@@ -826,6 +836,7 @@ export const startScreenCompanion = (input: {
       step: -1,
       reason: (error as Error).message,
     }));
+    hideStop();
     current.release?.();
     current.release = null;
     if (run !== current) return;

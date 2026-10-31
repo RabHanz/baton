@@ -63,14 +63,12 @@ describe("the keyboard's window, through the real parser", () => {
     ],
   } as DrivePlan;
   const host = (next: () => FocusedApp | null, typed: string[]): DriveHost => ({
-    moveTo: async () => undefined,
-    click: async () => undefined,
-    mouseDown: async () => undefined,
-    mouseUp: async () => undefined,
-    scroll: async () => undefined,
+    clickAt: async () => undefined,
+    pressAt: async () => undefined,
+    releaseAt: async () => undefined,
+    scrollAt: async () => undefined,
     type: async (t) => void typed.push(t),
     press: async () => undefined,
-    cursor: () => ({ x: 0, y: 0 }),
     sleep: async () => undefined,
     cancelled: () => false,
     verify: async () => ({ ok: true }),

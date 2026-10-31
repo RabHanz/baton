@@ -484,6 +484,18 @@ fn window_rect(_window: isize) -> Value {
 }
 
 #[cfg(windows)]
+fn window_at(x: i32, y: i32) -> isize {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+    unsafe { GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT).0 as isize }
+}
+
+#[cfg(not(windows))]
+fn window_at(_x: i32, _y: i32) -> isize {
+    0
+}
+
+#[cfg(windows)]
 fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32) -> Value {
     let mut out = uia::locate(label, x, y).unwrap_or_else(|e| json!({"found": false, "error": e}));
     out["ev"] = json!("located");
@@ -644,6 +656,10 @@ fn serve() {
                         let window = foreground_window();
                         let (app, title) = window_app(window);
                         emit(json!({"ev": "foreground", "id": value["id"].as_u64(), "rect": window_rect(window), "app": app, "title": title, "window": window as i64}));
+                    }
+                    "window_at" => {
+                        let (x, y) = (value["x"].as_i64().unwrap_or(0) as i32, value["y"].as_i64().unwrap_or(0) as i32);
+                        emit(json!({"ev": "window_at", "id": value["id"].as_u64(), "window": window_at(x, y) as i64}));
                     }
                     "locate" => {
                         let id = value["id"].as_u64();

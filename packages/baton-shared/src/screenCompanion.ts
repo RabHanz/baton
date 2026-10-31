@@ -582,14 +582,25 @@ export const shellCheck = (plan: DrivePlan, focused: string | null): ShellCheck 
 
 /** What the runner needs from a desktop. Coordinates are global desktop (DIP) points. */
 export interface DriveHost {
-  readonly moveTo: (point: { readonly x: number; readonly y: number }) => Promise<void>;
-  readonly click: (button: "left" | "right", count: 1 | 2) => Promise<void>;
-  readonly mouseDown: () => Promise<void>;
-  readonly mouseUp: () => Promise<void>;
-  readonly scroll: (amount: number) => Promise<void>;
+  /** Pointer and button together: his hand on the mouse cannot land between them. */
+  readonly clickAt: (
+    point: { readonly x: number; readonly y: number },
+    button: "left" | "right",
+    count: 1 | 2,
+  ) => Promise<void>;
+  readonly pressAt: (point: { readonly x: number; readonly y: number }) => Promise<void>;
+  readonly releaseAt: (point: { readonly x: number; readonly y: number }) => Promise<void>;
+  /** Over the last point it used, or wherever the pointer is when it has used none. */
+  readonly scrollAt: (
+    point: { readonly x: number; readonly y: number } | null,
+    amount: number,
+  ) => Promise<void>;
+  /** The top-level window under a point; null when unknown. */
+  readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<number | null>;
+  /** Something moved under a click. True to carry on; a click is never guessed at. */
+  readonly pause?: (reason: string) => Promise<boolean>;
   readonly type: (text: string) => Promise<void>;
   readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
-  readonly cursor: () => { readonly x: number; readonly y: number };
   /** The window with the keyboard, or null when unknown. */
   readonly foreground?: () => Promise<{
     readonly window: number;
@@ -601,7 +612,7 @@ export interface DriveHost {
   readonly pasteText?: string;
   readonly clipboard?: () => string | Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
-  /** Esc, the tray, or "stop" by voice. */
+  /** Esc, the Stop button, the tray, or "stop" by voice. His mouse is his own (D115). */
   readonly cancelled: () => boolean;
   /** Asks the model whether step `index` did what it expected; only called for steps with `expect`. */
   readonly verify: (
@@ -615,40 +626,52 @@ export type DriveResult =
   | { readonly kind: "finished"; readonly steps: number }
   | { readonly kind: "stopped"; readonly step: number; readonly reason: string };
 
-/** How far the real pointer may stray from where Baton put it before Baton stops (clicky-windows: 12 px). */
-export const HAND_ON_MOUSE_PX = 12;
-
 /**
- * Runs a validated plan one action at a time. Stops on cancel, on the user taking the mouse, or
- * when a step's check fails. Never leaves a button held.
+ * Runs a validated plan one action at a time. Stops on cancel, on the keyboard moving, or when a
+ * step's check fails. He may use the mouse throughout: before each click the window under the point
+ * and the focus are read again, and if either moved it pauses and asks. Never leaves a button held.
  */
 export const runDrivePlan = async (
   plan: DrivePlan,
   shots: ReadonlyArray<ScreenShot>,
   host: DriveHost,
 ): Promise<DriveResult> => {
-  // From the start, so a plan with no pointer step still sees his hand on the mouse.
-  let expected: { x: number; y: number } | null = host.cursor();
   let window = (await host.foreground?.())?.window ?? null;
-  let held = false;
-  const guard = (): string | null => {
+  let held: { x: number; y: number } | null = null;
+  let lastPoint: { x: number; y: number } | null = null;
+  let intended: number | null = null;
+  const pointOf = (action: DriveAction | undefined) =>
+    action !== undefined && "x" in action
+      ? toDesktop(action, shotFor(shots, action.screen ?? null)!)
+      : null;
+  /** The window this click is meant for: what is under its point once the last step has settled. */
+  const aim = async (action: DriveAction | undefined) => {
+    const point = pointOf(action);
+    intended = point === null ? null : ((await host.windowAt?.(point)) ?? null);
+  };
+  /** Null to click now, or why not. */
+  const clearToClick = async (point: { x: number; y: number }, i: number) => {
     if (host.cancelled()) return "Stopped.";
-    if (expected !== null) {
-      const at = host.cursor();
-      if (Math.hypot(at.x - expected.x, at.y - expected.y) > HAND_ON_MOUSE_PX)
-        return "Stopped because you moved the mouse.";
-    }
+    if (host.windowAt === undefined) return null;
+    const under = await host.windowAt(point);
+    const now = host.foreground === undefined ? undefined : await host.foreground();
+    const moved =
+      under === null ||
+      (intended !== null && under !== intended) ||
+      now === null ||
+      (now !== undefined && window !== null && now.window !== window);
+    if (!moved) return null;
+    const on = (await host.pause?.(`Step ${i + 1}: that window moved or lost focus.`)) ?? false;
+    if (!on) return "The window under that click changed, so I stopped.";
+    if (host.cancelled()) return "Stopped.";
+    window = (await host.foreground?.())?.window ?? window;
     return null;
   };
-  const go = async (point: { x: number; y: number }) => {
-    await host.moveTo(point);
-    expected = { ...point };
-  };
+  await aim(plan.actions[0]);
   try {
     for (let i = 0; i < plan.actions.length; i++) {
       const action = plan.actions[i]!;
-      const stop = guard();
-      if (stop !== null) return { kind: "stopped", step: i, reason: stop };
+      if (host.cancelled()) return { kind: "stopped", step: i, reason: "Stopped." };
       host.progress?.(i, action);
       const shot = shotFor(shots, action.screen ?? null);
       if ((action.kind === "type" || action.kind === "press") && host.foreground !== undefined) {
@@ -677,23 +700,32 @@ export const runDrivePlan = async (
       }
       switch (action.kind) {
         case "click":
-        case "double_click":
-          await go(toDesktop(action, shot!));
-          await host.click(
+        case "double_click": {
+          const point = pointOf(action)!;
+          const held_up = await clearToClick(point, i);
+          if (held_up !== null) return { kind: "stopped", step: i, reason: held_up };
+          await host.clickAt(
+            point,
             action.kind === "click" ? (action.button ?? "left") : "left",
             action.kind === "double_click" ? 2 : 1,
           );
+          lastPoint = point;
           break;
-        case "drag":
-          await go(toDesktop(action, shot!));
-          await host.mouseDown();
-          held = true;
-          await go(toDesktop({ x: action.to_x, y: action.to_y }, shot!));
-          await host.mouseUp();
-          held = false;
+        }
+        case "drag": {
+          const start = pointOf(action)!;
+          const held_up = await clearToClick(start, i);
+          if (held_up !== null) return { kind: "stopped", step: i, reason: held_up };
+          const end = toDesktop({ x: action.to_x, y: action.to_y }, shot!);
+          await host.pressAt(start);
+          held = end;
+          await host.releaseAt(end);
+          held = null;
+          lastPoint = end;
           break;
+        }
         case "scroll":
-          await host.scroll(action.amount);
+          await host.scrollAt(lastPoint, action.amount);
           break;
         case "type":
           await host.type(action.text);
@@ -711,6 +743,7 @@ export const runDrivePlan = async (
       await host.sleep(250);
       // A click may rightly open a window. Typing never does, so a switch during it stays caught.
       if (action.kind !== "type") window = (await host.foreground?.())?.window ?? null;
+      await aim(plan.actions[i + 1]);
       if (action.expect !== undefined) {
         const verdict = await host.verify(action, i);
         if (!verdict.ok) return { kind: "stopped", step: i, reason: verdict.reason };
@@ -718,7 +751,7 @@ export const runDrivePlan = async (
     }
     return { kind: "finished", steps: plan.actions.length };
   } finally {
-    if (held) await host.mouseUp().catch(() => undefined);
+    if (held !== null) await host.releaseAt(held).catch(() => undefined);
   }
 };
 

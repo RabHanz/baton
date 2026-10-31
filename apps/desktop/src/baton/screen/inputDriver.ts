@@ -7,13 +7,14 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeReadline from "node:readline";
 
+type Point = { readonly x: number; readonly y: number };
+
 export interface InputDriver {
-  /** Global desktop point in Electron DIPs. */
-  readonly moveTo: (point: { readonly x: number; readonly y: number }) => Promise<void>;
-  readonly click: (button: "left" | "right", count: 1 | 2) => Promise<void>;
-  readonly mouseDown: () => Promise<void>;
-  readonly mouseUp: () => Promise<void>;
-  readonly scroll: (amount: number) => Promise<void>;
+  /** Global desktop points in Electron DIPs. Pointer and button go as one, past his hand. */
+  readonly clickAt: (point: Point, button: "left" | "right", count: 1 | 2) => Promise<void>;
+  readonly pressAt: (point: Point) => Promise<void>;
+  readonly releaseAt: (point: Point) => Promise<void>;
+  readonly scrollAt: (point: Point | null, amount: number) => Promise<void>;
   readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
   readonly type: (text: string) => Promise<void>;
   readonly dispose: () => void;
@@ -85,8 +86,21 @@ Add-Type @"
 using System; using System.Runtime.InteropServices;
 public static class BatonInput {
   [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, int d, UIntPtr e);
+  [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+  [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public int data; public uint flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public MOUSEINPUT mi; }
+  // One SendInput call: Windows will not put his own mouse events between these.
+  public static void At(int x, int y, uint[] buttons, int wheel) {
+    int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
+    var list = new INPUT[buttons.Length + 1];
+    list[0].mi.dx = (int)Math.Ceiling((x - vx) * 65535.0 / (vw - 1));
+    list[0].mi.dy = (int)Math.Ceiling((y - vy) * 65535.0 / (vh - 1));
+    list[0].mi.flags = 0x0001 | 0x8000 | 0x4000;
+    for (int i = 0; i < buttons.Length; i++) { list[i + 1].mi.flags = buttons[i]; list[i + 1].mi.data = wheel; }
+    if (SendInput((uint)list.Length, list, Marshal.SizeOf(typeof(INPUT))) != list.Length) throw new Exception("SendInput was refused");
+  }
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint f, UIntPtr e);
 }
 "@
@@ -96,11 +110,8 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
   $p = $line.Split(' ')
   try {
     switch ($p[0]) {
-      'move'  { [void][BatonInput]::SetCursorPos([int]$p[1], [int]$p[2]) }
-      'down'  { [BatonInput]::mouse_event(0x0002,0,0,0,$z) }
-      'up'    { [BatonInput]::mouse_event(0x0004,0,0,0,$z) }
-      'rdown' { [BatonInput]::mouse_event(0x0008,0,0,0,$z) }
-      'rup'   { [BatonInput]::mouse_event(0x0010,0,0,0,$z) }
+      'at'    { [BatonInput]::At([int]$p[1], [int]$p[2], [uint32[]]($p[3].Split(',') | ForEach-Object { [uint32]$_ }), 0) }
+      'wheelat' { [BatonInput]::At([int]$p[1], [int]$p[2], [uint32[]]@(0x0800), [int]$p[3]) }
       'wheel' { [BatonInput]::mouse_event(0x0800,0,0,[int]$p[1],$z) }
       'keys'  {
         $vks = $p[1].Split(',') | ForEach-Object { [byte][int]$_ }
@@ -189,21 +200,23 @@ export const createInputDriver = (input: {
       WINDOWS_INPUT_SCRIPT,
     ]);
     const keys = (list: ReadonlyArray<string>) => ps.send(`keys ${virtualKeys(list).join(",")}`);
+    const physical = (p: Point) => {
+      const at = input.toPhysical(p);
+      return `${Math.round(at.x)} ${Math.round(at.y)}`;
+    };
     return {
-      moveTo: async (p) => {
-        const at = input.toPhysical(p);
-        await ps.send(`move ${Math.round(at.x)} ${Math.round(at.y)}`);
+      clickAt: (p, button, count) => {
+        const once = button === "right" ? "8,16" : "2,4";
+        return ps.send(`at ${physical(p)} ${count === 2 ? `${once},${once}` : once}`);
       },
-      click: async (button, count) => {
-        for (let i = 0; i < count; i++) {
-          await ps.send(button === "right" ? "rdown" : "down");
-          await ps.send(button === "right" ? "rup" : "up");
-          if (count > 1) await sleep(60);
-        }
-      },
-      mouseDown: () => ps.send("down"),
-      mouseUp: () => ps.send("up"),
-      scroll: (amount) => ps.send(`wheel ${Math.round(amount * 120)}`),
+      pressAt: (p) => ps.send(`at ${physical(p)} 2`),
+      releaseAt: (p) => ps.send(`at ${physical(p)} 4`),
+      scrollAt: (p, amount) =>
+        ps.send(
+          p === null
+            ? `wheel ${Math.round(amount * 120)}`
+            : `wheelat ${physical(p)} ${Math.round(amount * 120)}`,
+        ),
       press: keys,
       type: (text) => paste(text, () => keys(["ctrl", "v"])),
       dispose: ps.dispose,
@@ -211,6 +224,7 @@ export const createInputDriver = (input: {
   }
 
   if (input.platform === "linux") {
+    const to = (p: Point) => ["mousemove", String(Math.round(p.x)), String(Math.round(p.y))];
     const xdo = (...args: string[]) =>
       runOnce("xdotool", args).catch((error: NodeJS.ErrnoException) => {
         throw error.code === "ENOENT"
@@ -218,12 +232,20 @@ export const createInputDriver = (input: {
           : error;
       });
     return {
-      moveTo: (p) => xdo("mousemove", String(Math.round(p.x)), String(Math.round(p.y))),
-      click: (button, count) =>
-        xdo("click", "--repeat", String(count), "--delay", "60", button === "right" ? "3" : "1"),
-      mouseDown: () => xdo("mousedown", "1"),
-      mouseUp: () => xdo("mouseup", "1"),
-      scroll: async (amount) => {
+      clickAt: (p, button, count) =>
+        xdo(
+          ...to(p),
+          "click",
+          "--repeat",
+          String(count),
+          "--delay",
+          "60",
+          button === "right" ? "3" : "1",
+        ),
+      pressAt: (p) => xdo(...to(p), "mousedown", "1"),
+      releaseAt: (p) => xdo(...to(p), "mouseup", "1"),
+      scrollAt: async (p, amount) => {
+        if (p !== null) await xdo(...to(p));
         for (let i = 0; i < Math.abs(Math.round(amount)); i++)
           await xdo("click", amount > 0 ? "4" : "5");
       },
@@ -236,11 +258,10 @@ export const createInputDriver = (input: {
   const refuse = () =>
     Promise.reject(new Error("Drive is built for Windows and Linux; macOS is not wired yet."));
   return {
-    moveTo: refuse,
-    click: refuse,
-    mouseDown: refuse,
-    mouseUp: refuse,
-    scroll: refuse,
+    clickAt: refuse,
+    pressAt: refuse,
+    releaseAt: refuse,
+    scrollAt: refuse,
     press: refuse,
     type: refuse,
     dispose: () => undefined,

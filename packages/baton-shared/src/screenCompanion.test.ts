@@ -203,25 +203,19 @@ describe("validateDrivePlan (clicky-windows' rules)", () => {
 describe("runDrivePlan", () => {
   const fakeHost = (over: Partial<DriveHost> = {}) => {
     const log: string[] = [];
-    let at = { x: 0, y: 0 };
     const host: DriveHost = {
-      moveTo: async (p) => {
-        at = { ...p };
-        log.push(`move ${p.x},${p.y}`);
-      },
-      click: async (b, n) => void log.push(`click ${b} ${n}`),
-      mouseDown: async () => void log.push("down"),
-      mouseUp: async () => void log.push("up"),
-      scroll: async (a) => void log.push(`scroll ${a}`),
+      clickAt: async (p, b, n) => void log.push(`click ${b} ${n} at ${p.x},${p.y}`),
+      pressAt: async (p) => void log.push(`down at ${p.x},${p.y}`),
+      releaseAt: async (p) => void log.push(`up at ${p.x},${p.y}`),
+      scrollAt: async (_p, a) => void log.push(`scroll ${a}`),
       type: async (t) => void log.push(`type ${t}`),
       press: async (k) => void log.push(`press ${k.join("+")}`),
-      cursor: () => at,
       sleep: async () => undefined,
       cancelled: () => false,
       verify: async () => ({ ok: true }),
       ...over,
     };
-    return { host, log, moveUser: (p: { x: number; y: number }) => (at = p) };
+    return { host, log };
   };
 
   const plan = validateDrivePlan(
@@ -247,14 +241,11 @@ describe("runDrivePlan", () => {
     });
     expect(await runDrivePlan(plan, shots, host)).toEqual({ kind: "finished", steps: 4 });
     expect(log).toEqual([
-      "move 854,480",
-      "click left 1",
+      "click left 1 at 854,480",
       "type baton",
       "press enter",
-      "move 1707,0",
-      "down",
-      "move 1722,15",
-      "up",
+      "down at 1707,0",
+      "up at 1722,15",
     ]);
     expect(verified).toEqual([0]);
   });
@@ -268,32 +259,51 @@ describe("runDrivePlan", () => {
       step: 0,
       reason: "a popup opened",
     });
-    expect(log).toEqual(["move 854,480", "click left 1"]);
+    expect(log).toEqual(["click left 1 at 854,480"]);
   });
 
-  it("stops when he takes the mouse", async () => {
-    const ctl = fakeHost();
-    ctl.host = {
-      ...ctl.host,
-      verify: async () => (ctl.moveUser({ x: 900, y: 900 }), { ok: true }),
-    };
-    const result = await runDrivePlan(plan, shots, ctl.host);
-    expect(result).toEqual({
-      kind: "stopped",
-      step: 1,
-      reason: "Stopped because you moved the mouse.",
+  it("pauses before a click when the window under it changed, and clicks nothing on no", async () => {
+    let window = 1;
+    const asked: string[] = [];
+    const { host, log } = fakeHost({
+      windowAt: async () => window++,
+      pause: async (reason) => (asked.push(reason), false),
     });
+    const result = await runDrivePlan(plan, shots, host);
+    expect(result).toMatchObject({ kind: "stopped", step: 0 });
+    expect(asked).toHaveLength(1);
+    expect(log).toEqual([]);
+  });
+
+  it("carries on when he says so", async () => {
+    let window = 1;
+    const { host, log } = fakeHost({
+      windowAt: async () => window++,
+      pause: async () => true,
+    });
+    expect((await runDrivePlan(plan, shots, host)).kind).toBe("finished");
+    expect(log[0]).toBe("click left 1 at 854,480");
+  });
+
+  it("pauses when the focus moved, and when it cannot tell", async () => {
+    const seen = [{ window: 1, label: "a" }, null];
+    const { host, log } = fakeHost({
+      windowAt: async () => 5,
+      foreground: async () => seen.shift() ?? null,
+      pause: async () => false,
+    });
+    expect((await runDrivePlan(plan, shots, host)).kind).toBe("stopped");
+    expect(log).toEqual([]);
   });
 
   it("stops on cancel and never leaves the button held", async () => {
     let calls = 0;
     const { host, log } = fakeHost({
       cancelled: () => ++calls > 4,
-      moveTo: async (p) => {
-        log.push(`move ${p.x},${p.y}`);
-        if (p.x > 1710) throw new Error("driver died");
+      releaseAt: async (p) => {
+        log.push(`up at ${p.x},${p.y}`);
+        if (log.length === 2) throw new Error("driver died");
       },
-      cursor: () => ({ x: 1707, y: 0 }),
     });
     const dragOnly = validateDrivePlan(
       { title: "d", actions: [{ kind: "drag", x: 0, y: 0, to_x: 10, to_y: 10, screen: 2 }] },
@@ -417,7 +427,7 @@ describe("what Run it answers for", () => {
   });
 });
 
-describe("a drive with his hand on the keyboard or mouse", () => {
+describe("a drive with his hand on the keyboard", () => {
   const pressOnly = validateDrivePlan(
     {
       title: "t",
@@ -429,28 +439,14 @@ describe("a drive with his hand on the keyboard or mouse", () => {
     shots,
   );
   const quiet = {
-    moveTo: async () => undefined,
-    click: async () => undefined,
-    mouseDown: async () => undefined,
-    mouseUp: async () => undefined,
-    scroll: async () => undefined,
+    clickAt: async () => undefined,
+    pressAt: async () => undefined,
+    releaseAt: async () => undefined,
+    scrollAt: async () => undefined,
     sleep: async () => undefined,
     cancelled: () => false,
     verify: async () => ({ ok: true }),
   };
-
-  it("notices the mouse in a plan with no pointer step", async () => {
-    let at = { x: 0, y: 0 };
-    const typed: string[] = [];
-    const result = await runDrivePlan(pressOnly, shots, {
-      ...quiet,
-      type: async (t) => void typed.push(t),
-      press: async () => void (at = { x: 300, y: 300 }),
-      cursor: () => at,
-    } as DriveHost);
-    expect(result.kind).toBe("stopped");
-    expect(typed).toEqual([]);
-  });
 
   it("stops before typing when another window took the keyboard", async () => {
     let window = 1;
@@ -460,7 +456,6 @@ describe("a drive with his hand on the keyboard or mouse", () => {
       ...quiet,
       type: async (t) => void typed.push(t),
       press: async () => void (pressed += 1),
-      cursor: () => ({ x: 0, y: 0 }),
       // He Alt+Tabs after the step has been judged, just before the next.
       foreground: async () => ({
         window: pressed === 0 ? window : window++,
@@ -485,16 +480,14 @@ describe("a paste is typing nobody has read", () => {
     shots,
   );
   const quiet = {
-    moveTo: async () => undefined,
-    click: async () => undefined,
-    mouseDown: async () => undefined,
-    mouseUp: async () => undefined,
-    scroll: async () => undefined,
+    clickAt: async () => undefined,
+    pressAt: async () => undefined,
+    releaseAt: async () => undefined,
+    scrollAt: async () => undefined,
     type: async () => undefined,
     sleep: async () => undefined,
     cancelled: () => false,
     verify: async () => ({ ok: true }),
-    cursor: () => ({ x: 0, y: 0 }),
   };
 
   it("shows the clipboard in the plan and holds it to the list", () => {
