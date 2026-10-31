@@ -14,7 +14,9 @@ const ASK_WIDTH = 640;
 const ASK_HEIGHT = 124;
 const PROMPT_WIDTH = 500;
 
-const ASK_DOCUMENT = (output: AnswerOutput) => `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
+const ASK_DOCUMENT = (
+  output: AnswerOutput,
+) => `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
 html,body{overflow:hidden;height:100%}
 body{display:flex;padding:12px;box-sizing:border-box}
 form{flex:1;display:flex;flex-direction:column;gap:9px;padding:13px 16px 11px;border-radius:16px;box-sizing:border-box}
@@ -130,12 +132,14 @@ export const createCompanionWindows = (input: {
       if (!box.isDestroyed()) box.destroy();
       if (askBox === box) askBox = null;
     });
-    void box.loadURL(`data:text/html,${encodeURIComponent(ASK_DOCUMENT(input.output()))}`).then(() => {
-      if (box.isDestroyed()) return;
-      box.show();
-      box.focus();
-      box.webContents.focus();
-    });
+    void box
+      .loadURL(`data:text/html,${encodeURIComponent(ASK_DOCUMENT(input.output()))}`)
+      .then(() => {
+        if (box.isDestroyed()) return;
+        box.show();
+        box.focus();
+        box.webContents.focus();
+      });
   };
 
   const ask = (options: PromptInput): Promise<number> => {
@@ -158,7 +162,9 @@ export const createCompanionWindows = (input: {
           win.on("closed", () => done(options.cancel));
           void win
             .loadURL(`data:text/html,${encodeURIComponent(PROMPT_DOCUMENT)}`)
-            .then(() => win.webContents.executeJavaScript(`window.fill(${JSON.stringify(options)})`))
+            .then(() =>
+              win.webContents.executeJavaScript(`window.fill(${JSON.stringify(options)})`),
+            )
             .then((height: number) => {
               if (win.isDestroyed()) return;
               const tall = Math.ceil(height);

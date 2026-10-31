@@ -9,9 +9,21 @@ describe("restartDelayMs", () => {
 });
 
 describe("resolveDictationBinary", () => {
-  it("is null where the exe was not built", () => {
-    expect(resolveDictationBinary({ resourcesPath: "/r", env: {}, exists: () => false })).toBe(
-      null,
-    );
+  it("is null where it was not built", () => {
+    expect(
+      resolveDictationBinary({
+        resourcesPath: "/r",
+        platform: "linux",
+        env: {},
+        exists: () => false,
+      }),
+    ).toBe(null);
+  });
+
+  it("names the binary for the platform", () => {
+    const found = (platform: string) =>
+      resolveDictationBinary({ resourcesPath: "/r", platform, env: {}, exists: () => true });
+    expect(found("win32")?.endsWith("baton-dictation.exe")).toBe(true);
+    expect(found("darwin")?.endsWith("baton-dictation")).toBe(true);
   });
 });

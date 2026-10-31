@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   captureSize,
+  pointable,
   describeDrivePlan,
   needsCaptureApproval,
   parseReply,
@@ -316,6 +317,17 @@ describe("parseScreenIntent", () => {
     expect(parseScreenIntent("stop", true)).toEqual({ kind: "stop" });
     expect(parseScreenIntent("say that again", true)).toEqual({ kind: "repeat" });
     expect(parseScreenIntent("stop", false)).toBeNull();
+  });
+});
+
+describe("pointing only at what it can vouch for", () => {
+  it("reads confidence and refuses a low or missing one", () => {
+    const sure = parseReply("There. [POINT:10,20:Save:screen2:0.9]").point;
+    expect(sure).toMatchObject({ label: "Save", screen: 2, confidence: 0.9 });
+    expect(pointable(sure)).toBe(true);
+    expect(pointable(parseReply("Maybe. [POINT:10,20:Save:screen2:0.4]").point)).toBe(false);
+    expect(pointable(parseReply("Old. [POINT:10,20:Save]").point)).toBe(false);
+    expect(pointable(parseReply("I can't see one. [POINT:none]").point)).toBe(false);
   });
 });
 

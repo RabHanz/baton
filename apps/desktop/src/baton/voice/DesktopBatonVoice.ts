@@ -4,13 +4,20 @@
  * Baton voice on the desktop: the microphone, the tray, the HUD, the hotkeys
  * and where finished words go (§12.1, §12.3, Phase 5). D65.
  *
- * Windows only for now (D97): capture, speech and paste are `baton-dictation.exe`, which is built
- * for no other platform, so elsewhere the tray says so and no microphone opens.
+ * Windows first (D97, D106): capture, speech and paste are `baton-dictation`, which is packaged
+ * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
+import {
+  chooseMode,
+  modeMenu,
+  type CleanupLevel,
+  type DictationMode,
+  type DictionaryEntry,
+} from "@t3tools/baton-shared/dictationCleanup";
 import {
   createVoiceRouter,
   type BatonVoiceCore,
@@ -49,9 +56,11 @@ import {
   startDictationSidecar,
   type DictationEvent,
   type DictationSidecar,
+  type FocusedApp,
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
+import { importWisprDictionary, makeRewriter, readDictionary } from "./dictationRewriter.ts";
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
@@ -99,6 +108,13 @@ interface VoiceSettings {
   readonly paste: PasteMethod;
   /** null lets Parakeet detect the language. */
   readonly language: string | null;
+  /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
+  readonly dictationCleanup: CleanupLevel;
+  /** A family alias, on his subscription. */
+  readonly cleanupModel: string;
+  readonly claudeBinary: string;
+  /** His writing mode for an app, by exe name; anything else is chosen from the app. */
+  readonly appModes: Readonly<Record<string, DictationMode>>;
   /** All enabled words listen at once. A new word needs `<word>.onnx` in `<state dir>/voice/models`. */
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
 }
@@ -127,6 +143,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   language: "en",
+  dictationCleanup: "claude",
+  cleanupModel: "haiku",
+  claudeBinary: "claude",
+  appModes: {},
   wakeWords: [
     // Thresholds measured on 6.6 hours of real speech and held-out en-GB voices (D98).
     { word: "Sebastian", enabled: true, threshold: 0.97 },
@@ -143,6 +163,8 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const CONTEXT_REFRESH_MS = 10_000;
 /** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
 const MIC_POLL_MS = 5_000;
+/** The pointer does not wait on a slow accessibility tree. */
+const LOCATE_TIMEOUT_MS = 1_500;
 
 const readSettings = (path: string): VoiceSettings => {
   try {
@@ -213,7 +235,7 @@ export interface DesktopBatonVoiceInput {
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
-  /** `baton-dictation.exe`; null where it is not built (everything but Windows). */
+  /** `baton-dictation`; null only in a build that left it out. */
   readonly dictationBinary: string | null;
   readonly extras?: TrayExtras;
   readonly holdEscape: (onPress: () => void) => () => void;
@@ -260,6 +282,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let dictating: string | null = null;
   let releaseRecordingEscape: (() => void) | null = null;
   let lastDictation: string | null = null;
+  let focusedApp: FocusedApp = { exe: "", title: "" };
+  let dictionary: ReadonlyArray<DictionaryEntry> = [];
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
   const shownState = (): VoiceState => (dictating === null ? state : "dictation");
@@ -269,11 +293,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     platform: input.platform,
     clipboard: Electron.clipboard,
   });
+  const rewriter = makeRewriter({
+    claudeBinary: settings.claudeBinary,
+    model: settings.cleanupModel,
+    workDir: NodePath.join(input.stateDir, "voice", "cleanup"),
+    env: input.env,
+    platform: input.platform,
+    dictionary: () => dictionary,
+  });
   const injection: typeof clipboardInjection = {
     ...clipboardInjection,
+    // The sidecar pastes on every platform, where Electron alone cannot.
+    canInject: (target) => binary !== null || clipboardInjection.canInject(target),
     // Handy's paste keeps his clipboard; PowerShell's stays for when the sidecar is not there.
-    insertText: (request) =>
-      sidecar === null ? clipboardInjection.insertText(request) : sidecar.paste(request.text),
+    insertText: async (request) => {
+      if (sidecar === null) return clipboardInjection.insertText(request);
+      // Wake-word dictation takes the same path as the hold key, so the same text comes out.
+      const app = await sidecar.foreground().catch(() => focusedApp);
+      const { text } = await rewriter.clean({
+        raw: request.text,
+        mode: chooseMode(app, settings.appModes),
+        level: settings.dictationCleanup,
+      });
+      return sidecar.paste(text);
+    },
   };
   // Only where this desktop can paste is the focused field a dictation target.
   const field = injection.canInject(FOCUSED_FIELD) ? FOCUSED_FIELD : null;
@@ -342,6 +385,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
+    focus: async () => {
+      const app = await sidecar?.foreground();
+      if (app === undefined || app.exe.length === 0) return null;
+      const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
+      return {
+        label: `${app.exe}: ${app.title}`,
+        centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+      };
+    },
+    locate: async (label, near) => {
+      if (sidecar === null) return null;
+      const physical = Electron.screen.dipToScreenPoint(near);
+      const found = await Promise.race([
+        sidecar.locate({ label, x: physical.x, y: physical.y }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS)),
+      ]).catch(() => null);
+      if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
+      return {
+        ...Electron.screen.screenToDipPoint({ x: found.x, y: found.y }),
+        name: found.name ?? label,
+      };
+    },
     grammarPlaces: async (said) => {
       if (mainContents === null) return false;
       const resolution = await voiceIntent.resolve({
@@ -405,6 +470,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: settings.language,
+      cleanup: true,
     });
   };
 
@@ -429,9 +495,29 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
+  /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
+  const deliver = async (raw: string, target: number | null | undefined) => {
+    const { text } = await rewriter.clean({
+      raw,
+      mode: chooseMode(focusedApp, settings.appModes),
+      level: settings.dictationCleanup,
+    });
+    lastDictation = text;
+    const pasted =
+      target === null || target === undefined || text.length === 0
+        ? false
+        : await sidecar?.pasteInto(text, target).catch((error: Error) => {
+            note = error.message;
+            return false;
+          });
+    if (pasted === true || text.length === 0) showDictation(null);
+    else keepText("Not pasted", text);
+  };
   const onDictation = (event: DictationEvent) => {
     setRecording(event.ev === "recording");
     if (event.ev === "recording") {
+      focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
+      if (settings.dictationCleanup === "claude") rewriter.warm();
       if (keptTimer !== null) clearTimeout(keptTimer);
       note = null;
       showDictation("Esc cancels");
@@ -446,6 +532,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (event.ev === "text") {
       note = event.error ?? event.pasteError ?? note;
       const text = event.text ?? "";
+      if (event.dictated === true && event.error === undefined)
+        return void deliver(text, event.target);
       if (text.length > 0) lastDictation = text;
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
@@ -482,6 +570,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
     sidecar = startDictationSidecar({ binary, onEvent: onDictation });
+    dictionary =
+      (await readDictionary(input.stateDir)) ??
+      (await importWisprDictionary({ stateDir: input.stateDir, appData: input.env["APPDATA"] }));
     devices = await listSidecarDevices();
     choice = selectInputDevice(devices, preference());
     note =
@@ -716,6 +807,34 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             },
             { type: "separator" },
             {
+              label: "Clean-up",
+              submenu: (
+                [
+                  ["claude", "Local, then Claude when needed"],
+                  ["local", "Local only"],
+                  ["off", "Off, exactly as heard"],
+                ] as const
+              ).map(([level, label]) => ({
+                label,
+                type: "radio" as const,
+                checked: settings.dictationCleanup === level,
+                click: () => save({ dictationCleanup: level }),
+              })),
+            },
+            {
+              label: `Writing mode for ${focusedApp.exe || "this app"}`,
+              enabled: focusedApp.exe.length > 0,
+              submenu: modeMenu({
+                exe: focusedApp.exe,
+                chosen: settings.appModes,
+                choose: (exe, mode) => {
+                  const { [exe]: _old, ...others } = settings.appModes;
+                  save({ appModes: mode === null ? others : { ...others, [exe]: mode } });
+                },
+              }),
+            },
+            { type: "separator" },
+            {
               label: "Parakeet v3 (most languages, slower)",
               type: "radio",
               checked: settings.speechModel === "v3",
@@ -869,6 +988,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     for (const hotkey of VOICE_HOTKEYS) Electron.globalShortcut.unregister(hotkey.accelerator);
     Electron.globalShortcut.unregister(DICTATION_TOGGLE_HOTKEY.accelerator);
     void audio?.stop();
+    rewriter.dispose();
     sidecar?.dispose();
   });
 

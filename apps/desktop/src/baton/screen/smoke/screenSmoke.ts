@@ -131,7 +131,9 @@ const main = async () => {
 
   if (only.includes("teach")) {
     await reset();
-    void companion.said("teach: how to sign up on this form with the name Rabee", { direct: false });
+    void companion.said("teach: how to sign up on this form with the name Rabee", {
+      direct: false,
+    });
     await sleep(15_000);
     await frame("02-teach-step-1");
     // The "user" does step 1: click the name field and type.

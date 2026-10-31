@@ -22,6 +22,7 @@ import {
   describeDrivePlan,
   needsCaptureApproval,
   parseReply,
+  pointable,
   parseVerify,
   planFromReply,
   runDrivePlan,
@@ -38,11 +39,7 @@ import {
 } from "@t3tools/baton-shared/screenCompanion";
 import * as Electron from "electron";
 
-import {
-  holdAfterSpeechMs,
-  pageText,
-  readingMs,
-} from "@t3tools/baton-shared/companionPacing";
+import { holdAfterSpeechMs, pageText, readingMs } from "@t3tools/baton-shared/companionPacing";
 
 import { startVisionSession, type VisionContent, type VisionSession } from "./claudeVision.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
@@ -100,7 +97,22 @@ const PIXEL = 8;
 const STALE = 0.06;
 
 /** What Baton can do beyond talking, supplied by the voice side. */
+/** The window he is using. */
+export interface AssistantFocus {
+  /** "notepad.exe: notes.txt", for the model. */
+  readonly label: string;
+  /** Its middle in desktop coordinates, which picks the display. */
+  readonly centre: { readonly x: number; readonly y: number } | null;
+}
+
 export interface AssistantActions {
+  /** Which window has the keyboard right now. */
+  readonly focus?: () => Promise<AssistantFocus | null>;
+  /** The real element for a label near a point, from the accessibility tree. */
+  readonly locate?: (
+    label: string,
+    near: { readonly x: number; readonly y: number },
+  ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
   /** A command through the intent path and all its guards; the reply to speak. */
   readonly act: (command: string) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
@@ -303,7 +315,12 @@ export const startScreenCompanion = (input: {
   };
 
   /** A card that stays until something replaces it: a step, a plan, a thought. */
-  const show = async (kicker: string, text: string, hint = "", extra: Partial<OverlayCard> = {}) => {
+  const show = async (
+    kicker: string,
+    text: string,
+    hint = "",
+    extra: Partial<OverlayCard> = {},
+  ) => {
     showing += 1;
     escapeOn();
     await overlay.card({ kicker, text, hint, ...extra });
@@ -373,7 +390,10 @@ export const startScreenCompanion = (input: {
     return response !== 3;
   };
 
-  const capture = (): Promise<ReadonlyArray<CapturedScreen>> => overlay.hiddenFor(captureScreens);
+  /** The window he meant, taken when he spoke or pressed the key, before Baton took focus. */
+  let focus: AssistantFocus | null = null;
+  const capture = (): Promise<ReadonlyArray<CapturedScreen>> =>
+    overlay.hiddenFor(() => captureScreens(focus?.centre ?? null));
   const fingerprint = (): Promise<Uint8Array> => overlay.hiddenFor(screenFingerprint);
 
   const content = (
@@ -381,7 +401,10 @@ export const startScreenCompanion = (input: {
     text: string,
   ): ReadonlyArray<VisionContent> => [
     ...captured.flatMap(({ shot, jpeg }): VisionContent[] => [
-      { type: "text", text: screenLabel(shot, captured.length) },
+      {
+        type: "text",
+        text: `${screenLabel(shot, captured.length)}, image ${shot.width}x${shot.height}`,
+      },
       { type: "image", mediaType: "image/jpeg", data: jpeg },
     ]),
     { type: "text", text },
@@ -391,10 +414,13 @@ export const startScreenCompanion = (input: {
     point: ReturnType<typeof parseReply>["point"],
     shots: ReadonlyArray<ScreenShot>,
   ): Promise<void> => {
-    if (point === null) return;
+    if (!pointable(point)) return;
     const shot = shotFor(shots, point.screen);
     if (shot === null) return;
-    const here = await overlay.point(toDesktop(point, shot), point.label);
+    const guess = toDesktop(point, shot);
+    // The accessibility tree has the real rectangle; the model's pixels only say where to look.
+    const found = point.label === null ? null : await actions?.locate?.(point.label, guess);
+    const here = await overlay.point(found ?? guess, found?.name ?? point.label);
     if (!here) input.onActivity?.("Pointing", "on your other screen");
   };
 
@@ -451,7 +477,11 @@ export const startScreenCompanion = (input: {
       input.onActivity?.(screen ? "Looking" : "Thinking");
       void show(screen ? "Looking" : "Thinking", question);
       const captured = screen ? await capture() : [];
-      const raw = await current.vision.ask(content(captured, question), speakAsItComes);
+      const window = focus === null ? "" : `\n\n(the window he is using: ${focus.label})`;
+      const raw = await current.vision.ask(
+        content(captured, `${question}${window}`),
+        speakAsItComes,
+      );
       return { raw, shots: captured.map((c) => c.shot) };
     };
     let turn = await ask(withScreen);
@@ -658,9 +688,14 @@ export const startScreenCompanion = (input: {
           ),
         );
         input.onActivity?.("Driving", `Step ${i + 1} of ${plan.actions.length}`);
-        void show(`Step ${i + 1} of ${plan.actions.length}`, describeAction(action), "Esc stops it.", {
-          dots: { at: i, of: plan.actions.length },
-        });
+        void show(
+          `Step ${i + 1} of ${plan.actions.length}`,
+          describeAction(action),
+          "Esc stops it.",
+          {
+            dots: { at: i, of: plan.actions.length },
+          },
+        );
       },
       verify: async (action, i) => {
         const now = await capture();
@@ -693,7 +728,7 @@ export const startScreenCompanion = (input: {
   const decideSaid = (text: string, direct: boolean): Promise<BrainDecision> =>
     decide(
       text,
-      { running: runningMode(), direct, recent },
+      { running: runningMode(), direct, recent, focused: focus?.label ?? null },
       {
         ask: routerAsk,
         grammarPlaces: (said) => actions?.grammarPlaces(said) ?? Promise.resolve(false),
@@ -751,6 +786,8 @@ export const startScreenCompanion = (input: {
 
   const said: ScreenCompanion["said"] = async (text, { direct }) => {
     const started = Date.now();
+    focus = askFocus ?? (await actions?.focus?.().catch(() => null)) ?? null;
+    askFocus = null;
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
     if (decision.route === "act") {
@@ -788,7 +825,16 @@ export const startScreenCompanion = (input: {
     onAsk: (text) => void typed(text).catch(fail),
   });
 
-  const openAskBox = windows.openAsk;
+  // Taken first: once the box is up, it is the focused window.
+  let askFocus: AssistantFocus | null = null;
+  const openAskBox = () => {
+    void (actions?.focus?.() ?? Promise.resolve(null))
+      .catch(() => null)
+      .then((window) => {
+        askFocus = window;
+        windows.openAsk();
+      });
+  };
 
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 

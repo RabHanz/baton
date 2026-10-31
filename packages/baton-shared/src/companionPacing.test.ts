@@ -14,7 +14,9 @@ describe("how long things stay up", () => {
   });
 
   it("breaks long text between sentences and loses none of it", () => {
-    const text = Array.from({ length: 12 }, (_, i) => `This is sentence ${i} of the answer.`).join(" ");
+    const text = Array.from({ length: 12 }, (_, i) => `This is sentence ${i} of the answer.`).join(
+      " ",
+    );
     const pages = pageText(text, 100);
     expect(pages.length).toBeGreaterThan(1);
     expect(pages.every((p) => p.endsWith("."))).toBe(true);
