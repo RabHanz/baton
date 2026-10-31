@@ -4,6 +4,12 @@ import sys
 import yaml
 
 WORDS = {
+    "onyx": {
+        # ON-iks. He owns the name Onnyx, so it can come up when he is not addressing Baton.
+        "target": ["onyx"],
+        "negative": ["on it", "on x", "honest", "on the", "unix", "phoenix", "onions", "only",
+                     "tonics", "antics", "on its", "and it's"],
+    },
     "sebastian": {
         "target": ["sebastian"],
         # Things he says all day that sound close, on top of the trainer's phonetic negatives.

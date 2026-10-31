@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        word: [sebastian, alfred, freya]
+        word: [onyx]
     env:
       N_SAMPLES: 30000
       STEPS: 100000

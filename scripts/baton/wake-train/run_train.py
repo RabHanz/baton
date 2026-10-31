@@ -7,7 +7,7 @@ import runpy
 import pronouncing
 
 pronouncing.init_cmu()
-for word, phones in {"freya": "F R EY1 AH0", "sebastian": "S AH0 B AE1 S CH AH0 N", "alfred": "AE1 L F R AH0 D"}.items():
+for word, phones in {"onyx": "AA1 N IH0 K S", "freya": "F R EY1 AH0", "sebastian": "S AH0 B AE1 S CH AH0 N", "alfred": "AE1 L F R AH0 D"}.items():
     if word not in pronouncing.lookup:
         pronouncing.lookup[word] = [phones]
         pronouncing.pronunciations.append((word, phones))
