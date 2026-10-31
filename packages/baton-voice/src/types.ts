@@ -66,7 +66,7 @@ export interface TtsProvider {
   readonly speak: (text: string) => Promise<void>;
 }
 
-export type VoiceActivation = "wake" | "toggle_direct_session" | "toggle_mute";
+export type VoiceActivation = "wake" | "toggle_direct_session" | "toggle_mute" | "dismiss";
 
 /** What the core hands the desktop once it has words. */
 export interface VoiceUtterance {

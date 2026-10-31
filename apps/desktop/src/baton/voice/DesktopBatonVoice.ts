@@ -11,7 +11,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
-import type { BatonVoiceCore, SttProvider, VoiceIntentClient } from "@t3tools/baton-voice";
+import {
+  createVoiceRouter,
+  type BatonVoiceCore,
+  type SttProvider,
+  type VoiceCoreEvent,
+  type VoiceIntentClient,
+} from "@t3tools/baton-voice";
 import * as Electron from "electron";
 
 import {
@@ -31,6 +37,7 @@ import { makeClipboardInjection } from "./clipboardInjection.ts";
 import {
   desktopVoiceContext,
   makeVoiceIntentClient,
+  type BrainVoiceHook,
   type VoiceIntentRequest,
   type WakeWordSetting,
 } from "./desktopVoiceCore.ts";
@@ -48,6 +55,8 @@ import {
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { HUD_DOCUMENT, hudView, renderHudHtml, utteranceCaption } from "./voiceHud.ts";
+import { createVoicePill, type VoicePill } from "./voicePill.ts";
+import { frameLevel, type TurnEvent } from "./voiceTurn.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -77,6 +86,8 @@ interface VoiceSettings {
   /** Tried in order when nothing is pinned, and when the pin is unplugged. */
   readonly micOrder: ReadonlyArray<MicSetting>;
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
+  /** The chimes on wake and at the end of a turn. */
+  readonly sounds: boolean;
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
   readonly speechModel: "v3" | "fast";
@@ -103,6 +114,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
     { name: "Wireless Mic Rx", channel: null },
     { name: "DJI", channel: null },
   ],
+  sounds: true,
   dictation: "baton",
   speechModel: "v3",
   // Clear of Wispr Flow's defaults: Ctrl+Win, Ctrl+Win+Space, Ctrl+Alt+Win.
@@ -201,11 +213,17 @@ export interface VoiceCoreHooks {
   };
   /** Parakeet, in the dictation sidecar. */
   readonly stt: SttProvider;
+  /** Everything the core reports, for the cue after a wake word. */
+  readonly onEvent: (event: VoiceCoreEvent) => void;
 }
 
-/** The screen companion's tray entries (D84), shown under the voice ones. */
-export interface TrayExtras {
+/** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
+export interface TrayExtras extends BrainVoiceHook {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
+  readonly setActions: (actions: {
+    readonly act: (command: string) => Promise<string>;
+    readonly grammarPlaces: (said: string) => Promise<boolean>;
+  }) => void;
 }
 
 export interface DesktopBatonVoiceInput {
@@ -224,6 +242,10 @@ export interface DesktopBatonVoiceInput {
 export interface DesktopBatonVoice {
   /** Rebuild the tray menu, after the companion's state changed. */
   readonly refresh: () => void;
+  /** Baton's voice started or stopped. */
+  readonly onSpeaking: (active: boolean) => void;
+  /** The assistant finished a turn. */
+  readonly onTurnEnd: () => void;
 }
 
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
@@ -329,6 +351,48 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (ok === true) entry.resolve(value);
     else entry.reject(new Error(typeof error === "string" ? error : "That could not be done."));
   });
+  const voiceIntent = makeVoiceIntentClient({ request, injection, field: FOCUSED_FIELD });
+  const typedRouter = createVoiceRouter(voiceIntent);
+  const routeContext = () => ({
+    bus: desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }),
+    now: Date.now(),
+  });
+  // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
+  input.extras?.setActions({
+    grammarPlaces: async (said) => {
+      if (mainContents === null) return false;
+      const resolution = await voiceIntent.resolve({
+        text: said,
+        focusedWorkSessionId,
+        allowModel: false,
+      });
+      return resolution.outcome === "resolved";
+    },
+    act: async (command) => {
+      const outcome = await typedRouter.route(
+        { kind: "command", text: command, inheritedTarget: null },
+        routeContext(),
+      );
+      if (outcome.kind !== "needs_confirmation") return "reply" in outcome ? outcome.reply : "";
+      const { response } = await Electron.dialog.showMessageBox({
+        type: "question",
+        title: "Baton",
+        message: outcome.prompt.replace(/ Say "confirm" to go ahead\.$/, ""),
+        buttons: ["Go ahead", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      const next = await typedRouter.route(
+        response === 0
+          ? { kind: "confirmed", token: outcome.token }
+          : { kind: "cancelled", token: outcome.token, reason: "declined" },
+        routeContext(),
+      );
+      return "reply" in next ? next.reply : "";
+    },
+  });
+
   const pushContext = () =>
     core?.setContext(desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }));
   Electron.ipcMain.on(BATON_VOICE_FOCUS_CHANNEL, (event, id: unknown) => {
@@ -441,6 +505,40 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     render(null);
   };
 
+  const pill: VoicePill = createVoicePill({
+    sounds: () => settings.sounds,
+    onDismiss: () => {
+      pill.on({ type: "dismissed" });
+      loop?.activate("dismiss");
+    },
+  });
+  const onCoreEvent = (event: VoiceCoreEvent) => {
+    const turn = ((): TurnEvent | null => {
+      switch (event.type) {
+        case "wake":
+          return { type: "wake" };
+        case "thinking":
+          return { type: "thinking" };
+        case "nothing":
+          return { type: "failed", message: "Didn't catch that" };
+        case "transcript":
+          return { type: "heard", text: event.text };
+        case "error":
+          return { type: "failed", message: event.message };
+        case "state":
+          return event.state === "sleeping" ? { type: "window_closed" } : null;
+        case "outcome":
+          // The assistant reports its own end; everything else ends here, or with its speech.
+          return "source" in event.outcome && event.outcome.source === "screen"
+            ? null
+            : { type: "finished" };
+        case "effect":
+          return null;
+      }
+    })();
+    if (turn !== null) pill.on(turn);
+  };
+
   const speechModel = () =>
     settings.speechModel === "fast" ? PARAKEET_FAST_MODEL : PARAKEET_MODEL;
 
@@ -492,10 +590,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     await loadSpeechModel();
     if (sidecar === null) throw new Error("Speech recognition is not installed.");
     core = await input.makeCore({
-      intent: makeVoiceIntentClient({ request, injection, field: FOCUSED_FIELD }),
+      intent: voiceIntent,
       onReply: flash,
       settings,
       stt: makeSidecarStt(sidecar),
+      onEvent: onCoreEvent,
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
@@ -524,6 +623,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         state = next;
         render(null);
       },
+      onLevel: (frame) => pill.level(frameLevel(frame)),
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
@@ -637,6 +737,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               click: () => setSpeechModel("fast"),
             },
           ],
+        },
+        {
+          label: "Sounds",
+          type: "checkbox",
+          checked: settings.sounds,
+          click: (item) => save({ sounds: item.checked }),
         },
         {
           label: "Edit voice settings…",
@@ -763,5 +869,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     requestDictation();
   }
   void start().catch(failed);
-  return { refresh: rebuildMenu };
+  return {
+    refresh: rebuildMenu,
+    onSpeaking: (active) => pill.on({ type: "speaking", active }),
+    onTurnEnd: () => pill.on({ type: "finished" }),
+  };
 };

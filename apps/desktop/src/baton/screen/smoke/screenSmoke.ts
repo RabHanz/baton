@@ -121,7 +121,7 @@ const main = async () => {
 
   if (only.includes("look")) {
     const t0 = Date.now();
-    companion.handle({ kind: "look", text: "where do I type my name on this form?" });
+    void companion.said(`look: ${"where do I type my name on this form?"}`, { direct: false });
     await sleep(14_000);
     await frame("01-look-points-at-name-field");
     results["look"] =
@@ -130,10 +130,7 @@ const main = async () => {
 
   if (only.includes("teach")) {
     await reset();
-    companion.handle({
-      kind: "teach",
-      text: "teach me how to sign up on this form with the name Rabee",
-    });
+    void companion.said("teach: how to sign up on this form with the name Rabee", { direct: false });
     await sleep(15_000);
     await frame("02-teach-step-1");
     // The "user" does step 1: click the name field and type.
@@ -155,9 +152,8 @@ const main = async () => {
 
   if (only.includes("drive")) {
     await reset();
-    companion.handle({
-      kind: "drive",
-      text: "fill in the name field with Baton Test and submit the form for me",
+    void companion.said("drive: fill in the name field with Baton Test and submit the form", {
+      direct: false,
     });
     await sleep(40_000);
     await frame("06-drive-finished");

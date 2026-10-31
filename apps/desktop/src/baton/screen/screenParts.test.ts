@@ -3,10 +3,9 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { VoiceRouter } from "@t3tools/baton-voice";
-import type { ScreenIntent } from "@t3tools/baton-shared/screenCompanion";
 import { describe, expect, it } from "vite-plus/test";
 
-import { withScreenRoutes } from "../voice/desktopVoiceCore.ts";
+import { withBrainRoutes } from "../voice/desktopVoiceCore.ts";
 import {
   resolveBinary,
   resultOf,
@@ -152,36 +151,51 @@ describe("inputDriver key maps", () => {
   });
 });
 
-describe("withScreenRoutes", () => {
+describe("withBrainRoutes", () => {
+  const seen: string[] = [];
   const inner: VoiceRouter = {
-    route: async () => ({
-      kind: "ran",
-      reply: "from baton",
-      workSessionId: null,
-      source: "intent",
-    }),
+    route: async (effect) => {
+      seen.push(`${effect.kind}:${"text" in effect ? effect.text : ""}`);
+      return { kind: "ran", reply: "from baton", workSessionId: null, source: "intent" };
+    },
   };
   const bus = {} as never;
+  const router = withBrainRoutes(inner, {
+    said: async (text, { direct }) =>
+      text === "capital of Peru"
+        ? { kind: "handled" }
+        : text === "nuke it"
+          ? { kind: "refused", reply: "no" }
+          : { kind: "act", text: direct ? "not this" : `plain ${text}` },
+  });
+  const route = (effect: unknown) => router.route(effect as never, { bus, now: 0 });
 
-  it("sends screen sentences to the companion and the rest to Baton", async () => {
-    const handled: ScreenIntent[] = [];
-    let active = false;
-    const router = withScreenRoutes(inner, {
-      active: () => active,
-      handle: (i) => handled.push(i),
-    });
-    const command = (text: string) =>
-      router.route({ kind: "command", text, inheritedTarget: null } as never, { bus, now: 0 });
+  it("lets the brain handle or refuse, and sends only act to the intent path", async () => {
+    await expect(
+      route({ kind: "command", text: "capital of Peru", inheritedTarget: null }),
+    ).resolves.toMatchObject({ reply: "", source: "screen" });
+    await expect(
+      route({ kind: "command", text: "nuke it", inheritedTarget: null }),
+    ).resolves.toMatchObject({ kind: "refused", reason: "high_risk" });
+    await route({ kind: "command", text: "what needs me", inheritedTarget: null });
+    expect(seen).toEqual(["command:plain what needs me"]);
+  });
 
-    expect(await command("what's this error?")).toMatchObject({
-      kind: "ran",
-      reply: "",
-      source: "screen",
+  it("keeps direct speech word for word", async () => {
+    seen.length = 0;
+    await route({ kind: "session_message", text: "run the tests" });
+    expect(seen).toEqual(["session_message:run the tests"]);
+  });
+
+  it("never lets dictated text near the brain", async () => {
+    let asked = 0;
+    const counting = withBrainRoutes(inner, {
+      said: async () => {
+        asked += 1;
+        return { kind: "handled" };
+      },
     });
-    expect(await command("what needs me?")).toMatchObject({ reply: "from baton" });
-    expect(await command("next")).toMatchObject({ reply: "from baton" });
-    active = true;
-    expect(await command("next")).toMatchObject({ source: "screen" });
-    expect(handled).toEqual([{ kind: "look", text: "what's this error?" }, { kind: "next" }]);
+    await counting.route({ kind: "dictate", text: "my private note" } as never, { bus, now: 0 });
+    expect(asked).toBe(0);
   });
 });

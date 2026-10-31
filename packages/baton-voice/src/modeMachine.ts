@@ -67,6 +67,8 @@ export type VoiceEvent =
   | { readonly type: "wake"; readonly at: number }
   | { readonly type: "utterance"; readonly text: string; readonly at: number }
   | { readonly type: "tick"; readonly at: number }
+  /** He dismissed the turn: back to resting, and nothing parked stays parked. */
+  | { readonly type: "dismiss"; readonly at: number }
   | { readonly type: "set_direct_session"; readonly enabled: boolean; readonly at: number }
   | { readonly type: "set_target"; readonly workSessionId: string | null; readonly at: number }
   | {
@@ -162,6 +164,13 @@ export const reduceVoice = (
   const carry = expired.effects;
 
   switch (event.type) {
+    case "dismiss":
+      return step(
+        base(s),
+        s.pending === null
+          ? []
+          : [{ kind: "cancelled", token: s.pending.token, reason: "declined" }],
+      );
     case "tick":
       return expired;
 

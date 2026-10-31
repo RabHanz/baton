@@ -1,12 +1,19 @@
 // @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
- * The screen companion (D84): look, teach and drive, by voice or from Ctrl+Alt+Shift+F8. Every
- * capture needs his yes (once, an hour, this lesson, or always) and every drive plan its own yes.
- * How each mode runs is in docs/baton/DECISIONS.md D84.
+ * The assistant (D84, D100): answers, look, teach and drive, by voice or from the ask box. The one
+ * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
+ * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import {
+  ASSISTANT_PROMPT_INTRO,
+  BRAIN_ROUTER_PROMPT,
+  decide,
+  makeSentenceStream,
+  type BrainDecision,
+} from "@t3tools/baton-shared/brain";
 import {
   DRIVE_PROMPT,
   LOOK_PROMPT,
@@ -14,7 +21,6 @@ import {
   describeAction,
   describeDrivePlan,
   needsCaptureApproval,
-  parseAskBox,
   parseReply,
   parseVerify,
   planFromReply,
@@ -27,7 +33,6 @@ import {
   verifyQuestion,
   type CaptureApproval,
   type DrivePlan,
-  type ScreenIntent,
   type ScreenMode,
   type ScreenShot,
 } from "@t3tools/baton-shared/screenCompanion";
@@ -38,14 +43,17 @@ import { createInputDriver } from "./inputDriver.ts";
 import { createPointerOverlay, type OverlayMarker } from "./pointerOverlay.ts";
 import { captureScreens, screenFingerprint, type CapturedScreen } from "./screenCapture.ts";
 
-export const ASK_HOTKEY = "Control+Alt+Shift+F8";
+// F5 to F8 are voice and dictation, and Airdeck has F9 to F12.
+export const ASK_HOTKEY = "Control+Alt+Shift+B";
 
 interface ScreenSettings {
   readonly captureApproval: CaptureApproval;
   /** His `claude` binary; on PATH by default. */
   readonly claudeBinary: string;
-  /** A family alias, so it follows the newest model he has. */
+  /** A family alias, so it follows the newest model he has. Answers, teaching and driving. */
   readonly model: string;
+  /** The alias that routes: every sentence, so the fast one. */
+  readonly routerModel: string;
   readonly speak: boolean;
 }
 
@@ -53,10 +61,15 @@ const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
   model: "sonnet",
+  routerModel: "haiku",
   speak: true,
 };
 
-const LOOK_MEMORY_MS = 5 * 60_000;
+const LOOK_MEMORY_MS = 15 * 60_000;
+const ROUTER_IDLE_MS = 15 * 60_000;
+/** A router this slow has already lost; the word rules answer instead. */
+const ROUTER_TIMEOUT_MS = 20_000;
+const RECENT_LINES = 8;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
 /**
@@ -71,8 +84,34 @@ const PIXEL = 8;
 /** A drive plan made from a screen that has since changed this much is refused. */
 const STALE = 0.06;
 
+/** What Baton can do beyond talking, supplied by the voice side. */
+export interface AssistantActions {
+  /** A command through the intent path and all its guards; the reply to speak. */
+  readonly act: (command: string) => Promise<string>;
+  readonly grammarPlaces: (said: string) => Promise<boolean>;
+}
+
+/** One turn's timings in ms, for the report. Words are never written here. */
+export interface TurnTimings {
+  readonly route: string;
+  readonly source: string;
+  readonly decideMs: number;
+  readonly firstSentenceMs: number | null;
+  readonly totalMs: number;
+}
+
 export interface ScreenCompanion {
-  readonly handle: (intent: ScreenIntent) => void;
+  /** Decide what was said and carry it out. "act" comes back for the caller's own guards. */
+  readonly said: (
+    text: string,
+    input: { readonly direct: boolean },
+  ) => Promise<
+    | { readonly kind: "act"; readonly text: string }
+    | { readonly kind: "handled" }
+    | { readonly kind: "refused"; readonly reply: string }
+  >;
+  readonly setActions: (actions: AssistantActions) => void;
+  /** A lesson or a drive is running. */
   readonly active: () => boolean;
   readonly openAskBox: () => void;
   readonly stop: () => void;
@@ -99,6 +138,8 @@ type Run =
       lastSpoken: string;
     };
 
+const LOOK_REPLY = "[LOOK]";
+
 const ASK_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;background:transparent;font:15px system-ui,-apple-system,"Segoe UI",sans-serif}
 form{display:flex;flex-direction:column;gap:6px;margin:8px;padding:12px 14px;border-radius:14px;background:rgba(17,17,20,.94);box-shadow:0 10px 30px rgba(0,0,0,.45)}
@@ -106,7 +147,7 @@ input{all:unset;color:#f4f4f5;font-size:16px;padding:4px 0}
 input::placeholder{color:#71717a}
 small{color:#a1a1aa;font-size:12px}
 b{color:#8db8ff;font-weight:600}
-</style></head><body><form id="f"><input id="q" autofocus placeholder="Ask about your screen…" aria-label="Ask about your screen"><small><b>Enter</b> ask · start with <b>teach me</b> to be walked through it · <b>drive:</b> or <b>…for me</b> to have Baton do it · <b>Esc</b> close</small></form>
+</style></head><body><form id="f"><input id="q" autofocus placeholder="Ask Baton anything…" aria-label="Ask Baton anything"><small><b>Enter</b> ask · <b>Esc</b> close</small></form>
 <script>const {ipcRenderer}=require('electron');const q=document.getElementById('q');
 document.getElementById('f').onsubmit=e=>{e.preventDefault();ipcRenderer.send('baton-screen:ask',q.value);};
 addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:ask','');});</script></body></html>`;
@@ -115,8 +156,11 @@ export const startScreenCompanion = (input: {
   readonly stateDir: string;
   readonly platform: string;
   readonly env: NodeJS.ProcessEnv;
-  /** The OS voice (`createOsTts`), injected so this module never loads the voice models. */
+  /** Baton's one voice, injected so this module never loads the voice models. */
   readonly speak: (text: string) => Promise<void>;
+  /** A turn finished with nothing further coming, for the cue after a wake word. */
+  readonly onTurnEnd?: () => void;
+  readonly onTimings?: (timings: TurnTimings) => void;
   /** Lets the voice tray show the companion's own entries. */
   readonly onChange?: () => void;
 }): ScreenCompanion => {
@@ -146,11 +190,53 @@ export const startScreenCompanion = (input: {
   let allowedUntil = 0;
   let clearTimer: ReturnType<typeof setTimeout> | null = null;
 
+  let actions: AssistantActions | null = null;
+  const recent: string[] = [];
+  const remember = (line: string) => {
+    recent.push(line.slice(0, 300));
+    recent.splice(0, Math.max(0, recent.length - RECENT_LINES));
+  };
+
+  const session = (model: string, systemPrompt: string, timeoutMs?: number): VisionSession =>
+    startVisionSession({
+      claudeBinary: settings.claudeBinary,
+      model,
+      systemPrompt,
+      workDir: NodePath.join(input.stateDir, "screen"),
+      env: input.env,
+      platform: input.platform,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    });
+
+  // Kept warm between sentences: a cold start costs 2 s more, and it holds no conversation of use.
+  let router: VisionSession | null = null;
+  let routerIdle: ReturnType<typeof setTimeout> | null = null;
+  const dropRouter = () => {
+    router?.dispose();
+    router = null;
+  };
+  const routerAsk = async (turn: string): Promise<string> => {
+    router ??= session(settings.routerModel, BRAIN_ROUTER_PROMPT, ROUTER_TIMEOUT_MS);
+    if (routerIdle !== null) clearTimeout(routerIdle);
+    routerIdle = setTimeout(dropRouter, ROUTER_IDLE_MS);
+    try {
+      return await router.ask([{ type: "text", text: turn }]);
+    } catch (error) {
+      dropRouter();
+      throw error;
+    }
+  };
+
   const visionFor = (mode: ScreenMode): VisionSession =>
     startVisionSession({
       claudeBinary: settings.claudeBinary,
       model: settings.model,
-      systemPrompt: mode === "look" ? LOOK_PROMPT : mode === "teach" ? TEACH_PROMPT : DRIVE_PROMPT,
+      systemPrompt:
+        mode === "look"
+          ? `${ASSISTANT_PROMPT_INTRO}\n\n${LOOK_PROMPT}`
+          : mode === "teach"
+            ? TEACH_PROMPT
+            : DRIVE_PROMPT,
       workDir: NodePath.join(input.stateDir, "screen"),
       env: input.env,
       platform: input.platform,
@@ -245,23 +331,51 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
-  const look = async (question: string) => {
-    if (!(await approveCapture(question, null))) return;
+  /** One conversation for answers and looks, so a follow-up keeps its thread either way. */
+  const answer = async (question: string, withScreen: boolean, firstSentence: () => void) => {
     if (run?.mode !== "look" || Date.now() - run.lastAt > LOOK_MEMORY_MS) {
       end();
       run = { mode: "look", vision: visionFor("look"), lastAt: Date.now() };
     }
     const current = run;
-    await show("Looking…", question);
-    const captured = await capture();
-    const reply = parseReply(await current.vision.ask(content(captured, question)));
+    const stream = makeSentenceStream();
+    let spoken = 0;
+    const speakAsItComes = (delta: string) => {
+      for (const sentence of stream.feed(delta)) {
+        if (spoken === 0) firstSentence();
+        spoken += 1;
+        say(sentence);
+      }
+    };
+    const ask = async (
+      screen: boolean,
+    ): Promise<{ raw: string; shots: ReadonlyArray<ScreenShot> }> => {
+      if (screen && !(await approveCapture(question, null))) {
+        return { raw: "", shots: [] };
+      }
+      await show(screen ? "Looking…" : "Thinking…", question);
+      const captured = screen ? await capture() : [];
+      const raw = await current.vision.ask(content(captured, question), speakAsItComes);
+      return { raw, shots: captured.map((c) => c.shot) };
+    };
+    let turn = await ask(withScreen);
+    // The model found it needs to see the screen after all.
+    if (!withScreen && turn.raw.trim() === LOOK_REPLY) turn = await ask(true);
     current.lastAt = Date.now();
+    if (turn.raw.length === 0) {
+      say("All right, I won't look.");
+      return void (await overlay.clear());
+    }
+    const reply = parseReply(turn.raw);
+    const rest = stream.flush();
+    if (rest.length > 0) {
+      if (spoken === 0) firstSentence();
+      say(rest);
+    }
+    remember(`He said: ${question}`);
+    remember(`You answered: ${reply.spoken}`);
     await show("Baton", reply.spoken);
-    await pointAt(
-      reply.point,
-      captured.map((c) => c.shot),
-    );
-    say(reply.spoken);
+    await pointAt(reply.point, turn.shots);
     clearLater(Math.max(8000, reply.spoken.length * 70));
   };
 
@@ -470,28 +584,99 @@ export const startScreenCompanion = (input: {
       return shot === null ? [] : [{ ...toDesktop(action, shot), n: i + 1 }];
     });
 
-  const handle = (intent: ScreenIntent) => {
+  const runningMode = (): string | null => (run !== null && run.mode !== "look" ? run.mode : null);
+
+  const decideSaid = (text: string, direct: boolean): Promise<BrainDecision> =>
+    decide(
+      text,
+      { running: runningMode(), direct, recent },
+      {
+        ask: routerAsk,
+        grammarPlaces: (said) => actions?.grammarPlaces(said) ?? Promise.resolve(false),
+      },
+    );
+
+  const perform = (decision: BrainDecision, started: number, decidedAt: number) => {
+    let firstAt: number | null = null;
+    const finished = () => {
+      input.onTimings?.({
+        route: decision.route,
+        source: decision.source,
+        decideMs: decidedAt - started,
+        firstSentenceMs: firstAt === null ? null : firstAt - started,
+        totalMs: Date.now() - started,
+      });
+      input.onTurnEnd?.();
+    };
     const go = (): Promise<void> => {
-      switch (intent.kind) {
+      switch (decision.route) {
+        case "answer":
+          return answer(decision.text, false, () => (firstAt ??= Date.now()));
         case "look":
-          return look(intent.text);
+          return answer(decision.text, true, () => (firstAt ??= Date.now()));
         case "teach":
-          return teach(intent.text);
+          return teach(decision.text);
         case "drive":
-          return drive(intent.text);
-        case "next":
-          return run?.mode === "teach" ? teachStep("he says he did it.") : Promise.resolve();
-        case "repeat":
-          if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
+          return drive(decision.text);
+        case "clarify":
+          firstAt = Date.now();
+          remember(`You asked him: ${decision.text}`);
+          say(decision.text);
+          void show("Baton", decision.text);
+          clearLater(8000);
           return Promise.resolve();
-        case "stop":
+        case "control":
+          if (decision.control === "next") {
+            return run?.mode === "teach" ? teachStep("he says he did it.") : Promise.resolve();
+          }
+          if (decision.control === "repeat") {
+            if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
+            return Promise.resolve();
+          }
           void overlay.clear();
           say("Stopped.");
           end();
           return Promise.resolve();
+        case "refused":
+        case "act":
+          return Promise.resolve();
       }
     };
-    void go().catch(fail);
+    void go().catch(fail).finally(finished);
+  };
+
+  const said: ScreenCompanion["said"] = async (text, { direct }) => {
+    const started = Date.now();
+    const decision = await decideSaid(text, direct);
+    const decidedAt = Date.now();
+    if (decision.route === "act") {
+      input.onTimings?.({
+        route: "act",
+        source: decision.source,
+        decideMs: decidedAt - started,
+        firstSentenceMs: null,
+        totalMs: decidedAt - started,
+      });
+      return { kind: "act", text: decision.text };
+    }
+    if (decision.route === "refused") return { kind: "refused", reply: decision.text };
+    perform(decision, started, decidedAt);
+    return { kind: "handled" };
+  };
+
+  /** Typed asks: the same decision, with the card and the voice standing in for the voice side. */
+  const typed = async (text: string) => {
+    const result = await said(text, { direct: false });
+    if (result.kind === "handled") return;
+    const reply =
+      result.kind === "refused"
+        ? result.reply
+        : actions === null
+          ? "Baton's sessions aren't reachable from here yet."
+          : await actions.act(result.text);
+    await show("Baton", reply);
+    say(reply);
+    clearLater(Math.max(8000, reply.length * 70));
   };
 
   let askBox: Electron.BrowserWindow | null = null;
@@ -499,8 +684,9 @@ export const startScreenCompanion = (input: {
     if (askBox === null || event.sender !== askBox.webContents) return;
     askBox.destroy();
     askBox = null;
-    const intent = typeof text === "string" ? parseAskBox(text, run !== null) : null;
-    if (intent !== null) handle(intent);
+    if (typeof text === "string" && text.trim().length > 0) {
+      void typed(text.trim()).catch(fail);
+    }
   };
   Electron.ipcMain.on("baton-screen:ask", onAsk);
   const openAskBox = () => {
@@ -536,18 +722,23 @@ export const startScreenCompanion = (input: {
 
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
+  const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
+
   return {
-    handle,
-    active: () => run !== null && run.mode !== "look",
+    said,
+    setActions: (next) => {
+      actions = next;
+    },
+    active: () => runningMode() !== null,
     openAskBox,
-    stop: () => handle({ kind: "stop" }),
+    stop,
     menuItems: () => [
-      { label: "Ask about my screen…", accelerator: ASK_HOTKEY, click: openAskBox },
+      { label: "Ask Baton…", accelerator: ASK_HOTKEY, click: openAskBox },
       ...(run !== null && run.mode !== "look"
         ? [
             {
               label: run.mode === "teach" ? "Stop the lesson" : "Stop driving",
-              click: () => handle({ kind: "stop" }),
+              click: stop,
             },
           ]
         : []),
@@ -567,6 +758,8 @@ export const startScreenCompanion = (input: {
     ],
     dispose: () => {
       end();
+      dropRouter();
+      if (routerIdle !== null) clearTimeout(routerIdle);
       Electron.globalShortcut.unregister(ASK_HOTKEY);
       Electron.ipcMain.removeListener("baton-screen:ask", onAsk);
       driver?.dispose();

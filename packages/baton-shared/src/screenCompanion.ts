@@ -540,8 +540,25 @@ const LOOK_RE =
   /\b(?:look at (?:this|that|my screen|the screen|it)|(?:what'?s|what is) (?:this|that|on (?:my |the )?screen)|what am i looking at|on (?:my|the) screen|(?:this|that) (?:error|screen|window|page|button|message|dialog|warning|chart|code|menu|setting)|where(?:'s| is| are) the .+\b(?:button|menu|icon|field|setting|option|tab|link|toggle)\b|point (?:at|to)\b|explain (?:this|what'?s on))/i;
 const PREFIX_RE = /^\s*(look|screen|teach|guide|drive)\s*[:,]\s*(.+)$/i;
 
+/** The sentences with one possible meaning: lesson controls, and his own "drive:" prefixes. */
+export const screenControl = (text: string, active: boolean): ScreenIntent | null => {
+  const t = text.trim();
+  if (active) {
+    if (NEXT_RE.test(t)) return { kind: "next" };
+    if (STOP_RE.test(t)) return { kind: "stop" };
+    if (REPEAT_RE.test(t)) return { kind: "repeat" };
+  }
+  const prefixed = PREFIX_RE.exec(t);
+  if (prefixed === null) return null;
+  const word = prefixed[1]!.toLowerCase();
+  const kind: ScreenMode =
+    word === "drive" ? "drive" : word === "teach" || word === "guide" ? "teach" : "look";
+  return { kind, text: prefixed[2]!.trim() };
+};
+
 /**
- * Whether a sentence is for the screen companion. With a lesson or a drive running, "next",
+ * Whether a sentence is for the screen companion, by its words. The fallback when no model can be
+ * reached; normally the brain decides (D100). With a lesson or a drive running, "next",
  * "stop" and "repeat" are its; otherwise only sentences that plainly ask about, or to be taught
  * or helped on, the screen. Everything else stays Baton's intent grammar, so "show me the
  * scheduler session" is still §21's show.
@@ -549,29 +566,13 @@ const PREFIX_RE = /^\s*(look|screen|teach|guide|drive)\s*[:,]\s*(.+)$/i;
 export const parseScreenIntent = (text: string, active: boolean): ScreenIntent | null => {
   const t = text.trim();
   if (t.length === 0) return null;
-  if (active) {
-    if (NEXT_RE.test(t)) return { kind: "next" };
-    if (STOP_RE.test(t)) return { kind: "stop" };
-    if (REPEAT_RE.test(t)) return { kind: "repeat" };
-  }
-  const prefixed = PREFIX_RE.exec(t);
-  if (prefixed !== null) {
-    const word = prefixed[1]!.toLowerCase();
-    const kind: ScreenMode =
-      word === "drive" ? "drive" : word === "teach" || word === "guide" ? "teach" : "look";
-    return { kind, text: prefixed[2]!.trim() };
-  }
+  const control = screenControl(t, active);
+  if (control !== null) return control;
   if (DRIVE_RE.test(t)) return { kind: "drive", text: t };
   if (TEACH_RE.test(t)) return { kind: "teach", text: t };
   if (LOOK_RE.test(t)) return { kind: "look", text: t };
   return null;
 };
-
-/** The hotkey's text box: everything typed there is for the screen; the mode defaults to look. */
-export const parseAskBox = (text: string, active: boolean): ScreenIntent | null =>
-  text.trim().length === 0
-    ? null
-    : (parseScreenIntent(text, active) ?? { kind: "look", text: text.trim() });
 
 // ── Approval ────────────────────────────────────────────────────────────────
 

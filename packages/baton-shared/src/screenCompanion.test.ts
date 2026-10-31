@@ -4,7 +4,6 @@ import {
   captureSize,
   describeDrivePlan,
   needsCaptureApproval,
-  parseAskBox,
   parseReply,
   parseScreenIntent,
   parseVerify,
@@ -317,15 +316,6 @@ describe("parseScreenIntent", () => {
     expect(parseScreenIntent("stop", true)).toEqual({ kind: "stop" });
     expect(parseScreenIntent("say that again", true)).toEqual({ kind: "repeat" });
     expect(parseScreenIntent("stop", false)).toBeNull();
-  });
-
-  it("the ask box defaults to look", () => {
-    expect(parseAskBox("why is the build failing", false)).toEqual({
-      kind: "look",
-      text: "why is the build failing",
-    });
-    expect(parseAskBox("teach me git rebase", false)?.kind).toBe("teach");
-    expect(parseAskBox("  ", false)).toBeNull();
   });
 });
 

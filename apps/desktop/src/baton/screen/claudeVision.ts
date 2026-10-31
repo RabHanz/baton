@@ -18,7 +18,11 @@ export type VisionContent =
     };
 
 export interface VisionSession {
-  readonly ask: (content: ReadonlyArray<VisionContent>) => Promise<string>;
+  readonly ask: (
+    content: ReadonlyArray<VisionContent>,
+    /** Text as it arrives, for speaking before the answer is finished. */
+    onDelta?: (text: string) => void,
+  ) => Promise<string>;
   readonly dispose: () => void;
 }
 
@@ -41,6 +45,7 @@ export const visionArgs = (systemPromptFile: string, model: string): ReadonlyArr
   "--output-format",
   "stream-json",
   "--verbose",
+  "--include-partial-messages",
   "--model",
   model,
   "--tools",
@@ -97,6 +102,24 @@ export const resultOf = (
   return { ok: true, text: event.result };
 };
 
+/** Streamed text in one stream-json line, or null when the line is something else. */
+export const deltaOf = (line: string): string | null => {
+  try {
+    const event = JSON.parse(line) as {
+      type?: unknown;
+      event?: { type?: unknown; delta?: { type?: unknown; text?: unknown } };
+    };
+    const inner = event.type === "stream_event" ? event.event : undefined;
+    return inner?.type === "content_block_delta" &&
+      inner.delta?.type === "text_delta" &&
+      typeof inner.delta.text === "string"
+      ? inner.delta.text
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * On Windows a bare "claude" may be the native `claude.exe` or npm's `claude.cmd`; spawn without
  * a shell finds only the first, so look on PATH for both. Elsewhere the name is used as given.
@@ -142,7 +165,11 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
   child.stderr.on("data", (chunk: Buffer) => {
     stderr = (stderr + chunk.toString()).slice(-2000);
   });
-  const waiting: Array<{ resolve: (text: string) => void; reject: (error: Error) => void }> = [];
+  const waiting: Array<{
+    resolve: (text: string) => void;
+    reject: (error: Error) => void;
+    onDelta?: ((text: string) => void) | undefined;
+  }> = [];
   let dead: Error | null = null;
   const fail = (error: Error) => {
     dead = error;
@@ -165,6 +192,8 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     ),
   );
   NodeReadline.createInterface({ input: child.stdout }).on("line", (line) => {
+    const delta = deltaOf(line);
+    if (delta !== null) return waiting[0]?.onDelta?.(delta);
     const result = resultOf(line);
     if (result === null) return;
     const next = waiting.shift();
@@ -175,7 +204,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
 
   // One question at a time: stream-json answers in order, and a turn must finish before the next.
   let chain: Promise<unknown> = Promise.resolve();
-  const ask = (content: ReadonlyArray<VisionContent>): Promise<string> => {
+  const ask: VisionSession["ask"] = (content, onDelta) => {
     const turn = chain.then(
       () =>
         new Promise<string>((resolve, reject) => {
@@ -188,6 +217,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
           waiting.push({
             resolve: (text) => (clearTimeout(timer), resolve(text)),
             reject: (error) => (clearTimeout(timer), reject(error)),
+            onDelta,
           });
           child.stdin.write(`${userMessage(content)}\n`);
         }),

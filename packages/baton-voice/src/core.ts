@@ -56,6 +56,10 @@ export const DEFAULT_SEGMENTER: SegmenterConfig = {
 export type VoiceCoreEvent =
   | { readonly type: "state"; readonly state: VoiceState; readonly target: string | null }
   | { readonly type: "wake"; readonly score: number; readonly at: number }
+  /** A segment went to speech recognition. */
+  | { readonly type: "thinking" }
+  /** Speech recognition came back with nothing usable. */
+  | { readonly type: "nothing" }
   | { readonly type: "transcript"; readonly text: string; readonly at: number }
   | { readonly type: "effect"; readonly effect: VoiceEffect }
   | { readonly type: "outcome"; readonly outcome: RouteOutcome }
@@ -235,10 +239,11 @@ export const createVoiceCore = (input: {
       pcm.set(p, o);
       o += p.length;
     }
+    emit({ type: "thinking" });
     enqueue(async () => {
       const text = await input.stt.transcribe(pcm);
       const cleaned = text.trim();
-      if (NOISE.test(cleaned)) return;
+      if (NOISE.test(cleaned)) return emit({ type: "nothing" });
       lastTranscript = cleaned;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
@@ -302,7 +307,10 @@ export const createVoiceCore = (input: {
   };
 
   const activate = (activation: VoiceActivation) => {
-    if (activation === "wake") enqueue(() => dispatch({ type: "wake", at: now() }));
+    if (activation === "wake") {
+      emit({ type: "wake", score: 1, at: now() });
+      enqueue(() => dispatch({ type: "wake", at: now() }));
+    } else if (activation === "dismiss") enqueue(() => dispatch({ type: "dismiss", at: now() }));
     else if (activation === "toggle_direct_session") {
       enqueue(() =>
         dispatch({ type: "set_direct_session", enabled: !machine.directSession, at: now() }),
