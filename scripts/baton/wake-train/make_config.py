@@ -12,6 +12,10 @@ WORDS = {
     },
     "sebastian": {
         "target": ["sebastian"],
+        # espeak only says se-BAS-chun, which the en-GB test voices do not (2 of 30 fired). His own
+        # two real uses fired on a model trained that way, so both endings go in, as phonemes.
+        "ipa": ["səbˈastiən", "sɪbˈastiən", "səbˈɑːstiən", "səbˈæstiən",
+                "səbˈastʃən", "sɪbˈastʃən", "səbˈɑːstʃən", "səbˈæstʃən"],
         # Things he says all day that sound close, on top of the trainer's phonetic negatives.
         "negative": ["celebration", "suggestion", "the bastion", "sebastopol", "save a station",
                      "session", "the question", "a bastion", "see baton"],

@@ -50,9 +50,14 @@ def speak(job):
         LOADED[name] = PiperVoice.load(f"piper-voices/{name}.onnx", config_path=f"piper-voices/{name}.onnx.json")
     voice = LOADED[name]
     rate = voice.config.sample_rate
-    pcm = b"".join(voice.synthesize_stream_raw(
-        text, speaker_id=speaker if voice.config.num_speakers > 1 else None, length_scale=length, noise_scale=0.8, noise_w=0.9,
-    ))
+    speaker = speaker if voice.config.num_speakers > 1 else None
+    if text.startswith("/"):
+        ids = voice.phonemes_to_ids(list(text[1:]))
+        pcm = voice.synthesize_ids_to_raw(ids, speaker_id=speaker, length_scale=length, noise_scale=0.8, noise_w=0.9)
+    else:
+        pcm = b"".join(voice.synthesize_stream_raw(
+            text, speaker_id=speaker, length_scale=length, noise_scale=0.8, noise_w=0.9,
+        ))
     audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
     audio = resample_poly(audio, 16000, rate)
     with wave.open(os.path.join(out, f"{uuid.uuid4().hex}.wav"), "wb") as handle:
@@ -80,9 +85,14 @@ def main():
     root = f"model/{word}"
     os.makedirs("model", exist_ok=True)
     target, negative = WORDS[word]["target"], WORDS[word]["negative"]
+    # A word with its own phonemes takes all its positives from here: the trainer's generator
+    # can only say the espeak version.
+    ipa = WORDS[word].get("ipa")
+    share = 1.0 if ipa else 0.6
+    target = [f"/{form}" for form in ipa] if ipa else target
     work = (
-        jobs(target, int(n_samples * 0.6), f"{root}/positive_train")
-        + jobs(target, int(n_val * 0.6), f"{root}/positive_test")
+        jobs(target, int(n_samples * share), f"{root}/positive_train")
+        + jobs(target, int(n_val * share), f"{root}/positive_test")
         + jobs(negative, int(n_samples * 0.2), f"{root}/negative_train")
         + jobs(negative, int(n_val * 0.2), f"{root}/negative_test")
     )
