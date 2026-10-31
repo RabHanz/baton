@@ -6,6 +6,8 @@
  */
 import * as Electron from "electron";
 
+import { markCompanionWindow } from "../lastAppWindow.ts";
+
 import { COMPANION_CSS } from "./companionStyle.ts";
 
 export type AnswerOutput = "spoken" | "written";
@@ -96,6 +98,7 @@ const companionWindow = (bounds: Electron.Rectangle, focusable = true): Electron
   // These pages have Node: only the page written here may ever load in them.
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  markCompanionWindow(win);
   win.setAlwaysOnTop(true, "screen-saver");
   win.setContentProtection(true);
   return win;

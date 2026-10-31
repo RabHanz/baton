@@ -6,6 +6,8 @@
  * host or a refused microphone is reported in its own tray, not as a startup failure.
  */
 import * as Electron from "electron";
+
+import { trackAppWindows } from "./lastAppWindow.ts";
 import * as NodePath from "node:path";
 
 import { createOsTts } from "@t3tools/baton-voice";
@@ -36,6 +38,7 @@ export const startBatonDesktop = Effect.gen(function* () {
   const { resourcesPath } = environment;
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
+    trackAppWindows(Electron.app);
     const holdEscape = createEscapeKey(Electron.globalShortcut);
     const pocket = createPocketEngine({
       root: NodePath.join(environment.stateDir, "voice", "pocket"),
