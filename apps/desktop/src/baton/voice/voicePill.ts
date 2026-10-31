@@ -14,6 +14,7 @@ import {
   IDLE_TURN,
   SILENT_AFTER_MS,
   reduceTurn,
+  turnHoldsEscape,
   turnLimitMs,
   turnView,
   type TurnEvent,
@@ -208,7 +209,7 @@ export const createVoicePill = (input: {
       }
     } else {
       raise();
-      setEscape(state.phase !== "muted" && state.phase !== "done");
+      setEscape(turnHoldsEscape(state.phase));
       call(`window.pill.show(${JSON.stringify(view)})`);
       if (event.type === "wake") {
         loudest = 0;

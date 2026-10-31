@@ -23,8 +23,8 @@ In the ask box anything that is not "teach" or "drive" is a Look question.
 
 **How long things stay.** The pointer stays on its target and the card beside it until the narration
 has finished and you have had time to read: at least 3 s after speech, more for long text, with a line
-counting down. Long answers turn pages at sentence ends. Esc takes it all down, voice included. A
-lesson's step stays until the step is done. Rules: D110.
+counting down. Long answers turn pages at sentence ends. Say "stop" or use Tray, Clear the screen, to
+take it all down, voice included. Esc is left to your apps. A lesson's step stays until the step is done. Rules: D110.
 
 **Spoken and written, or Written only.** From the tray (Answers) or the ask box, remembered. In Written
 only nothing plays, and every answer, action, plan and step is on screen in full.

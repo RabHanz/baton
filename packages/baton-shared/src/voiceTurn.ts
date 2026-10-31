@@ -174,6 +174,12 @@ export const turnLimitMs = (phase: TurnPhase): number =>
       ? TURN_BRIEF_MS
       : TURN_LIMIT_MS;
 
+/**
+ * Esc belongs to his apps unless the microphone is live. Dictation holds it itself, a drive as its
+ * safety stop, and the ask box and prompts hear it through their own focus.
+ */
+export const turnHoldsEscape = (phase: TurnPhase): boolean => phase === "listening";
+
 /** Peak of a frame on a rough 0..1 scale for the waveform. */
 export const frameLevel = (frame: Int16Array): number => {
   let peak = 0;

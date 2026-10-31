@@ -239,7 +239,6 @@ export const startScreenCompanion = (input: {
   let driver: ReturnType<typeof createInputDriver> | null = null;
   let run: Run | null = null;
   let allowedUntil = 0;
-  let releaseEscape: (() => void) | null = null;
   /** Bumped by anything new on screen; a hold that finds it moved quietly gives up. */
   let showing = 0;
 
@@ -297,20 +296,12 @@ export const startScreenCompanion = (input: {
 
   const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-  const escapeOff = () => {
-    releaseEscape?.();
-    releaseEscape = null;
-  };
-  /** Esc takes down whatever is up, and the voice with it. */
-  const escapeOn = () => {
-    releaseEscape ??= input.holdEscape(() => dismiss());
-  };
   const wipe = async () => {
     showing += 1;
     spokenFrom = null;
-    escapeOff();
     await overlay.clear();
   };
+  /** Takes down whatever is up, and the voice with it. Esc stays his: this is the tray's. */
   const dismiss = () => {
     input.stopSpeech?.();
     input.onDismissed?.();
@@ -329,7 +320,6 @@ export const startScreenCompanion = (input: {
     extra: Partial<OverlayCard> = {},
   ) => {
     showing += 1;
-    escapeOn();
     await overlay.card({ kicker, text, hint, ...extra });
   };
 
@@ -342,7 +332,6 @@ export const startScreenCompanion = (input: {
     const mine = ++showing;
     const pages = pageText(text);
     const current = () => mine === showing;
-    escapeOn();
     void (async () => {
       for (const [i, page] of pages.entries()) {
         const label = pages.length > 1 ? `${i + 1} of ${pages.length}` : undefined;
@@ -363,7 +352,6 @@ export const startScreenCompanion = (input: {
       if (!current()) return;
       showing += 1;
       spokenFrom = null;
-      escapeOff();
       await overlay.retreat();
     })().catch(() => undefined);
   };
@@ -565,7 +553,7 @@ export const startScreenCompanion = (input: {
       await show(
         `Step ${lesson.step}`,
         reply.spoken,
-        "Do it and I'll notice, or say next. Stop ends the lesson. Esc closes it.",
+        "Do it and I'll notice, or say next. Stop ends the lesson.",
       );
       watch(lesson, baseline, reply.spoken);
     } finally {
@@ -872,6 +860,7 @@ export const startScreenCompanion = (input: {
     stop,
     menuItems: () => [
       { label: "Ask Baton…", accelerator: ASK_HOTKEY, click: openAskBox },
+      { label: "Clear the screen", click: dismiss },
       ...(run !== null && run.mode !== "look"
         ? [
             {
@@ -937,7 +926,6 @@ export const startScreenCompanion = (input: {
       dropRouter();
       if (routerIdle !== null) clearTimeout(routerIdle);
       Electron.globalShortcut.unregister(ASK_HOTKEY);
-      escapeOff();
       windows.dispose();
       driver?.dispose();
       overlay.dispose();

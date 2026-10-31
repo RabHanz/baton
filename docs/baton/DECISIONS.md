@@ -2772,7 +2772,10 @@ display.
 Rejected: longer timers. Any fixed number is wrong for some answer, and it would not have touched the
 multi-display wipe, which was the fraction of a second.
 
-Trade-off: Esc is held globally while something is on screen, so that press does not reach his app.
+Esc stays his apps' while a card is merely showing: the overlay cannot take focus, and a global grab
+swallowed the key. It is held only while the microphone is live and during a running drive, as its
+safety stop; the ask box and prompts hear it through their own focus. Tray, Clear the screen takes
+down a card, and "stop" does by voice.
 
 ## D111 — One look, and text beside the pointer
 
