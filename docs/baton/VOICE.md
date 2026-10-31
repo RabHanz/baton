@@ -58,7 +58,7 @@ import {
 } from "@t3tools/baton-voice";
 
 const core = createVoiceCore({
-  wake: await createOpenWakeWordProvider({ melspectrogram, embedding, wake: heyJarvis }),
+  wake: await createOpenWakeWordProvider({ melspectrogram, embedding, wakes: [{ word: "Alfred", path: alfred, threshold: 0.9 }] }),
   vad: await createSileroVad(sileroPath),
   stt: createWhisperCppStt({
     binary: whisperCli,

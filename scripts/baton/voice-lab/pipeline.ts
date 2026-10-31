@@ -16,8 +16,15 @@ import {
 import { withBrainRoutes } from "../../../apps/desktop/src/baton/voice/desktopVoiceCore.ts";
 import { BRAIN_ROUTER_PROMPT, decide } from "../../../packages/baton-shared/src/brain.ts";
 import { resolveBatonIntent } from "../../../packages/baton-shared/src/intentParser.ts";
-import { createVoiceCore, DEFAULT_TIMINGS, createVoiceRouter } from "../../../packages/baton-voice/src/index.ts";
-import { createOpenWakeWordProvider, createSileroVad } from "../../../packages/baton-voice/src/providers/onnx.ts";
+import {
+  createVoiceCore,
+  DEFAULT_TIMINGS,
+  createVoiceRouter,
+} from "../../../packages/baton-voice/src/index.ts";
+import {
+  createOpenWakeWordProvider,
+  createSileroVad,
+} from "../../../packages/baton-voice/src/providers/onnx.ts";
 import { fleet, grammarClient } from "../../../packages/baton-voice/test/grammarClient.ts";
 
 const flag = (name: string): string => process.argv[process.argv.indexOf(name) + 1]!;
@@ -151,7 +158,9 @@ const main = async () => {
   if (process.argv.includes("--echo")) {
     const [replyFile, wakeFile] = flag("--echo").split(",") as [string, string];
     const reply = readPcm(replyFile).map((sample) => sample * 0.35) as Int16Array;
-    log.push(`\n== echo: own reply, ${(reply.length / 16_000).toFixed(1)} s, conversation window open`);
+    log.push(
+      `\n== echo: own reply, ${(reply.length / 16_000).toFixed(1)} s, conversation window open`,
+    );
     await feed(readPcm(wakeFile));
     await feed(silence);
     await new Promise((r) => setTimeout(r, 6_000));
@@ -170,7 +179,8 @@ const main = async () => {
     const mixed = reply.slice();
     const at = 16_000 * 2;
     wakeClip.forEach((sample, i) => {
-      if (at + i < mixed.length) mixed[at + i] = Math.max(-32_768, Math.min(32_767, mixed[at + i]! + sample));
+      if (at + i < mixed.length)
+        mixed[at + i] = Math.max(-32_768, Math.min(32_767, mixed[at + i]! + sample));
     });
     core.setSpeaking(true);
     // The app stops playback on barge_in, so from there only his voice reaches the mic.

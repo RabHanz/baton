@@ -531,7 +531,12 @@ export const startScreenCompanion = (input: {
       input.onActivity?.(null);
       if (run !== lesson) return;
       lesson.lastSpoken = reply.spoken;
-      input.onTrace?.({ teachStep: lesson.step, note: note ?? null, reply: reply.spoken, at: Date.now() });
+      input.onTrace?.({
+        teachStep: lesson.step,
+        note: note ?? null,
+        reply: reply.spoken,
+        at: Date.now(),
+      });
       if (reply.done) {
         say(reply.spoken);
         linger("Done", reply.spoken);
@@ -629,7 +634,10 @@ export const startScreenCompanion = (input: {
     if ("error" in parsed && reply.planText !== null) {
       reply = parseReply(
         await current.vision.ask([
-          { type: "text", text: `that plan was refused: ${parsed.error} propose one that avoids it.` },
+          {
+            type: "text",
+            text: `that plan was refused: ${parsed.error} propose one that avoids it.`,
+          },
         ]),
       );
       if (run !== current) return;

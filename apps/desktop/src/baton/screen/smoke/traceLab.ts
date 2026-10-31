@@ -14,7 +14,7 @@ import { fallbackDecision } from "@t3tools/baton-shared/brain";
 import * as Electron from "electron";
 
 import { startDictationSidecar } from "../../voice/dictationSidecar.ts";
-import { startScreenCompanion } from "../ScreenCompanion.ts";
+import { ASK_HOTKEY, startScreenCompanion } from "../ScreenCompanion.ts";
 
 const out = process.env["LAB_OUT"] ?? process.cwd();
 const stateDir = NodePath.join(out, "state");
@@ -126,7 +126,9 @@ const main = async () => {
           y: 200,
           alwaysOnTop: true,
         });
-        void win.loadURL("data:text/html,<body style='background:%23246;color:white'>a step was done");
+        void win.loadURL(
+          "data:text/html,<body style='background:%23246;color:white'>a step was done",
+        );
         write({ userActed: Date.now() });
         setTimeout(() => win.destroy(), 25_000);
       }, 14_000);

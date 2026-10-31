@@ -59,7 +59,8 @@ export const CASES: ReadonlyArray<Case> = [
 ];
 
 const flag = (name: string): string => process.argv[process.argv.indexOf(name) + 1]!;
-const SAID_ABSENT = /\b(?:can'?t see|cannot see|don'?t see|do not see|isn'?t|is not|not (?:on|visible)|no\s+\w*\s*(?:button|option|toggle)|there'?s no|couldn'?t find)\b/i;
+const SAID_ABSENT =
+  /\b(?:can'?t see|cannot see|don'?t see|do not see|isn'?t|is not|not (?:on|visible)|no\s+\w*\s*(?:button|option|toggle)|there'?s no|couldn'?t find)\b/i;
 
 const main = async () => {
   const arm = flag("--arm");
@@ -100,13 +101,13 @@ const main = async () => {
     const started = Date.now();
     const raw = await vision
       .ask([
-      { type: "text", text: label },
-      { type: "image", mediaType: "image/jpeg", data: image },
-      {
-        type: "text",
-        text: after ? `${test.said}\n\n(the window he is using: ${focused})` : test.said,
-      },
-    ])
+        { type: "text", text: label },
+        { type: "image", mediaType: "image/jpeg", data: image },
+        {
+          type: "text",
+          text: after ? `${test.said}\n\n(the window he is using: ${focused})` : test.said,
+        },
+      ])
       .catch((error: Error) => `[failed: ${error.message}]`);
     vision.dispose();
     const reply = parseReply(raw);
@@ -114,7 +115,8 @@ const main = async () => {
     let good: boolean;
     let missPx: number | null = null;
     if (test.kind === "absent") good = !flies && SAID_ABSENT.test(reply.spoken);
-    else if (test.kind === "read") good = new RegExp(test.contains!).test(reply.spoken.toLowerCase());
+    else if (test.kind === "read")
+      good = new RegExp(test.contains!).test(reply.spoken.toLowerCase());
     else {
       const [l, t, r, b] = test.box!.map((v) => v * scale) as [number, number, number, number];
       const p = reply.point;

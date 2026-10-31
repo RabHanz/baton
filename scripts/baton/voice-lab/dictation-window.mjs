@@ -14,12 +14,17 @@ const flag = (name) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ps = (script) =>
-  execFileSync("powershell.exe", ["-NoProfile", "-STA", "-Command", script], { encoding: "utf8" }).trim();
+  execFileSync("powershell.exe", ["-NoProfile", "-STA", "-Command", script], {
+    encoding: "utf8",
+  }).trim();
 const setClip = (text) => ps(`Set-Clipboard -Value '${text}'`);
 const getClip = () => ps("Get-Clipboard -Raw");
 
 const sidecar = (env = {}) => {
-  const child = spawn(flag("--exe"), [], { env: { ...process.env, ...env }, stdio: ["pipe", "pipe", "ignore"] });
+  const child = spawn(flag("--exe"), [], {
+    env: { ...process.env, ...env },
+    stdio: ["pipe", "pipe", "ignore"],
+  });
   const events = [];
   const waiting = [];
   createInterface({ input: child.stdout }).on("line", (line) => {
@@ -96,10 +101,14 @@ const windows = async () => {
   const right = await s.until((e) => e.ev === "pasted" && e.id === 2, 12_000);
   await sleep(1_000);
   const b = await foreground(s, 3);
-  check("pastes into the window it was spoken for", right?.error == null && right?.moved !== true && b.title.startsWith("*"), {
-    right,
-    title: b.title,
-  });
+  check(
+    "pastes into the window it was spoken for",
+    right?.error == null && right?.moved !== true && b.title.startsWith("*"),
+    {
+      right,
+      title: b.title,
+    },
+  );
   check("clipboard comes back after a read", getClip() === "BATON-OLD-CLIP", { clip: getClip() });
 
   await notepad("baton-paste-b.txt");
@@ -108,11 +117,15 @@ const windows = async () => {
   const moved = await s.until((e) => e.ev === "pasted" && e.id === 5, 5_000);
   await sleep(600);
   const still = await foreground(s, 6);
-  check("wrong window: refused, text kept out of it", moved?.moved === true && !still.title.startsWith("*"), {
-    moved,
-    now: still.title,
-    was: other.title,
-  });
+  check(
+    "wrong window: refused, text kept out of it",
+    moved?.moved === true && !still.title.startsWith("*"),
+    {
+      moved,
+      now: still.title,
+      was: other.title,
+    },
+  );
   check("wrong window: clipboard untouched", getClip() === "BATON-OLD-CLIP", { clip: getClip() });
 
   // A window that never reads the clipboard: the taskbar takes the focus and ignores Ctrl+V.
@@ -129,7 +142,11 @@ const windows = async () => {
     if (getClip() === "BATON-OLD-CLIP") back = Date.now() - started;
     else await sleep(300);
   }
-  check("unread clipboard: his clipboard still comes back", back !== null, { unread, backAfterMs: back, app: tray.app });
+  check("unread clipboard: his clipboard still comes back", back !== null, {
+    unread,
+    backAfterMs: back,
+    app: tray.app,
+  });
   s.send({ cmd: "quit" });
 };
 
@@ -142,9 +159,13 @@ const stops = async () => {
   s.send({ cmd: "cancel" });
   const idle = await s.until((e) => e.ev === "idle", 3_000);
   await sleep(3_000);
-  check("cancel: back to idle and no text", idle !== null && !s.events.some((e) => e.ev === "text"), {
-    events: s.events.map((e) => e.ev).filter((e) => e !== "ready"),
-  });
+  check(
+    "cancel: back to idle and no text",
+    idle !== null && !s.events.some((e) => e.ev === "text"),
+    {
+      events: s.events.map((e) => e.ev).filter((e) => e !== "ready"),
+    },
+  );
   s.send({ cmd: "quit" });
 };
 
@@ -160,8 +181,17 @@ const limit = async () => {
   const text = await s.until((e) => e.ev === "text", 60_000);
   check(
     "five minutes stops it, keeps the text, pastes nothing",
-    stopped !== null && stopped.heldMs >= 299_000 && stopped.heldMs < 302_000 && text?.pasted === false && text.text.length > 0,
-    { heldMs: stopped?.heldMs, wallMs: Date.now() - started, chars: text?.text?.length ?? null, pasted: text?.pasted },
+    stopped !== null &&
+      stopped.heldMs >= 299_000 &&
+      stopped.heldMs < 302_000 &&
+      text?.pasted === false &&
+      text.text.length > 0,
+    {
+      heldMs: stopped?.heldMs,
+      wallMs: Date.now() - started,
+      chars: text?.text?.length ?? null,
+      pasted: text?.pasted,
+    },
   );
   s.send({ cmd: "quit" });
 };

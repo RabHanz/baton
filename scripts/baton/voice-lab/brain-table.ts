@@ -113,8 +113,7 @@ const main = async () => {
     );
     const ms = Date.now() - started;
     // What the deterministic path does with an act: the same read the router runs.
-    const resolution =
-      decision.route === "act" ? resolveBatonIntent(decision.text, fleet) : null;
+    const resolution = decision.route === "act" ? resolveBatonIntent(decision.text, fleet) : null;
     const guard =
       decision.route === "refused"
         ? "brain guard refused"

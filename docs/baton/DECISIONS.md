@@ -2877,6 +2877,11 @@ assistant answers as well as the core's own replies. Rejected: a lower wake thre
 cancellation (no reference signal for Pocket's page on this path yet, and a gate is enough for a first
 live test).
 
+Audio through the real wake, VAD and Parakeet path, with a spoken reply fed back at -9 dB: 0 transcripts from
+its own 11.9 s of speech, and a wake word over it cut in. Limit: the reply plays on until the wake word has
+been detected, so a command said straight after it can pick up reply words ("What needs me? And about ten.").
+The grammar still resolved that one. Removing them needs echo cancellation, which is the rejected option above.
+
 ## D103 — Dictation decodes while he speaks, by chunks cut at pauses
 
 Goal: Wispr's 0.6 s from key release. Neither Parakeet TDT build can stream: transcribe.cpp offers
@@ -2944,3 +2949,27 @@ focus and paste for macOS and Linux, written and **never compiled**, because the
 part-way through; it is kept so nothing is rewritten. The rest is queued in STATUS.md.
 
 Handy's macOS receipt-based paste was not adapted: it needs an AppKit run loop, and the sidecar has none.
+
+## D107 — What the real laptop broke in Drive and Teach
+
+Each of these passed every unit test and failed on his machine.
+
+Run it and Allow counted as Cancel. The prompt destroyed its window before recording the answer, and the
+window's "closed" handler answered first. Most Windows drive runs before this fix never had a real yes.
+
+The drive model planned the Windows key, which the rules refuse, so the drive ended. It is now told to
+click Start, and a refused plan gets one retry, told why. The same rules read the second plan.
+
+Teach watched only the cursor's display, so a step done on his other screen was never noticed. The
+fingerprint now covers every display in a fixed order, and each display is judged alone, because a line of
+text on one display averaged with a quiet second one falls under the threshold. A video on either display
+reads as change that never settles, so that lesson waits for "next". That limit is in the code.
+
+UI Automation returns 0x80040201 from a whole-window search when one provider fails: 14 of 18 lookups up to
+now. It now falls back to the element at the point and up to three of its parents. **Built on Windows, not
+yet seen working**, as the laptop's screen was off. Until then the model's point stands, which measured
+within 1 DIP on markers.
+
+Rejected: raising the threshold or dropping the second-display watch (either loses steps on his setup),
+and retrying the whole search (the same provider fails again).
+

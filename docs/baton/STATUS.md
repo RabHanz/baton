@@ -1072,6 +1072,22 @@ audit of the fork against upstream, a look at the pairing/token lifetimes T3
 ships with, and a second pair of eyes on the WebSocket authentication path,
 which Baton inherits unchanged and did not test.
 
+## One brain, screen context, voice and dictation on Windows, 2026-10-31 (D100 to D113)
+
+Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven checks.
+
+| Piece | State | Evidence |
+| --- | --- | --- |
+| One brain for voice and typed asks | built, in `baton-shared`, reachable by `fabric.brain.decide` | `INTENT_TABLE.md`, 48 of 48, model median 1.5 s |
+| Screen context | built | scored set 22 of 24 before, 24 of 24 after, all 5 must-say-not-found cases right; 24 real traces |
+| Echo gate | built | 0 transcripts from its own voice, barge-in fired, from audio (D102) |
+| Dictation paste, real window | **not run** | laptop screen off during the run; `scripts/baton/voice-lab/dictation-window.mjs` is ready |
+| Dictation cancel, five-minute limit | passed | real exe with a fake mic: stopped at 300.8 s, 4,869 characters kept, nothing pasted |
+| Live microphone | **not run** | V1 below |
+
+Queued: live mic, his speakers and whispered speech through chunks on Windows, then V2 macOS, V3 Linux and V4 phone over
+the environment, in the V table above and in `TEST_MATRIX.md`.
+
 ## Queued: companion off Windows (2026-10-31)
 
 See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages/baton-shared`

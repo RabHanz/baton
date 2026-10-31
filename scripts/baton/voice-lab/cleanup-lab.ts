@@ -38,8 +38,10 @@ const rewriter = (always: boolean, limitMs?: number) =>
   });
 
 const sorted = (values: ReadonlyArray<number>) => [...values].sort((a, b) => a - b);
-const median = (values: ReadonlyArray<number>) => sorted(values)[Math.floor(values.length / 2)] ?? 0;
-const p95 = (values: ReadonlyArray<number>) => sorted(values)[Math.floor(values.length * 0.95)] ?? 0;
+const median = (values: ReadonlyArray<number>) =>
+  sorted(values)[Math.floor(values.length / 2)] ?? 0;
+const p95 = (values: ReadonlyArray<number>) =>
+  sorted(values)[Math.floor(values.length * 0.95)] ?? 0;
 
 const cases = async (out: string) => {
   const r = rewriter(true, 30_000);
