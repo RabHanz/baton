@@ -21,7 +21,15 @@ jobs:
         env:
           # Portable AVX2 floor: the runner's own CPU may be newer than the laptop's i7-8550U.
           TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
-        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
+          # Nothing installs the VC++ redistributable, so the exe must not need it.
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: |
+          cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml
+          cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
+          if grep -aqiE 'MSVCP140|VCRUNTIME140' native/baton-dictation/target/release/baton-dictation.exe; then
+            echo "baton-dictation.exe still imports the VC++ runtime" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: baton-dictation-win-x64

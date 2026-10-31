@@ -297,6 +297,15 @@ fn flush_pending() {
 }
 
 /// Restores the snapshotted clipboard contents. Safe to call from any thread.
+/// Nothing read the transcript: it stays on the clipboard, and the app is told, so it is not lost.
+unsafe fn leave_transcript(shared: &WinTxShared) {
+    if OpenClipboard(None).is_ok() {
+        let _ = EmptyClipboard();
+        render_text(shared);
+        let _ = CloseClipboard();
+    }
+}
+
 unsafe fn restore_snapshot(shared: &WinTxShared) {
     if OpenClipboard(None).is_err() {
         log(&format!("paste: could not open clipboard to restore"));
@@ -495,9 +504,16 @@ fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
     let sequence = *shared.sequence.lock().unwrap();
     let still_ours = !ownership_lost && unsafe { GetClipboardSequenceNumber() } == sequence;
     if still_ours {
-        unsafe { restore_snapshot(shared) };
+        if receipt {
+            unsafe { restore_snapshot(shared) };
+        } else {
+            unsafe { leave_transcript(shared) };
+        }
     } else {
         log(&format!("paste: clipboard changed externally; leaving it untouched"));
+    }
+    if !receipt {
+        crate::emit(serde_json::json!({"ev": "unread", "text": shared.text}));
     }
 
     if let Ok(mut slot) = PENDING.lock() {

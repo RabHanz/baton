@@ -95,3 +95,14 @@ export const reconcileDeviceChange = (input: {
     ? null
     : next;
 };
+
+/** The input to read for a device: only a device with more than one has anything to choose. */
+export const micChannel = (
+  device: string,
+  channels: number | null,
+  micOrder: ReadonlyArray<{ readonly name: string; readonly channel: number | null }>,
+): number | null => {
+  if (channels !== null && channels < 2) return null;
+  const wanted = device.toLowerCase();
+  return micOrder.find((mic) => wanted.includes(mic.name.toLowerCase()))?.channel ?? null;
+};

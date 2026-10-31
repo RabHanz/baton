@@ -89,7 +89,8 @@ desktop main process imports this package directly.
 
 ## On the desktop
 
-`apps/desktop/src/baton/voice`. On Windows everything audio goes through
+`apps/desktop/src/baton/voice`. Windows only for now (D97); on macOS and Linux the tray says so and no
+microphone opens. Everything audio goes through
 `baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
 Parakeet and paste; `record` piped in as the wake path's microphone.
 
@@ -104,9 +105,14 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | `enabled`                                  | `false`: listening is opt-in           | Always listening |
 
 Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
-"Always listening" off. The wake, VAD and feature models ship with the app; Parakeet (740 MB,
-hash-checked) downloads into `<state dir>/voice/models` the first time the app starts.
-Ctrl+Alt+Shift+F8 toggles dictation for Airdeck.
+"Always listening" off. The wake, VAD and feature models ship with the app. Parakeet (740 MB,
+hash-checked on disk) downloads into `<state dir>/voice/models` only when asked: Tray → Dictation →
+Download speech model, a first press of Ctrl+Alt+Shift+F8, or ticking "Always listening". The hold and
+toggle keys exist only after that. Ctrl+Alt+Shift+F8 toggles dictation for Airdeck.
+
+Text pastes only into the window focused when recording began. If that changed, or nothing read the
+clipboard, it shows on the HUD for 20 s and stays under Tray → Dictation → Copy last dictation. Esc
+cancels a recording; five minutes stops it and the text is kept, not pasted.
 
 ## Measuring it
 

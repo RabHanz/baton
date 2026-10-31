@@ -25,6 +25,8 @@ use transcribe_cpp::{init_backends_with, BackendMask, Model, RunOptions, Session
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
 const MIN_SAMPLES: usize = 16_000 / 4;
+/// A tap of the remote's button must not listen forever. What was said is kept, never pasted.
+const MAX_RECORDING: Duration = Duration::from_secs(300);
 /// Parakeet clips the last word without a little trailing silence.
 const TAIL_SAMPLES: usize = 16_000 / 5;
 
@@ -51,7 +53,7 @@ enum Msg {
     Line(String),
     Key { hold: bool, pressed: bool },
     MicFailed(String),
-    Finished { id: Option<u64>, paste: bool, result: Result<Done, String> },
+    Finished { id: Option<u64>, dictated: bool, target: Option<isize>, result: Result<Done, String> },
 }
 
 struct Done {
@@ -63,7 +65,9 @@ struct Done {
 
 struct Job {
     id: Option<u64>,
-    paste: bool,
+    dictated: bool,
+    /// The window to paste back into; None never pastes.
+    target: Option<isize>,
     pcm: Vec<f32>,
     model: PathBuf,
     language: Option<String>,
@@ -113,7 +117,12 @@ fn engine_thread(jobs: std::sync::mpsc::Receiver<Job>, out: Sender<Msg>) {
                     loaded = Some((job.model.clone(), session));
                 }
                 Err(e) => {
-                    let _ = out.send(Msg::Finished { id: job.id, paste: job.paste, result: Err(e) });
+                    let _ = out.send(Msg::Finished {
+                        id: job.id,
+                        dictated: job.dictated,
+                        target: job.target,
+                        result: Err(e),
+                    });
                     continue;
                 }
             }
@@ -121,7 +130,7 @@ fn engine_thread(jobs: std::sync::mpsc::Receiver<Job>, out: Sender<Msg>) {
         let session = &mut loaded.as_mut().expect("loaded above").1;
         let result = infer(session, &mut job.pcm, job.language.take())
             .map(|(text, audio_ms, infer_ms)| Done { text, audio_ms, infer_ms, load_ms });
-        let _ = out.send(Msg::Finished { id: job.id, paste: job.paste, result });
+        let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
     }
 }
 
@@ -223,6 +232,26 @@ fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String>
 struct Recording {
     recorder: Recorder<CollectingSink>,
     started: Instant,
+    target: isize,
+}
+
+#[cfg(windows)]
+fn foreground_window() -> isize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 as isize }
+}
+
+#[cfg(not(windows))]
+fn foreground_window() -> isize {
+    0
+}
+
+/// Text goes only into the window it was spoken for. Windows reports 0 mid-switch, which is not it.
+fn should_paste(target: Option<isize>, now: isize) -> bool {
+    matches!(target, Some(window) if window != 0 && window == now)
+}
+
+fn over_limit(held: Duration) -> bool {
+    held >= MAX_RECORDING
 }
 
 fn serve() {
@@ -266,22 +295,25 @@ fn serve() {
         });
         match opened {
             Ok(recorder) => {
-                *recording = Some(Recording { recorder, started: Instant::now() });
+                let target = foreground_window();
+                *recording = Some(Recording { recorder, started: Instant::now(), target });
                 emit(json!({"ev": "recording"}));
             }
             Err(message) => emit(json!({"ev": "error", "message": message})),
         }
     };
-    let finish = |config: &Config, recording: &mut Option<Recording>, job_tx: &Sender<Job>| {
+    let finish = |config: &Config, recording: &mut Option<Recording>, job_tx: &Sender<Job>, paste: bool| {
         let Some(current) = recording.take() else { return };
         let held_for = current.started.elapsed();
+        let target = paste.then_some(current.target);
         match current.recorder.stop().map(|s| s.sink.into_samples()).map_err(|e| e.to_string()) {
             Ok(pcm) if pcm.len() >= MIN_SAMPLES => match &config.model {
                 Some(model) => {
                     emit(json!({"ev": "transcribing", "heldMs": held_for.as_millis() as u64}));
                     let _ = job_tx.send(Job {
                         id: None,
-                        paste: true,
+                        dictated: true,
+                        target,
                         pcm,
                         model: model.clone(),
                         language: config.language.clone(),
@@ -294,7 +326,18 @@ fn serve() {
         }
     };
 
-    while let Ok(message) = rx.recv() {
+    loop {
+        let message = match rx.recv_timeout(Duration::from_secs(1)) {
+            Ok(message) => message,
+            Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Timeout) => {
+                if recording.as_ref().is_some_and(|r| over_limit(r.started.elapsed())) {
+                    held = false;
+                    finish(&config, &mut recording, &job_tx, false);
+                }
+                continue;
+            }
+        };
         match message {
             Msg::Line(line) => {
                 let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
@@ -305,6 +348,11 @@ fn serve() {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
                                 if rebind {
+                                    // Nothing can stop a recording once its keys are gone.
+                                    if recording.take().is_some() {
+                                        held = false;
+                                        emit(json!({"ev": "idle"}));
+                                    }
                                     keys = None;
                                     thread::sleep(Duration::from_millis(30));
                                     match start_keys(&config, &tx) {
@@ -320,13 +368,14 @@ fn serve() {
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
                     "toggle" => {
                         if recording.is_some() {
-                            finish(&config, &mut recording, &job_tx);
+                            finish(&config, &mut recording, &job_tx, true);
                         } else {
                             begin(&config, &mut recording, &tx);
                         }
                     }
                     "cancel" => {
                         recording = None;
+                        held = false;
                         emit(json!({"ev": "idle"}));
                     }
                     "transcribe" => {
@@ -336,7 +385,8 @@ fn serve() {
                             (Ok(pcm), Some(model)) => {
                                 let _ = job_tx.send(Job {
                                     id,
-                                    paste: false,
+                                    dictated: false,
+                                    target: None,
                                     pcm,
                                     model: model.clone(),
                                     language: config.language.clone(),
@@ -363,14 +413,14 @@ fn serve() {
             Msg::Key { hold: true, pressed: false } => {
                 if held {
                     held = false;
-                    finish(&config, &mut recording, &job_tx);
+                    finish(&config, &mut recording, &job_tx, true);
                 }
             }
             Msg::Key { hold: false, pressed: true } => {
                 if !toggle_down {
                     toggle_down = true;
                     if recording.is_some() {
-                        finish(&config, &mut recording, &job_tx);
+                        finish(&config, &mut recording, &job_tx, true);
                     } else {
                         begin(&config, &mut recording, &tx);
                     }
@@ -382,19 +432,20 @@ fn serve() {
                 held = false;
                 emit(json!({"ev": "error", "message": message}));
             }
-            Msg::Finished { id, paste, result } => match result {
+            Msg::Finished { id, dictated, target, result } => match result {
                 Ok(done) => {
                     let mut pasted_error = None;
+                    let paste = dictated && should_paste(target, foreground_window());
                     if paste && !done.text.is_empty() {
                         pasted_error = paste_text(&mut enigo, &done.text, config.paste).err();
                     }
                     emit(json!({
                         "ev": "text", "id": id, "text": done.text, "audioMs": done.audio_ms,
                         "inferMs": done.infer_ms, "loadMs": done.load_ms, "pasteError": pasted_error,
-                        "dictated": paste,
+                        "dictated": dictated, "pasted": paste,
                     }));
                 }
-                Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": paste})),
+                Err(message) => emit(json!({"ev": "text", "id": id, "error": message, "dictated": dictated})),
             },
         }
     }
@@ -451,7 +502,12 @@ fn cli_record(args: &[String]) -> Result<(), String> {
     let channel = flag(args, "--channel").and_then(|c| c.parse().ok());
     let config = recorder_config(flag(args, "--device").as_deref(), channel)?;
     let seconds: u64 = flag(args, "--seconds").and_then(|s| s.parse().ok()).unwrap_or(0);
-    let recorder = Recorder::open(config).map_err(|e| e.to_string())?;
+    // Exit on a dead stream: the desktop only learns of it from this process ending.
+    let recorder = Recorder::open_with_failure_handler(config, |e| {
+        eprintln!("{e}");
+        std::process::exit(3);
+    })
+    .map_err(|e| e.to_string())?;
     recorder.start(StdoutSink).map_err(|e| e.to_string())?;
     if seconds == 0 {
         loop {
@@ -485,5 +541,24 @@ fn main() {
     if let Err(message) = result {
         eprintln!("{message}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pastes_only_into_the_window_it_was_spoken_for() {
+        assert!(should_paste(Some(7), 7));
+        assert!(!should_paste(Some(7), 8));
+        assert!(!should_paste(None, 7));
+        assert!(!should_paste(Some(0), 0));
+    }
+
+    #[test]
+    fn a_recording_stops_at_the_limit() {
+        assert!(!over_limit(MAX_RECORDING - Duration::from_secs(1)));
+        assert!(over_limit(MAX_RECORDING));
     }
 }

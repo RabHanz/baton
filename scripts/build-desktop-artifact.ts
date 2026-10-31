@@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
   "sidecar-invalid",
   "unpacked-native-missing",
   "resource-monitor-missing",
+  "baton-voice-missing",
   "wsl-runtime-missing",
   "wsl-runtime-invalid",
   "file-limit-exceeded",
@@ -765,6 +766,9 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
     }
     if (this.reason === "resource-monitor-missing") {
       return "Windows packaged payload is missing the resource monitor executable.";
+    }
+    if (this.reason === "baton-voice-missing") {
+      return `Windows packaged payload is missing Baton voice files: ${(this.missingFiles ?? []).join(", ")}.`;
     }
     if (this.reason === "wsl-runtime-missing") {
       return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
@@ -985,6 +989,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   "!**/*.d.cts",
   "!apps/desktop/resources/browser-secret",
   "!apps/desktop/resources/browser-secret/**/*",
+  "!apps/desktop/prod-resources/baton-voice",
+  "!apps/desktop/prod-resources/baton-voice/**/*",
   "!apps/desktop/prod-resources/browser-secret",
   "!apps/desktop/prod-resources/browser-secret/**/*",
   "!apps/desktop/prod-resources/windows-server",
@@ -2357,6 +2363,17 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
   }
 });
 
+export const BATON_VOICE_PAYLOAD_FILES = [
+  "baton-dictation.exe",
+  "models/melspectrogram.onnx",
+  "models/embedding_model.onnx",
+  "models/silero_vad.onnx",
+  "models/sebastian.onnx",
+  "models/alfred.onnx",
+  "models/freya.onnx",
+  "models/onyx.onnx",
+] as const;
+
 // Baton voice: the wake and VAD models everywhere, the dictation sidecar on Windows.
 export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   readonly repoRoot: string;
@@ -2388,6 +2405,8 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
         // A portable floor with AVX2: the runner's CPU may be newer than the user's.
         TRANSCRIBE_CMAKE_ARGS:
           "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON",
+        // Nothing installs the VC++ redistributable, so the exe must not need it.
+        RUSTFLAGS: "-C target-feature=+crt-static",
       },
     }),
     { label: "cargo build baton-dictation", verbose: input.verbose },
@@ -3458,6 +3477,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
       reason: "resource-monitor-missing",
       packagedAppDir,
       missingFiles: ["resource-monitor/t3-resource-monitor.exe"],
+    });
+  }
+
+  const missingVoiceFiles: string[] = [];
+  for (const file of BATON_VOICE_PAYLOAD_FILES) {
+    if (!(yield* isFile(path.join(resourcesDir, "baton-voice", file)))) {
+      missingVoiceFiles.push(`baton-voice/${file}`);
+    }
+  }
+  if (missingVoiceFiles.length > 0) {
+    return yield* new WindowsPackagedPayloadValidationError({
+      reason: "baton-voice-missing",
+      packagedAppDir,
+      missingFiles: missingVoiceFiles,
     });
   }
 

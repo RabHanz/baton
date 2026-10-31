@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  micChannel,
   normalizeDeviceName,
   reconcileDeviceChange,
   selectInputDevice,
@@ -54,6 +55,15 @@ describe("selectInputDevice", () => {
 
   it("asks getUserMedia for its default when the list is empty (no permission yet)", () => {
     expect(selectInputDevice([], pinned)).toMatchObject({ kind: "default", deviceId: null });
+  });
+});
+
+describe("micChannel", () => {
+  const order = [{ name: "Scarlett Solo", channel: 0 }];
+  it("reads one input only of a device that has several", () => {
+    expect(micChannel("Microphone (Scarlett Solo USB)", 2, order)).toBe(0);
+    expect(micChannel("Microphone (Scarlett Solo USB)", 1, order)).toBe(null);
+    expect(micChannel("Microphone (Realtek)", 2, order)).toBe(null);
   });
 });
 

@@ -2643,13 +2643,23 @@ no way to route the wake path through it); embedding Handy's Tauri app (a whole 
 `onnxruntime-node` with hand-written Parakeet decoding (a decoder of our own to keep right, when the
 engine exists); keeping whisper.cpp for the wake path (two speech engines on one laptop).
 
+Voice is Windows only for now, wake included: the exe is built for no other platform, the whisper-cli
+and hidden Chromium capture paths are gone, and on macOS and Linux the tray says so and opens no mic.
+
 The same exe is the wake path's microphone (`record` piped into the core), replacing the hidden
-Chromium window on Windows. That removes AGC and noise suppression from the path and means the lab
+Chromium window. That removes AGC and noise suppression from the path and means the lab
 measures what the product hears. The static build pins a portable AVX2 floor, because a native build
 on the runner may use instructions his i7-8550U does not have.
 
+The exe links the C runtime statically, because nothing installs the VC++ redistributable. Text pastes
+only into the window focused when recording began; otherwise, or if nothing reads the clipboard, it
+stays on the HUD and under Tray → Copy last dictation. A recording stops at five minutes and is
+transcribed but not pasted; Esc cancels. Nothing global exists until he asks: no model download and no
+hold or toggle key before Tray → Download speech model, ticking Always listening, or a first press of
+the Airdeck chord. Always listening needs Parakeet even with Wispr chosen, so ticking it downloads it.
+
 Wispr stays installed and untouched. Tray → Dictation chooses; on "Wispr Flow" Baton registers no
-dictation key. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (toggle), clear of the
+dictation key, and a recording in progress is discarded. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (toggle), clear of the
 Ctrl+Win, Ctrl+Win+Space and Ctrl+Alt+Win read from his Wispr config.
 Ctrl+Alt+Shift+F8 toggles for Airdeck, whose mic button is a tap with no hold.
 
@@ -2698,7 +2708,8 @@ accuracy. Median wait for a 5 to 15 s clip on the i7-8550U: v3 4.2 s, 110M 1.2 s
 ## D99 — Mics are an ordered list by part of the name
 
 `micOrder`: Scarlett Solo, Focusrite, Wireless Mic Rx, DJI, then the system default; an explicit pin
-outranks it. Checked every 5 s, so a vanished mic falls through and a returning one is taken back.
+outranks it. The list is his setup kept as the default, and has no effect on a machine without those
+devices. Checked every 5 s, so a vanished mic falls through and a returning one is taken back.
 Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
 not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
 the AT2020 is on it and mixing the empty input 2 halves the level.

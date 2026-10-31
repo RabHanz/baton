@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off nodeBuiltinImport:off
+// @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
  * `baton-dictation.exe` (native/baton-dictation): Handy's engine stack as a child process. It owns
  * the hold and toggle keys, the recording, Parakeet and the paste; this file is the line protocol.
@@ -37,6 +37,8 @@ export type DictationEvent =
   | { readonly ev: "transcribing" }
   | { readonly ev: "idle" }
   | { readonly ev: "error"; readonly message: string }
+  /** The paste chord went out and nothing read the clipboard. */
+  | { readonly ev: "unread"; readonly text: string }
   | {
       readonly ev: "text";
       readonly id: number | null;
@@ -44,6 +46,7 @@ export type DictationEvent =
       readonly error?: string;
       readonly pasteError?: string | null;
       readonly dictated?: boolean;
+      readonly pasted?: boolean;
     };
 
 export interface SidecarDevice {
@@ -54,6 +57,7 @@ export interface SidecarDevice {
 export interface DictationSidecar {
   readonly configure: (config: DictationConfig) => void;
   readonly toggle: () => void;
+  readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   readonly transcribe: (wavPath: string) => Promise<string>;
   readonly paste: (text: string) => Promise<void>;
@@ -74,8 +78,18 @@ export const resolveDictationBinary = (input: {
   return candidates.find((path): path is string => path !== undefined && exists(path)) ?? null;
 };
 
-const RESTART_DELAY_MS = 3_000;
 const CALL_TIMEOUT_MS = 120_000;
+/** A process that lived this long was working, so its next failure starts the backoff again. */
+export const HEALTHY_RUN_MS = 30_000;
+
+/** Seconds, not a hot loop: 1, 2, 4 … up to a minute. */
+export const restartDelayMs = (failures: number): number =>
+  Math.min(60_000, 1_000 * 2 ** Math.max(0, failures - 1));
+
+const lastLine = (text: string): string | null => {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  return lines.length === 0 ? null : lines[lines.length - 1]!.slice(0, 200);
+};
 
 export const startDictationSidecar = (input: {
   readonly binary: string;
@@ -88,8 +102,11 @@ export const startDictationSidecar = (input: {
   type Pending = { resolve: (value: never) => void; reject: (error: Error) => void };
   const pending = new Map<number, Pending>();
   let deviceWaiters: Array<(devices: ReadonlyArray<SidecarDevice>) => void> = [];
+  let failures = 0;
 
-  const send = (message: unknown) => child?.stdin.write(`${JSON.stringify(message)}\n`);
+  const send = (message: unknown) => {
+    if (child?.stdin.writable === true) child.stdin.write(`${JSON.stringify(message)}\n`);
+  };
   const settle = (id: number | null | undefined, result: { value?: unknown; error?: string }) => {
     const entry = id === null || id === undefined ? undefined : pending.get(id);
     if (entry === undefined) return;
@@ -108,7 +125,13 @@ export const startDictationSidecar = (input: {
   const spawn = () => {
     const proc = NodeChildProcess.spawn(input.binary, ["serve"], { windowsHide: true });
     child = proc;
-    proc.stderr.resume();
+    const startedAt = Date.now();
+    let stderr = "";
+    proc.stderr.on("data", (data: Buffer) => {
+      stderr = (stderr + data.toString()).slice(-2_000);
+    });
+    // The exit handler restarts it; a write in the gap after it died must not throw.
+    proc.stdin.on("error", () => {});
     proc.on("error", (error) => input.onEvent({ ev: "error", message: error.message }));
     NodeReadline.createInterface({ input: proc.stdout }).on("line", (line) => {
       let event: Record<string, unknown>;
@@ -143,12 +166,18 @@ export const startDictationSidecar = (input: {
       deviceWaiters.forEach((resolve) => resolve([]));
       deviceWaiters = [];
       if (disposed) return;
-      input.onEvent({ ev: "error", message: "Dictation stopped. Restarting it." });
+      failures = Date.now() - startedAt >= HEALTHY_RUN_MS ? 1 : failures + 1;
+      const delay = restartDelayMs(failures);
+      const reason = lastLine(stderr) ?? "it exited";
+      input.onEvent({
+        ev: "error",
+        message: `Dictation stopped (${reason}). Trying again in ${Math.round(delay / 1000)} s.`,
+      });
       setTimeout(() => {
         if (disposed) return;
         spawn();
         if (lastConfig !== null) send({ cmd: "configure", ...lastConfig });
-      }, RESTART_DELAY_MS);
+      }, delay);
     });
   };
   spawn();
@@ -159,6 +188,7 @@ export const startDictationSidecar = (input: {
       send({ cmd: "configure", ...config });
     },
     toggle: () => send({ cmd: "toggle" }),
+    cancel: () => send({ cmd: "cancel" }),
     devices: () =>
       new Promise((resolve) => {
         deviceWaiters.push(resolve);
@@ -192,16 +222,15 @@ export const makeSidecarStt = (sidecar: DictationSidecar): SttProvider => ({
 /** Wake-word capture: `baton-dictation record` piped straight in, with no browser in the path. */
 export const makeSidecarAudioInput = (input: {
   readonly binary: string;
-  readonly sidecar: DictationSidecar;
+  readonly listDevices: () => Promise<ReadonlyArray<AudioInputDevice>>;
   /** The input of a multi-input interface to read, for a device. */
   readonly channelFor: (device: string) => number | null;
   /** The recorder ended without being asked: the device probably left. */
-  readonly onLost: () => void;
+  readonly onLost: (reason: string | null, ranMs: number) => void;
 }): AudioInputProvider => {
   let proc: NodeChildProcess.ChildProcessWithoutNullStreams | null = null;
   return {
-    listDevices: async (): Promise<ReadonlyArray<AudioInputDevice>> =>
-      (await input.sidecar.devices()).map((d) => ({ deviceId: d.name, label: d.name })),
+    listDevices: input.listDevices,
     start: async ({ deviceId, onFrame }) => {
       proc?.kill();
       const channel = deviceId === null ? null : input.channelFor(deviceId);
@@ -223,13 +252,22 @@ export const makeSidecarAudioInput = (input: {
         Buffer.from(samples.buffer).set(joined.subarray(0, usable));
         framer(samples);
       });
-      started.stderr.resume();
-      started.on("exit", () => {
-        if (proc === started) {
-          proc = null;
-          input.onLost();
-        }
+      const startedAt = Date.now();
+      let stderr = "";
+      started.stderr.on("data", (data: Buffer) => {
+        stderr = (stderr + data.toString()).slice(-2_000);
       });
+      // "exit" does not fire when the spawn itself failed, such as a quarantined exe.
+      const lost = () => {
+        if (proc !== started) return;
+        proc = null;
+        input.onLost(lastLine(stderr), Date.now() - startedAt);
+      };
+      started.on("error", (error) => {
+        stderr += `\n${error.message}`;
+        lost();
+      });
+      started.on("exit", lost);
     },
     stop: async () => {
       const running = proc;
