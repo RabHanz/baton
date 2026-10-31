@@ -108,7 +108,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   paste: "ctrl_v",
   language: "en",
   wakeWords: [
-    // Thresholds from 6.6 hours of his own speech and held-out en-GB voices (D95).
+    // Thresholds from 6.6 hours of his own speech and held-out en-GB voices (D98).
     { word: "Sebastian", enabled: true, threshold: 0.97 },
     { word: "Alfred", enabled: true, threshold: 0.9 },
     { word: "Freya", enabled: true, threshold: 0.95 },

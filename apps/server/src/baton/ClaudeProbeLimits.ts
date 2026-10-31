@@ -3,7 +3,11 @@
  * Baton's probe (D90) goes into the provider snapshot. `checkedAt` keeps the reading's own time so the
  * panel can state its age. A login that reports its own windows is left alone.
  */
-import type { BatonAccount, BatonAccountPool } from "@t3tools/baton-contracts";
+import {
+  accountForInstance,
+  type BatonAccount,
+  type BatonAccountPool,
+} from "@t3tools/baton-contracts";
 import { ProviderDriverKind, type ServerProviderUsageLimits } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -12,29 +16,12 @@ import { makeUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 
 import { makePoolReader } from "./AccountPoolService.ts";
 
-/** cswap slots of the token instances; the same table as scripts/baton/provider-token-instances.py. */
-const ACCOUNT_BY_INSTANCE: Readonly<Record<string, string>> = {
-  claudeAgent_optima: "5",
-  claudeAgent_signzart: "6",
-};
-
 const WINDOW_SHAPE: Readonly<
   Record<string, { kind: "session" | "weekly"; label: string; mins: number }>
 > = {
   five_hour: { kind: "session", label: "Session", mins: 5 * 60 },
   seven_day: { kind: "weekly", label: "Weekly", mins: 7 * 24 * 60 },
 };
-
-/** The account an instance runs as: its token's slot, else whatever cswap has active. */
-export function accountForInstance(
-  instanceId: string,
-  accounts: ReadonlyArray<BatonAccount>,
-): BatonAccount | undefined {
-  const key = ACCOUNT_BY_INSTANCE[instanceId];
-  return key === undefined
-    ? accounts.find((account) => account.active)
-    : accounts.find((account) => account.key === key);
-}
 
 export function limitsFromAccount(
   account: BatonAccount | undefined,
@@ -57,12 +44,44 @@ export function limitsFromAccount(
   });
   return windows.length === 0
     ? undefined
-    : makeUsageLimits({ checkedAt: account.usageCheckedAt, windows });
+    : {
+        ...makeUsageLimits({ checkedAt: account.usageCheckedAt, windows }),
+        // The slot, never the token: slots match across machines, so T3 merges one tile per account.
+        credentialFingerprint: account.key,
+      };
+}
+
+/** A default instance has no name of its own, so it shows the account it is running as. */
+export function accountDisplayName(account: BatonAccount): string {
+  return `${account.label.charAt(0).toUpperCase()}${account.label.slice(1)}`;
+}
+
+/**
+ * The instance as the account cswap reads for it. A box's own login gives way to the account's email:
+ * T3 keys on email first, so one login would split that account into its own tile. stampIdentity runs
+ * next and puts back a name the instance was configured with.
+ */
+export function withAccount<P extends { readonly auth: { readonly email?: string | undefined } }>(
+  provider: P,
+  account: BatonAccount | undefined,
+): P {
+  const usageLimits = limitsFromAccount(account);
+  if (account === undefined || usageLimits === undefined) return provider;
+  const { email: _login, ...auth } = provider.auth;
+  return {
+    ...provider,
+    auth: account.email === null ? auth : { ...auth, email: account.email },
+    usageLimits,
+    displayName: accountDisplayName(account),
+  } as P;
 }
 
 /** Fills in limits only where the login reports none; a missing cswap changes nothing. */
 export const withProbeLimits = <
-  P extends { readonly usageLimits?: ServerProviderUsageLimits | undefined },
+  P extends {
+    readonly usageLimits?: ServerProviderUsageLimits | undefined;
+    readonly auth: { readonly email?: string | undefined };
+  },
 >(
   instanceId: string,
   provider: P,
@@ -70,10 +89,9 @@ export const withProbeLimits = <
   if (provider.usageLimits?.unavailable?.reason !== "unsupported") return Effect.succeed(provider);
   return Effect.flatMap(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
     makePoolReader(spawner)(ProviderDriverKind.make("claudeAgent")).pipe(
-      Effect.map((pool: BatonAccountPool) => {
-        const usageLimits = limitsFromAccount(accountForInstance(instanceId, pool.accounts));
-        return usageLimits === undefined ? provider : ({ ...provider, usageLimits } as P);
-      }),
+      Effect.map((pool: BatonAccountPool) =>
+        withAccount(provider, accountForInstance(instanceId, pool.accounts)),
+      ),
       Effect.catchCause(() => Effect.succeed(provider)),
     ),
   );

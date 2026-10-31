@@ -103,7 +103,7 @@ SOFTWARE.
 - `melspectrogram.onnx`, `embedding_model.onnx` from openWakeWord v0.5.1, `silero_vad.onnx` from
   Silero VAD v6.2.3 (MIT), shipped in `native/baton-dictation/models`. See
   `docs/baton/research/voice-stack-2026-10-26.md` for their licence notes.
-- `sebastian.onnx`, `alfred.onnx`, `freya.onnx`, `onyx.onnx`: trained here (D95) on Piper's LibriTTS
+- `sebastian.onnx`, `alfred.onnx`, `freya.onnx`, `onyx.onnx`: trained here (D98) on Piper's LibriTTS
   and en_GB voices (VCTK, aru, semaine, alba, jenny_dioco, northern_english_male,
   southern_english_female) with openWakeWord's published negative features. Those sets carry their own
   terms, some non-commercial. Check them before any packaged or commercial release.

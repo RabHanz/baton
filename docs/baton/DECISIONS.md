@@ -2471,8 +2471,14 @@ Not yet run live: a real switch needs a second account with quota, from 2 Nov.
 `environmentId` and `threadId` as props, so a pane is a plain ChatView and the hook is one element in
 `ThreadRouteView` (`0008-web-panes.patch`), with the rest in `components/panes/`.
 
-- Up to four slots with fixed ids, persisted in the browser. Two side by side, three as two over one,
-  four as a grid; one column and one row divider, 25 to 75 percent, by pointer or arrow keys.
+- Up to four slots with fixed ids, persisted per window (D96). Two side by side, three as three
+  columns, four as a two-by-two grid. The layout is a split tree (`batonPaneLayout.ts`) flattened to
+  rects under one parent, so a rearrange never remounts a ChatView. Every gap is a divider, by pointer
+  or arrow keys; it moves only the two panes beside it, and none goes below 15 percent of its split.
+- A pane's bar drags onto another pane: near an edge docks it on that side, the middle swaps them. From
+  the keyboard the bar's grip takes an arrow to swap with that neighbour, and Shift with an arrow to
+  give the pane that whole side. Once rearranged, opening a pane adapts the layout instead of resetting
+  it; going back to one pane clears that. Native drag events, no dependency.
 - The route thread is the focused pane. A pointer press or a key in another pane moves the route with
   `replace`. A route to a thread with no pane goes into the focused pane, so the sidebar behaves as it
   always did. The focused pane renders the route's own ChatView element at the same tree position as
@@ -2480,6 +2486,11 @@ Not yet run live: a real switch needs a second account with quota, from 2 Nov.
 - Unfocused panes sit under upstream's `BackgroundThreadContext`, made for threads kept mounted under
   Settings; their shortcuts stand down and they keep streaming. A few lines in ChatView stop a
   background pane taking DOM focus. Not `inert`, so they stay clickable.
+- Only the focused pane renders the window-level controls (Toggle thread details, Terminal, right
+  panel, maximize). They are `position: fixed` at the window's top right, so with one set per pane all
+  of them stacked at one point and every click reached the last pane: measured on `0.1.5-baton.43` with
+  three panes at `[1335,12]`, pane a focused and the hit test landing on pane c. Each pane's own header
+  (account, Open in, git actions) sits in that pane and always acted on its own thread.
 - Closing removes the slot only. The thread and its draft stay. When the focused pane closes the route
   leaves first, because a slot closed under the route would hand its thread to the neighbour.
 - Open with **Open in split** on a sidebar thread's menu, Alt+click on the row (Ctrl/Cmd+click is
@@ -2499,7 +2510,127 @@ Known limit: moving focus to a pane does not put the caret in its composer, beca
 cancel a text selection started in that pane. Upstream's thread details card follows the viewport
 width, so at 2560 each pane shows its own.
 
-## D94 — Dictation is Handy's engine stack in our own sidecar, not Handy beside the app
+## D94 — One limits tile per Claude account, and the tile can switch to it
+
+**Decided** 2026-10-31. Setup tokens have no email, so T3's `accountKey` had nothing to merge on and
+every machine's instance got its own tile: eight cramped tiles on three environments, the default
+instance named "C" (T3's driver name "Claude", truncated).
+
+- `limitsFromAccount` sets `credentialFingerprint` to the cswap slot. Slots match on all machines, and
+  T3's existing merge does the rest. No token or anything derived from one goes in it.
+- `withAccount` sets the instance's `displayName` to the account's name; `stampIdentity` runs next and
+  restores a configured name. T3's snapshot always carries a driver name, so "only if empty" never fired.
+- A probe-filled instance reports the slot's email from cswap, not the box's login. T3 keys on email
+  first, so onnyx's own login split Rabee into a separate tile. Dropping the email instead broke
+  `switchedAccount`, the signed-in check in `IntentService` and the picker's account line.
+- `accountUse` refreshes the provider, so the name and limits follow a switch at once. A rotation by
+  the reactor still waits for the 5-minute check.
+- `applyUsageLimitsUpdate` keeps the fingerprint (`0008-claude-account-limits`), or a live turn's
+  rate-limit event would pull that instance out of the merge until the next refresh.
+- `BatonTileSwitch` adds a row per environment to the tile popover, on the same `useAccountSwitch` as
+  the thread header. cswap is per machine, so one button across all machines would hide a broad action.
+  A row says In use, Spent, Signed out or Held out and the button is disabled. Spent is new here: the
+  thread menu and the server leave a spent account clickable, but a misclick in a hover popover would
+  stall every thread on that machine.
+- With three tiles T3's own layout reads properly at 1440, 1775 and 2560, so no layout change.
+
+Rejected: grouping by display name in the client (new merge logic for a thing the server knows); one
+"switch everywhere" button.
+
+Known limits. The default instance follows the active account, so when every environment rotates off
+Rabee no instance reports slot 4 and that tile is gone until one does. A pinned default (`--pin-default`,
+laptop) reads as cswap's active account, as it has since D92. The laptop's server is part of the
+desktop app, so its tiles merge only once it runs a build with this. A default instance rotated onto
+Optima shows that name beside `claudeAgent_optima` in the model picker. `signzart-prod`'s unit now has
+nvm's bin on PATH: under load T3's login-shell PATH read timed out and `claude` was "not found".
+
+Not yet run live: pressing Switch. Rabee is in use and the other two are spent until 2 Nov.
+
+## D95 — A thread picks its own account, and keeps its conversation
+
+**Decided** 2026-10-31. Every account is a provider instance, so a thread's account is its
+`modelSelection.instanceId`. D92 rejected this because a token instance has its own config directory,
+which made an instance change a handoff. That was a property of one key, not of the storage:
+`ClaudeAccountHome` links every account's `projects/` to the primary's, so all accounts see one
+transcript tree, and upstream's `canResumeAcrossInstances` ("Account overlays share native history")
+already resumes when two instances share a continuation key. Claude's key was the account's own home,
+so it never fired. `makeClaudeContinuationGroupKey` now returns the shared home for an account overlay,
+as `CodexHomeLayout` does.
+
+The evidence, because nothing published settles it. Anthropic documents no cross-account resume; a
+third-party guide warns that changing key or token route can fail thinking signatures. So it was run:
+on onnyx on 2026-10-30, three transcripts written while Optima was active (2026-10-15 to 10-20, 7 to 8
+signed thinking blocks each) were resumed with `--fork-session` under Rabee's token with
+`CLAUDE_CONFIG_DIR=~/.claude-c`. All three answered from their own context with exit 0. Sources:
+docs.apiyi.com/en/faq/claude-thinking-signature-invalid, github.com/anthropics/claude-code/issues/48511.
+
+- `fabric.account.useForThread` takes a thread and an account key, or null to follow the machine's
+  active account again. The header menu calls it; only that thread moves. It survives a restart because
+  the selection is the thread's own, in upstream's event store.
+- Rabee gets a token instance (`claudeAgent_rabee`, `.claude-a`), or no thread could stay on Rabee
+  while cswap rotates. `--pin-default` skips it, since there the default instance already is Rabee.
+- `thread.model-selection.set` releases the live session at once, so during a turn the move goes in
+  `fabric_thread_account_moves` and `ThreadAccountMoves` applies it when the turn and any queue behind it
+  have ended. A queued run keeps its own selection and would put the thread back, and upstream has no
+  command to change it, so a queue with no turn in front of it (one held by a spent account) refuses the
+  move and asks for the message to be cancelled or sent. The composer's selection follows the move for
+  the same reason.
+- The server refuses a signed-out account and one with no headroom, naming when the full window resets;
+  the menu shows the same and disables the row. `limits-unknown` is allowed, since a reading that failed
+  says nothing about the account.
+- A mirrored terminal session is not T3's process to restart, so it keeps cswap's switch (D92). So does
+  the limits tile's switch (D94), which is a machine-wide action by design.
+
+Seen live on `0.1.5-baton.46`: one thread went from the default instance to `claudeAgent_rabee` and
+back, keeping one native session id and answering from its earlier context; a move requested during a
+turn waited, the turn completed, and the move applied after it. On a rehearsal copy a pinned thread stayed
+pinned through a server restart and answered from context. Not run in T3: a move onto Optima or Signzart,
+both spent until 2 Nov, so cross-account resume in T3 itself is proven only by the CLI run above.
+
+Rejected: a handoff through `provider.switch` (it summarises the conversation, and the Director asked
+for it to carry on); copying transcripts per account (two sources of truth for one session); a client
+that waits and retries (the choice would die with the tab).
+
+Known limits: a pinned thread does not rotate; when its account runs out it waits or is moved by hand.
+A waiting move shows only in its toast and is not rechecked when it applies. The shared key also lets the
+composer's model picker choose any account, without this menu's refusal; T3's own limit logic still applies.
+A home whose `projects/` is a real directory cannot resume, so `.claude-a/b/c` were checked on each box.
+
+## D96 — A thread can live in its own window
+
+**Decided** 2026-10-31. D93 rejected separate windows as the way to do splits (no shared focus, a
+second renderer), and that stands: splits stay in one renderer. This is a different feature, for
+different monitors, and those two costs are what he is asking for.
+
+- **Detach to window** on a pane's bar and on a sidebar thread's menu is `window.open` on the thread's
+  route with `?batonWindow=<id>`, on both web and desktop. Same app, server and session, nothing to sign
+  in to. The window keeps that id in `window.name`, which outlives reloads and route changes, and its
+  panes persist under `t3code:baton-panes:v1:<id>`. The main window keeps its old key, so an existing
+  layout survives.
+- **Drafts.** Every window writes the whole drafts blob, so on a `storage` event a window keeps the
+  drafts of the threads it holds and takes the rest from what was stored.
+- **One thread, one window.** A window that takes a thread in claims it over a `BroadcastChannel`, and
+  any other window showing it drops its ChatView for "Bring it here", which claims it back. So a thread
+  never has two composers: nothing can send twice from a stale draft, and focus stays per window. Only
+  a thread arriving claims, so a reload cannot take one back. Two plain tabs of the main window share a
+  layout and are not covered, as before.
+- **Attach to main window** asks the main window to open it in a pane. The detached pane closes, and the
+  window with it when that was its last pane. With no main window on a thread it says so and stays.
+- On the desktop app `setWindowOpenHandler` allows exactly this URL shape, so the window has
+  the main window's preload and session. `baton/detachedWindows.ts` gives it the main window's navigation
+  and webview policy, saves its route and bounds to `baton-detached-windows.json`, and has the main window
+  reopen them after a restart. It outlives its opener, so closing the main window leaves it up. Closed
+  while the main window is up it is forgotten; torn down with the main window by a quit or an update it
+  returns. Electron does not pass the opener's preload to a child here, so the main window's web
+  preferences are passed explicitly; without them the window fails before its first request.
+
+Rejected: a second server or a login per window (he said the same one); a route per window; a lease
+with heartbeats to detect a dead holder ("Bring it here" is one click and needs no liveness).
+
+Known limits: a closed web window leaves its small layout entry in localStorage. Web windows are
+restored by the browser, not by Baton.
+
+## D97 — Dictation is Handy's engine stack in our own sidecar, not Handy beside the app
 
 Director, 2026-10-30: Handy's approach first, Wispr as the fallback (#45). Read Handy at `7bfb2e2c`
 before choosing. Its parts are already crates: `transcribe-cpp` runs Parakeet, `handy-recorder` opens
@@ -2522,7 +2653,7 @@ dictation key. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (
 Ctrl+Win, Ctrl+Win+Space and Ctrl+Alt+Win read from his Wispr config.
 Ctrl+Alt+Shift+F8 toggles for Airdeck, whose mic button is a tap with no hold.
 
-## D95 — Custom wake words, no "Hey", trained on free GitHub runners
+## D98 — Custom wake words, no "Hey", trained on free GitHub runners
 
 `.github/workflows/baton-wake-train.yml` runs openWakeWord's trainer on `ubuntu-24.04` (public repo,
 free, CPU only). Pinned: piper-sample-generator v2.0.0, because upstream's notebook still imports the
@@ -2559,16 +2690,15 @@ on top of the false wakes.
 Rejected: Colab and Kaggle (an account in a browser, not repeatable); RunPod (paid); the server (a
 loaded box with earlyoom, and 17 GB of negative features on a tight disk).
 
-Dictation result (D94), 240 of his AT2020 clips, 54 minutes: Parakeet v3 differs from Wispr's raw text
+Dictation result (D97), 240 of his AT2020 clips, 54 minutes: Parakeet v3 differs from Wispr's raw text
 on 3.0% of words and Parakeet 110M on 3.0%; they differ from each other on 3.9%. That is agreement, not
 accuracy. Median wait for a 5 to 15 s clip on the i7-8550U: v3 4.2 s, 110M 1.2 s, Wispr's own end to end
 0.6 s. v3 stays the default as ordered, and the tray switches to the fast model.
 
-## D96 — Mics are an ordered list by part of the name
+## D99 — Mics are an ordered list by part of the name
 
 `micOrder`: Scarlett Solo, Focusrite, Wireless Mic Rx, DJI, then the system default; an explicit pin
 outranks it. Checked every 5 s, so a vanished mic falls through and a returning one is taken back.
 Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
 not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
 the AT2020 is on it and mixing the empty input 2 halves the level.
-

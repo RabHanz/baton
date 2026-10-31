@@ -90,7 +90,7 @@ desktop main process imports this package directly.
 ## On the desktop
 
 `apps/desktop/src/baton/voice`. On Windows everything audio goes through
-`baton-dictation.exe` (`native/baton-dictation`, D94): `serve` over JSON lines for the keys, recording,
+`baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
 Parakeet and paste; `record` piped in as the wake path's microphone.
 
 | Setting in `<state dir>/fabric-voice.json` | Default                                | Also in the tray |
@@ -100,7 +100,7 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v` |                |
 | `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words |
 | `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
-| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D96)              | Microphone       |
+| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)              | Microphone       |
 | `enabled`                                  | `false`: listening is opt-in           | Always listening |
 
 Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
