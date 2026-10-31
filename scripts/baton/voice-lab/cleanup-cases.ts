@@ -67,5 +67,5 @@ export const MODE_CASES: ReadonlyArray<CleanupCase & { readonly mode: "chat" | "
   { mode: "email", raw: "Hi Sarah, thanks for sending the contract over. I'll read it tonight and come back to you on Friday. Kind regards, Rabee.", keep: ["Hi Sarah,\n", "Friday", "\n\nKind regards,\nRabee"] },
   { mode: "document", raw: "We didn't hit the target cos the deploy broke twice in March, which cost us about 9 days.", keep: ["March", "9 days", "twice"] },
   { mode: "code", raw: "Git checkout -b baton/dictation-magic then run pnpm install with --frozen-lockfile.", keep: ["baton/dictation-magic", "--frozen-lockfile", "pnpm install"] },
-  { mode: "notes", raw: "Things to chase: the Stripe payout, the Companies House filing, and the disk on the box.", keep: ["Stripe payout", "Companies House filing", "disk on the box", "- "] },
+  { mode: "notes", raw: "Things to chase: the Stripe payout, the Companies House filing, and the disk on the box.", keep: ["Things to chase", "Stripe payout", "Companies House filing", "disk on the box", "- "] },
 ];

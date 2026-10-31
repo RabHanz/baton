@@ -2717,40 +2717,61 @@ the AT2020 is on it and mixing the empty input 2 halves the level.
 
 ## D103 — Dictation decodes while he speaks, by chunks cut at pauses
 
-Goal: Wispr's 0.6 s from key release. Neither Parakeet TDT build can stream: transcribe.cpp offers
-`session.stream` only to cache-aware models (`src/arch/parakeet`), which is why Handy also falls back
-to live chunks for these. Handy cuts at 30 s for accuracy; here the cut is 2.5 to 8 s for latency, so
-only the last piece is left at release. A piece carries 1 s of the audio before it and keeps only the
-words past that, so the model has context and a pause does not become a false sentence end. Pauses are
-measured against the audio's own floor, so a whisper pauses as clearly as a shout. A failed piece falls
-back to decoding the whole recording, which is still held.
+Goal: Wispr's 0.6 s from key release. Neither Parakeet TDT build can stream (`supports_streaming` is false
+on both, measured): transcribe.cpp offers `session.stream` only to cache-aware models, which is why Handy
+also falls back to live chunks for these. Handy cuts at 30 s for accuracy; here pieces are cut at pauses, 4 to
+10 s long, for latency, so only the last piece is left at release. Pauses are measured against the audio's
+own floor, so a whisper pauses as clearly as a shout. A failed piece falls back to the whole recording.
 
-Rejected: a cache-aware streaming model (a third model to fetch, and not what was measured against
-Wispr); re-decoding the whole clip while he speaks (work grows with every second). The cloud engines in
-VentureOS `docs/research/live-stt-2026-10-28` were not reused: they need a metered key or a network hop.
-That research's Silero defaults informed the thinking, but no VAD is used here.
+Measured 2026-10-31 on the idle laptop (CPU 9 to 17%, BelowNormal). Release to text is real-time replay
+through the sidecar, 20 clips of 5 to 15 s, nothing pasted. Word differences are against Wispr's raw text on
+60 clips, which is agreement, not accuracy.
 
-Status: built and on the laptop, **not yet timed**. See the numbers in VOICE.md.
+| Setup                   | Differs from Wispr | Release to text, median | p90     | Max     |
+| ----------------------- | ------------------ | ----------------------- | ------- | ------- |
+| v3, whole clip          | 2.5%               | about 2.5 s (decode)    |         |         |
+| v3, chunks (default)    | 5.3%               | 0.70 s                  | 1.51 s  | 1.57 s  |
+| 110M, whole clip        | 5.6%               | about 0.7 s (decode)    |         |         |
+| 110M, chunks            | 7.7%               | 0.15 s                  | 0.37 s  | 0.42 s  |
 
-## D104 — Quiet speech gets gain; the fast model is not the default yet
+Wispr's own is 0.6 s end to end. So chunking trades accuracy for speed on both models, and v3 chunked misses
+0.6 s at the median by 0.1 s. Whole-clip rows are decode time only, not replay.
 
-Measured 2026-10-31 on the laptop, 60 AT2020 clips against Wispr's raw text, before any gain:
+The first version gave each piece 1 s of earlier audio as context and kept only the words past it. It made
+things worse: v3 reached 12.5% with 58 deleted and 32 inserted words, because the seam was cut by word
+timestamps. Removing it took v3 to 5.3%, so it was deleted. Longer pieces (6 to 12 s) did not pay: v3 6.0%
+and 1.2 s to finish the last piece.
 
-| Condition                          | v3    | 110M  |
-| ---------------------------------- | ----- | ----- |
-| As recorded                        | 2.8%  | 5.5%  |
-| Attenuated 20 dB                   | 2.5%  | 6.1%  |
-| Attenuated 30 dB                   | 2.9%  | 8.4%  |
-| Attenuated 40 dB                   | 8.1%  | 20.8% |
-| His clips made whisper, -35 dBFS   | none  | 9.8%  |
-| His clips made whisper, -45 dBFS   | none  | 10.8% |
-| His 30 quietest real clips         | 4.2% (13 clips) | 4.0% |
+Rejected: a cache-aware streaming model (a third model, not what was compared with Wispr); re-decoding the
+whole clip while he speaks (work grows with every second). VentureOS `docs/research/live-stt-2026-10-28`
+was read: its cloud engines need a metered key or a network hop, so only its Wispr API notes were used,
+as a reference for what context a dictation product takes.
 
-This does not repeat D97's "both 3.0%" on 240 clips, and on quiet audio 110M is far worse. So `speechModel`
-stays `v3` until the same table is re-measured with gain. Each recording or piece is lifted towards
--23 dBFS, up to 40 dB, never turned down, and digital silence is left alone. The gain ships unmeasured.
-Whisper is simulated (LPC with noise excitation over the clip's own room tone), not real whispering. The
-en-GB voice rows are left out: their script spells numbers out, so format inflates them.
+## D104 — The default stays v3, and gain helps a quiet mic but not a whisper
+
+`speechModel` stays `v3`. 110M is about 4.6 times quicker at release, but it differs from Wispr on 2.4 points
+more words at full volume and nearly twice as many on quiet speech. v3 chunked matches 110M whole-clip on
+accuracy, at the same wait. The fast model stays one tray click away. D97's "both 3.0%" did not repeat on
+these 60 clips.
+
+Whole-clip, against Wispr's raw text, 60 AT2020 clips, before and after gain:
+
+| Condition                        | v3 before | v3 after | 110M before | 110M after |
+| -------------------------------- | --------- | -------- | ----------- | ---------- |
+| As recorded                      | 2.8%      | 2.5%     | 5.5%        | 5.6%       |
+| Attenuated 30 dB                 | 2.9%      |          | 8.4%        | 6.0%       |
+| Attenuated 40 dB                 | 8.1%      | 5.8%     | 20.8%       | 10.3%      |
+| His clips made whisper, -35 dBFS |           |          | 9.8%        | 10.0%      |
+| His clips made whisper, -45 dBFS | 6.5%      | 6.4%     | 10.8%       | 11.4%      |
+| His 30 quietest real clips       |           |          | 4.0%        | 3.6%       |
+
+Gain lifts each piece towards -23 dBFS, up to 40 dB, never down, and leaves digital silence alone. It halves
+the errors on a mic that is merely quiet. It does nothing for whispered speech, because the room noise comes
+up with it: the fix for whisper is the model, and v3 is the better of the two by 5 points. Whisper here is
+simulated (LPC with noise excitation over the clip's own room tone), not him whispering, and these rows are
+whole-clip: whispered speech through chunks is unmeasured. Silero VAD thresholds were not touched because
+hold-key dictation has no VAD. The en-GB voice rows are left out: their script spells numbers out, so
+format inflates them.
 
 ## D105 — Clean-up is code first, his Claude second, and the answer is checked
 
@@ -2758,6 +2779,10 @@ Order: filler and stutter removal, value corrections ("6, no 7"), dictionary, sp
 mode shape, all in about 0.4 ms. The model is asked only when something is left that code cannot settle:
 a correction marker, a restart, a long run-on, or document and notes modes. That was 243 of 1,777 of his
 clips (14%), so most dictation never waits on it.
+
+Added delay, idle laptop, warm session: under 1 ms for the local pass; for the 60 flagged clips run through the
+model, median 1.72 s, p95 3.29 s, no timeouts. 53 were used and 7 refused by `checkRewrite`. So a flagged
+dictation takes about 2.4 s from release on v3, and the other 86% take 0.7 s.
 
 The model is his own `claude` on `haiku` through `startVisionSession`: subscription, no tools. A hard limit
 of 2.5 s plus 8 ms a character, capped at 6 s, pastes the local text instead. A timeout replaces the session

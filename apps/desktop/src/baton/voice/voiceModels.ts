@@ -18,8 +18,8 @@ export const PARAKEET_MODEL = {
 } as const;
 
 /**
- * English only, 229 MB. On 240 clips of real dictation it agreed with Wispr exactly as well as v3
- * (3.04% of words) and ran 3.4 times faster, so it is one tray click away.
+ * English only, 229 MB. Quicker than v3 and less accurate, far less on quiet speech (D104), so it
+ * is one tray click away rather than the default.
  */
 export const PARAKEET_FAST_MODEL = {
   file: "parakeet-tdt_ctc-110m-F16.gguf",

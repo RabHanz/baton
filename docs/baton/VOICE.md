@@ -100,7 +100,7 @@ Parakeet and paste; `record` piped in as the wake path's microphone.
 | `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space` |                |
 | `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v` |                |
 | `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words |
-| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
+| `speechModel`                              | `v3`; `fast` is English only, 4.6x quicker at release, less accurate (D104) | Dictation |
 | `dictationCleanup`                         | `claude`; `local`, `off`               | Dictation, Clean-up |
 | `cleanupModel`, `claudeBinary`             | `haiku`, `claude`                      |                  |
 | `appModes`                                 | `{}`; his writing mode per app, by exe | Dictation, Writing mode |
@@ -133,7 +133,7 @@ missing, Wispr's table is read once, read-only.
 `make` then `score`), `replay_lab.py` (release to text at real-time pace through `BATON_FAKE_MIC`),
 `cleanup-lab.ts` with `cleanup-cases.ts`, bundled by `bundle-cleanup.sh` (the rewrite on written cases and on
 his clips, aggregates only). One CPU-heavy laptop job at a time: a speed figure taken beside other work is void.
-Quiet-speech numbers are in D104.
+Speed is in D103 and quiet speech in D104. `BATON_CHUNK=min_ms,max_ms` overrides the chunk lengths for measuring.
 
 `scripts/baton/voice-lab/voice-lab.ps1` on the laptop: `replay` and `dictation` use his stored Wispr
 clips and need nothing from him; `samples` has him say each word 30 times; `ambient` counts false wakes

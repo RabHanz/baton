@@ -1,8 +1,8 @@
 //! Transcribing while he speaks. Neither Parakeet TDT build streams (transcribe.cpp offers that only
 //! to the cache-aware models), so this is Handy's live chunking with shorter chunks: cut at pauses,
 //! decode each piece as it arrives, and at key release only the last piece is left. Handy cuts for
-//! accuracy at 30 s; these are cut for latency, so each piece carries the audio before it for
-//! context and only the words past that audio are kept.
+//! accuracy at 30 s; these are cut for latency. Pieces do not overlap: carrying audio across a cut
+//! to give the model context cost more words at the seam than it saved (D103).
 
 const RATE: usize = 16_000;
 const FRAME: usize = RATE / 50;
@@ -12,28 +12,20 @@ const PAUSE_FRAMES: usize = 10;
 pub struct ChunkParams {
     pub min_samples: usize,
     pub max_samples: usize,
-    pub context_samples: usize,
 }
 
 impl ChunkParams {
-    /// BATON_CHUNK=min_ms,max_ms,context_ms is for measuring, like BATON_THREADS.
+    /// BATON_CHUNK=min_ms,max_ms is for measuring, like BATON_THREADS.
     pub fn from_env() -> Self {
-        let mut ms = [2_500, 8_000, 1_000];
+        let mut ms = [4_000, 10_000];
         if let Ok(text) = std::env::var("BATON_CHUNK") {
             for (slot, value) in ms.iter_mut().zip(text.split(',')) {
                 *slot = value.trim().parse().unwrap_or(*slot);
             }
         }
         let samples = |ms: usize| ms * RATE / 1000;
-        Self { min_samples: samples(ms[0]), max_samples: samples(ms[1]), context_samples: samples(ms[2]) }
+        Self { min_samples: samples(ms[0]), max_samples: samples(ms[1]) }
     }
-}
-
-/// One piece to decode: `context` samples already heard, then new audio.
-#[derive(Debug, PartialEq)]
-pub struct Piece {
-    pub pcm: Vec<f32>,
-    pub context: usize,
 }
 
 fn frame_levels(pcm: &[f32]) -> Vec<f32> {
@@ -85,29 +77,21 @@ fn quietest(pcm: &[f32]) -> usize {
 pub struct Chunker {
     params: ChunkParams,
     pending: Vec<f32>,
-    /// The tail of what was already cut, as context for the next piece.
-    tail: Vec<f32>,
     scanned_at: usize,
 }
 
 impl Chunker {
     pub fn new(params: ChunkParams) -> Self {
-        Self { params, pending: Vec::new(), tail: Vec::new(), scanned_at: 0 }
+        Self { params, pending: Vec::new(), scanned_at: 0 }
     }
 
-    fn cut(&mut self, at: usize) -> Piece {
-        let new: Vec<f32> = self.pending.drain(..at).collect();
-        let context = self.tail.len();
-        let mut pcm = std::mem::take(&mut self.tail);
-        pcm.extend_from_slice(&new);
-        let keep = pcm.len().saturating_sub(self.params.context_samples);
-        self.tail = pcm[keep..].to_vec();
+    fn cut(&mut self, at: usize) -> Vec<f32> {
         self.scanned_at = 0;
-        Piece { pcm, context }
+        self.pending.drain(..at).collect()
     }
 
     /// Takes audio; returns a piece when a pause, or the length limit, makes one certain.
-    pub fn push(&mut self, pcm: &[f32]) -> Option<Piece> {
+    pub fn push(&mut self, pcm: &[f32]) -> Option<Vec<f32>> {
         self.pending.extend_from_slice(pcm);
         if self.pending.len() < self.params.min_samples || self.pending.len() < self.scanned_at + RATE / 5 {
             return None;
@@ -124,24 +108,13 @@ impl Chunker {
     }
 
     /// What is left at key release.
-    pub fn finish(&mut self) -> Option<Piece> {
+    pub fn finish(&mut self) -> Option<Vec<f32>> {
         if self.pending.is_empty() {
             return None;
         }
         let at = self.pending.len();
         Some(self.cut(at))
     }
-}
-
-/// Words that start after the context. A word straddling the seam belongs to the piece that
-/// heard it whole, which is this one, so the boundary sits slightly before the seam.
-pub fn words_after<'a>(words: impl Iterator<Item = (i64, &'a str)>, context_ms: i64) -> String {
-    words
-        .filter(|(start, _)| *start >= context_ms - 80)
-        .map(|(_, word)| word.trim())
-        .filter(|word| !word.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 const TARGET_LEVEL: f32 = 0.07; // about -23 dBFS at the loud end of speech
@@ -170,7 +143,7 @@ mod tests {
     use super::*;
 
     const PARAMS: ChunkParams =
-        ChunkParams { min_samples: 2 * RATE, max_samples: 6 * RATE, context_samples: RATE };
+        ChunkParams { min_samples: 2 * RATE, max_samples: 6 * RATE };
 
     fn tone(seconds: f32, level: f32) -> Vec<f32> {
         (0..(seconds * RATE as f32) as usize).map(|i| (i as f32 * 0.3).sin() * level).collect()
@@ -183,8 +156,8 @@ mod tests {
         pcm
     }
 
-    fn pieces(chunker: &mut Chunker, pcm: &[f32]) -> Vec<Piece> {
-        let mut out: Vec<Piece> = pcm.chunks(480).filter_map(|c| chunker.push(c)).collect();
+    fn pieces(chunker: &mut Chunker, pcm: &[f32]) -> Vec<Vec<f32>> {
+        let mut out: Vec<Vec<f32>> = pcm.chunks(480).filter_map(|c| chunker.push(c)).collect();
         out.extend(chunker.finish());
         out
     }
@@ -195,35 +168,23 @@ mod tests {
             let pcm = speech_with_gap(level);
             let got = pieces(&mut Chunker::new(PARAMS), &pcm);
             assert_eq!(got.len(), 2, "level {level}");
-            let cut = got[0].pcm.len();
+            let cut = got[0].len();
             assert!((3 * RATE..3 * RATE + 7 * RATE / 20).contains(&cut), "cut at {cut}");
         }
     }
 
     #[test]
-    fn no_audio_is_lost_and_context_is_only_ever_old_audio() {
+    fn no_audio_is_lost_or_repeated() {
         let pcm = speech_with_gap(0.2);
         let got = pieces(&mut Chunker::new(PARAMS), &pcm);
-        assert_eq!(got.iter().map(|p| p.pcm.len() - p.context).sum::<usize>(), pcm.len());
-        assert_eq!(got[0].context, 0);
-        assert_eq!(got[1].context, RATE);
-        let seam = got[0].pcm.len();
-        assert_eq!(got[1].pcm[got[1].context..], pcm[seam..]);
-        assert_eq!(got[1].pcm[..got[1].context], pcm[seam - RATE..seam]);
+        assert_eq!(got.concat(), pcm);
     }
 
     #[test]
     fn unbroken_speech_stops_at_the_limit() {
         let got = pieces(&mut Chunker::new(PARAMS), &tone(7.0, 0.2));
         assert!(got.len() >= 2);
-        assert!(got.iter().all(|p| p.pcm.len() - p.context <= 6 * RATE + RATE / 2));
-    }
-
-    #[test]
-    fn keeps_only_the_words_past_the_seam() {
-        let words = [(100, "we"), (900, "should"), (1000, "go"), (1500, "home.")];
-        assert_eq!(words_after(words.into_iter(), 1000), "go home.");
-        assert_eq!(words_after(words.into_iter(), 0), "we should go home.");
+        assert!(got.iter().all(|p| p.len() <= 6 * RATE + RATE / 2));
     }
 
     #[test]

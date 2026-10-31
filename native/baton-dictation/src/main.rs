@@ -24,11 +24,11 @@ use handy_recorder::{
     list_input_devices, AudioChunk, Channels, Recorder, RecorderConfig, Sink,
 };
 use keys::PasteMethod;
-use live::{lift_gain, words_after, ChunkParams, Chunker, Piece};
+use live::{lift_gain, ChunkParams, Chunker};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use transcribe_cpp::{
-    init_backends_with, BackendMask, Feature, Model, RunOptions, Session, SessionOptions, TimestampKind,
+    init_backends_with, BackendMask, Feature, Model, RunOptions, Session, SessionOptions,
 };
 
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
@@ -120,19 +120,6 @@ fn infer(session: &mut Session, pcm: &mut Vec<f32>, language: Option<String>) ->
     Ok((result.text.trim().to_string(), audio_ms, started.elapsed().as_millis() as u64))
 }
 
-/// The new words of one piece; the context before them only helps the model hear them.
-fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
-    let Piece { mut pcm, context } = piece;
-    lift_gain(&mut pcm);
-    pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
-    let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
-    let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
-    if context == 0 || result.words.is_empty() {
-        return Ok(result.text.trim().to_string());
-    }
-    Ok(words_after(result.words.iter().map(|w| (w.t0_ms, w.text.as_str())), context as i64 / 16))
-}
-
 /// One recording on its way through the model.
 struct Live {
     chunker: Chunker,
@@ -160,11 +147,11 @@ impl Live {
         }
     }
 
-    fn decode(&mut self, session: &mut Session, piece: Piece) {
+    fn decode(&mut self, session: &mut Session, mut piece: Vec<f32>) {
         let started = Instant::now();
-        match decode_piece(session, piece, self.language.clone()) {
-            Ok(text) if text.is_empty() => {}
-            Ok(text) => self.text.push(text),
+        match infer(session, &mut piece, self.language.clone()) {
+            Ok((text, _, _)) if text.is_empty() => {}
+            Ok((text, _, _)) => self.text.push(text),
             Err(e) => self.failed = Some(e),
         }
         self.infer_ms += started.elapsed().as_millis() as u64;
@@ -778,16 +765,16 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
         let mut text: Vec<String> = Vec::new();
         let started = Instant::now();
         for chunk in pcm.chunks(480) {
-            if let Some(piece) = chunker.push(chunk) {
-                text.push(decode_piece(&mut session, piece, language.clone())?);
+            if let Some(mut piece) = chunker.push(chunk) {
+                text.push(infer(&mut session, &mut piece, language.clone())?.0);
             }
         }
         let busy = started.elapsed().as_millis() as u64;
         let last = chunker.finish();
-        let last_seconds = last.as_ref().map_or(0.0, |p| p.pcm.len() as f64 / 16_000.0);
+        let last_seconds = last.as_ref().map_or(0.0, |p| p.len() as f64 / 16_000.0);
         let released = Instant::now();
-        if let Some(piece) = last {
-            text.push(decode_piece(&mut session, piece, language.clone())?);
+        if let Some(mut piece) = last {
+            text.push(infer(&mut session, &mut piece, language.clone())?.0);
         }
         emit(json!({"file": file, "text": text.join(" "), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
             "finalMs": released.elapsed().as_millis() as u64, "lastSeconds": last_seconds, "pieces": text.len()}));

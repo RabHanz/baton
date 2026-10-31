@@ -151,7 +151,7 @@ is ordered, and nothing in it is blocked on a decision he owes.
 
 | #   | Work                                                                                                             | State                                                                          | What it needs                                                                                        |
 | --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| V1  | **Time dictation on an idle laptop** (D103, D104): chunk sweep, gain pass, then `replay_lab.py`, then decide `speechModel` and set the chunk constants. Clean-up delay too. Every speed figure so far was taken under load and is void |
+| V1  | **Whispered speech through chunks, and the real thing** (D104): whisper is measured whole-clip and simulated. It needs him whispering at the mic, and live-mic release-to-text, including how long the recorder takes to stop |
 | V2  | **macOS voice** (D106): compile `desktop_unix.rs`, `stageBatonVoice`, payload check, CI runner. Needs Microphone, Accessibility and Input Monitoring, plus signing and notarisation |
 | V3  | **Linux voice** (D106): compile `desktop_unix.rs`, packaging, CI runner, `/dev/input` for the keys, each Wayland compositor's limit on focus and paste |
 | V4  | **Phone dictation**: `dictationCleanup.ts` is shared; a phone needs its own model session and focus source |

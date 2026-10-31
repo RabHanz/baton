@@ -303,12 +303,17 @@ export const checkRewrite = (
   for (const number of given)
     if (!kept.includes(number) && !correctedAway(input, number)) return fail(`lost number ${number}`);
 
-  const known = dictionary.flatMap((d) => [d.phrase, d.replacement ?? ""]).join(" ").toLowerCase();
+  const spellings = dictionary.flatMap((d) => [d.phrase, d.replacement ?? ""]);
+  const known = spellings.join(" ").toLowerCase();
   const outLower = output.toLowerCase();
   const inLower = input.toLowerCase();
   // Exact case: "stripe" for "Stripe" is a lost name, even if the letters survived.
   for (const name of namesIn(input))
-    if (!output.includes(name) && !corrected && !known.includes(name.toLowerCase()))
+    if (
+      !output.includes(name) &&
+      !corrected &&
+      !spellings.some((s) => s.toLowerCase() === name.toLowerCase() && output.includes(s))
+    )
       return fail(`lost name ${name}`);
   for (const name of namesIn(output)) {
     const lower = name.toLowerCase();
@@ -349,7 +354,7 @@ const MODE_RULES: Readonly<Record<Exclude<DictationMode, "raw">, string>> = {
     "document: formal writing. Full sentences and full grammar, contractions expanded, slang and chatty asides made plain, every fact kept.",
   code: "code: he is talking to a terminal, an editor or a coding agent. Keep identifiers, paths, flags, commands and casing exactly. Put nothing in backticks unless he asked. No final full stop on a single line.",
   notes:
-    "notes: for his own reference. Three or more listed things always become a hyphen bullet list in his words, one item a line, each keeping its capitals; otherwise plain short paragraphs. Keep every item.",
+    "notes: for his own reference. Three or more listed things always become a hyphen bullet list in his words, one item a line, each keeping its capitals. A lead-in such as 'Things to chase:' stays as its own line above the list. Otherwise plain short paragraphs. Keep every item.",
 };
 
 const EXAMPLES = `Examples, all mode default:
