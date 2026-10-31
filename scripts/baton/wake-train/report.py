@@ -10,8 +10,8 @@ name = session.get_inputs()[0].name
 
 
 def score(features: np.ndarray) -> np.ndarray:
-    out = [session.run(None, {name: features[i:i + 512].astype(np.float32)})[0]
-           for i in range(0, len(features), 512)]
+    out = [session.run(None, {name: features[i:i + 1].astype(np.float32)})[0]
+           for i in range(0, len(features), 1)]
     return np.concatenate(out).ravel()
 
 
