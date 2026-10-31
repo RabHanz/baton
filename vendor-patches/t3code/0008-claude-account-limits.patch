@@ -80,3 +80,59 @@ index e0f5c3afbe845741023fd98e08aec6e019d2a777..0b2b1e2d354822772c9f60748ec42fdc
          {contextWindow ? <ContextRow usage={contextWindow} spaced={limits !== undefined} /> : null}
        </div>
      </ThreadDetailsSection>
+diff --git a/apps/web/src/components/usage/UsageLimitsPooled.tsx b/apps/web/src/components/usage/UsageLimitsPooled.tsx
+index 7157607dabafc9cd033fd6e9da55b2c719c30bf7..b960a665b0628acc51f3f19252f1909904a369df 100644
+--- a/apps/web/src/components/usage/UsageLimitsPooled.tsx
++++ b/apps/web/src/components/usage/UsageLimitsPooled.tsx
+@@ -31,6 +31,7 @@ import { ensureLocalApi } from "../../localApi";
+ import { usePrimarySettings } from "../../hooks/useSettings";
+ import { cn } from "../../lib/utils";
+ import { formatUpcomingTimestamp } from "../../timestampFormat";
++import { BatonTileSwitch } from "../chat/BatonTileSwitch";
+ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+ import { providerClients } from "../settings/providerDriverMeta";
+ import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
+@@ -211,6 +212,7 @@ function SegmentPopover({
+           </span>
+         </div>
+       ) : null}
++      <BatonTileSwitch account={account} />
+     </div>
+   );
+ }
+diff --git a/packages/provider-core/src/server/usageLimits.test.ts b/packages/provider-core/src/server/usageLimits.test.ts
+index 4b9c1b39c862b608e97493a599070ef014c14c9b..e351f035d4a60837cf69d34185e62e4fbb2619cf 100644
+--- a/packages/provider-core/src/server/usageLimits.test.ts
++++ b/packages/provider-core/src/server/usageLimits.test.ts
+@@ -50,6 +50,17 @@ describe("applyUsageLimitsUpdate", () => {
+     });
+   });
+ 
++  it("keeps the credential fingerprint a live update does not carry", () => {
++    const next = applyUsageLimitsUpdate({
++      previous: { ...published, credentialFingerprint: "5" },
++      checkedAt: "2026-09-03T12:00:05.000Z",
++      update: {
++        windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent: 55 }],
++      },
++    });
++    expect(next?.credentialFingerprint).toBe("5");
++  });
++
+   it("leaves an unsupported account and an empty update alone", () => {
+     const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };
+     expect(
+diff --git a/packages/provider-core/src/server/usageLimits.ts b/packages/provider-core/src/server/usageLimits.ts
+index 1e4bcd0090854f7856140516420843c648bdc690..2301b0e95e66445363e0b4c6f166c49d7fb8c312 100644
+--- a/packages/provider-core/src/server/usageLimits.ts
++++ b/packages/provider-core/src/server/usageLimits.ts
+@@ -84,6 +84,9 @@ export function applyUsageLimitsUpdate(input: {
+   return {
+     ...makeUsageLimits({ checkedAt: input.checkedAt, windows: merged.values() }),
+     ...(previous?.resetCredits !== undefined ? { resetCredits: previous.resetCredits } : {}),
++    ...(previous?.credentialFingerprint !== undefined
++      ? { credentialFingerprint: previous.credentialFingerprint }
++      : {}),
+     ...(unavailable !== undefined ? { unavailable } : {}),
+   };
+ }
