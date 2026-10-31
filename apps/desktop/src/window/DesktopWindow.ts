@@ -11,6 +11,7 @@ import * as Electron from "electron";
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
 import * as DesktopAssets from "../app/DesktopAssets.ts";
+import { installDetachedWindows } from "../baton/detachedWindows.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
@@ -372,6 +373,17 @@ export const make = Effect.gen(function* () {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
     }
     if (yield* Ref.get(desktopState.quitting)) return Option.none();
+    const rendererPreferences = {
+      preload: environment.preloadPath,
+      // Hidden-renderer throttling stalls first paint; re-enable it after the first reveal.
+      backgroundThrottling: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: true,
+      // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
+      disableHtmlFullscreenWindowResize: true,
+    };
     const window = yield* electronWindow.create({
       ...initialBounds,
       minWidth: 840,
@@ -383,17 +395,7 @@ export const make = Effect.gen(function* () {
       ...iconOption,
       title: environment.displayName,
       ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
-      webPreferences: {
-        preload: environment.preloadPath,
-        // Hidden-renderer throttling stalls first paint; re-enable it after the first reveal.
-        backgroundThrottling: false,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webviewTag: true,
-        // Guest fullscreen propagates to the embedder; both must opt out to keep it inside the webview.
-        disableHtmlFullscreenWindowResize: true,
-      },
+      webPreferences: rendererPreferences,
     });
     if (yield* Ref.get(desktopState.quitting)) {
       yield* electronWindow.destroyAll;
@@ -496,26 +498,6 @@ export const make = Effect.gen(function* () {
       yield* electronWindow.destroyAll;
       return Option.none();
     }
-    window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
-      if (
-        typeof params.partition !== "string" ||
-        !previewManager.isBrowserPartition(params.partition)
-      ) {
-        event.preventDefault();
-        return;
-      }
-      webPreferences.sandbox = true;
-      webPreferences.nodeIntegration = false;
-      webPreferences.nodeIntegrationInSubFrames = false;
-      webPreferences.contextIsolation = false;
-      webPreferences.disableHtmlFullscreenWindowResize = true;
-      if (previewPasskeys.bridgeEnabled) {
-        webPreferences.additionalArguments = [
-          ...(webPreferences.additionalArguments ?? []),
-          PASSKEY_BRIDGE_ARGUMENT,
-        ];
-      }
-    });
 
     const contextMenuContents = new WeakSet<Electron.WebContents>();
     const installContextMenu = (
@@ -592,33 +574,65 @@ export const make = Effect.gen(function* () {
         installContextMenu(popup, popup.webContents);
       });
     };
-    installContextMenu(window, window.webContents);
-    window.webContents.on("did-attach-webview", (_event, contents) => {
-      installContextMenu(window, contents);
-      void runPromise(previewManager.prepareWebview(contents));
-    });
+    // Baton (0007-desktop.patch): detached thread windows get this same policy (D96).
+    const guardWindow = (owner: Electron.BrowserWindow) => {
+      const contents = owner.webContents;
+      installContextMenu(owner, contents);
+      contents.on("will-attach-webview", (event, webPreferences, params) => {
+        if (
+          typeof params.partition !== "string" ||
+          !previewManager.isBrowserPartition(params.partition)
+        ) {
+          event.preventDefault();
+          return;
+        }
+        webPreferences.sandbox = true;
+        webPreferences.nodeIntegration = false;
+        webPreferences.nodeIntegrationInSubFrames = false;
+        webPreferences.contextIsolation = false;
+        webPreferences.disableHtmlFullscreenWindowResize = true;
+        if (previewPasskeys.bridgeEnabled) {
+          webPreferences.additionalArguments = [
+            ...(webPreferences.additionalArguments ?? []),
+            PASSKEY_BRIDGE_ARGUMENT,
+          ];
+        }
+      });
+      contents.on("did-attach-webview", (_event, guest) => {
+        installContextMenu(owner, guest);
+        void runPromise(previewManager.prepareWebview(guest));
+      });
+      contents.setWindowOpenHandler(({ url }) => {
+        const detached = allowDetachedWindow(url);
+        if (detached !== null) return detached;
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+          void runPromise(electronShell.openExternal(url));
+        }
+        return { action: "deny" };
+      });
+      contents.on("will-navigate", (event, url) => {
+        if (
+          isSameOriginRendererNavigation({
+            applicationUrl,
+            navigationUrl: url,
+          })
+        ) {
+          return;
+        }
 
-    window.webContents.setWindowOpenHandler(({ url }) => {
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-      return { action: "deny" };
-    });
-    window.webContents.on("will-navigate", (event, url) => {
-      if (
-        isSameOriginRendererNavigation({
-          applicationUrl,
-          navigationUrl: url,
-        })
-      ) {
-        return;
-      }
-
-      event.preventDefault();
-      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
-        void runPromise(electronShell.openExternal(url));
-      }
-    });
+        event.preventDefault();
+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
+          void runPromise(electronShell.openExternal(url));
+        }
+      });
+    };
+    const allowDetachedWindow = installDetachedWindows(
+      window,
+      applicationUrl,
+      rendererPreferences,
+      guardWindow,
+    );
+    guardWindow(window);
 
     const quitShortcutHandler = makeQuitShortcutHandler({
       platform: environment.platform,

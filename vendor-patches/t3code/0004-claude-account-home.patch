@@ -23,3 +23,42 @@ index 428e44e19020cd1e69e0e01cca7a35d62b01208c..748d0e3ac0c5acc1950fb67fe36ea1a5
      const path = yield* Path.Path;
      const crypto = yield* Crypto.Crypto;
      const binaryPath = yield* resolveClaudeSdkExecutablePath(
+diff --git a/apps/server/src/provider/Drivers/ClaudeHome.test.ts b/apps/server/src/provider/Drivers/ClaudeHome.test.ts
+index b9eb3b806ce0a26cfd37253ae50e3132ca38f18d..a0d32a1bed6006425dcc1e5553687b44ce93a0b8 100644
+--- a/apps/server/src/provider/Drivers/ClaudeHome.test.ts
++++ b/apps/server/src/provider/Drivers/ClaudeHome.test.ts
+@@ -22,7 +22,10 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
+ 
+         expect(yield* resolveClaudeHomePath({ homePath })).toBe(resolved);
+         expect((yield* makeClaudeEnvironment({ homePath })).CLAUDE_CONFIG_DIR).toBe(resolved);
+-        expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(`claude:home:${resolved}`);
++        // Baton (D95): account homes share the primary's transcripts, so they share its key.
++        expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(
++          `claude:home:${path.resolve(NodeOS.homedir(), ".claude")}`,
++        );
+         expect(yield* makeClaudeCapabilitiesCacheKey({ binaryPath: "claude", homePath })).toBe(
+           `claude\0${resolved}\0`,
+         );
+diff --git a/apps/server/src/provider/Drivers/ClaudeHome.ts b/apps/server/src/provider/Drivers/ClaudeHome.ts
+index bd81aa10bce7a7a07f8280b8ff66230593b95c4f..4aac05d6b3dd18905ed6ebccc62512ff5eba4185 100644
+--- a/apps/server/src/provider/Drivers/ClaudeHome.ts
++++ b/apps/server/src/provider/Drivers/ClaudeHome.ts
+@@ -7,6 +7,8 @@ import * as Schema from "effect/Schema";
+ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
+ import * as HostProcess from "@t3tools/shared/HostProcess";
+ 
++import * as BatonClaudeAccountHome from "./ClaudeAccountHome.ts";
++
+ const quotePath = Schema.encodeSync(Schema.fromJsonString(Schema.String));
+ 
+ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function* (
+@@ -60,6 +62,9 @@ export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationG
+     config: Pick<ClaudeSettings, "homePath">,
+     environment?: NodeJS.ProcessEnv,
+   ): Effect.fn.Return<string, never, Path.Path> {
++    // Baton (D95): an account overlay links the primary's projects/, so its sessions resume anywhere.
++    const layout = yield* BatonClaudeAccountHome.resolveClaudeAccountHomeLayout(config);
++    if (layout.mode === "accountOverlay") return `claude:home:${layout.sharedHomePath}`;
+     const resolvedHomePath = yield* resolveClaudeHomePath(config, environment);
+     return `claude:home:${resolvedHomePath}`;
+   },

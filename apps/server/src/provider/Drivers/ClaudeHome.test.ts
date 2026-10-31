@@ -22,7 +22,10 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
 
         expect(yield* resolveClaudeHomePath({ homePath })).toBe(resolved);
         expect((yield* makeClaudeEnvironment({ homePath })).CLAUDE_CONFIG_DIR).toBe(resolved);
-        expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(`claude:home:${resolved}`);
+        // Baton (D95): account homes share the primary's transcripts, so they share its key.
+        expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(
+          `claude:home:${path.resolve(NodeOS.homedir(), ".claude")}`,
+        );
         expect(yield* makeClaudeCapabilitiesCacheKey({ binaryPath: "claude", homePath })).toBe(
           `claude\0${resolved}\0`,
         );

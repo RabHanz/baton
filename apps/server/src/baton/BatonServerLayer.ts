@@ -28,6 +28,7 @@ import * as OrchestrationEffects from "./OrchestrationEffectsLive.ts";
 import * as OrchestrationReactor from "./OrchestrationReactor.ts";
 import * as OrchestrationRuleService from "./OrchestrationRuleService.ts";
 import * as SynopsisReactor from "./SynopsisReactor.ts";
+import * as ThreadAccountMoves from "./ThreadAccountMoves.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
 
 const servicesInner = IntentService.layer.pipe(
@@ -45,6 +46,7 @@ const servicesInner = IntentService.layer.pipe(
       // socket reaches every other client's subscription.
       WorkSessionService.layer,
       AccountPoolService.layer,
+      ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
       // The adapter is provided here so the one place that talks to another program stays
       // visible, and a machine without Herdr still gets a service that refuses by name.
       AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer)),

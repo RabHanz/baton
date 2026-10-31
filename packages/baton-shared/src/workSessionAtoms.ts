@@ -225,6 +225,12 @@ export function createBatonWorkSessionAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    threadAccountUse: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:thread-account-use",
+      tag: BATON_ACCOUNT_WS_METHODS.threadAccountUse,
+      scheduler,
+      concurrency,
+    }),
     handoff: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:work-session-handoff",
       tag: BATON_HANDOFF_WS_METHODS.workSessionHandoff,

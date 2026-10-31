@@ -4,7 +4,7 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4171499367550c52a8ef0513a5311298d6338ced..c8d56a95731c8ffe1eebeff45c1eaee720dc1d6d 100644
+index 4171499367550c52a8ef0513a5311298d6338ced..9d34a86ec30cbbe8052cf59c2c82100ea56ae7f3 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -1782,7 +1782,7 @@ export default function ChatView(props: ChatViewProps) {
@@ -43,6 +43,98 @@ index 4171499367550c52a8ef0513a5311298d6338ced..c8d56a95731c8ffe1eebeff45c1eaee7
    const { onConfirmRevertStable, onForkFromRunStable, onRevertTimelineTurnStable } =
      useTimelineRewind({
        environmentId,
+@@ -3202,7 +3203,7 @@ export default function ChatView(props: ChatViewProps) {
+         threadRef={activeThreadRef}
+         state={deviceState}
+       />
+-      {rightPanelControlsAtRoot ? panelLayoutControls : null}
++      {rightPanelControlsAtRoot && !backgroundThread ? panelLayoutControls : null}
+       <div
+         className={cn(
+           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
+@@ -3234,7 +3235,9 @@ export default function ChatView(props: ChatViewProps) {
+               className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+             />
+           ) : null}
+-          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
++          {!rightPanelControlsAtRoot && !rightPanelControlsInPanel && !backgroundThread
++            ? panelLayoutControls
++            : null}
+           {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
+           <ChatHeader
+             activeThreadEnvironmentId={activeThread.environmentId}
+diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
+index de16be6d2dcfb9268df9b7599db3188dd1fb23d4..8211287b634deb58509749f93aa1d1f426444c05 100644
+--- a/apps/web/src/components/Sidebar.tsx
++++ b/apps/web/src/components/Sidebar.tsx
+@@ -1,6 +1,14 @@
+ import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
+ import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+ import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
++import { BatonSidebarSection } from "./sidebar/BatonSidebarSection";
++import { openThreadInSplit } from "./panes/batonPanesStore";
++import {
++  BATON_DETACH_MENU_ITEM,
++  BATON_SPLIT_MENU_ITEM,
++  showWithSplitItem,
++} from "./panes/batonSplitMenu";
++import { openDetachedWindow } from "./panes/batonWindows";
+ import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
+ import {
+   dropThreadContext,
+@@ -1502,6 +1510,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+     const isMac = isMacPlatform(navigator.platform);
+     const isModClick = isMac ? event.metaKey : event.ctrlKey;
+     const threadKey = scopedThreadKey(threadRef);
++    if (event.altKey) {
++      event.preventDefault();
++      openThreadInSplit(routeTarget, { kind: "server", threadRef });
++      return;
++    }
+     if (isModClick) {
+       event.preventDefault();
+       toggleThreadSelection(threadKey);
+@@ -2540,7 +2553,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+             ),
+           ) ?? null;
+         const clicked = await settlePromise(() =>
+-          api.contextMenu.show(
++          showWithSplitItem(
++            api,
++            routeTarget,
++            threadRef,
++          )(
+             buildThreadActionMenuItems({
+               canOperate: readEnvironmentScope(
+                 threadRef.environmentId,
+@@ -2577,6 +2594,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+           ),
+         );
+         if (clicked._tag === "Failure" || clicked.value === null) return;
++        if (clicked.value === BATON_SPLIT_MENU_ITEM) {
++          openThreadInSplit(routeTarget, { kind: "server", threadRef });
++          return;
++        }
++        if (clicked.value === BATON_DETACH_MENU_ITEM) {
++          if (!openDetachedWindow({ kind: "server", threadRef })) {
++            toastManager.add({ type: "error", title: "The browser blocked the new window" });
++          }
++          return;
++        }
+         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
+         if (clicked.value?.startsWith("snooze:")) {
+           const preset =
+@@ -3087,6 +3114,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+           </SidebarGroup>
+         }
+       >
++        {/* Baton (vendor-patches/t3code/0006-web-sidebar.patch) */}
++        {isSearchingThreads ? null : (
++          <BatonSidebarSection activeThreadKey={routeThreadKey} onOpenThread={navigateToThread} />
++        )}
+         <SidebarGroup className="flex-1" role="presentation">
+           {isSearchingThreads ? (
+             threadSearchResults.length > 0 ? (
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
 index 79f4633ea545295b2d3caae4ef704075e37f6097..81e67ffc8dbe17b97abe42695f37b0b45b5f076c 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
