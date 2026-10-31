@@ -15,19 +15,20 @@ import * as Electron from "electron";
 import { startVisionSession } from "../claudeVision.ts";
 import { captureScreens } from "../screenCapture.ts";
 
-
 const out = process.env["LAB_OUT"] ?? process.cwd();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const report = NodeFS.createWriteStream(NodePath.join(out, "timeline.jsonl"));
 const write = (value: unknown) => report.write(`${JSON.stringify(value)}\n`);
 
 const page = (marks: ReadonlyArray<{ n: number; x: number; y: number }>) =>
-  `data:text/html,${encodeURIComponent(`<!doctype html><body style="margin:0;background:transparent;overflow:hidden">${marks
-    .map(
-      (m) =>
-        `<div style="position:absolute;left:${m.x - 14}px;top:${m.y - 14}px;width:28px;height:28px;border-radius:50%;background:#ff00ff;color:#fff;font:bold 16px/28px sans-serif;text-align:center">${m.n}</div>`,
-    )
-    .join("")}</body>`)}`;
+  `data:text/html,${encodeURIComponent(
+    `<!doctype html><body style="margin:0;background:transparent;overflow:hidden">${marks
+      .map(
+        (m) =>
+          `<div style="position:absolute;left:${m.x - 14}px;top:${m.y - 14}px;width:28px;height:28px;border-radius:50%;background:#ff00ff;color:#fff;font:bold 16px/28px sans-serif;text-align:center">${m.n}</div>`,
+      )
+      .join("")}</body>`,
+  )}`;
 
 const main = async () => {
   await Electron.app.whenReady();
@@ -82,15 +83,23 @@ const main = async () => {
     const bitmap = image.toBitmap(); // BGRA
     for (const mark of truth.get(display.id) ?? []) {
       const expected = {
-        x: ((mark.x) * width) / shot.bounds.width,
-        y: ((mark.y) * height) / shot.bounds.height,
+        x: (mark.x * width) / shot.bounds.width,
+        y: (mark.y * height) / shot.bounds.height,
       };
       const span = 40;
       let sx = 0;
       let sy = 0;
       let count = 0;
-      for (let y = Math.max(0, Math.round(expected.y) - span); y < Math.min(height, expected.y + span); y++) {
-        for (let x = Math.max(0, Math.round(expected.x) - span); x < Math.min(width, expected.x + span); x++) {
+      for (
+        let y = Math.max(0, Math.round(expected.y) - span);
+        y < Math.min(height, expected.y + span);
+        y++
+      ) {
+        for (
+          let x = Math.max(0, Math.round(expected.x) - span);
+          x < Math.min(width, expected.x + span);
+          x++
+        ) {
           const i = (y * width + x) * 4;
           if (bitmap[i + 2]! > 190 && bitmap[i + 1]! < 90 && bitmap[i]! > 190) {
             sx += x;
@@ -150,7 +159,10 @@ const main = async () => {
             landed === null
               ? null
               : Math.round(
-                  Math.hypot(landed.x - (shot.bounds.x + mark.x), landed.y - (shot.bounds.y + mark.y)),
+                  Math.hypot(
+                    landed.x - (shot.bounds.x + mark.x),
+                    landed.y - (shot.bounds.y + mark.y),
+                  ),
                 ),
           ms: Date.now() - started,
         });

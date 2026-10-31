@@ -237,6 +237,8 @@ export interface DesktopBatonVoiceInput {
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** `baton-dictation`; null only in a build that left it out. */
   readonly dictationBinary: string | null;
+  /** A wake word cut across Baton's voice. */
+  readonly onBargeIn?: () => void;
   readonly extras?: TrayExtras;
   readonly holdEscape: (onPress: () => void) => () => void;
   /** What to do when he dismisses a turn: stop Baton's voice, and the same for the assistant. */
@@ -615,6 +617,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return "source" in event.outcome && event.outcome.source === "screen"
             ? null
             : { type: "finished" };
+        case "barge_in":
+          input.onBargeIn?.();
+          return null;
         case "effect":
           return null;
       }
@@ -1011,7 +1016,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   void start().catch(failed);
   return {
     refresh: rebuildMenu,
-    onSpeaking: (active) => pill.on({ type: "speaking", active }),
+    onSpeaking: (active) => {
+      core?.setSpeaking(active);
+      pill.on({ type: "speaking", active });
+    },
     onTurnEnd: () => pill.on({ type: "finished" }),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),

@@ -14,7 +14,9 @@ const ASK_WIDTH = 640;
 const ASK_HEIGHT = 124;
 const PROMPT_WIDTH = 500;
 
-export const ASK_DOCUMENT = (output: AnswerOutput) => `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
+export const ASK_DOCUMENT = (
+  output: AnswerOutput,
+) => `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
 html,body{overflow:hidden;height:100%}
 body{display:flex;padding:12px;box-sizing:border-box}
 form{flex:1;display:flex;flex-direction:column;gap:9px;padding:13px 16px 11px;border-radius:16px;box-sizing:border-box}

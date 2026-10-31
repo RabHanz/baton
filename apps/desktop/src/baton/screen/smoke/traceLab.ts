@@ -45,7 +45,7 @@ const main = async () => {
     platform: process.platform,
     env: process.env,
     speak: async () => {},
-    onTrace: (entry) => write(entry),
+    onTrace: (entry: unknown) => write(entry),
     onTurnEnd: () => ended?.(),
     holdEscape: () => {},
   } as never);

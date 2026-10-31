@@ -73,6 +73,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
       holdEscape,
+      onBargeIn: () => speaker.cancel(),
       onDismiss: () => {
         speaker.cancel();
         screen?.stop();
