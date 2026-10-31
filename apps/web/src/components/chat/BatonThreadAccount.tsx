@@ -14,7 +14,7 @@ import {
   type BatonAccount,
 } from "@t3tools/baton-contracts";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 import { CheckIcon, ChevronDownIcon, RotateCwIcon, UserRoundIcon } from "lucide-react";
@@ -49,6 +49,50 @@ export function accountRow(account: BatonAccount, now: number): string {
   return age === null ? room : `${room} · ${age.text.toLowerCase()}`;
 }
 
+/** cswap's switch on one environment; it moves every Claude thread there at its next turn. */
+export function useAccountSwitch(environmentId: EnvironmentId) {
+  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const [busy, setBusy] = useState(false);
+  const switchTo = (account: BatonAccount) => {
+    setBusy(true);
+    void use({ environmentId, input: { key: account.key, reason: "manual" } }).then((result) => {
+      setBusy(false);
+      toastManager.add(
+        result._tag === "Success"
+          ? {
+              type: "success",
+              title: `Now running as ${account.label}`,
+              description: "Claude threads on this environment move at their next turn.",
+            }
+          : { type: "error", title: `Could not switch to ${account.label}` },
+      );
+    });
+  };
+  return { busy, switchTo };
+}
+
+/** cswap's switch on one environment; it moves every session that follows the active account. */
+export function useAccountSwitch(environmentId: EnvironmentId) {
+  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const [busy, setBusy] = useState(false);
+  const switchTo = (account: BatonAccount) => {
+    setBusy(true);
+    void use({ environmentId, input: { key: account.key, reason: "manual" } }).then((result) => {
+      setBusy(false);
+      toastManager.add(
+        result._tag === "Success"
+          ? {
+              type: "success",
+              title: `Now running as ${account.label}`,
+              description: "Sessions on this environment that follow it move at their next turn.",
+            }
+          : { type: "error", title: `Could not switch to ${account.label}` },
+      );
+    });
+  };
+  return { busy, switchTo };
+}
+
 export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const shell = useQuietThreadShell(threadRef);
   const providers = useEnvironmentProviders().get(threadRef.environmentId) ?? [];
@@ -56,7 +100,7 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
   const pool = useAtomValue(
     batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} }),
   );
-  const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const machine = useAccountSwitch(threadRef.environmentId);
   const useForThread = useAtomCommand(batonWorkSessions.threadAccountUse, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   const nowMinute = useNowMinute();
@@ -93,25 +137,6 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
       );
     });
   };
-  const switchMachine = (account: BatonAccount) => {
-    setBusy(true);
-    void use({
-      environmentId: threadRef.environmentId,
-      input: { key: account.key, reason: "manual" },
-    }).then((result) => {
-      setBusy(false);
-      toastManager.add(
-        result._tag === "Success"
-          ? {
-              type: "success",
-              title: `Now running as ${account.label}`,
-              description: "Terminal sessions on this environment move at their next turn.",
-            }
-          : { type: "error", title: `Could not switch to ${account.label}` },
-      );
-    });
-  };
-
   return (
     <Menu>
       <MenuTrigger
@@ -120,7 +145,7 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
             size="xs"
             variant="ghost"
             className={HEADER_CONTROL}
-            disabled={busy}
+            disabled={busy || machine.busy}
             data-testid="thread-account"
             aria-label={`Running as ${current.label}. Switch account`}
           />
@@ -142,7 +167,7 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
               key={account.key}
               disabled={blocked}
               onClick={() =>
-                live ? switchMachine(account) : switchThread(account.key, account.label)
+                live ? machine.switchTo(account) : switchThread(account.key, account.label)
               }
             >
               {isCurrent ? <CheckIcon /> : <span className="size-4" aria-hidden />}
