@@ -159,7 +159,11 @@ Electron.app.whenReady().then(async () => {
     if (name === "written") {
       NodeFS.writeFileSync(
         NodePath.join(stateDir, "baton-screen.json"),
-        JSON.stringify({ captureApproval: "always", claudeBinary: process.env["LAB_CLAUDE"], output: "written" }),
+        JSON.stringify({
+          captureApproval: "always",
+          claudeBinary: process.env["LAB_CLAUDE"],
+          output: "written",
+        }),
       );
       continue;
     }

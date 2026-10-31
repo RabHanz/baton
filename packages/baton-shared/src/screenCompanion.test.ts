@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   captureSize,
+  pointable,
   describeDrivePlan,
   needsCaptureApproval,
   parseReply,
@@ -40,7 +41,7 @@ describe("parseReply", () => {
       "see that source control menu up top? click that. [POINT:285,11:source control]",
     );
     expect(r.spoken).toBe("see that source control menu up top? click that.");
-    expect(r.point).toEqual({ x: 285, y: 11, label: "source control", screen: null });
+    expect(r.point).toEqual({ x: 285, y: 11, label: "source control", screen: null, confidence: null });
     expect(r.done).toBe(false);
   });
 
@@ -50,6 +51,7 @@ describe("parseReply", () => {
       y: 300,
       label: "terminal",
       screen: 2,
+      confidence: null,
     });
     const none = parseReply("html is the skeleton of a page. [POINT:none]");
     expect(none.point).toBeNull();
@@ -58,7 +60,7 @@ describe("parseReply", () => {
 
   it("accepts a tag without a label, and the last of several", () => {
     expect(parseReply("[POINT:1,2] no wait [POINT:30,40:save]").point?.x).toBe(30);
-    expect(parseReply("here [POINT:5,6]").point).toEqual({ x: 5, y: 6, label: null, screen: null });
+    expect(parseReply("here [POINT:5,6]").point).toEqual({ x: 5, y: 6, label: null, screen: null, confidence: null });
   });
 
   it("marks a finished lesson", () => {
@@ -102,9 +104,9 @@ describe("coordinates", () => {
     expect(shotFor(shots, 9)).toBe(laptop);
   });
 
-  it("caps the long edge at 1280 and never upscales", () => {
-    expect(captureSize(2560, 1440)).toEqual({ width: 1280, height: 720 });
-    expect(captureSize(1080, 1920)).toEqual({ width: 720, height: 1280 });
+  it("caps the long edge at 1568 and never upscales", () => {
+    expect(captureSize(2560, 1440)).toEqual({ width: 1568, height: 882 });
+    expect(captureSize(1080, 1920)).toEqual({ width: 882, height: 1568 });
     expect(captureSize(800, 600)).toEqual({ width: 800, height: 600 });
   });
 
@@ -316,6 +318,23 @@ describe("parseScreenIntent", () => {
     expect(parseScreenIntent("stop", true)).toEqual({ kind: "stop" });
     expect(parseScreenIntent("say that again", true)).toEqual({ kind: "repeat" });
     expect(parseScreenIntent("stop", false)).toBeNull();
+  });
+});
+
+describe("pointing only at what it can vouch for", () => {
+  it("takes a label with a colon in it and never leaves the tag in the words", () => {
+    const reply = parseReply("It says 7:20. [POINT:1517,864:7:20 PM:screen1:0.9]");
+    expect(reply.spoken).toBe("It says 7:20.");
+    expect(reply.point).toMatchObject({ label: "7:20 PM", screen: 1, confidence: 0.9 });
+  });
+
+  it("reads confidence and refuses a low or missing one", () => {
+    const sure = parseReply("There. [POINT:10,20:Save:screen2:0.9]").point;
+    expect(sure).toMatchObject({ label: "Save", screen: 2, confidence: 0.9 });
+    expect(pointable(sure)).toBe(true);
+    expect(pointable(parseReply("Maybe. [POINT:10,20:Save:screen2:0.4]").point)).toBe(false);
+    expect(pointable(parseReply("Old. [POINT:10,20:Save]").point)).toBe(false);
+    expect(pointable(parseReply("I can't see one. [POINT:none]").point)).toBe(false);
   });
 });
 

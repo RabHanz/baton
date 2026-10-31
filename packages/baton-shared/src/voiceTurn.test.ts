@@ -50,7 +50,11 @@ describe("the cue after a wake word", () => {
   });
 
   it("clears a turn that ends with nothing to say", () => {
-    const state = play([{ type: "wake", word: null }, { type: "heard", text: "stop" }, { type: "finished" }]);
+    const state = play([
+      { type: "wake", word: null },
+      { type: "heard", text: "stop" },
+      { type: "finished" },
+    ]);
     expect(state.phase).toBe("idle");
   });
 
@@ -95,9 +99,9 @@ describe("the pill's other states", () => {
   });
 
   it("does not let a voice turn end dictation or a mute", () => {
-    expect(
-      play([{ type: "dictating", caption: "Esc cancels" }, { type: "finished" }]).phase,
-    ).toBe("dictating");
+    expect(play([{ type: "dictating", caption: "Esc cancels" }, { type: "finished" }]).phase).toBe(
+      "dictating",
+    );
   });
 });
 

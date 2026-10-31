@@ -11,9 +11,12 @@ export interface CapturedScreen {
   readonly jpeg: Buffer;
 }
 
-const orderedDisplays = (): ReadonlyArray<{ display: Electron.Display; cursorHere: boolean }> => {
-  const cursor = Electron.screen.getCursorScreenPoint();
-  const here = Electron.screen.getDisplayNearestPoint(cursor).id;
+/** The display he means: the one with the window he is using, else the cursor's. */
+const orderedDisplays = (
+  anchor?: { readonly x: number; readonly y: number } | null,
+): ReadonlyArray<{ display: Electron.Display; cursorHere: boolean }> => {
+  const point = anchor ?? Electron.screen.getCursorScreenPoint();
+  const here = Electron.screen.getDisplayNearestPoint(point).id;
   return Electron.screen
     .getAllDisplays()
     .map((display) => ({ display, cursorHere: display.id === here }))
@@ -29,8 +32,10 @@ const sourceFor = (
   sources.find((s) => s.display_id === String(display.id)) ??
   (sources.every((s) => s.display_id === "") ? sources[index] : undefined);
 
-export const captureScreens = async (): Promise<ReadonlyArray<CapturedScreen>> => {
-  const ordered = orderedDisplays();
+export const captureScreens = async (
+  anchor?: { readonly x: number; readonly y: number } | null,
+): Promise<ReadonlyArray<CapturedScreen>> => {
+  const ordered = orderedDisplays(anchor);
   const all = Electron.screen.getAllDisplays();
   const largest = Math.max(
     ...all.map((d) => Math.max(d.size.width, d.size.height) * d.scaleFactor),

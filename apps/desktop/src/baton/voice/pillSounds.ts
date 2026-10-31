@@ -42,8 +42,7 @@ export const renderSound = (notes: ReadonlyArray<PillNote>, sampleRate: number):
     for (let i = 0; i < count && start + i < out.length; i++) {
       const t = i / sampleRate;
       const envelope = Math.min(t / ATTACK, 1) * Math.exp((-6.2 * t) / len);
-      const wave =
-        Math.sin(2 * Math.PI * hz * t) + PILL_PARTIAL * Math.sin(4 * Math.PI * hz * t);
+      const wave = Math.sin(2 * Math.PI * hz * t) + PILL_PARTIAL * Math.sin(4 * Math.PI * hz * t);
       out[start + i]! += gain * envelope * wave;
     }
   }

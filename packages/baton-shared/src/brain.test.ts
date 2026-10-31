@@ -55,6 +55,15 @@ describe("guardDecision", () => {
     ).toMatchObject(refused);
   });
 
+  it("does not ask which project to deploy: it refuses", () => {
+    expect(
+      guardDecision(
+        { route: "clarify", text: "Which one?", source: "model" },
+        "deploy to production",
+      ),
+    ).toMatchObject({ route: "refused" });
+  });
+
   it("lets a question about a dangerous thing be answered", () => {
     const answer = { route: "answer", text: "what does force push do", source: "model" } as const;
     expect(guardDecision(answer, "what does force push do")).toEqual(answer);
@@ -110,6 +119,19 @@ describe("decide", () => {
     await expect(decide("delete the database", context, sly)).resolves.toMatchObject({
       route: "refused",
     });
+  });
+});
+
+describe("what the router is told", () => {
+  it("passes the window he is using, and keeps his words for the answer", async () => {
+    const h = host('{"route":"look","text":"tidied"}');
+    const decision = await decide(
+      "wots this then",
+      { ...context, focused: "notepad.exe: notes.txt" },
+      h,
+    );
+    expect(h.asked[0]).toContain("notepad.exe: notes.txt");
+    expect(decision).toMatchObject({ route: "look", text: "wots this then" });
   });
 });
 

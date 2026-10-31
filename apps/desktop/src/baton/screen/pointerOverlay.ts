@@ -150,6 +150,8 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
     });
     win.setAlwaysOnTop(true, "screen-saver");
     win.setIgnoreMouseEvents(true);
+    // Made on the primary's scale; set again so a 125 % display's window is the display's size.
+    win.setBounds(display.bounds);
     win.setContentProtection(true);
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     const bottom = display.bounds.y + display.bounds.height;

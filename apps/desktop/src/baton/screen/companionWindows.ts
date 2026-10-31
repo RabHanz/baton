@@ -130,12 +130,14 @@ export const createCompanionWindows = (input: {
       if (!box.isDestroyed()) box.destroy();
       if (askBox === box) askBox = null;
     });
-    void box.loadURL(`data:text/html,${encodeURIComponent(ASK_DOCUMENT(input.output()))}`).then(() => {
-      if (box.isDestroyed()) return;
-      box.show();
-      box.focus();
-      box.webContents.focus();
-    });
+    void box
+      .loadURL(`data:text/html,${encodeURIComponent(ASK_DOCUMENT(input.output()))}`)
+      .then(() => {
+        if (box.isDestroyed()) return;
+        box.show();
+        box.focus();
+        box.webContents.focus();
+      });
   };
 
   const ask = (options: PromptInput): Promise<number> => {
@@ -158,7 +160,9 @@ export const createCompanionWindows = (input: {
           win.on("closed", () => done(options.cancel));
           void win
             .loadURL(`data:text/html,${encodeURIComponent(PROMPT_DOCUMENT)}`)
-            .then(() => win.webContents.executeJavaScript(`window.fill(${JSON.stringify(options)})`))
+            .then(() =>
+              win.webContents.executeJavaScript(`window.fill(${JSON.stringify(options)})`),
+            )
             .then((height: number) => {
               if (win.isDestroyed()) return;
               const tall = Math.ceil(height);

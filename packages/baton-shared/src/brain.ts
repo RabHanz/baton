@@ -39,7 +39,7 @@ Reply with one JSON object and nothing else: {"route":"...","text":"..."}
 Routes:
 - "answer": a question or request a knowledgeable assistant can answer from general knowledge or the conversation so far. Facts, advice, maths, writing, explaining, chat. text = the question, tidied.
 - "look": answering needs seeing his screen. "what's this error", "is this right", "where's the export button", "read that to me", "what am I looking at", anything pointing at something visible. text = the question.
-- "teach": he wants to learn to do something on this computer, step by step, doing it himself. "show me how to", "walk me through", "how do I change the wallpaper on here". text = the goal.
+- "teach": he wants to learn to do something on this computer, step by step, doing it himself. "show me how to", "walk me through", "how do I change the wallpaper on here". Anything in software on a computer counts, such as spreadsheets. text = the goal.
 - "drive": he wants you to operate this computer for him: clicking, typing, opening apps or folders. "open notepad and type hello", "pop open my downloads folder". text = the goal.
 - "act": he is commanding Baton's coding sessions and agents: asking what they are doing or what needs him, starting or resuming work, telling a session something, setting a rule for when one finishes, answering a pending approval, switching Claude account. Project and session names, "the agents", "the tests", "Claude", "Codex" point here. text = the command in plain words, keeping every name he used.
 - "clarify": you truly cannot tell what he wants, or it was too garbled to act on safely. text = one short question back to him. Prefer this over guessing when acting would change something.
@@ -47,6 +47,7 @@ Routes:
 Rules:
 - A question ABOUT a dangerous thing is "answer" ("what does force push do?"). An instruction TO do one is "act" or "drive", and something else will decide whether it is allowed.
 - Follow-ups inherit from the recent conversation given to you.
+- You cannot see the screen. Anything that could depend on what is on it ("this", "that", "here", "the button", a thing in the window he is using, whether something is there) is "look", so a stronger model answers from a fresh screenshot. When in doubt between "answer" and "look", choose "look".
 - "how do I" with no sign of this computer, such as cooking or law, is "answer".
 - You do nothing yourself. You never say whether something is allowed. Only ever output the JSON.`;
 
@@ -57,10 +58,13 @@ export const buildBrainTurn = (input: {
   /** He has speech going straight to the focused session. */
   readonly direct: boolean;
   readonly recent: ReadonlyArray<string>;
+  /** The app and title of the window he is using, when known. */
+  readonly focused?: string | null;
 }): string =>
   [
     input.recent.length > 0 ? `Recent conversation:\n${input.recent.join("\n")}` : "",
     input.running === null ? "" : `A ${input.running} is running on screen.`,
+    input.focused ? `The window he is using: ${input.focused}` : "",
     input.direct
       ? 'Plain speech is normally a message to the focused session, so "act" is the default.'
       : "",
@@ -114,7 +118,10 @@ export const refusedReply = (subject: string): string =>
  * and what the model turned it into, so rewording cannot talk its way past the high-risk list.
  */
 export const guardDecision = (decision: BrainDecision, said: string): BrainDecision => {
-  if (decision.route !== "act" && decision.route !== "drive") return decision;
+  // A clarifying question counts: "which project should I deploy?" invites the order it must refuse.
+  if (decision.route !== "act" && decision.route !== "drive" && decision.route !== "clarify") {
+    return decision;
+  }
   const subject = highRiskSubject(said) ?? highRiskSubject(decision.text);
   return subject === null
     ? decision
@@ -129,6 +136,7 @@ export interface BrainHost {
 }
 
 export interface BrainContext {
+  readonly focused?: string | null;
   /** "teach" or "drive" while one is running. */
   readonly running: string | null;
   readonly direct: boolean;
@@ -153,7 +161,16 @@ export const decide = async (
   } catch {
     decision = null;
   }
-  return guardDecision(decision ?? fallbackDecision(said, active), said);
+  const chosen = decision ?? fallbackDecision(said, active);
+  // His own words go on: the router's tidy-up is for routing, and it can lose what he meant.
+  const kept =
+    chosen.route === "answer" ||
+    chosen.route === "look" ||
+    chosen.route === "teach" ||
+    chosen.route === "drive"
+      ? { ...chosen, text: said }
+      : chosen;
+  return guardDecision(kept, said);
 };
 
 export const ASSISTANT_PROMPT_INTRO = `you're baton, his personal assistant on this windows laptop. he talks to you out loud or types. answer anything: general knowledge, advice, writing, maths, code, and whatever is on his screen. he leans british, so use british spelling and idiom. you have no tools and you do nothing on his computer here: never claim you did something, opened something, or sent anything. if the answer needs seeing his screen and no screenshot is attached, reply with exactly [LOOK] and nothing else, and one will come with your next turn. keep the thread: he will follow up with "and what about…" and expect you to remember.`;
