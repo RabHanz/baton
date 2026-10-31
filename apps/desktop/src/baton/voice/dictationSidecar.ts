@@ -93,6 +93,8 @@ export interface DictationSidecar {
   readonly foreground: () => Promise<FocusedApp>;
   /** The top-level window under a physical point. */
   readonly windowAt: (point: { readonly x: number; readonly y: number }) => Promise<number | null>;
+  /** Lab only (BATON_LAB): real mouse input from inside the sidecar. */
+  readonly nudge: (dx: number, dy: number) => void;
   readonly locate: (input: {
     readonly label: string;
     readonly x: number;
@@ -272,6 +274,7 @@ export const startDictationSidecar = (input: {
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),
     windowAt: ({ x, y }) => call<number | null>({ cmd: "window_at", x, y }),
+    nudge: (dx, dy) => send({ cmd: "nudge", dx, dy }),
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
     dispose: () => {
       disposed = true;

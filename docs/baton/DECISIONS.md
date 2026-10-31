@@ -3037,5 +3037,14 @@ back after each step (still racy).
 Measured on the laptop: a real 2-step and a 6-step Notepad drive finished, and a pointer moved mid-drive stopped
 nothing. In the runs where the lab moved the pointer, one typed word was lost, and Drive's own check reported it.
 The lab started a PowerShell for that move, so a stolen moment of focus is the likely cause, but a pointer moving
-throughout a typed step is not proven safe. The run that would settle it found him at the laptop and was stopped.
+throughout a typed step is not proven safe. The run that settles it uses real input from inside the sidecar
+(`nudge`, only with BATON_LAB set), with no process starting, and waits until he is away.
+
+## D116 — Work for the whole app belongs to the main window
+
+Detached thread windows (D96) run the same app with the same preload, so each mounted `SnapShotCoordinator` and
+asked for pending snapshots. The main process rightly refuses any sender but the main window, and that refusal
+reached him as an error popup. The coordinator now mounts only in the main window, and the refusal stays. Rejected:
+trusting detached windows, as two coordinators would race to deliver one capture, and catching the error, which
+would leave a loop that fails on every event.
 

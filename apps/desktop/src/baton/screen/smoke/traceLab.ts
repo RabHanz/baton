@@ -87,15 +87,13 @@ const main = async () => {
     NodeChildProcess.spawn("notepad.exe", [NOTEPAD_FILE], { detached: true });
     await sleep(2_500);
   }
-  let stopWith: "(mouse)" | "(esc)" | null = null;
+  let stopWith: "(esc)" | null = null;
   const stopSoon = () => {
     const how = stopWith;
     stopWith = null;
     if (how === null) return;
     const script =
-      how === "(mouse)"
-        ? "Add-Type -AssemblyName System.Windows.Forms; $p=[Windows.Forms.Cursor]::Position; [Windows.Forms.Cursor]::Position=New-Object Drawing.Point(($p.X+200),($p.Y+200))"
-        : "Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.SendKeys]::SendWait('{ESC}')";
+      "Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.SendKeys]::SendWait('{ESC}')";
     setTimeout(() => {
       write({ stop: how, at: Date.now() });
       NodeChildProcess.execFile("powershell.exe", ["-NoProfile", "-Command", script], {
@@ -140,7 +138,15 @@ const main = async () => {
         setTimeout(() => win.destroy(), 25_000);
       }, 14_000);
     }
-    stopWith = said.includes("(mouse)") ? "(mouse)" : said.includes("(esc)") ? "(esc)" : null;
+    stopWith = said.includes("(esc)") ? "(esc)" : null;
+    // His hand on the mouse for the whole turn: real input, and no process starting mid-drive.
+    let swing = 1;
+    const hand = said.includes("(mouse)")
+      ? setInterval(() => {
+          swing = -swing;
+          sidecar.nudge(40 * swing, 30 * swing);
+        }, 300)
+      : null;
     const done = new Promise<void>((resolve) => {
       ended = resolve;
     });
@@ -151,6 +157,7 @@ const main = async () => {
       await Promise.race([done, sleep(Number(process.env["LAB_TURN_MS"] ?? 45_000))]);
       await sleep(said.startsWith("teach:") ? 45_000 : said.startsWith("drive:") ? 25_000 : 1_500);
     }
+    if (hand !== null) clearInterval(hand);
     write({ said, result: result.kind, ms: Date.now() - started });
   }
   clearInterval(pressRun);

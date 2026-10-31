@@ -483,6 +483,24 @@ fn window_rect(_window: isize) -> Value {
     Value::Null
 }
 
+/// Lab only: real mouse input with no process starting, to stand in for his hand during a drive.
+#[cfg(windows)]
+fn nudge(dx: i32, dy: i32) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_MOVE, MOUSEINPUT,
+    };
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT { dx, dy, mouseData: 0, dwFlags: MOUSEEVENTF_MOVE, time: 0, dwExtraInfo: 0 },
+        },
+    };
+    unsafe { SendInput(&[input], std::mem::size_of::<INPUT>() as i32) };
+}
+
+#[cfg(not(windows))]
+fn nudge(_dx: i32, _dy: i32) {}
+
 #[cfg(windows)]
 fn window_at(x: i32, y: i32) -> isize {
     use windows::Win32::Foundation::POINT;
@@ -657,6 +675,10 @@ fn serve() {
                         let (app, title) = window_app(window);
                         emit(json!({"ev": "foreground", "id": value["id"].as_u64(), "rect": window_rect(window), "app": app, "title": title, "window": window as i64}));
                     }
+                    "nudge" if std::env::var_os("BATON_LAB").is_some() => nudge(
+                        value["dx"].as_i64().unwrap_or(0) as i32,
+                        value["dy"].as_i64().unwrap_or(0) as i32,
+                    ),
                     "window_at" => {
                         let (x, y) = (value["x"].as_i64().unwrap_or(0) as i32, value["y"].as_i64().unwrap_or(0) as i32);
                         emit(json!({"ev": "window_at", "id": value["id"].as_u64(), "window": window_at(x, y) as i64}));
