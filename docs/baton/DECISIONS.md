@@ -2713,3 +2713,51 @@ devices. Checked every 5 s, so a vanished mic falls through and a returning one 
 Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
 not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
 the AT2020 is on it and mixing the empty input 2 halves the level.
+
+## D110 — The hold is tied to the words, not to a clock
+
+Director, 2026-10-31: pointing and cards "last barely a fraction of a second". Reproduced on his
+Windows desktop with `screen/smoke/overlayLab.ts`: the real companion, a scripted model, 50 ms polling
+of the overlay's own DOM (the overlay is excluded from capture, so a screenshot cannot show this).
+
+| Case | Before | After |
+| --- | --- | --- |
+| Target on the other display | Answer card up under 50 ms, wiped by `point()`; never shown on the target display | Card moves with the pointer, 14.9 s on screen, 3.06 s past the end of speech |
+| Target on the same display | Cleared by a fixed timer 0.3 s before the last sentence ended | 3.2 s past the end of speech |
+| Teach, busy screen | Any change replaced the step with "Looking…", possibly during speech | Step stays; nothing advances until it is spoken and readable |
+
+Causes: `point()` cleared every other display and the card lived on the cursor's display; `clearLater`
+ran from the end of the reply regardless of speech; `watch` waited 1.5 s regardless of speech. Rules
+now, in `baton-shared/companionPacing`: a page gets 260 ms a word plus 1.2 s, 3 s minimum; the last page
+holds until speech ends plus the larger of 3 s (Clicky's number) and whatever reading is left; a
+countdown line shows the hold. Long answers turn pages at sentence ends. Pointer and card share one
+display.
+
+Rejected: longer timers. Any fixed number is wrong for some answer, and it would not have touched the
+multi-display wipe, which was the fraction of a second.
+
+Trade-off: Esc is held globally while something is on screen, so that press does not reach his app.
+
+## D111 — One look, and text beside the pointer
+
+Pill, pointer label, card, prompt and ask box share `companionStyle.ts`. The card rides beside the
+pointer once it lands, as the paid Clicky does; with no pointer it sits low on the display above the
+pill. System dialogs became `companionWindows.ts`, excluded from capture. Overlay windows are built
+lazily and go after two idle minutes, so the layer never stops "last window closed" quitting.
+
+The HUD window is removed. It kept a dot on screen at rest, and the pill says all of it.
+
+## D112 — The pill
+
+Bottom centre of the cursor's display, 44 px above the work area, because Wispr's own bar owns the edge
+and he runs both. States against Wispr's: `research/companion-ui-2026-10-31.md`.
+
+Sounds are three warm two-note figures (350 to 780 Hz with a soft second harmonic, 0.2 s, about -27
+dBFS peak), replacing 1.3 to 1.8 kHz sines. `scripts/baton/voice-lab/sound-score.ts` puts the same
+samples through `createOpenWakeWordScorer` and Silero, six repeats, at normal level and 9.5 and 18 dB
+louder: every wake word's peak is at most 0.0009 against thresholds of 0.9 and up, and Silero peaks at
+0.47 at the loudest, under its 0.5.
+
+Wake to pill: 0 to 9 ms from the wake event to the call that shows the window (15 wakes on his laptop),
+because the window is built ahead. Paint was not measured separately, and the wake model's own
+detection time comes before that event.

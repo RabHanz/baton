@@ -14,7 +14,7 @@ const ASK_WIDTH = 640;
 const ASK_HEIGHT = 124;
 const PROMPT_WIDTH = 500;
 
-const ASK_DOCUMENT = (output: AnswerOutput) => `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
+export const ASK_DOCUMENT = (output: AnswerOutput) => `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
 html,body{overflow:hidden;height:100%}
 body{display:flex;padding:12px;box-sizing:border-box}
 form{flex:1;display:flex;flex-direction:column;gap:9px;padding:13px 16px 11px;border-radius:16px;box-sizing:border-box}
@@ -36,7 +36,7 @@ document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{marks(b.datas
 document.getElementById('f').onsubmit=e=>{e.preventDefault();ipcRenderer.send('baton-screen:ask',q.value);};
 addEventListener('keydown',e=>{if(e.key==='Escape')ipcRenderer.send('baton-screen:ask','');});</script></body></html>`;
 
-const PROMPT_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
+export const PROMPT_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
 html,body{overflow:hidden}
 body{padding:12px;box-sizing:border-box}
 #b{padding:15px 18px 14px;border-radius:16px}
