@@ -47,6 +47,7 @@ import {
 import { startVisionSession, type VisionContent, type VisionSession } from "./claudeVision.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { createInputDriver } from "./inputDriver.ts";
+import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { createPointerOverlay, type OverlayCard, type OverlayMarker } from "./pointerOverlay.ts";
 import { captureScreens, screenFingerprint, type CapturedScreen } from "./screenCapture.ts";
 
@@ -63,6 +64,8 @@ interface ScreenSettings {
   readonly routerModel: string;
   /** Written only shows everything and plays nothing. */
   readonly output: AnswerOutput;
+  /** "system" is the OS voice, for a machine that should fetch nothing. */
+  readonly voice: PocketVoice | "system";
 }
 
 const DEFAULTS: ScreenSettings = {
@@ -71,6 +74,7 @@ const DEFAULTS: ScreenSettings = {
   model: "sonnet",
   routerModel: "haiku",
   output: "spoken",
+  voice: "anna",
 };
 
 const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): ScreenSettings => ({
@@ -133,6 +137,7 @@ export interface ScreenCompanion {
   readonly notice: (text: string) => void;
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
+  readonly voice: () => PocketVoice | "system";
   readonly stop: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
@@ -807,6 +812,7 @@ export const startScreenCompanion = (input: {
       if (text.trim().length > 0) linger("Baton", text);
     },
     writtenOnly: () => settings.output === "written",
+    voice: () => settings.voice,
     ask: windows.ask,
     stop,
     menuItems: () => [
@@ -825,6 +831,30 @@ export const startScreenCompanion = (input: {
         checked: settings.captureApproval === "always",
         click: (item: Electron.MenuItem) =>
           save({ captureApproval: item.checked ? "always" : "ask" }),
+      },
+      {
+        label: "Voice",
+        submenu: [
+          ...POCKET_VOICES.map((voice) => ({
+            label: `${voice[0]!.toUpperCase()}${voice.slice(1)}`,
+            type: "radio" as const,
+            checked: settings.voice === voice,
+            click: () => save({ voice }),
+          })),
+          { type: "separator" as const },
+          {
+            label: "Quick (smaller, less accurate)",
+            type: "radio" as const,
+            checked: settings.voice === "quick",
+            click: () => save({ voice: "quick" }),
+          },
+          {
+            label: "System voice",
+            type: "radio" as const,
+            checked: settings.voice === "system",
+            click: () => save({ voice: "system" }),
+          },
+        ],
       },
       {
         label: "Answers",

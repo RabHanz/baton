@@ -21,7 +21,8 @@ import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompa
 import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
-import { createSpeaker, piperFilesIn, piperSynthesiser } from "./voice/voiceSpeaker.ts";
+import { createPocketEngine } from "./voice/pocketVoice.ts";
+import { createSpeaker } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 
 export const startBatonDesktop = Effect.gen(function* () {
@@ -35,15 +36,18 @@ export const startBatonDesktop = Effect.gen(function* () {
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
     const holdEscape = createEscapeKey(Electron.globalShortcut);
+    const pocket = createPocketEngine({
+      root: NodePath.join(environment.stateDir, "voice", "pocket"),
+      platform: environment.platform,
+      arch: process.arch,
+      onProgress: (message) => voice?.onNote(message),
+    });
+    Electron.app.on("will-quit", pocket.dispose);
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
       voice: () => {
-        const files = piperFilesIn(
-          NodePath.join(environment.stateDir, "voice", "piper"),
-          "en_GB-cori-high",
-          environment.platform,
-        );
-        return files === null ? null : piperSynthesiser(files);
+        const voice = screen?.voice() ?? "anna";
+        return voice === "system" ? null : pocket.synthesise(voice);
       },
       player: createVoicePlayer((level) => voice?.onSpeechLevel(level)),
       silent: () => screen?.writtenOnly() ?? false,

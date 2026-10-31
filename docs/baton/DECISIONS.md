@@ -2761,3 +2761,39 @@ louder: every wake word's peak is at most 0.0009 against thresholds of 0.9 and u
 Wake to pill: 0 to 9 ms from the wake event to the call that shows the window (15 wakes on his laptop),
 because the window is built ahead. Paint was not measured separately, and the wake model's own
 detection time comes before that event.
+
+## D113 — Speech is Pocket TTS, kept loaded, streamed into a hidden page
+
+Director, 2026-10-31: the OS voice is old-fashioned and generic; real voices, free and local. Bake-off on
+his i7-8550U, fixed sentences, BelowNormal, one job at a time, warm medians:
+
+| Model | First audible | RTF | Peak RSS | Download | British | Off Windows without Python |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pocket `english` | 334 ms | 0.37 | 737 MB | 227 MB | VCTK voices | Official binaries |
+| Pocket 7m | 138 ms | 0.15 | 217 MB | 74 MB with binary | same | same |
+| Piper jenny | 433 ms, whole sentence | 0.12 | 210 MB | 63 MB | Yes | Repo archived |
+| Piper cori | 2,556 ms | 0.66 | 266 MB | 114 MB | Yes | same |
+| Supertonic 3, 5 steps | 2,080 ms | 0.44 | 381 MB | 129 MB | No | Weights OpenRAIL-M, repo archived |
+| Kokoro v1.0 fp32 bf_emma | 3,982 ms | 1.11 | 774 MB | 350 MB | Yes | Needs a GPL phonemiser for right words |
+| Kitten mini | 5,245 ms, run not clean | 1.51 | 395 MB | 68 MB | No | Espeak |
+| Chatterbox Nano, community ONNX | 8,935 ms | 2.60 | 1,283 MB | 570 MB | Reference clip | No official route |
+| MeloTTS | Blocked: install over 10 min | | | about 1 GB | Yes | Python only |
+
+Default Pocket `english`, voice Anna: word-perfect in transcription on all five sentences, 1,345 read
+right. Fallback Pocket 7m, offered as Quick: faster and much smaller, but it misread words, including
+that number. Tray, Voice offers Anna, Vera, Charles, Paul, Quick and System voice. The transcription
+was a machine's; how they sound is his call. Samples: `D:\baton-voice-lab\voice-samples`.
+
+Kokoro lost on speed on this CPU, not quality. Through sherpa's lexicon it silently dropped words, and
+the correct route needs a GPL-3.0 phonemiser in an MIT repo. Piper's bundled espeak is GPL-3.0 and the
+`alan` voice's source says All Rights Reserved, so Piper is removed from Baton's code.
+
+Cloud option, not signed up for: ElevenLabs, which the original Clicky uses. Its pricing page on
+2026-10-31: Starter $6 a month for 30,000 credits, Creator $22 for 121,000, Pro $99. Not heard or
+compared here, and every answer would leave the machine.
+
+How it runs: `pocket-tts serve` on a random loopback port with two threads, files fetched and
+hash-checked on first speech while the OS voice covers, stopped after ten quiet minutes because it holds 700 MB.
+Each sentence generates once the one before has finished generating, and plays as bytes arrive. Credit
+CC-BY-4.0 for weights and voices (THIRD_PARTY_NOTICES). The weights used are Kyutai's set without voice
+cloning, and Baton offers none.
