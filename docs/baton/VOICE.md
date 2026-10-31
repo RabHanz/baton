@@ -14,7 +14,7 @@ package is the core it plugs in through `makeCore`.
 | `router.ts`           | Effects → `fabric.intent.resolve` / `fabric.intent.run` with high-risk checks before and after, §14 destinations, dictation kept local                 |
 | `core.ts`             | Frames → wake/VAD segmentation → STT → machine → router → TTS; implements `VoiceCore` plus snapshot and an event stream                                |
 | `service.ts`          | The local API below                                                                                                                                    |
-| `providers/onnx.ts`   | openWakeWord ("hey jarvis") and Silero VAD on onnxruntime-node                                                                                         |
+| `providers/onnx.ts`   | openWakeWord (any number of words at once) and Silero VAD on onnxruntime-node                                                                                         |
 | `providers/speech.ts` | whisper.cpp (`whisper-cli`), optional cloud STT (OpenAI-compatible `/audio/transcriptions`), OS TTS, WAV encode/decode                                 |
 
 Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
@@ -22,7 +22,7 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
 ## Modes (§12.3)
 
 - **sleeping**: only the wake detector runs. Speech without a wake is ignored.
-- **command_window** (8 s): opened by "hey jarvis" or the tray/hotkey `wake`. The wake
+- **command_window** (8 s): opened by a wake word or the tray/hotkey `wake`. The wake
   phrase and the command can be said together.
 - **conversation** (30 s, extended by every command): follow-ups need no wake and
   inherit the target the last command touched. "That's all" or the timeout ends it.
@@ -89,10 +89,37 @@ desktop main process imports this package directly.
 
 ## On the desktop
 
-`apps/desktop/src/baton/voice/desktopVoiceCore.ts` builds this core for the tray (D66). Put the
-five model files in `<state dir>/voice/models/` and `whisper-cli.exe` (with its DLLs) in
-`<state dir>/voice/`, or point `modelsDir` / `whisperCli` in `<state dir>/fabric-voice.json` at
-them. "Always listening" stays off until it is ticked in the tray.
+`apps/desktop/src/baton/voice`. Windows only for now (D97); on macOS and Linux the tray says so and no
+microphone opens. Everything audio goes through
+`baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
+Parakeet and paste; `record` piped in as the wake path's microphone.
+
+| Setting in `<state dir>/fabric-voice.json` | Default                                | Also in the tray |
+| ------------------------------------------ | -------------------------------------- | ---------------- |
+| `dictation`                                | `baton`; `wispr` holds no key          | Dictation        |
+| `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space` |                |
+| `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v` |                |
+| `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words |
+| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
+| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)              | Microphone       |
+| `enabled`                                  | `false`: listening is opt-in           | Always listening |
+
+Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
+"Always listening" off. The wake, VAD and feature models ship with the app. Parakeet (740 MB,
+hash-checked on disk) downloads into `<state dir>/voice/models` only when asked: Tray → Dictation →
+Download speech model, a first press of Ctrl+Alt+Shift+F8, or ticking "Always listening". The hold and
+toggle keys exist only after that. Ctrl+Alt+Shift+F8 toggles dictation for Airdeck.
+
+Text pastes only into the window focused when recording began. If that changed, or nothing read the
+clipboard, it shows on the HUD for 20 s and stays under Tray → Dictation → Copy last dictation. Esc
+cancels a recording; five minutes stops it and the text is kept, not pasted.
+
+## Measuring it
+
+`scripts/baton/voice-lab/voice-lab.ps1` on the laptop: `replay` and `dictation` use his stored Wispr
+clips and need nothing from him; `samples` has him say each word 30 times; `ambient` counts false wakes
+for hours and keeps no audio; `report` prints every word on every mic against the targets (under 0.5
+false wakes an hour, under 5% misses). Results stay in `D:\\baton-voice-lab`.
 
 ## Tests
 

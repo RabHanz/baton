@@ -2629,3 +2629,87 @@ with heartbeats to detect a dead holder ("Bring it here" is one click and needs 
 
 Known limits: a closed web window leaves its small layout entry in localStorage. Web windows are
 restored by the browser, not by Baton.
+
+## D97 — Dictation is Handy's engine stack in our own sidecar, not Handy beside the app
+
+Director, 2026-10-30: Handy's approach first, Wispr as the fallback (#45). Read Handy at `7bfb2e2c`
+before choosing. Its parts are already crates: `transcribe-cpp` runs Parakeet, `handy-recorder` opens
+the mic, `handy-keys` gives real key-up on a low-level hook, which Electron's `globalShortcut` cannot.
+So `native/baton-dictation` is a 6 MB exe on those three crates plus Handy's Windows paste, adapted
+under MIT, driven by JSON lines from the desktop main process.
+
+Rejected: running Handy alongside (a second tray app, its name on his screen, a second mic owner and
+no way to route the wake path through it); embedding Handy's Tauri app (a whole second UI);
+`onnxruntime-node` with hand-written Parakeet decoding (a decoder of our own to keep right, when the
+engine exists); keeping whisper.cpp for the wake path (two speech engines on one laptop).
+
+Voice is Windows only for now, wake included: the exe is built for no other platform, the whisper-cli
+and hidden Chromium capture paths are gone, and on macOS and Linux the tray says so and opens no mic.
+
+The same exe is the wake path's microphone (`record` piped into the core), replacing the hidden
+Chromium window. That removes AGC and noise suppression from the path and means the lab
+measures what the product hears. The static build pins a portable AVX2 floor, because a native build
+on the runner may use instructions his i7-8550U does not have.
+
+The exe links the C runtime statically, because nothing installs the VC++ redistributable. Text pastes
+only into the window focused when recording began; otherwise, or if nothing reads the clipboard, it
+stays on the HUD and under Tray → Copy last dictation. A recording stops at five minutes and is
+transcribed but not pasted; Esc cancels. Nothing global exists until he asks: no model download and no
+hold or toggle key before Tray → Download speech model, ticking Always listening, or a first press of
+the Airdeck chord. Always listening needs Parakeet even with Wispr chosen, so ticking it downloads it.
+
+Wispr stays installed and untouched. Tray → Dictation chooses; on "Wispr Flow" Baton registers no
+dictation key, and a recording in progress is discarded. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (toggle), clear of the
+Ctrl+Win, Ctrl+Win+Space and Ctrl+Alt+Win read from his Wispr config.
+Ctrl+Alt+Shift+F8 toggles for Airdeck, whose mic button is a tap with no hold.
+
+## D98 — Custom wake words, no "Hey", trained on free GitHub runners
+
+`.github/workflows/baton-wake-train.yml` runs openWakeWord's trainer on `ubuntu-24.04` (public repo,
+free, CPU only). Pinned: piper-sample-generator v2.0.0, because upstream's notebook still imports the
+layout it had then; AudioSet from its parquet files; a CMU pronunciation shim, because the trainer's
+fallback phonemizer is a dead S3 link. A new word: add it to `make_config.py`, push the
+`baton/wake-train` branch, drop `<word>.onnx` in `<state dir>/voice/models`, add it to `wakeWords` in
+`fabric-voice.json`.
+
+All enabled words run on one shared feature pipeline (mel, embedding) with one head each, so another
+word costs almost nothing.
+
+The Director's accent is closer to British, and he says FRAY-uh. Rounds three and four take 60% of the
+positives from Piper's en_GB voices (VCTK less ten speakers, aru, semaine, alba, jenny_dioco,
+northern_english_male, southern_english_female), the rest from the trainer's LibriTTS generator.
+espeak says Sebastian only as "se-BAS-chun", which fired 2 of 30 on en-GB test voices, so round four
+gives that word raw phonemes for both endings and takes all its positives from the en_GB voices.
+
+Chosen per word, from four rounds, on 6.6 hours of his AT2020 dictation and on Microsoft neural en-GB
+voices kept out of training (Sonia, Ryan, Libby, Maisie, Thomas; 30 clips a word):
+
+| Word      | Model   | Threshold | False wakes/h | en-GB hits | His own uses that fired |
+| --------- | ------- | --------- | ------------- | ---------- | ----------------------- |
+| Sebastian | round 4 | 0.97      | 0.45          | 24 of 30   | 2 of 2                  |
+| Alfred    | round 2 | 0.9       | 0.30          | 27 of 30   | 1 of 2                  |
+| Freya     | round 3 | 0.95      | 0.15          | 26 of 30   | 1 of 1                  |
+| Onyx      | round 3 | 0.9       | 0.30          | 29 of 30   | 6 of 12                 |
+
+Each count is a handful of events, so these are coarse. No word reaches under 5% misses on these test
+voices, and none of this is his own voice saying the words on request. The three enabled words together
+are 0.90 an hour. No DJI audio exists in his Wispr store, so that mic is unmeasured. Onyx ships off:
+he says Onnyx in ordinary speech, and six such uses in 6.6 hours would have woken it, about 0.9 an hour
+on top of the false wakes.
+
+Rejected: Colab and Kaggle (an account in a browser, not repeatable); RunPod (paid); the server (a
+loaded box with earlyoom, and 17 GB of negative features on a tight disk).
+
+Dictation result (D97), 240 of his AT2020 clips, 54 minutes: Parakeet v3 differs from Wispr's raw text
+on 3.0% of words and Parakeet 110M on 3.0%; they differ from each other on 3.9%. That is agreement, not
+accuracy. Median wait for a 5 to 15 s clip on the i7-8550U: v3 4.2 s, 110M 1.2 s, Wispr's own end to end
+0.6 s. v3 stays the default as ordered, and the tray switches to the fast model.
+
+## D99 — Mics are an ordered list by part of the name
+
+`micOrder`: Scarlett Solo, Focusrite, Wireless Mic Rx, DJI, then the system default; an explicit pin
+outranks it. The list is his setup kept as the default, and has no effect on a machine without those
+devices. Checked every 5 s, so a vanished mic falls through and a returning one is taken back.
+Windows on his laptop calls the DJI receiver "Wireless Mic Rx"; "USBAudio2.0" is the air remote's mic,
+not the DJI, so it is deliberately not in the list. The Scarlett is read from input 1 only, because
+the AT2020 is on it and mixing the empty input 2 halves the level.

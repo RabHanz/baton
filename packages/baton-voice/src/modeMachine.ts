@@ -50,6 +50,8 @@ export interface VoiceMachineState {
 }
 
 export interface VoiceTimings {
+  /** The wake words in use, stripped from the front of what was heard. */
+  readonly wakeWords?: ReadonlyArray<string>;
   readonly commandWindowMs: number;
   readonly conversationMs: number;
   readonly confirmationMs: number;
@@ -104,7 +106,11 @@ export const initialVoiceState = (directSession = false): VoiceMachineState => (
   pending: null,
 });
 
-const WAKE_PREFIX = /^(?:hey |ok |okay )?(?:jarvis|baton)\b[\s,.:!?-]*/i;
+/** "baton" always works: a button-opened window's transcript may start with it. */
+const wakePrefix = (words: ReadonlyArray<string>): RegExp => {
+  const names = ["baton", ...words].map((word) => word.replace(/[^\p{L}\p{N} ]/gu, "")).join("|");
+  return new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b[\\s,.:!?-]*`, "iu");
+};
 const AFFIRM =
   /^(?:confirm(?:ed)?|yes(?:,? (?:do it|confirm|go ahead))?|go ahead|do it|approve(?:d)?)[.!]?$/i;
 const DECLINE = /^(?:no|cancel|stop|don't|do not|never mind|nevermind|abort)\b/i;
@@ -112,7 +118,8 @@ const SLEEP =
   /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|goodbye)[.!]?$/i;
 
 /** The words with any wake phrase removed. Exported for the router's checks. */
-export const stripWake = (text: string): string => text.trim().replace(WAKE_PREFIX, "").trim();
+export const stripWake = (text: string, words: ReadonlyArray<string> = ["jarvis"]): string =>
+  text.trim().replace(wakePrefix(words), "").trim();
 
 const base = (state: VoiceMachineState): VoiceMachineState => ({
   ...state,
@@ -217,7 +224,7 @@ const utterance = (
   carry: ReadonlyArray<VoiceEffect>,
 ): VoiceStep => {
   const raw = text.trim();
-  const words = stripWake(raw);
+  const words = stripWake(raw, timings.wakeWords);
 
   if (s.mode === "dictation") {
     const d = classifyDictation(raw, { dictating: true });

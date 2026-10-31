@@ -30,6 +30,8 @@ export const normalizeDeviceName = (label: string): string =>
 export interface DevicePreference {
   /** The label the user pinned, as it was shown; null means "OS default". */
   readonly pinnedLabel: string | null;
+  /** Tried in order after the pin, by part of the name: "Scarlett Solo", "Wireless Mic Rx". */
+  readonly micOrder?: ReadonlyArray<string>;
 }
 
 export type DeviceChoice =
@@ -47,25 +49,31 @@ export const selectInputDevice = (
   // Chromium's own "default" entry follows the OS setting live; null asks
   // getUserMedia for the same thing when the list is empty (no permission yet).
   const osDefault = devices.some((d) => d.deviceId === "default") ? "default" : null;
-  if (preference.pinnedLabel === null) {
+  const wants = [
+    ...(preference.pinnedLabel === null ? [] : [preference.pinnedLabel]),
+    ...(preference.micOrder ?? []),
+  ];
+  if (wants.length === 0) {
     return { kind: "default", deviceId: osDefault, reason: "No microphone is pinned." };
   }
-  const wanted = normalizeDeviceName(preference.pinnedLabel);
   const candidates = realDevices(devices);
-  const exact = candidates.find((d) => normalizeDeviceName(d.label) === wanted);
-  // A receiver can come back under a slightly different product string
-  // ("DJI MIC MINI" vs "DJI Mic Mini Wireless"); containment catches that.
-  const loose =
-    exact ??
-    candidates.find((d) => {
-      const name = normalizeDeviceName(d.label);
-      return name.length > 0 && (name.includes(wanted) || wanted.includes(name));
-    });
-  if (loose !== undefined) return { kind: "pinned", device: loose };
+  for (const label of wants) {
+    const wanted = normalizeDeviceName(label);
+    const exact = candidates.find((d) => normalizeDeviceName(d.label) === wanted);
+    // A receiver can come back under a slightly different product string
+    // ("DJI MIC MINI" vs "DJI Mic Mini Wireless"); containment catches that.
+    const loose =
+      exact ??
+      candidates.find((d) => {
+        const name = normalizeDeviceName(d.label);
+        return name.length > 0 && (name.includes(wanted) || wanted.includes(name));
+      });
+    if (loose !== undefined) return { kind: "pinned", device: loose };
+  }
   return {
     kind: "default",
     deviceId: osDefault,
-    reason: `${preference.pinnedLabel} is not connected. Using the system microphone.`,
+    reason: `${wants[0]} is not connected. Using the system microphone.`,
   };
 };
 
@@ -86,4 +94,15 @@ export const reconcileDeviceChange = (input: {
   return choiceDeviceId(next) === choiceDeviceId(input.current) && next.kind === input.current.kind
     ? null
     : next;
+};
+
+/** The input to read for a device: only a device with more than one has anything to choose. */
+export const micChannel = (
+  device: string,
+  channels: number | null,
+  micOrder: ReadonlyArray<{ readonly name: string; readonly channel: number | null }>,
+): number | null => {
+  if (channels !== null && channels < 2) return null;
+  const wanted = device.toLowerCase();
+  return micOrder.find((mic) => wanted.includes(mic.name.toLowerCase()))?.channel ?? null;
 };

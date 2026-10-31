@@ -39,27 +39,33 @@ const first = (output: Ort.InferenceSession.OnnxValueMapType): Float32Array => {
   return value.data as Float32Array;
 };
 
+export interface WakeWordModel {
+  /** What the person says: "sebastian". */
+  readonly word: string;
+  readonly path: string;
+  readonly threshold: number;
+}
+
 export interface OpenWakeWordPaths {
   readonly melspectrogram: string;
   readonly embedding: string;
-  /** e.g. hey_jarvis_v0.1.onnx */
-  readonly wake: string;
+  /** Every word listens at once; the features are computed once per chunk and shared. */
+  readonly wakes: ReadonlyArray<WakeWordModel>;
 }
 
 /**
- * Feature pipeline as an async step function, testable on its own. Returns the
- * wake score for each 1280-sample chunk fed in.
+ * Feature pipeline as an async step function, testable on its own. Returns one
+ * score per wake word (in `paths.wakes` order) for each 1280-sample chunk fed in.
  */
 export const createOpenWakeWordScorer = async (paths: OpenWakeWordPaths) => {
   const ort = await loadOrt();
-  const [mel, embed, wake] = await Promise.all([
+  const [mel, embed, ...wakes] = await Promise.all([
     open(paths.melspectrogram),
     open(paths.embedding),
-    open(paths.wake),
+    ...paths.wakes.map((wake) => open(wake.path)),
   ]);
-  const melIn = mel.inputNames[0]!;
-  const embedIn = embed.inputNames[0]!;
-  const wakeIn = wake.inputNames[0]!;
+  const melIn = mel!.inputNames[0]!;
+  const embedIn = embed!.inputNames[0]!;
 
   let raw = new Float32Array(0);
   let melFrames: Float32Array[] = [];
@@ -72,14 +78,14 @@ export const createOpenWakeWordScorer = async (paths: OpenWakeWordPaths) => {
   };
   reset();
 
-  const score = async (chunk: Int16Array): Promise<number> => {
+  const score = async (chunk: Int16Array): Promise<ReadonlyArray<number>> => {
     const joined = new Float32Array(raw.length + chunk.length);
     joined.set(raw);
     for (let i = 0; i < chunk.length; i++) joined[raw.length + i] = chunk[i]!;
     raw = joined.slice(-(OWW_CHUNK + MEL_HISTORY));
 
     const melOut = first(
-      await mel.run({ [melIn]: new ort.Tensor("float32", raw, [1, raw.length]) }),
+      await mel!.run({ [melIn]: new ort.Tensor("float32", raw, [1, raw.length]) }),
     );
     const frames = melOut.length / 32;
     // The newest 8 frames belong to this chunk; earlier ones overlap history.
@@ -93,18 +99,23 @@ export const createOpenWakeWordScorer = async (paths: OpenWakeWordPaths) => {
     const window = new Float32Array(MEL_WINDOW * 32);
     melFrames.slice(-MEL_WINDOW).forEach((row, i) => window.set(row, i * 32));
     const emb = first(
-      await embed.run({ [embedIn]: new ort.Tensor("float32", window, [1, MEL_WINDOW, 32, 1]) }),
+      await embed!.run({ [embedIn]: new ort.Tensor("float32", window, [1, MEL_WINDOW, 32, 1]) }),
     );
     embeddings.push(emb.slice(0, 96));
     if (embeddings.length > EMBED_WINDOW) embeddings.shift();
-    if (embeddings.length < EMBED_WINDOW) return 0;
+    if (embeddings.length < EMBED_WINDOW) return wakes.map(() => 0);
 
     const feats = new Float32Array(EMBED_WINDOW * 96);
     embeddings.forEach((e, i) => feats.set(e, i * 96));
-    return (
-      first(
-        await wake.run({ [wakeIn]: new ort.Tensor("float32", feats, [1, EMBED_WINDOW, 96]) }),
-      )[0] ?? 0
+    return Promise.all(
+      wakes.map(
+        async (wake) =>
+          first(
+            await wake.run({
+              [wake.inputNames[0]!]: new ort.Tensor("float32", feats, [1, EMBED_WINDOW, 96]),
+            }),
+          )[0] ?? 0,
+      ),
     );
   };
 
@@ -173,10 +184,35 @@ export const streamingScorer = (input: {
 
 export const createOpenWakeWordProvider = async (
   paths: OpenWakeWordPaths,
-  threshold = 0.5,
-): Promise<WakeProvider & { readonly drain: () => Promise<void> }> => {
+): Promise<
+  WakeProvider & {
+    readonly drain: () => Promise<void>;
+    /** The word behind the last fire. */
+    readonly lastWord: () => string | null;
+  }
+> => {
   const scorer = await createOpenWakeWordScorer(paths);
-  const s = streamingScorer({ name: "openwakeword", ...scorer, threshold });
+  let word: string | null = null;
+  // Each word has its own threshold; scored as a fraction of it, 1 means that word fired.
+  const s = streamingScorer({
+    name: "openwakeword",
+    chunkSamples: scorer.chunkSamples,
+    reset: scorer.reset,
+    threshold: 1,
+    score: async (chunk) => {
+      const scores = await scorer.score(chunk);
+      let best = 0;
+      scores.forEach((value, i) => {
+        const wake = paths.wakes[i]!;
+        const ratio = value / wake.threshold;
+        if (ratio > best) {
+          best = ratio;
+          if (ratio >= 1) word = wake.word;
+        }
+      });
+      return best;
+    },
+  });
   return {
     name: "openwakeword",
     process: (frame) => {
@@ -185,6 +221,7 @@ export const createOpenWakeWordProvider = async (
     },
     reset: s.reset,
     drain: s.drain,
+    lastWord: () => word,
   };
 };
 
