@@ -6,6 +6,7 @@
  * turn; a drive plan is shown and never run, because the approval box is answered Cancel.
  */
 /* oxlint-disable t3code/no-global-process-runtime -- standalone lab harness, no Effect runtime */
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -71,19 +72,51 @@ const main = async () => {
       return { ...real, name: found.name ?? label };
     },
   });
+  // "Run it" is pressed the way he would, on the real prompt, and logged.
+  const pressRun = setInterval(() => {
+    if (process.env["LAB_RUN_PLANS"] !== "1") return;
+    for (const win of Electron.BrowserWindow.getAllWindows()) {
+      void win.webContents
+        .executeJavaScript(
+          `(()=>{const b=[...document.querySelectorAll('button')].find(x=>/run it/i.test(x.textContent));if(b){b.click();return true}return false})()`,
+        )
+        .then((pressed) => pressed && write({ pressed: "Run it", at: Date.now() }))
+        .catch(() => undefined);
+    }
+  }, 400);
   for (const said of REQUESTS) {
     const started = Date.now();
     write({ said });
+    if (said.startsWith("teach:")) {
+      // He does the step: a window appears, settles, and the lesson should notice unprompted.
+      setTimeout(() => {
+        const win = new Electron.BrowserWindow({ width: 500, height: 400, x: 200, y: 200 });
+        void win.loadURL("data:text/html,<body style='background:%23246;color:white'>a step was done");
+        write({ userActed: Date.now() });
+        setTimeout(() => win.destroy(), 25_000);
+      }, 22_000);
+    }
+    if (said.includes("the mouse moves")) {
+      setTimeout(() => {
+        write({ movedMouse: Date.now() });
+        NodeChildProcess.execFile("powershell.exe", [
+          "-NoProfile",
+          "-Command",
+          "Add-Type -AssemblyName System.Windows.Forms; $p=[Windows.Forms.Cursor]::Position; [Windows.Forms.Cursor]::Position=New-Object Drawing.Point(($p.X+200),($p.Y+200))",
+        ]);
+      }, 27_000);
+    }
     const done = new Promise<void>((resolve) => {
       ended = resolve;
     });
     const result = await companion.said(said, { direct: false });
     if (result.kind === "handled") {
-      await Promise.race([done, sleep(45_000)]);
+      await Promise.race([done, sleep(Number(process.env["LAB_TURN_MS"] ?? 45_000))]);
       await sleep(1_500);
     }
     write({ said, result: result.kind, ms: Date.now() - started });
   }
+  clearInterval(pressRun);
   sidecar.dispose();
   companion.dispose();
   report.end(() => Electron.app.exit(0));

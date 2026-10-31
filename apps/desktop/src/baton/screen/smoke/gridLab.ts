@@ -59,6 +59,8 @@ const main = async () => {
       enableLargerThanScreen: true,
     });
     win.setIgnoreMouseEvents(true);
+    // Set, the markers must be absent from the capture: the proof the overlay stays out of it.
+    if (process.env["LAB_PROTECT"] === "1") win.setContentProtection(true);
     await win.loadURL(page(marks));
     win.setBounds(display.bounds);
     win.showInactive();
