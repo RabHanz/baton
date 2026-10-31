@@ -51,7 +51,7 @@ def speak(job):
     voice = LOADED[name]
     rate = voice.config.sample_rate
     pcm = b"".join(voice.synthesize_stream_raw(
-        text, speaker_id=speaker, length_scale=length, noise_scale=0.8, noise_w=0.9,
+        text, speaker_id=speaker if voice.config.num_speakers > 1 else None, length_scale=length, noise_scale=0.8, noise_w=0.9,
     ))
     audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
     audio = resample_poly(audio, 16000, rate)
