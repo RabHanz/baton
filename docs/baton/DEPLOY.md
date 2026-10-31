@@ -189,3 +189,9 @@ In increasing order of severity. The first is almost always enough:
 The fork's migrations are additive (`docs/baton/DECISIONS.md` D7), so step 1
 leaves the release reading a database with six tables it does not know about,
 which is exactly the case D7 was written to keep safe.
+
+## Provider instances after a release that adds one
+
+`scripts/baton/provider-token-instances.py` runs once per machine with cswap's interpreter
+(`--pin-default` on the laptop only). It is safe to rerun. D95 added `claudeAgent_rabee`, so every box
+needs one run or that account cannot be pinned there.

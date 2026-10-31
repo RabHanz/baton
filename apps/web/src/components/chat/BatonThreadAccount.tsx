@@ -1,15 +1,23 @@
 /**
- * The account a thread runs as, and one click to change it (D92). Threads on the default Claude
- * instance share whatever cswap has active on their environment, so the switch moves all of them at
- * their next turn; a token instance is pinned and only its label shows here.
+ * The account a thread runs as, and one click to change it for this thread alone (D95). Each
+ * account is a provider instance and their homes share transcripts, so the thread keeps its
+ * conversation; during a turn the server holds the move until the turn ends. A mirrored terminal
+ * session is not ours to restart, so it keeps cswap's machine-wide switch (D92).
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { BatonAccount } from "@t3tools/baton-contracts";
+import {
+  accountForInstance,
+  accountRefusal,
+  accountReturnsAt,
+  BATON_DEFAULT_CLAUDE_INSTANCE,
+  instanceForAccount,
+  type BatonAccount,
+} from "@t3tools/baton-contracts";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
-import { CheckIcon, ChevronDownIcon, UserRoundIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, RotateCwIcon, UserRoundIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -18,14 +26,23 @@ import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { limitsAge } from "./BatonLimitsAge";
 
 const HEADER_CONTROL = "shrink-0 [-webkit-app-region:no-drag]";
 
 export function accountRow(account: BatonAccount, now: number): string {
+  const returnsAt = accountReturnsAt(account);
+  if (returnsAt !== null) {
+    const when = new Date(returnsAt).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `out until ${when}`;
+  }
   const room =
     account.headroomPercent === null ? "limits unknown" : `${account.headroomPercent}% left`;
   const age = account.usageCheckedAt === null ? null : limitsAge(account.usageCheckedAt, now);
@@ -40,35 +57,43 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
     batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} }),
   );
   const use = useAtomCommand(batonWorkSessions.accountUse, { reportFailure: false });
+  const useForThread = useAtomCommand(batonWorkSessions.threadAccountUse, { reportFailure: false });
   const [busy, setBusy] = useState(false);
   const nowMinute = useNowMinute();
   // A mirrored terminal session has Baton's live instance, and runs on the same cswap account.
   const live = threadRef.threadId.startsWith("baton-live");
   if (shell === null || (!live && provider?.driver !== "claudeAgent")) return null;
 
-  const pinned = !live && shell.providerInstanceId !== "claudeAgent";
-  if (pinned) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className={`${HEADER_CONTROL} text-xs text-muted-foreground`} />}
-        >
-          {provider?.displayName ?? shell.providerInstanceId}
-        </TooltipTrigger>
-        <TooltipPopup>
-          This thread is pinned to this account. Change it in the model picker.
-        </TooltipPopup>
-      </Tooltip>
-    );
-  }
-
   const accounts = Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
-  const active = accounts.find((account) => account.active);
-  if (active === undefined) return null;
+  const current = accountForInstance(shell.providerInstanceId, accounts);
+  if (current === undefined) return null;
   const running = threadRuntimeIsActive(shell.runtime);
   const now = Date.parse(`${nowMinute}:00Z`);
+  const onDefault = shell.providerInstanceId === BATON_DEFAULT_CLAUDE_INSTANCE;
+  const isAvailable = (instanceId: string) =>
+    providers.some((entry) => entry.instanceId === instanceId && entry.enabled);
 
-  const switchTo = (account: BatonAccount) => {
+  const switchThread = (key: string | null, label: string) => {
+    setBusy(true);
+    void useForThread({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, key },
+    }).then((result) => {
+      setBusy(false);
+      toastManager.add(
+        result._tag === "Success"
+          ? result.value.timing === "now"
+            ? { type: "success", title: `This thread now runs as ${label}` }
+            : {
+                type: "success",
+                title: `This thread moves to ${label} when the turn ends`,
+                description: "The running turn is not interrupted.",
+              }
+          : { type: "error", title: `Could not switch to ${label}` },
+      );
+    });
+  };
+  const switchMachine = (account: BatonAccount) => {
     setBusy(true);
     void use({
       environmentId: threadRef.environmentId,
@@ -80,7 +105,7 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
           ? {
               type: "success",
               title: `Now running as ${account.label}`,
-              description: "Claude threads on this environment move at their next turn.",
+              description: "Terminal sessions on this environment move at their next turn.",
             }
           : { type: "error", title: `Could not switch to ${account.label}` },
       );
@@ -97,29 +122,47 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
             className={HEADER_CONTROL}
             disabled={busy}
             data-testid="thread-account"
-            aria-label={`Running as ${active.label}. Switch account`}
+            aria-label={`Running as ${current.label}. Switch account`}
           />
         }
       >
         <UserRoundIcon />
-        {active.label}
+        {current.label}
         <ChevronDownIcon />
       </MenuTrigger>
       <MenuPopup align="end">
-        {accounts.map((account) => (
-          <MenuItem
-            key={account.key}
-            disabled={account.active || running || account.unusableReason === "signed-out"}
-            onClick={() => switchTo(account)}
-          >
-            {account.active ? <CheckIcon /> : <span className="size-4" aria-hidden />}
-            <span className="flex min-w-0 flex-col">
-              <span>{account.label}</span>
-              <span className="text-2xs text-muted-foreground">{accountRow(account, now)}</span>
-            </span>
-          </MenuItem>
-        ))}
-        {running ? (
+        {accounts.map((account) => {
+          const isCurrent = account.key === current.key;
+          const blocked =
+            isCurrent ||
+            accountRefusal(account) !== null ||
+            (live ? running : instanceForAccount(account, isAvailable) === null);
+          return (
+            <MenuItem
+              key={account.key}
+              disabled={blocked}
+              onClick={() =>
+                live ? switchMachine(account) : switchThread(account.key, account.label)
+              }
+            >
+              {isCurrent ? <CheckIcon /> : <span className="size-4" aria-hidden />}
+              <span className="flex min-w-0 flex-col">
+                <span>{account.label}</span>
+                <span className="text-2xs text-muted-foreground">{accountRow(account, now)}</span>
+              </span>
+            </MenuItem>
+          );
+        })}
+        {live || onDefault ? null : (
+          <>
+            <MenuSeparator />
+            <MenuItem onClick={() => switchThread(null, "the active account")}>
+              <RotateCwIcon />
+              Follow this machine's active account
+            </MenuItem>
+          </>
+        )}
+        {live && running ? (
           <span className="block px-2 py-1 text-2xs text-muted-foreground">
             Switch once this turn ends.
           </span>

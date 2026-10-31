@@ -8,7 +8,7 @@ settings.json and picks the change up. The token is read in-process and never pr
 
 The default `claudeAgent` instance is left alone unless `--pin-default`: on a box it runs whatever
 cswap has active (a setup token too), and pinning a token on it would silently stop cswap rotation
-reaching it. The laptop's CLI keeps a full login for Remote Control, so there the flag gives T3's
+reaching it. Rabee gets an instance too so a thread can be pinned to it (D95). The laptop's CLI keeps a full login for Remote Control, so there the flag gives T3's
 default instance slot 4's token and leaves that login where it is.
 """
 import base64
@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 INSTANCES = {
+    "4": ("claudeAgent_rabee", "Rabee", "#4225eb", ".claude-a"),
     "5": ("claudeAgent_optima", "Optima", "#ea580c", ".claude-b"),
     "6": ("claudeAgent_signzart", "Signzart", "#dc2626", ".claude-c"),
 }
@@ -50,6 +51,7 @@ def main():
     instances = settings.setdefault("providerInstances", {})
     wanted = dict(INSTANCES)
     if "--pin-default" in sys.argv:
+        # The default instance is Rabee here, so a second instance would only duplicate it.
         wanted["4"] = ("claudeAgent", "Rabee", "#4225eb", None)
     for number, (instance_id, name, accent, home) in wanted.items():
         account = accounts.get(number)

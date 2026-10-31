@@ -36,6 +36,7 @@ import Migration0004 from "./Migrations/Baton/004_Intents.ts";
 import Migration0005 from "./Migrations/Baton/005_WorkSessionObservedState.ts";
 import Migration0006 from "./Migrations/Baton/006_AdoptedSessions.ts";
 import Migration0007 from "./Migrations/Baton/007_IntentLearning.ts";
+import Migration0008 from "./Migrations/Baton/008_ThreadAccountMoves.ts";
 
 /**
  * Baton's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -52,6 +53,7 @@ const batonMigrationEntries = [
   [5, "WorkSessionObservedState", Migration0005],
   [6, "AdoptedSessions", Migration0006],
   [7, "IntentLearning", Migration0007],
+  [8, "ThreadAccountMoves", Migration0008],
 ] as const;
 
 export const batonMigrationManifest = batonMigrationEntries.map(
