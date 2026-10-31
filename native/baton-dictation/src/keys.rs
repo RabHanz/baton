@@ -1,5 +1,6 @@
 //! The paste chord. Key codes and the 100 ms modifier hold are Handy's (`src-tauri/src/input.rs`):
-//! some systems drop a chord released faster than that.
+//! some systems drop a chord released faster than that. Linux sends its chord in desktop_unix.rs.
+#![cfg_attr(target_os = "linux", allow(dead_code, unused_imports))]
 use enigo::{Direction, Enigo, Key, Keyboard};
 use serde::Deserialize;
 use std::{thread, time::Duration};
@@ -17,12 +18,19 @@ const HOLD: Duration = Duration::from_millis(100);
 
 #[cfg(windows)]
 const V: Key = Key::Other(0x56);
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+const V: Key = Key::Other(9);
+#[cfg(not(any(windows, target_os = "macos")))]
 const V: Key = Key::Unicode('v');
 #[cfg(windows)]
 const INSERT: Key = Key::Other(0x2D);
 #[cfg(not(windows))]
 const INSERT: Key = Key::Other(0x76);
+/// "Ctrl+V" names the paste, and macOS spells that with Command.
+#[cfg(target_os = "macos")]
+const PASTE_MODIFIER: Key = Key::Meta;
+#[cfg(not(target_os = "macos"))]
+const PASTE_MODIFIER: Key = Key::Control;
 
 /// The dictation key's own modifiers may still be held; a Ctrl+Alt+V is not a paste.
 #[cfg(windows)]
@@ -39,16 +47,20 @@ fn wait_for_modifiers_up() {
     }
 }
 
+// macOS has no call for it here either, and a held Ctrl+Option alongside Command still pastes in
+// most apps; Linux waits in desktop_unix.rs.
 #[cfg(not(windows))]
-fn wait_for_modifiers_up() {}
+fn wait_for_modifiers_up() {
+    thread::sleep(Duration::from_millis(120));
+}
 
 pub fn send_chord(enigo: &mut Enigo, method: PasteMethod) -> Result<(), String> {
     wait_for_modifiers_up();
     let err = |e: enigo::InputError| format!("paste chord: {e}");
     let (modifiers, key): (&[Key], Key) = match method {
-        PasteMethod::CtrlV => (&[Key::Control], V),
+        PasteMethod::CtrlV => (&[PASTE_MODIFIER], V),
         PasteMethod::ShiftInsert => (&[Key::Shift], INSERT),
-        PasteMethod::CtrlShiftV => (&[Key::Control, Key::Shift], V),
+        PasteMethod::CtrlShiftV => (&[PASTE_MODIFIER, Key::Shift], V),
     };
     for m in modifiers {
         enigo.key(*m, Direction::Press).map_err(err)?;

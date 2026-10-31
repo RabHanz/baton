@@ -11,6 +11,7 @@ import {
   previewSnapShotConfig,
   applySnapShotConfig,
   snapShotRelativeFrame,
+  listPendingSnapShots,
 } from "./snapShot.ts";
 
 describe("window capture IPC", () => {
@@ -57,6 +58,29 @@ describe("window capture IPC", () => {
                 calls.push(id);
                 return { backupPath: null, warning: null };
               }),
+          } as unknown as DesktopSnapShot.DesktopSnapShot["Service"]),
+          Layer.succeed(
+            ElectronDialog.ElectronDialog,
+            {} as ElectronDialog.ElectronDialog["Service"],
+          ),
+        ),
+      ),
+    );
+  });
+
+  it.effect("still refuses a pending-snapshot read from a detached window", () => {
+    return Effect.gen(function* () {
+      const detached = yield* Effect.exit(listPendingSnapShots.handler(undefined, { sender: { id: 8 } }));
+      assert(Exit.isFailure(detached));
+      assert.deepEqual(yield* listPendingSnapShots.handler(undefined, { sender: { id: 7 } }), []);
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(ElectronWindow.ElectronWindow, {
+            main: Effect.succeedSome({ webContents: { id: 7 } }),
+          } as ElectronWindow.ElectronWindow["Service"]),
+          Layer.succeed(DesktopSnapShot.DesktopSnapShot, {
+            listPending: Effect.succeed([]),
           } as unknown as DesktopSnapShot.DesktopSnapShot["Service"]),
           Layer.succeed(
             ElectronDialog.ElectronDialog,

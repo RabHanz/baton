@@ -2,6 +2,48 @@ Subject: web: Baton's block in the sidebar
 
 One element, above upstream's thread list; everything else is in components/sidebar/Baton*.
 
+diff --git a/apps/desktop/src/ipc/methods/snapShot.test.ts b/apps/desktop/src/ipc/methods/snapShot.test.ts
+index 7e1ae602f979db00d082c795aee4973f39cbd30f..dff188ea1988f4db03047d56f9268d9a4f6b0d6d 100644
+--- a/apps/desktop/src/ipc/methods/snapShot.test.ts
++++ b/apps/desktop/src/ipc/methods/snapShot.test.ts
+@@ -11,6 +11,7 @@ import {
+   previewSnapShotConfig,
+   applySnapShotConfig,
+   snapShotRelativeFrame,
++  listPendingSnapShots,
+ } from "./snapShot.ts";
+ 
+ describe("window capture IPC", () => {
+@@ -67,6 +68,29 @@ describe("window capture IPC", () => {
+     );
+   });
+ 
++  it.effect("still refuses a pending-snapshot read from a detached window", () => {
++    return Effect.gen(function* () {
++      const detached = yield* Effect.exit(listPendingSnapShots.handler(undefined, { sender: { id: 8 } }));
++      assert(Exit.isFailure(detached));
++      assert.deepEqual(yield* listPendingSnapShots.handler(undefined, { sender: { id: 7 } }), []);
++    }).pipe(
++      Effect.provide(
++        Layer.mergeAll(
++          Layer.succeed(ElectronWindow.ElectronWindow, {
++            main: Effect.succeedSome({ webContents: { id: 7 } }),
++          } as ElectronWindow.ElectronWindow["Service"]),
++          Layer.succeed(DesktopSnapShot.DesktopSnapShot, {
++            listPending: Effect.succeed([]),
++          } as unknown as DesktopSnapShot.DesktopSnapShot["Service"]),
++          Layer.succeed(
++            ElectronDialog.ElectronDialog,
++            {} as ElectronDialog.ElectronDialog["Service"],
++          ),
++        ),
++      ),
++    );
++  });
++
+   it.effect("allows capture setup only from the trusted main renderer", () => {
+     const actions: string[] = [];
+     return Effect.gen(function* () {
 diff --git a/apps/web/src/components/ThreadStatusIndicators.tsx b/apps/web/src/components/ThreadStatusIndicators.tsx
 index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc3166715167007109fc36 100644
 --- a/apps/web/src/components/ThreadStatusIndicators.tsx
@@ -15,3 +57,24 @@ index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc316671516700
    status,
    compact = false,
  }: {
+diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
+index 1207b5017100d7300d7a161e676531d145f45a75..6948dbb89c00d446274b4beaf50de58b6c02ec03 100644
+--- a/apps/web/src/routes/__root.tsx
++++ b/apps/web/src/routes/__root.tsx
+@@ -26,6 +26,7 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
+ import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
+ import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
+ import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
++import { isMainWindow } from "../components/panes/batonWindows";
+ import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
+ import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
+ import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
+@@ -205,7 +206,7 @@ function RootRouteBranch() {
+         <RelayClientInstallDialog />
+         <ConnectOnboardingDialog />
+         <SshPasswordPromptDialog />
+-        <SnapShotCoordinator />
++        {isMainWindow() ? <SnapShotCoordinator /> : null}
+         <ReopenClosedViewShortcut />
+         <ConfirmDialogHost />
+         <CustomSnoozeDialogHost />

@@ -1,0 +1,167 @@
+/* Kyutai's Pocket TTS model configs (MIT), with their hf:// paths made local. `{dir}` is filled in. */
+export const POCKET_CONFIG_FULL = String.raw`# Default English model: identical weights to english_2026-10.yaml.
+
+weights_path: {dir}/model.safetensors
+weights_path_without_voice_cloning: {dir}/model.safetensors
+# Human evals preferred this model at 0.3 (equal WER/similarity/speech rate).
+default_temperature: 0.3
+
+
+# Replace characters that are absent from the training data.
+replace_characters:
+  '’': "'"
+  '‘': "'"
+
+flow_lm:
+  insert_bos_before_voice: true
+  dtype: float32
+  flow:
+    depth: 6
+    dim: 512
+  transformer:
+    d_model: 1024
+    hidden_scale: 4
+    max_period: 10000
+    num_heads: 16
+    num_layers: 6
+  lookup_table:
+    dim: 1024
+    n_bins: 4000
+    tokenizer: tokenizers
+    tokenizer_path: {dir}/tokenizer.json
+  #weights_path: final.safetensors
+
+mimi:
+  dtype: float32
+  sample_rate: 24000
+  inner_dim: 32
+  outer_dim: 512
+  channels: 1
+  frame_rate: 12.5
+  seanet:
+    dimension: 512
+    channels: 1
+    n_filters: 64
+    n_residual_layers: 1
+    ratios:
+    - 6
+    - 5
+    - 4
+    kernel_size: 7
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  transformer:
+    d_model: 512
+    num_heads: 8
+    num_layers: 2
+    layer_scale: 0.01
+    context: 250
+    dim_feedforward: 2048
+    input_dimension: 512
+    output_dimensions:
+    - 512
+  quantizer:
+    dimension: 32
+    output_dimension: 512
+  #weights_path: codec.safetensors
+`;
+
+export const POCKET_CONFIG_QUICK = String.raw`# English model with 6.9M parameters: a 4.3M flow LM and a 2.6M decoder.
+
+weights_path: {dir}/model.safetensors
+weights_path_without_voice_cloning: {dir}/model.safetensors
+default_temperature: 0.3
+# Replace characters that are absent from the training data.
+replace_characters:
+  '–': ','
+  '-': ','
+  '’': "'"
+  '‘': "'"
+
+flow_lm:
+  insert_bos_before_voice: true
+  dtype: float32
+  flow:
+    depth: 4
+    dim: 192
+    type: drifting
+  transformer:
+    d_model: 224
+    hidden_scale: 1
+    max_period: 10000
+    num_heads: 8
+    num_layers: 8
+    attn_dim: 512
+    num_kv_heads: 2
+  lookup_table:
+    dim: 224
+    n_bins: 4000
+    tokenizer: sentencepiece
+    tokenizer_path: {dir}/tokenizer.model
+    rank: 64
+  z_dim: 64
+mimi:
+  dtype: float32
+  sample_rate: 24000
+  inner_dim: 32
+  outer_dim: 128
+  channels: 1
+  frame_rate: 12.5
+  seanet:
+    dimension: 512
+    channels: 1
+    n_filters: 64
+    n_residual_layers: 1
+    ratios:
+    - 6
+    - 5
+    - 4
+    kernel_size: 7
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  transformer:
+    d_model: 512
+    num_heads: 8
+    num_layers: 2
+    layer_scale: 0.01
+    context: 250
+    dim_feedforward: 2048
+    input_dimension: 512
+    output_dimensions:
+    - 512
+  quantizer:
+    dimension: 32
+    output_dimension: 128
+  decoder_seanet:
+    dimension: 128
+    channels: 1
+    n_filters: 32
+    n_residual_layers: 1
+    ratios:
+    - 6
+    - 5
+    - 4
+    kernel_size: 3
+    residual_kernel_size: 3
+    last_kernel_size: 3
+    dilation_base: 2
+    pad_mode: constant
+    compress: 2
+  decoder_transformer:
+    d_model: 128
+    num_heads: 4
+    num_layers: 12
+    layer_scale: 0.01
+    context: 50
+    dim_feedforward: 384
+    input_dimension: 128
+    output_dimensions:
+    - 128
+default_eos_threshold: -1.0
+`;

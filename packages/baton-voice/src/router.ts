@@ -43,7 +43,7 @@ export interface VoiceIntentClient {
     readonly workSessionId: string;
     readonly text: string;
   }) => Promise<{ readonly reply: string }>;
-  /** Dictation: insert into the focused field (§18). Local only. */
+  /** Dictation: insert into the focused field (§18). Never reaches the environment. */
   readonly insertText: (input: {
     readonly text: string;
   }) => Promise<{ readonly inserted: boolean }>;
@@ -170,7 +170,8 @@ export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
             reason: "high_risk",
           };
         }
-        if (resolution.risk === "medium") {
+        const reads = resolution.command.kind.startsWith("status_");
+        if (resolution.risk === "medium" || (effect.restated === true && !reads)) {
           counter += 1;
           const token = `confirm-${counter}`;
           parked.set(token, {
@@ -181,7 +182,7 @@ export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
           return {
             kind: "needs_confirmation",
             token,
-            prompt: `${resolution.description} Say "confirm" to go ahead.`,
+            prompt: `${effect.restated === true ? `I took that as: ${effect.text} ` : ""}${resolution.description} Say "confirm" to go ahead.`,
             workSessionId: resolution.workSessionId,
           };
         }

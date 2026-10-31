@@ -151,6 +151,10 @@ is ordered, and nothing in it is blocked on a decision he owes.
 
 | #   | Work                                                                                                             | State                                                                          | What it needs                                                                                        |
 | --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| V1  | **Time dictation on an idle laptop** (D103, D104): chunk sweep, gain pass, then `replay_lab.py`, then decide `speechModel` and set the chunk constants. Clean-up delay too. Every speed figure so far was taken under load and is void |
+| V2  | **macOS voice** (D106): compile `desktop_unix.rs`, `stageBatonVoice`, payload check, CI runner. Needs Microphone, Accessibility and Input Monitoring, plus signing and notarisation |
+| V3  | **Linux voice** (D106): compile `desktop_unix.rs`, packaging, CI runner, `/dev/input` for the keys, each Wayland compositor's limit on focus and paste |
+| V4  | **Phone dictation**: `dictationCleanup.ts` is shared; a phone needs its own model session and focus source |
 | 1   | **Deploy the fork carrying presence and the Herdr adapter** to signzart and the local box                        | code committed, gate green, not yet built                                      | a Node ≥ 25.7 toolchain for `build-exe`; the box has 24.13 only, so the SEA step cannot run here yet |
 | 2   | **A pane adopted into a WorkSession, visible in the fleet**                                                      | adapter proven live; the service path unproven end to end                      | item 1 — it runs in the server, not in a script                                                      |
 | 3   | **T3's terminal backed by a Herdr pane** so it survives a T3 restart, not only a client reconnect                | not started; D58 names the three gaps                                          | item 1, then a `TerminalOpenInput` that can name a runtime                                           |
@@ -1067,3 +1071,36 @@ What the review did **not** cover, and should before daily use: a dependency
 audit of the fork against upstream, a look at the pairing/token lifetimes T3
 ships with, and a second pair of eyes on the WebSocket authentication path,
 which Baton inherits unchanged and did not test.
+
+## One brain, screen context, voice and dictation on Windows, 2026-10-31 (D100 to D113)
+
+Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven checks.
+
+| Piece | State | Evidence |
+| --- | --- | --- |
+| One brain for voice and typed asks | built, in `baton-shared`, reachable by `fabric.brain.decide` | `INTENT_TABLE.md`, 48 of 48, model median 1.5 s |
+| Screen context | built | scored set 22 of 24 before, 24 of 24 after, all 5 must-say-not-found cases right; 24 real traces |
+| Echo gate | built | 0 transcripts from its own voice, barge-in fired, from audio (D102) |
+| Dictation paste, real window | passed for the right window and clipboard restore; wrong window by a stale handle | `scripts/baton/voice-lab/dictation-window.mjs`. A live window switch and a window that never reads the clipboard need him there, as Windows will not give a lab window the foreground |
+| Dictation cancel, five-minute limit | passed | real exe with a fake mic: stopped at 300.8 s, 4,869 characters kept, nothing pasted |
+| Live microphone | **not run** | V1 below |
+
+Queued: live mic, his speakers and whispered speech through chunks on Windows, then V2 macOS, V3 Linux and V4 phone over
+the environment, in the V table above and in `TEST_MATRIX.md`.
+
+**Queued, Linux Drive:** `window_at` returns nothing there and `foreground` is not wired, so xdotool clicks have no
+window check and keys have no focus or shell check.
+
+**Lab, moving-pointer run:** `labcfg.ps1` must set `$env:BATON_LAB='1'`. Waits until he says he is away.
+
+**Open before release:** the openWakeWord licence. The notices say its training sets are partly non-commercial,
+so check before any packaged or commercial release.
+
+**Windows packaging, read not built:** `stageBatonVoice` builds the sidecar and copies it and the wake models into
+`baton-voice`, and a missing exe fails the build. Pocket TTS is not packaged: it downloads at first use, pinned and
+checksummed. `baton-dictation-build.yml` now also runs on `main`.
+
+## Queued: companion off Windows (2026-10-31)
+
+See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages/baton-shared`
+(`companionPacing`, `voiceTurn`), so those platforms need wiring, not a rewrite.

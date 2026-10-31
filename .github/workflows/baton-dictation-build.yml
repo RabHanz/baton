@@ -3,7 +3,7 @@ name: Baton dictation build
 # Builds the Windows sidecar on its own, so it can be tried on the laptop without a desktop release.
 on:
   push:
-    branches: [baton/native-voice]
+    branches: [main, baton/one-brain]
     paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
 
 permissions:

@@ -373,6 +373,8 @@ export const make = Effect.gen(function* () {
           ),
         ),
       ),
+    [BATON_INTENT_WS_METHODS.brainDecide]: (input) =>
+      run(Effect.flatMap(BatonIntentService, (intents) => intents.decide(input))),
     [BATON_INTENT_WS_METHODS.intentRun]: (input) =>
       run(
         Effect.flatMap(BatonIntentService, (intents) =>

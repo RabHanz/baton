@@ -33,6 +33,7 @@ import {
   interpretIntentModelReply,
   type IntentModelReply,
 } from "@t3tools/baton-shared/intentModel";
+import { BRAIN_ROUTER_PROMPT } from "@t3tools/baton-shared/brain";
 import type { IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -41,7 +42,7 @@ import * as Layer from "effect/Layer";
 
 import * as Schema from "effect/Schema";
 
-import { BatonOneShot } from "./BatonOneShot.ts";
+import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
 
 /**
  * The tier that reads a sentence against a list of names.
@@ -101,6 +102,11 @@ export class BatonIntentInterpreter extends Context.Service<
       readonly vocabulary: IntentVocabulary;
       readonly learned: ReadonlyArray<{ readonly text: string; readonly description: string }>;
     }) => Effect.Effect<IntentInterpretation | null>;
+    /** The one brain's question (D100), as the JSON it answers in. Fails when no account can. */
+    readonly route: (input: {
+      readonly turn: string;
+      readonly vocabulary: IntentVocabulary;
+    }) => Effect.Effect<string, BatonOneShotError>;
   }
 >()("t3/baton/IntentInterpreter/BatonIntentInterpreter") {}
 
@@ -201,7 +207,20 @@ export const make = Effect.gen(function* () {
       return { resolution, model: chosen.model } satisfies IntentInterpretation;
     });
 
-  return { interpret } satisfies BatonIntentInterpreter["Service"];
+  const route: BatonIntentInterpreter["Service"]["route"] = ({ turn, vocabulary }) =>
+    Effect.gen(function* () {
+      if (chooseInterpreterInstance(vocabulary) === null) {
+        return yield* new BatonOneShotError({ detail: "No Claude account is signed in here." });
+      }
+      const reply = yield* oneShot.run({
+        prompt: `${BRAIN_ROUTER_PROMPT}\n\n${turn}`,
+        model: INTENT_MODEL_SLUG,
+        outputSchema: Schema.Struct({ route: Schema.String, text: Schema.String }),
+      });
+      return JSON.stringify(reply);
+    });
+
+  return { interpret, route } satisfies BatonIntentInterpreter["Service"];
 });
 
 export const layer = Layer.effect(BatonIntentInterpreter, make);

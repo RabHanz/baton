@@ -31,6 +31,8 @@ export const startVoiceLoop = async (input: {
   readonly deviceId: string | null;
   readonly muted?: boolean;
   readonly onState: (state: VoiceState) => void;
+  /** Every frame that reaches the core, for a live level. */
+  readonly onLevel?: (frame: Int16Array) => void;
   readonly onUtterance: (utterance: VoiceUtterance, route: VoiceRoute) => void;
 }): Promise<VoiceLoop> => {
   let muted = input.muted ?? false;
@@ -45,7 +47,9 @@ export const startVoiceLoop = async (input: {
     if (!muted) input.onUtterance(utterance, routeFor(utterance));
   });
   const onFrame = (frame: Int16Array) => {
-    if (!muted) input.core.pushAudio(frame);
+    if (muted) return;
+    input.core.pushAudio(frame);
+    input.onLevel?.(frame);
   };
 
   const setMuted = (next: boolean) => {

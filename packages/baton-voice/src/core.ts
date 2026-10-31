@@ -22,6 +22,8 @@ import {
   type VoiceEvent,
   type VoiceMachineState,
   type VoiceTimings,
+  isAffirmative,
+  stripWake,
 } from "./modeMachine.ts";
 import type { RouteOutcome, VoiceRouter } from "./router.ts";
 import {
@@ -55,7 +57,19 @@ export const DEFAULT_SEGMENTER: SegmenterConfig = {
 
 export type VoiceCoreEvent =
   | { readonly type: "state"; readonly state: VoiceState; readonly target: string | null }
-  | { readonly type: "wake"; readonly score: number; readonly at: number }
+  | {
+      readonly type: "wake";
+      readonly score: number;
+      readonly at: number;
+      /** Null for a hotkey, or a provider with one word. */
+      readonly word: string | null;
+    }
+  /** A segment went to speech recognition. */
+  /** A wake word over Baton's own voice: he is cutting in. */
+  | { readonly type: "barge_in" }
+  | { readonly type: "thinking" }
+  /** Speech recognition came back with nothing usable. */
+  | { readonly type: "nothing" }
   | { readonly type: "transcript"; readonly text: string; readonly at: number }
   | { readonly type: "effect"; readonly effect: VoiceEffect }
   | { readonly type: "outcome"; readonly outcome: RouteOutcome }
@@ -72,12 +86,20 @@ export interface BatonVoiceCore extends VoiceCore {
   readonly snapshot: () => VoiceCoreSnapshot;
   readonly subscribe: (listener: (event: VoiceCoreEvent) => void) => () => void;
   readonly setDirectSession: (enabled: boolean) => void;
+  /**
+   * Baton's voice started or stopped, wherever it came from. While it plays, and for a moment
+   * after, the mic hears Baton: only a wake word gets through.
+   */
+  readonly setSpeaking: (active: boolean) => void;
   readonly setContext: (bus: ContextBusState) => void;
   /** Feed a typed/known utterance as if transcribed (tests, push-to-talk text). */
   readonly hear: (text: string) => Promise<void>;
   /** Resolves when every queued transcription and route has finished. */
   readonly idle: () => Promise<void>;
 }
+
+/** Speech ends a little after the player says so, and a room rings on. */
+const ECHO_TAIL_MS = 500;
 
 const NOISE = /^(?:\[[^\]]*\]|\([^)]*\)|\s|[.,!?…-])*$/;
 
@@ -188,10 +210,13 @@ export const createVoiceCore = (input: {
 
   const say = async (text: string) => {
     if (input.tts == null) return;
+    setSpeaking(true);
     try {
       await input.tts.speak(text);
     } catch (error) {
       emit({ type: "error", message: `TTS: ${(error as Error).message}` });
+    } finally {
+      setSpeaking(false);
     }
   };
 
@@ -223,6 +248,13 @@ export const createVoiceCore = (input: {
   const finishSegment = () => {
     const parts = segment;
     const spoken = speechSamples;
+    const overItself = barged;
+    barged = false;
+    if (speakingLater !== null) {
+      const latest = speakingLater;
+      speakingLater = null;
+      setSpeaking(latest);
+    }
     segment = null;
     speechSamples = 0;
     silenceSamples = 0;
@@ -235,16 +267,48 @@ export const createVoiceCore = (input: {
       pcm.set(p, o);
       o += p.length;
     }
+    emit({ type: "thinking" });
     enqueue(async () => {
       const text = await input.stt.transcribe(pcm);
       const cleaned = text.trim();
-      if (NOISE.test(cleaned)) return;
+      if (NOISE.test(cleaned)) return emit({ type: "nothing" });
+      // Baton's own reply can say a wake word and "confirm": a yes must not start over its voice.
+      // Stop and cancel still count, and the question just runs out.
+      if (
+        overItself &&
+        machine.pending !== null &&
+        isAffirmative(stripWake(cleaned, timings.wakeWords))
+      ) {
+        return emit({ type: "nothing" });
+      }
       lastTranscript = cleaned;
       emit({ type: "transcript", text: cleaned, at: now() });
       await dispatch({ type: "utterance", text: cleaned, at: now() });
     });
     show();
   };
+
+  let speaking = false;
+  let echoUntil = 0;
+  /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
+  let barged = false;
+  /** What the speaker did while his words were being heard, applied when they end. */
+  let speakingLater: boolean | null = null;
+  const setSpeaking = (active: boolean) => {
+    if (barged) {
+      speakingLater = active;
+      return;
+    }
+    speaking = active;
+    if (active) {
+      // What was being heard is now mixed with Baton's own voice.
+      segment = null;
+      speechSamples = 0;
+      silenceSamples = 0;
+      segmentSamples = 0;
+    } else echoUntil = samples + msToSamples(ECHO_TAIL_MS);
+  };
+  const hearingItself = () => speaking || samples < echoUntil;
 
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
@@ -255,9 +319,17 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     if (score !== null) {
-      emit({ type: "wake", score, at: now() });
+      if (hearingItself()) {
+        speaking = false;
+        echoUntil = 0;
+        barged = true;
+        emit({ type: "barge_in" });
+      }
+      emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });
       // Start the utterance at the wake: "hey jarvis, what's…" is one breath.
       if (segment === null) {
+        // Kept over its own voice too: the detector fires late, and dropping this cost his first
+        // words ("what needs me" came out "hate me").
         segment = [...preRoll];
         segmentSamples = preRollSamples;
         speechSamples = msToSamples(seg.minSpeechMs);
@@ -269,7 +341,7 @@ export const createVoiceCore = (input: {
       enqueue(() => dispatch({ type: "tick", at }));
     }
 
-    if (listening()) {
+    if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
       if (segment === null && speech) {
         segment = [...preRoll];
@@ -302,7 +374,10 @@ export const createVoiceCore = (input: {
   };
 
   const activate = (activation: VoiceActivation) => {
-    if (activation === "wake") enqueue(() => dispatch({ type: "wake", at: now() }));
+    if (activation === "wake") {
+      emit({ type: "wake", score: 1, at: now(), word: null });
+      enqueue(() => dispatch({ type: "wake", at: now() }));
+    } else if (activation === "dismiss") enqueue(() => dispatch({ type: "dismiss", at: now() }));
     else if (activation === "toggle_direct_session") {
       enqueue(() =>
         dispatch({ type: "set_direct_session", enabled: !machine.directSession, at: now() }),
@@ -335,6 +410,7 @@ export const createVoiceCore = (input: {
       lastTranscript,
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
+    setSpeaking,
     subscribe: (l) => {
       listeners.add(l);
       return () => listeners.delete(l);

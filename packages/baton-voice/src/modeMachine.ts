@@ -67,6 +67,8 @@ export type VoiceEvent =
   | { readonly type: "wake"; readonly at: number }
   | { readonly type: "utterance"; readonly text: string; readonly at: number }
   | { readonly type: "tick"; readonly at: number }
+  /** He dismissed the turn: back to resting, and nothing parked stays parked. */
+  | { readonly type: "dismiss"; readonly at: number }
   | { readonly type: "set_direct_session"; readonly enabled: boolean; readonly at: number }
   | { readonly type: "set_target"; readonly workSessionId: string | null; readonly at: number }
   | {
@@ -78,7 +80,13 @@ export type VoiceEvent =
 
 export type VoiceEffect =
   /** A command for the intent path, with the target a follow-up inherits. */
-  | { readonly kind: "command"; readonly text: string; readonly inheritedTarget: string | null }
+  | {
+      readonly kind: "command";
+      readonly text: string;
+      readonly inheritedTarget: string | null;
+      /** The words are a model's, not his: anything but a read waits for his "confirm". */
+      readonly restated?: boolean;
+    }
   /** Direct-session speech: a user message to the focused session. */
   | { readonly kind: "session_message"; readonly text: string }
   /** Text for the focused editable field. Never leaves the client. */
@@ -113,6 +121,7 @@ const wakePrefix = (words: ReadonlyArray<string>): RegExp => {
 };
 const AFFIRM =
   /^(?:confirm(?:ed)?|yes(?:,? (?:do it|confirm|go ahead))?|go ahead|do it|approve(?:d)?)[.!]?$/i;
+export const isAffirmative = (text: string): boolean => AFFIRM.test(text);
 const DECLINE = /^(?:no|cancel|stop|don't|do not|never mind|nevermind|abort)\b/i;
 const SLEEP =
   /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|goodbye)[.!]?$/i;
@@ -162,6 +171,13 @@ export const reduceVoice = (
   const carry = expired.effects;
 
   switch (event.type) {
+    case "dismiss":
+      return step(
+        base(s),
+        s.pending === null
+          ? []
+          : [{ kind: "cancelled", token: s.pending.token, reason: "declined" }],
+      );
     case "tick":
       return expired;
 

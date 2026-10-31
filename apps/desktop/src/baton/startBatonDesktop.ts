@@ -1,9 +1,13 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Everything Baton adds to the desktop main process, started by one call in `DesktopApp.ts`
  * (`vendor-patches/t3code/0007-desktop.patch`): the injection-report IPC handler and the voice
  * core (D66), and the screen companion (D84). Neither may stop the app starting: a missing tray
  * host or a refused microphone is reported in its own tray, not as a startup failure.
  */
+import * as Electron from "electron";
+import * as NodePath from "node:path";
+
 import { createOsTts } from "@t3tools/baton-voice";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
@@ -14,7 +18,11 @@ import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
-import { startDesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
+import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
+import { createEscapeKey } from "./screen/escapeKey.ts";
+import { createVoicePlayer } from "./voice/voicePlayer.ts";
+import { createPocketEngine } from "./voice/pocketVoice.ts";
+import { createSpeaker } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 
 export const startBatonDesktop = Effect.gen(function* () {
@@ -23,18 +31,42 @@ export const startBatonDesktop = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
   const hostEnvironment = yield* HostProcess.Environment;
+  const hostArchitecture = yield* HostProcess.Architecture;
   const context = yield* Effect.context<never>();
   const { resourcesPath } = environment;
   yield* Effect.sync(() => {
-    let voice: { readonly refresh: () => void } | null = null;
+    let voice: DesktopBatonVoice | null = null;
+    const holdEscape = createEscapeKey(Electron.globalShortcut);
+    const pocket = createPocketEngine({
+      root: NodePath.join(environment.stateDir, "voice", "pocket"),
+      platform: environment.platform,
+      arch: hostArchitecture,
+      onProgress: (message) => voice?.onNote(message),
+    });
+    Electron.app.on("will-quit", pocket.dispose);
+    const speaker = createSpeaker({
+      os: createOsTts(environment.platform),
+      voice: () => {
+        const voice = screen?.voice() ?? "anna";
+        return voice === "system" ? null : pocket.synthesise(voice);
+      },
+      player: createVoicePlayer((level) => voice?.onSpeechLevel(level)),
+      silent: () => screen?.writtenOnly() ?? false,
+      onActive: (active) => voice?.onSpeaking(active),
+    });
     let screen: ScreenCompanion | null = null;
     try {
       screen = startScreenCompanion({
         stateDir: environment.stateDir,
         platform: environment.platform,
         env: hostEnvironment,
-        speak: createOsTts(environment.platform).speak,
+        speak: speaker.speak,
         onChange: () => voice?.refresh(),
+        onTurnEnd: () => voice?.onTurnEnd(),
+        stopSpeech: speaker.cancel,
+        holdEscape,
+        onActivity: (label, caption) => voice?.onActivity(label, caption),
+        onDismissed: () => voice?.onDismissed(),
       });
     } catch (cause) {
       Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
@@ -42,10 +74,24 @@ export const startBatonDesktop = Effect.gen(function* () {
     voice = startDesktopBatonVoice({
       stateDir: environment.stateDir,
       platform: environment.platform,
+      env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
-      dictationBinary: resolveDictationBinary({ resourcesPath, env: hostEnvironment }),
-      makeCore: async ({ intent, onReply, settings, stt }) =>
+      holdEscape,
+      onBargeIn: () => {
+        speaker.cancel();
+        screen?.hush();
+      },
+      onDismiss: () => {
+        speaker.cancel();
+        screen?.stop();
+      },
+      dictationBinary: resolveDictationBinary({
+        resourcesPath,
+        platform: environment.platform,
+        env: hostEnvironment,
+      }),
+      makeCore: async ({ intent, onReply, settings, stt, onEvent }) =>
         (
           await createDesktopVoiceCore({
             assets: resolveVoiceAssets({
@@ -59,7 +105,9 @@ export const startBatonDesktop = Effect.gen(function* () {
             platform: environment.platform,
             intent,
             onReply,
-            ...(screen === null ? {} : { screen }),
+            tts: speaker,
+            onEvent,
+            ...(screen === null ? {} : { brain: screen }),
           })
         ).core,
     });

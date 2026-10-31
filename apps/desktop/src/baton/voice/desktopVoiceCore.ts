@@ -22,6 +22,8 @@ import {
   DEFAULT_TIMINGS,
   type BatonVoiceCore,
   type SttProvider,
+  type TtsProvider,
+  type VoiceCoreEvent,
   type VoiceIntentClient,
   type VoiceRouter,
   type WakeWordModel,
@@ -32,7 +34,6 @@ import {
   type ContextBusState,
 } from "@t3tools/baton-shared/contextBus";
 import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
-import { parseScreenIntent, type ScreenIntent } from "@t3tools/baton-shared/screenCompanion";
 
 const VOICE_FEATURE_FILES = ["melspectrogram.onnx", "embedding_model.onnx", "silero_vad.onnx"];
 
@@ -174,27 +175,52 @@ export const desktopVoiceContext = (input: {
   return bus;
 };
 
-/** The screen companion as the voice router sees it (D84). */
-export interface ScreenVoiceHook {
-  readonly active: () => boolean;
-  readonly handle: (intent: ScreenIntent) => void;
+/** The one brain as the voice router sees it (D100). */
+export interface BrainVoiceHook {
+  /**
+   * Decides what was said. "act" hands back the command for the intent path and its guards;
+   * anything else is already under way, or refused with the reply to speak.
+   */
+  readonly said: (
+    text: string,
+    input: { readonly direct: boolean },
+  ) => Promise<
+    | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
+    | { readonly kind: "handled" }
+    | { readonly kind: "refused"; readonly reply: string }
+  >;
 }
 
 /**
- * Spoken commands that ask about, or to be taught or driven on, the screen go to the screen
- * companion; everything else goes to Baton's intent path untouched. The companion answers
- * aloud itself, so the router's reply is empty.
+ * Everything said outside dictation goes through the brain. Only "act" reaches the intent path,
+ * and there every guard still applies: high risk refused, medium risk read back and confirmed.
+ * Dictation is never in here: `dictate` effects pass straight through. Its only model is the
+ * clean-up pass, when he has chosen it (D105).
  */
-export const withScreenRoutes = (inner: VoiceRouter, screen: ScreenVoiceHook): VoiceRouter => ({
+export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): VoiceRouter => ({
   route: async (effect, context) => {
-    if (effect.kind === "command") {
-      const intent = parseScreenIntent(effect.text, screen.active());
-      if (intent !== null) {
-        screen.handle(intent);
-        return { kind: "ran", reply: "", workSessionId: null, source: "screen" };
-      }
+    if (effect.kind !== "command" && effect.kind !== "session_message") {
+      return inner.route(effect, context);
     }
-    return inner.route(effect, context);
+    const direct = effect.kind === "session_message";
+    const decision = await brain.said(effect.text, { direct });
+    if (decision.kind === "handled") {
+      return { kind: "ran", reply: "", workSessionId: null, source: "screen" };
+    }
+    if (decision.kind === "refused") {
+      return { kind: "refused", reply: decision.reply, reason: "high_risk" };
+    }
+    // Direct speech keeps his own words. A command may take the model's plain restatement, and
+    // then it only reads or waits for his "confirm" (D114).
+    if (effect.kind !== "command") return inner.route(effect, context);
+    return inner.route(
+      {
+        ...effect,
+        text: decision.text,
+        ...(decision.restated === true ? { restated: true } : {}),
+      },
+      context,
+    );
   },
 });
 
@@ -207,10 +233,12 @@ export const createDesktopVoiceCore = async (input: {
   readonly intent: VoiceIntentClient;
   /** Replies and confirmation prompts, for the HUD's line. */
   readonly onReply?: (text: string) => void;
-  /** Off in tests; on the desktop the OS voice reads replies back. */
-  readonly speak?: boolean;
   readonly origin?: number;
-  readonly screen?: ScreenVoiceHook;
+  readonly brain?: BrainVoiceHook;
+  /** Baton's one voice; off in tests. */
+  readonly tts?: TtsProvider | null;
+  /** Everything the core reports, for the cue after a wake word. */
+  readonly onEvent?: (event: VoiceCoreEvent) => void;
 }): Promise<{ readonly core: BatonVoiceCore; readonly drain: () => Promise<void> }> => {
   const missing = missingVoiceAssets(input.assets);
   if (missing.length > 0) {
@@ -238,13 +266,14 @@ export const createDesktopVoiceCore = async (input: {
     vad,
     stt: input.stt,
     timings: { ...DEFAULT_TIMINGS, wakeWords: models.map((model) => model.word) },
-    tts: input.speak === false ? null : createOsTts(input.platform),
+    tts: input.tts === undefined ? createOsTts(input.platform) : input.tts,
     router:
-      input.screen === undefined
+      input.brain === undefined
         ? createVoiceRouter(input.intent)
-        : withScreenRoutes(createVoiceRouter(input.intent), input.screen),
+        : withBrainRoutes(createVoiceRouter(input.intent), input.brain),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
   });
+  if (input.onEvent !== undefined) core.subscribe(input.onEvent);
   if (input.onReply !== undefined) {
     const onReply = input.onReply;
     core.subscribe((event) => {

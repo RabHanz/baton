@@ -177,6 +177,19 @@ unsafe fn shared_ptr(hwnd: HWND) -> *const WinTxShared {
     GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const WinTxShared
 }
 
+/// Clipboard managers and history hold it for moments at a time, so one refusal is not a failure.
+unsafe fn open_clipboard(hwnd: HWND) -> Result<(), String> {
+    let mut last = None;
+    for _ in 0..20 {
+        match OpenClipboard(Some(hwnd)) {
+            Ok(()) => return Ok(()),
+            Err(error) => last = Some(error),
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Err(format!("OpenClipboard failed: {}", last.map(|e| e.to_string()).unwrap_or_default()))
+}
+
 /// Renders the promised transcript into the clipboard, which must already be
 /// open: the system opens it on our behalf for WM_RENDERFORMAT; every other
 /// caller has to wrap this in OpenClipboard/CloseClipboard itself.
@@ -343,7 +356,7 @@ unsafe fn restore_snapshot(shared: &WinTxShared) {
 }
 
 unsafe fn snapshot_clipboard(hwnd: HWND, shared: &WinTxShared) -> Result<(), String> {
-    OpenClipboard(Some(hwnd)).map_err(|e| format!("OpenClipboard failed: {e}"))?;
+    open_clipboard(hwnd)?;
     let mut formats = Vec::new();
     let mut format = 0u32;
     loop {
@@ -402,7 +415,7 @@ unsafe fn snapshot_clipboard(hwnd: HWND, shared: &WinTxShared) -> Result<(), Str
 /// history / cloud / monitoring opt-out markers (the same formats Chrome uses
 /// for Incognito copies). Returns the new clipboard sequence number.
 unsafe fn publish(hwnd: HWND) -> Result<u32, String> {
-    OpenClipboard(Some(hwnd)).map_err(|e| format!("OpenClipboard failed: {e}"))?;
+    open_clipboard(hwnd)?;
     let published = publish_formats();
     let closed = CloseClipboard();
     published?;
