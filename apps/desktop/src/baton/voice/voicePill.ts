@@ -1,5 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
-// @effect-diagnostics globalTimers:off
+// @effect-diagnostics globalTimers:off nodeBuiltinImport:off
 /**
  * The pill: small dark glass above the taskbar of the active display, up only while something is
  * happening (D112). It never takes focus or the mouse and stays out of screenshots. The bars read a
@@ -8,7 +8,10 @@
  * open, because a window left open stops "last window closed" quitting the app.
  */
 import * as Electron from "electron";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
+import { defaultPosition, parseSpots, positionOf, spotFrom, type Spot } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { PILL_PARTIAL, PILL_SOUNDS, type PillSound } from "./pillSounds.ts";
 import { markSvg, type MarkOptions } from "./trayMark.ts";
@@ -28,6 +31,7 @@ const HEIGHT = 52;
 /** Clear of a dictation bar in Wispr's place at the bottom edge, so both can show. */
 const ABOVE_WORK_AREA = 44;
 const TOP_MARGIN = 10;
+const DRAG_MS = 16;
 const LEVEL_MS = 80;
 /** Below this the microphone is dead rather than quiet. */
 const DEAD_LEVEL = 0.03;
@@ -67,7 +71,11 @@ html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:13px/
 body{display:flex;align-items:center;justify-content:center}
 #p{box-sizing:border-box;display:flex;align-items:center;gap:10px;height:40px;max-width:${WIDTH - 16}px;padding:0 16px 0 8px;border-radius:14px;background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 0 0 1px rgba(28,27,24,.08),0 10px 28px -10px rgba(28,27,24,.4);opacity:0;transform:translateY(6px);transition:opacity .14s,transform .22s var(--ease)}
 #p.on{opacity:1;transform:none}
-#p.rest{height:9px;width:44px;padding:0;border-radius:6px}
+#p.rest{height:14px;width:64px;padding:0;border-radius:999px;border-style:solid}
+#p.rest[data-rest=muted]{border-color:var(--bad);background:#f6e1de}
+#p.rest[data-rest=off]{border:1px dashed var(--faint);background:rgba(255,253,249,.55);box-shadow:none}
+#p{cursor:grab}
+#p.drag{cursor:grabbing}
 #p.rest>*{display:none}
 #g{display:block;width:24px;height:24px;flex:none;transition:transform .09s linear}
 #g svg{display:block;width:100%;height:100%}
@@ -86,13 +94,23 @@ const $=i=>document.getElementById(i),SOUNDS=${JSON.stringify(PILL_SOUNDS)},PART
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
 let ctx=null,live=false,shown='';
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
+const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
+let dragging=false;
+const grab=$('p');
+// Only the capsule takes the mouse; everything around it in this window stays click-through.
+grab.addEventListener('mouseenter',()=>ipcRenderer.send('baton-pill:hover',true));
+grab.addEventListener('mouseleave',()=>{if(dragging){dragging=false;grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false);}ipcRenderer.send('baton-pill:hover',false);});
+grab.addEventListener('mousedown',e=>{if(e.button!==0)return;dragging=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);});
+addEventListener('mouseup',()=>{if(dragging){dragging=false;grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false);}});
+grab.addEventListener('dblclick',()=>ipcRenderer.send('baton-pill:reset'));
 window.pill={
  show(v){$('t').textContent=v.label;$('c').textContent=v.caption||'';const p=$('p'),g=$('g');p.dataset.phase=v.phase;p.className='on';
   if(shown!==v.phase){shown=v.phase;g.innerHTML=GLYPHS[v.phase]||'';g.style.transform='';g.classList.remove('swap');void g.offsetWidth;g.classList.add('swap');}
   live=v.wave==='live';if(!live)g.style.transform='';},
- rest(){const p=$('p');p.className='on rest';delete p.dataset.phase;shown='';},
+ rest(why){const p=$('p');p.className='on rest';delete p.dataset.phase;p.dataset.rest=why||'sleeping';shown='';},
  level(n){if(live&&!calm)$('g').style.transform='scale('+(1+Math.min(1,n)*.16).toFixed(3)+')';},
  hide(){$('p').className='';shown='';},
+ why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note(n,t);},
 };
 </script></body></html>`;
@@ -107,15 +125,27 @@ export interface VoicePill {
   readonly warm: () => void;
   /** The small mark at rest, off unless he asks. */
   readonly setRest: (on: boolean) => void;
+  /** Why it is not hearing him, so the rest bar can say so: asleep, muted, or off. */
+  readonly setReason: (reason: "sleeping" | "muted" | "off") => void;
   readonly setEdge: (edge: "bottom" | "top") => void;
   readonly state: () => TurnState;
   readonly dispose: () => void;
 }
 
+const loadSpots = (file: string): Readonly<Record<string, Spot>> => {
+  try {
+    return parseSpots(JSON.parse(NodeFS.readFileSync(file, "utf8")));
+  } catch {
+    return {};
+  }
+};
+
 export const createVoicePill = (input: {
   readonly sounds: () => boolean;
   readonly rest: () => boolean;
   readonly edge: () => "bottom" | "top";
+  /** Where `baton-pill.json` is kept: the places he dragged it to. */
+  readonly stateDir: string;
   readonly holdEscape: (onPress: () => void) => () => void;
   readonly onChange?: (state: TurnState) => void;
   /** Esc while it is up. */
@@ -132,6 +162,41 @@ export const createVoicePill = (input: {
   let lastLevel = 0;
   let loudest = 0;
   let releaseEscape: (() => void) | null = null;
+  let why: "sleeping" | "muted" | "off" = "sleeping";
+  const spotsFile = NodePath.join(input.stateDir, "baton-pill.json");
+  let spots = loadSpots(spotsFile);
+  let dragTimer: ReturnType<typeof setInterval> | null = null;
+
+  const displayKey = (display: Electron.Display) => String(display.id);
+  /** Where it goes on this display: his place if he moved it, else the default. */
+  const placeFor = (display: Electron.Display) => {
+    const size = { width: WIDTH, height: HEIGHT };
+    const spot = spots[displayKey(display)];
+    return spot === undefined
+      ? defaultPosition(display.workArea, size, input.edge(), {
+          top: TOP_MARGIN,
+          bottom: ABOVE_WORK_AREA,
+        })
+      : positionOf(display.workArea, size, spot);
+  };
+  const saveSpots = () => {
+    try {
+      NodeFS.writeFileSync(spotsFile, JSON.stringify(spots));
+    } catch {
+      // The place is a nicety; losing it must never matter.
+    }
+  };
+
+  const stopDrag = (save: boolean) => {
+    if (dragTimer === null) return;
+    clearInterval(dragTimer);
+    dragTimer = null;
+    if (!save || window === null || window.isDestroyed()) return;
+    const bounds = window.getBounds();
+    const display = Electron.screen.getDisplayMatching(bounds);
+    spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, bounds, bounds) };
+    saveSpots();
+  };
 
   const call = (code: string) => {
     const target = window;
@@ -155,11 +220,17 @@ export const createVoicePill = (input: {
       alwaysOnTop: true,
       hasShadow: false,
       show: false,
-      webPreferences: { autoplayPolicy: "no-user-gesture-required", backgroundThrottling: false },
+      // Local page of ours only; node is for the drag messages below.
+      webPreferences: {
+        autoplayPolicy: "no-user-gesture-required",
+        backgroundThrottling: false,
+        nodeIntegration: true,
+        contextIsolation: false,
+      },
     });
     created.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(created);
-    created.setIgnoreMouseEvents(true);
+    created.setIgnoreMouseEvents(true, { forward: true });
     created.setContentProtection(true);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
@@ -173,20 +244,11 @@ export const createVoicePill = (input: {
     if (hideTimer !== null) clearTimeout(hideTimer);
     hideTimer = null;
     const target = window;
-    const area = Electron.screen.getDisplayNearestPoint(
-      Electron.screen.getCursorScreenPoint(),
-    ).workArea;
+    const display = Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint());
     void ready.then(() => {
       if (target === null || target.isDestroyed() || target.isVisible()) return;
-      target.setBounds({
-        x: Math.round(area.x + (area.width - WIDTH) / 2),
-        y:
-          input.edge() === "top"
-            ? area.y + TOP_MARGIN
-            : area.y + area.height - HEIGHT - ABOVE_WORK_AREA,
-        width: WIDTH,
-        height: HEIGHT,
-      });
+      const at = placeFor(display);
+      target.setBounds({ ...at, width: WIDTH, height: HEIGHT });
       target.showInactive();
     });
   };
@@ -195,7 +257,7 @@ export const createVoicePill = (input: {
     if (window === null || window.isDestroyed()) return;
     if (input.rest()) {
       raise();
-      call("window.pill.rest()");
+      call(`window.pill.rest(${JSON.stringify(why)})`);
       return;
     }
     call("window.pill.hide()");
@@ -276,6 +338,52 @@ export const createVoicePill = (input: {
   Electron.app.on("browser-window-created", follow);
   for (const win of Electron.BrowserWindow.getAllWindows()) win.once("closed", closeIfLast);
 
+  const mine = (event: Electron.IpcMainEvent) =>
+    window !== null && event.sender === window.webContents;
+  Electron.ipcMain.on("baton-pill:hover", (event, over: unknown) => {
+    if (!mine(event) || window === null || window.isDestroyed()) return;
+    // Over the capsule it takes the mouse; anywhere else in its window the mouse goes through.
+    if (over === true) window.setIgnoreMouseEvents(false);
+    else if (dragTimer === null) window.setIgnoreMouseEvents(true, { forward: true });
+  });
+  Electron.ipcMain.on("baton-pill:drag", (event, on: unknown) => {
+    if (!mine(event) || window === null || window.isDestroyed()) return;
+    if (on !== true) return stopDrag(true);
+    stopDrag(false);
+    const start = Electron.screen.getCursorScreenPoint();
+    const from = window.getBounds();
+    const target = window;
+    dragTimer = setInterval(() => {
+      if (target.isDestroyed()) return stopDrag(false);
+      const cursor = Electron.screen.getCursorScreenPoint();
+      const display = Electron.screen.getDisplayNearestPoint(cursor);
+      const area = display.workArea;
+      const x = Math.min(
+        Math.max(from.x + cursor.x - start.x, area.x),
+        area.x + area.width - from.width,
+      );
+      const y = Math.min(
+        Math.max(from.y + cursor.y - start.y, area.y),
+        area.y + area.height - from.height,
+      );
+      target.setBounds({
+        x: Math.round(x),
+        y: Math.round(y),
+        width: from.width,
+        height: from.height,
+      });
+    }, DRAG_MS);
+    dragTimer.unref();
+  });
+  Electron.ipcMain.on("baton-pill:reset", (event) => {
+    if (!mine(event) || window === null || window.isDestroyed()) return;
+    const display = Electron.screen.getDisplayMatching(window.getBounds());
+    const { [displayKey(display)]: _gone, ...rest } = spots;
+    spots = rest;
+    saveSpots();
+    window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
+  });
+
   return {
     on,
     micLevel: (value) => {
@@ -290,14 +398,18 @@ export const createVoicePill = (input: {
       if (state.phase !== "idle") return;
       if (next) {
         raise();
-        call("window.pill.rest()");
+        call(`window.pill.rest(${JSON.stringify(why)})`);
       } else lower();
+    },
+    setReason: (next) => {
+      why = next;
+      if (state.phase === "idle" && input.rest()) call(`window.pill.why(${JSON.stringify(next)})`);
     },
     setEdge: () => {
       if (window !== null && !window.isDestroyed()) window.hide();
       if (input.rest() && state.phase === "idle") {
         raise();
-        call("window.pill.rest()");
+        call(`window.pill.rest(${JSON.stringify(why)})`);
       }
     },
     state: () => state,
@@ -306,6 +418,7 @@ export const createVoicePill = (input: {
       if (silentTimer !== null) clearTimeout(silentTimer);
       Electron.app.removeListener("browser-window-created", follow);
       setEscape(false);
+      stopDrag(false);
       if (window !== null && !window.isDestroyed()) window.destroy();
       window = null;
     },

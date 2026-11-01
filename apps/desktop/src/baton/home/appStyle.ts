@@ -179,6 +179,8 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 .wakes{display:flex;flex-direction:column;gap:2px}
 .wk{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)}
 .wk:first-child{border-top:0}
+.chips{display:flex;align-items:center;gap:2px}
+.capture{background:var(--accent-wash);border-radius:10px;margin:0 14px 14px;padding:12px 14px}
 .kv{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border-top:1px solid var(--line)}
 .group>.kv:first-child{border-top:0}
 .kv .hint{margin-top:2px}

@@ -237,6 +237,8 @@ export interface ScreenCompanion {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
+  /** Move the Ask Baton key, or switch it off with null. */
+  readonly setAskHotkey: (accelerator: string | null) => void;
   /** Asks again whether Claude Code and Codex are installed and signed in. */
   readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
@@ -1321,6 +1323,7 @@ export const startScreenCompanion = (input: {
     });
   };
 
+  let askKey: string | null = ASK_HOTKEY;
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
   const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
@@ -1467,6 +1470,15 @@ export const startScreenCompanion = (input: {
       },
     ],
     needsBrainChoice: () => !settings.brainChosen,
+    setAskHotkey: (accelerator) => {
+      if (accelerator === askKey) return;
+      if (askKey !== null) Electron.globalShortcut.unregister(askKey);
+      askKey = null;
+      // A chord another app already owns is skipped, not fatal.
+      if (accelerator !== null && Electron.globalShortcut.register(accelerator, openAskBox)) {
+        askKey = accelerator;
+      }
+    },
     signIn: async () => {
       await checkBrains();
       return brains ?? UNKNOWN_BRAINS;
@@ -1500,7 +1512,7 @@ export const startScreenCompanion = (input: {
       end();
       dropRouter();
       if (routerIdle !== null) clearTimeout(routerIdle);
-      Electron.globalShortcut.unregister(ASK_HOTKEY);
+      if (askKey !== null) Electron.globalShortcut.unregister(askKey);
       windows.dispose();
       driver?.dispose();
       overlay.dispose();
