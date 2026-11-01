@@ -49,7 +49,7 @@ export const brainRows = (status: BrainStatus): ReadonlyArray<BrainRow> => {
   const { claude, codex } = status;
   const claudeNote =
     claude.state === "ready"
-      ? "Uses your Claude subscription. Baton never bills an API key."
+      ? "Uses your Claude subscription. Tessaya never bills an API key."
       : claude.state === "signed-out"
         ? "Not signed in. Run claude auth login in a terminal, then choose Check again."
         : "Not installed. Install Claude Code, then choose Check again.";

@@ -38,6 +38,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ServerConfig from "../config.ts";
+import { pathsInto } from "@t3tools/shared/mediaPolicy";
 import { withMentionedMedia } from "../mentionedMedia.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
@@ -354,10 +355,23 @@ export const layer: Layer.Layer<
      * gets the file attached as markdown media, for every provider and every client. The file
      * read happens here, at the commit boundary; the orchestrator stays pure.
      */
+    // Image and video paths each run's own tool calls used, so a file the agent wrote or read can show.
+    const touchedByRun = new Map<string, Set<string>>();
+    const noteTouched = (runId: string | null | undefined, item: unknown) => {
+      if (runId === null || runId === undefined) return;
+      const found = pathsInto(item);
+      if (found.size === 0) return;
+      const set = touchedByRun.get(runId) ?? new Set<string>();
+      found.forEach((path) => set.add(path));
+      touchedByRun.delete(runId);
+      touchedByRun.set(runId, set);
+      if (touchedByRun.size > 50) touchedByRun.delete(touchedByRun.keys().next().value!);
+    };
     const withNamedMedia = Effect.fn("ProviderEventIngestor.withNamedMedia")(function* (
       threadId: ThreadId,
       messageId: string,
       text: string,
+      runId?: string | null,
     ) {
       if (Option.isNone(serverConfig) || text.length === 0) return text;
       const thread = yield* projections.getThread(threadId).pipe(Effect.option);
@@ -377,6 +391,10 @@ export const layer: Layer.Layer<
         messageId,
         text,
         cwd,
+        touched: [
+          ...(runId === null || runId === undefined ? [] : (touchedByRun.get(runId) ?? [])),
+        ],
+        roots: [thread.value.worktreePath ?? cwd],
       });
     });
 
@@ -687,7 +705,12 @@ export const layer: Layer.Layer<
                 message.role === "assistant" && !message.streaming
                   ? {
                       ...message,
-                      text: yield* withNamedMedia(message.threadId, message.id, message.text),
+                      text: yield* withNamedMedia(
+                        message.threadId,
+                        message.id,
+                        message.text,
+                        message.runId,
+                      ),
                     }
                   : message;
               return [
@@ -702,11 +725,23 @@ export const layer: Layer.Layer<
             }
             case "turn_item.updated": {
               const item = input.event.turnItem;
+              if (
+                item.type === "dynamic_tool" ||
+                item.type === "command_execution" ||
+                item.type === "file_change"
+              ) {
+                noteTouched(item.runId, item);
+              }
               const turnItem =
                 item.type === "assistant_message" && !item.streaming
                   ? {
                       ...item,
-                      text: yield* withNamedMedia(item.threadId, item.messageId, item.text),
+                      text: yield* withNamedMedia(
+                        item.threadId,
+                        item.messageId,
+                        item.text,
+                        item.runId,
+                      ),
                     }
                   : item;
               return [

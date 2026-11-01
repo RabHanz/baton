@@ -99,7 +99,7 @@ export const makeMoves = Effect.fn("ThreadAccountMoves.make")(function* (
       // Forgotten only after it worked, so a failed move is tried again on the next change.
       yield* move(id, instanceId);
       yield* forget(threadId);
-      yield* Effect.logInfo("Baton moved a thread to another account", { threadId, instanceId });
+      yield* Effect.logInfo("Tessaya moved a thread to another account", { threadId, instanceId });
     },
     Effect.ignoreCause({ log: true }),
   );

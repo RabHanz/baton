@@ -25,6 +25,26 @@ index 886ccf3cd798fd6621826addc11c62fe2fad36f0..7acea656ed2a8afb23902dad69ba0355
      "playwright-core": "1.60.0",
      "react-grab": "^0.1.32",
      "tldts": "catalog:"
+diff --git a/apps/desktop/resources/installer.nsh b/apps/desktop/resources/installer.nsh
+index 092f641c3359fb58bf2232132e9bd4ef0491ac56..f5220812e480b44af08e3c4423b5b17346117e91 100644
+--- a/apps/desktop/resources/installer.nsh
++++ b/apps/desktop/resources/installer.nsh
+@@ -1,4 +1,15 @@
+ !macro customInstall
++  ; Renamed from Baton: the exe is now Tessaya.exe, so drop the old shortcuts, and point a login
++  ; entry (if there was one) at it, under the one name the app itself uses.
++  Delete "$SMPROGRAMS\Baton.lnk"
++  Delete "$DESKTOP\Baton.lnk"
++  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Baton"
++  ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_ID}"
++  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Baton"
++  ${If} $0 != ""
++  ${OrIf} $1 != ""
++    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_ID}" '"$appExe"'
++  ${EndIf}
+   !ifndef DO_NOT_CREATE_START_MENU_SHORTCUT
+     ${IfNot} ${FileExists} "$newStartMenuLink"
+       !insertmacro createMenuDirectory
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
 index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d83868530f 100644
 --- a/apps/mobile/package.json

@@ -125,10 +125,7 @@ export function ChatMarkdownImageFallback(props: {
   const content = (
     <span
       data-markdown-copy={props.copyMarkdown}
-      className={cn(
-        CHAT_MARKDOWN_MEDIA_LAYOUT_CLASS_NAME,
-        "rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-xs text-muted-foreground",
-      )}
+      className={cn(CHAT_MARKDOWN_MEDIA_LAYOUT_CLASS_NAME, "text-xs text-muted-foreground")}
     >
       <ChatMarkdownMediaUnavailableLabel alt={props.alt} kind={props.kind} detail={props.detail} />
     </span>
@@ -236,6 +233,17 @@ export function ChatMarkdownImage(props: {
       />
     );
   }
+  // A picture that will not load is one quiet line of text, never an empty frame.
+  if (failed) {
+    return (
+      <ChatMarkdownImageFallback
+        alt={props.alt}
+        copyMarkdown={props.copyMarkdown}
+        actionsSource={props.actionsSource}
+        detail={props.unavailableDetail}
+      />
+    );
+  }
   return (
     <MediaActions source={props.actionsSource}>
       <span
@@ -283,6 +291,16 @@ export function ChatMarkdownVideo(props: {
   readonly actionsSource?: MediaActionSource | undefined;
   readonly onRetry?: (() => Promise<unknown>) | undefined;
 }) {
+  if (props.sourceFailed === true && props.src === null) {
+    return (
+      <ChatMarkdownImageFallback
+        alt={props.alt}
+        kind="video"
+        copyMarkdown={props.copyMarkdown}
+        actionsSource={props.actionsSource}
+      />
+    );
+  }
   return (
     <MediaVideoPlayer
       key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}

@@ -22,14 +22,16 @@ export type PasteMethod = "ctrl_v" | "shift_insert" | "ctrl_shift_v";
 export interface DictationConfig {
   readonly model: string | null;
   /** null while Wispr is the chosen engine: Baton then holds no global key at all. */
-  readonly hold: string | null;
-  readonly toggle: string | null;
+  readonly hold: ReadonlyArray<string> | null;
+  readonly toggle: ReadonlyArray<string> | null;
   readonly device: string | null;
   readonly channel: number | null;
   readonly paste: PasteMethod;
   readonly language: string | null;
   /** The sidecar leaves the paste to the desktop, which cleans the text up first. */
   readonly cleanup: boolean;
+  /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
+  readonly mouse?: string | null;
 }
 
 export interface FocusedApp {
@@ -56,7 +58,9 @@ export interface LocatedElement {
 
 export type DictationEvent =
   | { readonly ev: "ready" }
-  | { readonly ev: "configured" }
+  | { readonly ev: "configured"; readonly mouse?: boolean }
+  /** A mouse binding fired; `id` is the action of the Keyboard and mouse page. */
+  | { readonly ev: "binding"; readonly id: string }
   | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
   | { readonly ev: "idle" }

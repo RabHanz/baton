@@ -57,5 +57,5 @@ export const describeRetention = (policy: BatonRetentionPolicy): string => {
       ? "rule firings are not kept"
       : `rule firings for ${policy.firingDays} days`;
   const refusals = policy.keepRefusals ? ", and refusals are kept" : "";
-  return `Baton keeps ${intents}, ${firings}${refusals}.`;
+  return `Tessaya keeps ${intents}, ${firings}${refusals}.`;
 };
