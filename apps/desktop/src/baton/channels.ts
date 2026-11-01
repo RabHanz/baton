@@ -6,3 +6,4 @@ export const BATON_VOICE_FOCUS_CHANNEL = "desktop:baton-voice-focus";
 export const BATON_SESSIONS_SNAPSHOT_CHANNEL = "desktop:baton-sessions";
 export const BATON_SESSION_REQUEST_CHANNEL = "desktop:baton-session-request";
 export const BATON_SESSION_RESPONSE_CHANNEL = "desktop:baton-session-response";
+export const BATON_USAGE_CHANNEL = "desktop:baton-usage";

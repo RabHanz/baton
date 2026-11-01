@@ -5,6 +5,7 @@
  * screenshot cannot prove this: the overlay is excluded from capture. See docs/baton/SCREEN.md.
  */
 /* oxlint-disable t3code/no-global-process-runtime -- standalone lab harness, no Effect runtime */
+import * as NodeOS from "node:os";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -126,6 +127,7 @@ Electron.app.whenReady().then(async () => {
     sounds: () => false,
     rest: () => false,
     edge: () => "bottom",
+    stateDir: NodeOS.tmpdir(),
     holdEscape: () => () => undefined,
     onDismiss: () => undefined,
     onShown: (ms) => note("pill.shown", { ms: Math.round(ms) }),
