@@ -188,6 +188,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       onProgress: (message) => voice?.onNote(message),
     });
     Electron.app.on("will-quit", pocket.dispose);
+    const spokenThisTurn: string[] = [];
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
       voice: () => {
@@ -207,10 +208,16 @@ export const startBatonDesktop = Effect.gen(function* () {
         stateDir: environment.stateDir,
         platform: environment.platform,
         env: hostEnvironment,
-        speak: speaker.speak,
+        speak: (text) => {
+          spokenThisTurn.push(text);
+          return speaker.speak(text);
+        },
         onChange: () => voice?.refresh(),
         onTurnEnd: () => voice?.onTurnEnd(),
-        onTimings: turnLog.timings,
+        onTimings: (timings) => {
+          turnLog.timings({ ...timings, reply: spokenThisTurn.join(" ") });
+          spokenThisTurn.length = 0;
+        },
         onAction: (entry) => turnLog.note("action", entry),
         stopSpeech: speaker.cancel,
         holdEscape,
@@ -264,7 +271,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           env: { BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"] },
           modelsDir,
         }),
-      makeCore: async ({ intent, onReply, settings, stt, onEvent, vocabulary }) =>
+      makeCore: async ({ intent, onReply, settings, stt, onEvent, vocabulary, waitMs }) =>
         (
           await createDesktopVoiceCore({
             assets: resolveVoiceAssets({
@@ -286,6 +293,7 @@ export const startBatonDesktop = Effect.gen(function* () {
               onEvent(event);
             },
             vocabulary,
+            waitMs,
             ...(screen === null ? {} : { brain: screen }),
           })
         ).core,

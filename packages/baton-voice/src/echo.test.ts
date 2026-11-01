@@ -16,6 +16,7 @@ const rig = () => {
   const heard: number[] = [];
   const events: VoiceCoreEvent[] = [];
   const core = createVoiceCore({
+    waitMs: () => 0,
     wake: {
       name: "fake",
       reset: () => {},
@@ -91,6 +92,7 @@ describe("silence after a wake word", () => {
     const events: VoiceCoreEvent[] = [];
     const routed: string[] = [];
     const core = createVoiceCore({
+      waitMs: () => 0,
       wake: {
         name: "fake",
         reset: () => {},
@@ -272,6 +274,7 @@ describe("a yes or no asked aloud", () => {
   const asking = (transcript: string) => {
     let speech = false;
     const core = createVoiceCore({
+      waitMs: () => 0,
       wake: { name: "fake", reset: () => {}, process: () => null },
       vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
       stt: { name: "fake", transcribe: async () => transcript },
@@ -339,6 +342,7 @@ describe("a pending yes, with Baton talking over it", () => {
     let speech = true;
     const effects: string[] = [];
     const core = createVoiceCore({
+      waitMs: () => 0,
       wake: {
         name: "fake",
         reset: () => {},
