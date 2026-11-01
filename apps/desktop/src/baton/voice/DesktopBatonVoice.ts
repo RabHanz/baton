@@ -38,8 +38,11 @@ import {
   type VocabEntry,
 } from "./dictionaryEdit.ts";
 import {
+  addInput,
   effective,
   parseBindings,
+  removeInput,
+  sameInput,
   toElectronAccelerator,
   withBinding,
   type Binding,
@@ -906,14 +909,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       settings.micOrder,
     );
 
+  /** Every key set for an action, for the sidecar's hotkeys. */
+  const keysOf = (action: string): ReadonlyArray<string> =>
+    currentBindings()
+      .find((row) => row.def.id === action)
+      ?.inputs.flatMap((i) => (i.type === "key" ? [i.accelerator] : [])) ?? [];
+  let bindingsNote: string | null = null;
   const configureDictation = () => {
     if (sidecar === null) return;
     const device = choice.kind === "pinned" ? choice.device.label : null;
     const baton = settings.dictation === "baton" && parakeetPath !== null;
     sidecar.configure({
       model: parakeetPath,
-      hold: baton ? settings.holdKey : null,
-      toggle: baton ? settings.toggleKey : null,
+      hold: baton ? keysOf("hold") : null,
+      toggle: baton ? keysOf("toggle") : null,
       device,
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
@@ -1421,25 +1430,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       })),
       hotkeys: [
         ...currentBindings().flatMap((row) =>
-          row.input?.type === "key"
-            ? [
-                {
-                  label: row.def.label,
-                  keys: row.input.accelerator,
-                  tab:
-                    (
-                      {
-                        hold: "dictation",
-                        toggle: "dictation",
-                        dictation: "dictation",
-                        ask: "screen",
-                        clear: "screen",
-                        stop: "screen",
-                      } as Record<string, string>
-                    )[row.def.id] ?? "voice",
-                },
-              ]
-            : [],
+          row.inputs.flatMap((one) =>
+            one.type === "key"
+              ? [
+                  {
+                    label: row.def.label,
+                    keys: one.accelerator,
+                    tab:
+                      (
+                        {
+                          hold: "dictation",
+                          toggle: "dictation",
+                          dictation: "dictation",
+                          ask: "screen",
+                          clear: "screen",
+                          stop: "screen",
+                        } as Record<string, string>
+                      )[row.def.id] ?? "voice",
+                  },
+                ]
+              : [],
+          ),
         ),
         { label: "Cancel a recording, a card or a drive", keys: "Escape", tab: "screen" },
       ],
@@ -1447,10 +1458,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         action: row.def.id,
         label: row.def.label,
         hint: row.def.hint,
-        input: row.input,
+        inputs: row.inputs,
         isDefault: row.isDefault,
         conflictsWith: row.conflictsWith,
+        conflicts: row.conflicts.map((c) => ({
+          index: row.inputs.findIndex((i) => sameInput(i, c.input)),
+          with: c.with,
+        })),
       })),
+      bindingsNote,
       mouseReady: mouseHookReady,
       usage: input.sessions?.usage() ?? [],
       lifecycle,
@@ -1839,21 +1855,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id.startsWith("b.")) {
       const [verb, action] = [id.slice(2, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
       let next: ReadonlyArray<Binding> | null = null;
-      if (verb === "set" && typeof value === "string") {
+      const row = currentBindings().find((r) => r.def.id === action);
+      bindingsNote = null;
+      if (verb === "add" && typeof value === "string" && row !== undefined) {
         try {
-          next = parseBindings([{ action, input: JSON.parse(value) }]).length
-            ? withBinding(
-                settings.bindings,
-                action,
-                parseBindings([{ action, input: JSON.parse(value) }])[0]!.input,
-              )
-            : null;
+          const parsed = parseBindings([{ action, inputs: [JSON.parse(value)] }])[0]?.inputs[0];
+          if (parsed === undefined) bindingsNote = "That input could not be read.";
+          else {
+            const change = addInput(settings.bindings, action, row.inputs, parsed);
+            if ("error" in change) bindingsNote = change.error;
+            else next = change.saved;
+          }
         } catch {
           next = null;
         }
-      } else if (verb === "clear") next = withBinding(settings.bindings, action, null);
+      } else if (verb === "remove" && typeof value === "number" && row !== undefined) {
+        next = removeInput(settings.bindings, action, row.inputs, value);
+      } else if (verb === "clear") next = withBinding(settings.bindings, action, []);
       else if (verb === "reset") next = withBinding(settings.bindings, action, "reset");
       else if (verb === "resetAll") next = [];
+      if (next === null) home.refresh();
       if (next !== null) {
         save({ bindings: next });
         applyBindings();
@@ -2059,9 +2080,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const clear = input.extras?.menuItems().find((i) => i.label === "Clear the screen");
       (clear?.click as (() => void) | undefined)?.();
     },
+    ask: () => {
+      const ask = input.extras?.menuItems().find((i) => i.label === "Ask Baton…");
+      (ask?.click as (() => void) | undefined)?.();
+    },
   };
-  /** Puts every key he has set in place, and takes the old ones away. Mouse buttons are only kept. */
+  /** Puts every key he has set in place, and takes the old ones away. Mouse buttons go to the hook. */
   const applyBindings = () => {
+    for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
+    registered = [];
     // The mouse side: the hook in the dictation sidecar reads this file; an empty list is no hook.
     try {
       NodeFS.mkdirSync(NodePath.join(input.stateDir, "voice"), { recursive: true });
@@ -2070,30 +2097,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         JSON.stringify(mouseHookConfig(currentBindings())),
       );
     } catch {}
-    for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
-    registered = [];
     for (const row of currentBindings()) {
-      const input2 = row.input;
-      if (input2?.type !== "key") {
-        if (row.def.id === "ask") input.extras?.setAskHotkey(null);
-        continue;
-      }
-      const accelerator = toElectronAccelerator(input2.accelerator);
-      if (row.def.id === "ask") input.extras?.setAskHotkey(accelerator);
-      else if (row.def.id === "hold" || row.def.id === "toggle") {
-        const field = row.def.id === "hold" ? "holdKey" : "toggleKey";
-        if (settings[field] !== input2.accelerator) {
-          save({ [field]: input2.accelerator });
-          configureDictation();
-        }
-      } else {
-        const handler = handlers[row.def.id];
+      const keys = row.inputs.flatMap((i) =>
+        i.type === "key" ? [toElectronAccelerator(i.accelerator)] : [],
+      );
+      if (row.def.id === "ask") input.extras?.setAskHotkey(keys[0] ?? null);
+      if (row.def.id === "hold" || row.def.id === "toggle") continue;
+      const handler = row.def.id === "ask" ? handlers["ask"] : handlers[row.def.id];
+      for (const accelerator of row.def.id === "ask" ? keys.slice(1) : keys) {
         // A chord another app already owns is skipped, not fatal; the tray still works.
         if (handler !== undefined && Electron.globalShortcut.register(accelerator, handler)) {
           registered.push(accelerator);
         }
       }
     }
+    const first = (action: string) => keysOf(action)[0];
+    const holdKey = first("hold") ?? settings.holdKey;
+    const toggleKey = first("toggle") ?? settings.toggleKey;
+    if (holdKey !== settings.holdKey || toggleKey !== settings.toggleKey)
+      save({ holdKey, toggleKey });
+    configureDictation();
   };
   applyBindings();
   Electron.app.on("will-quit", () => {
