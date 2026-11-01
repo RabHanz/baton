@@ -124,7 +124,7 @@ Electron.app.whenReady().then(async () => {
     cursor: Electron.screen.getCursorScreenPoint(),
   });
   const pill = createVoicePill({
-    sounds: () => false,
+    cueGain: () => 0,
     rest: () => false,
     edge: () => "bottom",
     stateDir: NodeOS.tmpdir(),
