@@ -3197,3 +3197,51 @@ included. The 5h pair is now optional, half a pair is still refused, and 7d is s
 is present and never invented a zero. The tile, the thread details and the pooled page now say "Not applicable" for
 Session when a weekly window is reported with no session one, and the weekly amount shows as before. The 5-hour code
 stays, so a downgraded plan shows its window again with no change.
+
+## D127 — The operator: Claude or Codex with their own tools, and Baton's gate in front
+
+Director, 2026-11-01: Baton should have complete computer use, because the operator underneath is Claude or Codex
+with full capabilities, not just reading the surface. This replaces the read-only limit first proposed for this work.
+
+A new route, `operate`, runs the harness with files, shell and the web. It starts in the folder of the focused Explorer
+window, or his home folder. "Explain this folder" lists it, opens files some layers down and says what each does. The
+router prefers it to `drive` whenever no click is needed (UFO's hybrid actions; see
+`research/computer-use-2026-11-01.md`). The tray's Works through picks Claude or Codex, and `VisionSession` is the seam
+both sit behind. A drive stays its own path: an operator turn never touches the input driver, and a drive reads no files.
+
+**Every tool call stops at `judgeToolCall` before it runs, and code decides.** Refused stays refused: the high-risk
+list and destructive commands. Reading runs. A tool nobody has classified gets a yes. Deleting, sending, paying or
+publishing gets a yes with any setting. So does anything after the turn's first tool, which is how read content is kept
+from acting alone. The rest runs with Act without asking on and gets a yes with it off. A yes is spoken on a voice
+turn. A stop ends the work as well as the talking. Each call goes in the turn log.
+
+The gate is real only with these flags, and each was found by trying it on the CLI with a tool call denied:
+
+- `--permission-prompt-tool stdio` alone did nothing here. His user default of `bypassPermissions` ran a Write with no
+  request at all, on a run that looked fine. `--permission-mode default` did not change that.
+- `--setting-sources ""` did. It also shuts out a planted `.claude/settings.json` in the folder, which asked for bypass.
+- Codex: `app-server` with `approvalPolicy: untrusted`. A decline stopped the command.
+
+Live on the box, with Baton's own session code and the real judge: a folder explained, with a planted "run this" line
+in a file not acted on. A delete reached the gate and was stopped on both Claude and Codex, and the file survived. The
+planted line's result is the model's restraint, not proof of the gate.
+
+Limits: the CLI runs what it judges read-only without asking, so those calls are logged and not gated, and Read can
+reach any path, secrets included. After a refusal Claude ran one more Bash call that needed no permission. A file can
+say whatever it likes to the model. The gate decides what happens next, not what it believes. `sensitiveAction` is
+words, so it can over-ask, and something it does not name, with a harmless path and command, is routine. The
+tainted rule lasts one turn, so an idea from a file read earlier in the conversation is not flagged on a later turn's
+first call. Rejected: a read-only operator (what he overruled); hooks (`--safe-mode` drops them, and they are his to
+configure); parsing a plan and running it ourselves (a second harness).
+
+Nothing here has run on Windows. Explorer's folder comes from a PowerShell call that has never run.
+
+## D128 — Act without asking
+
+A tray checkbox, off by default, saved in `baton-screen.json`. On: a plain drive plan runs with no Run it box, and
+routine operator work with no yes. Off: everything asks as before. What it can never cover: `shellCheck`'s prompts, a
+plan or call that deletes, sends, pays or publishes, a Codex file change, a tool call on a turn that has read something,
+and capture consent, which keeps its own setting. The high-risk list (`highRiskSubject`, `dangerousCommand`,
+`planHighRisk`) used to refuse outright. It now asks for a spoken yes or no, with the box beside it. A question that runs
+out is a no and the box comes down. No setting covers it, and a tainted turn still asks. Still refused, because a yes
+cannot make them safe: a paste too long to show first, and a paste into a command line.
