@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * The job's flow from his words to work (D145): the worker thread is made in plan mode with his
  * words verbatim, and only his agreement (or a standing "start" grant at plan time) lets it work.
@@ -18,7 +19,11 @@ import * as Random from "effect/Random";
 
 import type { ScheduledTaskId } from "@t3tools/contracts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
+import * as NodePath from "node:path";
+
+import * as ServerConfig from "../config.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { planningFrame } from "./OperatingSystemPack.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -66,6 +71,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (input: BatonJ
     branch: workSession.baseBranch,
     text: workerFirstMessage({
       verbatim: input.goal,
+      frame: planningFrame(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath)),
       permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
     }),
   });
