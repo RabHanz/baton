@@ -1114,3 +1114,13 @@ read asks even with Act without asking on; a high-risk call asks, and a spoken q
 spoken yes lets it through); a Codex file change asks whatever the setting; a web search after a read asks. Cases:
 `apps/desktop/src/baton/screen/operatorProof.test.ts`. Exits 1 if any fail (checked by breaking the taint rule: 2 of 4
 failed). Why the gate's pieces moved: D136.
+
+## The one assistant (D143, D144), 2026-11-02
+
+Behind "One assistant (new)", off by default. Proven by tests and the proof script (`scripts/baton/operator-proof.sh`, 10 cases): the
+tool server refuses no token, a wrong token and a browser; the gate runs inside every tool; plain typing of his own words needs no
+question even after a screenshot; other text after a screenshot asks; high risk, a command line, Enter, a drag and a send ask and a
+question that runs out is a no; the warm session is seeded with the last reply in full; the dry run of the hands' harness passes.
+Not proven: any of it against a real `claude` with a real screen, the first-word latency (the target is p50 1.5 s, p90 3 s, read
+with `scripts/baton/latency-report.mjs` once he allows a live test), `ui_tree`, Codex, and the six-task before and after (it waits
+for him to be away and told, `scripts/baton/computer-use-harness.sh real`).
