@@ -218,7 +218,7 @@ export interface AssistantActions {
   readonly sessionsList?: () => string;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
-    op: "list" | "start" | "agree" | "refine" | "grant" | "revoke",
+    op: "list" | "start" | "agree" | "refine" | "grant" | "revoke" | "watch",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
   /** A session by id or name: what it is called, for the intent path. Null when none matches. */

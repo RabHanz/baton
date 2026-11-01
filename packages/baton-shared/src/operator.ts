@@ -75,6 +75,7 @@ const BATON_QUIET = new Set([
   "screen_capture",
   "ui_tree",
   "jobs_list",
+  "watch_report",
   "job_revoke",
 ]);
 const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
