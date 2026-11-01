@@ -48,6 +48,60 @@ index 93347949e00fa77a8d320074d32ca7b54f572ea5..9cb79996ac4657c2e1e1157b8de93a4a
              yield* app.quit;
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
+diff --git a/apps/desktop/src/electron/ElectronWindow.test.ts b/apps/desktop/src/electron/ElectronWindow.test.ts
+index 478d49012901454076dd97348e159f76c7ee1113..ee705da8a37c612b89ba56c7c05f10c695e7ddd4 100644
+--- a/apps/desktop/src/electron/ElectronWindow.test.ts
++++ b/apps/desktop/src/electron/ElectronWindow.test.ts
+@@ -56,6 +56,7 @@ vi.mock("electron", () => ({
+ }));
+ 
+ import * as ElectronWindow from "./ElectronWindow.ts";
++import { markCompanionWindow } from "../baton/lastAppWindow.ts";
+ 
+ const layerTestFor = (platform: NodeJS.Platform) =>
+   ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));
+@@ -163,6 +164,18 @@ describe("ElectronWindow", () => {
+     }).pipe(Effect.provide(layerTest)),
+   );
+ 
++  it.effect(
++    "never falls back to a Baton companion window, so a reveal cannot land on the pill",
++    () =>
++      Effect.gen(function* () {
++        const electronWindow = yield* ElectronWindow.ElectronWindow;
++        const pill = { isDestroyed: () => false };
++        markCompanionWindow(pill);
++        getAllWindowsMock.mockReturnValue([pill]);
++        assert.isTrue((yield* electronWindow.currentMainOrFirst)._tag === "None");
++      }).pipe(Effect.provide(layerTest)),
++  );
++
+   it.effect("never falls back to an auxiliary window as the main window", () =>
+     Effect.gen(function* () {
+       const electronWindow = yield* ElectronWindow.ElectronWindow;
+diff --git a/apps/desktop/src/electron/ElectronWindow.ts b/apps/desktop/src/electron/ElectronWindow.ts
+index 985f9c00775a0a37ae1027d3c75d158622beeb85..fe6c5f43bcee90a011097e9aac361bbb3938217b 100644
+--- a/apps/desktop/src/electron/ElectronWindow.ts
++++ b/apps/desktop/src/electron/ElectronWindow.ts
+@@ -20,6 +20,7 @@ import {
+   loadWindowsForegroundApi,
+ } from "./WindowsForeground.ts";
+ import { startWindowsForegroundFocusThread } from "./WindowsForegroundFocusThread.ts";
++import { isCompanionWindow } from "../baton/lastAppWindow.ts";
+ 
+ function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
+   return {
+@@ -185,7 +186,9 @@ export const make = Effect.gen(function* () {
+     }
+ 
+     const first = Option.fromNullishOr(
+-      (yield* listWindows).find((window) => !auxiliaryWindows.has(window)) ?? null,
++      (yield* listWindows).find(
++        (window) => !auxiliaryWindows.has(window) && !isCompanionWindow(window),
++      ) ?? null,
+     );
+     if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
+       return Option.none<Electron.BrowserWindow>();
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
 index 950ed972c6453bcfd61c293606cb9fa3913442f5..8541d572d782643e2046f904b165479e1874ba72 100644
 --- a/apps/desktop/src/preload.ts

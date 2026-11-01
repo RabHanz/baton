@@ -23,6 +23,8 @@ export interface VisionSession {
     /** Text as it arrives, for speaking before the answer is finished. */
     onDelta?: (text: string) => void,
   ) => Promise<string>;
+  /** The process is still there to answer. */
+  readonly alive: () => boolean;
   readonly dispose: () => void;
 }
 
@@ -247,6 +249,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
 
   return {
     ask,
+    alive: () => dead === null,
     dispose: () => {
       fail(new SessionClosed("Claude session closed."));
       child.stdin.end();

@@ -2,6 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
 
+/** The stop path runs beside the core's queue, a few promise turns away. */
+const settled = async () => {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+};
+
 const FRAME = 512;
 const frames = (seconds: number) => Math.ceil((seconds * 16_000) / FRAME);
 
@@ -46,8 +51,8 @@ describe("Baton hearing itself", () => {
     r.core.setSpeaking(false);
     r.push(0.3);
     await r.core.idle();
-    expect(r.heard).toEqual([]);
-    expect(r.events.some((e) => e.type === "transcript")).toBe(false);
+    // Short windows do go to recognition, looking for a stop phrase. They start no turn.
+    expect(r.events.some((e) => e.type === "transcript" || e.type === "thinking")).toBe(false);
   });
 
   it("lets a real wake word cut in, and then listens", async () => {
@@ -74,6 +79,240 @@ describe("Baton hearing itself", () => {
     r.push(16);
     await r.core.idle();
     expect(r.heard.length).toBeGreaterThan(0);
+  });
+});
+
+describe("silence after a wake word", () => {
+  /** The rig, with the VAD and the recogniser under the test's control. */
+  const scripted = (transcript = "Yeah.") => {
+    let fire = false;
+    let speech = false;
+    const heard: number[] = [];
+    const events: VoiceCoreEvent[] = [];
+    const routed: string[] = [];
+    const core = createVoiceCore({
+      wake: {
+        name: "fake",
+        reset: () => {},
+        process: () => {
+          const score = fire ? 0.98 : null;
+          fire = false;
+          return score;
+        },
+      },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+      stt: {
+        name: "fake",
+        transcribe: async (pcm) => {
+          heard.push(pcm.length);
+          return transcript;
+        },
+      },
+      router: {
+        route: async (effect) => {
+          if ("text" in effect) routed.push(`${effect.kind}:${effect.text}`);
+          return { kind: "none" };
+        },
+      },
+    });
+    core.subscribe((event) => events.push(event));
+    const push = (seconds: number) => {
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    return {
+      core,
+      push,
+      heard,
+      events,
+      routed,
+      wake: () => (fire = true),
+      speech: (on: boolean) => (speech = on),
+      says: (text: string) => (transcript = text),
+    };
+  };
+
+  it("sends nothing to recognition, and leaves the window open", async () => {
+    const r = scripted();
+    r.wake();
+    r.push(2);
+    await r.core.idle();
+    expect(r.heard).toEqual([]);
+    expect(r.core.snapshot().state).toBe("command_window");
+    expect(r.events.some((e) => e.type === "transcript")).toBe(false);
+  });
+
+  it("does not count the wake word's own tail as speech", async () => {
+    const r = scripted();
+    r.wake();
+    r.speech(true);
+    r.push(0.15);
+    r.speech(false);
+    r.push(1.5);
+    await r.core.idle();
+    expect(r.heard).toEqual([]);
+  });
+
+  it("drops a lone filler in an open window, and logs why", async () => {
+    const r = scripted("Yeah.");
+    r.core.activate("wake");
+    await r.core.idle();
+    r.speech(true);
+    r.push(0.6);
+    r.speech(false);
+    r.push(1);
+    await r.core.idle();
+    expect(r.heard.length).toBe(1);
+    expect(r.routed).toEqual([]);
+    expect(r.events.find((e) => e.type === "dropped")).toMatchObject({
+      text: "Yeah.",
+      reason: "filler",
+    });
+  });
+
+  it("still hears a real request straight after the wake, first word included", async () => {
+    const r = scripted("Jarvis, what needs me?");
+    r.wake();
+    r.push(0.1);
+    r.speech(true);
+    r.push(1);
+    r.speech(false);
+    r.push(1);
+    await r.core.idle();
+    expect(r.heard.length).toBe(1);
+    // The wake's pre-roll and the frames that fired it are in the audio.
+    expect(r.heard[0]! / 16_000).toBeGreaterThan(1.1);
+    expect(r.routed).toEqual(["command:what needs me?"]);
+  });
+
+  it("never types silence or drops a filler while dictating", async () => {
+    const r = scripted("Dictate.");
+    r.core.activate("wake");
+    await r.core.idle();
+    r.speech(true);
+    r.push(0.6);
+    r.speech(false);
+    r.push(1);
+    await r.core.idle();
+    expect(r.core.snapshot().state).toBe("dictation");
+    r.says("Yeah.");
+    r.speech(true);
+    r.push(0.6);
+    r.speech(false);
+    r.push(1);
+    await r.core.idle();
+    expect(r.routed).toEqual(["dictate:Yeah."]);
+    r.says("");
+    r.speech(true);
+    r.push(0.6);
+    r.speech(false);
+    r.push(1);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "nothing")).toBe(false);
+  });
+
+  describe("a stop said over Baton's voice", () => {
+    const talking = async (said: string, speaking: string) => {
+      const r = scripted(said);
+      r.core.noteSpoken(speaking);
+      r.core.setSpeaking(true);
+      r.push(0.5);
+      r.speech(true);
+      r.push(0.5);
+      r.speech(false);
+      r.push(0.6);
+      await settled();
+      await r.core.idle();
+      return r;
+    };
+
+    it("works with no wake word and no open window", async () => {
+      const r = await talking("Stop.", "The folder holds three reports.");
+      expect(r.events.find((e) => e.type === "stop_heard")).toMatchObject({ text: "Stop." });
+      expect(r.routed).toEqual([]);
+    });
+
+    it("takes every phrase on the list, with or without a wake word", async () => {
+      for (const said of [
+        "Quiet.",
+        "Enough.",
+        "That's enough.",
+        "Cancel.",
+        "Shut up.",
+        "Jarvis, stop.",
+      ]) {
+        const r = await talking(said, "A sentence about reports.");
+        expect(r.events.some((e) => e.type === "stop_heard")).toBe(true);
+      }
+    });
+
+    it("ignores the same word coming back through his speakers", async () => {
+      const r = await talking("Stop.", "The next step is to stop the service.");
+      expect(r.events.some((e) => e.type === "stop_heard")).toBe(false);
+      expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
+    });
+
+    it("acts on nothing else said while it talks", async () => {
+      const r = await talking("Delete the reports.", "The folder holds three reports.");
+      expect(r.events.some((e) => e.type === "stop_heard")).toBe(false);
+      expect(r.routed).toEqual([]);
+    });
+
+    it("cuts a window over continuous speech, so its voice cannot hide him", async () => {
+      const r = scripted("Stop.");
+      r.core.setSpeaking(true);
+      r.speech(true);
+      r.push(2.2);
+      await settled();
+      expect(r.heard.length).toBe(1);
+    });
+  });
+});
+
+describe("a yes or no asked aloud", () => {
+  const asking = (transcript: string) => {
+    let speech = false;
+    const core = createVoiceCore({
+      wake: { name: "fake", reset: () => {}, process: () => null },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
+      stt: { name: "fake", transcribe: async () => transcript },
+    });
+    const talk = async () => {
+      speech = true;
+      for (let i = 0; i < frames(0.6); i += 1) core.pushAudio(new Int16Array(FRAME));
+      speech = false;
+      for (let i = 0; i < frames(1); i += 1) core.pushAudio(new Int16Array(FRAME));
+      await core.idle();
+    };
+    return { core, talk };
+  };
+
+  it("takes his yes and his no", async () => {
+    for (const [said, want] of [
+      ["Yes.", "yes"],
+      ["No.", "no"],
+    ] as const) {
+      const r = asking(said);
+      const question = r.core.confirm("Run it?");
+      await r.core.idle();
+      await r.talk();
+      expect(await question.answer).toBe(want);
+    }
+  });
+
+  it("runs out to expired, so the box can still answer", async () => {
+    const r = asking("");
+    const question = r.core.confirm("Run it?");
+    await r.core.idle();
+    for (let i = 0; i < frames(16); i += 1) r.core.pushAudio(new Int16Array(FRAME));
+    await r.core.idle();
+    expect(await question.answer).toBe("expired");
+  });
+
+  it("forgets the question once the box has answered", async () => {
+    const r = asking("Yes.");
+    r.core.confirm("Run it?").cancel();
+    await r.core.idle();
+    expect(r.core.snapshot().machine.pending).toBeNull();
   });
 });
 
@@ -169,9 +408,10 @@ describe("speech that starts while he is cutting in", () => {
     r.core.setSpeaking(true);
     r.push(16);
     await r.core.idle();
-    const after = r.heard.length;
+    const turns = () => r.events.filter((e) => e.type === "transcript").length;
+    const after = turns();
     r.push(16);
     await r.core.idle();
-    expect(r.heard.length).toBe(after);
+    expect(turns()).toBe(after);
   });
 });

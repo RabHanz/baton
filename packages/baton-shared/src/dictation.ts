@@ -27,7 +27,8 @@ export type DictationCommand =
       /** Text said in the same breath — "dictate: thanks, I'll send it". */
       readonly text: string | null;
     }
-  | { readonly kind: "stop" }
+  /** `text` is what he said in the same breath, before the stop phrase. */
+  | { readonly kind: "stop"; readonly text?: string | null }
   /** Ordinary speech while dictation mode is on. */
   | { readonly kind: "text"; readonly text: string }
   /** Not a dictation sentence at all; the caller sends it to the environment. */
@@ -43,8 +44,12 @@ const normalise = (text: string): string =>
 /** "hey jarvis, " and friends, stripped before anything is decided. */
 const WAKE = /^(?:hey |ok |okay )?(?:jarvis|baton)[,:]?\s+/;
 
-const START = /^(?:start\s+)?dictat(?:e|ing|ion)\b\s*[:,.;-]?\s*(.*)$/;
-const STOP = /^(?:stop|end|finish|quit)\s+dictat(?:e|ing|ion)\b/;
+const START =
+  /^(?:(?:i want to|i'd like to|i would like to|i need to|let me|let's|can i|start)\s+)?dictat(?:e|ing|ion)\b\s*[:,.;-]?\s*(.*)$/;
+// The whole utterance or its very end, and never a bare "stop" or "done": those are words he may
+// be dictating. Anything before the phrase is still text.
+const STOP =
+  /^(.*?)[\s,;:-]*\b(?:i'm |i am )?(?:stop|end|finish|finished|quit|done)\s+(?:with\s+)?dictat(?:e|ing|ion)(?:\s+(?:please|now|thanks))?[\s.!?]*$/;
 
 /**
  * Classify one utterance.
@@ -66,7 +71,11 @@ export const classifyDictation = (
 
   // "Stop dictating" is checked first and works in both modes: a user who says
   // it when dictation is already off has still made themselves clear.
-  if (STOP.test(text)) return { kind: "stop" };
+  const stop = STOP.exec(text);
+  if (stop !== null) {
+    const head = (stop[1] ?? "").trim();
+    return { kind: "stop", ...(head.length === 0 ? {} : { text: restoreCase(raw, head) }) };
+  }
 
   const start = START.exec(text);
   if (start !== null) {

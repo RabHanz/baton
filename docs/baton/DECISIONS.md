@@ -2464,6 +2464,7 @@ directory, so it is a handoff rather than a swap, and `Continue with` already of
 generic age line does for every provider).
 
 Not yet run live: a real switch needs a second account with quota, from 2 Nov.
+
 ## D93 — Split chat panes are ChatViews side by side, and the route is the focused pane
 
 **Decided** 2026-10-30 (Baton #40). Upstream has split terminals and no split for chat; the requests
@@ -2746,18 +2747,17 @@ regexes first (the failure he named).
 The ask box moves to Ctrl+Alt+Shift+B. F8 was bound twice, the ask box won, and Airdeck's dictation
 toggle did nothing on 0.1.9 (seen on the laptop: the chord opened the box).
 
-
 ## D110 — The hold is tied to the words, not to a clock
 
 Director, 2026-10-31: pointing and cards "last barely a fraction of a second". Reproduced on his
 Windows desktop with `screen/smoke/overlayLab.ts`: the real companion, a scripted model, 50 ms polling
 of the overlay's own DOM (the overlay is excluded from capture, so a screenshot cannot show this).
 
-| Case | Before | After |
-| --- | --- | --- |
+| Case                        | Before                                                                            | After                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Target on the other display | Answer card up under 50 ms, wiped by `point()`; never shown on the target display | Card moves with the pointer, 14.9 s on screen, 3.06 s past the end of speech |
-| Target on the same display | Cleared by a fixed timer 0.3 s before the last sentence ended | 3.2 s past the end of speech |
-| Teach, busy screen | Any change replaced the step with "Looking…", possibly during speech | Step stays; nothing advances until it is spoken and readable |
+| Target on the same display  | Cleared by a fixed timer 0.3 s before the last sentence ended                     | 3.2 s past the end of speech                                                 |
+| Teach, busy screen          | Any change replaced the step with "Looking…", possibly during speech              | Step stays; nothing advances until it is spoken and readable                 |
 
 Real run on his desktop, his own `claude`, Anna aloud, 2026-10-31: the card was up 30.1 s and left 3.05 s
 after speech ended. In Written only nothing played, and a nine-sentence answer took four pages, the
@@ -2807,17 +2807,17 @@ detection time comes before that event.
 Director, 2026-10-31: the OS voice is old-fashioned and generic; real voices, free and local. Bake-off on
 his i7-8550U, fixed sentences, BelowNormal, one job at a time, warm medians:
 
-| Model | First audible | RTF | Peak RSS | Download | British | Off Windows without Python |
-| --- | --- | --- | --- | --- | --- | --- |
-| Pocket `english` | 334 ms | 0.37 | 737 MB | 227 MB | VCTK voices | Official binaries |
-| Pocket 7m | 138 ms | 0.15 | 217 MB | 74 MB with binary | same | same |
-| Piper jenny | 433 ms, whole sentence | 0.12 | 210 MB | 63 MB | Yes | Repo archived |
-| Piper cori | 2,556 ms | 0.66 | 266 MB | 114 MB | Yes | same |
-| Supertonic 3, 5 steps | 2,080 ms | 0.44 | 381 MB | 129 MB | No | Weights OpenRAIL-M, repo archived |
-| Kokoro v1.0 fp32 bf_emma | 3,982 ms | 1.11 | 774 MB | 350 MB | Yes | Needs a GPL phonemiser for right words |
-| Kitten mini | 5,245 ms, run not clean | 1.51 | 395 MB | 68 MB | No | Espeak |
-| Chatterbox Nano, community ONNX | 8,935 ms | 2.60 | 1,283 MB | 570 MB | Reference clip | No official route |
-| MeloTTS | Blocked: install over 10 min | | | about 1 GB | Yes | Python only |
+| Model                           | First audible                | RTF  | Peak RSS | Download          | British        | Off Windows without Python             |
+| ------------------------------- | ---------------------------- | ---- | -------- | ----------------- | -------------- | -------------------------------------- |
+| Pocket `english`                | 334 ms                       | 0.37 | 737 MB   | 227 MB            | VCTK voices    | Official binaries                      |
+| Pocket 7m                       | 138 ms                       | 0.15 | 217 MB   | 74 MB with binary | same           | same                                   |
+| Piper jenny                     | 433 ms, whole sentence       | 0.12 | 210 MB   | 63 MB             | Yes            | Repo archived                          |
+| Piper cori                      | 2,556 ms                     | 0.66 | 266 MB   | 114 MB            | Yes            | same                                   |
+| Supertonic 3, 5 steps           | 2,080 ms                     | 0.44 | 381 MB   | 129 MB            | No             | Weights OpenRAIL-M, repo archived      |
+| Kokoro v1.0 fp32 bf_emma        | 3,982 ms                     | 1.11 | 774 MB   | 350 MB            | Yes            | Needs a GPL phonemiser for right words |
+| Kitten mini                     | 5,245 ms, run not clean      | 1.51 | 395 MB   | 68 MB             | No             | Espeak                                 |
+| Chatterbox Nano, community ONNX | 8,935 ms                     | 2.60 | 1,283 MB | 570 MB            | Reference clip | No official route                      |
+| MeloTTS                         | Blocked: install over 10 min |      |          | about 1 GB        | Yes            | Python only                            |
 
 Default Pocket `english`, voice Anna: word-perfect in transcription on all five sentences, 1,345 read
 right. Fallback Pocket 7m, offered as Quick: faster and much smaller, but it misread words, including
@@ -2903,15 +2903,15 @@ Status: built and on the laptop, **not yet timed**. See the numbers in VOICE.md.
 
 Measured 2026-10-31 on the laptop, 60 AT2020 clips against Wispr's raw text, before any gain:
 
-| Condition                          | v3    | 110M  |
-| ---------------------------------- | ----- | ----- |
-| As recorded                        | 2.8%  | 5.5%  |
-| Attenuated 20 dB                   | 2.5%  | 6.1%  |
-| Attenuated 30 dB                   | 2.9%  | 8.4%  |
-| Attenuated 40 dB                   | 8.1%  | 20.8% |
-| His clips made whisper, -35 dBFS   | none  | 9.8%  |
-| His clips made whisper, -45 dBFS   | none  | 10.8% |
-| His 30 quietest real clips         | 4.2% (13 clips) | 4.0% |
+| Condition                        | v3              | 110M  |
+| -------------------------------- | --------------- | ----- |
+| As recorded                      | 2.8%            | 5.5%  |
+| Attenuated 20 dB                 | 2.5%            | 6.1%  |
+| Attenuated 30 dB                 | 2.9%            | 8.4%  |
+| Attenuated 40 dB                 | 8.1%            | 20.8% |
+| His clips made whisper, -35 dBFS | none            | 9.8%  |
+| His clips made whisper, -45 dBFS | none            | 10.8% |
+| His 30 quietest real clips       | 4.2% (13 clips) | 4.0%  |
 
 This does not repeat D97's "both 3.0%" on 240 clips, and on quiet audio 110M is far worse. So `speechModel`
 stays `v3` until the same table is re-measured with gain. Each recording or piece is lifted towards
@@ -3066,3 +3066,134 @@ main window still quits, including with the pill up. Rejected: keeping a hidden 
 "Stop" during an answer went to the model, which asked what he meant. With no lesson or drive running the word was
 not treated as a control. While an answer is coming or being read out it now stops at once, with no model.
 
+## D118 — Baton lives in the tray, and only Quit ends it
+
+Director, 2026-11-01, on 0.1.11: the tray icon vanished. Nothing crashed. `closedLast` went true when the main
+window closed and only another non-companion window could clear it, so when the last companion window went after
+idle, `window-all-closed` quit the whole app, tray and voice with it. This replaces the rule in D117 that closing
+the main window quits.
+
+Once the tray exists, no window closing quits anything. The tray's Quit and a system shutdown do. A build whose
+tray did not start keeps upstream's rule, because with no tray there would be no way back. Rejected: keeping a
+hidden window open (D117's reason still holds), and tracking window kinds more carefully (the question stopped
+being which window closed last).
+
+## D119 — Opening the main window lands on the main window
+
+Director: the session manager will not open. His trace shows `ElectronWindow.reveal` succeeding six times while he
+saw nothing. Reading the path found three real defects:
+
+- `currentMainOrFirst` skipped only `auxiliaryWindows`, and the pill, overlay, ask box and prompts are made with
+  `new BrowserWindow`, so they were never in that set. With the main window closed, a reveal could land on one.
+  It succeeds, on a transparent window that ignores the mouse. `activate` and `second-instance` both go through it.
+- `second-instance` created nothing when no window existed.
+- The tray's Open Baton called `ensureMain` then `show()`, with no restore, no focus and no way past Windows'
+  foreground lock. A left click on the icon did nothing at all.
+
+Companion windows are now excluded, a left click and a second launch open the window, and all three take
+upstream's capture reveal, which is the path built for that foreground lock. It then reloads a crashed page and
+brings back a window no display shows, which a reveal cannot do. Upstream's own bounds check runs only when the
+window is created.
+
+**Not proven to be what he hit.** The laptop was not touched, so the spans were not matched to these causes, and
+the two later symptoms (a reveal with nothing seen, a relaunch with no main window) fit this path without
+confirming it. `voice-turns.ndjson` now writes an `open_main` line with visibility and bounds, so the next
+report can settle it.
+
+## D120 — A log of what Baton heard
+
+There was no record, so his exchange could not be reviewed. `<logs>/voice-turns.ndjson` takes one line a turn:
+wake word and score, transcript, route and source, decide, first-sentence and total ms. Also its own lines for a
+spoken stop, dropped noise, a wake with nothing after it, an error, and `open_main`. It uses upstream's rotating
+writer, 5 MB and five files. `desktop.trace.ndjson` already rotated, so that needed nothing.
+
+It stays on his machine. Dictated words are not written, only their length: dictation is the one thing that never
+leaves the client (§12.3), and a log is a place it could leak from. Rejected: a file writer of our own (upstream's
+is already there).
+
+## D121 — Silence gets no transcript
+
+Director: after the wake word it registers random "yeah" while he is silent. The segment started at a wake was
+seeded with `minSpeechMs` of credit, so a silent wake always passed the minimum and went to Parakeet, which invents
+words from a wake word's tail and a quiet room. The wake now keeps the audio and earns no credit, so a bare wake
+leaves the window open and says nothing. Speech in the first 200 ms after the wake does not count either, since
+that is the word's own tail. The pre-roll stays, so D102's lost first words stay fixed.
+
+A lone filler (yeah, um, hmm, okay and the like) is dropped unless a confirmation is pending or he is dictating.
+"Yes" and "no" are not on the list, because a clarifying question can be waiting on one. Limit: "yeah" in answer
+to a clarifying question is dropped too, so he has to say yes.
+
+## D122 — Stop works over Baton's voice, with no wake word
+
+Director: saying "stop" mid-explanation does not stop it. D102 gave the mic to the wake detector alone while
+Baton speaks. Now the VAD and recogniser also run then, on short windows, and only a short list acts: stop,
+quiet, enough, that's enough, cancel, shut up, and near forms. Everything else said over its voice is discarded.
+The check runs on its own path, because the `work` queue is waiting on the routing and speech he is stopping.
+
+Its own voice cannot stop it: the speaker reports each sentence, and a phrase found in the last twelve is dropped
+as `own voice`. This means Baton saying "stop the service" can eat a real stop said during that sentence; he says
+it again. A stop reaches the tray's `dismiss`, so the voice, the answer's remaining words and the card go, and a
+lesson or drive ends. The conversation window stays open, so he can carry straight on. "Thanks", "cheers" and "go
+to sleep" end the window.
+
+Over speakers the mic hears Baton as continuous speech, so a window is cut every 2 s and recognition runs about
+that often during an answer. Its CPU cost alongside Pocket on his laptop is unmeasured. A real stop mixed with
+Baton's voice may also transcribe as something else and do nothing, which fails safe. Neither has been tried with
+a real microphone. Rejected: echo cancellation (no reference signal yet, as in D102).
+
+## D123 — Starting the sessions when he wakes it
+
+Measured on the box with Baton's exact flags, three runs each, first text in ms:
+
+|        | new process      | process started 3 s earlier | warm, second turn |
+| ------ | ---------------- | --------------------------- | ----------------- |
+| haiku  | 1590, 1898, 2297 | 904, 1029, 1289             | 969, 1003, 1007   |
+| sonnet | 1812, 1840, 2220 | 646, 925, 1275              | 1021, 1031, 1094  |
+
+So nearly a second of a cold turn is the process starting, a pre-started one is as good as a warm one, and starting
+costs no quota. A wake now starts the router, and a spare answer session, if they are missing, are past the turn
+cap, or have died. A first answer pays that second twice today, once to route and once to answer, so it should
+come down by about 1.8 s. That is arithmetic from the table: there is no before and after from his laptop, and
+the voice log will give one.
+
+Rejected: more sentences in `instantDecision`, because words choosing the route is the failure D100 removed. The
+`[LOOK]` round trip stays, since only the model knows it needs the screen. TTS was not measured: Pocket is not on
+the box.
+
+## D124 — The pill says what state he is in
+
+Director: while Baton is listening the pill stays and names the state, so he can tell whether he needs the wake
+word again. The pill was tied to a turn and left between turns, so a window that was open looked closed. It now
+follows the window: Listening between turns, then Thinking, Speaking, Dictating or the activity, and back to
+Listening. When the window closes it says "Not listening" and "Say the wake word", for 3.5 s, after any speech
+still playing. `pillAtRest` governs resting only. While Baton talks the window's deadline rolls forward, so a
+long answer no longer closes it underneath him. Esc goes back to his apps once a window has heard him.
+
+## D125 — Hands-free, one session
+
+Director: no action may require holding a key. Keys stay as options. From a conversation he can say he wants to
+dictate ("dictate", "I want to dictate", "let me dictate"), speak into the focused field, say he has finished, and
+carry on with no wake word, because stopping dictation now returns to the conversation and not to sleep. The pill
+reads Dictating throughout and has no time limit there.
+
+The stop phrase must be unmistakable: "stop dictating", "end dictation", "I'm done dictating" and near forms, alone
+or at the very end of what he said. Plain "stop" and "done" are typed. Words before the phrase in the same breath
+are typed first. "Stop dictating the letter" is now text, where before it stopped. Dictated words still go only to
+`dictate` effects and never reach the brain.
+
+Capture consent, Run it, the shell check and Carry on? were mouse-only. On a voice turn each is now also asked
+aloud, through the machine's confirmation rules, and whichever he answers first counts. A question that runs out
+leaves the box up. A typed ask stays box-only.
+
+## D126 — Each limit window is optional per account
+
+Director, 2026-11-01: the $200 Max plan is reportedly now Ultra and some accounts no longer have a 5-hour window.
+Not confirmed here: no account on the box was seen without one. Nothing keys on a plan's name. What is shown follows
+the windows an account reports.
+
+`limits-probe.py` required the 5h headers, so an account without them would have been left out whole, weekly figure
+included. The 5h pair is now optional, half a pair is still refused, and 7d is still required. cswap reads
+`fiveHour` only if the key is there, so the probe leaves it out. The server parsers and the pool already read what
+is present and never invented a zero. The tile, the thread details and the pooled page now say "Not applicable" for
+Session when a weekly window is reported with no session one, and the weekly amount shows as before. The 5-hour code
+stays, so a downgraded plan shows its window again with no change.

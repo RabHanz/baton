@@ -27,6 +27,7 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import { keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
 
 import {
@@ -190,6 +191,7 @@ const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const PILL_TEXT_CHARS = 90;
+const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
 
 /** A 16×16 filled dot in the state's colour, drawn rather than shipped. */
 const trayIcon = (color: string): Electron.NativeImage => {
@@ -254,6 +256,10 @@ export interface DesktopBatonVoiceInput {
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** What to do when he dismisses a turn: stop Baton's voice, and the same for the assistant. */
   readonly onDismiss?: () => void;
+  /** He said stop over Baton's voice. The tray's dismiss; the window stays open. */
+  readonly onSpokenStop?: () => void;
+  /** Bring the main window up, however it was left. */
+  readonly openMainWindow: () => void;
   /** Wake-to-pill, for the record. */
   readonly onWakeShown?: (ms: number) => void;
 }
@@ -263,6 +269,8 @@ export interface DesktopBatonVoice {
   readonly refresh: () => void;
   /** Baton's voice started or stopped. */
   readonly onSpeaking: (active: boolean) => void;
+  /** A sentence going to the speakers. */
+  readonly onSpoken: (text: string) => void;
   /** The assistant finished a turn. */
   readonly onTurnEnd: () => void;
   /** The assistant is looking, planning or driving; null when it stops. */
@@ -288,6 +296,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const tray = new Electron.Tray(trayIcon(hudView("sleeping").color));
+  // Only now is there something to quit from, and a way back to a window.
+  keepRunningForTray();
+  // A left click is what an icon invites, and without this it did nothing on Windows.
+  tray.on("click", input.openMainWindow);
   const modelsDir = NodePath.join(input.stateDir, "voice", "models");
   const binary = input.dictationBinary;
   let sidecar: DictationSidecar | null = null;
@@ -437,6 +449,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (Math.hypot(real.x - near.x, real.y - near.y) > LOCATE_MAX_DIP) return null;
       return { ...real, name: found.name ?? label };
     },
+    confirm: (prompt) => core?.confirm(prompt) ?? null,
     grammarPlaces: async (said) => {
       if (mainContents === null) return false;
       const resolution = await voiceIntent.resolve({
@@ -629,6 +642,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
   });
   if (settings.pillAtRest) pill.setRest(true);
+  let dictatingByVoice = false;
+  const stateTurn = (next: VoiceState, target: string | null): TurnEvent | null => {
+    const wasDictating = dictatingByVoice;
+    dictatingByVoice = next === "dictation";
+    if (dictatingByVoice) {
+      pill.on({ type: "window_open" });
+      return { type: "dictating", caption: STOP_DICTATING_HINT };
+    }
+    if (wasDictating) pill.on({ type: "dictating", caption: null });
+    if (next === "sleeping" || next === "direct_session") return { type: "window_closed" };
+    if (next !== "command_window" && next !== "conversation") return null;
+    pill.on({ type: "window_open" });
+    return target === null ? null : { type: "target", name: `to ${target}` };
+  };
   const onCoreEvent = (event: VoiceCoreEvent) => {
     const turn = ((): TurnEvent | null => {
       switch (event.type) {
@@ -638,13 +665,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return { type: "thinking" };
         case "nothing":
           return { type: "failed", message: "Didn't catch that" };
+        case "dropped":
+          return { type: "resume" };
+        case "stop_heard":
+          input.onSpokenStop?.();
+          return null;
         case "transcript":
           return { type: "heard", text: event.text };
         case "error":
           return { type: "failed", message: event.message };
         case "state":
-          if (event.state === "sleeping") return { type: "window_closed" };
-          return event.target === null ? null : { type: "target", name: `to ${event.target}` };
+          return stateTurn(event.state, event.target);
         case "outcome":
           // The assistant reports its own end; everything else ends here, or with its speech.
           return "source" in event.outcome && event.outcome.source === "screen"
@@ -965,7 +996,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         { type: "separator" },
         ...(input.extras?.menuItems() ?? []),
         ...(input.extras ? [{ type: "separator" as const }] : []),
-        { label: "Open Baton", click: () => void input.ensureMainWindow().then((w) => w.show()) },
+        { label: "Open Baton", click: input.openMainWindow },
         { label: "Quit", click: () => Electron.app.quit() },
       ]),
     );
@@ -1053,6 +1084,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       core?.setSpeaking(active);
       pill.on({ type: "speaking", active });
     },
+    onSpoken: (text) => core?.noteSpoken(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
