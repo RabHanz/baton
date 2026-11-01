@@ -30,6 +30,7 @@ import {
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
+import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
 import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
@@ -261,6 +262,8 @@ export interface DesktopBatonVoiceInput {
   readonly extras?: TrayExtras;
   /** The Sessions area's rows and actions (D138). */
   readonly sessions?: SessionsBridge;
+  /** Baton's self-update (D137): its rows, its action, and whether one is waiting. */
+  readonly updates?: BatonUpdates;
   /** Where the wake and listening models are, for the Check area. */
   readonly voiceAssets?: (modelsDir: string | null) => VoiceAssets;
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
@@ -277,6 +280,10 @@ export interface DesktopBatonVoiceInput {
 export interface DesktopBatonVoice {
   /** Rebuild the tray menu, after the companion's state changed. */
   readonly refresh: () => void;
+  /** In the middle of a turn: speaking, or listening past the wake word. */
+  readonly busy: () => boolean;
+  /** Bring Baton's own window up. */
+  readonly openHome: () => void;
   /** Baton's voice started or stopped. */
   readonly onSpeaking: (active: boolean) => void;
   /** A sentence going to the speakers. */
@@ -386,6 +393,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       color: hudView(state).color,
       caps: [settings.enabled, on("s.capture"), on("s.act")],
       muted: state === "muted",
+      badge: input.updates?.ready() ?? false,
     };
   };
   const render = () => {
@@ -945,6 +953,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         disabled: loop === null,
       },
       ...(input.extras?.controls() ?? []),
+      ...(input.updates?.controls() ?? []),
       {
         id: "v.mic",
         section: "Listening",
@@ -1142,7 +1151,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         }, SESSIONS_NOTE_MS).unref();
         home.refresh();
       });
-    } else if (id.startsWith("s.")) input.extras?.applySetting(id, value);
+    } else if (id.startsWith("u.")) input.updates?.apply(id);
+    else if (id.startsWith("s.")) input.extras?.applySetting(id, value);
     else if (id === "v.enabled") {
       save({ enabled: on });
       void (on ? start().catch(failed) : stop());
@@ -1199,6 +1209,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     openSessions: input.openMainWindow,
   });
 
+  let speakingNow = false;
+
   const rebuildMenu = () => {
     home.refresh();
     tray.setContextMenu(
@@ -1228,6 +1240,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         { type: "separator" },
         ...(input.extras?.menuItems() ?? []),
         ...(input.extras ? [{ type: "separator" as const }] : []),
+        ...(input.updates?.ready() === true
+          ? [{ label: "● Update ready: Install and restart", click: input.updates.install }]
+          : []),
         { label: "Open Baton", click: () => home.open() },
         { label: "Quit", click: () => Electron.app.quit() },
       ]),
@@ -1318,8 +1333,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   }
   void start().catch(failed);
   return {
-    refresh: rebuildMenu,
+    refresh: render,
+    openHome: () => home.open(),
+    busy: () => speakingNow || !["sleeping", "listening", "muted"].includes(state),
     onSpeaking: (active) => {
+      speakingNow = active;
       core?.setSpeaking(active);
       pill.on({ type: "speaking", active });
     },

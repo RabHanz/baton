@@ -36,7 +36,12 @@ export type HomeControl =
       readonly value: string;
       readonly options: ReadonlyArray<HomeOption>;
     })
-  | (HomeControlBase & { readonly kind: "action"; readonly button: string })
+  | (HomeControlBase & {
+      readonly kind: "action";
+      readonly button: string;
+      /** A second button beside it; its action id is `<id>:later`. */
+      readonly secondary?: string;
+    })
   /** One of several, each with a note; "soon" rows are shown and cannot be picked. */
   | (HomeControlBase & {
       readonly kind: "brain";
