@@ -5,10 +5,11 @@ Replays speech that is not a wake attempt through the shipped wake models exactl
 per hour per word, in four rooms:
 
   clean   LibriSpeech dev-clean and test-clean read speech (CC BY 4.0, openslr.org/12)
-  tv      the same speech over MUSAN music and noise at 3 to 10 dB SNR, as a TV or a video playing (CC BY 4.0)
+  tv      the same speech under other people talking (more LibriSpeech, 0 to 8 dB) and room noise, as a TV
+          or a video playing in the room
   bleed   the same speech low-passed, attenuated and run through a room impulse response (MIT, davidscripka),
           as speaker bleed into a microphone
-  noise   MUSAN music and noise alone
+  noise   DEMAND room noise alone (CC BY 4.0, zenodo.org/records/1227121): kitchen, living room, car, street
 
 Everything is public and licence-clean: no recording of a person is used. Clips of every false fire are saved
 as negative samples for the next training round. A word whose threshold gives more than the target
@@ -43,14 +44,17 @@ def rms(x):
     return float(np.sqrt(np.mean(x**2)) + 1e-9)
 
 
-def room(kind, speech, noise_files, rirs, rng):
+def room(kind, speech, noise_files, rirs, rng, talkers):
     if kind == "clean":
         return speech
     if kind == "tv":
-        n = load(rng.choice(noise_files))
-        n = np.tile(n, int(np.ceil(len(speech) / max(len(n), 1))))[: len(speech)]
-        snr = rng.uniform(3, 10)
-        return speech + n * (rms(speech) / (10 ** (snr / 20) * rms(n)))
+        def fit(x):
+            return np.tile(x, int(np.ceil(len(speech) / max(len(x), 1))))[: len(speech)]
+
+        talk = fit(load(rng.choice(talkers)))
+        noise = fit(load(rng.choice(noise_files)))
+        mixed = speech + talk * (rms(speech) / (10 ** (rng.uniform(0, 8) / 20) * rms(talk)))
+        return mixed + noise * (rms(speech) / (10 ** (10 / 20) * rms(noise)))
     if kind == "bleed":
         sos = butter(4, 4000, btype="low", fs=RATE, output="sos")
         h = load(rng.choice(rirs))
@@ -106,7 +110,7 @@ def main():
     )
     data = pathlib.Path(args.data)
     speech = sorted((data / "librispeech").rglob("*.flac"))
-    noise = sorted((data / "musan").rglob("*.wav"))
+    noise = sorted((data / "demand").rglob("*.wav"))
     rirs = sorted((data / "mit_rirs").rglob("*.wav"))
     rng.shuffle(speech)
     rng.shuffle(noise)
