@@ -28,6 +28,24 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import { parseActivity, todayStats } from "../home/activityLog.ts";
+import type { HomeExtra } from "../home/batonHome.ts";
+import {
+  addEntry,
+  editEntry,
+  forgetLearned,
+  removeEntry,
+  saveDictionary,
+  type VocabEntry,
+} from "./dictionaryEdit.ts";
+import {
+  effective,
+  parseBindings,
+  toElectronAccelerator,
+  withBinding,
+  type Binding,
+  type BindingInput,
+} from "../bindings/bindings.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -76,7 +94,7 @@ import {
   type SidecarDevice,
 } from "./dictationSidecar.ts";
 import { importWisprDictionary, makeRewriter, readDictionary } from "./dictationRewriter.ts";
-import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
+import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import type { AssistantActions } from "../screen/ScreenCompanion.ts";
@@ -136,6 +154,10 @@ interface VoiceSettings {
   readonly appModes: Readonly<Record<string, DictationMode>>;
   /** All enabled words listen at once. A new word needs `<word>.onnx` in `<state dir>/voice/models`. */
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
+  /** How dictated words arrive: all at once, or as they are said. The engine reads this key. */
+  readonly "dictation.delivery"?: "oneshot" | "stream";
+  /** Keys and mouse buttons he set for actions; an action not listed has its default (D141). */
+  readonly bindings: ReadonlyArray<Binding>;
 }
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -143,15 +165,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   openAtLogin: false,
   pinnedLabel: null,
   modelsDir: null,
-  micOrder: [
-    // Applies only to devices that are present. A Scarlett Solo's mic input is its input 1;
-    // mixing in the empty input 2 halves the level.
-    { name: "Scarlett Solo", channel: 0 },
-    { name: "Focusrite", channel: 0 },
-    // How Windows names a DJI receiver.
-    { name: "Wireless Mic Rx", channel: null },
-    { name: "DJI", channel: null },
-  ],
+  // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
+  micOrder: [],
   sounds: true,
   pillAtRest: false,
   pillEdge: "bottom",
@@ -168,6 +183,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   claudeBinary: "claude",
   appModes: {},
   wakeWords: FRESH_WAKE_WORDS,
+  bindings: [],
 };
 
 /** The renderer has this long to answer an intent call before the core is told it failed. */
@@ -186,6 +202,7 @@ const readSettings = (path: string): VoiceSettings => {
     return {
       ...DEFAULT_SETTINGS,
       wakeWords: wakeWordsFor(saved),
+      bindings: parseBindings(saved["bindings"]),
       ...cleanupFromSaved(saved),
     };
   } catch {
@@ -199,6 +216,8 @@ const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const SESSIONS_NOTE_MS = 8_000;
+/** Baton's own green: the sidebar's mark, whatever state the dot is in. */
+const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
@@ -231,6 +250,7 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
+  readonly setAskHotkey: (accelerator: string | null) => void;
   readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly setActions: (actions: AssistantActions) => void;
@@ -247,6 +267,9 @@ export interface TrayExtras extends BrainVoiceHook {
 
 export interface DesktopBatonVoiceInput {
   readonly stateDir: string;
+  /** Where the turn log and the lifecycle log are, for Home and Checks. */
+  readonly logDir: string;
+  readonly appVersion: string;
   readonly env: NodeJS.ProcessEnv;
   /** `HostProcessPlatform`, injected rather than read here. */
   readonly platform: string;
@@ -397,6 +420,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     };
   };
   const render = () => {
+    pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     tray.setImage(trayIcon(markOptions()));
     tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
     rebuildMenu();
@@ -667,6 +691,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     sounds: () => settings.sounds,
     rest: () => settings.pillAtRest,
     edge: () => settings.pillEdge,
+    stateDir: input.stateDir,
     holdEscape: input.holdEscape,
     onDismiss: () => {
       pill.on({ type: "dismissed" });
@@ -895,13 +920,139 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   let sessionsNote: string | null = null;
 
+  /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
+  const tails = new Map<string, { stamp: string; text: string }>();
+  const tailOf = (file: string): string => {
+    try {
+      const stat = NodeFS.statSync(file);
+      const stamp = `${stat.mtimeMs}:${stat.size}`;
+      const hit = tails.get(file);
+      if (hit?.stamp === stamp) return hit.text;
+      const fd = NodeFS.openSync(file, "r");
+      const length = Math.min(stat.size, 96 * 1024);
+      const buffer = Buffer.alloc(length);
+      NodeFS.readSync(fd, buffer, 0, length, stat.size - length);
+      NodeFS.closeSync(fd);
+      const text = buffer.toString("utf8");
+      tails.set(file, { stamp, text });
+      return text;
+    } catch {
+      return "";
+    }
+  };
+  const key = (accelerator: string): BindingInput => ({ type: "key", accelerator });
+  const currentBindings = () =>
+    effective(settings.bindings, {
+      hold: key(settings.holdKey),
+      toggle: key(settings.toggleKey),
+    });
+
+  const homeExtra = (): HomeExtra => {
+    const activity = parseActivity(tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")));
+    const today = todayStats(activity, new Date());
+    const sessionRows = input.sessions?.rows() ?? [];
+    const lifecycle = tailOf(NodePath.join(input.logDir, "baton-lifecycle.ndjson"))
+      .split("\n")
+      .flatMap((l) => {
+        try {
+          const e = JSON.parse(l) as {
+            at?: string;
+            event?: string;
+            reason?: string;
+            detail?: string;
+          };
+          const words: Record<string, string> = {
+            "previous-run-ended-badly":
+              "The last run ended without a clean exit (a crash, a kill or a power loss)",
+            "restarted-after-update": "Restarted after an update",
+            exiting: `Going down: ${e.reason ?? "quit"}${e.detail ? ` ${e.detail}` : ""}`,
+            "uncaught-exception": "An unexpected error stopped Baton",
+            "render-process-gone": "A window closed unexpectedly",
+            "child-process-gone": "A helper program stopped unexpectedly",
+          };
+          const text = e.event === undefined ? undefined : words[e.event];
+          return e.at === undefined || text === undefined ? [] : [{ at: e.at, text }];
+        } catch {
+          return [];
+        }
+      })
+      .toReversed()
+      .slice(0, 5);
+    return {
+      wakeWords: settings.wakeWords.filter((w) => w.enabled).map((w) => w.word),
+      activity,
+      stats: {
+        turns: today.turns,
+        dictations: today.dictations,
+        sessions: sessionRows.length,
+        needYou: sessionRows.filter((r) => r.urgent).length,
+      },
+      vocabulary: (dictionary as ReadonlyArray<VocabEntry>).map((d) => ({
+        phrase: d.phrase,
+        replacement: d.replacement,
+        source: d.source ?? "added",
+        count: d.count ?? null,
+        lastSeen: d.lastSeen ?? null,
+      })),
+      hotkeys: [
+        ...currentBindings().flatMap((row) =>
+          row.input?.type === "key"
+            ? [
+                {
+                  label: row.def.label,
+                  keys: row.input.accelerator,
+                  tab:
+                    (
+                      {
+                        hold: "dictation",
+                        toggle: "dictation",
+                        dictation: "dictation",
+                        ask: "screen",
+                        clear: "screen",
+                        stop: "screen",
+                      } as Record<string, string>
+                    )[row.def.id] ?? "voice",
+                },
+              ]
+            : [],
+        ),
+        { label: "Cancel a recording, a card or a drive", keys: "Escape", tab: "screen" },
+      ],
+      bindings: currentBindings().map((row) => ({
+        action: row.def.id,
+        label: row.def.label,
+        hint: row.def.hint,
+        input: row.input,
+        isDefault: row.isDefault,
+        conflictsWith: row.conflictsWith,
+      })),
+      mouseReady: false,
+      usage: input.sessions?.usage() ?? [],
+      lifecycle,
+      paths: [
+        { id: "state", label: "State folder", path: input.stateDir },
+        { id: "logs", label: "Log folder", path: input.logDir },
+        { id: "models", label: "Voice models", path: modelsDir },
+        { id: "settings", label: "Voice settings file", path: settingsPath },
+      ],
+      about: {
+        version: input.appVersion,
+        source: "github.com/RabHanz/baton/releases",
+        licence: "MIT, with third-party notices",
+        notices: "docs/baton/THIRD_PARTY_NOTICES.md",
+      },
+    };
+  };
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
       tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
       device: deviceName(),
       mark: markSvg(markOptions()),
+      brandMark: markSvg({ ...markOptions(), color: BRAND_COLOUR, muted: false }),
     },
+    extra: homeExtra(),
     controls: [
       ...(input.sessions === undefined
         ? []
@@ -1014,6 +1165,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ]
         : []),
       {
+        id: "v.delivery",
+        section: "Dictation",
+        label: "How your words arrive",
+        kind: "choice",
+        value: settings["dictation.delivery"] ?? "oneshot",
+        options: [
+          {
+            value: "oneshot",
+            label: "All at once",
+            note: "Your words are tidied, then pasted in one go when you stop.",
+          },
+          {
+            value: "stream",
+            label: "Stream as it goes",
+            note: "Your words appear while you speak. Tidying happens as they arrive.",
+          },
+        ],
+        disabled: binary === null,
+      },
+      {
         id: "v.cleanup",
         section: "Dictation",
         label: "Tidy what I said",
@@ -1073,8 +1244,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.pillRest",
         section: "On screen",
-        label: "Small mark at rest",
-        hint: "Off, nothing shows until Baton is doing something.",
+        label: "Show a small bar when Baton isn't listening",
+        hint: "Off, nothing shows until Baton is doing something. Drag the pill to move it, double-click to put it back.",
         kind: "toggle",
         on: settings.pillAtRest,
       },
@@ -1141,7 +1312,77 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
-    if (id === "n.empty") input.openMainWindow();
+    if (id === "q.wake") loop?.activate("wake");
+    else if (id === "q.ask" || id === "q.clear") {
+      const entry = input.extras
+        ?.menuItems()
+        .find((i) => i.label === (id === "q.ask" ? "Ask Baton…" : "Clear the screen"));
+      (entry?.click as (() => void) | undefined)?.();
+    } else if (id === "q.stop") {
+      input.onDismiss?.();
+      const entry = input.extras
+        ?.menuItems()
+        .find((i) => i.label === "Stop driving" || i.label === "Stop the lesson");
+      (entry?.click as (() => void) | undefined)?.();
+    } else if (id === "q.quit") Electron.app.quit();
+    else if (id.startsWith("q.open:")) {
+      const target = homeExtra().paths.find((p) => `q.open:${p.id}` === id);
+      if (target !== undefined) void Electron.shell.openPath(target.path);
+    } else if (id === "d.add" && typeof value === "string") {
+      try {
+        const entry = JSON.parse(value) as { phrase?: unknown; replacement?: unknown };
+        if (typeof entry.phrase === "string") {
+          dictionary = addEntry(dictionary, {
+            phrase: entry.phrase,
+            replacement: typeof entry.replacement === "string" ? entry.replacement : null,
+          });
+          saveDictionary(input.stateDir, dictionary);
+        }
+      } catch {
+        // A malformed add from the page is ignored; the list stays as it was.
+      }
+    } else if (id === "d.edit" && typeof value === "string") {
+      try {
+        const e = JSON.parse(value) as { from?: unknown; phrase?: unknown; replacement?: unknown };
+        if (typeof e.from === "string" && typeof e.phrase === "string") {
+          dictionary = editEntry(dictionary, e.from, {
+            phrase: e.phrase,
+            replacement: typeof e.replacement === "string" ? e.replacement : null,
+          });
+          saveDictionary(input.stateDir, dictionary);
+        }
+      } catch {
+        // A malformed edit is ignored; the list stays as it was.
+      }
+    } else if (id.startsWith("b.")) {
+      const [verb, action] = [id.slice(2, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
+      let next: ReadonlyArray<Binding> | null = null;
+      if (verb === "set" && typeof value === "string") {
+        try {
+          next = parseBindings([{ action, input: JSON.parse(value) }]).length
+            ? withBinding(
+                settings.bindings,
+                action,
+                parseBindings([{ action, input: JSON.parse(value) }])[0]!.input,
+              )
+            : null;
+        } catch {
+          next = null;
+        }
+      } else if (verb === "clear") next = withBinding(settings.bindings, action, null);
+      else if (verb === "reset") next = withBinding(settings.bindings, action, "reset");
+      else if (verb === "resetAll") next = [];
+      if (next !== null) {
+        save({ bindings: next });
+        applyBindings();
+      }
+    } else if (id === "d.forget") {
+      dictionary = forgetLearned(dictionary);
+      saveDictionary(input.stateDir, dictionary);
+    } else if (id === "d.remove" && typeof value === "string") {
+      dictionary = removeEntry(dictionary, value);
+      saveDictionary(input.stateDir, dictionary);
+    } else if (id === "n.empty") input.openMainWindow();
     else if (id.startsWith("n:")) {
       void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
         sessionsNote = line;
@@ -1172,7 +1413,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.dictation" && (value === "baton" || value === "wispr"))
       setDictation(value);
     else if (id === "v.download") requestDictation();
-    else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
+    else if (id === "v.delivery" && (value === "oneshot" || value === "stream")) {
+      save({ "dictation.delivery": value });
+      configureDictation();
+    } else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
     } else if (id === "v.speechModel" && (value === "v3" || value === "fast"))
       setSpeechModel(value);
@@ -1204,6 +1448,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const home = createBatonHome({
+    stateDir: input.stateDir,
     state: homeState,
     apply: applyHome,
     openSessions: input.openMainWindow,
@@ -1288,21 +1533,59 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     loop?.activate("toggle_mute");
     pill.on({ type: "muted", on: loop?.isMuted() ?? false });
   };
-  for (const hotkey of VOICE_HOTKEYS) {
-    // A chord another app already owns is skipped, not fatal; the tray still works.
-    Electron.globalShortcut.register(hotkey.accelerator, () =>
-      hotkey.activation === "toggle_mute" ? toggleMute() : loop?.activate(hotkey.activation),
-    );
-  }
-  Electron.globalShortcut.register(DICTATION_TOGGLE_HOTKEY.accelerator, () => {
-    if (settings.dictation !== "baton" || binary === null) return;
-    // The first press is the opt-in: it fetches the model, and the next one records.
-    if (parakeetPath === null) requestDictation();
-    else sidecar?.toggle();
-  });
+  let registered: string[] = [];
+  const handlers: Readonly<Record<string, () => void>> = {
+    wake: () => loop?.activate("wake"),
+    direct: () => loop?.activate("toggle_direct_session"),
+    mute: () => toggleMute(),
+    dictation: () => {
+      if (settings.dictation !== "baton" || binary === null) return;
+      // The first press is the opt-in: it fetches the model, and the next one records.
+      if (parakeetPath === null) requestDictation();
+      else sidecar?.toggle();
+    },
+    stop: () => {
+      input.onDismiss?.();
+      const stop = input.extras
+        ?.menuItems()
+        .find((i) => i.label === "Stop driving" || i.label === "Stop the lesson");
+      (stop?.click as (() => void) | undefined)?.();
+    },
+    clear: () => {
+      const clear = input.extras?.menuItems().find((i) => i.label === "Clear the screen");
+      (clear?.click as (() => void) | undefined)?.();
+    },
+  };
+  /** Puts every key he has set in place, and takes the old ones away. Mouse buttons are only kept. */
+  const applyBindings = () => {
+    for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
+    registered = [];
+    for (const row of currentBindings()) {
+      const input2 = row.input;
+      if (input2?.type !== "key") {
+        if (row.def.id === "ask") input.extras?.setAskHotkey(null);
+        continue;
+      }
+      const accelerator = toElectronAccelerator(input2.accelerator);
+      if (row.def.id === "ask") input.extras?.setAskHotkey(accelerator);
+      else if (row.def.id === "hold" || row.def.id === "toggle") {
+        const field = row.def.id === "hold" ? "holdKey" : "toggleKey";
+        if (settings[field] !== input2.accelerator) {
+          save({ [field]: input2.accelerator });
+          configureDictation();
+        }
+      } else {
+        const handler = handlers[row.def.id];
+        // A chord another app already owns is skipped, not fatal; the tray still works.
+        if (handler !== undefined && Electron.globalShortcut.register(accelerator, handler)) {
+          registered.push(accelerator);
+        }
+      }
+    }
+  };
+  applyBindings();
   Electron.app.on("will-quit", () => {
-    for (const hotkey of VOICE_HOTKEYS) Electron.globalShortcut.unregister(hotkey.accelerator);
-    Electron.globalShortcut.unregister(DICTATION_TOGGLE_HOTKEY.accelerator);
+    for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     void audio?.stop();
     rewriter.dispose();
     sidecar?.dispose();
@@ -1315,6 +1598,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const after = JSON.stringify(settings);
     if (before === after) return;
     configureDictation();
+    applyBindings();
     void relisten();
   });
   setInterval(onDeviceChange, MIC_POLL_MS).unref();
