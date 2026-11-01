@@ -13,8 +13,9 @@ import type { BatonFocusTarget } from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
+  DICTATION_MODES,
+  MODE_LABELS,
   strictestCleanup,
-  modeMenu,
   type CleanupLevel,
   type DictationMode,
   type DictionaryEntry,
@@ -27,6 +28,7 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
 
@@ -227,6 +229,8 @@ export interface VoiceCoreHooks {
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
+  readonly controls: () => ReadonlyArray<HomeControl>;
+  readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
   readonly writtenOnly: () => boolean;
@@ -300,7 +304,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
   // A left click is what an icon invites, and without this it did nothing on Windows.
-  tray.on("click", input.openMainWindow);
+  tray.on("click", () => home.open());
   const modelsDir = NodePath.join(input.stateDir, "voice", "models");
   const binary = input.dictationBinary;
   let sidecar: DictationSidecar | null = null;
@@ -797,8 +801,250 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     render();
   };
 
+  const homeState = (): HomeState => ({
+    status: {
+      label: hudView(state).label,
+      tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
+      device: deviceName(),
+    },
+    controls: [
+      {
+        id: "v.enabled",
+        section: "Listening",
+        label: "Listen for my wake word",
+        hint:
+          binary === null
+            ? "Not available in this build."
+            : "Say the wake word and Baton starts listening.",
+        kind: "toggle",
+        on: settings.enabled,
+        disabled: binary === null,
+      },
+      {
+        id: "v.muted",
+        section: "Listening",
+        label: "Mute",
+        hint: `Shortcut ${VOICE_HOTKEYS[2]!.accelerator}`,
+        kind: "toggle",
+        on: loop?.isMuted() ?? false,
+        disabled: loop === null,
+      },
+      ...(input.extras?.controls() ?? []),
+      {
+        id: "v.mic",
+        section: "Listening",
+        label: "Microphone",
+        kind: "choice",
+        value: settings.pinnedLabel ?? "",
+        options: [
+          { value: "", label: "Automatic" },
+          ...realDevices(devices).map((d) => ({
+            value: d.label,
+            label: d.label || "Unnamed microphone",
+          })),
+        ],
+        more: true,
+      },
+      ...settings.wakeWords.map((wake) => ({
+        id: `v.wake:${wake.word}`,
+        section: "Listening",
+        label: `Wake word: ${wake.word}`,
+        kind: "toggle" as const,
+        on: wake.enabled,
+        more: true,
+      })),
+      {
+        id: "v.direct",
+        section: "Listening",
+        label: "Send words to the focused session",
+        hint: "What you say goes straight to the session you are working in.",
+        kind: "toggle",
+        on: state === "direct_session",
+        disabled: loop === null,
+        more: true,
+      },
+      {
+        id: "v.dictation",
+        section: "Dictation",
+        label: "Dictate with",
+        hint: `Hold ${settings.holdKey} to dictate into any app.`,
+        kind: "choice",
+        value: settings.dictation,
+        options: [
+          { value: "baton", label: "Baton" },
+          { value: "wispr", label: "Wispr Flow" },
+        ],
+        disabled: binary === null,
+      },
+      ...(settings.dictation === "baton" && parakeetPath === null && binary !== null
+        ? [
+            {
+              id: "v.download",
+              section: "Dictation",
+              label: "Speech model",
+              hint: `Needed once, ${Math.round(speechModel().size / 1e6)} MB.`,
+              kind: "action" as const,
+              button: modelJob === null ? "Download" : "Downloading…",
+              disabled: modelJob !== null,
+            },
+          ]
+        : []),
+      {
+        id: "v.cleanup",
+        section: "Dictation",
+        label: "Tidy what I said",
+        hint: "Fixes punctuation and filler words.",
+        kind: "choice",
+        value: settings.dictationCleanup,
+        options: [
+          { value: "claude", label: "Local, then Claude" },
+          { value: "local", label: "Local only" },
+          { value: "off", label: "Off" },
+        ],
+        more: true,
+      },
+      {
+        id: "v.appMode",
+        section: "Dictation",
+        label: `Writing style in ${focusedApp.exe || "the last app you dictated into"}`,
+        hint: "Chat, email or code: how your words are laid out.",
+        kind: "choice",
+        value: settings.appModes[focusedApp.exe.toLowerCase()] ?? "",
+        options: [
+          { value: "", label: "Automatic" },
+          ...DICTATION_MODES.map((m) => ({ value: m, label: MODE_LABELS[m] })),
+        ],
+        disabled: focusedApp.exe.length === 0,
+        more: true,
+      },
+      {
+        id: "v.speechModel",
+        section: "Dictation",
+        label: "Speech model",
+        kind: "choice",
+        value: settings.speechModel,
+        options: [
+          { value: "v3", label: "Most languages, slower" },
+          { value: "fast", label: "English, 3x quicker" },
+        ],
+        more: true,
+      },
+      {
+        id: "v.copyLast",
+        section: "Dictation",
+        label: "Last dictation",
+        kind: "action",
+        button: "Copy",
+        disabled: lastDictation === null,
+        more: true,
+      },
+      {
+        id: "v.sounds",
+        section: "On screen",
+        label: "Sounds",
+        hint: "A soft tone when Baton wakes and when it finishes.",
+        kind: "toggle",
+        on: settings.sounds,
+      },
+      {
+        id: "v.pillRest",
+        section: "On screen",
+        label: "Small mark at rest",
+        hint: "Off, nothing shows until Baton is doing something.",
+        kind: "toggle",
+        on: settings.pillAtRest,
+      },
+      {
+        id: "v.pillEdge",
+        section: "On screen",
+        label: "Where the pill sits",
+        kind: "choice",
+        value: settings.pillEdge,
+        options: [
+          { value: "bottom", label: "Above the taskbar" },
+          { value: "top", label: "At the top" },
+        ],
+        more: true,
+      },
+      {
+        id: "v.login",
+        section: "On screen",
+        label: "Start Baton when I sign in",
+        kind: "toggle",
+        on: settings.openAtLogin,
+        more: true,
+      },
+      {
+        id: "v.file",
+        section: "On screen",
+        label: "Voice settings file",
+        hint: "For anything not listed here.",
+        kind: "action",
+        button: "Open",
+        more: true,
+      },
+    ],
+  });
+
+  const applyHome = (id: string, value: string | boolean | null) => {
+    const on = value === true;
+    if (id.startsWith("s.")) input.extras?.applySetting(id, value);
+    else if (id === "v.enabled") {
+      save({ enabled: on });
+      void (on ? start().catch(failed) : stop());
+    } else if (id === "v.muted") {
+      if ((loop?.isMuted() ?? false) !== on) toggleMute();
+    } else if (id === "v.direct") {
+      if ((state === "direct_session") !== on) loop?.activate("toggle_direct_session");
+    } else if (id === "v.mic") {
+      save({ pinnedLabel: typeof value === "string" && value !== "" ? value : null });
+      void restart();
+    } else if (id.startsWith("v.wake:")) {
+      const word = id.slice("v.wake:".length);
+      save({
+        wakeWords: settings.wakeWords.map((w) => (w.word === word ? { ...w, enabled: on } : w)),
+      });
+      void relisten();
+    } else if (id === "v.dictation" && (value === "baton" || value === "wispr"))
+      setDictation(value);
+    else if (id === "v.download") requestDictation();
+    else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
+      save({ dictationCleanupChosen: true, dictationCleanup: value });
+    } else if (id === "v.speechModel" && (value === "v3" || value === "fast"))
+      setSpeechModel(value);
+    else if (id === "v.appMode" && typeof value === "string" && focusedApp.exe.length > 0) {
+      const exe = focusedApp.exe.toLowerCase();
+      const { [exe]: _old, ...others } = settings.appModes;
+      save({
+        appModes: value === "" ? others : { ...others, [exe]: value as DictationMode },
+      });
+    } else if (id === "v.copyLast") {
+      if (lastDictation !== null) void Electron.clipboard.writeText(lastDictation);
+    } else if (id === "v.sounds") save({ sounds: on });
+    else if (id === "v.pillRest") {
+      save({ pillAtRest: on });
+      pill.setRest(on);
+    } else if (id === "v.pillEdge" && (value === "top" || value === "bottom")) {
+      save({ pillEdge: value });
+      pill.setEdge(value);
+    } else if (id === "v.login") {
+      save({ openAtLogin: on });
+      Electron.app.setLoginItemSettings({ openAtLogin: on });
+    } else if (id === "v.file") {
+      save({});
+      void Electron.shell.openPath(settingsPath);
+    }
+    rebuildMenu();
+  };
+
+  const home = createBatonHome({
+    state: homeState,
+    apply: applyHome,
+    openSessions: input.openMainWindow,
+  });
+
   const rebuildMenu = () => {
-    const pinned = choice.kind === "pinned" ? choice.device.label : null;
+    home.refresh();
     tray.setContextMenu(
       Electron.Menu.buildFromTemplate([
         { label: `Baton: ${hudView(state).label}`, enabled: false },
@@ -823,182 +1069,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           click: () => toggleMute(),
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
-        {
-          label: "Wake words",
-          submenu: settings.wakeWords.map((wake) => ({
-            label: wake.word,
-            type: "checkbox" as const,
-            checked: wake.enabled,
-            click: (item: Electron.MenuItem) => {
-              save({
-                wakeWords: settings.wakeWords.map((other) =>
-                  other.word === wake.word ? { ...other, enabled: item.checked } : other,
-                ),
-              });
-              void relisten();
-            },
-          })),
-        },
-        {
-          label: "Dictation",
-          enabled: binary !== null,
-          submenu: [
-            {
-              label: `Baton (${settings.holdKey})`,
-              type: "radio",
-              checked: settings.dictation === "baton",
-              click: () => setDictation("baton"),
-            },
-            {
-              label: "Wispr Flow",
-              type: "radio",
-              checked: settings.dictation === "wispr",
-              click: () => setDictation("wispr"),
-            },
-            ...(settings.dictation === "baton" && parakeetPath === null
-              ? [
-                  {
-                    label: `Download speech model (${Math.round(speechModel().size / 1e6)} MB)`,
-                    enabled: modelJob === null,
-                    click: requestDictation,
-                  },
-                ]
-              : []),
-            {
-              label: "Cancel recording",
-              enabled: releaseRecordingEscape !== null,
-              click: () => sidecar?.cancel(),
-            },
-            {
-              label: "Copy last dictation",
-              enabled: lastDictation !== null,
-              click: () => {
-                if (lastDictation !== null) void Electron.clipboard.writeText(lastDictation);
-              },
-            },
-            { type: "separator" },
-            {
-              label: "Clean-up",
-              submenu: (
-                [
-                  ["claude", "Local, then Claude when needed"],
-                  ["local", "Local only"],
-                  ["off", "Off, exactly as heard"],
-                ] as const
-              ).map(([level, label]) => ({
-                label,
-                type: "radio" as const,
-                checked: settings.dictationCleanup === level,
-                click: () => save({ dictationCleanupChosen: true, dictationCleanup: level }),
-              })),
-            },
-            {
-              label: `Writing mode for ${focusedApp.exe || "this app"}`,
-              enabled: focusedApp.exe.length > 0,
-              submenu: modeMenu({
-                exe: focusedApp.exe,
-                chosen: settings.appModes,
-                choose: (exe, mode) => {
-                  const { [exe]: _old, ...others } = settings.appModes;
-                  save({ appModes: mode === null ? others : { ...others, [exe]: mode } });
-                },
-              }),
-            },
-            { type: "separator" },
-            {
-              label: "Parakeet v3 (most languages, slower)",
-              type: "radio",
-              checked: settings.speechModel === "v3",
-              click: () => setSpeechModel("v3"),
-            },
-            {
-              label: "Parakeet Fast (English, 3x quicker)",
-              type: "radio",
-              checked: settings.speechModel === "fast",
-              click: () => setSpeechModel("fast"),
-            },
-          ],
-        },
-        {
-          label: "Sounds",
-          type: "checkbox",
-          checked: settings.sounds,
-          click: (item) => save({ sounds: item.checked }),
-        },
-        {
-          label: "Pill",
-          submenu: [
-            {
-              label: "Show a small mark at rest",
-              type: "checkbox",
-              checked: settings.pillAtRest,
-              click: (item) => {
-                save({ pillAtRest: item.checked });
-                pill.setRest(item.checked);
-              },
-            },
-            { type: "separator" },
-            ...(["bottom", "top"] as const).map((edge) => ({
-              label: edge === "bottom" ? "Above the taskbar" : "At the top",
-              type: "radio" as const,
-              checked: settings.pillEdge === edge,
-              click: () => {
-                save({ pillEdge: edge });
-                pill.setEdge(edge);
-              },
-            })),
-          ],
-        },
-        {
-          label: "Edit voice settings…",
-          click: () => {
-            save({});
-            void Electron.shell.openPath(settingsPath);
-          },
-        },
-        {
-          label: "Direct to focused session",
-          type: "checkbox",
-          checked: state === "direct_session",
-          enabled: loop !== null,
-          click: () => loop?.activate("toggle_direct_session"),
-        },
-        {
-          label: "Microphone",
-          submenu: [
-            {
-              label: "Automatic",
-              type: "radio",
-              checked: settings.pinnedLabel === null,
-              click: () => {
-                save({ pinnedLabel: null });
-                void restart();
-              },
-            },
-            ...realDevices(devices).map((device) => ({
-              label: device.label || "Unnamed microphone",
-              type: "radio" as const,
-              checked: pinned === device.label,
-              click: () => {
-                save({ pinnedLabel: device.label });
-                void restart();
-              },
-            })),
-          ],
-        },
-        {
-          label: "Start Baton when I sign in",
-          type: "checkbox",
-          checked: settings.openAtLogin,
-          click: (item) => {
-            save({ openAtLogin: item.checked });
-            Electron.app.setLoginItemSettings({ openAtLogin: item.checked });
-          },
-        },
         { type: "separator" },
         ...(input.extras?.menuItems() ?? []),
         ...(input.extras ? [{ type: "separator" as const }] : []),
-        { label: "Open Baton", click: input.openMainWindow },
+        { label: "Open Baton", click: () => home.open() },
         { label: "Quit", click: () => Electron.app.quit() },
       ]),
     );
