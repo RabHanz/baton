@@ -46,6 +46,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
@@ -72,6 +73,7 @@ export type BatonServices =
   | AdoptedSessionService
   | BatonEngine
   | BatonJobService
+  | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
