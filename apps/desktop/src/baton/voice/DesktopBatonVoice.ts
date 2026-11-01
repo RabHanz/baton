@@ -153,6 +153,12 @@ import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
 import { describeWatch } from "@t3tools/baton-shared/watch";
+import {
+  freshFindings,
+  inQuietHours,
+  morningBrief,
+  noticeLine,
+} from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -200,6 +206,13 @@ interface VoiceSettings {
   readonly keepCapGb: number;
   /** A small mark while idle; nothing on screen otherwise. */
   readonly pillAtRest: boolean;
+  /** A line when something first needs him: Off, a card only, or said aloud as well. */
+  readonly noticeMode: "off" | "written" | "spoken";
+  /** "22-8" is silent from 22:00 to 08:00; "none" is never silent. */
+  readonly quietHours: string;
+  readonly briefMode: "off" | "written" | "spoken";
+  /** The day (local) the morning brief was last given, so it comes once. */
+  readonly briefDay: string | null;
   readonly pillEdge: "bottom" | "top";
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
@@ -242,6 +255,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   keepDays: 30,
   keepCapGb: 2,
   pillAtRest: false,
+  noticeMode: "written",
+  quietHours: "22-8",
+  briefMode: "written",
+  briefDay: null,
   pillEdge: "bottom",
   dictation: "baton",
   speechModel: "v3",
@@ -295,6 +312,8 @@ const KEPT_TEXT_MS = 20_000;
 const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
+const ATTENTION_MS = 5 * 60_000;
+const BRIEF_HOUR = 8;
 /** Baton's own green: the sidebar's mark, whatever state the dot is in. */
 const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
@@ -338,6 +357,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
+  /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
+  readonly announce: (text: string, speak: boolean) => void;
   readonly writtenOnly: () => boolean;
   readonly ask: (input: {
     readonly title: string;
@@ -1020,6 +1041,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             .join("\n");
     },
     jobs: async (op, args) => {
+      if (op === "brief") {
+        const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+          jobs?: ReadonlyArray<BatonJob>;
+        } | null;
+        return morningBrief({
+          jobs: jobs?.jobs ?? [],
+          findings: await watchFindings(),
+          now: Date.now(),
+        });
+      }
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
         findings?: ReadonlyArray<WatchFinding>;
@@ -1662,6 +1693,43 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (jobsCache !== null) void refreshJobs().catch(() => undefined);
   }, JOBS_REFRESH_MS).unref();
 
+  // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
+  let announced: ReadonlySet<string> = new Set();
+  const watchFindings = async () =>
+    (
+      (await requestKept({ kind: "job", op: "watch", args: {} })) as {
+        findings?: ReadonlyArray<WatchFinding>;
+      } | null
+    )?.findings ?? [];
+  const checkAttention = async () => {
+    if (mainContents === null || mainContents.isDestroyed()) return;
+    const at = new Date();
+    if (inQuietHours(settings.quietHours, at.getHours())) return;
+    const found = await watchFindings();
+    if (settings.noticeMode !== "off") {
+      const { fresh, next } = freshFindings(found, announced);
+      announced = next;
+      const line = noticeLine(fresh);
+      if (line !== null) input.extras?.announce(line, settings.noticeMode === "spoken");
+    }
+    const today = `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`;
+    if (
+      settings.briefMode !== "off" &&
+      at.getHours() >= BRIEF_HOUR &&
+      settings.briefDay !== today
+    ) {
+      const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+        jobs?: ReadonlyArray<BatonJob>;
+      } | null;
+      save({ briefDay: today });
+      input.extras?.announce(
+        morningBrief({ jobs: jobs?.jobs ?? [], findings: found, now: Date.now() }),
+        settings.briefMode === "spoken",
+      );
+    }
+  };
+  setInterval(() => void checkAttention().catch(() => undefined), ATTENTION_MS).unref();
+
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
   const tailOf = (file: string): string => {
@@ -2139,6 +2207,45 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.pillAtRest,
       },
       {
+        id: "v.notice",
+        section: "Notices",
+        label: "Tell me when something needs me",
+        hint: "A failed, stalled or waiting session, once. It says it aloud only if you choose that, and never in quiet hours. Starts once T3's window has opened.",
+        kind: "choice",
+        value: settings.noticeMode,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "written", label: "A card" },
+          { value: "spoken", label: "A card and one spoken line" },
+        ],
+      },
+      {
+        id: "v.quiet",
+        section: "Notices",
+        label: "Quiet hours",
+        kind: "choice",
+        value: settings.quietHours,
+        options: [
+          { value: "none", label: "None" },
+          { value: "22-8", label: "10 pm to 8 am" },
+          { value: "23-7", label: "11 pm to 7 am" },
+          { value: "0-9", label: "Midnight to 9 am" },
+        ],
+      },
+      {
+        id: "v.brief",
+        section: "Notices",
+        label: "Morning brief",
+        hint: "What finished, failed or waits, once a day from 8 am. Ask for it any time with 'what happened overnight'.",
+        kind: "choice",
+        value: settings.briefMode,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "written", label: "A card" },
+          { value: "spoken", label: "Spoken" },
+        ],
+      },
+      {
         id: "v.pillEdge",
         section: "On screen",
         label: "Where the pill sits",
@@ -2381,7 +2488,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
-    else if (id === "v.pillRest") {
+    else if (id === "v.notice" && (value === "off" || value === "written" || value === "spoken")) {
+      save({ noticeMode: value });
+    } else if (id === "v.brief" && (value === "off" || value === "written" || value === "spoken")) {
+      save({ briefMode: value });
+    } else if (
+      id === "v.quiet" &&
+      typeof value === "string" &&
+      /^(none|\d{1,2}-\d{1,2})$/.test(value)
+    ) {
+      save({ quietHours: value });
+    } else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);
     } else if (id === "v.pillEdge" && (value === "top" || value === "bottom")) {

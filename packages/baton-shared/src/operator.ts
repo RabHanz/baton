@@ -88,6 +88,7 @@ const BATON_QUIET = new Set([
   "ui_tree",
   "jobs_list",
   "watch_report",
+  "morning_brief",
   "job_revoke",
   "job_stop",
 ]);
