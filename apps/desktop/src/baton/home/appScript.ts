@@ -46,6 +46,17 @@ const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Se
 function control(c) {
   if (c.kind === 'toggle') { const b = $('button', 'sw'); b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', String(c.on)); b.setAttribute('aria-label', c.label); b.onclick = () => set(c.id, !c.on); return b; }
   if (c.kind === 'choice') {
+    if (c.id === 's.voice') {
+      const list = $('div', 'voices');
+      for (const o of c.options) {
+        const r = $('div', 'voice' + (o.value === c.value ? ' on' : ''));
+        const pick = $('button', 'pickv', o.label); pick.setAttribute('role', 'radio'); pick.setAttribute('aria-checked', String(o.value === c.value)); pick.onclick = () => set(c.id, o.value);
+        r.appendChild(pick);
+        if (o.value !== 'system') { const pl = $('button', 'btn quiet', 'Play'); pl.setAttribute('aria-label', 'Play ' + o.label); pl.onclick = () => set('v.audition', o.value); r.appendChild(pl); }
+        list.appendChild(r);
+      }
+      return list;
+    }
     if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
       const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
     }
