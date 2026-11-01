@@ -325,7 +325,7 @@ addEventListener('keydown', e => {
   e.preventDefault(); e.stopPropagation();
   if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) { capturing = null; capNote = ''; render(); return; }
   const a = accel(e); if (!a) return;
-  const bare = !/\+/.test(a);
+  const bare = !/\\+/.test(a);
   if (bare && !/^F\d+$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
   const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'key', accelerator: a }));
 }, true);
