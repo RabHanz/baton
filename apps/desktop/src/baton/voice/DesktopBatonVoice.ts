@@ -83,6 +83,7 @@ import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/baton-shared/dictationOneShot";
 import { readCaretContext } from "./caretContext.ts";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -129,6 +130,8 @@ interface VoiceSettings {
   readonly language: string | null;
   /** "claude" adds his own Claude for what code cannot settle; see dictationRewriter.ts. */
   readonly dictationCleanup: CleanupLevel;
+  /** "all_at_once": record the whole dictation, tidy it as one, insert once speech ends. */
+  readonly dictationArrival: "all_at_once" | "stream";
   /** He picked it himself; a value this branch saved for him does not count (D114). */
   readonly dictationCleanupChosen?: boolean;
   /** A family alias, on his subscription. */
@@ -166,6 +169,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   language: "en",
   // Local until the Director rules on D31: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
+  dictationArrival: "all_at_once",
   cleanupModel: "haiku",
   claudeBinary: "claude",
   appModes: {},
@@ -379,6 +383,62 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     lastInsert = { text: fitted, at: Date.now(), key };
     return fitted;
   };
+  // Spoken dictation, all at once: the chunks wait here, on disk too, until one clean paste.
+  const pendingFile = NodePath.join(input.stateDir, "voice", "dictation-pending.json");
+  let collected: Array<string> = [];
+  let collecting = false;
+  const savePending = () => {
+    try {
+      NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
+      if (collected.length === 0) NodeFS.rmSync(pendingFile, { force: true });
+      else NodeFS.writeFileSync(pendingFile, JSON.stringify(collected));
+    } catch {}
+  };
+  try {
+    const left = JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
+    if (left.length > 0) {
+      lastDictation = left.join(" ");
+      setTimeout(() => {
+        note = "A dictation was not inserted. Tray: Copy last dictation.";
+        render();
+      }, 0);
+    }
+  } catch {}
+  const flushDictation = async () => {
+    collecting = false;
+    const raw = collected.join(" ").trim();
+    if (raw.length === 0 || sidecar === null) {
+      collected = [];
+      return savePending();
+    }
+    pill.on({ type: "thinking" });
+    const app = await sidecar.foreground().catch(() => focusedApp);
+    const cleaned = await rewriter
+      .clean({
+        raw,
+        mode: chooseMode(app, settings.appModes),
+        level: await levelNow(app),
+      })
+      .catch(() => null);
+    const { text: whole, failed } = settleOneShot(raw, cleaned);
+    const fitted = await fitToCaret(whole, app);
+    lastDictation = fitted;
+    const pasted = await sidecar.paste(fitted).then(
+      () => true,
+      () => false,
+    );
+    if (pasted) {
+      collected = [];
+      savePending();
+      pill.on(
+        failed
+          ? { type: "trouble", message: CLEANUP_FAILED_LINE }
+          : { type: "done", label: "Pasted" },
+      );
+    } else {
+      keepText("Not pasted", fitted);
+    }
+  };
   const injection: typeof clipboardInjection = {
     ...clipboardInjection,
     // The sidecar pastes on every platform, where Electron alone cannot.
@@ -386,6 +446,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // Handy's paste keeps his clipboard; PowerShell's stays for when the sidecar is not there.
     insertText: async (request) => {
       if (sidecar === null) return clipboardInjection.insertText(request);
+      if (collecting) {
+        collected.push(request.text);
+        savePending();
+        return;
+      }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
       const app = await sidecar.foreground().catch(() => focusedApp);
       const { text } = await rewriter.clean({
@@ -704,10 +769,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
+      if (!wasDictating && settings.dictationArrival === "all_at_once") collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
-    if (wasDictating) pill.on({ type: "dictating", caption: null });
+    if (wasDictating) {
+      pill.on({ type: "dictating", caption: null });
+      // The last chunk is still on its way through the core: flush once everything has landed.
+      if (collecting) void core?.idle().then(flushDictation);
+    }
     if (next === "sleeping" || next === "direct_session") return { type: "window_closed" };
     if (next !== "command_window" && next !== "conversation") return null;
     pill.on({ type: "window_open" });
@@ -1037,6 +1107,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ]
         : []),
       {
+        id: "v.arrival",
+        section: "Dictation",
+        label: "How dictation arrives",
+        hint: "All at once writes it when you stop; as it goes writes each sentence.",
+        kind: "choice",
+        value: settings.dictationArrival,
+        options: [
+          { value: "all_at_once", label: "All at once" },
+          { value: "stream", label: "As it goes" },
+        ],
+      },
+      {
         id: "v.cleanup",
         section: "Dictation",
         label: "Tidy what I said",
@@ -1194,6 +1276,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       void relisten();
     } else if (id === "v.dictation" && (value === "baton" || value === "wispr"))
       setDictation(value);
+    else if (id === "v.arrival" && (value === "all_at_once" || value === "stream"))
+      save({ dictationArrival: value });
     else if (id === "v.download") requestDictation();
     else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
