@@ -182,7 +182,7 @@ function home(p) {
     const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
   }
   const st = $('div', 'stats'); const s2 = x.stats || {};
-  for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.words || 0, 'words dictated'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
+  for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.dictations || 0, 'dictations today'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
   right.appendChild($('div', 'day first', 'At a glance')); right.appendChild(st);
   const mic = find('v.mic'), vo = find('s.voice'), ou = find('s.output');
   right.appendChild($('div', 'day', 'Your voice'));
@@ -196,19 +196,50 @@ function home(p) {
   const go2 = $('button', 'btn quiet', 'Change voice settings'); go2.style.marginTop = '12px'; go2.onclick = () => go('voice'); right.appendChild(go2);
   sp.append(left, right); p.appendChild(sp);
 }
+let vfilter = 'all', forgetAsk = false, editing = null;
+function when(iso) { if (!iso) return ''; const d = new Date(iso); return dayLabel(iso) + ', ' + clock(iso); }
 function vocabulary(p) {
-  const v = (S.extra && S.extra.vocabulary) || [];
-  p.appendChild($('h2', null, 'Vocabulary'));
-  p.appendChild($('p', 'lede', 'Words Baton should spell your way. A name, a product, a term it keeps getting wrong.'));
+  const all = (S.extra && S.extra.vocabulary) || [];
+  const learned = all.filter(w => w.source === 'learned').length;
+  const head = $('div'); head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:30px';
+  head.appendChild($('h2', null, 'Vocabulary')); head.firstChild.style.margin = '0';
+  const seg = $('div', 'seg');
+  for (const [v, l] of [['all', 'All'], ['learned', 'Learned'], ['added', 'Added']]) { const b = $('button', null, l); b.setAttribute('aria-pressed', String(vfilter === v)); b.onclick = () => { vfilter = v; render(); }; seg.appendChild(b); }
+  head.appendChild(seg); p.appendChild(head);
+  p.appendChild($('p', 'lede', 'Words Baton should spell your way. It adds the ones you correct or use a lot, and you can add your own.')).style.marginTop = '6px';
   const g = $('div', 'group');
   const f = $('form', 'vocab'); const a = $('input'); a.type = 'text'; a.placeholder = 'Heard as'; a.id = 'in-d-a'; a.setAttribute('aria-label', 'Heard as'); a.value = drafts.get('d-a') || '';
   const b = $('input'); b.type = 'text'; b.placeholder = 'Write it as (optional)'; b.id = 'in-d-b'; b.setAttribute('aria-label', 'Write it as'); b.value = drafts.get('d-b') || '';
   a.oninput = () => drafts.set('d-a', a.value); b.oninput = () => drafts.set('d-b', b.value);
   f.onsubmit = e => { e.preventDefault(); const ph = a.value.trim(); if (!ph) return; drafts.delete('d-a'); drafts.delete('d-b'); set('d.add', JSON.stringify({ phrase: ph, replacement: b.value.trim() || null })); };
   f.append(a, b, $('button', 'btn primary', 'Add')); g.appendChild(f);
-  if (!v.length) { const e = $('div', 'row'); e.appendChild($('div', 'hint', 'No words yet.')); g.appendChild(e); }
-  for (const w of v) { const r = $('div', 'entry'); const x = $('button', 'x'); x.appendChild(icon('x', 14)); x.setAttribute('aria-label', 'Remove ' + w.phrase); x.onclick = () => set('d.remove', w.phrase); r.append($('div', null, w.phrase), $('div', 'arrow', '\\u2192'), $('div', 'hint', w.replacement === null ? 'same, with its capitals fixed' : w.replacement), x); g.appendChild(r); }
+  const v = all.filter(w => vfilter === 'all' || w.source === vfilter);
+  if (!v.length) { const e = $('div', 'row'); e.appendChild($('div', 'hint', all.length ? 'Nothing in this list.' : 'Words you correct or use a lot show up here. You can add your own too.')); g.appendChild(e); }
+  for (const w of v) {
+    const r = $('div', 'entry');
+    if (editing === w.phrase) {
+      const e1 = $('input'); e1.type = 'text'; e1.value = w.phrase; e1.setAttribute('aria-label', 'Heard as'); const e2 = $('input'); e2.type = 'text'; e2.value = w.replacement || ''; e2.placeholder = 'Write it as (optional)'; e2.setAttribute('aria-label', 'Write it as');
+      const ok = $('button', 'btn primary', 'Save'); ok.onclick = () => { editing = null; set('d.edit', JSON.stringify({ from: w.phrase, phrase: e1.value, replacement: e2.value })); };
+      const no = $('button', 'x'); no.appendChild(icon('x', 14)); no.setAttribute('aria-label', 'Cancel'); no.onclick = () => { editing = null; render(); };
+      const w2 = $('div', 'pair'); w2.append(ok, no); r.append(e1, $('div', 'arrow', '\u2192'), e2, w2); g.appendChild(r); continue;
+    }
+    const meta = $('div', 'hint'); meta.append($('span', 'badge ' + w.source, w.source === 'learned' ? 'Learned' : 'Added'));
+    if (w.count) meta.append(document.createTextNode(' used ' + w.count + (w.count === 1 ? ' time' : ' times')));
+    if (w.lastSeen) meta.append(document.createTextNode(' \u00b7 last ' + when(w.lastSeen)));
+    const l = $('div'); l.appendChild($('div', 'label', w.phrase)); l.appendChild(meta);
+    const rr = $('div', 'hint', w.replacement === null ? 'same, with its capitals fixed' : w.replacement);
+    const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { editing = w.phrase; render(); };
+    const x = $('button', 'x'); x.appendChild(icon('x', 14)); x.setAttribute('aria-label', 'Delete ' + w.phrase); x.onclick = () => set('d.remove', w.phrase);
+    const w3 = $('div', 'pair'); w3.append(ed, x);
+    r.append(l, $('div', 'arrow', '\u2192'), rr, w3); g.appendChild(r);
+  }
   p.appendChild(g);
+  if (learned) {
+    const row = $('div'); row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:12px';
+    if (!forgetAsk) { const fb = $('button', 'btn', 'Forget all learned'); fb.onclick = () => { forgetAsk = true; render(); }; row.appendChild(fb); }
+    else { row.appendChild($('span', 'hint', 'Forget ' + learned + ' learned ' + (learned === 1 ? 'word' : 'words') + '? Words you added stay.')); const yes = $('button', 'btn primary', 'Forget'); yes.onclick = () => { forgetAsk = false; set('d.forget', null); }; const no = $('button', 'btn', 'Keep them'); no.onclick = () => { forgetAsk = false; render(); }; row.append(yes, no); }
+    p.appendChild(row);
+  }
 }
 function keys(p, which) {
   const list = ((S.extra && S.extra.hotkeys) || []).filter(k => !which || which.includes(k.tab));
@@ -219,6 +250,7 @@ function keys(p, which) {
   const note = $('p', 'hint', 'Fixed for now.'); note.style.marginTop = '8px'; p.appendChild(g); p.appendChild(note); return;
   p.appendChild(g);
 }
+function resetsIn(iso) { const ms = Date.parse(iso) - Date.now(); if (!(ms > 0)) return 'now'; const h = ms / 3600000; return h < 1 ? 'in under an hour' : h < 48 ? 'in ' + Math.round(h) + ' h' : 'in ' + Math.round(h / 24) + ' d'; }
 function usage(p) {
   const rows = (S.extra && S.extra.usage) || [];
   if (!rows.length) { p.appendChild($('div', 'empty', 'No accounts reported yet. They appear here once T3 has loaded your sessions.')); return; }
@@ -226,7 +258,7 @@ function usage(p) {
   for (const u of rows) {
     const r = $('div', 'row'); r.style.alignItems = 'flex-start'; const t = $('div', 'text'); t.style.flex = '1';
     t.appendChild($('div', 'label', u.account)); t.appendChild($('div', 'hint', u.box));
-    for (const w of u.windows) { const l = $('div', 'bar'); l.style.cssText = 'margin-top:10px'; const top = $('div', 'hint', w.label + ' \\u00b7 ' + (w.usedPercent === null ? 'Not applicable' : (100 - Math.round(w.usedPercent)) + '% left') + (w.resets ? ' \\u00b7 resets ' + w.resets : '')); const tr = $('div'); tr.style.cssText = 'height:6px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden'; const f = $('div'); f.style.cssText = 'height:100%;border-radius:3px;background:' + (w.usedPercent >= 90 ? 'var(--bad)' : w.usedPercent >= 70 ? 'var(--warn)' : 'var(--accent)') + ';width:' + Math.max(2, 100 - Math.round(w.usedPercent || 0)) + '%'; tr.appendChild(f); l.append(top); if (w.usedPercent !== null) l.append(tr); t.appendChild(l); }
+    for (const w of u.windows) { const l = $('div', 'bar'); l.style.cssText = 'margin-top:10px'; const top = $('div', 'hint', w.label + ' \\u00b7 ' + (w.usedPercent === null ? 'Not applicable' : (100 - Math.round(w.usedPercent)) + '% left') + (w.resetsAt ? ' \\u00b7 resets ' + resetsIn(w.resetsAt) : '')); const tr = $('div'); tr.style.cssText = 'height:6px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden'; const f = $('div'); f.style.cssText = 'height:100%;border-radius:3px;background:' + (w.usedPercent >= 90 ? 'var(--bad)' : w.usedPercent >= 70 ? 'var(--warn)' : 'var(--accent)') + ';width:' + Math.max(2, 100 - Math.round(w.usedPercent || 0)) + '%'; tr.appendChild(f); l.append(top); if (w.usedPercent !== null) l.append(tr); t.appendChild(l); }
     r.appendChild(t); g.appendChild(r);
   }
   p.appendChild(g);

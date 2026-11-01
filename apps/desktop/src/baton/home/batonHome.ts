@@ -99,7 +99,7 @@ export interface HomeExtra {
   readonly activity: ReadonlyArray<HomeActivity>;
   readonly stats: {
     readonly turns: number;
-    readonly words: number;
+    readonly dictations: number;
     readonly sessions: number;
     readonly needYou: number;
   };
@@ -119,7 +119,7 @@ export interface HomeExtra {
     readonly windows: ReadonlyArray<{
       readonly label: string;
       readonly usedPercent: number | null;
-      readonly resets: string | null;
+      readonly resetsAt: string | null;
     }>;
   }>;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;

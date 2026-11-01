@@ -504,7 +504,8 @@ export function LiveWorkEntryTimelineRow({
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
-  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
+  const thoughtLine =
+    row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
   return (

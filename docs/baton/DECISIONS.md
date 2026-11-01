@@ -3403,3 +3403,17 @@ and take the same paths as a click there: `onOpenThread`, and `herdrSend` for te
 renderer, the list fills in once T3's window has loaded its sessions view; until then the window says so and offers
 "Open sessions". A work session that is a T3 thread has no pane, so it has Open and no Send; replying there is T3's
 composer.
+
+## D140 — Baton's window v2: a sidebar of tabs
+
+The Director rejected the single-column settings page ("way too simple"). The window is now an app: a sidebar of Home,
+Sessions, Dictation, Assistant, Voice, Screen, Usage and Checks, a top bar with the state, and a Settings dialog (General,
+System, Keyboard, Account, Updates, About), 1100x740 by default, resizable, remembering its size (`baton-window.json`). The
+look follows the Wispr Flow app and the cream-window taste references: a warm ground, one raised panel, a serif for what
+is said to him, a deep green as the one accent, amber only for "needs you". Tabs are fixed by `home/tabs.ts`; the page
+(`appScript.ts`) draws whatever controls each tab gets, plus Home's history (from `voice-turns.ndjson`, never the words
+dictated), a Vocabulary editor on `dictionary.json` (word, spelling, Learned or Added, count, last used; filter; add, edit,
+delete; Forget all learned; reloads live), Usage (T3's own `usageLimits`, pushed by the sidebar when they change), the
+fixed hotkeys read-only, and paths, About and the lifecycle log. Choices show their value with a Change button; booleans
+stay switches. Speaking volume is a new setting applied in the player. The default microphone order is now empty (it was
+his own hardware). Quick actions (Wake now, Ask, Clear, Stop) and Quit use the same handlers the tray did.

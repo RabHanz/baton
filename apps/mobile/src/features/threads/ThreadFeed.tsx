@@ -1783,8 +1783,7 @@ function renderFeedEntry(
     const isUser = message.role === "user";
     const presentation = resolveUserMessagePresentation(message);
     const citedText = renderAssistantCitationsAsText(presentation.text);
-    const renderedText =
-      isUser || message.streaming ? citedText : appendMentionedMedia(citedText);
+    const renderedText = isUser || message.streaming ? citedText : appendMentionedMedia(citedText);
     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
     const timestampLabel = formatMessageTime(isUser ? message.createdAt : message.updatedAt);
     const attachments = message.attachments ?? [];

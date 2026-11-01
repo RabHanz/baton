@@ -13,17 +13,21 @@ const IDLE_CLOSE_MS = 30_000;
 const HEADER_BYTES = 256;
 
 const PLAYER_DOCUMENT = `<!doctype html><meta charset="utf-8"><script>
-let ctx=null,next=0,rate=24000,live=[],done=null;const LEAD=.12;
-window.open_=async(r)=>{ctx??=new AudioContext();if(ctx.state==='suspended')await ctx.resume();rate=r;next=ctx.currentTime+LEAD;live=[];done=null;};
+let ctx=null,gain=null,vol=1,next=0,rate=24000,live=[],done=null;const LEAD=.12;
+window.setVolume=(v)=>{vol=v;if(gain)gain.gain.value=v;};
+window.open_=async(r)=>{ctx??=new AudioContext();if(!gain){gain=ctx.createGain();gain.gain.value=vol;gain.connect(ctx.destination);}if(ctx.state==='suspended')await ctx.resume();rate=r;next=ctx.currentTime+LEAD;live=[];done=null;};
 window.push=(b64)=>{const bin=atob(b64),n=bin.length>>1,buf=ctx.createBuffer(1,n,rate),o=buf.getChannelData(0);
  for(let i=0;i<n;i++){const v=(bin.charCodeAt(i*2)|bin.charCodeAt(i*2+1)<<8)<<16>>16;o[i]=v/32768;}
- const s=ctx.createBufferSource();s.buffer=buf;s.connect(ctx.destination);if(next<ctx.currentTime+.02)next=ctx.currentTime+.02;
+ const s=ctx.createBufferSource();s.buffer=buf;s.connect(gain);if(next<ctx.currentTime+.02)next=ctx.currentTime+.02;
  s.start(next);const at=next;next+=buf.duration;live.push(s);s.onended=()=>{live=live.filter(x=>x!==s);if(!live.length&&done)done();};return Math.max(0,(at-ctx.currentTime)*1000);};
 window.finish=()=>new Promise(r=>{if(!live.length)return r();done=r;});
 window.halt=()=>{for(const s of live){try{s.onended=null;s.stop();}catch{}}live=[];done&&done();};
 </script>`;
 
-export const createVoicePlayer = (onLevel: (level: number) => void): VoicePlayer => {
+export const createVoicePlayer = (
+  onLevel: (level: number) => void,
+  volume: () => number = () => 1,
+): VoicePlayer => {
   let win: Electron.BrowserWindow | null = null;
   let ready: Promise<void> = Promise.resolve();
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -69,6 +73,7 @@ export const createVoicePlayer = (onLevel: (level: number) => void): VoicePlayer
             if (format === null && head.length < HEADER_BYTES) continue;
             if (format === null) return false;
             await run(`window.open_(${format.rate})`);
+            await run(`window.setVolume(${Math.min(1, Math.max(0.1, volume()))})`);
             opened = true;
             pcm = head.subarray(format.start);
           }

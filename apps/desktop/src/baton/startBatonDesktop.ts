@@ -191,7 +191,10 @@ export const startBatonDesktop = Effect.gen(function* () {
         const voice = screen?.voice() ?? "anna";
         return voice === "system" ? null : pocket.synthesise(voice);
       },
-      player: createVoicePlayer((level) => voice?.onSpeechLevel(level)),
+      player: createVoicePlayer(
+        (level) => voice?.onSpeechLevel(level),
+        () => screen?.volume() ?? 1,
+      ),
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
@@ -221,6 +224,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     voice = startDesktopBatonVoice({
       stateDir: environment.stateDir,
+      logDir: environment.logDir,
+      appVersion: environment.appVersion,
       platform: environment.platform,
       env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),

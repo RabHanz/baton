@@ -35,6 +35,7 @@ export function exposeBatonDesktopBridge(): void {
     },
     setBatonSessions: (sessions) =>
       ipcRenderer.send(Channels.BATON_SESSIONS_SNAPSHOT_CHANNEL, sessions),
+    setBatonUsage: (usage) => ipcRenderer.send(Channels.BATON_USAGE_CHANNEL, usage),
     onBatonSessionRequest: (handler) => {
       const listener = (_event: Electron.IpcRendererEvent, message: unknown) => {
         if (typeof message !== "object" || message === null) return;

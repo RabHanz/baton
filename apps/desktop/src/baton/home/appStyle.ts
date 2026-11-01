@@ -153,8 +153,10 @@ button.sname:hover{text-decoration:underline}
 
 .vocab{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
 .vocab input{flex:1}
-.entry{display:grid;grid-template-columns:1fr 24px 1fr auto;gap:10px;align-items:center;padding:10px 18px;border-top:1px solid var(--line)}
+.entry{display:grid;grid-template-columns:minmax(0,1.1fr) 24px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 18px;border-top:1px solid var(--line)}
 .entry .arrow{color:var(--faint);text-align:center}
+.badge{display:inline-block;font:600 11px var(--sans);border-radius:6px;padding:0 7px;margin-right:4px;border:1px solid var(--line-strong);color:var(--soft);background:var(--panel)}
+.badge.learned{border-color:#bcd4c9;background:var(--accent-wash);color:var(--accent-deep)}
 .x{border:0;background:transparent;color:var(--faint);width:28px;height:28px;border-radius:7px}
 .x:hover{background:var(--bad-wash);color:var(--bad)}
 kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-width:2px;background:var(--panel);border-radius:6px;padding:1px 7px;margin:0 2px}

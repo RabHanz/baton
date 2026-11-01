@@ -220,6 +220,18 @@ export interface BatonSessionSummary {
   readonly pane: { readonly environmentId: string; readonly pane: string } | null;
 }
 
+/** One account's limits as T3 reports them, for the Usage tab. */
+export interface BatonUsageSummary {
+  readonly account: string;
+  readonly box: string;
+  readonly windows: ReadonlyArray<{
+    readonly label: string;
+    /** null: this account reports no such window. */
+    readonly usedPercent: number | null;
+    readonly resetsAt: string | null;
+  }>;
+}
+
 export type BatonSessionRequest =
   | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
   | {
@@ -263,6 +275,8 @@ export interface BatonDesktopBridge {
   ) => () => void;
   /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
   readonly setBatonSessions?: (sessions: ReadonlyArray<BatonSessionSummary>) => void;
+  /** The accounts' limits, pushed when they change, for Baton's own window. */
+  readonly setBatonUsage?: (usage: ReadonlyArray<BatonUsageSummary>) => void;
   /** Open a thread or send to a session on behalf of Baton's window; the answer is the result. */
   readonly onBatonSessionRequest?: (
     handler: (
