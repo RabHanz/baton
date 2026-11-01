@@ -1,6 +1,6 @@
 # Hands loop on real apps: task results (issue #52)
 
-Run 2026-11-03 by the `Baton hands loop` workflow (`.github/workflows/baton-hands-loop.yml`, run 41357326774) on a
+Run 2026-11-03 by the `Baton hands loop` workflow (`.github/workflows/baton-hands-loop.yml`, run 41357657467) on a
 `windows-2022` GitHub runner: a real Windows Server 2022 desktop (1024x768, one interactive session) with Notepad,
 Calculator, File Explorer, Paint and Settings. The code under test is the code the assistant uses: the tool table
 (`batonTools.ts`: `ui_tree`, `click_element`, `wait_for`, `type_text`, `press_keys`, `drag`, `screen_capture`), the
@@ -26,160 +26,160 @@ input driver (`inputDriver.ts`, a real `SendInput` and clipboard paste), the rea
 
 | Task | Result | Steps | Seconds | Evidence or failure cause |
 | --- | --- | --- | --- | --- |
-| Type a sentence in Notepad and Save As to a named file, then read the file back | pass | 9 | 9.7 | fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.) |
-| Open Help > About Notepad by name and confirm the dialog | pass | 6 | 5.4 | the About Notepad dialog is the window with the keyboard |
-| Turn on Word Wrap from the Format menu and verify the saved setting | pass | 8 | 7.4 | fWrap went from "" to "1" |
-| Compute 12 x 34 in Calculator by clicking its buttons, and read the result | pass | 20 | 6.7 | the display reads: text: 408 |
-| Create a folder in File Explorer and rename it, then check the disk | pass | 13 | 12.3 | reports became reports-2026 on disk |
-| Draw a line in Paint and check, from screenshots, that the picture changed | pass | 4 | 7 | 152 sampled pixels changed after the stroke |
-| Click a menu that does not exist, then re-plan from the tree and open Edit | pass | 9 | 5.4 | the Edit menu opened (its items are listed) |
-| Refuse a third identical failing action, without clicking anything | pass | 7 | 5.2 | outcomes: no control, no control, stopped, stopped |
-| Close Notepad with unsaved text, wait for the save question, and answer Don't Save | pass | 8 | 8.2 | Notepad exited after the answer |
-| Type text, select all and copy in Notepad, and read the clipboard back | pass | 9 | 9.1 | the clipboard holds "alpha beta gamma" |
-| Read the window's controls and find the one with the keyboard | pass | 4 | 5.1 | focused line: edit: Text Editor (focused) |
-| Open Settings > About and read the Windows edition from the page | pass | 3 | 7.3 | read from the page: text: Edition |
+| Type a sentence in Notepad and Save As to a named file, then read the file back | pass | 9 | 8 | fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.) |
+| Open Help > About Notepad by name and confirm the dialog | pass | 6 | 4.6 | the About Notepad dialog is the window with the keyboard |
+| Turn on Word Wrap from the Format menu and verify the saved setting | pass | 8 | 6.5 | fWrap went from "" to "1" |
+| Compute 12 x 34 in Calculator by clicking its buttons, and read the result | pass | 20 | 5.3 | the display reads: text: 408 |
+| Create a folder in File Explorer and rename it, then check the disk | pass | 13 | 10.3 | reports became reports-2026 on disk |
+| Draw a line in Paint and check, from screenshots, that the picture changed | pass | 4 | 6 | 152 sampled pixels changed after the stroke |
+| Click a menu that does not exist, then re-plan from the tree and open Edit | pass | 9 | 4.7 | the Edit menu opened (its items are listed) |
+| Refuse a third identical failing action, without clicking anything | pass | 7 | 4.6 | outcomes: no control, no control, stopped, stopped |
+| Close Notepad with unsaved text, wait for the save question, and answer Don't Save | pass | 8 | 7.1 | Notepad exited after the answer |
+| Type text, select all and copy in Notepad, and read the clipboard back | pass | 9 | 7.8 | the clipboard holds "alpha beta gamma" |
+| Read the window's controls and find the one with the keyboard | pass | 4 | 4.5 | focused line: edit: Text Editor (focused) |
+| Open Settings > About and read the Windows edition name from the page | pass | 3 | 6.2 | read from the page: text: Windows Server 2022 Datacenter |
 
 ## Step logs
 
 ### notepad-save-as: pass
 
-- act: launch notepad.exe (pid 7604)
-- see: ui_tree {} -> Untitled - Notepad (250 ms)
-- act: type_text {"text":"The quick brown fox jumps over the lazy dog.","why":"the sentence"} -> Typed. (1439 ms)
-- act: press_keys {"keys":["ctrl","s"],"why":"save"} -> Pressed. (2 ms)
-- act: wait_for {"label":"File name","seconds":10} -> File name: is there. (1273 ms)
+- act: launch notepad.exe (pid 6912)
+- see: ui_tree {} -> Untitled - Notepad (166 ms)
+- act: type_text {"text":"The quick brown fox jumps over the lazy dog.","why":"the sentence"} -> Typed. (976 ms)
+- act: press_keys {"keys":["ctrl","s"],"why":"save"} -> Pressed. (1 ms)
+- act: wait_for {"label":"File name","seconds":10} -> File name: is there. (1010 ms)
 - check: ok: the Save As dialog showed up (waited for its File name box)
-- act: type_text {"text":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\hands-1793572215499\\fox.txt","why":"the file name"} -> Typed. (1135 ms)
-- act: press_keys {"keys":["enter"],"why":"confirm"} -> Pressed. (4 ms)
+- act: type_text {"text":"C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\hands-1793572429509\\fox.txt","why":"the file name"} -> Typed. (787 ms)
+- act: press_keys {"keys":["enter"],"why":"confirm"} -> Pressed. (2 ms)
 - check: ok: fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.)
 
 ### menu-by-name: pass
 
-- act: launch notepad.exe (pid 7536)
-- see: ui_tree {} -> Untitled - Notepad (67 ms)
-- act: click_element {"label":"Help","why":"open the menu"} -> Clicked Help. (90 ms)
-- act: click_element {"label":"About Notepad","why":"the menu item"} -> Clicked About Notepad. (94 ms)
-- see: ui_tree {} -> Untitled - Notepad (167 ms)
+- act: launch notepad.exe (pid 3044)
+- see: ui_tree {} -> Untitled - Notepad (42 ms)
+- act: click_element {"label":"Help","why":"open the menu"} -> Clicked Help. (52 ms)
+- act: click_element {"label":"About Notepad","why":"the menu item"} -> Clicked About Notepad. (48 ms)
+- see: ui_tree {} -> About Notepad (48 ms)
 - check: ok: the About Notepad dialog is the window with the keyboard
 
 ### notepad-word-wrap: pass
 
-- act: launch notepad.exe (pid 6072)
-- see: ui_tree {} -> Untitled - Notepad (67 ms)
-- act: click_element {"label":"Format","why":"open the menu"} -> Clicked Format. (74 ms)
-- see: ui_tree {} -> Untitled - Notepad (74 ms)
+- act: launch notepad.exe (pid 2472)
+- see: ui_tree {} -> Untitled - Notepad (42 ms)
+- act: click_element {"label":"Format","why":"open the menu"} -> Clicked Format. (52 ms)
+- see: ui_tree {} -> Untitled - Notepad (42 ms)
 - replan: looked at the menu: menu item: Word Wrap
-- act: click_element {"label":"Word Wrap","why":"the setting"} -> Clicked Word Wrap. (67 ms)
+- act: click_element {"label":"Word Wrap","why":"the setting"} -> Clicked Word Wrap. (52 ms)
 - act: press_keys {"keys":["alt","f4"],"why":"close so it saves its settings"} -> Pressed. (1 ms)
 - check: ok: fWrap went from "" to "1"
 
 ### calculator: pass
 
-- act: launch calc.exe (pid 6288)
-- see: ui_tree {} -> Calculator (155 ms)
-- act: click_element {"label":"One","why":"a calculator button"} FAILED No control is named "One" in the window with the keyboard. Take a screenshot and click by position. (121 ms)
+- act: launch calc.exe (pid 6856)
+- see: ui_tree {} -> Calculator (76 ms)
+- act: click_element {"label":"One","why":"a calculator button"} FAILED No control is named "One" in the window with the keyboard. Take a screenshot and click by position. (63 ms)
 - replan: no control called "One"; trying the next name
-- act: click_element {"label":"1","why":"a calculator button"} -> Clicked 1. (132 ms)
-- act: click_element {"label":"Two","why":"a calculator button"} FAILED No control is named "Two" in the window with the keyboard. Take a screenshot and click by position. (122 ms)
+- act: click_element {"label":"1","why":"a calculator button"} -> Clicked 1. (65 ms)
+- act: click_element {"label":"Two","why":"a calculator button"} FAILED No control is named "Two" in the window with the keyboard. Take a screenshot and click by position. (61 ms)
 - replan: no control called "Two"; trying the next name
-- act: click_element {"label":"2","why":"a calculator button"} -> Clicked 2. (128 ms)
-- act: click_element {"label":"Multiply by","why":"a calculator button"} FAILED No control is named "Multiply by" in the window with the keyboard. Take a screenshot and click by position. (129 ms)
+- act: click_element {"label":"2","why":"a calculator button"} -> Clicked 2. (65 ms)
+- act: click_element {"label":"Multiply by","why":"a calculator button"} FAILED No control is named "Multiply by" in the window with the keyboard. Take a screenshot and click by position. (61 ms)
 - replan: no control called "Multiply by"; trying the next name
-- act: click_element {"label":"Multiply","why":"a calculator button"} -> Clicked Multiply. (138 ms)
-- act: click_element {"label":"Three","why":"a calculator button"} FAILED No control is named "Three" in the window with the keyboard. Take a screenshot and click by position. (126 ms)
+- act: click_element {"label":"Multiply","why":"a calculator button"} -> Clicked Multiply. (64 ms)
+- act: click_element {"label":"Three","why":"a calculator button"} FAILED No control is named "Three" in the window with the keyboard. Take a screenshot and click by position. (63 ms)
 - replan: no control called "Three"; trying the next name
-- act: click_element {"label":"3","why":"a calculator button"} -> Clicked 3. (139 ms)
-- act: click_element {"label":"Four","why":"a calculator button"} FAILED No control is named "Four" in the window with the keyboard. Take a screenshot and click by position. (121 ms)
+- act: click_element {"label":"3","why":"a calculator button"} -> Clicked 3. (61 ms)
+- act: click_element {"label":"Four","why":"a calculator button"} FAILED No control is named "Four" in the window with the keyboard. Take a screenshot and click by position. (58 ms)
 - replan: no control called "Four"; trying the next name
-- act: click_element {"label":"4","why":"a calculator button"} -> Clicked 4. (130 ms)
-- act: click_element {"label":"Equals","why":"a calculator button"} -> Clicked Equals. (140 ms)
-- see: ui_tree {} -> Calculator (156 ms)
+- act: click_element {"label":"4","why":"a calculator button"} -> Clicked 4. (66 ms)
+- act: click_element {"label":"Equals","why":"a calculator button"} -> Clicked Equals. (63 ms)
+- see: ui_tree {} -> Calculator (73 ms)
 - check: ok: the display reads: text: 408
 
 ### explorer-folder: pass
 
-- act: launch explorer.exe (pid 4348)
-- see: ui_tree {} -> explore (285 ms)
-- see: ui_tree {} -> explore (266 ms)
+- act: launch explorer.exe (pid 6124)
+- see: ui_tree {} -> explore (146 ms)
+- see: ui_tree {} -> explore (130 ms)
 - replan: read the tree; it has button: New folder
-- act: click_element {"label":"New folder","why":"make the folder"} -> Clicked New folder. (216 ms)
-- act: type_text {"text":"reports","why":"the folder name"} -> Typed. (1204 ms)
-- act: press_keys {"keys":["enter"],"why":"name it"} -> Pressed. (1 ms)
+- act: click_element {"label":"New folder","why":"make the folder"} -> Clicked New folder. (99 ms)
+- act: type_text {"text":"reports","why":"the folder name"} -> Typed. (798 ms)
+- act: press_keys {"keys":["enter"],"why":"name it"} -> Pressed.
 - check: ok: the folder reports exists on disk
-- act: click_element {"label":"reports","why":"select the folder to rename"} -> Clicked reports. (220 ms)
-- act: press_keys {"keys":["f2"],"why":"rename the selected folder"} -> Pressed. (1 ms)
-- act: type_text {"text":"reports-2026","why":"the new name"} -> Typed. (1188 ms)
+- act: click_element {"label":"reports","why":"select the folder to rename"} -> Clicked reports. (110 ms)
+- act: press_keys {"keys":["f2"],"why":"rename the selected folder"} -> Pressed.
+- act: type_text {"text":"reports-2026","why":"the new name"} -> Typed. (782 ms)
 - act: press_keys {"keys":["enter"],"why":"rename"} -> Pressed. (1 ms)
 - check: ok: reports became reports-2026 on disk
 
 ### paint-draw: pass
 
-- act: launch mspaint.exe (pid 5456)
-- see: ui_tree {} -> Untitled - Paint (221 ms)
-- act: drag {"x":400,"y":380,"to_x":620,"to_y":460,"why":"draw a line"} -> Dragged. (164 ms)
+- act: launch mspaint.exe (pid 7384)
+- see: ui_tree {} -> Untitled - Paint (112 ms)
+- act: drag {"x":400,"y":380,"to_x":620,"to_y":460,"why":"draw a line"} -> Dragged. (165 ms)
 - check: ok: 152 sampled pixels changed after the stroke
 
 ### replan-after-wrong-name: pass
 
-- act: launch notepad.exe (pid 5560)
-- see: ui_tree {} -> Untitled - Notepad (67 ms)
-- act: click_element {"label":"Modify","why":"guess at the menu"} FAILED No control is named "Modify" in the window with the keyboard. Take a screenshot and click by position. (61 ms)
+- act: launch notepad.exe (pid 7088)
+- see: ui_tree {} -> Untitled - Notepad (42 ms)
+- act: click_element {"label":"Modify","why":"guess at the menu"} FAILED No control is named "Modify" in the window with the keyboard. Take a screenshot and click by position. (36 ms)
 - check: ok: the wrong name was refused rather than clicked
-- see: ui_tree {} -> Untitled - Notepad (68 ms)
+- see: ui_tree {} -> Untitled - Notepad (36 ms)
 - replan: read the tree; the menu is called menu item: Edit
-- act: click_element {"label":"Edit","why":"the real menu"} -> Clicked Edit. (70 ms)
-- see: ui_tree {} -> Untitled - Notepad (89 ms)
+- act: click_element {"label":"Edit","why":"the real menu"} -> Clicked Edit. (42 ms)
+- see: ui_tree {} -> Untitled - Notepad (47 ms)
 - check: ok: the Edit menu opened (its items are listed)
 
 ### stop-after-two-failures: pass
 
-- act: launch notepad.exe (pid 528)
-- see: ui_tree {} -> Untitled - Notepad (70 ms)
-- act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED No control is named "Frobnicate" in the window with the keyboard. Take a screenshot and click by position. (58 ms)
-- act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED No control is named "Frobnicate" in the window with the keyboard. Take a screenshot and click by position. (61 ms)
-- act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED Stopped: click_element has failed 2 times in a row with these same arguments. Do not try it again. Tell him what blocked
+- act: launch notepad.exe (pid 8088)
+- see: ui_tree {} -> Untitled - Notepad (42 ms)
+- act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED No control is named "Frobnicate" in the window with the keyboard. Take a screenshot and click by position. (35 ms)
+- act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED No control is named "Frobnicate" in the window with the keyboard. Take a screenshot and click by position. (33 ms)
+- act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED Stopped: click_element has failed 2 times in a row with these same arguments. Do not try it again. Tell him what blocked (1 ms)
 - act: click_element {"label":"Frobnicate","why":"a control that is not there"} FAILED Stopped: click_element has failed 2 times in a row with these same arguments. Do not try it again. Tell him what blocked
 - check: ok: outcomes: no control, no control, stopped, stopped
 
 ### late-dialog: pass
 
-- act: launch notepad.exe (pid 6232)
-- see: ui_tree {} -> Untitled - Notepad (68 ms)
-- act: type_text {"text":"unsaved words","why":"something to lose"} -> Typed. (1167 ms)
+- act: launch notepad.exe (pid 3668)
+- see: ui_tree {} -> Untitled - Notepad (40 ms)
+- act: type_text {"text":"unsaved words","why":"something to lose"} -> Typed. (774 ms)
 - act: press_keys {"keys":["alt","f4"],"why":"close it"} -> Pressed. (1 ms)
-- act: wait_for {"label":"Don't Save","seconds":10} -> Don't Save is there. (124 ms)
+- act: wait_for {"label":"Don't Save","seconds":10} -> Don't Save is there. (84 ms)
 - check: ok: the save question appeared and was found by its button's name
-- act: click_element {"label":"Don't Save","why":"discard"} -> Clicked Don't Save. (95 ms)
+- act: click_element {"label":"Don't Save","why":"discard"} -> Clicked Don't Save. (72 ms)
 - check: ok: Notepad exited after the answer
 
 ### clipboard-readback: pass
 
-- act: launch notepad.exe (pid 6004)
-- see: ui_tree {} -> Untitled - Notepad (71 ms)
-- act: type_text {"text":"alpha beta gamma","why":"the text"} -> Typed. (1149 ms)
-- act: press_keys {"keys":["ctrl","a"],"why":"select all"} -> Pressed. (1 ms)
-- act: press_keys {"keys":["ctrl","c"],"why":"copy"} -> Pressed.
+- act: launch notepad.exe (pid 2868)
+- see: ui_tree {} -> Untitled - Notepad (41 ms)
+- act: type_text {"text":"alpha beta gamma","why":"the text"} -> Typed. (757 ms)
+- act: press_keys {"keys":["ctrl","a"],"why":"select all"} -> Pressed.
+- act: press_keys {"keys":["ctrl","c"],"why":"copy"} -> Pressed. (1 ms)
 - replan: the clipboard reads "" after Ctrl+C; copying from the Edit menu instead
-- act: click_element {"label":"Edit","why":"open the menu"} -> Clicked Edit. (75 ms)
-- act: click_element {"label":"Copy","why":"copy the selection"} -> Clicked Copy	Ctrl+C. (79 ms)
+- act: click_element {"label":"Edit","why":"open the menu"} -> Clicked Edit. (49 ms)
+- act: click_element {"label":"Copy","why":"copy the selection"} -> Clicked Copy	Ctrl+C. (47 ms)
 - check: ok: the clipboard holds "alpha beta gamma"
 
 ### tree-shows-focus: pass
 
-- act: launch notepad.exe (pid 2348)
-- see: ui_tree {} -> Untitled - Notepad (67 ms)
-- see: ui_tree {} -> Untitled - Notepad (66 ms)
+- act: launch notepad.exe (pid 2904)
+- see: ui_tree {} -> Untitled - Notepad (41 ms)
+- see: ui_tree {} -> Untitled - Notepad (44 ms)
 - check: ok: focused line: edit: Text Editor (focused)
 
 ### settings-read: pass
 
 - act: start ms-settings:about
-- see: ui_tree {} -> Settings (387 ms)
-- check: ok: read from the page: text: Edition
+- see: ui_tree {} -> Settings (233 ms)
+- check: ok: read from the page: text: Windows Server 2022 Datacenter
 
 ## What the runs found, and what was fixed
 
-The set did not pass first time. Five runs, each a real fix:
+The set did not pass first time. Eight runs to get here, each a real fix:
 
 1. **The harness itself** (not the tools): TypeScript parameter properties are not valid under Node's type
    stripping; an empty clipboard could not be written back (`Set-Clipboard` refuses null), which killed the run.
@@ -192,8 +192,7 @@ The set did not pass first time. Five runs, each a real fix:
    This is the loop working as designed (read the tree, take the route it names).
 4. **A copy shortcut that did not copy.** `press_keys ["ctrl","c"]` returned "Pressed" but the clipboard was
    unchanged in Notepad (Ctrl+A and Ctrl+V through the same driver work). The scripted loop read the clipboard back,
-   saw the mismatch, and copied from the Edit menu by name, which worked. Cause not found; observed on the first two
-   runs and again in the last. Worth testing on the laptop: a copy by keystroke should never be trusted without
+   saw the mismatch, and copied from the Edit menu by name, which worked. Cause not found; observed in every run that reached it. Worth testing on the laptop: a copy by keystroke should never be trusted without
    reading the result back, which is what the prompt already asks the assistant to do.
 5. **The stop rule was only in the prompt.** Task 8 needed the third identical failing action to be refused; that
    was a model's good behaviour, not code. `failureGuard.ts` now enforces it in the tool server (two failures in a
