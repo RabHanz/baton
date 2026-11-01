@@ -3480,3 +3480,13 @@ and goes into both as `refusal {kind, reason, said}`: a guard, a declined screen
 a shell, a screen that changed. A drive logs its plan (`drive_plan`) and what came of it (`drive_outcome`), and errors are
 logged. The router reads its recent lines from the store, full replies cut only at 600 characters. A dictation is a stub
 with its length. `scripts/baton/latency-report.mjs <voice-turns.ndjson>` prints p50, p90 and the slowest turns.
+
+**D143 push 2.** `agent/batonMcp.ts` serves Baton's tools over MCP on 127.0.0.1, a random port, with the session's token on
+every request; a request without it, with the wrong host, or from a browser (an Origin header) is refused, and `close()`
+ends it. `agent/agentGate.ts` runs `judgeToolCall` inside every tool handler, with a spoken or clicked yes (high risk: no
+by default), and marks the turn tainted after a screenshot, a file read, a command, a fetch or a search. `agent/batonTools.ts`
+is the tool table with each argument checked before the host is touched. `judgeToolCall` knows the new tools: reading is
+allowed, `type_text` is routine unless the text is high risk, the window is a command line, or the turn read something and
+the text did not come from the conversation (`textIsFromConversation`); Enter, drag and a sensitive click ask. Tests: no
+token, wrong token and a browser are refused; a high-risk call without a yes never runs; plain typing runs with no question;
+after a screenshot other text asks and his own words do not.
