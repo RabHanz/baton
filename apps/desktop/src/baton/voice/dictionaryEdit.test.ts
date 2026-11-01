@@ -34,7 +34,7 @@ describe("the vocabulary", () => {
     ]);
     expect(editEntry(list, "missing", { phrase: "x", replacement: null })).toBe(list);
   });
-  it("forgets what Baton learned and keeps what he added", () => {
+  it("forgets what Tessaya learned and keeps what he added", () => {
     const list = [
       { phrase: "a", replacement: null, source: "learned" as const },
       { phrase: "b", replacement: "B", source: "added" as const },

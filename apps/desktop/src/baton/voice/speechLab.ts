@@ -12,7 +12,7 @@ import * as Electron from "electron";
 
 import { createPocketEngine, type PocketVoice } from "./pocketVoice.ts";
 import { createVoicePlayer } from "./voicePlayer.ts";
-import { createSpeaker, type VoicePlayer } from "./voiceSpeaker.ts";
+import { createSpeaker, labVoice, type VoicePlayer } from "./voiceSpeaker.ts";
 
 const out = process.env["LAB_OUT"] ?? "lab-speech";
 const voice = (process.env["LAB_VOICE"] ?? "quick") as PocketVoice;
@@ -66,7 +66,7 @@ Electron.app.whenReady().then(async () => {
         note("FELL.BACK.TO.OS");
       },
     },
-    voice: () => engine.synthesise(voice),
+    voice: () => labVoice(engine.synthesise(voice)),
     player,
   });
   // The first sentence pays for loading; the pause lets the next ones show the warm figure.

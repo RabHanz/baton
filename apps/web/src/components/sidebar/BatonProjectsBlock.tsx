@@ -465,7 +465,7 @@ function AdoptAction(props: {
   return (
     <div className="flex flex-col items-start gap-1.5 px-1">
       <span className="text-xs text-secondary-label">
-        It runs in a terminal or VS Code, where Baton cannot type.
+        It runs in a terminal or VS Code, where Tessaya cannot type.
       </span>
       <Button
         size="compact"

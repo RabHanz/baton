@@ -69,7 +69,7 @@ export const makeCodexClient = (input: CodexClientInput) => {
     const { id, method, params = {} } = message;
     if (id !== undefined && method !== undefined) {
       if (!method.endsWith("/requestApproval")) {
-        return send({ id, error: { code: -32601, message: "Not supported by Baton." } });
+        return send({ id, error: { code: -32601, message: "Not supported by Tessaya." } });
       }
       void approval(method, params)
         .catch(() => ({ decision: "decline" }))
@@ -102,7 +102,7 @@ export const makeCodexClient = (input: CodexClientInput) => {
     onLine,
     start: async (cwd: string, instructions: string): Promise<string> => {
       await rpc("initialize", {
-        clientInfo: { name: "baton", title: "Baton", version: "0.1" },
+        clientInfo: { name: "baton", title: "Tessaya", version: "0.1" },
         capabilities: { experimentalApi: true },
       });
       send({ method: "initialized" });

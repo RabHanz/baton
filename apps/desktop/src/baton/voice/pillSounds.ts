@@ -11,7 +11,7 @@ export interface PillNote {
   readonly gain: number;
 }
 
-export type PillSound = "wake" | "end" | "error";
+export type PillSound = "wake" | "end" | "error" | "thinking";
 
 export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
   wake: [
@@ -24,9 +24,33 @@ export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
   ],
   error: [
     { hz: 349.23, at: 0, len: 0.1, gain: 0.045 },
-    { hz: 349.23, at: 0.13, len: 0.15, gain: 0.04 },
+    { hz: 349.23, at: 0.12, len: 0.13, gain: 0.04 },
   ],
+  // One soft low note, only after a long wait: "still working", never a chime.
+  thinking: [{ hz: 329.63, at: 0, len: 0.14, gain: 0.03 }],
 };
+
+/** How long a cue sounds, with its tail, in milliseconds. */
+export const soundMs = (sound: PillSound): number =>
+  Math.ceil((Math.max(...PILL_SOUNDS[sound].map((n) => n.at + n.len)) + 0.02) * 1000);
+
+/** Cue levels: "Quiet" is half of "Normal"; Off plays nothing. */
+export type CueLevel = "off" | "quiet" | "normal";
+export const CUE_GAIN: Readonly<Record<CueLevel, number>> = { off: 0, quiet: 0.5, normal: 1 };
+export const parseCueLevel = (value: unknown, legacySounds?: unknown): CueLevel =>
+  value === "off" || value === "quiet" || value === "normal"
+    ? value
+    : legacySounds === false
+      ? "off"
+      : "normal";
+
+/** After a cue the mic path stays silent this much longer, so its echo cannot be heard as speech. */
+export const CUE_TAIL_MS = 150;
+/** A cue waits at most this long for him to stop speaking, then is dropped. */
+export const CUE_WAIT_MS = 300;
+/** Thinking cue: after this long, then at most this often. */
+export const THINKING_AFTER_MS = 4_000;
+export const THINKING_EVERY_MS = 8_000;
 
 /** Share of the second harmonic: enough to sound like a struck thing rather than a test tone. */
 export const PILL_PARTIAL = 0.22;

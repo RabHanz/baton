@@ -12,6 +12,8 @@ export interface VoiceTurnTimings {
   readonly decideMs: number;
   readonly firstSentenceMs: number | null;
   readonly totalMs: number;
+  /** What Baton said for this turn, for the record and the History. */
+  readonly reply?: string;
 }
 
 export interface VoiceTurnLog {
@@ -48,6 +50,9 @@ export const makeVoiceTurnLog = (
           return note("dropped", { wake, text: event.text, reason: event.reason });
         case "stop_heard":
           return note("stop", { text: event.text });
+        case "dismissed":
+          clear();
+          return note("dismissed", { text: event.text });
         case "barge_in":
           return note("barge_in", {});
         case "nothing":
@@ -61,7 +66,13 @@ export const makeVoiceTurnLog = (
         case "outcome":
           if ("source" in event.outcome && event.outcome.source === "screen") return;
           if (event.outcome.kind === "dictated") return;
-          note("outcome", { wake, transcript, outcome: event.outcome.kind });
+          note("outcome", {
+            wake,
+            transcript,
+            outcome: event.outcome.kind,
+            reply: "reply" in event.outcome ? event.outcome.reply : "",
+            ...("reason" in event.outcome ? { reason: event.outcome.reason } : {}),
+          });
           return clear();
         case "state":
           if (event.state !== "sleeping") return;
