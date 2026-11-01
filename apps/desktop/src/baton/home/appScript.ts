@@ -19,6 +19,7 @@ const ICON = {
   voice: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
   screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
+  memory: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 11h8M8 15h8"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
@@ -30,11 +31,12 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['sessions','Sessions'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['sessions','Sessions'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
   jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
+  memory: ['Memory', 'What Tessaya has been asked to remember, as plain notes. Open one to correct it, or delete it. Clearing a note never touches Tessaya itself.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
