@@ -190,3 +190,25 @@ index 1e4bcd0090854f7856140516420843c648bdc690..2301b0e95e66445363e0b4c6f166c49d
      ...(unavailable !== undefined ? { unavailable } : {}),
    };
  }
+diff --git a/packages/shared/src/usageLimits.ts b/packages/shared/src/usageLimits.ts
+index 3dca207a2efb728db3bbd6afa7b1da002fa722d6..869ed6baed2079f301b64910e415fbc8cb728384 100644
+--- a/packages/shared/src/usageLimits.ts
++++ b/packages/shared/src/usageLimits.ts
+@@ -199,7 +199,7 @@ function accountKey(
+     : null;
+ }
+ 
+-interface AccountReport {
++export interface AccountReport {
+   readonly driver: ServerProvider["driver"];
+   readonly email?: string | undefined;
+   readonly workspaceId?: string | undefined;
+@@ -214,7 +214,7 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
+ });
+ 
+ // Include every enabled login, even unreadable workspaces.
+-function accountKeyResolver(reports: Iterable<AccountReport>) {
++export function accountKeyResolver(reports: Iterable<AccountReport>) {
+   const workspaces = new Map<string, Set<string>>();
+   for (const report of reports) {
+     const key = accountKey(report.driver, report.email, report.usageLimits);

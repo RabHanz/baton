@@ -1,5 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
-// @effect-diagnostics globalTimers:off nodeBuiltinImport:off
+// @effect-diagnostics globalTimers:off globalDate:off nodeBuiltinImport:off
 /**
  * The pill: small dark glass above the taskbar of the active display, up only while something is
  * happening (D112). It never takes focus or the mouse and stays out of screenshots. The bars read a
@@ -23,7 +23,15 @@ import {
   type Spot,
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
-import { PILL_PARTIAL, PILL_SOUNDS, type PillSound } from "./pillSounds.ts";
+import {
+  CUE_TAIL_MS,
+  PILL_PARTIAL,
+  PILL_SOUNDS,
+  THINKING_AFTER_MS,
+  THINKING_EVERY_MS,
+  soundMs,
+  type PillSound,
+} from "./pillSounds.ts";
 import {
   IDLE_TURN,
   SILENT_AFTER_MS,
@@ -41,6 +49,8 @@ const HEIGHT = 52;
 const ABOVE_WORK_AREA = 44;
 const TOP_MARGIN = 10;
 const DRAG_MS = 16;
+/** No heartbeat from the page for this long means the release was lost. */
+const BEAT_TIMEOUT_MS = 700;
 const LEVEL_MS = 80;
 /** Below this the microphone is dead rather than quiet. */
 const DEAD_LEVEL = 0.03;
@@ -60,9 +70,10 @@ export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
 body{display:flex;align-items:center;justify-content:center}
-#p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:var(--ink);border:1px solid var(--line);box-shadow:0 0 0 1px rgba(0,0,0,.5);color:var(--text);opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s;cursor:grab}
+#p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:var(--ink);border:1px solid var(--line);box-shadow:0 0 0 1px rgba(0,0,0,.5);color:var(--text);position:relative;touch-action:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s;cursor:grab}
 #p.on{opacity:1;transform:none}
 #p.drag{cursor:grabbing}
+#p.drag::before{content:"";position:absolute;inset:-10px}
 #p.rest{height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
 #p.rest[data-rest=muted]{border-color:var(--red)}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
@@ -89,17 +100,21 @@ let ctx=null,live=false,tick=0;
 const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=calm?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.height=(2+10*shape[i]*n*wobble).toFixed(1)+'px';});};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
-let dragging=false;
+let drag=false,beat=0;
 const grab=$('p');
 // Only the capsule takes the mouse; everything around it in this window stays click-through.
 grab.addEventListener('mouseenter',()=>ipcRenderer.send('baton-pill:hover',true));
-grab.addEventListener('mouseleave',()=>{if(dragging){dragging=false;grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false);}ipcRenderer.send('baton-pill:hover',false);});
-grab.addEventListener('mousedown',e=>{if(e.button!==0)return;dragging=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);});
-addEventListener('mouseup',()=>{if(dragging){dragging=false;grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false);}});
+grab.addEventListener('mouseleave',()=>{if(!drag)ipcRenderer.send('baton-pill:hover',false);});
+// A drag is a captured pointer: it ends when the pointer is released, cancelled or lost, never because the cursor left the capsule.
+const endDrag=why=>{if(!drag)return;drag=false;clearInterval(beat);grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false,why);};
+grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;drag=true;try{grab.setPointerCapture(e.pointerId);}catch(_){}grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);beat=setInterval(()=>ipcRenderer.send('baton-pill:beat'),120);});
+grab.addEventListener('pointerup',()=>endDrag('up'));
+grab.addEventListener('pointercancel',()=>endDrag('cancel'));
+grab.addEventListener('lostpointercapture',()=>endDrag('lost'));
 grab.addEventListener('dblclick',()=>ipcRenderer.send('baton-pill:reset'));
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
-addEventListener('mousemove',setBypass);addEventListener('mousedown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
+addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
  show(v){const p=$('p'),wave=WAVE.includes(v.phase);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';
   live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
@@ -110,7 +125,7 @@ window.pill={
  level(n){if(live&&!calm)draw(Math.min(1,n));},
  hide(){$('p').className='';live=false;},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
- sound(name){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note(n,t);},
+ sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);},
 };
 </script></body></html>`;
 
@@ -129,7 +144,7 @@ window.hi=id=>{for(const d of dots){document.getElementById('d-'+d.id).classList
 </script>`;
 
 export interface VoicePill {
-  readonly on: (event: TurnEvent) => void;
+  readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
   readonly micLevel: (value: number) => void;
   /** Baton's own voice, while it speaks. */
@@ -156,7 +171,13 @@ const loadSpots = (file: string): Readonly<Record<string, Spot>> => {
 };
 
 export const createVoicePill = (input: {
-  readonly sounds: () => boolean;
+  /** 0 off, 0.5 quiet, 1 normal. */
+  readonly cueGain: () => number;
+  /** Holds a cue until he is quiet (true), or says to drop it (false); then tells the mic path it will sound. */
+  readonly cueGate?: {
+    readonly quiet: () => Promise<boolean>;
+    readonly playing: (ms: number) => void;
+  };
   readonly rest: () => boolean;
   readonly edge: () => "bottom" | "top";
   /** Where `baton-pill.json` is kept: the places he dragged it to. */
@@ -167,6 +188,13 @@ export const createVoicePill = (input: {
   readonly onDismiss: () => void;
   /** Each wake, from the event to the window on screen. */
   readonly onShown?: (ms: number) => void;
+  /** How each drag ended, for the turn log: a drag that fails shows up there. */
+  readonly onDrag?: (outcome: {
+    readonly reason: string;
+    readonly dx: number;
+    readonly dy: number;
+    readonly ms: number;
+  }) => void;
 }): VoicePill => {
   let state: TurnState = IDLE_TURN;
   let window: Electron.BrowserWindow | null = null;
@@ -182,6 +210,8 @@ export const createVoicePill = (input: {
   let spots = loadSpots(spotsFile);
   let dragTimer: ReturnType<typeof setInterval> | null = null;
   let bypassSnap = false;
+  let lastBeat = 0;
+  let dragStarted: { readonly at: number; readonly x: number; readonly y: number } | null = null;
   let markers: Electron.BrowserWindow | null = null;
   let markerPlace: PlaceId | null = null;
   const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
@@ -246,13 +276,23 @@ export const createVoicePill = (input: {
     if (markers !== null && !markers.isDestroyed()) markers.destroy();
     markers = null;
   };
-  const stopDrag = (save: boolean) => {
+  const stopDrag = (save: boolean, reason = "up") => {
     if (dragTimer === null) return;
     clearInterval(dragTimer);
     dragTimer = null;
     closeMarkers();
-    if (!save || window === null || window.isDestroyed()) return;
+    if (window === null || window.isDestroyed()) return;
     const bounds = window.getBounds();
+    if (dragStarted !== null) {
+      input.onDrag?.({
+        reason,
+        dx: bounds.x - dragStarted.x,
+        dy: bounds.y - dragStarted.y,
+        ms: Date.now() - dragStarted.at,
+      });
+      dragStarted = null;
+    }
+    if (!save) return;
     const display = Electron.screen.getDisplayMatching(bounds);
     spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, bounds, bounds) };
     saveSpots();
@@ -337,12 +377,39 @@ export const createVoicePill = (input: {
   };
 
   const sound = (name: PillSound) => {
-    if (input.sounds()) call(`window.pill.sound(${JSON.stringify(name)})`);
+    const gain = input.cueGain();
+    if (gain <= 0) return;
+    const play = () => {
+      input.cueGate?.playing(soundMs(name) + CUE_TAIL_MS);
+      call(`window.pill.sound(${JSON.stringify(name)},${gain})`);
+    };
+    if (input.cueGate === undefined) return play();
+    void input.cueGate.quiet().then((ok) => {
+      if (ok) play();
+    });
+  };
+  let thinkTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A quiet note after a long wait, then no more than one every eight seconds, until something else happens. */
+  const thinkingCue = (after: number) => {
+    if (thinkTimer !== null) clearTimeout(thinkTimer);
+    thinkTimer = setTimeout(() => {
+      if (state.phase !== "thinking" && state.phase !== "working") return;
+      sound("thinking");
+      thinkingCue(THINKING_EVERY_MS);
+    }, after);
   };
 
-  const on = (event: TurnEvent) => {
+  const on = (event: TurnEvent, options?: { readonly silent?: boolean }) => {
     const previous = state;
     state = reduceTurn(state, event);
+    const mute = options?.silent === true;
+    const sound_ = mute ? () => undefined : sound;
+    const waiting = (phase: string) => phase === "thinking" || phase === "working";
+    if (thinkTimer !== null && !waiting(state.phase)) {
+      clearTimeout(thinkTimer);
+      thinkTimer = null;
+    }
+    if (waiting(state.phase) && !waiting(previous.phase) && !mute) thinkingCue(THINKING_AFTER_MS);
     if (timer !== null) clearTimeout(timer);
     timer = null;
     if (silentTimer !== null) clearTimeout(silentTimer);
@@ -351,7 +418,7 @@ export const createVoicePill = (input: {
     if (view === null) {
       setEscape(false);
       if (previous.phase !== "idle") {
-        if (previous.phase !== "error" && previous.phase !== "done") sound("end");
+        if (previous.phase !== "error" && previous.phase !== "done") sound_("end");
         lower();
       }
     } else {
@@ -360,11 +427,11 @@ export const createVoicePill = (input: {
       call(`window.pill.show(${JSON.stringify({ ...view, phase: state.phase })})`);
       if (event.type === "wake") {
         loudest = 0;
-        sound("wake");
+        sound_("wake");
         const at = performance.now();
         void ready.then(() => input.onShown?.(performance.now() - at));
       }
-      if (state.phase === "error" && previous.phase !== "error") sound("error");
+      if (state.phase === "error" && previous.phase !== "error") sound_("error");
       if (state.phase === "listening" && !state.heard) {
         silentTimer = setTimeout(() => {
           if (loudest < DEAD_LEVEL) on({ type: "silent" });
@@ -406,16 +473,23 @@ export const createVoicePill = (input: {
     if (over === true) window.setIgnoreMouseEvents(false);
     else if (dragTimer === null) window.setIgnoreMouseEvents(true, { forward: true });
   });
-  Electron.ipcMain.on("baton-pill:drag", (event, on: unknown) => {
+  Electron.ipcMain.on("baton-pill:beat", (event) => {
+    if (mine(event)) lastBeat = Date.now();
+  });
+  Electron.ipcMain.on("baton-pill:drag", (event, on: unknown, why: unknown) => {
     if (!mine(event) || window === null || window.isDestroyed()) return;
-    if (on !== true) return stopDrag(true);
+    if (on !== true) return stopDrag(why !== "cancel", typeof why === "string" ? why : "up");
     stopDrag(false);
     const start = Electron.screen.getCursorScreenPoint();
     const from = window.getBounds();
+    lastBeat = Date.now();
+    dragStarted = { at: Date.now(), x: from.x, y: from.y };
     const target = window;
     openMarkers(Electron.screen.getDisplayMatching(from));
     dragTimer = setInterval(() => {
       if (target.isDestroyed()) return stopDrag(false);
+      // The page says it is still holding the pointer every 120 ms; a lost release cannot leave this stuck.
+      if (Date.now() - lastBeat > BEAT_TIMEOUT_MS) return stopDrag(true, "timeout");
       const cursor = Electron.screen.getCursorScreenPoint();
       const display = Electron.screen.getDisplayNearestPoint(cursor);
       const area = display.workArea;
