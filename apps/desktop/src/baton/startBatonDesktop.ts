@@ -30,12 +30,14 @@ import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopB
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
-import { createPocketEngine } from "./voice/pocketVoice.ts";
-import { createSpeaker } from "./voice/voiceSpeaker.ts";
+import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
+import { createSpeaker, type VoiceChoice } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 
+/** The one line a voice speaks when he plays or picks it. */
+const AUDITION_LINE = "Hello, this is how I sound.";
 const VOICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const VOICE_LOG_MAX_FILES = 5;
 
@@ -139,8 +141,8 @@ export const startBatonDesktop = Effect.gen(function* () {
           restartAt: new Date(restartAt).toISOString(),
         });
         notify(
-          "Baton is updating",
-          `Restarting in 30 seconds to install ${version}. Click to restart now, or choose Later in Baton.`,
+          "Tessaya is updating",
+          `Restarting in 30 seconds to install ${version}. Click to restart now, or choose Later in Tessaya.`,
           () => batonUpdates.install(),
         );
       },
@@ -149,7 +151,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     if (afterUpdate !== null) {
       setTimeout(() => {
         voice?.openHome();
-        notify("Baton is back", afterUpdate);
+        notify("Tessaya is back", afterUpdate);
       }, 3_000).unref();
     }
     Effect.runForkWith(context)(
@@ -188,12 +190,18 @@ export const startBatonDesktop = Effect.gen(function* () {
       onProgress: (message) => voice?.onNote(message),
     });
     Electron.app.on("will-quit", pocket.dispose);
+    const spokenThisTurn: string[] = [];
+    /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
+    const chooseVoice = (name: PocketVoice | "system"): VoiceChoice => {
+      if (name === "system") return { kind: "system" };
+      const synth = pocket.synthesise(name);
+      return synth === null
+        ? { kind: "wait", ready: pocket.ensure(name) }
+        : { kind: "synth", synth };
+    };
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
-      voice: () => {
-        const voice = screen?.voice() ?? "anna";
-        return voice === "system" ? null : pocket.synthesise(voice);
-      },
+      voice: () => chooseVoice(screen?.voice() ?? "anna"),
       player: createVoicePlayer(
         (level) => voice?.onSpeechLevel(level),
         () => screen?.volume() ?? 1,
@@ -201,16 +209,25 @@ export const startBatonDesktop = Effect.gen(function* () {
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
+      onWaiting: (waiting) => voice?.onNote(waiting ? "Loading the voice…" : null),
+      onUnavailable: () =>
+        voice?.onNote("The voice is not ready, so replies show as text. Voice tab: Voice."),
     });
     try {
       screen = startScreenCompanion({
         stateDir: environment.stateDir,
         platform: environment.platform,
         env: hostEnvironment,
-        speak: speaker.speak,
+        speak: (text) => {
+          spokenThisTurn.push(text);
+          return speaker.speak(text);
+        },
         onChange: () => voice?.refresh(),
         onTurnEnd: () => voice?.onTurnEnd(),
-        onTimings: turnLog.timings,
+        onTimings: (timings) => {
+          turnLog.timings({ ...timings, reply: spokenThisTurn.join(" ") });
+          spokenThisTurn.length = 0;
+        },
         onAction: (entry) => turnLog.note("action", entry),
         stopSpeech: speaker.cancel,
         holdEscape,
@@ -247,6 +264,14 @@ export const startBatonDesktop = Effect.gen(function* () {
         speaker.cancel();
         screen?.stop();
       },
+      audition: (name) => {
+        const picked = (name ?? screen?.voice() ?? "anna") as PocketVoice | "system";
+        if (picked === "system") {
+          voice?.onNote("System voice has no sample. Pick one of Tessaya's voices to hear it.");
+          return;
+        }
+        void speaker.sample(chooseVoice(picked), AUDITION_LINE);
+      },
       onSpokenStop: () => {
         speaker.cancel();
         screen?.dismiss();
@@ -264,7 +289,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           env: { BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"] },
           modelsDir,
         }),
-      makeCore: async ({ intent, onReply, settings, stt, onEvent, vocabulary }) =>
+      makeCore: async ({ intent, onReply, settings, stt, onEvent, vocabulary, waitMs }) =>
         (
           await createDesktopVoiceCore({
             assets: resolveVoiceAssets({
@@ -286,6 +311,7 @@ export const startBatonDesktop = Effect.gen(function* () {
               onEvent(event);
             },
             vocabulary,
+            waitMs,
             ...(screen === null ? {} : { brain: screen }),
           })
         ).core,

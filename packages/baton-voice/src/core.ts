@@ -13,6 +13,8 @@
  */
 import type { ContextBusState } from "@t3tools/baton-shared/contextBus";
 import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
+import { JOIN_WITHIN_MS, WAIT_DEFAULT_MS, commitMs } from "@t3tools/baton-shared/endOfTurn";
+import { isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 import {
   DEFAULT_TIMINGS,
@@ -79,6 +81,8 @@ export type VoiceCoreEvent =
   | { readonly type: "nothing" }
   /** Heard and set aside: silence after a wake, a lone filler, its own voice over the speakers. */
   | { readonly type: "dropped"; readonly text: string; readonly reason: string }
+  /** He said only a dismissal ("never mind"): the window ended at once, no model was asked. */
+  | { readonly type: "dismissed"; readonly text: string; readonly at: number }
   /** He said a stop phrase over Baton's voice. No wake word needed. */
   | { readonly type: "stop_heard"; readonly text: string; readonly at: number }
   | { readonly type: "transcript"; readonly text: string; readonly at: number }
@@ -108,6 +112,15 @@ export interface BatonVoiceCore extends VoiceCore {
    * after, the mic hears Baton: only a wake word gets through.
    */
   readonly setSpeaking: (active: boolean) => void;
+  /**
+   * A cue (a short sound of Baton's own) will play for this long: for that long the wake detector and
+   * the segmenter are given silence instead of the microphone, so the cue can neither wake it nor
+   * be written into a dictation. Gating, not subtracting: the cue's exact place in the capture
+   * depends on the output device's latency, which is not known.
+   */
+  readonly playingCue: (ms: number) => void;
+  /** He is in the middle of an utterance right now. */
+  readonly hearingSpeech: () => boolean;
   /** A sentence Baton is saying, so a stop phrase in it is not taken for his. */
   readonly noteSpoken: (text: string) => void;
   readonly setContext: (bus: ContextBusState) => void;
@@ -146,6 +159,8 @@ export const createVoiceCore = (input: {
   readonly segmenter?: SegmenterConfig;
   readonly directSession?: boolean;
   readonly origin?: number;
+  /** How long he must be quiet for a turn to be over: his setting, read each turn. */
+  readonly waitMs?: () => number;
 }): BatonVoiceCore => {
   const timings = input.timings ?? DEFAULT_TIMINGS;
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
@@ -217,6 +232,40 @@ export const createVoiceCore = (input: {
     return null;
   };
 
+  /** A turn handed to the router whose reply has not started: later speech can still join it. */
+  interface Flight {
+    readonly text: string;
+    readonly endAt: number;
+    readonly abort: () => void;
+  }
+  let flight: Flight | null = null;
+  /** Words heard and waiting out the end-of-turn pause before the router sees them. */
+  interface Held {
+    readonly text: string;
+    readonly endAt: number;
+    releaseAt: number;
+    readonly settle: (kept: boolean) => void;
+  }
+  let held: Held | null = null;
+  let transcribing = 0;
+  let current: { readonly text: string; readonly endAt: number } = { text: "", endAt: 0 };
+  const waitMs = () => input.waitMs?.() ?? WAIT_DEFAULT_MS;
+
+  const dismissNow = (text: string) => {
+    held?.settle(false);
+    flight?.abort();
+    flight = null;
+    const result = reduceVoice(machine, { type: "dismiss", at: now() }, timings);
+    machine = result.state;
+    for (const effect of result.effects) {
+      if (effect.kind !== "cancelled") continue;
+      asked.get(effect.token)?.("no");
+      asked.delete(effect.token);
+    }
+    show();
+    emit({ type: "dismissed", text, at: now() });
+  };
+
   const handle = async (effects: ReadonlyArray<VoiceEffect>, before: VoiceMachineState) => {
     for (const effect of effects) {
       emit({ type: "effect", effect });
@@ -235,12 +284,20 @@ export const createVoiceCore = (input: {
         utteranceListeners.forEach((l) => l({ text: effect.text, mode }));
       if (effect.kind === "speak") await say(effect.text);
       if (input.router == null) continue;
-      const outcome = await input.router.route(effect, {
-        bus,
-        now: now(),
-        mostRecentWorkSessionId: lastTarget,
+      const turn = effect.kind === "command" || effect.kind === "session_message";
+      let abort = () => {};
+      const dropped = new Promise<null>((resolve) => {
+        abort = () => resolve(null);
       });
-      if (outcome.kind === "none") continue;
+      const mine: Flight = { text: current.text, endAt: current.endAt, abort };
+      if (turn) flight = mine;
+      const outcome = await Promise.race([
+        input.router.route(effect, { bus, now: now(), mostRecentWorkSessionId: lastTarget }),
+        ...(turn ? [dropped] : []),
+      ]);
+      if (flight === mine) flight = null;
+      // He carried on or dismissed: this turn's reply is not wanted.
+      if (outcome === null || outcome.kind === "none") continue;
       emit({ type: "outcome", outcome });
       if (outcome.kind === "needs_confirmation") {
         await dispatch({
@@ -323,14 +380,29 @@ export const createVoiceCore = (input: {
       return show();
     }
     const pcm = joined(parts);
-    emit({ type: "speech_end", at: now() });
-    emit({ type: "audio", pcm, at: now() });
+    const endAt = now();
+    emit({ type: "speech_end", at: endAt });
+    emit({ type: "audio", pcm, at: endAt });
     emit({ type: "thinking" });
+    const turn = {
+      startAt: endAt - (pcm.length * 1000) / VOICE_SAMPLE_RATE,
+      endAt,
+      prefix: null as string | null,
+      consumed: false,
+    };
+    transcribing += 1;
+    const heard = input.stt.transcribe(pcm).finally(() => {
+      transcribing -= 1;
+    });
+    // Read the moment recognition returns, not when the queue behind a reply frees: a dismissal
+    // ends everything at once, and speech that resumes soon after joins the turn before it.
+    void heard.then((text) => readEarly(text.trim(), turn)).catch(() => undefined);
     enqueue(async () => {
-      const text = await input.stt.transcribe(pcm);
+      const text = await heard;
       const cleaned = text.trim();
       const dictating = machine.mode === "dictation";
       if (NOISE.test(cleaned)) return dictating ? undefined : emit({ type: "nothing" });
+      if (turn.consumed) return;
       if (
         !dictating &&
         machine.pending === null &&
@@ -347,12 +419,59 @@ export const createVoiceCore = (input: {
       ) {
         return emit({ type: "nothing" });
       }
-      lastTranscript = cleaned;
-      emit({ type: "transcript", text: cleaned, at: now() });
-      await dispatch({ type: "utterance", text: cleaned, at: now() });
+      const said = turn.prefix === null ? cleaned : `${turn.prefix} ${cleaned}`;
+      const joinable =
+        machine.pending === null &&
+        (machine.mode === "command_window" || machine.mode === "conversation");
+      if (joinable && waitMs() > 0) {
+        const kept = await holdForMore(said, turn.endAt);
+        if (!kept) return;
+      }
+      lastTranscript = said;
+      emit({ type: "transcript", text: said, at: now() });
+      current = { text: said, endAt: turn.endAt };
+      await dispatch({ type: "utterance", text: said, at: now() });
     });
     show();
   };
+
+  const readEarly = (
+    cleaned: string,
+    turn: { startAt: number; prefix: string | null; consumed: boolean },
+  ) => {
+    if (NOISE.test(cleaned) || machine.mode === "dictation" || machine.pending !== null) return;
+    const words = stripWake(cleaned, timings.wakeWords);
+    const awake = machine.mode === "command_window" || machine.mode === "conversation";
+    if (isDismissPhrase(words) && (awake || words !== cleaned)) {
+      turn.consumed = true;
+      return dismissNow(cleaned);
+    }
+    if (!awake || isFiller(words)) return;
+    const near = (endAt: number) => turn.startAt - endAt <= JOIN_WITHIN_MS;
+    if (held !== null && near(held.endAt)) {
+      turn.prefix = held.text;
+      held.settle(false);
+    } else if (flight !== null && near(flight.endAt)) {
+      turn.prefix = flight.text;
+      flight.abort();
+      flight = null;
+    }
+  };
+
+  /** Wait out the end-of-turn pause for these words; false when later speech took them over. */
+  const holdForMore = (text: string, endAt: number): Promise<boolean> =>
+    new Promise((resolve) => {
+      const mine: Held = {
+        text,
+        endAt,
+        releaseAt: endAt + commitMs(waitMs(), text),
+        settle: (kept) => {
+          if (held === mine) held = null;
+          resolve(kept);
+        },
+      };
+      held = mine;
+    });
 
   const joined = (parts: ReadonlyArray<Int16Array>) => {
     const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
@@ -445,12 +564,15 @@ export const createVoiceCore = (input: {
     enqueue(() => dispatch({ type: "keep_open", at: now() }));
   };
   const hearingItself = () => speaking || samples < echoUntil;
+  let cueUntil = 0;
 
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
-  const pushAudio = (frame: Int16Array) => {
+  const pushAudio = (heard: Int16Array) => {
     if (disposed) return;
+    // Inside a cue's window the microphone is replaced by silence for everything downstream.
+    const frame = samples < cueUntil ? new Int16Array(heard.length) : heard;
     samples += frame.length;
 
     const score = input.wake.process(frame);
@@ -478,6 +600,13 @@ export const createVoiceCore = (input: {
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();
       enqueue(() => dispatch({ type: speaking ? "keep_open" : "tick", at }));
+    }
+
+    if (held !== null) {
+      const at = now();
+      // Still speaking, or recognition still running on more of it: not yet.
+      const busy = segment !== null || transcribing > 0;
+      if (at >= held.releaseAt && (!busy || at >= held.releaseAt + 3_000)) held.settle(true);
     }
 
     if (hearingItself()) watchForStop(frame);
@@ -554,6 +683,10 @@ export const createVoiceCore = (input: {
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
     setSpeaking,
+    playingCue: (ms) => {
+      cueUntil = Math.max(cueUntil, samples + msToSamples(ms));
+    },
+    hearingSpeech: () => segment !== null,
     noteSpoken,
     confirm,
     subscribe: (l) => {

@@ -34,9 +34,9 @@ const INTRO = {
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
-  assistant: ['Assistant', 'What Baton works through, whose subscription it uses, and what it may do without asking.'],
-  voice: ['Voice', 'How Baton hears you and how it sounds back.'],
-  screen: ['Screen', 'When Baton may look at your screen, and how to stop it.'],
+  assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
+  voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
+  screen: ['Screen', 'When Tessaya may look at your screen, and how to stop it.'],
   usage: ['Usage', 'How much of each account is left.'],
   checks: ['Checks', 'See what is wrong without reading a log.']
 };
@@ -46,6 +46,17 @@ const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Se
 function control(c) {
   if (c.kind === 'toggle') { const b = $('button', 'sw'); b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', String(c.on)); b.setAttribute('aria-label', c.label); b.onclick = () => set(c.id, !c.on); return b; }
   if (c.kind === 'choice') {
+    if (c.id === 's.voice') {
+      const list = $('div', 'voices');
+      for (const o of c.options) {
+        const r = $('div', 'voice' + (o.value === c.value ? ' on' : ''));
+        const pick = $('button', 'pickv', o.label); pick.setAttribute('role', 'radio'); pick.setAttribute('aria-checked', String(o.value === c.value)); pick.onclick = () => set(c.id, o.value);
+        r.appendChild(pick);
+        if (o.value !== 'system') { const pl = $('button', 'btn quiet', 'Play'); pl.setAttribute('aria-label', 'Play ' + o.label); pl.onclick = () => set('v.audition', o.value); r.appendChild(pl); }
+        list.appendChild(r);
+      }
+      return list;
+    }
     if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
       const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
     }
@@ -172,12 +183,12 @@ function home(p) {
   const en = find('v.enabled'), mu = find('v.muted');
   if (en) q.appendChild(mk('Listening', 'v.enabled', en.on));
   if (mu) q.appendChild(mk('Mute', 'v.muted', mu.on));
-  q.append(mk('Wake now', 'q.wake'), mk('Ask Baton', 'q.ask'), mk('Clear the screen', 'q.clear'), mk('Stop', 'q.stop'));
+  q.append(mk('Wake now', 'q.wake'), mk('Ask Tessaya', 'q.ask'), mk('Clear the screen', 'q.clear'), mk('Stop', 'q.stop'));
   p.appendChild(q);
   const up = find('u.act');
   const brainCtl = find('s.brain');
-  if (brainCtl && brainCtl.lead) p.appendChild(banner('', 'what Baton works through', 'Choose', 'Claude Code or Codex. You can change it later.', 'Choose', () => go('assistant')));
-  else if (up && up.lead) p.appendChild(banner('', 'a quiet moment', 'Baton will restart in', up.hint, null));
+  if (brainCtl && brainCtl.lead) p.appendChild(banner('', 'what Tessaya works through', 'Choose', 'Claude Code or Codex. You can change it later.', 'Choose', () => go('assistant')));
+  else if (up && up.lead) p.appendChild(banner('', 'a quiet moment', 'Tessaya will restart in', up.hint, null));
   const need = (x.stats && x.stats.needYou) || 0;
   if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Open Sessions to answer.', 'Open Sessions', () => go('sessions')));
   const sp = $('div', 'split'); const left = $('div'); const right = $('div', 'rail');
@@ -225,7 +236,7 @@ function vocabulary(p) {
   const seg = $('div', 'seg');
   for (const [v, l] of [['all', 'All'], ['learned', 'Learned'], ['added', 'Added']]) { const b = $('button', null, l); b.setAttribute('aria-pressed', String(vfilter === v)); b.onclick = () => { vfilter = v; render(); }; seg.appendChild(b); }
   head.appendChild(seg); p.appendChild(head);
-  p.appendChild($('p', 'lede', 'Words Baton should spell your way. It adds the ones you correct or use a lot, and you can add your own.')).style.marginTop = '6px';
+  p.appendChild($('p', 'lede', 'Words Tessaya should spell your way. It adds the ones you correct or use a lot, and you can add your own.')).style.marginTop = '6px';
   const g = $('div', 'group');
   const f = $('form', 'vocab'); const a = $('input'); a.type = 'text'; a.placeholder = 'Heard as'; a.id = 'in-d-a'; a.setAttribute('aria-label', 'Heard as'); a.value = drafts.get('d-a') || '';
   const b = $('input'); b.type = 'text'; b.placeholder = 'Write it as (optional)'; b.id = 'in-d-b'; b.setAttribute('aria-label', 'Write it as'); b.value = drafts.get('d-b') || '';
@@ -319,7 +330,7 @@ function historyPage(p) {
   f.appendChild(q); p.appendChild(f);
   if (hnote) { const n = $('p', 'hint', hnote); n.style.margin = '0 0 10px'; p.appendChild(n); }
   if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); recordings(p); return; }
-  if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Things you say to Baton and dictate show up here.')); recordings(p); return; }
+  if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Things you say to Tessaya and dictate show up here.')); recordings(p); return; }
   const shownRows = hrows.slice(0, hlimit);
   const perDay = {}; for (const t of shownRows) { const d = dayLabel(t.at); perDay[d] = (perDay[d] || 0) + 1; }
   let day = null, g = null;
@@ -363,15 +374,15 @@ function tabPage(p) {
   if (cur === 'screen') {
     p.insertBefore($('h2', null, 'Actions'), p.firstChild.nextSibling.nextSibling);
     const ag = $('div', 'group');
-    for (const [l, h, b, id] of [['Ask Baton', 'Type a question about your screen or a job to do.', 'Ask', 'q.ask'], ['Clear the screen', 'Remove the pointer and any card Baton left up.', 'Clear', 'q.clear'], ['Stop', 'End a lesson or a drive, and quiet Baton\u2019s voice.', 'Stop', 'q.stop']]) { const r = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', l), $('div', 'hint', h)); const bt = $('button', 'btn', b); bt.onclick = () => set(id, null); r.append(t, bt); ag.appendChild(r); }
+    for (const [l, h, b, id] of [['Ask Tessaya', 'Type a question about your screen or a job to do.', 'Ask', 'q.ask'], ['Clear the screen', 'Remove the pointer and any card Tessaya left up.', 'Clear', 'q.clear'], ['Stop', 'End a lesson or a drive, and quiet Tessaya\u2019s voice.', 'Stop', 'q.stop']]) { const r = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', l), $('div', 'hint', h)); const bt = $('button', 'btn', b); bt.onclick = () => set(id, null); r.append(t, bt); ag.appendChild(r); }
     p.insertBefore(ag, p.firstChild.nextSibling.nextSibling.nextSibling);
-    p.appendChild($('h2', null, 'What Baton can do with your screen'));
+    p.appendChild($('h2', null, 'What Tessaya can do with your screen'));
     const hg = $('div', 'group');
-    for (const [l, h] of [['Look', 'Ask what is on your screen. Baton takes one screenshot of each display and answers.'], ['Teach', 'Ask how to do something. Baton shows each step on your screen, one at a time.'], ['Drive', 'Ask Baton to do it. It moves the pointer, you can take over, and Escape stops it.']]) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', l), $('div', 'hint', h)); r.appendChild(t); hg.appendChild(r); }
+    for (const [l, h] of [['Look', 'Ask what is on your screen. Tessaya takes one screenshot of each display and answers.'], ['Teach', 'Ask how to do something. Tessaya shows each step on your screen, one at a time.'], ['Drive', 'Ask Tessaya to do it. It moves the pointer, you can take over, and Escape stops it.']]) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', l), $('div', 'hint', h)); r.appendChild(t); hg.appendChild(r); }
     p.appendChild(hg);
     keys(p, ['screen']);
   }
-  if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Baton last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
+  if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Tessaya last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
 }
 
 const MODAL = [['General', 'general'], ['System', 'system'], ['Keyboard and mouse', 'keys'], ['Account', 'account'], ['Updates', 'updates'], ['About', 'about']];
@@ -379,23 +390,31 @@ let capturing = null, capNote = '';
 function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
 function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
 function chips(input) { const w = $('div', 'chips'); if (!input) { w.appendChild($('span', 'hint', 'Off')); return w; } if (input.type === 'key') input.accelerator.split('+').forEach(x => w.appendChild($('kbd', null, x))); else w.appendChild($('span', 'chip plain', ({ middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' })[input.button] || input.button)); return w; }
+const BTN = { middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' };
+function inputLabel(i) { return i.type === 'key' ? i.accelerator.split('+').join(' + ') : (BTN[i.button] || i.button); }
 function bindingsPage(b) {
   const x = S.extra || {}; const rows = x.bindings || [];
   b.appendChild($('h1', null, 'Keyboard and mouse'));
-  const lead = $('p', 'lede', 'Choose how to start, stop and steer Baton by hand. Voice always works with no button at all.'); b.appendChild(lead);
+  b.appendChild($('p', 'lede', 'Give each action up to four ways to start it. Voice always works with no button at all.'));
+  if (x.bindingsNote) { const n = $('p', 'fix', x.bindingsNote); n.style.color = 'var(--warn)'; b.appendChild(n); }
   const g = $('div', 'group');
   for (const r of rows) {
-    const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
-    if (r.input && r.input.type === 'mouse' && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Baton\u2019s input helper.'));
-    if (r.conflictsWith.length) { const c = $('div', 'fix', 'Same as ' + r.conflictsWith.join(' and ') + '. Only one of them will work.'); c.style.color = 'var(--warn)'; t.appendChild(c); }
-    const side = $('div'); side.style.cssText = 'display:flex;align-items:center;gap:10px;flex:none';
+    const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); row.style.alignItems = 'flex-start';
+    const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
+    if (r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
+    for (const c of (r.conflicts || [])) { const i = r.inputs[c.index]; if (!i) continue; const f = $('div', 'fix', inputLabel(i) + ' is also used by ' + c.with.join(' and ') + '. Only one of them will work.'); f.style.color = 'var(--warn)'; t.appendChild(f); }
+    const side = $('div'); side.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;max-width:60%';
     const on = capturing === r.action;
-    side.appendChild(chips(r.input));
-    const ch = $('button', 'btn quiet', on ? 'Cancel' : 'Change'); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch);
-    if (r.input && !on) { const cl = $('button', 'btn quiet', 'Clear'); cl.onclick = () => set('b.clear:' + r.action, null); side.appendChild(cl); }
+    if (!r.inputs.length) side.appendChild($('span', 'hint', 'Off'));
+    r.inputs.forEach((i, n) => {
+      const c = $('span', 'chipx'); c.appendChild(chips(i));
+      const rm = $('button', 'x'); rm.appendChild(icon('x', 12)); rm.setAttribute('aria-label', 'Remove ' + inputLabel(i)); rm.onclick = () => set('b.remove:' + r.action, n); c.appendChild(rm); side.appendChild(c);
+    });
+    if (r.inputs.length < 4) { const ch = $('button', 'btn quiet', on ? 'Cancel' : (r.inputs.length ? 'Add another' : 'Add')); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch); }
+    else side.appendChild($('span', 'hint', 'Four is the most'));
     if (!r.isDefault && !on) { const rs = $('button', 'btn quiet', 'Reset'); rs.onclick = () => set('b.reset:' + r.action, null); side.appendChild(rs); }
     row.append(t, side); wrap.appendChild(row);
-    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
+    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
     g.appendChild(wrap);
   }
   const f = $('div', 'row'); const ft = $('div', 'text'); ft.append($('div', 'label', 'Cancel a recording, a card or a drive'), $('div', 'hint', 'Always Escape.')); f.append(ft, chips({ type: 'key', accelerator: 'Escape' })); g.appendChild(f);
@@ -409,24 +428,24 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) { capturing = null; capNote = ''; render(); return; }
   const a = accel(e); if (!a) return;
   const bare = !/\\+/.test(a);
-  if (bare && !/^F\d+$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
-  const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'key', accelerator: a }));
+  if (bare && !/^(F\\d+|Pause|ScrollLock)$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
+  const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'key', accelerator: a }));
 }, true);
 addEventListener('mousedown', e => {
   if (!capturing) return;
   let button = null;
   if (e.buttons === 3) button = 'left+right'; else if (e.button === 1) button = 'middle'; else if (e.button === 3) button = 'back'; else if (e.button === 4) button = 'forward';
   if (!button) return;
-  e.preventDefault(); const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'mouse', button }));
+  e.preventDefault(); const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'mouse', button }));
 }, true);
 function modalPage(b) {
   const x = S.extra || {};
   const rows = ids => S.controls.filter(c => ids.includes(c.id));
-  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Baton'), $('div', 'hint', 'Closing the window keeps Baton in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
+  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
   else if (modal === 'keys') bindingsPage(b);
-  else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Baton uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
-  else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Baton downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
+  else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
+  else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
   else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
@@ -455,7 +474,7 @@ function syncModal() {
   setRegion(document.getElementById('mnav'), nav => {
     nav.appendChild($('h4', null, 'Settings'));
     for (const [l, id] of MODAL) { if (id === 'account') nav.appendChild($('h4', null, 'Account')); const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
-    nav.appendChild($('div', 'ver', 'Baton ' + (((S.extra || {}).about || {}).version || '')));
+    nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
   });
   const mbody = document.getElementById('mbody');
   setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
@@ -470,11 +489,11 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Baton'), $('span', 'plan', 'Local')); side.appendChild(brand);
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Tessaya'), $('span', 'plan', 'Local')); side.appendChild(brand);
   const nav = $('nav'); 
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
-  if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Baton restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
+  if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
   const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
   const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
   foot.append(t3, st); side.appendChild(foot);
@@ -491,5 +510,6 @@ function render(state) {
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
+if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
 get().then(s => render(s));
 `;

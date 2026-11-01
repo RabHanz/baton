@@ -182,7 +182,7 @@ export const make = Effect.gen(function* () {
           // grammar's refusal standing. It is a worse answer than a good reading
           // and a much better one than a guess.
           Effect.catchCause((cause) =>
-            Effect.logWarning("Baton could not read a sentence with a model", {
+            Effect.logWarning("Tessaya could not read a sentence with a model", {
               sentence,
               instanceId: chosen.instanceId,
               model: chosen.model,

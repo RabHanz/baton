@@ -55,6 +55,16 @@ describe("the voice log", () => {
     expect(lines).toEqual([{ at: "2026-11-01T00:00:00.000Z", kind: "dictated", chars: 18 }]);
   });
 
+  it("records the reply and any refusal reason", () => {
+    const { lines, log } = rig();
+    log.event({ type: "transcript", text: "delete everything", at: 1 });
+    log.event({
+      type: "outcome",
+      outcome: { kind: "refused", reply: "I won't do that.", reason: "high_risk" },
+    });
+    expect(lines[0]).toMatchObject({ reply: "I won't do that.", reason: "high_risk" });
+  });
+
   it("leaves a screen turn's line to its timings", () => {
     const { lines, log } = rig();
     log.event({ type: "transcript", text: "explain this", at: 1 });

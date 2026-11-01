@@ -2,6 +2,16 @@ name: Baton wake word training
 
 # Free GitHub-hosted CPU runners (public repo). Pushing this branch runs it; models come back as artifacts.
 on:
+  workflow_dispatch:
+    inputs:
+      word:
+        description: "One word to train (sebastian, alfred, freya, onyx, tessaya)"
+        required: true
+        default: tessaya
+      clean:
+        description: "Licence-clean data only (MIT release): LibriSpeech, MUSAN, CC BY voices"
+        type: boolean
+        default: true
   push:
     branches: [baton/wake-train]
     paths: [".github/workflows/baton-wake-train.yml", "scripts/baton/wake-train/**"]
@@ -16,10 +26,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        word: [sebastian, alfred, freya, onyx]
+        word: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.word)) || fromJSON('["sebastian","alfred","freya","onyx"]') }}
     env:
       N_SAMPLES: 30000
       STEPS: 100000
+      CLEAN: ${{ github.event_name == 'workflow_dispatch' && inputs.clean && '1' || '0' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v5

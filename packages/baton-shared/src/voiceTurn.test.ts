@@ -5,6 +5,7 @@ import {
   IDLE_TURN,
   isCancelPhrase,
   reduceTurn,
+  isDismissPhrase,
   turnHoldsEscape,
   turnLimitMs,
   turnView,
@@ -24,7 +25,7 @@ describe("the cue after a wake word", () => {
     const speaking = reduceTurn(heard, { type: "speaking", active: true });
     expect(speaking.phase).toBe("speaking");
     const after = reduceTurn(speaking, { type: "speaking", active: false });
-    expect(after.phase).toBe("idle");
+    expect(after.phase).toBe("listening");
   });
 
   it("says plainly that the wake word is needed when nothing was heard", () => {
@@ -65,7 +66,7 @@ describe("the cue after a wake word", () => {
       { type: "heard", text: "stop" },
       { type: "finished" },
     ]);
-    expect(state.phase).toBe("idle");
+    expect(state.phase).toBe("listening");
   });
 
   it("keeps speech on screen until it finishes", () => {
@@ -84,15 +85,16 @@ describe("the pill while a window is open", () => {
     { type: "heard", text: "what's this" },
   ];
 
-  it("leaves after each thing, never going back to Listening once he has spoken", () => {
+  it("goes back to Listening after each thing while the window is open", () => {
     let state = play([...open, { type: "speaking", active: true }]);
     expect(turnView(state)?.label).toBe("Speaking");
     state = reduceTurn(state, { type: "speaking", active: false });
-    expect(state.phase).toBe("idle");
+    expect(turnView(state)?.label).toBe("Listening");
     state = play([{ type: "activity", label: "Looking" }], state);
     expect(turnView(state)?.label).toBe("Looking");
     state = reduceTurn(state, { type: "activity", label: null });
-    expect(state.phase).toBe("idle");
+    expect(turnView(state)?.label).toBe("Listening");
+    expect(reduceTurn(state, { type: "dismissed" }).phase).toBe("idle");
   });
 
   it("shows Finishing from the end of his speech, then the words, and a closed window's end once", () => {
@@ -135,7 +137,7 @@ describe("the pill while a window is open", () => {
   });
 
   it("leaves when words were set aside", () => {
-    expect(play([...open, { type: "resume" }]).phase).toBe("idle");
+    expect(play([...open, { type: "resume" }]).phase).toBe("listening");
   });
 
   it("holds Dictating through each chunk, and leaves after", () => {
@@ -152,7 +154,7 @@ describe("the pill while a window is open", () => {
     expect(turnView(state)).toMatchObject({ label: "Dictating", caption: "typed" });
     expect(reduceTurn(state, { type: "wake", word: "Alfred" }).phase).toBe("dictating");
     state = reduceTurn(state, { type: "dictating", caption: null });
-    expect(state.phase).toBe("idle");
+    expect(state.phase).toBe("listening");
   });
 
   it("leaves when a dismissal ends a spoken turn", () => {
@@ -199,16 +201,61 @@ describe("the pill's other states", () => {
 });
 
 describe("who gets Esc", () => {
-  it("is his apps' unless the microphone is live", () => {
-    expect(turnHoldsEscape({ ...IDLE_TURN, phase: "listening" })).toBe(true);
-    for (const phase of ["idle", "thinking", "speaking", "working", "done", "error"] as const) {
+  it("is his apps' unless Baton's voice window is up", () => {
+    for (const phase of ["listening", "thinking", "speaking", "working"] as const) {
+      expect(turnHoldsEscape({ ...IDLE_TURN, phase })).toBe(true);
+    }
+    for (const phase of ["idle", "done", "error", "ended", "muted"] as const) {
       expect(turnHoldsEscape({ ...IDLE_TURN, phase })).toBe(false);
     }
   });
 
-  it("goes back to his apps once a window has heard him", () => {
-    expect(turnHoldsEscape({ ...IDLE_TURN, phase: "listening", heard: true })).toBe(false);
+  it("is taken when the window opens and given back when it is dismissed or closes", () => {
+    const held = (events: ReadonlyArray<TurnEvent>) => turnHoldsEscape(play(events));
+    const open: ReadonlyArray<TurnEvent> = [
+      { type: "wake", word: null },
+      { type: "heard", text: "hi" },
+    ];
+    expect(held(open)).toBe(true);
+    expect(
+      held([...open, { type: "speaking", active: true }, { type: "speaking", active: false }]),
+    ).toBe(true);
+    expect(held([...open, { type: "dismissed" }])).toBe(false);
+    expect(held([...open, { type: "window_closed" }, { type: "finished" }])).toBe(false);
   });
+});
+
+describe("dismissal read whole", () => {
+  const dismiss = [
+    "stop",
+    "Stop.",
+    "dismiss",
+    "Nothing, dismiss.",
+    "never mind",
+    "Never mind.",
+    "That's all, thanks",
+    "Okay, that will be all tanks.",
+    "Okay, thanks, that will be all.",
+    "Scratch that, that's all.",
+    "that'll be all",
+    "no thanks",
+    "goodbye",
+    "thank you",
+  ];
+  const asks = [
+    "tell me how to stop a Windows service",
+    "that's all I wanted to add, now write it up",
+    "can you stop the server",
+    "thanks, now open the settings",
+    "nothing here works, dismiss all the windows",
+    "stop the tests",
+    "okay",
+    "what's on my screen",
+    "no I meant the other one",
+    "",
+  ];
+  it.each(dismiss)("ends on %j with no model", (said) => expect(isDismissPhrase(said)).toBe(true));
+  it.each(asks)("leaves %j to the assistant", (said) => expect(isDismissPhrase(said)).toBe(false));
 });
 
 describe("frameLevel", () => {

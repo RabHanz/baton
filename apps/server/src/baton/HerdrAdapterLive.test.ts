@@ -218,7 +218,7 @@ describe("turning a pane into a candidate", () => {
     expect(candidate.state).toBe("idle");
   });
 
-  it("still shows a pane whose state word Baton does not know, with no state (D38)", () => {
+  it("still shows a pane whose state word Tessaya does not know, with no state (D38)", () => {
     const candidate = toCandidate({
       pane,
       agent: { paneId: "w1:p1", name: "a", kind: "claude", state: "compacting" },
@@ -291,7 +291,7 @@ describe("discovery against the captured CLI", () => {
         (adapter) => adapter.discover,
       );
       expect(result.available).toBe(false);
-      expect(result.reason).toContain("not a shape Baton reads");
+      expect(result.reason).toContain("not a shape Tessaya reads");
     }),
   );
 

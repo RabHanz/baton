@@ -63,7 +63,7 @@ export const judgeToolCall = (
   // Codex sends no file name Baton can judge, so an edit is never waved through.
   if (call.tool === "fileChange") return { verdict: "ask", why: "It wants to change files." };
   if (call.tool === "commandExecution" && !String(call.input["command"] ?? "").trim())
-    return { verdict: "ask", why: "Baton cannot see what this command is." };
+    return { verdict: "ask", why: "Tessaya cannot see what this command is." };
   if (!ROUTINE.has(call.tool)) return { verdict: "ask", why: `It wants to use ${call.tool}.` };
   if (sensitiveAction(text))
     return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
@@ -87,7 +87,7 @@ export const announceTool = (ran: number, tool: string) => ({
 
 /** What the gate says out loud and shows. A risky call's question that runs out is a no. */
 export const gatePrompt = (judged: Extract<ToolVerdict, { verdict: "ask" }>, action: string) => ({
-  title: judged.risky ? "This one is risky" : "Baton wants to do this",
+  title: judged.risky ? "This one is risky" : "Tessaya wants to do this",
   detail: `${action}\n\n${judged.why}`,
   spoken:
     judged.risky === true

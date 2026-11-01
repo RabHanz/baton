@@ -315,7 +315,7 @@ export const make = Effect.gen(function* () {
       });
       return result.threadId;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not launch a thread", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not launch a thread", cause)),
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
@@ -336,7 +336,7 @@ export const make = Effect.gen(function* () {
       });
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not send to a thread", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not send to a thread", cause)),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -461,7 +461,7 @@ export const make = Effect.gen(function* () {
       }
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not keep a thread active", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not keep a thread active", cause)),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -474,7 +474,7 @@ export const make = Effect.gen(function* () {
       });
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not delete a thread", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not delete a thread", cause)),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -508,7 +508,7 @@ export const make = Effect.gen(function* () {
       });
       return project.id;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not create a project", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not create a project", cause)),
       Effect.catchCause(() => Effect.succeed(null)),
     );
 

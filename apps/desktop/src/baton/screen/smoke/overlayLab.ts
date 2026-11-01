@@ -15,7 +15,7 @@ import { startScreenCompanion } from "../ScreenCompanion.ts";
 import { createPocketEngine } from "../../voice/pocketVoice.ts";
 import { createVoicePill } from "../../voice/voicePill.ts";
 import { createVoicePlayer } from "../../voice/voicePlayer.ts";
-import { createSpeaker } from "../../voice/voiceSpeaker.ts";
+import { createSpeaker, labVoice } from "../../voice/voiceSpeaker.ts";
 
 const out = process.env["LAB_OUT"] ?? NodePath.join(process.cwd(), "lab-out");
 const scenarios = (process.env["LAB_SCENARIOS"] ?? "look,other,teach,written,pill").split(",");
@@ -124,7 +124,7 @@ Electron.app.whenReady().then(async () => {
     cursor: Electron.screen.getCursorScreenPoint(),
   });
   const pill = createVoicePill({
-    sounds: () => false,
+    cueGain: () => 0,
     rest: () => false,
     edge: () => "bottom",
     stateDir: NodeOS.tmpdir(),
@@ -154,7 +154,7 @@ Electron.app.whenReady().then(async () => {
               note("FELL.BACK.TO.OS");
             },
           },
-          voice: () => engine.synthesise("anna"),
+          voice: () => labVoice(engine.synthesise("anna")),
           player: createVoicePlayer((level) => pill.speechLevel(level)),
           silent: () => writtenNow,
           onActive: (active) => {
