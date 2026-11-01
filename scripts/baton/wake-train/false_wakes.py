@@ -123,7 +123,7 @@ def main():
                 break
             audio = load(path)
             if kind != "noise":
-                audio = room(kind, audio, noise, rirs, rng)
+                audio = room(kind, audio, noise, rirs, rng, speech)
             # every score is kept at the lowest threshold of the sweep, then counted at each
             low = {w: SWEEP[0] for w in words}
             for word, chunk, score in events(model, audio, words, thresholds, low):
