@@ -76,6 +76,20 @@ describe("the window's rows", () => {
     });
     expect(updateControls(ready, true)[0]).toMatchObject({ button: "Waiting…", disabled: true });
   });
+  it("tells him before it restarts, with Restart now and Later, and says when it is waiting", () => {
+    const ready = state({ status: "downloaded", downloadedVersion: "0.1.5" });
+    const [counting] = updateControls(ready, false, {
+      restartAt: Date.now() + 30_000,
+      waiting: false,
+    });
+    expect(counting).toMatchObject({ button: "Restart now", secondary: "Later", lead: true });
+    expect((counting as { hint: string }).hint).toContain("restarts at");
+    const [waiting] = updateControls(ready, false, { restartAt: 0, waiting: true });
+    expect((waiting as { hint: string }).hint).toContain("as soon as this conversation ends");
+    expect(
+      (updateControls(state(), false, null, "Updated to 0.1.4.")[0] as { hint: string }).hint,
+    ).toContain("Updated to 0.1.4.");
+  });
   it("keeps the rest behind More options, and disables itself outside the installed app", () => {
     expect(updateControls(state(), false)[0]).toMatchObject({ button: "Check now", more: true });
     expect(updateControls(state({ enabled: false }), false)[0]).toMatchObject({ disabled: true });

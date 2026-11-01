@@ -70,6 +70,8 @@ const clock = (iso: string) =>
 export const updateControls = (
   state: DesktopUpdateState,
   pending: boolean,
+  countdown: { readonly restartAt: number; readonly waiting: boolean } | null = null,
+  backAfter: string | null = null,
 ): ReadonlyArray<HomeControl> => {
   const base = { id: "u.act", section: "Updates", label: "Baton updates" } as const;
   if (!state.enabled) {
@@ -84,13 +86,32 @@ export const updateControls = (
       },
     ];
   }
+  if (isReady(state) && countdown !== null) {
+    const at = new Date(countdown.restartAt).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    return [
+      {
+        ...base,
+        hint: countdown.waiting
+          ? `Baton is updating to ${state.downloadedVersion}. It restarts as soon as this conversation ends.`
+          : `Baton is updating to ${state.downloadedVersion} and restarts at ${at}. It reopens this window.`,
+        kind: "action",
+        button: "Restart now",
+        secondary: "Later",
+        lead: true,
+      },
+    ];
+  }
   if (isReady(state)) {
     return [
       {
         ...base,
         hint: pending
           ? `${state.downloadedVersion} installs when Baton is not mid-conversation.`
-          : `Version ${state.downloadedVersion} is downloaded. You are on ${state.currentVersion}.`,
+          : `Version ${state.downloadedVersion} is downloaded and waits. You are on ${state.currentVersion}.`,
         kind: "action",
         button: pending ? "Waiting…" : "Install and restart",
         disabled: pending,
@@ -108,7 +129,7 @@ export const updateControls = (
           ? "Checking."
           : state.status === "error"
             ? "Could not check for updates. Try again in a moment."
-            : `Version ${state.currentVersion}. Up to date${state.checkedAt === null ? "" : `, checked ${clock(state.checkedAt)}`}.`;
+            : `${backAfter === null ? "" : `${backAfter} `}Version ${state.currentVersion}. Up to date${state.checkedAt === null ? "" : `, checked ${clock(state.checkedAt)}`}.`;
   const retry = state.status === "available" || (state.status === "error" && state.canRetry);
   return [
     {

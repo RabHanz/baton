@@ -277,6 +277,8 @@ export interface DesktopBatonVoice {
   readonly refresh: () => void;
   /** In the middle of a turn: speaking, or listening past the wake word. */
   readonly busy: () => boolean;
+  /** Bring Baton's own window up. */
+  readonly openHome: () => void;
   /** Baton's voice started or stopped. */
   readonly onSpeaking: (active: boolean) => void;
   /** A sentence going to the speakers. */
@@ -1287,6 +1289,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   void start().catch(failed);
   return {
     refresh: render,
+    openHome: () => home.open(),
     busy: () => speakingNow || !["sleeping", "listening", "muted"].includes(state),
     onSpeaking: (active) => {
       speakingNow = active;
