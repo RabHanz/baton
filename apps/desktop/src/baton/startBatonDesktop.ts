@@ -101,6 +101,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         onChange: () => voice?.refresh(),
         onTurnEnd: () => voice?.onTurnEnd(),
         onTimings: turnLog.timings,
+        onAction: (entry) => turnLog.note("action", entry),
         stopSpeech: speaker.cancel,
         holdEscape,
         onActivity: (label, caption) => voice?.onActivity(label, caption),

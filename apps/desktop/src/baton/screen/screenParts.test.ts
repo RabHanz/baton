@@ -12,6 +12,8 @@ import {
   startVisionSession,
   subscriptionEnv,
   userMessage,
+  toolRequestOf,
+  toolUsesOf,
   visionArgs,
 } from "./claudeVision.ts";
 import { virtualKeys, xdotoolChord } from "./inputDriver.ts";
@@ -204,5 +206,40 @@ describe("withBrainRoutes", () => {
     });
     await counting.route({ kind: "dictate", text: "my private note" } as never, { bus, now: 0 });
     expect(asked).toBe(0);
+  });
+});
+
+describe("the operator's Claude session", () => {
+  it("opens the gate only for an operator, and shuts out his and the folder's settings", () => {
+    const plain = visionArgs("p.txt", "sonnet");
+    expect(plain[plain.indexOf("--tools") + 1]).toBe("");
+    expect(plain).not.toContain("--permission-prompt-tool");
+    const operator = visionArgs("p.txt", "sonnet", true);
+    expect(operator[operator.indexOf("--setting-sources") + 1]).toBe("");
+    expect(operator[operator.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(operator[operator.indexOf("--permission-prompt-tool") + 1]).toBe("stdio");
+    expect(operator).toContain("--safe-mode");
+  });
+
+  it("reads a permission request, and nothing else, as one", () => {
+    const line = JSON.stringify({
+      type: "control_request",
+      request_id: "r1",
+      request: { subtype: "can_use_tool", tool_name: "Write", input: { file_path: "b.txt" } },
+    });
+    expect(toolRequestOf(line)).toEqual({
+      requestId: "r1",
+      call: { tool: "Write", input: { file_path: "b.txt" } },
+    });
+    expect(toolRequestOf('{"type":"assistant"}')).toBeNull();
+    expect(toolRequestOf("not json")).toBeNull();
+  });
+
+  it("finds every tool call, including those the CLI runs with no request", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "echo" } }] },
+    });
+    expect(toolUsesOf(line)).toEqual([{ tool: "Bash", input: { command: "echo" } }]);
   });
 });

@@ -531,6 +531,26 @@ const unquoted = (text: string): string =>
  * The high-risk subject anywhere in a plan or what it would paste, or null. A second layer behind
  * Run it, not a boundary: no list catches every spelling of a command (D114).
  */
+export const dangerousCommand = (text: string): boolean =>
+  DANGEROUS_COMMAND.test(text) || DANGEROUS_COMMAND.test(unquoted(text));
+
+/** Deletes, sends, pays or publishes: never done without his yes, whatever the setting (D127). */
+const SENSITIVE = new RegExp(
+  [
+    String.raw`\b(?:rm|del|erase|rmdir|rd|unlink|delete|remove|remove-item|drop|truncate|wipe)\b`,
+    String.raw`\b(?:send|sends|email|e-mail|mail|message|reply|tweet|post|publish|share|upload|submit)\b`,
+    String.raw`\b(?:pay|payment|purchase|buy|checkout|order|transfer|refund|invoice|subscribe)\b`,
+    String.raw`\b(?:deploy|release|merge|push|shutdown|reboot|format)\b`,
+    String.raw`-X\s*(?:POST|PUT|PATCH|DELETE)\b`,
+  ].join("|"),
+  "i",
+);
+export const sensitiveAction = (text: string): boolean => SENSITIVE.test(text);
+
+/** A plan that needs his yes even with "Act without asking" on. */
+export const planSensitive = (plan: DrivePlan, clipboard = ""): boolean =>
+  (planPastes(plan) ? [...planWords(plan), clipboard] : planWords(plan)).some(sensitiveAction);
+
 export const planHighRisk = (plan: DrivePlan, clipboard = ""): string | null => {
   const words = planPastes(plan) ? [...planWords(plan), clipboard] : planWords(plan);
   for (const text of words) {
