@@ -343,12 +343,14 @@ describe("parseScreenIntent", () => {
     expect(parseScreenIntent(text, false)).toBeNull();
   });
 
-  it("takes next, stop and repeat only while a lesson or drive runs", () => {
+  it("takes next and repeat only while a lesson or drive runs, and a bare stop always", () => {
     expect(parseScreenIntent("next", true)).toEqual({ kind: "next" });
     expect(parseScreenIntent("I did it.", true)).toEqual({ kind: "next" });
     expect(parseScreenIntent("stop", true)).toEqual({ kind: "stop" });
     expect(parseScreenIntent("say that again", true)).toEqual({ kind: "repeat" });
-    expect(parseScreenIntent("stop", false)).toBeNull();
+    expect(parseScreenIntent("stop", false)).toEqual({ kind: "stop" });
+    expect(parseScreenIntent("next", false)).toBeNull();
+    expect(parseScreenIntent("stop the tests", false)).toBeNull();
   });
 });
 
