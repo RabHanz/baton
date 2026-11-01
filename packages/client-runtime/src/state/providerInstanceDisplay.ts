@@ -43,6 +43,28 @@ export function providerInstanceInitials(label: string): string {
     .join("");
 }
 
+/**
+ * Initials for a set of instances shown side by side. Two accounts of one provider often read the
+ * same ("Rabee work", "Rabee personal" are both RW-ish names with one shape), so a repeated pair
+ * takes its second letter from where the labels first differ, and falls back to a number.
+ */
+export function distinctInstanceInitials(labels: ReadonlyArray<string>): ReadonlyArray<string> {
+  const base = labels.map(providerInstanceInitials);
+  return base.map((initials, index) => {
+    const same = base.flatMap((other, i) => (other === initials ? [i] : []));
+    if (same.length < 2) return initials;
+    const mine = Array.from(labels[index]!.toLowerCase());
+    const others = same.filter((i) => i !== index).map((i) => Array.from(labels[i]!.toLowerCase()));
+    let at = 0;
+    while (at < mine.length && others.some((o) => o[at] === mine[at])) at += 1;
+    const letter = mine[at];
+    if (letter !== undefined && /[\p{L}\p{N}]/u.test(letter)) {
+      return `${Array.from(initials)[0] ?? ""}${letter.toUpperCase()}`;
+    }
+    return `${Array.from(initials)[0] ?? ""}${same.indexOf(index) + 1}`;
+  });
+}
+
 export function normalizeProviderAccentColor(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
