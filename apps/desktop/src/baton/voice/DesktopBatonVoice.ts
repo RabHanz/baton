@@ -87,6 +87,16 @@ import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import {
+  biasTranscript,
+  correctionsBetween,
+  learnCorrection,
+  observeWording,
+  parseAddToDictionary,
+  upsertEntry,
+  type SeenWords,
+  type VocabularyEntry,
+} from "@t3tools/baton-shared/vocabulary";
 import { readCaretContext } from "./caretContext.ts";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
