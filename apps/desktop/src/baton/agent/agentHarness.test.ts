@@ -26,7 +26,7 @@ const notepadTrace: ReadonlyArray<Step> = [
   { tool: "press_keys", args: { keys: ["ctrl", "s"], why: "save" } },
 ];
 
-const rig = async (opts: { yes: boolean; his?: (t: string) => boolean }) => {
+const rig = async (opts: { yes: boolean; his?: (t: string) => boolean; window?: () => string }) => {
   const log: string[] = [];
   const asked: string[] = [];
   const host: ToolHost = {
@@ -50,7 +50,7 @@ const rig = async (opts: { yes: boolean; his?: (t: string) => boolean }) => {
     actWithoutAsking: () => false,
     taint: createTaint(),
     textIsHis: opts.his ?? (() => false),
-    shellFocused: async () => false,
+    focusedWindow: async () => ({ label: opts.window?.() ?? "Notepad", shell: false }),
     confirm: async (p) => (asked.push(p.title), opts.yes),
     record: () => undefined,
   });
@@ -76,18 +76,50 @@ describe("the hands, dry", () => {
     const r = await rig({ yes: false, his: (t) => t === "Baton task one" });
     const outcomes: boolean[] = [];
     for (const step of notepadTrace) outcomes.push((await r.call(step)).isError !== true);
-    // "notepad" was typed after a screenshot and is not his words: it asked, got no yes, and was refused.
-    expect(outcomes).toEqual([true, true, true, false, true, true, true, true]);
-    expect(r.asked).toEqual(["Baton wants to do this"]);
+    // "notepad" was typed after a screenshot and is not his words, and Ctrl+S is not a navigation key: both asked.
+    expect(outcomes).toEqual([true, true, true, false, true, true, true, false]);
+    expect(r.asked).toEqual(["Baton wants to do this", "Baton wants to do this"]);
     await r.mcp.close();
   });
 
-  it("asks once for typing after a screenshot, and his yes covers the rest of that turn's typing", async () => {
+  it("asks again when the box changes, and for a key that is not navigation, even after a yes", async () => {
     const r = await rig({ yes: true });
     const outcomes: boolean[] = [];
     for (const step of notepadTrace) outcomes.push((await r.call(step)).isError !== true);
     expect(outcomes.every(Boolean)).toBe(true);
-    expect(r.asked).toEqual(["Baton wants to do this"]);
+    // "notepad", then the text in the box he opened (a new box), then Ctrl+S.
+    expect(r.asked).toHaveLength(3);
+    await r.mcp.close();
+  });
+
+  it("lets one yes cover more typing into the same window and box, until Enter ends it", async () => {
+    const r = await rig({ yes: true });
+    const type = (text: string) =>
+      r.call({ tool: "type_text", args: { text, why: "into the box" } });
+    await r.call({ tool: "screen_capture", args: {} });
+    await r.call({ tool: "click_element", args: { label: "Body", why: "the box" } });
+    await type("first");
+    await type("second");
+    expect(r.asked).toHaveLength(1);
+    await r.call({ tool: "press_keys", args: { keys: ["enter"], why: "send" } });
+    expect(r.asked).toHaveLength(2);
+    await type("third");
+    expect(r.asked).toHaveLength(3);
+    await r.mcp.close();
+  });
+
+  it("asks again when the window with the keyboard is another one", async () => {
+    let window = "Notepad";
+    const r = await rig({ yes: true, window: () => window });
+    const type = (text: string) =>
+      r.call({ tool: "type_text", args: { text, why: "into the box" } });
+    await r.call({ tool: "screen_capture", args: {} });
+    await type("one");
+    await type("two");
+    expect(r.asked).toHaveLength(1);
+    window = "Slack";
+    await type("three");
+    expect(r.asked).toHaveLength(2);
     await r.mcp.close();
   });
 

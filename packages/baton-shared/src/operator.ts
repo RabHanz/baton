@@ -99,6 +99,36 @@ export const READS_OUTSIDE = new Set([
 
 const SENDS = /\b(enter|return)\b/i;
 
+const NAV_KEYS = new Set([
+  "up", "down", "left", "right", "arrowup", "arrowdown", "arrowleft", "arrowright",
+  "tab", "home", "end", "pageup", "pagedown", "backspace", "delete", "escape", "esc",
+]);
+const EDIT_LETTERS = new Set(["a", "c", "x", "v", "z", "y", "f"]);
+
+/**
+ * Keys that carry nothing out and open nothing: arrows, Tab, Home, End, page keys, Backspace, Delete,
+ * Escape, and Ctrl+A, C, X, V, Z, Y, F, each with Shift or Ctrl only. Anything with the Windows key
+ * or Alt, Ctrl+W, T, N, Q, R or L, Enter, an F-key, Task Manager, Clear browsing data, and any chord
+ * not sure to be one of these is not: after a read it asks (a Win+R or Alt+F4 is how an injection
+ * would start). Unknown is ask.
+ */
+export const keyIsNavigation = (keys: ReadonlyArray<string>): boolean => {
+  const parts = keys.map((k) => k.toLowerCase().trim());
+  const isMod = (k: string) => k === "ctrl" || k === "control" || k === "shift";
+  const mods = new Set<string>(parts.filter(isMod));
+  const rest = parts.filter((k) => !isMod(k));
+  if (rest.length !== 1) return false;
+  const main = rest[0]!;
+  const ctrl = mods.has("ctrl") || mods.has("control");
+  const shift = mods.has("shift");
+  if (NAV_KEYS.has(main)) {
+    if (main === "escape" || main === "esc") return !(ctrl && shift);
+    if ((main === "delete" || main === "backspace") && ctrl && shift) return false;
+    return true;
+  }
+  return EDIT_LETTERS.has(main) && ctrl;
+};
+
 const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): ToolVerdict => {
   // Screen capture asks for its own consent where it runs; looking is not the risk.
   if (BATON_QUIET.has(name)) return { verdict: "allow" };
@@ -127,9 +157,10 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
         return { verdict: "ask", why: "That may send what is typed." };
       }
-      // A key or a chord carries nothing out; only Enter, which may send, and the sensitive ones ask.
-      return sensitiveAction(text)
-        ? { verdict: "ask", why: "It deletes, sends, pays or publishes." }
+      if (sensitiveAction(text)) return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
+      // After a read, only navigation and editing keys are free (`keyIsNavigation`); the rest ask.
+      return context.tainted && !keyIsNavigation(Array.isArray(call.input["keys"]) ? call.input["keys"].map(String) : [])
+        ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "session_send":
       // The intent layer applies the same gates as typing it; a secret carried out is the risk here.

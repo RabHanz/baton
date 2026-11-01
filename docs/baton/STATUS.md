@@ -1124,3 +1124,6 @@ question that runs out is a no; the warm session is seeded with the last reply i
 Not proven: any of it against a real `claude` with a real screen, the first-word latency (the target is p50 1.5 s, p90 3 s, read
 with `scripts/baton/latency-report.mjs` once he allows a live test), `ui_tree`, Codex, and the six-task before and after (it waits
 for him to be away and told, `scripts/baton/computer-use-harness.sh real`).
+
+Gate rulings (2026-11-02): keys after a read and the scope of one yes to typing are as D144 says. Proven: `operator-proof.sh` cases 10 and 11 (12 in all)
+and the dry run of the hands' harness. Not proven: against a real session.
