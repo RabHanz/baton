@@ -666,11 +666,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
   const deliver = async (raw: string, target: number | null | undefined) => {
-    const { text } = await rewriter.clean({
-      raw,
-      mode: chooseMode(focusedApp, settings.appModes),
-      level: await levelNow(focusedApp),
-    });
+    const cleaned = await rewriter
+      .clean({
+        raw,
+        mode: chooseMode(focusedApp, settings.appModes),
+        level: await levelNow(focusedApp),
+      })
+      .catch(() => null);
+    const { text, failed } = settleOneShot(raw, cleaned);
     const fitted = text.length === 0 ? text : await fitToCaret(text, focusedApp);
     lastDictation = fitted;
     const pasted =
@@ -680,8 +683,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             note = error.message;
             return false;
           });
-    if (pasted === true || text.length === 0) showDictation(null);
-    else keepText("Not pasted", fitted);
+    if (pasted === true || text.length === 0) {
+      showDictation(null);
+      if (failed && pasted === true) pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
+    } else keepText("Not pasted", fitted);
   };
   const onDictation = (event: DictationEvent) => {
     setRecording(event.ev === "recording");
