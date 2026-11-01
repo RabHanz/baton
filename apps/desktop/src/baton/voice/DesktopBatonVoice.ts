@@ -87,6 +87,8 @@ import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import { readCaretContext } from "./caretContext.ts";
+import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -418,6 +420,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ]);
     return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
   };
+  /** What Baton last put in a field, where an app will not say what is around the caret. */
+  let lastInsert: { text: string; at: number; key: string } | null = null;
+  const windowKey = (app: { readonly exe: string; readonly title: string }) =>
+    `${app.exe}\n${app.title}`;
+  /** The text made to fit the words already there: spacing, capitals, punctuation. */
+  const fitToCaret = async (
+    text: string,
+    app: { readonly exe: string; readonly title: string },
+  ): Promise<string> => {
+    const key = windowKey(app);
+    const around =
+      (await readCaretContext(input.platform)) ??
+      contextFromLastInsert(
+        lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
+        Date.now(),
+      );
+    const fitted = around === null ? text : fitInsertion(around, text);
+    lastInsert = { text: fitted, at: Date.now(), key };
+    return fitted;
+  };
   const injection: typeof clipboardInjection = {
     ...clipboardInjection,
     // The sidecar pastes on every platform, where Electron alone cannot.
@@ -432,7 +454,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         mode: chooseMode(app, settings.appModes),
         level: await levelNow(app),
       });
-      return sidecar.paste(text);
+      return sidecar.paste(await fitToCaret(text, app));
     },
   };
   // Only where this desktop can paste is the focused field a dictation target.
@@ -645,16 +667,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mode: chooseMode(focusedApp, settings.appModes),
       level: await levelNow(focusedApp),
     });
-    lastDictation = text;
+    const fitted = text.length === 0 ? text : await fitToCaret(text, focusedApp);
+    lastDictation = fitted;
     const pasted =
       target === null || target === undefined || text.length === 0
         ? false
-        : await sidecar?.pasteInto(text, target).catch((error: Error) => {
+        : await sidecar?.pasteInto(fitted, target).catch((error: Error) => {
             note = error.message;
             return false;
           });
     if (pasted === true || text.length === 0) showDictation(null);
-    else keepText("Not pasted", text);
+    else keepText("Not pasted", fitted);
   };
   const onDictation = (event: DictationEvent) => {
     setRecording(event.ev === "recording");
