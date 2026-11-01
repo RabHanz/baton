@@ -177,3 +177,137 @@ Origin taxonomy: all `market-research` unless stated. Confidence: high, medium o
 - Blocked: https://tmsearch.uspto.gov/ , https://trademarks.ipo.gov.uk/ipo-tmtext , https://www.tmdn.org/tmview/ , https://euipo.europa.eu/eSearch/ , https://branddb.wipo.int/
 - Namespaces: https://api.github.com/users/ , https://registry.npmjs.org/ , https://pypi.org/pypi/ , https://itunes.apple.com/search , https://play.google.com/store/search , https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle , https://find-and-update.company-information.service.gov.uk/search/companies
 - Expiry lifecycle, secondary: https://support.dnsimple.com/articles/what-happens-when-domain-expires/ , https://www.name.com/support/articles/227849228-how-the-pending-delete-period-works
+
+
+# Baton rename, round 2: softer names
+
+retrieved_at: 2026-11-01, about 14:35-15:20 UTC (19:35-20:20 GMT+5). Last .com recheck 15:08 UTC.
+serves: Baton rename. Not a VentureOS pack. Nothing bought, registered or submitted. No login, no cart.
+status: trademark screen is PARTIAL. This is a screen, not legal advice.
+continues: /mnt/HC_Volume_106652742/dev/BATON-NAMING-RESEARCH-2026-11-01.md (round 1, method and prices). The append there was blocked by a shell guard, so this is the agreed fallback location.
+why: the Director prefers Filara and Weavia to Tramoka ("They're easier to say and sound nicer"), and believes both are taken as brands.
+
+## Answer
+
+| Rank | Name | Say it (British) | Meaning | Domain | Yearly cost | Risks |
+|---|---|---|---|---|---|---|
+| 1 | Filissa | fi-LISS-uh | fil- from Latin filum, thread; Italian filo. Closest sound to Filara. | filissa.com | $11.62 Dynadot, $11.81 Porkbun | Heard as Felicia or Melissa. FILISUND live US class 9, weak likeness. French filasse (tow, flaxen hair) is near, mild. Soft F onset. |
+| 2 | Tessaya | teh-SAY-uh | Italian tessere, to weave, with "say" inside. | tessaya.com | same | Two live TESSA class 9 marks (79151729, 78595420); only page 1 of 79 results read. Spelling could drift to Tesaya. Strongest wake-word onset of the eight. |
+| 3 | Whisela | wih-SELL-uh | whisper + -ela. | whisela.com | same | Silent h trips first-sight spelling. Could be heard as "weasel" or "whistle". WHISEL marks both dead. |
+| 4 | Weavenna | wee-VEN-uh | weave + -enna. Most direct meaning. | weavenna.com | same | WEVEN 97724958 is live in class 42 for software (Something Green, venue software). Different field, same sound stem. Weav- also sits near WEAVIATE. |
+| 5 | Silella | sih-LELL-uh | silk + -ella. | silella.com | same | Repeated L blurs in speech, weak wake word. |
+| 6 | Filenna | fi-LEN-uh | fil- + -enna. | filenna.com | same | Reads as "file". FILENET, FILENE and live FILENICHE class 42 nearby; only page 1 of 38 results read. |
+| 7 | Weavela | WEE-vuh-luh | weave + -ela. | weavela.com | same | Sounds like "weevil". WEAVELOGIC status unresolved; WEAVELY is bedding (class 24). |
+| 8 | Wevella | weh-VELL-uh | weave + -ella. | wevella.com | same | Contains "vella": Hindi, Punjabi and Urdu slang for an idle, jobless person. Bad fit for a Pakistani or Indian audience. W and V are close in sound. |
+
+All eight: .com, .net, .org, .app, .dev, .ai and .io unregistered; npm, PyPI and GitHub user name free; no exact title found in the App Store or Google Play; no exact US mark on Trademarkia.
+
+Recommendation: Filissa with filissa.com if sound wins, which is what he asked for. Tessaya if wake-word strength wins, after someone reads the other seven pages of TESSA results. Prices are the standard tier read earlier today in round 1; the .com wholesale rate reportedly rose on 2026-11-01, so re-check at purchase.
+
+## Are Filara and Weavia taken?
+
+**Filara: yes, he is right, and more than round 1 showed.**
+- filara.org is a live textile business. Page title, verbatim: "FILARA — Origin Textiles". Meta description, verbatim: "Premium Thai silk and Mongolian cashmere for designers, boutiques, and private clients."
+- App Store: FILARA (Adev Llc, Shopping, updated 2026-10-30) and Filara (YUNG WKND LLC, Graphics & Design, updated 2026-10-27, an embroidery design app).
+- Google Play: Filara and FILARA FITNESS.
+- filara.com held since 2000. filara.app registered 2026-03-19. filara.co registered 2026-07-10.
+- Not found: an exact US mark on Trademarkia (0), or any AI or voice product. UK and EU marks unknown.
+- Textile, design and shopping use by others, on the exact name, right on the fabric theme: treat it as taken.
+
+**Weavia: not as a brand, on what could be reached. He is right about the .com only.**
+- No company, app or product named Weavia found: web searches, App Store GB and US, Google Play titles, Companies House (round 1), npm, PyPI, GitHub user.
+- Exact US marks on Trademarkia: 0.
+- weavia.com has been registered since 2004 and is unused; expiry detail is in round 1.
+- The real problem is likeness, not ownership: WEAVIATE (79325996, live, class 9 and database software) with 16,933 GitHub stars on weaviate/weaviate, and an AI audience.
+- A web search proves absence weakly (see C5). UK and EU registers were not reached.
+
+## Method
+
+Candidates: 1,974 unique names from themed stems (fil, tel, tess, weav, wev, lum, loom, voc, son, aud, sil and about 70 others, covering fabric, thread, voice, listening, companion and presence, some from Latin, Italian, Spanish, Urdu and Greek words) crossed with soft endings (-ara, -ora, -ela, -ina, -ia, -eva, -avia, then -enna, -issa, -ella and similar), plus hand-picked names. Registry RDAP on .com, same method as round 1.
+
+Result: 1,561 registered, 413 unregistered. Every request gave a clean 200 or 404. Controls: github 200, nonsense string 404. Most of the 413 are ugly or long; the good short shapes (-ara, -ora, -ina on soft stems) are almost all taken, so the free soft names cluster in -enna, -issa, -ella and -ela. No fallback to .app or .dev was needed.
+
+Cut by ear to 30, screened on six other TLDs, npm, PyPI, GitHub and Trademarkia exact: weavela weavanna weavenna weavissa weavila wevella wevenna wevissa filissa filenna telanna telenna linissa silella loomisa loomanna audenna audetta whisara whisela vespela heedina nearina presela tessaya hushela sonenna nelenna wevonia filinia.
+
+Deep check on 15. Dropped from the 15, with reason:
+- Telanna: TELANA 79431005, Telana Limited, Live/Registered, classes 009, 035. PitchBook lists Telana as a company.
+- Whisara: WHISARY 90604651, Zeqin Cai, Live/Registered, class 009, "Earphones; Webcams; ...". Too close for a voice product.
+- Wevenna: WEVEN live in class 42, and sounds closer to it than Weavenna does. WEVANA 99376663 also on file.
+- Wevissa: WEVISON and WEVISION live in class 9.
+- Vespela: VESPA (111 US results), VESPEL marks, Italian vespa is wasp.
+- Linissa: GitHub name taken, LINISA live (class not read).
+- Heedina: weakest sound of the set; no conflict found.
+
+Dropped earlier: Presela, one US result; Filinia, 4 syllables; Aranela and Sericela, free but 4 syllables.
+
+## What was reached
+
+| Check | Result |
+|---|---|
+| .com RDAP (Verisign) | reached, all 1,974 |
+| .net, .org, .ai, .io RDAP | reached, the 30 |
+| .app, .dev RDAP (Google registry) | 50 calls rate-limited 429 on first pass. Retried at 15 a minute for the 15, all 404. The other 15 not retried. |
+| Premium or checkout price | NOT reached. Porkbun and Dynadot render results in JavaScript, Namecheap's status endpoint gave a Cloudflare block, GoDaddy did not resolve. No first-party source found on whether a free .com can carry a premium price. |
+| Official registers (USPTO, UK IPO, EUIPO, TMview, WIPO) | NOT retried this round. All blocked this box in round 1, same day. |
+| Trademarkia, US only | reached. Exact for the 30, 29 near-spelling queries. Control weaviate 1. Pages over 10 rows: only page 1 read for filen*, weven*, filis*, telen*, tessa. Status of some rows taken from a text extract. |
+| Web search | 11 brand queries, covering all 15 and both Filara and Weavia. Result text is the tool's summary, so secondary. |
+| GitHub, npm, PyPI | reached, the 30 |
+| App Store GB | reached, 15 names, no exact titles |
+| Google Play search | reached for 8 finalists plus Filara and Weavia; no exact title seen beyond Filara |
+| Meanings | Wiktionary: no page for any of the 15; full-text search 0 hits for Filissa, Filenna, Wevella, Whisara, Tessaya. Other names and native Urdu, Arabic and Hindi script NOT searched. No native speaker consulted. So bad-meaning flags for Urdu, Arabic, Spanish, Italian, Hindi and French are a partial screen. |
+
+## Verbatim sources
+
+Wiktionary tessere, Italian: "tèssere (first-person singular present tèsso". Etymology: "From Latin texere".
+Wiktionary filo, Italian: "Inherited from Latin fīlum."
+Wiktionary filasse, French: "tow, oakum, hards (by metonymy) its distinctive bleak color something of that color, especially blond hair".
+Trademarkia, filis* page: FILISUND, Li, He, 97835764, "Live/Registered", 009, "Blank audio cassettes; Blank audio tapes; Blank near field communicati...".
+Trademarkia, weven* page: WEVEN, Something Green, LLC, 97724958, "Live/Registered", 042, "Providing temporary use of online, non-downloadable software for hosti...".
+Trademarkia, tessa page: TESSA, Reinhausen GmbH, 79151729, "Live/Registered", 009, 037. TESSA, Kids Fun, Inc., 78595420, "Live/Registered", 009, 041. TESSA, Tesseract Ventures, LLC, 97328807, "Dead/Abandoned", 009, 042, an online search assistant tool.
+
+Vella, secondary and paraphrased from a search summary: वेल्ला (vellā), Delhi, North Indian and Bombay Hindi slang for an idler, borrowed from Punjabi ਵਿਹਲਾ (vihlā), per a Wiktionary mirror; Bollymeaning: free and jobless, used in a lighter sense; UrduPod101: ویلا (vela), to be free, to be idle.
+
+## Claims
+
+Origin `market-research` unless stated. captured_at 2026-11-01. Numbers continue from round 1.
+
+| # | Claim | Status | Confidence | Evidence |
+|---|---|---|---|---|
+| 12 | The top 8 .com names are unregistered | observed | high | Verisign RDAP, rechecked 15:08 UTC |
+| 13 | They sell at standard price | unknown | low | RDAP cannot show it; registrar pages unreadable by curl |
+| 14 | Filara is in use as a textile brand and app name | observed | high | filara.org, iTunes API |
+| 15 | No brand named Weavia is findable | reported | medium | searches above; UK and EU unchecked |
+| 16 | No exact US mark for the top 8 | reported | medium | Trademarkia |
+| 17 | UK and EU marks for all names | unknown | n/a | registers blocked in round 1 |
+| 18 | "vella" is Hindi, Punjabi and Urdu slang for idle | reported | medium | search summary, secondary |
+| 19 | The ranks and wake-word notes | inferred, origin `model` | low | phonetic judgement, no recogniser test |
+| 20 | Likely mishearings (weevil, weasel, file) | inferred, origin `model` | low | judgement only |
+
+## Contradictions
+
+- C4: Round 1 listed filara.org only as registered. It is a live textile brand, so Filara is worse than round 1 said. Round 1's rank 2 should be read with this.
+- C5: Web search for "Filara" found nothing, while the App Store API and filara.org show live use. Web search misses small brands, so its silence on the other names is weak evidence.
+
+## Unknown, and what would settle it
+
+- Premium status: type the chosen name into any registrar cart, without paying. One minute.
+- UK, EU and US official results, including phonetic near matches for Filissa and Tessaya: a hand search or the human-browser route.
+- TESSA pages 2 to 8 on Trademarkia.
+- Urdu, Arabic and Hindi meanings: ask a native speaker, or the Director himself, to say the top two aloud.
+- Real wake-word false-trigger rate: train both and test on en-GB speech.
+
+## Proposed registry row (not added)
+
+```json
+{"provider":"baton-naming","subject":"round-2-soft-names","source":"docs/research/baton-naming-round2-2026-11-01.md","retrieved_at":"2026-11-01","assertion":"filissa.com and tessaya.com unregistered at registry; Filara in use as a textile brand; no Weavia brand found; official registers unreached","refresh_interval_days":7,"severity":"low"}
+```
+
+## Sources, all 2026-11-01
+
+- RDAP: https://rdap.verisign.com/com/v1/domain/ , https://pubapi.registry.google/rdap/domain/ , https://rdap.identitydigital.services/rdap/domain/ , https://rdap.verisign.com/net/v1/domain/ , https://rdap.publicinterestregistry.org/rdap/domain/
+- Trademarkia, each at https://www.trademarkia.com/search/trademarks?query= with: telana, whisar*, wevel*, wavella, filis*, weven*, wevis*, tessa, weavely
+- Filara: https://filara.org , https://filara.app , https://itunes.apple.com/search?term=filara&entity=software&country=gb
+- Wiktionary: https://en.wiktionary.org/wiki/tessere , https://en.wiktionary.org/wiki/filo , https://en.wiktionary.org/wiki/filasse
+- Vella: https://wiki.neonvagabond.xyz/content/wiktionary_en_all_nopic_2024-05/A/%E0%A4%B5%E0%A5%87%E0%A4%B2%E0%A5%8D%E0%A4%B2%E0%A4%BE , https://www.bollymeaning.com/2012/08/vella-velle-vela-vele-meaning.html , https://www.urdupod101.com/lesson/mustknow-urdu-slang-words-phrases-20-common-slang-expressions-used-in-the-workplace?lp=118
+- Near names: https://pitchbook.com/profiles/company/63603-01 , https://trademarkdir.com/trademark/wevana-99376663 , https://github.com/weaviate/weaviate
+- Attempted, no usable result: https://porkbun.com/checkout/search?q=weavela.com , https://www.dynadot.com/domain/search?domain=weavela.com , https://domains.revved.com/v1/domainStatus , https://find.godaddy.com/domainsapi/v1/search/exact
