@@ -1,6 +1,6 @@
-name: Baton desktop release
+name: Tessaya desktop release
 
-# Builds the Baton desktop app (apps/desktop) for Windows, macOS and Linux on
+# Builds the Tessaya desktop app (apps/desktop) for Windows, macOS and Linux on
 # GitHub-hosted runners (free, unlimited minutes on a public repo) and
 # publishes the installers to a GitHub Release that electron-updater already
 # knows how to read (see apps/desktop/src/updates/DesktopUpdates.ts and
@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Apply Baton branding (release build only, not committed)
+      - name: Apply Tessaya branding (release build only, not committed)
         shell: bash
         run: bash scripts/baton/apply-release-branding.sh
 
@@ -134,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Apply Baton branding (release build only, not committed)
+      - name: Apply Tessaya branding (release build only, not committed)
         shell: bash
         run: bash scripts/baton/apply-release-branding.sh
 
@@ -188,7 +188,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Apply Baton branding (release build only, not committed)
+      - name: Apply Tessaya branding (release build only, not committed)
         shell: bash
         run: bash scripts/baton/apply-release-branding.sh
 
@@ -292,6 +292,6 @@ jobs:
             gh release upload "$tag" dist/* --clobber
           else
             gh release create "$tag" dist/* \
-              --title "Baton desktop v$version" \
-              --notes "Baton desktop app v$version. Unsigned build — Windows SmartScreen / macOS Gatekeeper will warn on first run; click through (Windows: More info -> Run anyway; macOS: right-click -> Open)."
+              --title "Tessaya desktop v$version" \
+              --notes "Tessaya desktop app v$version. Unsigned build — Windows SmartScreen / macOS Gatekeeper will warn on first run; click through (Windows: More info -> Run anyway; macOS: right-click -> Open)."
           fi

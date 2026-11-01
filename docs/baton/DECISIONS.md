@@ -3433,6 +3433,251 @@ The Director's words, in `VISION.md` ("An employee, not a command line", "Semi-s
 
 What it does not do: post to his social accounts. VentureOS owns phones, warm-up and posting rules; no integration is built until the two managers agree it.
 
+## D142 — One shared conversation, kept on this computer
+
+`baton-conversation.ndjson` in the state folder: every turn with its time, route, what he said, the full reply (never
+cut), a note on what came of it, and what it was about (`target`, so "show it" and "tell it to" mean something).
+It survives a restart. Retrieval is the latest six turns in full plus a text search over the older ones
+(`packages/baton-shared/src/conversation.ts`, `apps/desktop/src/baton/conversation/conversationLog.ts`). It goes
+nowhere except inside the model calls that need it. Dictated words are not kept (D31): a dictation is a stub with its
+length. This is the memory of the assistant in D143, and until D143 ships it also feeds the router as before.
+
+## D143 — One assistant, not stages (design, before building)
+
+**Why.** "It couldn't type it because it doesn't have the context of all of its tools and memories and everything in
+one file." The router sends each sentence to answer, look, drive, operate or teach, each with its own session and a
+partial context, so no stage can do what another stage just said. Baton becomes one long-lived agent that holds the
+whole conversation and every tool, decides for itself and uses several tools in one turn.
+
+**The agent** is one warm session on the seam that exists: the user's own `claude` (`-p`, stream-json in and out, the
+operator session of D127) or `codex app-server`. It starts when Baton starts and again at a wake word, stays alive between
+turns, and is recycled after about 40 turns, six hours idle, or a failure; a new session is seeded from the
+conversation store (the last six turns in full, the current target, a one-paragraph summary of older days) so a restart or a
+recycle loses nothing. No separate router call. The router stays as the fallback behind the setting below.
+
+**Tools.** Baton's own tools are served by a local MCP server **inside Baton's main process**, streamable HTTP on
+127.0.0.1 with a random port and a per-session bearer token, passed with `--mcp-config` (Claude) or the Codex MCP
+config. Rejected: a stdio MCP server, which needs a second packaged program and a channel back to the main process for the
+screen, the pointer, the fleet and the store; and the harness's built-ins alone, which have no screen, no pointer, no
+sessions. The harness's own tools stay for what they do well: Read, Glob, Grep, Bash, Write, Edit, WebFetch, WebSearch.
+Baton's tools: `screen_capture` (the existing consent), `click`, `double_click`, `type_text`, `press_keys`, `scroll`,
+`drag`, `wait`, `sessions_list`, `session_show`, `session_send` (through the intent run, so the same §24 gates as typing
+it), `fleet_status` (answers from state, §20, never by interrupting a session), `dictation_start`, `dictation_stop`,
+`memory_search`, `remember_target`. The agent is told each turn the context the founding document's §14 ranks: the explicit
+target in the sentence, the current target of the conversation, the focused session, the focused window and field, then the
+most recent session; it asks a short question only when the ambiguity matters.
+
+**The gate does not change shape.** Every tool call, built-in or Baton's, reaches `judgeToolCall` (D127) before it runs,
+because the MCP tools execute in Baton's own process and the harness's go through the permission seam already there.
+Extended for the new tools: reading is allowed (`sessions_list`, `session_show`, `fleet_status`, `memory_search`, `wait`);
+`screen_capture` runs the unchanged capture consent; `click`, `scroll`, `double_click` are routine; `type_text` is
+routine, with no Run it, when it types plain text, which is the rule that makes "type what you said" work on the first
+try; it asks when the text trips the high-risk list or `dangerousCommand`, when the focused window is a shell or its
+class cannot be told (`shellCheck`), or when the turn has read something outside the conversation and the text did not come
+from it (text that is his words or Baton's own earlier reply, found in the store, counts as his); `press_keys` with Enter
+or a send, `drag`, and anything that deletes, sends, pays or publishes asks; `session_send` is allowed and left to the intent
+gates; dictation is local and reversible. High risk is a spoken yes or no, with the box beside it, default no when the
+question runs out; the wake word alone never authorises it (§24); a refusal is said in plain words, aloud and on the pill,
+and logged with its reason. The proof script grows a case for each new tool.
+
+**Before the model.** The wake word and STOP (and "cancel", "quiet") stay in the voice core, exactly as D122: they never wait
+on a model. Mute and the hotkeys too.
+
+**Fast first words.** The agent's reply streams: the first sentence goes to the speaker as soon as it ends, and the prompt
+tells it to say one short line before a tool that will take over a second ("Looking."), and to stay silent about tool churn
+(§20: progress silent; needs input, approval, completion and failure spoken). Speculative thinking at a pause comes later, as
+a follow-up, not in this build.
+_Target:_ from the end of his speech to the first sound of Baton's voice, **p50 1.5 s and p90 3 s for a plain answer**, and a
+spoken first line within 1.5 s p50 for a turn that uses tools. _Measured_ from `voice-turns.ndjson`: each agent turn writes
+`agent_turn {endOfSpeechAt, firstTokenMs, firstAudioMs, tools:[name, ms], totalMs, route:"agent"}`, and
+`scripts/baton/latency-report.mjs` prints p50, p90 and the slowest five for the last 50 turns. I run it on his laptop only
+after he has been told, and report the numbers, not a feeling.
+
+**Shipping.** Behind a setting, **One assistant (new)**, in Assistant, off by default, saved in the screen file as
+`oneAssistant`. Until it has been measured on his laptop and he agrees, the router is the default; then the default flips,
+and the router and its stages are deleted in a later change, not this one. Small pushes, each with `patches.sh verify`:
+(1) the store wired to the existing stages, with every reply and every refusal reason in the turn log; (2) the MCP server,
+the tool table and the gate rules, with tests; (3) the warm session, seeding and recycling; (4) the voice wiring and the
+streaming; (5) the latency fields and the report; (6) the proof script extended.
+
+**Not decided here:** Codex's handling of MCP tool approvals through app-server; the gate runs in Baton's process either way,
+so the design does not depend on it, but the Codex path ships after the Claude one.
+
+**D143 push 1.** Every reply (answer, look, teach, drive, operate, clarify, and the sessions side's act replies) goes into
+the one conversation file in full and into `voice-turns.ndjson` as `reply`; every refusal says why aloud and on the pill
+and goes into both as `refusal {kind, reason, said}`: a guard, a declined screen capture, no plan, a paste that is too long,
+a shell, a screen that changed. A drive logs its plan (`drive_plan`) and what came of it (`drive_outcome`), and errors are
+logged. The router reads its recent lines from the store, full replies cut only at 600 characters. A dictation is a stub
+with its length. `scripts/baton/latency-report.mjs <voice-turns.ndjson>` prints p50, p90 and the slowest turns.
+
+**D143 push 2.** `agent/batonMcp.ts` serves Baton's tools over MCP on 127.0.0.1, a random port, with the session's token on
+every request; a request without it, with the wrong host, or from a browser (an Origin header) is refused, and `close()`
+ends it. `agent/agentGate.ts` runs `judgeToolCall` inside every tool handler, with a spoken or clicked yes (high risk: no
+by default), and marks the turn tainted after a screenshot, a file read, a command, a fetch or a search. `agent/batonTools.ts`
+is the tool table with each argument checked before the host is touched. `judgeToolCall` knows the new tools: reading is
+allowed, `type_text` is routine unless the text is high risk, the window is a command line, or the turn read something and
+the text did not come from the conversation (`textIsFromConversation`); Enter, drag and a sensitive click ask. Tests: no
+token, wrong token and a browser are refused; a high-risk call without a yes never runs; plain typing runs with no question;
+after a screenshot other text asks and his own words do not.
+
+**D143 push 3.** `agent/agentSession.ts` keeps one session warm, seeds it from the conversation file (the last six turns in
+full, the current target), puts every turn back into the file, and replaces the session when it dies, after 40 turns or six
+hours idle, re-seeded, so nothing is lost. `agent/agentPrompt.ts` is what it is told: §14's order for what "it" means, §20's
+quiet about progress, §24's lines, and "type what you said" as a recipe (screenshot, click the box, `type_text` exactly the
+words from the conversation). A test seeds a fixture conversation and checks that the session's first prompt holds the last
+reply in full and that the turn goes back into the file. `claudeVision` takes an `mcp` option: a private config file naming
+Baton's tool server and its token, passed with `--mcp-config --strict-mcp-config`, removed with the session.
+
+## D144 — The assistant's hands (folds issue #52 into D143)
+
+Computer use is not a stage. It is the agent calling tools itself, in a loop it controls: see, act, check, and again, with
+retries and a changed plan when the screen is not what it expected, several tools in one turn, in any app. Today's drive is
+one plan from one screenshot with a check after each step and an accessibility lookup for where a control is (D111); it
+cannot replan. In the new design the tools are `screen_capture` (the existing consent), `ui_tree` and `locate` (Windows UI
+Automation: names, roles and rectangles of what is on screen), `click`, `double_click`, `drag`, `scroll`, `press_keys`,
+`type_text`, `wait_for` (waits until a named control or text appears, or gives up), and the agent looks again after each
+action. UFO's idea, taken (MIT; its code is read first-hand before anything is ported): use the API or UIA first and pixels
+last, so a control the tree names is clicked by name and a screenshot is for what the tree cannot see. Visual plus UIA
+detection comes only where a before and after on the task set shows a gain. The guards stay and move into the tools: the gate
+on every call; plain text into a named box is routine; send, delete, pay, publish and secrets are a spoken yes; no pointer
+move while he is using the mouse unless he asked (D115); Escape and "stop" end it at once, before any model.
+The Windows task set of the research note (six tasks, three runs each) runs only when he is away and has been told; the
+harness is built with a dry run on fixtures that touches no pointer, so the real run is one command.
+Push order from here: 4 the host and the voice wiring behind "One assistant (new)"; 5 the hands tools and the harness;
+6 the proof script for every new tool.
+
+## D145 — Jobs: Baton takes long work like an employee (design; builds after the hands loop)
+
+**A job is a T3 thread with a record.** The worker is an ordinary T3 thread on a server (`BatonEngine` makes it), so it
+survives Baton closing, shows in T3's phone app, and can be opened in T3. A server-side service, `BatonJobService`
+(`apps/server/src/baton`), owns the job index in `baton.sqlite`: id, title, goal, thread, project, environment, account,
+written permissions, standing grants, schedule link, created and last-activity times. Status is not stored: it is read from
+the thread through the §10 ladder (running, needs you, done, failed), so it cannot drift. The same service methods serve the
+desktop tool, the web and Baton windows, the phone and an MCP tool on the server, per AGENTS.md: `create`, `list` (and a
+stream), `get`, `answer`, `stop`, `schedule`, `grant`, `revoke`. A job started on his laptop's own backend ends if Baton is
+quit; started on a box (where the sessions live) it runs on. The default is a box, and a card says where.
+
+**Scheduled and recurring: T3's own service.** `ScheduledTaskService` already persists tasks (`scheduled_tasks` in the
+server's `statev2.sqlite`; interval of a minute or more, fixed time, or webhook; `runNow`, `setEnabled`, `list`/stream).
+A scheduled job is a task whose run starts or resumes the worker thread; the job record keeps the task id and shows its next
+run. No second scheduler. Note: `migrate-dev-db` drops `scheduled_tasks` so a dev server never runs his agents, so a copied
+job whose task is gone says "not scheduled on this machine" and never runs.
+
+**Reports back, asks in conversation.** A worker that needs input or approval raises a job event carrying the question
+text. The desktop agent speaks it or shows it (§20: needs you, completion and failure are spoken; progress is silent) and his
+answer goes back to that thread through the approval and input paths the sessions already have. Nothing is answered for him.
+
+**Written permissions, and nothing public without a yes.** Each job carries a plain-language list, stored with it and on its
+card: which folders and projects, which tools (read, edit, shell, web, sessions), a spend limit, and what it may send. Any
+public post or message (email, social, chat, a PR comment to others) needs his spoken or written yes every time, until he
+grants that job a standing permission: explicit, for that one job, revocable, and logged in the audit view (D44). This build
+makes the model and the confirm path and nothing that posts. His social accounts, phones, warm-up and posting rules belong to
+VentureOS; no integration without that manager's agreement, asked through the coordinator.
+
+**Learned skills and memory (Hermes-style).** A compact local store of skills (name, when to use, steps, learned from which
+job) that the agent writes after a job succeeds and reads before a similar one (the best matches are put in the worker's
+first prompt), plus long-term notes (short facts about him and his work) beside the conversation history and its search
+(D142). All of it is local, listed in the window, editable and deletable, and goes nowhere except inside the model calls
+that need it.
+
+**Hands: the browser as well as the screen.** Per step the agent picks the more reliable: for a web page, the page's DOM and
+accessibility tree first (T3's preview browser, `apps/server/src/preview`, which is already Baton's shared browser, D2; the
+real Chrome through Claude in Chrome stays for flows that need a real fingerprint, D3, laptop only); for a native app, UIA
+first and pixels last (D144). The context line tells the agent which kind of window has focus; the gate is the same.
+
+**The window.** A Jobs tab in the app-v2 design: cards in four groups (running, needs you, done, failed) with last activity,
+worker thread, account, project, the permissions in words, and Open in T3, Answer, Stop, Schedule and Standing permission.
+It follows the app-v2 design language, with frames at real size.
+
+**Order, behind "One assistant (new)", after pushes 4 to 6:** J1 the service, its table and the status read, with tests;
+J2 contracts, RPC and the MCP tools; J3 the Jobs tab; J4 report-back; J5 permissions and the confirm path; J6 skills and
+notes; J7 scheduling; J8 the browser tools. Not decided here: which provider and model a worker uses by default (Claude on
+the account with most headroom, from the pool), and a per-job spend limit's unit before there is anything that spends.
+
+**D143 push 4.** The setting "One assistant (new)" (Assistant, More options; `oneAssistant` in the screen file, off). On, every
+sentence except stop and its kin (`instantDecision` control, which never waits on a model) goes to the one assistant:
+`ScreenCompanion` starts Baton's tool server and a warm session for it, with the host that does the work (screenshot through the
+existing consent, the pointer and keyboard through the input driver, sessions through the voice side's list and the intent path,
+dictation through the sidecar, memory search over the conversation file). The harness's own tools go through the same gate
+(`harnessGate`); Baton's tools through it inside the tool server, so a call is asked about once, in the tool. The reply streams:
+the first sentence goes to the speaker as it is written. Each turn writes `agent_turn` to `voice-turns.ndjson` with
+`firstTokenMs`, `firstAudioMs`, `totalMs` and the tools it used, measured from the transcript (the voice core does not hand over
+the moment his speech ended, so the time from his last word is these plus recognition; `latency-report.mjs` reads them).
+Stop interrupts the agent's turn (the session is dropped and the next one is re-seeded from the file). The router is unchanged
+and stays the default.
+
+**D143 push 5, the hands (D144).** New tools: `click_element` (a control by its name, through the accessibility tree: UIA first,
+pixels last) and `wait_for` (until a named control is on screen). `ui_tree`, a dump of the whole tree, waits for a command in the
+dictation sidecar, which today can only locate a named control near a point; it is not faked. The mouse stays his: if the pointer
+is not where Baton left it, the next move is refused with a plain line (`agent/pointerGuard.ts`), and Escape ends the turn at
+once. Two changes to the gate's taint rule, to make a see-act-check loop usable, and flagged for his say: a key or chord (not
+Enter, not a sensitive one) no longer asks after a read, since it carries nothing out; and one explicit yes to typing after a
+read covers the rest of that turn's typing, while Enter, sends, fetch, search, a command line and high risk still ask every
+time. Text that is his own words or Baton's reply still types with no question. The harness: `scripts/baton/computer-use-harness.sh
+dry` replays recorded traces through the real tool server and gate, no pointer; `real <out>` runs the six tasks three times on the
+Windows desktop and refuses unless `LAB_AWAY` names a time within four hours and `BATON_LAB=1`. Finished is automatic for task one
+only; the rest is read from the frames, and misclicks are counted in review. Not yet measured: any of it on his laptop.
+
+**D143 push 6.** `operator-proof.sh` now has ten cases: the five for the harness's tools (D127, D128) and five for the assistant's own:
+his own words type with no question after a screenshot; text from the screen asks and is not typed without a yes; high risk and a
+command line ask and a question that runs out is a no; Enter, a drag and a send always ask; nothing reaches a tool without the
+token or from a browser. `STATUS.md` says what is proven and what is not.
+
+**D144, rulings on the two gate changes.** (1) After a read, a key or chord is free only if it is navigation or editing with no Windows key and no
+Alt: arrows, Tab, Shift+Tab, Home, End, the page keys, Backspace, Delete, Escape, and Ctrl+A, C, X, V, Z, Y, F, each with Shift or Ctrl only
+(`keyIsNavigation`). The Windows key, Alt (Alt+F4, Alt+Tab, Alt+Space), Ctrl+Alt+Delete, Ctrl+Shift+Escape, Ctrl+W, T, N, Q, R, L, Ctrl+S, Enter,
+the F-keys, Ctrl+Shift+Delete and anything not sure to be one of these ask; unknown is ask. Before a read they are as he asked. (2) One yes to
+typing after a read covers more typing only into the same window and the same box (the control last clicked, by name or by a coarse place); it is
+asked again when the window with the keyboard or the box changes, after Enter or a send, and it ends with the turn. Proof cases 10 and 11.
+
+**D145 J1, and the job's flow from his words to work.** `BatonJobService` (`apps/server/src/baton/BatonJobService.ts`, migration 9, table
+`fabric_job_terms`) keeps the terms of a job beside its work session: the goal as he said it, permissions, caps (2 hours and 40 worker
+turns by default, dollars only for a metered key), standing permissions as a log, a phase, and a list of revisions (who said what, when, by
+voice, text or in the thread). The job's status is read from the fleet's state, never stored; `jobGroupFor` puts a job waiting for his OK in
+the group that needs him.
+_The flow:_ he gives a task by voice; Baton creates the worker thread through the engine (`launchThread` takes an `interactionMode`, here
+plan mode) with a first message that carries his words verbatim, then the written permissions, then "plan first, do not start"
+(`workerFirstMessage`). The plan and its questions are written in that thread. Baton says one short line ("The plan for X is ready in its
+thread.") and the Jobs page shows "Waiting for your OK" with Open thread and Approve. His refinements, by text or voice in the thread or
+through "tell it to", are appended to the job's revisions and the plan is made again. Work starts only on his explicit agreement (spoken "go
+ahead", the Approve button, or a reply in the thread), or at once when that job holds a standing permission to start (explicit, revocable,
+logged). An edit after the start that widens what the job may do (a new folder, project or tool, or a longer leash) sends it back to
+waiting, with or without that standing permission. The phases are drafting-plan, awaiting-his-agreement and approved; running, needs-you,
+done and failed after that are read from the thread. `reduceJob` is the whole of it, pure and tested: no work turn before agreement, a
+refinement is stored as context, a standing permission skips the wait only for the job that has it, a widening edit asks again.
+Next: J2 (the wire and the MCP tools, which also create the thread and run the reducer's events from the thread's state), J3 the Jobs tab.
+
+## D148 — The operating-system pack: an executive way of thinking, owned by the user (design; builds after J3)
+
+The planning step of every job, and the coordinator over workers, think like an executive and brief specialists, from a pack the
+user owns (D147). The pack is data, never code, and a user can replace it with their own.
+
+**The pack** lives in `<userdata>/operating-system/`: `executive.md`, `roles/*.md` and `reference/` (any file dropped in).
+`OperatingSystemService` (server, `apps/server/src/baton`) reads it; the Memory tab of the window lists, opens, edits and deletes
+those files (the same files, not a copy). A user file wins over the default of the same name. **The default pack ships in the repo,
+written from scratch:** outcome-first; the job stated without a solution, with its functional, emotional and social side; desired
+outcomes as direction, measure, object and circumstance; the job-map steps as the plan's skeleton (define, locate, prepare,
+confirm, execute, monitor, modify, conclude); find the leverage point before choosing the work; build or do not build, with the
+reason and whether it can be undone; brief specialists as persona, tools, memory, constraints and triggers; ask only a question
+that changes the decision; workers report outcomes, not activity. Roles in the default: engineering, marketing, research, operations.
+
+**Planning.** The prompt of the planning turn is his words verbatim, then `executive.md`, then the briefs of the specialists the plan
+picks. Before any work the plan thread shows a **Job brief**: job statement, desired outcomes, leverage point, build or do not build
+with its reason, the plan skeleton, the specialists, reversibility and the written permissions. `parseJobBrief` checks the sections
+are there; a plan without them is not "ready" (D145's reducer waits).
+
+**Workers.** A worker's brief carries persona, tools, memory, constraints and triggers and the role's mental model. Its report is
+outcome-first: what changed for each outcome, the evidence, what is next, what blocks it. The job card shows outcomes first.
+
+**Cost.** Mechanical worker steps run on a cheap model; planning and judgment on the strong one, by a routing table he can edit.
+The card shows which model each step used.
+
+**Private stays private.** His own pack is made on his machine, by `scripts/baton/import-operating-system.mjs <file>`: it reads his
+document and distils the executive file and the role briefs with his own Claude login, into userdata. It is never committed and
+nothing leaves the machine except that one model call. The repo and the installer carry no part of it: a guard test hashes a
+list of private markers (never written in clear in the repo) and fails if any word run in a tracked file or the installer's file
+list matches. The public build starts with the neutral default.
+
 ## D147 — The operating-system pack: the top agent thinks like an executive
 
 The Director's request: the assistant works efficiently with an executive and specialist way of thinking, from an operating system he owns. Design, for the coordinator and the planning step of every job (D145):
@@ -3445,3 +3690,9 @@ The Director's request: the assistant works efficiently with an executive and sp
 
 **D139, update label.** An install over a running Baton stops it by force, so the next start found its marker and logged a crash. The start now compares the
 marker's version with its own: a different version logs `replaced-by-update {from, to}`; `previous-run-ended-badly` is kept for the same version (or one it cannot tell).
+
+**D143, shipped as the default.** The one assistant is on by default (setting "One assistant"). When it fails before saying anything (the harness will not start, or dies), the sentence goes to the older router and the card says "The one assistant couldn't answer, so the older router is handling this." (note `agent_fallback`). A stop he gives, or a failure after it has begun to speak, is not retried. Switching the setting off sends everything to the router, as before. Not proven: a live voice turn on his machine.
+
+**D144, UI Automation first (built).** `ui_tree` lists the named controls (kind, name, which one has the keyboard) of the window he is using, through the sidecar's UI Automation walk; `click_element` and `wait_for` now search that same window wherever the pointer is (before, a control had to be within 160 px of the pointer, which an agent working from names never is). The tree is screen content, so it asks for the same consent as a screenshot and taints the turn like one. The prompt teaches the loop: read the tree, act, look again, change the plan when the screen differs, stop after two identical failures. Not yet done: the Windows task-set run and a before and after against a screenshot-only loop (needs the laptop, and he away); the Rust walk is untested off Windows.
+
+**D145 J2 (server wire).** `BatonJobFlow` (`apps/server/src/baton`) is the flow as service functions: `startJob` makes the work session, the terms and the worker thread in plan mode with his words verbatim (`workerFirstMessage`); `refineJob` records the revision and passes his words to the thread unchanged; `agreeJob` is the only way to work: it moves the thread out of plan mode and sends one "go ahead", and agreeing twice sends nothing twice; `listJobs` joins terms to the fleet. RPC `baton.job.list|start|agree|refine|grant|revoke` (read scope for list, operate for the rest), with `setInteractionMode` added to the engine. A planning turn that has ended (thread completed) counts as the plan being written when he agrees; a reactor that notices it unprompted is J4. Known edge: right after a refinement the old plan's completed turn still counts, but the refinement is already in the thread ahead of "go ahead". Not here: the desktop tools (J2b), the tab (J3).

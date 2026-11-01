@@ -86,11 +86,12 @@ const short = (text: string): string =>
   text.length > CAPTION_CHARS ? `${text.slice(0, CAPTION_CHARS)}…` : text;
 
 /**
- * Something finished. The pill leaves at once, even with the window still open for a follow-up:
- * Listening is only for before he speaks. A window that closed under it shows its end once.
+ * Something finished. With the window still open for a follow-up the pill goes back to Listening,
+ * so he can see Baton is hearing him; a window that closed under it shows its end once.
  */
 const settle = (state: TurnState): TurnState => {
-  return state.closing ? { ...IDLE_TURN, phase: "ended", caption: WAKE_AGAIN } : IDLE_TURN;
+  if (state.closing) return { ...IDLE_TURN, phase: "ended", caption: WAKE_AGAIN };
+  return state.open ? { ...IDLE_TURN, phase: "listening", heard: true, open: true } : IDLE_TURN;
 };
 
 export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
@@ -171,7 +172,7 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
         ? state
         : settle(state);
     case "dismissed":
-      return state.phase === "ended" ? IDLE_TURN : settle(state);
+      return IDLE_TURN;
     case "failed":
       return state.phase === "idle"
         ? state
@@ -234,12 +235,15 @@ export const turnLimitMs = (phase: TurnPhase): number =>
       : TURN_LIMIT_MS;
 
 /**
- * Esc belongs to his apps unless the microphone is live. Dictation holds it itself, a drive as its
- * safety stop, and the ask box and prompts hear it through their own focus.
+ * Esc belongs to his apps unless Baton's voice window is open: while it listens, thinks, speaks or
+ * works, Esc ends it from any app. Dictation holds it itself, a drive as its safety stop, and the
+ * ask box and prompts hear it through their own focus.
  */
 export const turnHoldsEscape = (state: TurnState): boolean =>
-  // Past the first words a window stays open for a while, and Esc goes back to his apps.
-  state.phase === "listening" && !state.heard;
+  state.phase === "listening" ||
+  state.phase === "thinking" ||
+  state.phase === "speaking" ||
+  state.phase === "working";
 
 /** Peak of a frame on a rough 0..1 scale for the waveform. */
 export const frameLevel = (frame: Int16Array): number => {
@@ -253,3 +257,22 @@ export const isCancelPhrase = (text: string): boolean =>
   /^(?:(?:hey |ok |okay )?(?:jarvis|baton|alfred)[,:]?\s+)?(?:cancel(?: that)?|never ?mind|scratch that|forget it)[.!]?$/i.test(
     text.trim(),
   );
+
+const NEUTRAL = String.raw`okay|ok|alright|right|yeah|please|baton|jarvis|alfred|now|for now|sir`;
+const DISMISS_ATOM = String.raw`dismiss(?:ed)?|go away|leave it|never ?mind|forget it|scratch that|cancel(?: that)?|stop(?: it| that| listening)?|(?:be )?quiet|enough|that'?s enough|that(?:'s| is|'ll be| will be| would be) (?:all|it)|nothing|no(?:pe)?|nah|thanks?|tanks?|thank you(?: very much)?|cheers|bye(?: bye)?|goodbye|good bye|see you|see ya`;
+const DISMISS = new RegExp(String.raw`^(?:(?:${NEUTRAL}|${DISMISS_ATOM})(?: |$)){1,4}$`);
+const NEUTRAL_ONLY = new RegExp(String.raw`^(?:(?:${NEUTRAL})(?: |$))+$`);
+
+/**
+ * The whole utterance is only a dismissal ("stop", "nothing, dismiss", "okay that will be all
+ * tanks"), read as Baton heard it. Any other word makes it an ask for the assistant, never this.
+ */
+export const isDismissPhrase = (text: string): boolean => {
+  const words = text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^a-z' ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return words.length > 0 && DISMISS.test(words) && !NEUTRAL_ONLY.test(words);
+};

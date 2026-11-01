@@ -50,6 +50,8 @@ export interface VisionSessionOptions {
   readonly cwd?: string;
   /** Every tool call the model makes, for the log. */
   readonly onTool?: (call: ToolCall) => void;
+  /** Baton's own tool server for this session: its address and the token it needs (D143). */
+  readonly mcp?: { readonly url: string; readonly token: string };
 }
 
 /** Files, shell and the web. Nothing that outlives the turn, such as schedules or triggers. */
@@ -73,6 +75,8 @@ export const visionArgs = (
   systemPromptFile: string,
   model: string,
   operator = false,
+  /** A file naming the MCP servers this session may use, and no others (D143). */
+  mcpConfigFile?: string,
 ): ReadonlyArray<string> => [
   "-p",
   "--safe-mode",
@@ -84,9 +88,12 @@ export const visionArgs = (
   "--include-partial-messages",
   "--model",
   model,
+  // Medium is the default effort for the models Tessaya starts; the fast router model takes none.
+  ...(/haiku/i.test(model) ? [] : ["--effort", "medium"]),
   "--tools",
   operator ? OPERATOR_TOOLS : "",
   ...(operator ? OPERATOR_FLAGS : []),
+  ...(mcpConfigFile === undefined ? [] : ["--mcp-config", mcpConfigFile, "--strict-mcp-config"]),
   "--no-session-persistence",
   "--system-prompt-file",
   systemPromptFile,
@@ -245,12 +252,29 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     `prompt-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`,
   );
   NodeFS.writeFileSync(promptFile, options.systemPrompt, { mode: 0o600 });
+  // The token is a secret for this session only; the file is private and goes with the session.
+  const mcpFile = options.mcp === undefined ? undefined : promptFile.replace(/\.txt$/, "-mcp.json");
+  if (mcpFile !== undefined && options.mcp !== undefined) {
+    NodeFS.writeFileSync(
+      mcpFile,
+      JSON.stringify({
+        mcpServers: {
+          baton: {
+            type: "http",
+            url: options.mcp.url,
+            headers: { Authorization: `Bearer ${options.mcp.token}` },
+          },
+        },
+      }),
+      { mode: 0o600 },
+    );
+  }
   const binary = resolveBinary(options.claudeBinary, options.platform, options.env);
   // A Windows npm install is `claude.cmd`; a shell is needed to start one, and every argument here is ours.
   const viaShell = options.platform === "win32" && /\.cmd$/i.test(binary);
   const child = NodeChildProcess.spawn(
     binary,
-    visionArgs(promptFile, options.model, options.gate !== undefined).map((a) =>
+    visionArgs(promptFile, options.model, options.gate !== undefined, mcpFile).map((a) =>
       viaShell ? `"${a}"` : a,
     ),
     {
@@ -279,7 +303,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     fail(
       new Error(
         (error as NodeJS.ErrnoException).code === "ENOENT"
-          ? `Claude Code was not found at "${options.claudeBinary}". Install it and sign in, or set its path in Baton's screen settings.`
+          ? `Claude Code was not found at "${options.claudeBinary}". Install it and sign in, or set its path in Tessaya's screen settings.`
           : error.message,
       ),
     ),
@@ -317,7 +341,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     if (request !== null) {
       void options.gate!(request.call)
         // An answer that fails is a no.
-        .catch(() => ({ allow: false as const, reason: "Baton could not check that." }))
+        .catch(() => ({ allow: false as const, reason: "Tessaya could not check that." }))
         .then((answer) => answerTool(request.requestId, toolAnswerOf(answer, request.call)));
       return;
     }
@@ -364,6 +388,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       child.stdin.end();
       kill();
       NodeFS.rmSync(promptFile, { force: true });
+      if (mcpFile !== undefined) NodeFS.rmSync(mcpFile, { force: true });
     },
   };
 };

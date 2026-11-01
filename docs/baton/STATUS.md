@@ -1119,19 +1119,36 @@ failed). Why the gate's pieces moved: D136.
 
 Written 2026-11-01. Proven means seen working on his laptop; "tests" means unit or browser renders only.
 
-| Ask | State |
-| --- | --- |
-| Baton's own window, sidebar and tabs, every setting | Merged (PR #73, #76 fixed a script error). Mock-data renders; 0.1.18 is the first build to carry the fix. Not yet seen on his laptop |
-| Real Wispr Flow audit | First pass from public sources merged (`research/wispr-audit-2026-11-01/`); the live-app capture waits for his yes |
-| Open sessions opens T3 | Merged (PR #74); not run in Electron |
-| Clean thread list, renames stick | Deployed to both boxes (0.1.5-baton.47); sweep ran, 7 to 3 and 134 to 7 |
-| Updates warn and relaunch | Merged (#69); the install script warns 30 s first, proven on 0.1.15 |
-| Dictation pack (voice-only dictate, quick pill, caret context, learned vocabulary, one-shot default, cleanup eval) | Merged (#77); tests only |
-| History, optional Opus recordings, hour-long dictation | PR #79; tests and renders only. Local History store and tab (search, copy, retry clean-up, delete); recordings off by default (30 days, 2 GB of corrected clips, paused under 5 GB free); sidecar recording cap an hour (uncompiled); Insights on Home |
-| Mouse bindings (middle click, left+right chord) | Reducer and schema merged; the Windows hook is not written |
-| One assistant (no router) | Pushes 1 to 4 on `baton/conversation-memory`, behind a setting, never run live |
-| Full computer use as its hands (#52) | Designed (D144); not built |
-| Jobs, schedules, reports back, phone | Designed (D145); not built |
-| Monitoring, skills/plugins/MCPs, shared learnings memory, morning brief, approval list, editable memory, coordinator | Planned (D146); not built |
-| Conversation feel, realtime bake-off | Queued; no spend without his yes |
-| Public release readiness | `LAUNCH.md`; blockers and decisions listed there |
+| Ask                                                                                                                  | State                                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baton's own window, sidebar and tabs, every setting                                                                  | Merged (PR #73, #76 fixed a script error). Mock-data renders; 0.1.18 is the first build to carry the fix. Not yet seen on his laptop                                                                                                                   |
+| Real Wispr Flow audit                                                                                                | First pass from public sources merged (`research/wispr-audit-2026-11-01/`); the live-app capture waits for his yes                                                                                                                                     |
+| Open sessions opens T3                                                                                               | Merged (PR #74); not run in Electron                                                                                                                                                                                                                   |
+| Clean thread list, renames stick                                                                                     | Deployed to both boxes (0.1.5-baton.47); sweep ran, 7 to 3 and 134 to 7                                                                                                                                                                                |
+| Updates warn and relaunch                                                                                            | Merged (#69); the install script warns 30 s first, proven on 0.1.15                                                                                                                                                                                    |
+| Dictation pack (voice-only dictate, quick pill, caret context, learned vocabulary, one-shot default, cleanup eval)   | Merged (#77); tests only                                                                                                                                                                                                                               |
+| History, optional Opus recordings, hour-long dictation                                                               | PR #79; tests and renders only. Local History store and tab (search, copy, retry clean-up, delete); recordings off by default (30 days, 2 GB of corrected clips, paused under 5 GB free); sidecar recording cap an hour (uncompiled); Insights on Home |
+| Mouse bindings (middle click, left+right chord)                                                                      | Reducer and schema merged; the Windows hook is not written                                                                                                                                                                                             |
+| One assistant (no router)                                                                                            | Pushes 1 to 4 on `baton/conversation-memory`, behind a setting, never run live                                                                                                                                                                         |
+| Full computer use as its hands (#52)                                                                                 | Tools, gate and harness built; UI Automation tree and click by name in the window with the keyboard; never run on his laptop                                                                                                                                                                                                                             |
+| Jobs, schedules, reports back, phone                                                                                 | Designed (D145); not built                                                                                                                                                                                                                             |
+| Monitoring, skills/plugins/MCPs, shared learnings memory, morning brief, approval list, editable memory, coordinator | Planned (D146); not built                                                                                                                                                                                                                              |
+| Conversation feel, realtime bake-off                                                                                 | Queued; no spend without his yes                                                                                                                                                                                                                       |
+| Public release readiness                                                                                             | `LAUNCH.md`; blockers and decisions listed there                                                                                                                                                                                                       |
+
+## The one assistant (D143, D144), 2026-11-02
+
+Behind "One assistant (new)", off by default. Proven by tests and the proof script (`scripts/baton/operator-proof.sh`, 10 cases): the
+tool server refuses no token, a wrong token and a browser; the gate runs inside every tool; plain typing of his own words needs no
+question even after a screenshot; other text after a screenshot asks; high risk, a command line, Enter, a drag and a send ask and a
+question that runs out is a no; the warm session is seeded with the last reply in full; the dry run of the hands' harness passes.
+Not proven: any of it against a real `claude` with a real screen, the first-word latency (the target is p50 1.5 s, p90 3 s, read
+with `scripts/baton/latency-report.mjs` once he allows a live test), `ui_tree`, Codex, and the six-task before and after (it waits
+for him to be away and told, `scripts/baton/computer-use-harness.sh real`).
+
+Gate rulings (2026-11-02): keys after a read and the scope of one yes to typing are as D144 says. Proven: `operator-proof.sh` cases 10 and 11 (12 in all)
+and the dry run of the hands' harness. Not proven: against a real session.
+
+Jobs, J1 (D145, 2026-11-02): the job terms, the lifecycle reducer and the permission and cap rules. Proven: the pure rules and the service against an in-memory database
+(`jobs.test.ts`, `BatonJobService.test.ts`): no work turn before agreement, a refinement kept, a standing permission skipping the wait only for its own job, a widening edit
+asking again, the permissions in words, the worker account by headroom. Not proven: creating a real worker thread in plan mode, the wire, any window, the phone.

@@ -168,6 +168,19 @@ describe("a live message's media", () => {
     expect(NodeFS.readdirSync(attachmentsDir)).toEqual(stored);
   });
 
+  it("stores a screenshot a tool returned as the reply's own image attachment", () => {
+    const message = {
+      uuid: "a",
+      role: "assistant" as const,
+      text: "Here is the page.",
+      createdAt: "2026-10-29T10:00:00.000Z",
+      images: [{ mimeType: "image/png", data: png.toString("base64") }],
+    };
+    const shown = liveMedia({ attachmentsDir, threadId: "t", messageId: "m2", message });
+    expect(shown.text).toMatch(/^Here is the page\.\n\n!\[image-1\.png\]\(<.+>\)$/);
+    expect(shown.attachments).toEqual([]);
+  });
+
   it("puts sent files in the reply as markdown and names the ones that are gone", () => {
     const sent = NodePath.join(dir, "sheet.png");
     const doc = NodePath.join(dir, "notes.pdf");
@@ -220,5 +233,28 @@ describe("a live message's media", () => {
     expect(image).toMatch(/^!\[shot\.png\]\(<.+\.png>\)$/);
     expect(video).toMatch(/^!\[clip\.mp4\]\(<.+\.mp4>\)$/);
     expect(extra).toBeUndefined();
+  });
+
+  it("shows a file the session's own tool calls wrote outside the cwd, though the reply never names it", () => {
+    const cwd = NodePath.join(dir, "ws2");
+    NodeFS.mkdirSync(cwd, { recursive: true });
+    const elsewhere = NodeFS.mkdtempSync("/dev/shm/live-");
+    const shot = NodePath.join(elsewhere, "screen.png");
+    NodeFS.writeFileSync(shot, png);
+    const base = {
+      attachmentsDir,
+      threadId: "t",
+      messageId: "x",
+      cwd,
+      message: {
+        uuid: "x",
+        role: "assistant" as const,
+        text: "Here you go.",
+        createdAt: "2026-10-29T10:00:00.000Z",
+      },
+    };
+    expect(liveMedia(base).text).toBe("Here you go.");
+    expect(liveMedia({ ...base, touched: [shot] }).text).toMatch(/!\[screen\.png\]/);
+    NodeFS.rmSync(elsewhere, { recursive: true, force: true });
   });
 });

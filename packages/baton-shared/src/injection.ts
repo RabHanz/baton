@@ -87,7 +87,7 @@ export const describeInjectionCapabilities = (facts: InjectionHostFacts): BatonI
       available: facts.applicationIntegrationConnected,
       reason: facts.applicationIntegrationConnected
         ? ""
-        : "no application integration is connected — open the field in Baton, VS Code or a browser with the extension.",
+        : "no application integration is connected — open the field in Tessaya, VS Code or a browser with the extension.",
     },
     {
       method: "accessibility",
@@ -131,7 +131,7 @@ const accessibilityReason = (facts: InjectionHostFacts): string => {
     return "this Linux session does not report a display server that allows injection.";
   }
   if (facts.platform === "darwin") {
-    return "macOS Accessibility permission has not been granted to Baton.";
+    return "macOS Accessibility permission has not been granted to Tessaya.";
   }
   if (facts.platform === "win32") {
     return "UI Automation is not available to this process.";

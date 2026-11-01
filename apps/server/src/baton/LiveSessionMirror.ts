@@ -64,6 +64,7 @@ import {
   parseLiveTranscriptLine,
   splitTranscriptChunk,
   type LiveToolStep,
+  type LiveTranscriptImage,
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
@@ -79,7 +80,8 @@ import {
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
-import { mentionedMediaFiles } from "../mentionedMedia.ts";
+import { pathsInto } from "@t3tools/shared/mediaPolicy";
+import { attachMarkdown, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -121,7 +123,17 @@ const RECHECK_MS = 10_000;
 /** A tool's output shown in the thread is cut to this many characters. */
 const MAX_TOOL_OUTPUT_CHARS = 4_000;
 /** A sent file bigger than this is named in the thread, not copied. */
+const realpathOrNothing = (path: string): ReadonlyArray<string> => {
+  try {
+    return [NodeFS.realpathSync(path)];
+  } catch {
+    return [];
+  }
+};
 const MAX_SENT_FILE_BYTES = 20 * 1024 * 1024;
+/** A turn shows at most this many tool screenshots; the newest win. */
+const MAX_TOOL_SHOTS = 4;
+
 const INLINE_IMAGE_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
@@ -196,6 +208,8 @@ export const liveMedia = (input: {
   readonly message: LiveTranscriptMessage;
   /** The session's directory: image and video files a reply names are shown when they sit inside it. */
   readonly cwd?: string;
+  /** Paths the session's own tool calls used since the last user message. */
+  readonly touched?: ReadonlyArray<string>;
 }): LiveMedia => {
   const { attachmentsDir, threadId, messageId, message } = input;
   const store = (attachment: ChatAttachment, bytes: Uint8Array): string | null => {
@@ -209,6 +223,7 @@ export const liveMedia = (input: {
   };
   const attachments: Array<ChatAttachment> = [];
   const notes: Array<string> = [];
+  const links: Array<string> = [];
   (message.images ?? []).forEach((image, index) => {
     const bytes = Buffer.from(image.data, "base64");
     const extension = inferImageExtension({ mimeType: image.mimeType });
@@ -230,16 +245,15 @@ export const liveMedia = (input: {
       mimeType: image.mimeType,
       sizeBytes: bytes.length,
     };
-    if (store(attachment, bytes) !== null) attachments.push(attachment);
+    const copy = store(attachment, bytes);
+    if (copy === null) return;
+    // A reply's pictures (tool screenshots) ride in its markdown; a user message's are T3 attachments.
+    if (message.role === "assistant") links.push(`![${attachment.name}](<${copy}>)`);
+    else attachments.push(attachment);
   });
-  const links: Array<string> = [];
   const sent = message.files ?? [];
-  const mentioned =
-    message.role === "assistant" && input.cwd !== undefined
-      ? mentionedMediaFiles(message.text, input.cwd).filter((file) => !sent.includes(file))
-      : [];
-  [...sent, ...mentioned].forEach((file, index) => {
-    const quiet = index >= sent.length;
+  sent.forEach((file, index) => {
+    const quiet = false;
     const name = NodePath.basename(file);
     let stat: NodeFS.Stats | null = null;
     try {
@@ -283,6 +297,23 @@ export const liveMedia = (input: {
         : `[${label(name)}](<${copy}>)`,
     );
   });
+  // What a reply names, and what the session touched this turn, shows too: one rule for every provider.
+  if (message.role === "assistant" && input.cwd !== undefined) {
+    const sentReal = new Set(sent.flatMap((file) => realpathOrNothing(file)));
+    links.push(
+      ...attachMarkdown({
+        attachmentsDir,
+        threadId,
+        messageId,
+        media: resolveMedia({
+          text: message.text,
+          cwd: input.cwd,
+          touched: input.touched ?? [],
+          roots: [attachmentsDir],
+        }).filter((m) => !sentReal.has(m.file)),
+      }),
+    );
+  }
   const text = [message.text, ...links, ...notes].filter((part) => part.length > 0).join("\n\n");
   // Sent files live in the markdown; only a user message carries T3 attachments.
   return { text, attachments: message.role === "user" ? attachments : [] };
@@ -503,6 +534,10 @@ interface Follow {
   target: RunId | null;
   /** A terminal turn Baton opened that is still running. */
   open: OrchestrationV2Run | null;
+  /** Image and video paths the session's own tool calls used since the last user message. */
+  touched: Set<string>;
+  /** Screenshots tools returned since the last user message; the next reply shows them. */
+  shots: Array<LiveTranscriptImage>;
   /** When the newest mirrored message was written: a finished turn ends there, not at "now". */
   lastAt: DateTime.Utc | null;
   /** Since when the session has read idle while a terminal turn is open. */
@@ -541,7 +576,7 @@ const make = Effect.gen(function* () {
     const script = agentScript();
     const node = findNode();
     if (!NodeFS.existsSync(script) || node === null) {
-      yield* Effect.logWarning("Baton live threads: no agent script or Node, sending is off", {
+      yield* Effect.logWarning("Tessaya live threads: no agent script or Node, sending is off", {
         script,
         node,
       });
@@ -562,7 +597,7 @@ const make = Effect.gen(function* () {
     });
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logWarning("Baton live threads: provider setup failed", cause),
+      Effect.logWarning("Tessaya live threads: provider setup failed", cause),
     ),
   );
 
@@ -676,11 +711,20 @@ const make = Effect.gen(function* () {
     runId: RunId | null,
     media?: LiveMedia,
     cwd?: string,
+    touched?: ReadonlyArray<string>,
   ): ReadonlyArray<OrchestrationV2DomainEvent> => {
     const key = `${sessionId}:${message.uuid}`;
     const messageId = MessageId.make(`${PREFIX}:${key}`);
     const { text, attachments } =
-      media ?? liveMedia({ attachmentsDir, threadId, messageId, message, ...(cwd ? { cwd } : {}) });
+      media ??
+      liveMedia({
+        attachmentsDir,
+        threadId,
+        messageId,
+        message,
+        ...(cwd ? { cwd } : {}),
+        ...(touched ? { touched } : {}),
+      });
     const at = DateTime.makeUnsafe(message.createdAt);
     const common = {
       id: TurnItemId.make(`${PREFIX}:turn-item:${key}`),
@@ -882,12 +926,23 @@ const make = Effect.gen(function* () {
       };
       for (const message of fresh) {
         if (isStep(message)) {
+          for (const path of pathsInto(message.kind === "use" ? message.input : message.output)) {
+            follow.touched.add(path);
+          }
+          if (message.kind === "result" && message.images !== undefined) {
+            follow.shots.push(...message.images);
+            follow.shots.splice(0, Math.max(0, follow.shots.length - MAX_TOOL_SHOTS));
+          }
           ownerAt(message.createdAt);
           events.push(...toolEvents(follow, session.sessionId, message, follow.target));
           continue;
         }
         if (message.role === "assistant") ownerAt(message.createdAt);
         follow.written.add(message.uuid);
+        if (message.role === "user") {
+          follow.touched = new Set();
+          follow.shots = [];
+        }
         const at = DateTime.makeUnsafe(message.createdAt);
         follow.lastAt = at;
         if (message.role === "user") {
@@ -940,12 +995,16 @@ const make = Effect.gen(function* () {
           ...messageEvents(
             follow.threadId,
             session.sessionId,
-            message,
+            message.role === "assistant" && follow.shots.length > 0
+              ? { ...message, images: [...(message.images ?? []), ...follow.shots] }
+              : message,
             follow.target,
             undefined,
             session.cwd,
+            [...follow.touched],
           ),
         );
+        if (message.role === "assistant") follow.shots = [];
       }
       if (events.length > 0) yield* engine.writeEvents({ events });
     });
@@ -1265,6 +1324,8 @@ const make = Effect.gen(function* () {
         name: history.find((m) => m.role === "user")?.text.split("\n")[0] ?? null,
         target: null,
         open: null,
+        touched: new Set<string>(),
+        shots: [],
         lastAt: null,
         idleSince: null,
         // A session busy when Baton starts is taken to be working on something.
@@ -1364,7 +1425,7 @@ const make = Effect.gen(function* () {
               )
         ).pipe(
           Effect.catchCause((cause) =>
-            Effect.logWarning("Baton live threads: a session could not be mirrored", {
+            Effect.logWarning("Tessaya live threads: a session could not be mirrored", {
               sessionId: session.sessionId,
               cause,
             }).pipe(
@@ -1399,13 +1460,13 @@ const make = Effect.gen(function* () {
   if (!liveThreadsEnabled()) return;
   yield* ensureProviderInstance;
   yield* sweep.pipe(
-    Effect.catchCause((cause) => Effect.logWarning("Baton thread sweep failed", cause)),
+    Effect.catchCause((cause) => Effect.logWarning("Tessaya thread sweep failed", cause)),
   );
   yield* retireOld.pipe(
-    Effect.catchCause((cause) => Effect.logWarning("Baton live threads: retiring failed", cause)),
+    Effect.catchCause((cause) => Effect.logWarning("Tessaya live threads: retiring failed", cause)),
   );
   yield* tick.pipe(
-    Effect.catchCause((cause) => Effect.logWarning("Baton live threads: tick failed", cause)),
+    Effect.catchCause((cause) => Effect.logWarning("Tessaya live threads: tick failed", cause)),
     Effect.repeat(Schedule.spaced(TICK)),
     Effect.forkScoped,
   );

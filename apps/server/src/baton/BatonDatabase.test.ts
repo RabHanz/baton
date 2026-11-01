@@ -49,8 +49,8 @@ const legacyStateFile = (dir: string) =>
     return file;
   });
 
-describe("Baton's database", () => {
-  it.effect("records Baton's migrations in Baton's own table", () =>
+describe("Tessaya's database", () => {
+  it.effect("records Tessaya's migrations in Tessaya's own table", () =>
     Effect.gen(function* () {
       yield* runBatonMigrations();
       const sql = yield* SqlClient.SqlClient;
@@ -64,7 +64,7 @@ describe("Baton's database", () => {
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );
 
-  it.effect("seeds from a pre-v2 state.sqlite: Baton's tables and rows, nothing else", () =>
+  it.effect("seeds from a pre-v2 state.sqlite: Tessaya's tables and rows, nothing else", () =>
     Effect.gen(function* () {
       const dir = tempDir();
       const legacy = yield* legacyStateFile(dir);
@@ -100,7 +100,7 @@ describe("Baton's database", () => {
     expect(seedBatonDatabase(baton, NodePath.join(dir, "state.sqlite")).reason).toBe("exists");
   });
 
-  it("does not seed from a state.sqlite that never had Baton", () => {
+  it("does not seed from a state.sqlite that never had Tessaya", () => {
     const dir = tempDir();
     const legacy = NodePath.join(dir, "state.sqlite");
     const db = new NodeSqlite.DatabaseSync(legacy);

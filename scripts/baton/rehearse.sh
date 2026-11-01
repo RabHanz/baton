@@ -41,5 +41,5 @@ done
 echo "pid $pid  port $port  http $(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/" || true)"
 echo "state.sqlite unchanged: $([ "$(sha256sum "$root/home/userdata/state.sqlite" | cut -d' ' -f1)" = "$legacy_sha" ] && echo yes || echo NO)"
 ls -la "$root/home/userdata/"*.sqlite
-grep -E "Baton database seeded|statev2|LegacyV1|error|Error" "$root/serve.log" "$root/home/userdata/logs/"*.log 2>/dev/null | cut -c1-240 | head -20 || true
+grep -E "Tessaya database seeded|statev2|LegacyV1|error|Error" "$root/serve.log" "$root/home/userdata/logs/"*.log 2>/dev/null | cut -c1-240 | head -20 || true
 echo "home: $root/home"

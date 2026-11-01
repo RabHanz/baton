@@ -30,6 +30,7 @@ import {
   planFromReply,
   runDrivePlan,
   screensDifference,
+  isShellWindow,
   screenLabel,
   shotFor,
   teachTurn,
@@ -64,6 +65,7 @@ import {
 import {
   SessionClosed,
   startVisionSession,
+  type ToolGate,
   type VisionContent,
   type VisionSession,
 } from "./claudeVision.ts";
@@ -71,6 +73,18 @@ import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
+import {
+  routerLines,
+  textIsFromConversation,
+  type ConversationRoute,
+} from "@t3tools/baton-shared/conversation";
+import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
+import { pointerMoved } from "../agent/pointerGuard.ts";
+import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
+import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
+import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
+import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -102,6 +116,8 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
+  /** One continuous assistant with every tool, instead of the router's stages (D143). Off until measured. */
+  readonly oneAssistant: boolean;
   /** He has picked what Baton works through, so the first-run card is done. */
   readonly brainChosen: boolean;
   /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
@@ -113,7 +129,7 @@ const UNKNOWN_BRAINS: BrainStatus = { claude: { state: "missing" }, codex: { sta
 const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
-  model: "sonnet",
+  model: "claude-opus-5-5",
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
@@ -121,6 +137,7 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
+  oneAssistant: true,
   brainChosen: false,
   assistantAccount: null,
 };
@@ -145,7 +162,6 @@ const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
 /** It arrives unasked while he may be typing, so a stray key cannot answer it. */
 const PAUSE_ARM_MS = 900;
-const RECENT_LINES = 8;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
 /**
@@ -178,7 +194,11 @@ export interface AssistantActions {
   readonly locate?: (
     label: string,
     near: { readonly x: number; readonly y: number },
+    /** The whole window with the keyboard, not only what is near the point (the assistant's click by name). */
+    anywhere?: boolean,
   ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
+  /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
+  readonly uiTree?: () => Promise<{ readonly window: string; readonly controls: ReadonlyArray<string> } | null>;
   /** The top-level window under a desktop point, for a drive's click. */
   readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<{
     readonly window: number;
@@ -194,6 +214,12 @@ export interface AssistantActions {
   /** A command through the intent path and all its guards; the reply to speak. */
   readonly act: (command: string, restated?: boolean) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
+  /** His live sessions, one per line, with the id each is named by. */
+  readonly sessionsList?: () => string;
+  /** A session by id or name: what it is called, for the intent path. Null when none matches. */
+  readonly sessionName?: (idOrName: string) => string | null;
+  /** Start or stop dictation into the focused field. */
+  readonly dictation?: (on: boolean) => Promise<string>;
 }
 
 /** One turn's timings in ms, for the report. Words are never written here. */
@@ -278,6 +304,10 @@ export const startScreenCompanion = (input: {
   readonly onTimings?: (timings: TurnTimings) => void;
   /** Every action taken or refused, for the turn log. */
   readonly onAction?: (entry: Readonly<Record<string, unknown>>) => void;
+  /** Every reply and every refusal reason, for the turn log: what Baton said and why it would not. */
+  readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
+  /** The one conversation, shared with the voice side. Made here when none is given. */
+  readonly conversation?: ConversationLog;
   /** What each turn was given and did, for the lab's trace table. */
   readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
@@ -329,7 +359,7 @@ export const startScreenCompanion = (input: {
     const picked = pickEnv(settings.assistantAccount, accounts.cached(), input.env);
     if (picked.notice !== null && picked.notice !== toldAbout) {
       toldAbout = picked.notice;
-      linger("Baton", picked.notice);
+      linger("Tessaya", picked.notice);
     }
     return picked.env;
   };
@@ -356,10 +386,39 @@ export const startScreenCompanion = (input: {
   let showing = 0;
 
   let actions: AssistantActions | null = null;
-  const recent: string[] = [];
-  const remember = (line: string) => {
-    recent.push(line.slice(0, 300));
-    recent.splice(0, Math.max(0, recent.length - RECENT_LINES));
+  /** One conversation for every route, on disk, in full (D142). */
+  const conversation =
+    input.conversation ??
+    createConversationLog({ file: NodePath.join(input.stateDir, "baton-conversation.ndjson") });
+  /** A reply is kept in full and logged in full, whatever route made it. */
+  const converse = (
+    route: ConversationRoute,
+    said: string,
+    reply: string,
+    extra: { readonly note?: string; readonly target?: string } = {},
+  ) => {
+    const label = extra.target ?? (titlesAllowed() ? focus?.label : undefined);
+    conversation.add({
+      route,
+      said,
+      reply,
+      ...(extra.note === undefined ? {} : { note: extra.note }),
+      ...(label === undefined ? {} : { target: { label } }),
+    });
+    input.onNote?.("reply", {
+      route,
+      said,
+      reply,
+      ...(extra.note === undefined ? {} : { note: extra.note }),
+    });
+  };
+  /** A refusal says why, aloud and on the pill, and is logged with its reason: never a silent no. */
+  const refuse = (kind: string, reason: string, said: string, where = "Tessaya") => {
+    say(reason);
+    linger(where, reason);
+    input.onActivity?.(null);
+    conversation.add({ route: "refusal", said, reply: reason, note: kind });
+    input.onNote?.("refusal", { kind, reason, said });
   };
 
   const session = (model: string, systemPrompt: string, timeoutMs?: number): VisionSession =>
@@ -541,7 +600,7 @@ export const startScreenCompanion = (input: {
       return true;
     const response = await askHandsFree(
       {
-        title: "Let Baton see your screen?",
+        title: "Let Tessaya see your screen?",
         detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
         buttons: [
           forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
@@ -601,8 +660,9 @@ export const startScreenCompanion = (input: {
     // He stopped it, and that ended the conversation under the question in flight.
     if (error instanceof SessionClosed) return;
     if (run === null && message.startsWith("Claude stopped")) return;
+    input.onNote?.("error", { message });
     say(message);
-    linger("Baton", message);
+    linger("Tessaya", message);
     input.onActivity?.(null);
     end();
   };
@@ -625,6 +685,7 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  let agent: AssistantAgent | null = null;
   let operator: { session: VisionSession; lastAt: number; home: string } | null = null;
   /** The turn has run a tool, so what comes next may be following its output. */
   let tainted = false;
@@ -633,6 +694,9 @@ export const startScreenCompanion = (input: {
   const dropOperator = () => {
     operator?.session.dispose();
     operator = null;
+    // Stopping Baton stops the assistant's turn too; the next one starts a fresh session from the file.
+    agent?.dispose();
+    agent = null;
   };
 
   const toolGate = async (call: ToolCall) => {
@@ -732,10 +796,9 @@ export const startScreenCompanion = (input: {
       );
       current.lastAt = Date.now();
       const reply = voice.finish(raw);
-      remember(`He said: ${goal}`);
-      remember(`You answered: ${reply}`);
+      converse("operate", goal, reply);
       input.onActivity?.(null);
-      linger("Baton", reply);
+      linger("Tessaya", reply);
     } finally {
       answering -= 1;
     }
@@ -768,7 +831,7 @@ export const startScreenCompanion = (input: {
           sayHere(sentence);
           soFar = `${soFar} ${sentence}`.trim();
           // Text keeps pace with the voice instead of waiting for the end of the answer.
-          void show("Baton", soFar);
+          void show("Tessaya", soFar);
         }
       },
       /** The end of the turn. `whole` is spoken if nothing streamed. */
@@ -825,13 +888,12 @@ export const startScreenCompanion = (input: {
       point: reply.point,
       reply: reply.spoken,
     });
-    remember(`He said: ${question}`);
-    remember(`You answered: ${reply.spoken}`);
+    converse(turn.shots.length > 0 ? "look" : "answer", question, reply.spoken);
     // A retry after [LOOK] streamed nothing, so the whole answer is spoken here.
     voice.finish(reply.spoken);
     input.onActivity?.(null);
     await pointAt(reply.point, turn.shots);
-    linger("Baton", reply.spoken);
+    linger("Tessaya", reply.spoken);
   };
 
   const teachStep = async (note?: string) => {
@@ -933,7 +995,13 @@ export const startScreenCompanion = (input: {
   };
 
   const teach = async (goal: string) => {
-    if (!(await approveCapture(goal, "lesson"))) return;
+    if (!(await approveCapture(goal, "lesson"))) {
+      return refuse(
+        "capture_declined",
+        "All right, I won't look at your screen, so I can't teach that.",
+        goal,
+      );
+    }
     end();
     run = {
       mode: "teach",
@@ -950,7 +1018,13 @@ export const startScreenCompanion = (input: {
   };
 
   const drive = async (goal: string) => {
-    if (!(await approveCapture(goal, "drive"))) return;
+    if (!(await approveCapture(goal, "drive"))) {
+      return refuse(
+        "capture_declined",
+        "All right, I won't look at your screen, so I can't do that for you.",
+        goal,
+      );
+    }
     end();
     const current: Extract<Run, { mode: "drive" }> = {
       mode: "drive",
@@ -990,10 +1064,17 @@ export const startScreenCompanion = (input: {
       driveReply: reply.spoken,
       plan: "plan" in parsed ? parsed.plan : parsed.error,
     });
+    converse("drive", goal, reply.spoken, {
+      note: "plan" in parsed ? `plan: ${parsed.plan.title}` : "no plan",
+    });
+    input.onNote?.("drive_plan", {
+      goal,
+      ...("plan" in parsed
+        ? { title: parsed.plan.title, steps: parsed.plan.actions.length }
+        : { error: parsed.error }),
+    });
     if ("error" in parsed) {
-      say(parsed.error);
-      input.onActivity?.(null);
-      linger("Baton", parsed.error);
+      refuse("no_plan", parsed.error, goal);
       return finish();
     }
     const plan = parsed.plan;
@@ -1007,9 +1088,7 @@ export const startScreenCompanion = (input: {
       const message = tooLong
         ? "That would paste more than I can show you first, so I won't."
         : "That would paste into a command line, where nobody reads it first. I won't do that.";
-      say(message);
-      input.onActivity?.(null);
-      linger("Baton", message);
+      refuse(tooLong ? "paste_too_long" : "shell_paste", message, goal);
       input.onAction?.({ by: "drive", plan: plan.title, outcome: "refused" });
       return finish();
     }
@@ -1047,7 +1126,7 @@ export const startScreenCompanion = (input: {
               detail: `A command line runs what it is given. ${
                 shell.typed.length === 0
                   ? "This plan types nothing itself."
-                  : `Baton would type:\n\n${shell.typed.join("\n")}`
+                  : `Tessaya would type:\n\n${shell.typed.join("\n")}`
               }`,
               buttons: ["Type it", "Not now"],
               cancel: 1,
@@ -1063,6 +1142,7 @@ export const startScreenCompanion = (input: {
     if (response !== 0 || shellYes !== 0 || run !== current) {
       input.onActivity?.(null);
       await wipe();
+      if (run === current) input.onNote?.("drive_outcome", { goal, outcome: "he said no" });
       return finish();
     }
     await sleep(350); // the prompt leaves the screen first
@@ -1071,10 +1151,12 @@ export const startScreenCompanion = (input: {
       staleCheck: screensDifference(before, afterPrompt),
     });
     if (screensDifference(before, afterPrompt) > STALE) {
-      const message = "The screen changed since I made the plan, so I didn't run it. Ask again.";
-      say(message);
-      input.onActivity?.(null);
-      linger("Drive", message);
+      refuse(
+        "screen_changed",
+        "The screen changed since I made the plan, so I didn't run it. Ask again.",
+        goal,
+        "Drive",
+      );
       return finish();
     }
     // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
@@ -1156,6 +1238,11 @@ export const startScreenCompanion = (input: {
     const message = result.kind === "finished" ? "Done. Have a look." : result.reason;
     input.onTrace?.({ driveResult: result });
     input.onAction?.({ by: "drive", plan: plan.title, result: result.kind });
+    input.onNote?.("drive_outcome", {
+      goal,
+      outcome: result.kind,
+      ...(result.kind === "finished" ? {} : { reason: message }),
+    });
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
@@ -1179,7 +1266,7 @@ export const startScreenCompanion = (input: {
         running: runningMode(),
         answering: answering > 0 || speech.busy(),
         direct,
-        recent,
+        recent: routerLines(conversation.recent()),
         focused: titlesAllowed() ? (focus?.label ?? null) : null,
       },
       {
@@ -1214,9 +1301,9 @@ export const startScreenCompanion = (input: {
           return operate(decision.text, () => (firstAt ??= Date.now()));
         case "clarify":
           firstAt = Date.now();
-          remember(`You asked him: ${decision.text}`);
+          converse("clarify", "", decision.text);
           say(decision.text);
-          linger("Baton", decision.text);
+          linger("Tessaya", decision.text);
           return Promise.resolve();
         case "control":
           if (decision.control === "next") {
@@ -1256,6 +1343,277 @@ export const startScreenCompanion = (input: {
       sleep(FOCUS_WAIT_MS).then(() => null),
     ]);
 
+  /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
+  let agentMcp: BatonMcp | null = null;
+  let lastShots: ReadonlyArray<ScreenShot> = [];
+  const agentTaint = createTaint();
+  const agentTools: string[] = [];
+  const agentGate = createAgentGate({
+    actWithoutAsking: () => settings.actWithoutAsking,
+    taint: agentTaint,
+    textIsHis: (text) => textIsFromConversation(text, conversation.recent(12)),
+    focusedWindow: async () => {
+      const seen = await focusSoon();
+      // A window that cannot be told apart from a command line is treated as one.
+      return seen === null
+        ? { label: "unknown", shell: true }
+        : { label: seen.label, shell: isShellWindow(seen.label) };
+    },
+    confirm: async (p) =>
+      (await askHandsFree(
+        {
+          title: p.title,
+          detail: p.detail,
+          buttons: ["Do it", "Not now"],
+          cancel: 1,
+          scoped: true,
+        },
+        p.spoken,
+        0,
+        p.noOnExpiry,
+      )) === 0,
+    record: (entry) => {
+      if (typeof entry["tool"] === "string") agentTools.push(entry["tool"]);
+      input.onAction?.({ by: "assistant", ...entry });
+    },
+  });
+  /** Built-in tools go through the gate here; Baton's own run it inside the tool server. */
+  const harnessGate: ToolGate = async (call) =>
+    call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call);
+
+  const driverFor = () => {
+    driver ??= createInputDriver({
+      platform: input.platform,
+      toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
+      clipboard: Electron.clipboard,
+    });
+    return driver;
+  };
+  const desktopPoint = (a: {
+    readonly x: number;
+    readonly y: number;
+    readonly screen?: number;
+  }) => {
+    const shot = shotFor(lastShots, a.screen ?? null);
+    if (shot === null) throw new Error("Take a screenshot first, so I know where things are.");
+    return toDesktop(a, shot);
+  };
+  /** Where Baton last left the pointer this turn; null before its first move. */
+  let leftPointer: { x: number; y: number } | null = null;
+  const pointerAction = async (to: { x: number; y: number }, act: () => Promise<void>) => {
+    const here = Electron.screen.getCursorScreenPoint();
+    if (pointerMoved(leftPointer, here)) {
+      throw new Error("He moved the mouse, so I stopped. Tell him, and carry on only if he asks.");
+    }
+    await act();
+    leftPointer = to;
+  };
+  const toolHost: ToolHost = {
+    capture: async () => {
+      if (!(await approveCapture("what is on your screen", null))) {
+        throw new Error("He did not allow looking at his screen.");
+      }
+      const captured = await capture();
+      lastShots = captured.map((c) => c.shot);
+      return {
+        text: captured
+          .map(
+            (c) =>
+              `${screenLabel(c.shot, captured.length)}, image ${c.shot.width}x${c.shot.height}`,
+          )
+          .join("\n"),
+        images: captured.map((c) => ({ data: c.jpeg.toString("base64"), mimeType: "image/jpeg" })),
+      };
+    },
+    uiTree: async () => {
+      if (!(await approveCapture("what is on your screen", null))) {
+        throw new Error("He did not allow looking at his screen.");
+      }
+      const tree = await actions?.uiTree?.();
+      if (tree === null || tree === undefined) {
+        throw new Error("The window's controls can't be read here. Take a screenshot instead.");
+      }
+      return `${tree.window}\n${tree.controls.join("\n")}`;
+    },
+    click: async (a) => {
+      const to = desktopPoint(a);
+      await pointerAction(to, () =>
+        driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
+      );
+      return "Clicked.";
+    },
+    clickElement: async (label, double) => {
+      const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
+      if (found === null || found === undefined) {
+        throw new Error(
+          `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
+        );
+      }
+      const to = { x: found.x, y: found.y };
+      await pointerAction(to, () => driverFor().clickAt(to, "left", double ? 2 : 1));
+      return `Clicked ${found.name}.`;
+    },
+    waitFor: async (label, seconds) => {
+      const until = Date.now() + seconds * 1000;
+      do {
+        const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
+        if (found !== null && found !== undefined) return `${found.name} is there.`;
+        await sleep(400);
+      } while (Date.now() < until);
+      return `No control named "${label}" appeared in ${seconds} seconds.`;
+    },
+    scroll: async (amount) => {
+      await driverFor().scrollAt(null, amount);
+      return "Scrolled.";
+    },
+    drag: async (a) => {
+      const d = driverFor();
+      await d.pressAt(desktopPoint(a));
+      await d.releaseAt(
+        desktopPoint({
+          x: a.toX,
+          y: a.toY,
+          ...(a.screen === undefined ? {} : { screen: a.screen }),
+        }),
+      );
+      return "Dragged.";
+    },
+    type: async (text) => {
+      await driverFor().type(text);
+      return "Typed.";
+    },
+    press: async (keys) => {
+      await driverFor().press(keys);
+      return "Pressed.";
+    },
+    sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
+    session: async (id) => {
+      const name = actions?.sessionName?.(id) ?? null;
+      if (name === null || actions === null)
+        return "There is no session by that id. Use sessions_list.";
+      return actions.act(`What's ${name} doing?`);
+    },
+    send: async (id, text) => {
+      const name = actions?.sessionName?.(id) ?? null;
+      if (name === null || actions === null)
+        return "There is no session by that id. Use sessions_list.";
+      return actions.act(`Tell ${name}: ${text}`);
+    },
+    fleet: async () =>
+      actions === null
+        ? "Sessions are not reachable from here yet."
+        : actions.act("What needs me?"),
+    dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
+    memory: async (query) => {
+      const hits = conversation.search(query);
+      return hits.length === 0
+        ? "Nothing earlier matches."
+        : hits
+            .map(
+              (t) =>
+                `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
+            )
+            .join("\n\n");
+    },
+    target: async (label, workSessionId) => {
+      conversation.add({
+        route: "act",
+        said: "(noted what this is about)",
+        reply: label,
+        target: { label, ...(workSessionId === undefined ? {} : { workSessionId }) },
+      });
+      return "Noted.";
+    },
+  };
+  const agentStart = async (systemPrompt: string): Promise<VisionSession> => {
+    await agentMcp?.close();
+    agentMcp = await startBatonMcp({ tools: buildBatonTools(toolHost), gate: agentGate });
+    return startVisionSession({
+      claudeBinary: settings.claudeBinary,
+      model: settings.model,
+      systemPrompt,
+      workDir: NodePath.join(input.stateDir, "screen"),
+      cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
+      env: claudeEnv(),
+      platform: input.platform,
+      timeoutMs: OPERATOR_TURN_MS,
+      gate: harnessGate,
+      mcp: { url: agentMcp.url, token: agentMcp.token },
+      onTool: (call) => agentTools.push(call.tool),
+    });
+  };
+  const agentOf = (): AssistantAgent => {
+    agent ??= createAssistantAgent({
+      start: agentStart,
+      conversation,
+      clockLine: () => clockLine(new Date()),
+      beginTurn: () => {
+        agentTaint.reset();
+        agentTools.length = 0;
+        leftPointer = null;
+      },
+    });
+    return agent;
+  };
+  /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
+  const agentTurn = async (text: string, started: number, direct: boolean) => {
+    answering += 1;
+    // Escape ends the turn at once, before anything else is asked of the model.
+    const releaseEscape = input.holdEscape(dismiss, "drive");
+    let firstTokenAt: number | null = null;
+    let firstAudioAt: number | null = null;
+    try {
+      const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
+      input.onActivity?.("Thinking");
+      void show("Thinking", text);
+      const reply = await agentOf().say(
+        direct ? `(to the focused session) ${text}` : text,
+        { window: titlesAllowed() ? (focus?.label ?? null) : null, session: null },
+        (delta) => {
+          firstTokenAt ??= Date.now();
+          voice.feed(delta);
+        },
+      );
+      voice.finish(reply);
+      input.onActivity?.(null);
+      linger("Tessaya", reply);
+      input.onNote?.("agent_turn", {
+        said: text,
+        reply,
+        firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
+        firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
+        totalMs: Date.now() - started,
+        tools: [...agentTools],
+        route: "agent",
+      });
+    } catch (error) {
+      // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
+      if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
+      input.onNote?.("agent_fallback", { message: error instanceof Error ? error.message : String(error) });
+      const notice = "The one assistant couldn't answer, so the older router is handling this.";
+      void show("Tessaya", notice);
+      try {
+        const result = await routed(text, started, direct);
+        if (result.kind !== "handled") {
+          const reply =
+            result.kind === "refused"
+              ? result.reply
+              : actions === null
+                ? "Tessaya's sessions aren't reachable from here yet."
+                : await actions.act(result.text, result.restated === true);
+          say(reply);
+          linger("Tessaya", reply);
+        }
+      } catch (inner) {
+        fail(inner);
+      }
+    } finally {
+      releaseEscape();
+      answering -= 1;
+      input.onTurnEnd?.();
+    }
+  };
+
   const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
     const started = Date.now();
     voiceTurn = !typed;
@@ -1265,9 +1623,28 @@ export const startScreenCompanion = (input: {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;
+    // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
+    if (settings.oneAssistant && instantDecision(text, busy)?.route !== "control") {
+      void agentTurn(text, started, direct);
+      return { kind: "handled" };
+    }
+    return routed(text, started, direct);
+  };
+
+  /** The older router: one stage per sentence. The fallback when the one assistant cannot answer, or when he turns it off. */
+  const routed = async (
+    text: string,
+    started: number,
+    direct: boolean,
+  ): ReturnType<ScreenCompanion["said"]> => {
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
-    input.onTrace?.({ said: text, focused: focus?.label ?? null, decision, recent: recent.length });
+    input.onTrace?.({
+      said: text,
+      focused: focus?.label ?? null,
+      decision,
+      recent: conversation.recent().length,
+    });
     if (decision.route === "act") {
       input.onTimings?.({
         route: "act",
@@ -1283,6 +1660,8 @@ export const startScreenCompanion = (input: {
       };
     }
     if (decision.route === "refused") {
+      conversation.add({ route: "refusal", said: text, reply: decision.text, note: "guard" });
+      input.onNote?.("refusal", { kind: "guard", reason: decision.text, said: text });
       input.onTimings?.({
         route: "refused",
         source: decision.source,
@@ -1304,10 +1683,10 @@ export const startScreenCompanion = (input: {
       result.kind === "refused"
         ? result.reply
         : actions === null
-          ? "Baton's sessions aren't reachable from here yet."
+          ? "Tessaya's sessions aren't reachable from here yet."
           : await actions.act(result.text, result.restated === true);
     say(reply);
-    linger("Baton", reply);
+    linger("Tessaya", reply);
   };
 
   const windows = createCompanionWindows({
@@ -1339,6 +1718,7 @@ export const startScreenCompanion = (input: {
     hush,
     dismiss,
     warm: () => {
+      if (settings.oneAssistant) agentOf().warm();
       warmRouter();
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
@@ -1347,7 +1727,7 @@ export const startScreenCompanion = (input: {
     },
     openAskBox,
     notice: (text) => {
-      if (text.trim().length > 0) linger("Baton", text);
+      if (text.trim().length > 0) linger("Tessaya", text);
     },
     writtenOnly: () => settings.output === "written",
     voice: () => settings.voice,
@@ -1355,7 +1735,7 @@ export const startScreenCompanion = (input: {
     ask: windows.ask,
     stop,
     menuItems: () => [
-      { label: "Ask Baton…", accelerator: ASK_HOTKEY, click: openAskBox },
+      { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },
       ...(run !== null && run.mode !== "look"
         ? [
@@ -1370,7 +1750,7 @@ export const startScreenCompanion = (input: {
       {
         id: "s.output",
         section: "Answers",
-        label: "How Baton answers",
+        label: "How Tessaya answers",
         kind: "choice",
         value: settings.output,
         options: [
@@ -1382,7 +1762,7 @@ export const startScreenCompanion = (input: {
         id: "s.volume",
         section: "Answers",
         label: "Speaking volume",
-        hint: "How loud Baton speaks, apart from your system volume.",
+        hint: "How loud Tessaya speaks, apart from your system volume.",
         kind: "choice",
         value: String(settings.volume),
         options: [
@@ -1406,7 +1786,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.brain",
-        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
+        section: settings.brainChosen ? "Working for you" : "Choose what Tessaya works through",
         label: "Works through",
         ...(settings.brainChosen ? {} : { hint: "Listening and speaking stay on this computer." }),
         kind: "brain",
@@ -1416,11 +1796,20 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.brainCheck",
-        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
+        section: settings.brainChosen ? "Working for you" : "Choose what Tessaya works through",
         label: "Installed and signed in?",
         kind: "action",
         button: "Check again",
         more: settings.brainChosen,
+      },
+      {
+        id: "s.oneAssistant",
+        section: "Working for you",
+        label: "One assistant",
+        hint: "Tessaya keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
+        kind: "toggle",
+        on: settings.oneAssistant,
+        more: true,
       },
       {
         id: "s.act",
@@ -1433,8 +1822,8 @@ export const startScreenCompanion = (input: {
       {
         id: "s.account",
         section: "Working for you",
-        label: "Claude login for Baton",
-        hint: "Which login Baton's assistant runs as. By default it follows the claude login.",
+        label: "Claude login for Tessaya",
+        hint: "Which login Tessaya's assistant runs as. By default it follows the claude login.",
         kind: "choice",
         value: settings.assistantAccount ?? "",
         options: [
@@ -1465,7 +1854,7 @@ export const startScreenCompanion = (input: {
         id: "s.capture",
         section: "Working for you",
         label: "Always allow screen capture",
-        hint: "Off, Baton asks before it looks at your screen.",
+        hint: "Off, Tessaya asks before it looks at your screen.",
         kind: "toggle",
         on: settings.captureApproval === "always",
         more: true,
@@ -1507,10 +1896,15 @@ export const startScreenCompanion = (input: {
         toldAbout = null;
         save({ assistantAccount: value === "" ? null : value });
         void accounts.refresh();
+      } else if (id === "s.oneAssistant") {
+        dropOperator();
+        save({ oneAssistant: value === true });
       } else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
     dispose: () => {
+      agent?.dispose();
+      void agentMcp?.close();
       end();
       dropRouter();
       if (routerIdle !== null) clearTimeout(routerIdle);

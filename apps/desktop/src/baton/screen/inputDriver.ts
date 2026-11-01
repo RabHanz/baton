@@ -48,7 +48,7 @@ export const virtualKeys = (keys: ReadonlyArray<string>): ReadonlyArray<number> 
     const f = /^f([1-9]|1[0-2])$/.exec(k);
     if (f !== null) return 0x6f + Number(f[1]);
     if (/^[a-z0-9]$/.test(k)) return k.toUpperCase().charCodeAt(0);
-    throw new Error(`Baton does not press "${key}".`);
+    throw new Error(`Tessaya does not press "${key}".`);
   });
 
 const XDO: Record<string, string> = {

@@ -169,6 +169,8 @@ export type LiveToolStep =
       readonly output: string;
       readonly isError: boolean;
       readonly createdAt: string;
+      /** Screenshots a tool returned inline (an MCP browser or screen tool), base64. */
+      readonly images?: ReadonlyArray<LiveTranscriptImage>;
     };
 
 const resultText = (content: unknown): string =>
@@ -224,6 +226,7 @@ export const parseLiveToolSteps = (line: string): ReadonlyArray<LiveToolStep> =>
       ];
     }
     if (type === "user" && block["type"] === "tool_result") {
+      const images = imagesOf(block["content"]);
       return [
         {
           kind: "result",
@@ -231,6 +234,7 @@ export const parseLiveToolSteps = (line: string): ReadonlyArray<LiveToolStep> =>
           output: resultText(block["content"]),
           isError: block["is_error"] === true,
           createdAt,
+          ...(images.length > 0 ? { images } : {}),
         },
       ];
     }

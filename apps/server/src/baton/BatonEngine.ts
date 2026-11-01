@@ -147,6 +147,12 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
     readonly settled: boolean;
   }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.interaction-mode.set`: a plan-mode worker leaves plan mode once he agrees (D145). */
+  readonly setInteractionMode: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+    readonly interactionMode: ProviderInteractionMode;
+  }) => Effect.Effect<void, BatonEngineError>;
   /** Upstream's `thread.delete`. */
   readonly deleteThread: (input: {
     readonly tag: string;
@@ -315,7 +321,7 @@ export const make = Effect.gen(function* () {
       });
       return result.threadId;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not launch a thread", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not launch a thread", cause)),
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
@@ -336,7 +342,7 @@ export const make = Effect.gen(function* () {
       });
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not send to a thread", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not send to a thread", cause)),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -366,6 +372,21 @@ export const make = Effect.gen(function* () {
       Effect.mapError(
         (cause) =>
           new BatonEngineError({ operation: "thread.model-selection.set", detail: String(cause) }),
+      ),
+    );
+
+  const setInteractionMode: BatonEngineShape["setInteractionMode"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.interaction-mode.set",
+        commandId: yield* commandId(`${input.tag}:mode`),
+        threadId: input.threadId,
+        interactionMode: input.interactionMode,
+      });
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BatonEngineError({ operation: "thread.interaction-mode.set", detail: String(cause) }),
       ),
     );
 
@@ -461,7 +482,7 @@ export const make = Effect.gen(function* () {
       }
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not keep a thread active", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not keep a thread active", cause)),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -474,7 +495,7 @@ export const make = Effect.gen(function* () {
       });
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not delete a thread", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not delete a thread", cause)),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -508,7 +529,7 @@ export const make = Effect.gen(function* () {
       });
       return project.id;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Baton could not create a project", cause)),
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not create a project", cause)),
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
@@ -535,6 +556,7 @@ export const make = Effect.gen(function* () {
     sendMessage,
     switchProvider,
     setThreadSelection,
+    setInteractionMode,
     settleThread,
   } satisfies BatonEngineShape;
 });
@@ -566,6 +588,7 @@ export const layerStatic = (input: {
       }),
     switchProvider: () => Effect.void,
     setThreadSelection: () => Effect.void,
+    setInteractionMode: () => Effect.void,
     settleThread: () => Effect.succeed(true),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),

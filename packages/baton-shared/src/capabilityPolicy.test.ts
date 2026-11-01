@@ -147,10 +147,10 @@ describe("retention", () => {
 
   it("says what it keeps, in words a settings screen can show", () => {
     expect(describeRetention(DEFAULT_RETENTION)).toBe(
-      "Baton keeps sentences for 30 days, rule firings for 90 days, and refusals are kept.",
+      "Tessaya keeps sentences for 30 days, rule firings for 90 days, and refusals are kept.",
     );
     expect(describeRetention({ intentDays: 0, firingDays: 0, keepRefusals: false })).toBe(
-      "Baton keeps sentences are not kept, rule firings are not kept.",
+      "Tessaya keeps sentences are not kept, rule firings are not kept.",
     );
   });
 });

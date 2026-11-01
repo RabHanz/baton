@@ -533,6 +533,14 @@ type MessagesTimelineRowContent =
       compacting?: true;
     }
   | {
+      /** A thinking summary on its own: open for the latest turn, whatever the group around it does. */
+      kind: "thought";
+      id: string;
+      createdAt: string;
+      text: string;
+      open: boolean;
+    }
+  | {
       kind: "thinking";
       id: string;
       createdAt: string | null;
@@ -1399,6 +1407,8 @@ export function deriveMessagesTimelineRows(input: {
   expandedRunIds?: ReadonlySet<RunId>;
   expandedAttemptIds?: ReadonlySet<RunAttemptId>;
   expandedWorkGroupIds?: ReadonlySet<string>;
+  /** Thinking rows he closed, by item id; every other one of the latest turn is open. */
+  closedThoughtIds?: ReadonlySet<string>;
   isWorking: boolean;
   /** Native subagent work has no app run; runless entries form the live response. */
   runlessWorkActive?: boolean;
@@ -1667,16 +1677,49 @@ export function deriveMessagesTimelineRows(input: {
   let hasActivityRow = false;
   const hasActiveCompaction =
     activeCompactionEntry !== undefined || (activeRunIsCompaction && !compactionRunFinished);
+  // Thinking summaries are rows of their own, keyed by their item id, so a regroup or a status change
+  // cannot close one. Open for the latest turn until he closes it; older turns fold.
+  const lastUserAt = timelineEntries.findLast(
+    (entry) => entry.kind === "message" && entry.message.role === "user",
+  )?.createdAt;
+  const hasThoughtText = (entry: WorkLogEntry) =>
+    entry.itemType === "reasoning" && Boolean(entry.detail?.trim());
+  /** One thinking summary is lifted out: the latest turn's newest. Earlier ones stay in their groups. */
+  const latestThoughtEntryId = timelineEntries.findLast(
+    (entry) =>
+      entry.kind === "work" &&
+      hasThoughtText(entry.entry) &&
+      (lastUserAt === undefined || entry.createdAt >= lastUserAt),
+  );
+  const isThought = (entry: WorkLogEntry) =>
+    latestThoughtEntryId?.kind === "work" && entry.id === latestThoughtEntryId.entry.id;
+  const thoughtRowOf = (
+    entry: WorkLogEntry,
+  ): Extract<MessagesTimelineRow, { kind: "thought" }> => ({
+    kind: "thought",
+    id: `thought:${entry.id}`,
+    createdAt: entry.createdAt,
+    text: entry.detail?.trim() ?? "",
+    open: !(input.closedThoughtIds?.has(`thought:${entry.id}`) ?? false),
+  });
   const appendActiveWorkRows = () => {
     if (activeWorkRow === null) return;
-    nextRows.push(activeWorkRow);
+    nextRows.push(...activeWorkRow.groupedEntries.filter(isThought).map(thoughtRowOf));
+    const { thought: _thought, ...liveRow } = activeWorkRow as typeof activeWorkRow & {
+      thought?: unknown;
+    };
+    const activeWorkRow_ = {
+      ...liveRow,
+      groupedEntries: activeWorkRow.groupedEntries.filter((entry) => !isThought(entry)),
+    } as typeof activeWorkRow;
+    nextRows.push(activeWorkRow_);
     hasActivityRow ||= activeWorkRow.active;
     if (!activeWorkRow.expanded) return;
     nextRows.push(
       expandedWorkGroupRow(
         activeWorkRow.groupId,
         activeWorkRow.createdAt,
-        activeWorkRow.groupedEntries,
+        activeWorkRow_.groupedEntries,
       ),
     );
   };
@@ -1729,6 +1772,10 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     if (collapsedEntryIds.has(timelineEntry.id)) {
+      // A turn that is folded away still shows its thinking, in its own row.
+      if (timelineEntry.kind === "work" && isThought(timelineEntry.entry)) {
+        nextRows.push(thoughtRowOf(timelineEntry.entry));
+      }
       continue;
     }
 
@@ -1846,9 +1893,11 @@ export function deriveMessagesTimelineRows(input: {
         groupedEntries.push(nextEntry.entry);
         cursor += 1;
       }
-      const visibleGroupedEntries = groupedEntries.filter((entry) =>
+      const allVisibleEntries = groupedEntries.filter((entry) =>
         workEntryIsVisibleInGroup(entry, workEntryIsInActiveRun(entry)),
       );
+      const visibleGroupedEntries = allVisibleEntries.filter((entry) => !isThought(entry));
+      nextRows.push(...allVisibleEntries.filter(isThought).map(thoughtRowOf));
       if (visibleGroupedEntries.length > 0) {
         const activeInProgressToolEntries = visibleGroupedEntries.filter(workEntryIsInActiveRun);
         if (activeInProgressToolEntries.length > 0) {
@@ -2397,6 +2446,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.createdAt === (b as typeof a).createdAt && a.compacting === (b as typeof a).compacting
       );
+    case "thought": {
+      const bt = b as typeof a;
+      return a.text === bt.text && a.open === bt.open && a.createdAt === bt.createdAt;
+    }
     case "thinking": {
       const bt = b as typeof a;
       return a.createdAt === bt.createdAt && a.groupId === bt.groupId && a.expanded === bt.expanded;
