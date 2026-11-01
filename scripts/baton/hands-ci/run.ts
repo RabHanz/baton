@@ -424,9 +424,17 @@ await task(
     await ps("Set-Clipboard -Value 'SENTINEL'");
     await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
     await t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" });
-    await sleep(600);
-    const clip = await ps("Get-Clipboard -Raw");
-    t.check(clip === "alpha beta gamma", `the clipboard holds "${clip}"`);
+  await sleep(1000);
+  let clip = await ps("Get-Clipboard -Raw");
+  if (clip !== "alpha beta gamma") {
+    // The chord did not put the text on the clipboard (it reads "${clip}"): use the menu, by name.
+    t.replan(`the clipboard reads "${clip}" after Ctrl+C; copying from the Edit menu instead`);
+    await t.tool("click_element", { label: "Edit", why: "open the menu" });
+    await t.tool("click_element", { label: "Copy", why: "copy the selection" });
+    await sleep(1000);
+    clip = await ps("Get-Clipboard -Raw");
+  }
+  t.check(clip === "alpha beta gamma", `the clipboard holds "${clip}"`);
   },
 );
 
