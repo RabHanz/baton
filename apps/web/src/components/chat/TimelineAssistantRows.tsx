@@ -1,3 +1,4 @@
+import { appendMentionedMedia } from "@t3tools/shared/mediaMentions";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { type RunId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -32,7 +33,11 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
     row.projectedItem?.item.id,
   );
   const text = liveText ?? row.message.text;
-  const messageText = text || (row.message.streaming ? "" : "(empty response)");
+  const messageText = row.message.streaming
+    ? text
+    : text
+      ? appendMentionedMedia(text)
+      : "(empty response)";
 
   return (
     <>
