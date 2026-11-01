@@ -454,13 +454,13 @@ await task(
 // 12. Settings: open a page and read a value from it.
 await task(
   "settings-read",
-  "Open Settings > About and read the Windows edition from the page",
+  "Open Settings > About and read the Windows edition name from the page",
   async (t) => {
     await ps("Start-Process 'ms-settings:about'");
     t.steps.push({ kind: "act", text: "start ms-settings:about", ms: 0 });
     await sleep(4000);
     const tree = await t.waitTree(/windows|edition|device/i, 20);
-    const line = tree.split("\n").find((l) => /edition|windows (server|10|11)/i.test(l)) ?? "";
+    const line = tree.split("\n").find((l) => /windows (server|10|11)/i.test(l) && !/specification/i.test(l)) ?? "";
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
   },
 );
