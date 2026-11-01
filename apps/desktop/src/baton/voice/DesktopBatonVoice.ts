@@ -346,6 +346,13 @@ export interface DesktopBatonVoiceInput {
   readonly onWakeShown?: (ms: number) => void;
   /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
   readonly onPillState?: (phase: string) => void;
+  /** How a pill drag ended, for the turn log. */
+  readonly onPillDrag?: (outcome: {
+    readonly reason: string;
+    readonly dx: number;
+    readonly dy: number;
+    readonly ms: number;
+  }) => void;
 }
 
 export interface DesktopBatonVoice {
@@ -1091,6 +1098,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
     onChange: (turn) => input.onPillState?.(turn.phase),
+    ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
   });
   if (settings.pillAtRest) pill.setRest(true);
   let dictatingByVoice = false;
