@@ -42,8 +42,10 @@ class Task {
     "CalculatorApp",
     "Calculator",
     "calc",
+    "win32calc",
     "mspaint",
     "SystemSettings",
+    "ApplicationFrameHost",
   ];
   before: number[] = [];
   evidence = "";
@@ -137,6 +139,8 @@ class Task {
   }
 
   async cleanup() {
+    const open = await ps("Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { \"$($_.Name)#$($_.Id)='$($_.MainWindowTitle)'\" }").catch(() => "");
+    console.log(`  windows before cleanup: ${open.replaceAll("\n", " ").slice(0, 300)}`);
     await ps(
       `Get-Process -Name ${Task.APPS.join(",")} -ErrorAction SilentlyContinue | Where-Object { @(${this.before.join(",") || "0"}) -notcontains $_.Id } | Stop-Process -Force -ErrorAction SilentlyContinue; ` +
         `(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.LocationName -like 'explore*' } | ForEach-Object { $_.Quit() }`,
