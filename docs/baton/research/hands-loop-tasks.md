@@ -24,20 +24,20 @@ input driver (`inputDriver.ts`, a real `SendInput` and clipboard paste), the rea
 
 ## Result: 12 of 12 passed
 
-| Task | Result | Steps | Seconds | Evidence or failure cause |
-| --- | --- | --- | --- | --- |
-| Type a sentence in Notepad and Save As to a named file, then read the file back | pass | 9 | 8 | fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.) |
-| Open Help > About Notepad by name and confirm the dialog | pass | 6 | 4.6 | the About Notepad dialog is the window with the keyboard |
-| Turn on Word Wrap from the Format menu and verify the saved setting | pass | 8 | 6.5 | fWrap went from "" to "1" |
-| Compute 12 x 34 in Calculator by clicking its buttons, and read the result | pass | 20 | 5.3 | the display reads: text: 408 |
-| Create a folder in File Explorer and rename it, then check the disk | pass | 13 | 10.3 | reports became reports-2026 on disk |
-| Draw a line in Paint and check, from screenshots, that the picture changed | pass | 4 | 6 | 152 sampled pixels changed after the stroke |
-| Click a menu that does not exist, then re-plan from the tree and open Edit | pass | 9 | 4.7 | the Edit menu opened (its items are listed) |
-| Refuse a third identical failing action, without clicking anything | pass | 7 | 4.6 | outcomes: no control, no control, stopped, stopped |
-| Close Notepad with unsaved text, wait for the save question, and answer Don't Save | pass | 8 | 7.1 | Notepad exited after the answer |
-| Type text, select all and copy in Notepad, and read the clipboard back | pass | 9 | 7.8 | the clipboard holds "alpha beta gamma" |
-| Read the window's controls and find the one with the keyboard | pass | 4 | 4.5 | focused line: edit: Text Editor (focused) |
-| Open Settings > About and read the Windows edition name from the page | pass | 3 | 6.2 | read from the page: text: Windows Server 2022 Datacenter |
+| Task                                                                               | Result | Steps | Seconds | Evidence or failure cause                                                         |
+| ---------------------------------------------------------------------------------- | ------ | ----- | ------- | --------------------------------------------------------------------------------- |
+| Type a sentence in Notepad and Save As to a named file, then read the file back    | pass   | 9     | 8       | fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.) |
+| Open Help > About Notepad by name and confirm the dialog                           | pass   | 6     | 4.6     | the About Notepad dialog is the window with the keyboard                          |
+| Turn on Word Wrap from the Format menu and verify the saved setting                | pass   | 8     | 6.5     | fWrap went from "" to "1"                                                         |
+| Compute 12 x 34 in Calculator by clicking its buttons, and read the result         | pass   | 20    | 5.3     | the display reads: text: 408                                                      |
+| Create a folder in File Explorer and rename it, then check the disk                | pass   | 13    | 10.3    | reports became reports-2026 on disk                                               |
+| Draw a line in Paint and check, from screenshots, that the picture changed         | pass   | 4     | 6       | 152 sampled pixels changed after the stroke                                       |
+| Click a menu that does not exist, then re-plan from the tree and open Edit         | pass   | 9     | 4.7     | the Edit menu opened (its items are listed)                                       |
+| Refuse a third identical failing action, without clicking anything                 | pass   | 7     | 4.6     | outcomes: no control, no control, stopped, stopped                                |
+| Close Notepad with unsaved text, wait for the save question, and answer Don't Save | pass   | 8     | 7.1     | Notepad exited after the answer                                                   |
+| Type text, select all and copy in Notepad, and read the clipboard back             | pass   | 9     | 7.8     | the clipboard holds "alpha beta gamma"                                            |
+| Read the window's controls and find the one with the keyboard                      | pass   | 4     | 4.5     | focused line: edit: Text Editor (focused)                                         |
+| Open Settings > About and read the Windows edition name from the page              | pass   | 3     | 6.2     | read from the page: text: Windows Server 2022 Datacenter                          |
 
 ## Step logs
 
@@ -161,7 +161,7 @@ input driver (`inputDriver.ts`, a real `SendInput` and clipboard paste), the rea
 - act: press_keys {"keys":["ctrl","c"],"why":"copy"} -> Pressed. (1 ms)
 - replan: the clipboard reads "" after Ctrl+C; copying from the Edit menu instead
 - act: click_element {"label":"Edit","why":"open the menu"} -> Clicked Edit. (49 ms)
-- act: click_element {"label":"Copy","why":"copy the selection"} -> Clicked Copy	Ctrl+C. (47 ms)
+- act: click_element {"label":"Copy","why":"copy the selection"} -> Clicked Copy Ctrl+C. (47 ms)
 - check: ok: the clipboard holds "alpha beta gamma"
 
 ### tree-shows-focus: pass
@@ -176,6 +176,33 @@ input driver (`inputDriver.ts`, a real `SendInput` and clipboard paste), the rea
 - act: start ms-settings:about
 - see: ui_tree {} -> Settings (233 ms)
 - check: ok: read from the page: text: Windows Server 2022 Datacenter
+
+## Ask text for the laptop (model-planned runs)
+
+The same twelve tasks as things to say or type to the assistant, word for word, with what to check afterwards. Say
+them with "One assistant" and "Use my Chrome" as they are. Each leaves an `agent_turn_start` line, `action` lines
+for every tool call (with the gate's decision) and an `agent_turn` line in `voice-turns.ndjson`, with `tools` and
+`decisions`; read those with the result. A turn that fails or hangs still leaves its `agent_turn` line with
+`ok: false`. Some asks will be asked about aloud (Enter, closing a window): answer yes.
+
+| #   | Say or type                                                                                                             | Pass if                                                                        | Check                                                                                 |
+| --- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 1   | "Open Notepad, type The quick brown fox jumps over the lazy dog. and save it as fox.txt in my Documents folder."        | the file holds exactly the sentence                                            | open `Documents\fox.txt`                                                              |
+| 2   | "In Notepad, open the Help menu, choose About Notepad, and tell me what the box says."                                  | it names the About box and reads it out                                        | the box was open                                                                      |
+| 3   | "In Notepad, turn on Word Wrap from the Format menu, then close Notepad."                                               | Word Wrap is on the next time Notepad opens                                    | open Notepad, look at Format                                                          |
+| 4   | "Open Calculator and work out 12 times 34 by clicking its buttons, then tell me the answer."                            | it says 408                                                                    | the display read 408                                                                  |
+| 5   | "Open File Explorer in my Documents folder, make a new folder called reports, then rename it to reports-2026."          | `reports-2026` exists and `reports` does not                                   | look in Documents                                                                     |
+| 6   | "Open Paint and draw a line across the canvas."                                                                         | a line is on the canvas                                                        | look at Paint                                                                         |
+| 7   | "In Notepad, open the menu for changing the text. I think it is called Modify."                                         | it finds that there is no Modify, reads the menu names, and opens Edit         | Edit's items are showing                                                              |
+| 8   | "In Notepad, click the control called Frobnicate."                                                                      | it tries at most twice, then tells me it is not there and does not keep trying | the `tools` list has at most two `click_element` for it, and a "Stopped" in the third |
+| 9   | "Open Notepad, type unsaved words, then close it and do not save."                                                      | Notepad is gone, nothing saved                                                 | no Notepad window, no new file                                                        |
+| 10  | "Open Notepad, type alpha beta gamma, select all, copy it, then paste it on a new line and tell me what the line says." | the second line reads alpha beta gamma                                         | the text appears twice                                                                |
+| 11  | "Open Notepad and tell me which control has the keyboard."                                                              | it says the text area (the Text Editor)                                        | Notepad's text area                                                                   |
+| 12  | "Open Settings, go to About, and tell me which edition of Windows this is."                                             | it reads out the edition on that page                                          | the page it read                                                                      |
+
+Ask 7 and 8 test behaviour rather than an outcome: 7 should show a `ui_tree` before the second click; 8 should end with
+the assistant saying it stopped, not with a click. Ask 10 checks the copy by reading it back, since a copy shortcut
+once returned "Pressed" and copied nothing. Close what each ask leaves open before the next.
 
 ## What the runs found, and what was fixed
 
