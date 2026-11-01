@@ -143,6 +143,8 @@ export interface HomeState {
     readonly device: string;
     /** The mark in the state's colour, made by the main process. */
     readonly mark: string;
+    /** The same mark in Baton's own colour, for the sidebar. */
+    readonly brandMark?: string;
   };
   readonly controls: ReadonlyArray<HomeControl>;
   readonly extra?: HomeExtra;

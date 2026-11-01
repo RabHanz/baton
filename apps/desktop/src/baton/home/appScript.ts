@@ -90,7 +90,28 @@ function check(c) {
   const t = $('div', 'text'); t.appendChild($('div', 'label', c.label)); t.appendChild($('div', 'hint', c.detail)); if (c.fix) t.appendChild($('div', 'fix', c.fix));
   r.append(g, t); return r;
 }
+function valueOf(c) { const o = c.options.find(x => x.value === c.value); return o ? o.label : String(c.value || ''); }
+function choiceRow(c) {
+  const wrap = $('div', 'rowwrap'); if (c.disabled) wrap.setAttribute('data-disabled', '');
+  const r = $('div', 'row'); const t = $('div', 'text'); t.appendChild($('div', 'label', c.label));
+  t.appendChild($('div', 'hint', valueOf(c) + (c.hint ? ' \u00b7 ' + c.hint : '')));
+  const b = $('button', 'btn quiet', changing.has(c.id) ? 'Done' : 'Change'); b.setAttribute('aria-expanded', String(changing.has(c.id)));
+  b.onclick = () => { if (changing.has(c.id)) changing.delete(c.id); else changing.add(c.id); render(); };
+  r.append(t, b); wrap.appendChild(r);
+  if (changing.has(c.id)) { const i = $('div', 'inline'); const ctl = control(c); i.appendChild(ctl); wrap.appendChild(i); }
+  return wrap;
+}
+function wakeRow(items) {
+  const wrap = $('div', 'rowwrap'); const r = $('div', 'row'); const t = $('div', 'text'); t.appendChild($('div', 'label', 'Wake words'));
+  const on = items.filter(x => x.on).map(x => x.label.replace(/^Wake word: /, ''));
+  t.appendChild($('div', 'hint', on.length ? on.join(', ') : 'None on'));
+  const b = $('button', 'btn quiet', changing.has('wake') ? 'Done' : 'Change'); b.onclick = () => { if (changing.has('wake')) changing.delete('wake'); else changing.add('wake'); render(); };
+  r.append(t, b); wrap.appendChild(r);
+  if (changing.has('wake')) { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
+  return wrap;
+}
 function row(c) {
+  if (c.kind === 'choice' && (c.options.length > 2 || c.options.reduce((n, o) => n + o.label.length, 0) > 26)) return choiceRow(c);
   if (c.kind === 'session') return session(c);
   if (c.kind === 'check') return check(c);
   if (c.kind === 'brain') { const r = $('div', 'brainRow'); if (c.hint) r.appendChild($('div', 'hint', c.hint)); r.appendChild(brain(c)); return r; }
@@ -98,12 +119,16 @@ function row(c) {
   const t = $('div', 'text'); t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint));
   r.append(t, control(c)); return r;
 }
+function rowsOf(list, host) {
+  const wakes = list.filter(x => x.id.indexOf('v.wake:') === 0); let done = false;
+  for (const c of list) { if (c.id.indexOf('v.wake:') === 0) { if (!done) { done = true; host.appendChild(wakeRow(wakes)); } continue; } host.appendChild(row(c)); }
+}
 function group(name, items) {
   const g = $('div', 'group' + (open.has(name) ? ' open' : ''));
-  for (const c of items.filter(x => !x.more)) g.appendChild(row(c));
+  rowsOf(items.filter(x => !x.more), g);
   const more = items.filter(x => x.more);
   if (more.length) {
-    const w = $('div', 'more'), i = $('div'); for (const c of more) i.appendChild(row(c)); w.appendChild(i); g.appendChild(w);
+    const w = $('div', 'more'), i = $('div'); rowsOf(more, i); w.appendChild(i); g.appendChild(w);
     const ml = (more.find(x => x.moreLabel) || {}).moreLabel || 'More options', fl = ml === 'Show all' ? 'Show fewer' : 'Fewer options';
     const b = $('button', 'moreBtn'); b.setAttribute('aria-expanded', String(open.has(name))); const sp = $('span', null, open.has(name) ? fl : ml); b.append(sp, icon('chev', 10));
     b.onclick = () => { if (open.has(name)) open.delete(name); else open.add(name); g.classList.toggle('open'); b.setAttribute('aria-expanded', String(open.has(name))); sp.textContent = open.has(name) ? fl : ml; };
@@ -147,17 +172,28 @@ function home(p) {
   else if (up && up.lead) p.appendChild(banner('', 'a quiet moment', 'Baton will restart in', up.hint, null));
   const need = (x.stats && x.stats.needYou) || 0;
   if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Open Sessions to answer.', 'Open Sessions', () => go('sessions')));
-  const sp = $('div', 'split'); const left = $('div'); const right = $('div');
+  const sp = $('div', 'split'); const left = $('div'); const right = $('div', 'rail');
   const items = x.activity || [];
-  if (!items.length) left.appendChild($('div', 'empty', 'Nothing yet today. Say a wake word, or hold your dictation key.'));
-  let day = null, log = null;
+  left.appendChild($('div', 'day first', 'Today'));
+  if (!items.length) left.appendChild($('div', 'empty', 'Nothing yet. Say a wake word, or hold your dictation key and speak.'));
+  let day = null, log = null; if (items.length) { log = $('div', 'log'); left.appendChild(log); day = 'Today'; }
   for (const a of items) {
     const d = dayLabel(a.at); if (d !== day) { day = d; left.appendChild($('div', 'day', d)); log = $('div', 'log'); left.appendChild(log); }
     const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
   }
-  const st = $('div', 'stats'); const s = x.stats || {};
-  for (const [n, l] of [[s.turns || 0, 'turns today'], [s.words || 0, 'words dictated'], [s.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
-  right.appendChild(st);
+  const st = $('div', 'stats'); const s2 = x.stats || {};
+  for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.words || 0, 'words dictated'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
+  right.appendChild($('div', 'day first', 'At a glance')); right.appendChild(st);
+  const mic = find('v.mic'), vo = find('s.voice'), ou = find('s.output');
+  right.appendChild($('div', 'day', 'Your voice'));
+  const vc = $('div', 'stats');
+  const kv = (l, v) => { const r = $('div', 'stat kvr'); r.append($('span', null, l), $('b', 'sm', v)); return r; };
+  vc.appendChild(kv('Wake words', words.length ? words.join(', ') : 'none on'));
+  if (mic) vc.appendChild(kv('Microphone', valueOf(mic)));
+  if (vo) vc.appendChild(kv('Speaks as', valueOf(vo)));
+  if (ou) vc.appendChild(kv('Answers', valueOf(ou)));
+  right.appendChild(vc);
+  const go2 = $('button', 'btn quiet', 'Change voice settings'); go2.style.marginTop = '12px'; go2.onclick = () => go('voice'); right.appendChild(go2);
   sp.append(left, right); p.appendChild(sp);
 }
 function vocabulary(p) {
@@ -180,6 +216,7 @@ function keys(p, which) {
   p.appendChild($('h2', null, 'Keyboard shortcuts'));
   const g = $('div', 'group');
   for (const k of list) { const r = $('div', 'kv'); const t = $('div'); t.appendChild($('div', 'label', k.label)); if (k.hint) t.appendChild($('div', 'hint', k.hint)); const w = $('div'); k.keys.split('+').forEach(x => w.appendChild($('kbd', null, x))); r.append(t, w); g.appendChild(r); }
+  const note = $('p', 'hint', 'Fixed for now.'); note.style.marginTop = '8px'; p.appendChild(g); p.appendChild(note); return;
   p.appendChild(g);
 }
 function usage(p) {
@@ -199,12 +236,22 @@ function tabPage(p) {
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
   if (cur === 'usage') return usage(p);
   const items = tabControls(cur);
-  if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet.'));
+  if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet. Start one in Claude Code or T3 and it appears here.'));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);
-  if (cur === 'screen') keys(p, ['screen']);
-  if (cur === 'checks') { const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Baton last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
+  if (cur === 'screen') {
+    p.insertBefore($('h2', null, 'Actions'), p.firstChild.nextSibling.nextSibling);
+    const ag = $('div', 'group');
+    for (const [l, h, b, id] of [['Ask Baton', 'Type a question about your screen or a job to do.', 'Ask', 'q.ask'], ['Clear the screen', 'Remove the pointer and any card Baton left up.', 'Clear', 'q.clear'], ['Stop', 'End a lesson or a drive, and quiet Baton\u2019s voice.', 'Stop', 'q.stop']]) { const r = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', l), $('div', 'hint', h)); const bt = $('button', 'btn', b); bt.onclick = () => set(id, null); r.append(t, bt); ag.appendChild(r); }
+    p.insertBefore(ag, p.firstChild.nextSibling.nextSibling.nextSibling);
+    p.appendChild($('h2', null, 'What Baton can do with your screen'));
+    const hg = $('div', 'group');
+    for (const [l, h] of [['Look', 'Ask what is on your screen. Baton takes one screenshot of each display and answers.'], ['Teach', 'Ask how to do something. Baton shows each step on your screen, one at a time.'], ['Drive', 'Ask Baton to do it. It moves the pointer, you can take over, and Escape stops it.']]) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', l), $('div', 'hint', h)); r.appendChild(t); hg.appendChild(r); }
+    p.appendChild(hg);
+    keys(p, ['screen']);
+  }
+  if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Baton last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
 }
 
 const MODAL = [['General', 'general'], ['System', 'system'], ['Keyboard', 'keys'], ['Account', 'account'], ['Updates', 'updates'], ['About', 'about']];
@@ -215,7 +262,7 @@ function modalPage(b) {
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
   else if (modal === 'keys') { b.appendChild($('h1', null, 'Keyboard')); keys(b, null); const n = $('p', 'hint', 'These shortcuts are fixed for now.'); n.style.marginTop = '10px'; b.appendChild(n); }
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Baton uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
-  else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); b.appendChild(g); }
+  else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Baton downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
   else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
 }
 function modalEl() {
@@ -236,7 +283,7 @@ function render(state) {
   const keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const side = document.getElementById('side'); side.replaceChildren();
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.mark; brand.append(mk, $('b', null, 'Baton'), $('span', 'plan', 'Local')); side.appendChild(brand);
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Baton'), $('span', 'plan', 'Local')); side.appendChild(brand);
   const nav = $('nav'); const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0;
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
@@ -250,7 +297,7 @@ function render(state) {
   const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(ac);
-  const page = document.getElementById('page'); page.replaceChildren(); tabPage(page);
+  const page = document.getElementById('page'); page.replaceChildren(); page.className = cur === 'home' ? 'wide' : ''; tabPage(page);
   const old = document.getElementById('veil'); if (old) old.remove(); document.body.appendChild(modalEl());
   if (keep && keep.indexOf('in-') === 0) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
