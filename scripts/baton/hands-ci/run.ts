@@ -9,6 +9,10 @@ import * as NodePath from "node:path";
 
 import { changedPixels, makeHost, ps, sleep, type Host } from "./host.ts";
 
+process.on("unhandledRejection", (error) =>
+  console.log(`unhandled: ${(error as Error).message.split("\n")[0]}`),
+);
+
 const OUT = process.env["HANDS_OUT"] ?? NodePath.join(process.cwd(), "hands-out");
 const host: Host = makeHost(OUT);
 const WORK = NodePath.join(NodeOS.tmpdir(), `hands-${Date.now()}`);
