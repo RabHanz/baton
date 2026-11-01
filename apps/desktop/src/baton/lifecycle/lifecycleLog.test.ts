@@ -24,9 +24,13 @@ describe("the lifecycle log", () => {
     expect(lines(file).map((l) => l["event"])).toEqual(["start", "exiting"]);
     expect(lines(file)[1]).toMatchObject({ reason: "update", detail: "to 0.1.6" });
     // The first run never reached a clean exit (the running file is still there), so this start says so.
-    const second = createLifecycleLog({ file, runningFile: running, version: "0.1.6" });
+    // The same version again, with no clean exit between: that is a bad end.
+    const second = createLifecycleLog({ file, runningFile: running, version: "0.1.5" });
     expect(second.previousRunEndedBadly()).toBe(true);
     expect(lines(file).some((l) => l["event"] === "previous-run-ended-badly")).toBe(true);
+    // A new version over it is the update.
+    createLifecycleLog({ file, runningFile: running, version: "0.1.6" });
+    expect(lines(file).some((l) => l["event"] === "replaced-by-update")).toBe(true);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });
