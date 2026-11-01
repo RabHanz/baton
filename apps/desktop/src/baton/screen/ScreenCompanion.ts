@@ -61,6 +61,8 @@ import {
 } from "./claudeVision.ts";
 import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
+import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
+import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
@@ -88,6 +90,8 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
+  /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
+  readonly assistantAccount: string | null;
 }
 
 const DEFAULTS: ScreenSettings = {
@@ -100,6 +104,7 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
+  assistantAccount: null,
 };
 
 const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): ScreenSettings => ({
@@ -276,6 +281,24 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  const accounts = createAssistantAccounts({
+    env: input.env,
+    platform: input.platform,
+    claudeBinary: () => settings.claudeBinary,
+    onChange: () => input.onChange?.(),
+  });
+  void accounts.refresh();
+  let toldAbout: string | null = null;
+  /** The environment for his `claude` children: the chosen login, or his own with a plain note. */
+  const claudeEnv = (): NodeJS.ProcessEnv => {
+    const picked = pickEnv(settings.assistantAccount, accounts.cached(), input.env);
+    if (picked.notice !== null && picked.notice !== toldAbout) {
+      toldAbout = picked.notice;
+      linger("Baton", picked.notice);
+    }
+    return picked.env;
+  };
+
   const overlay = createPointerOverlay(input.platform);
   const speech = queueSpeech(input.speak);
   /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
@@ -310,7 +333,7 @@ export const startScreenCompanion = (input: {
       model,
       systemPrompt,
       workDir: NodePath.join(input.stateDir, "screen"),
-      env: input.env,
+      env: claudeEnv(),
       platform: input.platform,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
     });
@@ -362,7 +385,7 @@ export const startScreenCompanion = (input: {
             ? TEACH_PROMPT
             : DRIVE_PROMPT,
       workDir: NodePath.join(input.stateDir, "screen"),
-      env: input.env,
+      env: claudeEnv(),
       platform: input.platform,
     });
 
@@ -630,7 +653,7 @@ export const startScreenCompanion = (input: {
           systemPrompt: OPERATOR_PROMPT,
           workDir: NodePath.join(input.stateDir, "screen"),
           cwd: home,
-          env: input.env,
+          env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
           gate: toolGate,
@@ -1348,6 +1371,37 @@ export const startScreenCompanion = (input: {
         on: settings.actWithoutAsking,
       },
       {
+        id: "s.account",
+        section: "Working for you",
+        label: "Claude login for Baton",
+        hint: "Which login Baton's assistant runs as. By default it follows the claude login.",
+        kind: "choice",
+        value: settings.assistantAccount ?? "",
+        options: [
+          { value: "", label: "Follow the claude login" },
+          ...(accounts.cached() ?? []).map((a) => ({
+            value: a.key,
+            label: `${accountLabel(a)}${a.loggedIn ? "" : " (signed out)"}`,
+          })),
+        ],
+        more: true,
+      },
+      ...(accounts.cached()?.find((a) => a.key === settings.assistantAccount)?.email == null
+        ? []
+        : [
+            {
+              id: "s.accountEmail",
+              section: "Working for you",
+              label: "Address",
+              kind: "secret" as const,
+              masked: maskEmail(
+                accounts.cached()!.find((a) => a.key === settings.assistantAccount)!.email!,
+              ),
+              revealed: accounts.cached()!.find((a) => a.key === settings.assistantAccount)!.email!,
+              more: true,
+            },
+          ]),
+      {
         id: "s.capture",
         section: "Working for you",
         label: "Always allow screen capture",
@@ -1366,6 +1420,12 @@ export const startScreenCompanion = (input: {
       } else if (id === "s.operator" && (value === "claude" || value === "codex")) {
         dropOperator();
         save({ operator: value });
+      } else if (id === "s.account" && typeof value === "string") {
+        dropOperator();
+        dropRouter();
+        toldAbout = null;
+        save({ assistantAccount: value === "" ? null : value });
+        void accounts.refresh();
       } else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
