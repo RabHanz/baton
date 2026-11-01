@@ -29,17 +29,20 @@ jobs:
           python-version: "3.10"
       - name: Install
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1
+          sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1 unzip
           pip install -q "numpy<2" "scipy<1.12" soundfile onnxruntime==1.17.3 huggingface_hub tqdm requests scikit-learn
           pip install -q --no-deps openwakeword==0.6.0
       - name: Public audio
         run: |
-          mkdir -p data/librispeech data/musan
+          mkdir -p data/librispeech data/demand
           for set in dev-clean test-clean; do
             wget -q -O - "https://www.openslr.org/resources/12/$set.tar.gz" | tar -xz -C data/librispeech
           done
-          # MUSAN is CC BY 4.0; only the music and noise folders are kept.
-          wget -q -O - https://www.openslr.org/resources/17/musan.tar.gz | tar -xz -C data/musan --wildcards 'musan/noise/*' 'musan/music/*'
+          # DEMAND room noise is CC BY 4.0 (zenodo.org/records/1227121); four rooms are enough.
+          for room in DKITCHEN DLIVING TCAR STRAFFIC; do
+            wget -q -O "$room.zip" "https://zenodo.org/records/1227121/files/${room}_16k.zip"
+            unzip -q -o "$room.zip" -d data/demand
+          done
           python - <<'PY'
           import pathlib, scipy.io.wavfile, soundfile
           from huggingface_hub import snapshot_download
