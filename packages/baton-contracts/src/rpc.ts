@@ -89,6 +89,16 @@ import {
   BatonHerdrSendResult,
 } from "./liveSessions.ts";
 import {
+  BATON_JOB_WS_METHODS,
+  BatonJobGrantInput,
+  BatonJobListResult,
+  BatonJobRefInput,
+  BatonJobRefineInput,
+  BatonJobStartInput,
+  BatonJobStartResult,
+  BatonJobTermsResult,
+} from "./jobs.ts";
+import {
   BATON_HANDOFF_WS_METHODS,
   WorkSessionHandoffInput,
   WorkSessionHandoffRefusedError,
@@ -194,6 +204,37 @@ const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
   payload: BatonHerdrSendInput,
   success: BatonHerdrSendResult,
   error: EnvironmentAuthorizationError,
+});
+
+const WsBatonJobListRpc = Rpc.make(BATON_JOB_WS_METHODS.jobList, {
+  payload: Schema.Struct({}),
+  success: BatonJobListResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobStartRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStart, {
+  payload: BatonJobStartInput,
+  success: BatonJobStartResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobAgreeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobAgree, {
+  payload: BatonJobRefInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobRefineRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRefine, {
+  payload: BatonJobRefineInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobGrantRpc = Rpc.make(BATON_JOB_WS_METHODS.jobGrant, {
+  payload: BatonJobGrantInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobRevokeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRevoke, {
+  payload: BatonJobGrantInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
 const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
@@ -360,6 +401,12 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonWorkSessionArchiveRpc,
   WsBatonWorkSessionUnarchiveRpc,
   WsBatonFleetGetRpc,
+  WsBatonJobListRpc,
+  WsBatonJobStartRpc,
+  WsBatonJobAgreeRpc,
+  WsBatonJobRefineRpc,
+  WsBatonJobGrantRpc,
+  WsBatonJobRevokeRpc,
   WsBatonOrchestrationRuleCreateRpc,
   WsBatonOrchestrationRuleListRpc,
   WsBatonOrchestrationRuleDisableRpc,

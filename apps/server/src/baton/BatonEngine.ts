@@ -147,6 +147,12 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
     readonly settled: boolean;
   }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.interaction-mode.set`: a plan-mode worker leaves plan mode once he agrees (D145). */
+  readonly setInteractionMode: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+    readonly interactionMode: ProviderInteractionMode;
+  }) => Effect.Effect<void, BatonEngineError>;
   /** Upstream's `thread.delete`. */
   readonly deleteThread: (input: {
     readonly tag: string;
@@ -369,6 +375,21 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const setInteractionMode: BatonEngineShape["setInteractionMode"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.interaction-mode.set",
+        commandId: yield* commandId(`${input.tag}:mode`),
+        threadId: input.threadId,
+        interactionMode: input.interactionMode,
+      });
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BatonEngineError({ operation: "thread.interaction-mode.set", detail: String(cause) }),
+      ),
+    );
+
   const settleThread: BatonEngineShape["settleThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -535,6 +556,7 @@ export const make = Effect.gen(function* () {
     sendMessage,
     switchProvider,
     setThreadSelection,
+    setInteractionMode,
     settleThread,
   } satisfies BatonEngineShape;
 });
@@ -566,6 +588,7 @@ export const layerStatic = (input: {
       }),
     switchProvider: () => Effect.void,
     setThreadSelection: () => Effect.void,
+    setInteractionMode: () => Effect.void,
     settleThread: () => Effect.succeed(true),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
