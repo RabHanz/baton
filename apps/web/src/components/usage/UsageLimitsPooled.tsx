@@ -1,3 +1,4 @@
+import { absentSessionWindow } from "@t3tools/baton-shared/limitWindows";
 import {
   CHATGPT_USAGE_URL,
   collectLimitAccounts,
@@ -586,6 +587,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
         />
         {label}
       </h2>
+      {absentSessionWindow(windows) ? (
+        <p className="text-xs text-muted-foreground">Session limit: not applicable</p>
+      ) : null}
       {windows.map((window) => {
         const details = pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
         return (
