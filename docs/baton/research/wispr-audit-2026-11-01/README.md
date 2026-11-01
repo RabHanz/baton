@@ -8,13 +8,13 @@ Asked for by the Director: "you really do need to do the audit of the Wispr Flow
 
 What this pass rests on:
 
-| Source | What it gave | Weight |
-| --- | --- | --- |
-| `frames/app-home-and-insights.png`, `frames/app-settings-dialog.png` | The real desktop app: Home with the history feed, Insights, the sidebar, the Settings dialog | Third-party review screenshots (Oct 2025 build, v1.3.535). Real UI, not ours. |
-| `frames/mobile-and-hotkeys-dialog-sheet.png` | iOS and Android screens, the "Change hotkeys" dialog, sign-in | Same third-party review |
-| `frames/site-home.png`, `frames/flowbar-pill.svg` | The marketing page and the official pill artwork (97 x 28 px) | wisprflow.ai |
-| `help-articles/articles.tsv` | Titles and URLs of all 149 help articles | docs.wisprflow.ai. Behaviour below is quoted from the articles on History, Retry, Delete, Data and Privacy, Shortcuts, Auto Cleanup and Styles. |
-| Videos | Not captured. YouTube refuses this server's address. They can be taken from his laptop's address, with his say-so. | none |
+| Source                                                               | What it gave                                                                                                       | Weight                                                                                                                                          |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frames/app-home-and-insights.png`, `frames/app-settings-dialog.png` | The real desktop app: Home with the history feed, Insights, the sidebar, the Settings dialog                       | Third-party review screenshots (Oct 2025 build, v1.3.535). Real UI, not ours.                                                                   |
+| `frames/mobile-and-hotkeys-dialog-sheet.png`                         | iOS and Android screens, the "Change hotkeys" dialog, sign-in                                                      | Same third-party review                                                                                                                         |
+| `frames/site-home.png`, `frames/flowbar-pill.svg`                    | The marketing page and the official pill artwork (97 x 28 px)                                                      | wisprflow.ai                                                                                                                                    |
+| `help-articles/articles.tsv`                                         | Titles and URLs of all 149 help articles                                                                           | docs.wisprflow.ai. Behaviour below is quoted from the articles on History, Retry, Delete, Data and Privacy, Shortcuts, Auto Cleanup and Styles. |
+| Videos                                                               | Not captured. YouTube refuses this server's address. They can be taken from his laptop's address, with his say-so. | none                                                                                                                                            |
 
 Every claim marked (doc) comes from a help article; (frame) from a frame I opened; (unverified) means I could not confirm it.
 
@@ -41,6 +41,7 @@ Every claim marked (doc) comes from a help article; (frame) from a frame I opene
 **The pill (frame + artwork).** 97 x 28 px black capsule, hairline `#4D4A42` border, a grey circular cancel button and a cream waveform. On the marketing page it sits over the text it is producing. It is small and has no label.
 
 **History (doc, frame).**
+
 - Where: "History" or "Recent Activity"; Home feed on desktop. Shows successful, failed and empty dictations.
 - Audio is kept 14 days for retry. Dismissals under 0.5 s are not saved.
 - Retry or Recover on failed, empty or interrupted entries (audio of at least 5 s). It needs the internet, cannot run during dictation, and the retried text can differ because dictionary replacements and casing are not reapplied. Retry does not paste; the text is copied by hand.
@@ -51,33 +52,33 @@ Every claim marked (doc) comes from a help article; (frame) from a frame I opene
 
 ## What we have, lack, and will beat (against what is confirmed above)
 
-| Feature | Baton today | Verdict |
-| --- | --- | --- |
-| Sidebar app window with tabs, top bar, Settings dialog | Built (PR #73, 0.1.16). Mock-data renders only; not yet seen on his laptop | Have, unproven on Windows |
-| Home feed of turns grouped by day, stats column | Built from `voice-turns.ndjson`; no WPM, streak, percentile or per-app breakdown | Lack Insights depth |
-| History page: raw and cleaned, copy any time, retry, delete, search | In build (builder B). Today only a log of lengths | Lack; will beat (below) |
-| Audio kept for retry | None kept | Lack; will beat (Opus, 30 days editable, corrected clips to 2 GB) |
-| Data stays local | Yes, all local except the model call for clean-up | Beat: Wispr defaults cloud storage and model training on |
-| Retention control | Planned: days, size cap, space readout, pause below 5 GB | Beat: Wispr offers store, 24 h, or never |
-| Dictionary | Built, with a Vocabulary tab; learned words in build | Have, beat once learned words land |
-| Snippets | None | Lack |
-| Transforms (rewrite selection) | None | Lack |
-| Scratchpad / notes | None | Lack |
-| Insights | Partial counts | Lack |
-| Styles per app category | A per-app writing style setting exists; no category UI | Have the setting, lack the UI |
-| Auto Cleanup level (None/Light/Medium) | Local-then-Claude / local only / off | Have, different levels; "undo AI edit" will come from History |
-| Command Mode (edit selection by voice) | None | Lack |
-| Languages | English-leaning recogniser | Lack (Wispr: 99 languages, auto-detect) |
-| Vibe coding (file tagging, syntax awareness) | None; Baton drives coding sessions instead | Different approach |
-| Shortcut editor | Fixed hotkeys, read-only; bindings in build | Lack today |
-| Mouse bindings | Planned: middle click, left+right chord, unbound clicks pass through | Will beat: Wispr cannot bind left or right click and swallows assigned buttons |
-| Double-tap hands-free, paste or copy last transcript | None | Lack |
-| Pill | Redesigned, small, with states | Parity on size, and ours shows more states; unproven on his screen |
-| Upload an audio file | None | Lack |
-| Bulk import dictionary | None | Lack |
-| Notetaker meetings | None | Out of scope for now |
-| Mobile app | T3's phone app only; no Baton dictation on phone | Lack |
-| Voice agent over sessions, screen, files | Baton's point; Wispr has none | Beat |
+| Feature                                                             | Baton today                                                                      | Verdict                                                                        |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Sidebar app window with tabs, top bar, Settings dialog              | Built (PR #73, 0.1.16). Mock-data renders only; not yet seen on his laptop       | Have, unproven on Windows                                                      |
+| Home feed of turns grouped by day, stats column                     | Built from `voice-turns.ndjson`; no WPM, streak, percentile or per-app breakdown | Lack Insights depth                                                            |
+| History page: raw and cleaned, copy any time, retry, delete, search | In build (builder B). Today only a log of lengths                                | Lack; will beat (below)                                                        |
+| Audio kept for retry                                                | None kept                                                                        | Lack; will beat (Opus, 30 days editable, corrected clips to 2 GB)              |
+| Data stays local                                                    | Yes, all local except the model call for clean-up                                | Beat: Wispr defaults cloud storage and model training on                       |
+| Retention control                                                   | Planned: days, size cap, space readout, pause below 5 GB                         | Beat: Wispr offers store, 24 h, or never                                       |
+| Dictionary                                                          | Built, with a Vocabulary tab; learned words in build                             | Have, beat once learned words land                                             |
+| Snippets                                                            | None                                                                             | Lack                                                                           |
+| Transforms (rewrite selection)                                      | None                                                                             | Lack                                                                           |
+| Scratchpad / notes                                                  | None                                                                             | Lack                                                                           |
+| Insights                                                            | Partial counts                                                                   | Lack                                                                           |
+| Styles per app category                                             | A per-app writing style setting exists; no category UI                           | Have the setting, lack the UI                                                  |
+| Auto Cleanup level (None/Light/Medium)                              | Local-then-Claude / local only / off                                             | Have, different levels; "undo AI edit" will come from History                  |
+| Command Mode (edit selection by voice)                              | None                                                                             | Lack                                                                           |
+| Languages                                                           | English-leaning recogniser                                                       | Lack (Wispr: 99 languages, auto-detect)                                        |
+| Vibe coding (file tagging, syntax awareness)                        | None; Baton drives coding sessions instead                                       | Different approach                                                             |
+| Shortcut editor                                                     | Fixed hotkeys, read-only; bindings in build                                      | Lack today                                                                     |
+| Mouse bindings                                                      | Planned: middle click, left+right chord, unbound clicks pass through             | Will beat: Wispr cannot bind left or right click and swallows assigned buttons |
+| Double-tap hands-free, paste or copy last transcript                | None                                                                             | Lack                                                                           |
+| Pill                                                                | Redesigned, small, with states                                                   | Parity on size, and ours shows more states; unproven on his screen             |
+| Upload an audio file                                                | None                                                                             | Lack                                                                           |
+| Bulk import dictionary                                              | None                                                                             | Lack                                                                           |
+| Notetaker meetings                                                  | None                                                                             | Out of scope for now                                                           |
+| Mobile app                                                          | T3's phone app only; no Baton dictation on phone                                 | Lack                                                                           |
+| Voice agent over sessions, screen, files                            | Baton's point; Wispr has none                                                    | Beat                                                                           |
 
 ## What is left to do before this is a full audit
 
