@@ -24,6 +24,7 @@ import {
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { loadDocument } from "./loadDocument.ts";
+import { LISTENING_WEBP, MARK_STILL_PNG, STING_WEBP } from "./pillMotionArt.ts";
 import { isPillClick } from "./pillGesture.ts";
 import {
   CUE_TAIL_MS,
@@ -80,6 +81,8 @@ body{display:flex;align-items:center;justify-content:center}
 #p.rest[data-rest=muted]{border-color:var(--red)}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
+#mk{display:none;width:16px;height:16px;flex:none}
+#p[data-mark=on] #mk{display:block}
 #w{display:none;align-items:center;gap:2px;height:14px;flex:none}
 #w i{display:block;width:2px;height:2px;border-radius:1px;background:var(--bar,#fff);transition:height .09s linear}
 #p[data-wave=on] #w{display:flex}
@@ -100,10 +103,15 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-tone=off] #t{color:var(--red)}
 #p[data-tone=warn]{border-color:var(--amber)}
 @media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
-</style></head><body><div id="p" role="status" aria-live="polite"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span></div>
+</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="16" height="16"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${MARK_STILL_PNG}'};
+const MARKED=['listening','thinking','speaking','working','dictating'];
+let shown='none',stinging=false,want='still',stingTimer=0;
+// One image at a time, swapped for a new element so an animation starts from its first frame; gone when nothing is up.
+const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.cloneNode();if(name==='none')n.removeAttribute('src');else n.src=ART[name];m.replaceWith(n);};
 const bars=Array.from({length:BARS},()=>{const b=document.createElement('i');$('w').appendChild(b);return b;});
 const shape=bars.map((_,i)=>{const h=Math.abs((BARS-1)/2-i);return Math.max(.25,1-h*h/18);});
 let ctx=null,live=false,tick=0;
@@ -130,14 +138,15 @@ grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('bat
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
- show(v){const p=$('p'),wave=WAVE.includes(v.phase);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);
+ show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':calm||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);
   live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   $('c').textContent=v.phase==='ended'?'Say the wake word':(v.caption&&/^to /.test(v.caption)?v.caption:'');},
- rest(why){const p=$('p');p.className='on rest';delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
+ rest(why){const p=$('p');p.className='on rest';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
  level(n){if(live&&!calm)draw(Math.min(1,n));},
- hide(){$('p').className='';live=false;},
+ hide(){$('p').className='';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
+ sting(){if(calm)return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);},
 };
@@ -450,6 +459,7 @@ export const createVoicePill = (input: {
       setEscape(turnHoldsEscape(state));
       call(`window.pill.show(${JSON.stringify({ ...view, phase: state.phase })})`);
       if (event.type === "wake") {
+        call("window.pill.sting()");
         loudest = 0;
         sound_("wake");
         const at = performance.now();
