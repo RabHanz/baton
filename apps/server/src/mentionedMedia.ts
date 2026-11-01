@@ -1,9 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { PROVIDER_SEND_TURN_MAX_IMAGE_BYTES, type ChatAttachment } from "@t3tools/contracts";
 import { mentionedMediaPaths } from "@t3tools/shared/mediaMentions";
+import { judgeMedia, type MediaVerdict } from "@t3tools/shared/mediaPolicy";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 
 import {
@@ -12,9 +14,6 @@ import {
   resolveAttachmentPath,
 } from "./attachmentStore.ts";
 
-/** A named file bigger than this is left where it is. */
-export const MAX_MENTIONED_FILE_BYTES = 20 * 1024 * 1024;
-
 const IMAGE_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
@@ -22,53 +21,96 @@ const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
 };
+const MAX_PER_MESSAGE = 6;
 
-/**
- * Real paths of the image and video files a reply names that sit inside `cwd` (a symlink out of
- * it, or any path elsewhere, is not read).
- */
-export const mentionedMediaFiles = (text: string, cwd: string): ReadonlyArray<string> => {
-  let root: string;
+const real = (path: string): string | null => {
   try {
-    root = NodeFS.realpathSync(cwd);
+    return NodeFS.realpathSync(path);
   } catch {
-    return [];
+    return null;
   }
-  const files: Array<string> = [];
-  for (const mention of mentionedMediaPaths(text)) {
-    try {
-      const real = NodeFS.realpathSync(NodePath.resolve(root, mention));
-      if (real.startsWith(`${root}${NodePath.sep}`) && !files.includes(real)) files.push(real);
-    } catch {}
-  }
-  return files;
 };
 
+export interface ResolvedMedia {
+  readonly file: string;
+  readonly size: number;
+  readonly verdict: MediaVerdict;
+}
+
 /**
- * A finished reply plus the image and video files it names inside `cwd`, copied into T3's
- * attachment store (ids from the bytes, so doing it twice writes nothing new) and appended as
- * markdown media, which every client renders. Text that names nothing comes back unchanged.
+ * The image and video files a reply may show: those it names under the thread's own folders, and
+ * those the session itself touched this turn (wrote, read, ran, screenshotted) wherever they are,
+ * minus anything the policy denies. A name that is not a file, or whose real path is elsewhere, is
+ * simply not media: it stays text.
  */
-export const withMentionedMedia = (input: {
+export const resolveMedia = (input: {
+  readonly text: string;
+  readonly cwd: string;
+  /** Paths from the session's own tool calls this turn. */
+  readonly touched?: ReadonlyArray<string>;
+  /** Other folders the thread owns: its worktree, scratch space, the attachment store. */
+  readonly roots?: ReadonlyArray<string>;
+}): ReadonlyArray<ResolvedMedia> => {
+  const cwd = real(input.cwd);
+  if (cwd === null) return [];
+  const home = NodeOS.homedir();
+  const roots = [cwd, ...(input.roots ?? []), NodeOS.tmpdir(), "/tmp"].flatMap(
+    (r) => real(r) ?? [],
+  );
+  const resolve = (path: string) =>
+    path.startsWith("~/") ? NodePath.join(home, path.slice(2)) : NodePath.resolve(cwd, path);
+  const touched = new Set((input.touched ?? []).flatMap((p) => real(resolve(p)) ?? []));
+  const seen = new Set<string>();
+  const out: ResolvedMedia[] = [];
+  const candidates = [...mentionedMediaPaths(input.text), ...(input.touched ?? [])];
+  for (const candidate of candidates) {
+    const file = real(resolve(candidate));
+    if (file === null || seen.has(file)) continue;
+    seen.add(file);
+    try {
+      const stat = NodeFS.statSync(file);
+      if (!stat.isFile()) continue;
+      const verdict = judgeMedia({
+        real: file,
+        size: stat.size,
+        touched: touched.has(file),
+        roots,
+      });
+      if (verdict.verdict !== "skip") out.push({ file, size: stat.size, verdict });
+    } catch {}
+    if (out.length >= MAX_PER_MESSAGE) break;
+  }
+  return out;
+};
+
+const megabytes = (size: number) => `${Math.round(size / 1_048_576)} MB`;
+
+/**
+ * Copies a resolved file into T3's attachment store (ids from the bytes, so doing it twice writes
+ * nothing new) and returns the markdown that shows it: media markdown for what fits, a plain line
+ * for what is too big. Every client renders the markdown.
+ */
+export const attachMarkdown = (input: {
   readonly attachmentsDir: string;
   readonly threadId: string;
   readonly messageId: string;
-  readonly text: string;
-  readonly cwd: string;
-}): string => {
-  const links: Array<string> = [];
-  mentionedMediaFiles(input.text, input.cwd).forEach((file, index) => {
+  readonly media: ReadonlyArray<ResolvedMedia>;
+}): ReadonlyArray<string> => {
+  const lines: string[] = [];
+  input.media.forEach(({ file, size, verdict }, index) => {
     const name = NodePath.basename(file);
+    if (verdict.verdict === "link") {
+      lines.push(`_${name} (${megabytes(size)}) is too big to show here._`);
+      return;
+    }
+    if (verdict.verdict !== "attach") return;
     try {
-      const stat = NodeFS.statSync(file);
-      if (!stat.isFile() || stat.size === 0 || stat.size > MAX_MENTIONED_FILE_BYTES) return;
       const bytes = NodeFS.readFileSync(file);
       const id = createDeterministicAttachmentId(
         input.threadId,
         chatAttachmentStableKey(input.messageId, index, bytes),
       );
-      const extension = NodePath.extname(name).toLowerCase();
-      const imageType = IMAGE_TYPES[extension];
+      const imageType = IMAGE_TYPES[NodePath.extname(name).toLowerCase()];
       if (id === null || mediaKindFromPath(name) === null) return;
       const attachment: ChatAttachment =
         imageType !== undefined && bytes.length <= PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
@@ -86,8 +128,22 @@ export const withMentionedMedia = (input: {
         NodeFS.mkdirSync(input.attachmentsDir, { recursive: true });
         NodeFS.writeFileSync(copy, bytes);
       }
-      links.push(`![${name}](<${copy}>)`);
+      lines.push(`![${name}](<${copy}>)`);
     } catch {}
   });
-  return links.length === 0 ? input.text : `${input.text}\n\n${links.join("\n\n")}`;
+  return lines;
+};
+
+/** A finished reply plus the media it may show; text that names or touches nothing comes back unchanged. */
+export const withMentionedMedia = (input: {
+  readonly attachmentsDir: string;
+  readonly threadId: string;
+  readonly messageId: string;
+  readonly text: string;
+  readonly cwd: string;
+  readonly touched?: ReadonlyArray<string>;
+  readonly roots?: ReadonlyArray<string>;
+}): string => {
+  const lines = attachMarkdown({ ...input, media: resolveMedia(input) });
+  return lines.length === 0 ? input.text : `${input.text}\n\n${lines.join("\n\n")}`;
 };

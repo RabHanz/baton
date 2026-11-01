@@ -221,4 +221,22 @@ describe("a live message's media", () => {
     expect(video).toMatch(/^!\[clip\.mp4\]\(<.+\.mp4>\)$/);
     expect(extra).toBeUndefined();
   });
+
+  it("shows a file the session's own tool calls wrote outside the cwd, though the reply never names it", () => {
+    const cwd = NodePath.join(dir, "ws2");
+    NodeFS.mkdirSync(cwd, { recursive: true });
+    const elsewhere = NodeFS.mkdtempSync("/dev/shm/live-");
+    const shot = NodePath.join(elsewhere, "screen.png");
+    NodeFS.writeFileSync(shot, png);
+    const base = {
+      attachmentsDir,
+      threadId: "t",
+      messageId: "x",
+      cwd,
+      message: { uuid: "x", role: "assistant" as const, text: "Here you go.", createdAt: "2026-10-29T10:00:00.000Z" },
+    };
+    expect(liveMedia(base).text).toBe("Here you go.");
+    expect(liveMedia({ ...base, touched: [shot] }).text).toMatch(/!\[screen\.png\]/);
+    NodeFS.rmSync(elsewhere, { recursive: true, force: true });
+  });
 });

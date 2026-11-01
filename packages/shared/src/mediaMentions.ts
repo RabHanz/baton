@@ -2,11 +2,15 @@ import { mediaKindFromPath } from "./mediaPreview.ts";
 
 const MAX_MENTIONED_MEDIA = 6;
 // A path-like token ending in an extension; mediaKindFromPath decides whether it is media.
-const PATH_TOKEN = /(?<![\w/.:@-])((?:\/|~\/|\.{1,2}\/)?[\w.@-]+(?:\/[\w.@ -]+)*\.[A-Za-z0-9]{2,5})(?![\w/-])/g;
+const PATH_TOKEN = /(?<![\w/.:@\\-])((?:\/|~\/|\.{1,2}\/)?[\w.@-]+(?:\/[\w.@ -]+)*\.[A-Za-z0-9]{2,5})(?![\w/-])/g;
 
 /** Image and video paths the text names outside code fences, URLs and markdown it already shows. */
+/** Windows, UNC and `~\` paths: they name a file on another machine, so they are only ever text. */
+const FOREIGN_PATH =
+  /(?:(?<![A-Za-z0-9])[A-Za-z]:(?:\\|\/(?!\/))|\\\\|~\\)[^\n"'`<>|]*?\.[A-Za-z0-9]{2,5}(?![\w])/g;
+
 export function mentionedMediaPaths(text: string): string[] {
-  const withoutFences = text.replace(/```[\s\S]*?(?:```|$)/g, " ");
+  const withoutFences = text.replace(/```[\s\S]*?(?:```|$)/g, " ").replace(FOREIGN_PATH, " ");
   const shown = new Set<string>();
   for (const match of withoutFences.matchAll(/!?\[([^\]]*)\]\(<?([^)>\s]+)/g)) {
     shown.add(match[1]!);
