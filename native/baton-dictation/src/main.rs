@@ -4,6 +4,10 @@
 #[cfg(unix)]
 mod desktop_unix;
 mod keys;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod mouse;
+#[cfg(windows)]
+mod mouse_windows;
 #[cfg(windows)]
 mod uia;
 mod live;
@@ -57,6 +61,9 @@ struct Config {
     #[serde(default)]
     paste: PasteMethod,
     language: Option<String>,
+    /// `input-bindings.json`: the mouse buttons Baton listens for. Absent or empty: no hook at all.
+    #[serde(default)]
+    mouse: Option<PathBuf>,
     /// The desktop cleans the text up first, then pastes it with `target`.
     #[serde(default)]
     cleanup: bool,
@@ -650,6 +657,8 @@ fn serve() {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
+                                #[cfg(windows)]
+                                mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
                                     // Nothing can stop a recording once its keys are gone.
                                     if recording.take().is_some() {
@@ -664,7 +673,7 @@ fn serve() {
                                         Err(message) => emit(json!({"ev": "error", "message": message})),
                                     }
                                 }
-                                emit(json!({"ev": "configured"}));
+                                emit(json!({"ev": "configured", "mouse": cfg!(windows)}));
                             }
                             Err(e) => emit(json!({"ev": "error", "message": e.to_string()})),
                         }
