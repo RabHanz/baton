@@ -134,7 +134,7 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(typed("what I just told you"), { ...read, textIsHis: true }).verdict).toBe("allow");
   });
   it("lets it look and click, but not send, drag or press Enter on its own", () => {
-    for (const tool of ["screen_capture", "sessions_list", "fleet_status", "memory_search", "dictation_start"]) {
+    for (const tool of ["screen_capture", "ui_tree", "sessions_list", "fleet_status", "memory_search", "dictation_start"]) {
       expect(judgeToolCall({ tool: `mcp__baton__${tool}`, input: {} }, off).verdict).toBe("allow");
     }
     expect(judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the text box" } }, off).verdict).toBe("allow");

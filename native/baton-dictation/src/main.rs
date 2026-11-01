@@ -539,16 +539,29 @@ fn window_at(_x: i32, _y: i32) -> isize {
 }
 
 #[cfg(windows)]
-fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32) -> Value {
-    let mut out = uia::locate(label, x, y).unwrap_or_else(|e| json!({"found": false, "error": e}));
+fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32, foreground: bool) -> Value {
+    let mut out = uia::locate(label, x, y, foreground).unwrap_or_else(|e| json!({"found": false, "error": e}));
     out["ev"] = json!("located");
     out["id"] = json!(id);
     out
 }
 
 #[cfg(not(windows))]
-fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32) -> Value {
+fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: bool) -> Value {
     json!({"ev": "located", "id": id, "found": false, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
+fn ui_tree(id: Option<u64>) -> Value {
+    let mut out = uia::tree(120).unwrap_or_else(|e| json!({"error": e}));
+    out["ev"] = json!("tree");
+    out["id"] = json!(id);
+    out
+}
+
+#[cfg(not(windows))]
+fn ui_tree(id: Option<u64>) -> Value {
+    json!({"ev": "tree", "id": id, "error": "not on this platform yet"})
 }
 
 /// Text goes only into the window it was spoken for. Windows reports 0 mid-switch, which is not it.
@@ -717,7 +730,12 @@ fn serve() {
                         let label = value["label"].as_str().unwrap_or("").to_string();
                         let (x, y) = (value["x"].as_i64().unwrap_or(0) as i32, value["y"].as_i64().unwrap_or(0) as i32);
                         // Its own thread: a big page can take a while, and the keys must not wait.
-                        thread::spawn(move || emit(locate_element(id, &label, x, y)));
+                        let foreground = value["foreground"].as_bool().unwrap_or(false);
+                        thread::spawn(move || emit(locate_element(id, &label, x, y, foreground)));
+                    }
+                    "ui_tree" => {
+                        let id = value["id"].as_u64();
+                        thread::spawn(move || emit(ui_tree(id)));
                     }
                     "toggle" => {
                         if recording.is_some() {
@@ -955,7 +973,11 @@ fn main() {
         Some("locate") => {
             let number = |name: &str| flag(&args, name).and_then(|v| v.parse().ok()).unwrap_or(0);
             let label = flag(&args, "--label").unwrap_or_default();
-            println!("{}", locate_element(None, &label, number("--x"), number("--y")));
+            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground")));
+            Ok(())
+        }
+        Some("ui_tree") => {
+            println!("{}", ui_tree(None));
             Ok(())
         }
         Some("transcribe") => cli_transcribe(&args[1..]),
