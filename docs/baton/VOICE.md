@@ -126,7 +126,7 @@ toggle keys exist only after that. Ctrl+Alt+Shift+F8 toggles dictation for Airde
 
 Text pastes only into the window focused when recording began. If that changed, or nothing read the
 clipboard, the pill says so and the text stays under Tray → Dictation → Copy last dictation. Esc
-cancels a recording; five minutes stops it and the text is kept, not pasted.
+cancels a recording; an hour stops it and the text is kept, not pasted.
 
 ## Clean-up and writing modes (D105)
 

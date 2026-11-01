@@ -40,7 +40,7 @@ use transcribe_cpp::{
 const IDLE_UNLOAD: Duration = Duration::from_secs(600);
 const MIN_SAMPLES: usize = 16_000 / 4;
 /// A tap of the remote's button must not listen forever. What was said is kept, never pasted.
-const MAX_RECORDING: Duration = Duration::from_secs(300);
+const MAX_RECORDING: Duration = Duration::from_secs(3600);
 /// Parakeet clips the last word without a little trailing silence.
 const TAIL_SAMPLES: usize = 16_000 / 5;
 
