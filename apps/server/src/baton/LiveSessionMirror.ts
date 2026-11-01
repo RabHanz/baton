@@ -78,6 +78,8 @@ import {
   resolveAttachmentPath,
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
+import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
+import { mentionedMediaPaths } from "@t3tools/shared/mediaMentions";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -173,6 +175,27 @@ const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolS
 /** A file name as markdown link text: brackets would end the link. */
 const label = (name: string): string => name.replace(/[[\]\\]/g, "");
 
+/**
+ * Real paths of the image and video files a reply names that sit inside the session's directory
+ * (a symlink out of it, or any path elsewhere, is not read).
+ */
+const mentionedMediaFiles = (text: string, cwd: string): ReadonlyArray<string> => {
+  let root: string;
+  try {
+    root = NodeFS.realpathSync(cwd);
+  } catch {
+    return [];
+  }
+  const files: Array<string> = [];
+  for (const mention of mentionedMediaPaths(text)) {
+    try {
+      const real = NodeFS.realpathSync(NodePath.resolve(root, mention));
+      if (real.startsWith(`${root}${NodePath.sep}`) && !files.includes(real)) files.push(real);
+    } catch {}
+  }
+  return files;
+};
+
 /** What a message shows beyond its words: T3 attachments and, for sent files, markdown. */
 export interface LiveMedia {
   readonly text: string;
@@ -192,6 +215,8 @@ export const liveMedia = (input: {
   readonly threadId: string;
   readonly messageId: string;
   readonly message: LiveTranscriptMessage;
+  /** The session's directory: image and video files a reply names are shown when they sit inside it. */
+  readonly cwd?: string;
 }): LiveMedia => {
   const { attachmentsDir, threadId, messageId, message } = input;
   const store = (attachment: ChatAttachment, bytes: Uint8Array): string | null => {
@@ -229,18 +254,26 @@ export const liveMedia = (input: {
     if (store(attachment, bytes) !== null) attachments.push(attachment);
   });
   const links: Array<string> = [];
-  (message.files ?? []).forEach((file, index) => {
+  const sent = message.files ?? [];
+  const mentioned =
+    message.role === "assistant" && input.cwd !== undefined
+      ? mentionedMediaFiles(message.text, input.cwd).filter((file) => !sent.includes(file))
+      : [];
+  [...sent, ...mentioned].forEach((file, index) => {
+    const quiet = index >= sent.length;
     const name = NodePath.basename(file);
     let stat: NodeFS.Stats | null = null;
     try {
       stat = NodeFS.statSync(file);
     } catch {}
     if (stat === null || !stat.isFile()) {
-      notes.push(`_${label(name)} is no longer on disk._`);
+      if (!quiet) notes.push(`_${label(name)} is no longer on disk._`);
       return;
     }
     if (stat.size === 0 || stat.size > MAX_SENT_FILE_BYTES) {
-      notes.push(`_${label(name)} (${Math.round(stat.size / 1_048_576)} MB) is not copied here._`);
+      if (!quiet) {
+        notes.push(`_${label(name)} (${Math.round(stat.size / 1_048_576)} MB) is not copied here._`);
+      }
       return;
     }
     const bytes = NodeFS.readFileSync(file);
@@ -264,7 +297,9 @@ export const liveMedia = (input: {
     const copy = store(attachment, bytes);
     if (copy === null) return;
     links.push(
-      attachment.type === "image" ? `![${label(name)}](<${copy}>)` : `[${label(name)}](<${copy}>)`,
+      attachment.type === "image" || mediaKindFromPath(name) === "video"
+        ? `![${label(name)}](<${copy}>)`
+        : `[${label(name)}](<${copy}>)`,
     );
   });
   const text = [message.text, ...links, ...notes].filter((part) => part.length > 0).join("\n\n");
@@ -659,11 +694,12 @@ const make = Effect.gen(function* () {
     message: LiveTranscriptMessage,
     runId: RunId | null,
     media?: LiveMedia,
+    cwd?: string,
   ): ReadonlyArray<OrchestrationV2DomainEvent> => {
     const key = `${sessionId}:${message.uuid}`;
     const messageId = MessageId.make(`${PREFIX}:${key}`);
     const { text, attachments } =
-      media ?? liveMedia({ attachmentsDir, threadId, messageId, message });
+      media ?? liveMedia({ attachmentsDir, threadId, messageId, message, ...(cwd ? { cwd } : {}) });
     const at = DateTime.makeUnsafe(message.createdAt);
     const common = {
       id: TurnItemId.make(`${PREFIX}:turn-item:${key}`),
@@ -919,7 +955,8 @@ const make = Effect.gen(function* () {
           if (history) follow.open = run;
           follow.target = run.id;
         }
-        events.push(...messageEvents(follow.threadId, session.sessionId, message, follow.target));
+        events.push(...messageEvents(follow.threadId, session.sessionId, message, follow.target, undefined, session.cwd),
+        );
       }
       if (events.length > 0) yield* engine.writeEvents({ events });
     });
