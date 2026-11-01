@@ -50,7 +50,8 @@ type JobOp =
   | "watch"
   | "stop"
   | "schedule"
-  | "brief";
+  | "brief"
+  | "approvals";
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -294,6 +295,13 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "Which sessions and jobs are being left alone: failed, out of room, offline, stalled (working but silent for half an hour), waiting for him too long, or finished and never looked at. Read from state, with what each last did. Use it for 'is anything stuck' and the morning check.",
     inputSchema: object({}),
     run: async () => ({ text: await host.jobs("watch", {}) }),
+  },
+  {
+    name: "approvals_list",
+    description:
+      "Everything waiting for his yes, in one list: each plan that wants his OK and each session that asked him something, with the exact action and what it would use. Read it when he asks what needs his approval. To approve a plan after he says yes, job_agree; to decline, job_stop. A session's own question is only his to answer.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("approvals", {}) }),
   },
   {
     name: "morning_brief",
