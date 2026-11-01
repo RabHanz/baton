@@ -1,0 +1,60 @@
+name: Baton hands loop
+
+# The assistant's real tool path on a real Windows desktop (issue #52): ui_tree, click_element, wait_for,
+# type, press and a screenshot check against Notepad, Calculator, File Explorer, Paint and Settings.
+# The planner is scripted (a runner has no model login); the results are the table in
+# docs/baton/research/hands-loop-tasks.md.
+on:
+  workflow_dispatch:
+  push:
+    branches: [baton/hands-ci]
+    paths:
+      [
+        "scripts/baton/hands-ci/**",
+        "native/baton-dictation/**",
+        "apps/desktop/src/baton/agent/**",
+        "apps/desktop/src/baton/screen/inputDriver.ts",
+        ".github/workflows/baton-hands-loop.yml",
+      ]
+
+permissions:
+  contents: read
+
+jobs:
+  hands:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/cache@v4
+        with:
+          path: native/baton-dictation/target
+          key: sidecar-${{ runner.os }}-${{ hashFiles('native/baton-dictation/Cargo.lock', 'native/baton-dictation/src/**') }}
+          restore-keys: sidecar-${{ runner.os }}-
+      - name: Build the UI Automation sidecar
+        shell: bash
+        env:
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
+      - name: Run the task set
+        shell: bash
+        env:
+          SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
+          HANDS_OUT: ${{ github.workspace }}/hands-out
+        run: |
+          mkdir -p hands-out
+          node scripts/baton/hands-ci/run.ts 2>&1 | tee hands-out/run.log
+      - name: Table
+        if: always()
+        shell: bash
+        run: node scripts/baton/hands-ci/report.ts hands-out >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hands-loop-results
+          path: hands-out
