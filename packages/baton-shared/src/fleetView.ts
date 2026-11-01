@@ -5,7 +5,7 @@
  * The §33 shape:
  *
  * ```text
- * ● VentureOS / Scheduler     Working
+ * ● Storefront / Scheduler     Working
  * ! Production / Deploy       Approval needed
  * ◐ Spotler / Reviewer        Reviewing
  * ✓ Margin / Search           Done
@@ -40,7 +40,7 @@ export interface FleetRow {
   readonly environmentId: EnvironmentId;
   readonly workSessionId: WorkSessionId;
   readonly glyph: string;
-  /** "VentureOS / Scheduler reconnect race" */
+  /** "Storefront / Scheduler reconnect race" */
   readonly heading: string;
   readonly stateLabel: string;
   readonly state: BatonSessionState;

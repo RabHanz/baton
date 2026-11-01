@@ -16,7 +16,7 @@
  *      the one the user was shown.
  *   2. **Refuse with the words.** Every refusal carries the phrase it could not
  *      place. "I did not understand" teaches nothing; "I could not place
- *      'the hetzner one'" tells the user what to say instead.
+ *      'the office one'" tells the user what to say instead.
  *   3. **Never guess a target.** A named target that matches nothing is a
  *      refusal, not a fallback to whatever is on screen. Falling back is how a
  *      message meant for one account lands in another.
@@ -303,7 +303,7 @@ type TargetMatch =
  *
  * "Most specific" is how many characters of the *phrase* the match actually
  * accounts for, not how long the matched name happens to be. That distinction
- * is the whole of it: "VentureOS" matching the label of two work sessions is a
+ * is the whole of it: "Storefront" matching the label of two work sessions is a
  * nine-character match against both and therefore ambiguous, while "scheduler
  * reconnect race" is a twenty-four-character match against one and therefore
  * is not. Scoring by the name's own length instead made the work session with
@@ -456,7 +456,7 @@ const matchProvider = (phrase: string, vocabulary: IntentVocabulary): IntentProv
  * "… with Claude B" / "… using codex".
  *
  * Deliberately not "on": "on" introduces a host, and one preposition doing two
- * jobs is how "start work on VentureOS on the Hetzner box" becomes a complaint
+ * jobs is how "start work on Storefront on the office box" becomes a complaint
  * about an account nobody named.
  */
 const splitProviderClause = (
@@ -467,7 +467,7 @@ const splitProviderClause = (
   return { rest: (match[1] ?? "").trim(), providerPhrase: (match[2] ?? "").trim() };
 };
 
-/** "… on the Hetzner box" — a machine, never an account. */
+/** "… on the office box" — a machine, never an account. */
 const splitHostClause = (
   text: string,
 ): { readonly rest: string; readonly hostPhrase: string | null } => {

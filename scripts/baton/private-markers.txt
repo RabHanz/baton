@@ -2,4 +2,4 @@
 # One lowercase hex hash per line. Each is the hash of four consecutive lowercase words (letters and digits
 # only, joined by single spaces) taken from a private document. The phrases themselves are never written here.
 # Add one with: node -e 'console.log(require("crypto").createHash("sha256").update("four words from it").digest("hex"))'
-# The guard test (packages/baton-shared/src/privatePack.guard.test.ts) fails on a match and names only the file.
+# scripts/baton/guard-private.mjs (run by CI and by a unit test) fails on a match and names only the file.
