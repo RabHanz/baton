@@ -60,6 +60,9 @@ h2.lead{color:var(--accent)}
 .radio{flex:none;width:18px;height:18px;margin-top:2px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card)}
 .pick.on .radio{border-color:var(--accent);background:radial-gradient(var(--accent) 0 4px,var(--card) 5px)}
 .tag{margin-left:8px;font:600 11px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line-strong);border-radius:6px;padding:1px 6px}
+.glyph{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--sans);color:#fff;margin-top:1px}
+.glyph.ok{background:var(--accent)}.glyph.warn{background:var(--warn)}.glyph.bad{background:var(--bad)}
+.fix{margin-top:3px;font-size:13px;font-weight:600;color:var(--ink)}
 footer{margin-top:30px;display:flex;justify-content:space-between;align-items:center;color:var(--faint);font-size:13px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 `;
@@ -95,7 +98,15 @@ function brain(c){
   }
   return list;
 }
+function check(c){
+  const r=$('div','row');
+  const g=$('span','glyph '+c.status,c.status==='ok'?'✓':c.status==='warn'?'!':'×');g.setAttribute('aria-label',c.status==='ok'?'Fine':c.status==='warn'?'Worth a look':'Needs fixing');
+  const t=$('div','text');t.appendChild($('div','label',c.label));t.appendChild($('div','hint',c.detail));
+  if(c.fix)t.appendChild($('div','fix',c.fix));
+  r.append(g,t);r.style.justifyContent='flex-start';return r;
+}
 function row(c){
+  if(c.kind==='check')return check(c);
   if(c.kind==='brain'){const r=$('div','brainRow');r.append($('div','hint',c.hint||''),brain(c));if(!c.hint)r.firstChild.remove();return r;}
   const r=$('div','row');if(c.disabled)r.setAttribute('data-disabled','');
   const t=$('div','text');t.appendChild($('div','label',c.label));if(c.hint)t.appendChild($('div','hint',c.hint));
