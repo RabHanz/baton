@@ -1,0 +1,260 @@
+/**
+ * The page script of Baton's window (D140). Plain DOM, no framework. Text goes in with textContent
+ * only; the state is data, never markup (the one innerHTML is the mark Baton itself draws, and the
+ * fixed icon paths below). Outside Electron it reads `window.__BATON_STATE__`, so every tab can be
+ * looked at in a browser. This string holds no backticks and no dollar-brace, on purpose.
+ */
+export const APP_SCRIPT = `
+const real = typeof require === 'function';
+const ipc = real ? require('electron').ipcRenderer : null;
+const get = () => real ? ipc.invoke('baton-home:get') : Promise.resolve(window.__BATON_STATE__);
+const set = (id, v) => real ? ipc.invoke('baton-home:set', id, v).then(render) : Promise.resolve();
+const $ = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x !== undefined) e.textContent = x; return e; };
+const ICON = {
+  home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  sessions: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/>',
+  dictation: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  assistant: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  voice: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
+  screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
+  checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+  side: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',
+  chev: '<path d="M1 1l4 4 4-4"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>'
+};
+const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
+const TABS = [['home','Home'],['sessions','Sessions'],['dictation','Dictation'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const INTRO = {
+  sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
+  dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
+  assistant: ['Assistant', 'What Baton works through, whose subscription it uses, and what it may do without asking.'],
+  voice: ['Voice', 'How Baton hears you and how it sounds back.'],
+  screen: ['Screen', 'When Baton may look at your screen, and how to stop it.'],
+  usage: ['Usage', 'How much of each account is left.'],
+  checks: ['Checks', 'See what is wrong without reading a log.']
+};
+let cur = 'home', collapsed = false, modal = null, S = null;
+const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
+
+function control(c) {
+  if (c.kind === 'toggle') { const b = $('button', 'sw'); b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', String(c.on)); b.setAttribute('aria-label', c.label); b.onclick = () => set(c.id, !c.on); return b; }
+  if (c.kind === 'choice') {
+    if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
+      const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
+    }
+    const s = $('select'); s.setAttribute('aria-label', c.label);
+    for (const o of c.options) { const p = $('option', null, o.label); p.value = o.value; p.selected = o.value === c.value; s.appendChild(p); }
+    s.onchange = () => set(c.id, s.value); return s;
+  }
+  if (c.kind === 'secret') { const b = $('button', 'btn', shown.has(c.id) ? c.revealed : c.masked); b.setAttribute('aria-label', 'Show address'); b.onclick = () => { if (shown.has(c.id)) shown.delete(c.id); else shown.add(c.id); b.textContent = shown.has(c.id) ? c.revealed : c.masked; }; return b; }
+  const b = $('button', 'btn', c.button); b.onclick = () => set(c.id, null);
+  if (c.secondary) { const w = $('div', 'pair'); const b2 = $('button', 'btn', c.secondary); b2.onclick = () => set(c.id + ':later', null); w.append(b2, b); return w; }
+  return b;
+}
+function brain(c) {
+  const list = $('div', 'brain');
+  for (const o of c.options) {
+    const r = $('button', 'pick' + (o.value === c.value ? ' on' : '')); r.disabled = o.state !== 'ready';
+    r.setAttribute('role', 'radio'); r.setAttribute('aria-checked', String(o.value === c.value));
+    const t = $('div', 'text'); const l = $('div', 'label', o.label); if (o.state === 'soon') l.appendChild($('span', 'tag2', 'Coming soon'));
+    t.append(l, $('div', 'hint', o.note)); r.append($('span', 'radio'), t);
+    if (o.state === 'ready') r.onclick = () => set(c.id, o.value);
+    list.appendChild(r);
+  }
+  return list;
+}
+function session(c) {
+  const r = $('div', 'row sess'); const dot = $('span', 'sdot ' + c.state); dot.setAttribute('aria-label', c.stateLabel);
+  const t = $('div', 'text'); const name = $(c.canOpen ? 'button' : 'div', 'sname', c.label);
+  if (c.canOpen) { name.title = 'Open in sessions'; name.onclick = () => set(c.id, null); }
+  const meta = $('div', 'hint'); meta.append(document.createTextNode(c.project + ' \\u00b7 ' + c.box + ' \\u00b7 ' + c.stateLabel));
+  if (c.masked) { meta.append(document.createTextNode(' \\u00b7 ')); const a = $('button', 'reveal', shown.has(c.id) ? c.revealed : c.masked); a.setAttribute('aria-label', 'Show account'); a.onclick = () => { if (shown.has(c.id)) shown.delete(c.id); else shown.add(c.id); a.textContent = shown.has(c.id) ? c.revealed : c.masked; }; meta.append(a); }
+  t.append(name, meta);
+  if (c.canSend) {
+    const f = $('form', 'send'); const i = $('input'); i.type = 'text'; i.id = 'in-' + c.id; i.placeholder = 'Send to this session'; i.setAttribute('aria-label', 'Send to ' + c.label); i.value = drafts.get(c.id) || '';
+    i.oninput = () => drafts.set(c.id, i.value);
+    f.onsubmit = e => { e.preventDefault(); const v = i.value.trim(); if (!v) return; drafts.delete(c.id); i.value = ''; set(c.id, v); };
+    f.append(i, $('button', 'btn', 'Send')); t.append(f);
+  }
+  r.append(dot, t); return r;
+}
+function check(c) {
+  const r = $('div', 'row'); r.style.justifyContent = 'flex-start';
+  const g = $('span', 'glyph ' + c.status, c.status === 'ok' ? '\\u2713' : c.status === 'warn' ? '!' : '\\u00d7');
+  g.setAttribute('aria-label', c.status === 'ok' ? 'Fine' : c.status === 'warn' ? 'Worth a look' : 'Needs fixing');
+  const t = $('div', 'text'); t.appendChild($('div', 'label', c.label)); t.appendChild($('div', 'hint', c.detail)); if (c.fix) t.appendChild($('div', 'fix', c.fix));
+  r.append(g, t); return r;
+}
+function row(c) {
+  if (c.kind === 'session') return session(c);
+  if (c.kind === 'check') return check(c);
+  if (c.kind === 'brain') { const r = $('div', 'brainRow'); if (c.hint) r.appendChild($('div', 'hint', c.hint)); r.appendChild(brain(c)); return r; }
+  const r = $('div', 'row'); if (c.disabled) r.setAttribute('data-disabled', '');
+  const t = $('div', 'text'); t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint));
+  r.append(t, control(c)); return r;
+}
+function group(name, items) {
+  const g = $('div', 'group' + (open.has(name) ? ' open' : ''));
+  for (const c of items.filter(x => !x.more)) g.appendChild(row(c));
+  const more = items.filter(x => x.more);
+  if (more.length) {
+    const w = $('div', 'more'), i = $('div'); for (const c of more) i.appendChild(row(c)); w.appendChild(i); g.appendChild(w);
+    const ml = (more.find(x => x.moreLabel) || {}).moreLabel || 'More options', fl = ml === 'Show all' ? 'Show fewer' : 'Fewer options';
+    const b = $('button', 'moreBtn'); b.setAttribute('aria-expanded', String(open.has(name))); const sp = $('span', null, open.has(name) ? fl : ml); b.append(sp, icon('chev', 10));
+    b.onclick = () => { if (open.has(name)) open.delete(name); else open.add(name); g.classList.toggle('open'); b.setAttribute('aria-expanded', String(open.has(name))); sp.textContent = open.has(name) ? fl : ml; };
+    g.appendChild(b);
+  }
+  return g;
+}
+function sections(items) {
+  const out = []; for (const c of items) { let s = out.find(x => x.name === c.section); if (!s) { s = { name: c.section, items: [], lead: false }; out.push(s); } if (c.lead) s.lead = true; s.items.push(c); }
+  out.sort((a, b) => Number(b.lead) - Number(a.lead)); return out;
+}
+function tabControls(tab) { return S.controls.filter(c => c.tab === tab); }
+function find(id) { return S.controls.find(c => c.id === id); }
+
+function greeting() { const h = new Date().getHours(); return h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
+function chipEl(t, plain) { return $('span', 'chip' + (plain ? ' plain' : ''), t); }
+function pageHead(title, lede) { const f = document.createDocumentFragment(); f.appendChild($('h1', null, title)); if (lede) f.appendChild($('p', 'lede', lede)); return f; }
+function banner(kind, em, title, text, btn, onclick) {
+  const b = $('div', 'banner' + (kind ? ' ' + kind : '')); const d = $('div'); const h = $('h3'); h.append(document.createTextNode(title + ' ')); h.appendChild($('em', null, em)); d.append(h, $('p', null, text)); b.appendChild(d);
+  if (btn) { const x = $('button', 'btn', btn); x.onclick = onclick; b.appendChild(x); }
+  return b;
+}
+function dayLabel(iso) { const d = new Date(iso), t = new Date(); const same = (a, b) => a.toDateString() === b.toDateString(); const y = new Date(t); y.setDate(t.getDate() - 1); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString([], { month: 'long', day: 'numeric' }); }
+function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+
+function home(p) {
+  const x = S.extra || {}; const words = x.wakeWords || [];
+  const h = $('h1'); h.append(document.createTextNode(greeting() + '. ')); h.appendChild($('em', null, 'Say '));
+  if (words.length) { words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); } else h.append(document.createTextNode('the wake word is off.'));
+  p.appendChild(h);
+  const q = $('div', 'quick');
+  const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
+  const en = find('v.enabled'), mu = find('v.muted');
+  if (en) q.appendChild(mk('Listening', 'v.enabled', en.on));
+  if (mu) q.appendChild(mk('Mute', 'v.muted', mu.on));
+  q.append(mk('Wake now', 'q.wake'), mk('Ask Baton', 'q.ask'), mk('Clear the screen', 'q.clear'), mk('Stop', 'q.stop'));
+  p.appendChild(q);
+  const up = find('u.act');
+  const brainCtl = find('s.brain');
+  if (brainCtl && brainCtl.lead) p.appendChild(banner('', 'what Baton works through', 'Choose', 'Claude Code or Codex. You can change it later.', 'Choose', () => go('assistant')));
+  else if (up && up.lead) p.appendChild(banner('', 'a quiet moment', 'Baton will restart in', up.hint, null));
+  const need = (x.stats && x.stats.needYou) || 0;
+  if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Open Sessions to answer.', 'Open Sessions', () => go('sessions')));
+  const sp = $('div', 'split'); const left = $('div'); const right = $('div');
+  const items = x.activity || [];
+  if (!items.length) left.appendChild($('div', 'empty', 'Nothing yet today. Say a wake word, or hold your dictation key.'));
+  let day = null, log = null;
+  for (const a of items) {
+    const d = dayLabel(a.at); if (d !== day) { day = d; left.appendChild($('div', 'day', d)); log = $('div', 'log'); left.appendChild(log); }
+    const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
+  }
+  const st = $('div', 'stats'); const s = x.stats || {};
+  for (const [n, l] of [[s.turns || 0, 'turns today'], [s.words || 0, 'words dictated'], [s.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
+  right.appendChild(st);
+  sp.append(left, right); p.appendChild(sp);
+}
+function vocabulary(p) {
+  const v = (S.extra && S.extra.vocabulary) || [];
+  p.appendChild($('h2', null, 'Vocabulary'));
+  p.appendChild($('p', 'lede', 'Words Baton should spell your way. A name, a product, a term it keeps getting wrong.'));
+  const g = $('div', 'group');
+  const f = $('form', 'vocab'); const a = $('input'); a.type = 'text'; a.placeholder = 'Heard as'; a.id = 'in-d-a'; a.setAttribute('aria-label', 'Heard as'); a.value = drafts.get('d-a') || '';
+  const b = $('input'); b.type = 'text'; b.placeholder = 'Write it as (optional)'; b.id = 'in-d-b'; b.setAttribute('aria-label', 'Write it as'); b.value = drafts.get('d-b') || '';
+  a.oninput = () => drafts.set('d-a', a.value); b.oninput = () => drafts.set('d-b', b.value);
+  f.onsubmit = e => { e.preventDefault(); const ph = a.value.trim(); if (!ph) return; drafts.delete('d-a'); drafts.delete('d-b'); set('d.add', JSON.stringify({ phrase: ph, replacement: b.value.trim() || null })); };
+  f.append(a, b, $('button', 'btn primary', 'Add')); g.appendChild(f);
+  if (!v.length) { const e = $('div', 'row'); e.appendChild($('div', 'hint', 'No words yet.')); g.appendChild(e); }
+  for (const w of v) { const r = $('div', 'entry'); const x = $('button', 'x'); x.appendChild(icon('x', 14)); x.setAttribute('aria-label', 'Remove ' + w.phrase); x.onclick = () => set('d.remove', w.phrase); r.append($('div', null, w.phrase), $('div', 'arrow', '\\u2192'), $('div', 'hint', w.replacement === null ? 'same, with its capitals fixed' : w.replacement), x); g.appendChild(r); }
+  p.appendChild(g);
+}
+function keys(p, which) {
+  const list = ((S.extra && S.extra.hotkeys) || []).filter(k => !which || which.includes(k.tab));
+  if (!list.length) return;
+  p.appendChild($('h2', null, 'Keyboard shortcuts'));
+  const g = $('div', 'group');
+  for (const k of list) { const r = $('div', 'kv'); const t = $('div'); t.appendChild($('div', 'label', k.label)); if (k.hint) t.appendChild($('div', 'hint', k.hint)); const w = $('div'); k.keys.split('+').forEach(x => w.appendChild($('kbd', null, x))); r.append(t, w); g.appendChild(r); }
+  p.appendChild(g);
+}
+function usage(p) {
+  const rows = (S.extra && S.extra.usage) || [];
+  if (!rows.length) { p.appendChild($('div', 'empty', 'No accounts reported yet. They appear here once T3 has loaded your sessions.')); return; }
+  const g = $('div', 'group');
+  for (const u of rows) {
+    const r = $('div', 'row'); r.style.alignItems = 'flex-start'; const t = $('div', 'text'); t.style.flex = '1';
+    t.appendChild($('div', 'label', u.account)); t.appendChild($('div', 'hint', u.box));
+    for (const w of u.windows) { const l = $('div', 'bar'); l.style.cssText = 'margin-top:10px'; const top = $('div', 'hint', w.label + ' \\u00b7 ' + (w.usedPercent === null ? 'Not applicable' : (100 - Math.round(w.usedPercent)) + '% left') + (w.resets ? ' \\u00b7 resets ' + w.resets : '')); const tr = $('div'); tr.style.cssText = 'height:6px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden'; const f = $('div'); f.style.cssText = 'height:100%;border-radius:3px;background:' + (w.usedPercent >= 90 ? 'var(--bad)' : w.usedPercent >= 70 ? 'var(--warn)' : 'var(--accent)') + ';width:' + Math.max(2, 100 - Math.round(w.usedPercent || 0)) + '%'; tr.appendChild(f); l.append(top, tr); t.appendChild(l); }
+    r.appendChild(t); g.appendChild(r);
+  }
+  p.appendChild(g);
+}
+function tabPage(p) {
+  if (cur === 'home') return home(p);
+  const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
+  if (cur === 'usage') return usage(p);
+  const items = tabControls(cur);
+  if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet.'));
+  for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
+  if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
+  if (cur === 'voice') keys(p, ['voice']);
+  if (cur === 'screen') keys(p, ['screen']);
+  if (cur === 'checks') { const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Baton last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
+}
+
+const MODAL = [['General', 'general'], ['System', 'system'], ['Keyboard', 'keys'], ['Account', 'account'], ['Updates', 'updates'], ['About', 'about']];
+function modalPage(b) {
+  const x = S.extra || {};
+  const rows = ids => S.controls.filter(c => ids.includes(c.id));
+  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Baton'), $('div', 'hint', 'Closing the window keeps Baton in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
+  else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
+  else if (modal === 'keys') { b.appendChild($('h1', null, 'Keyboard')); keys(b, null); const n = $('p', 'hint', 'These shortcuts are fixed for now.'); n.style.marginTop = '10px'; b.appendChild(n); }
+  else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Baton uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
+  else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); b.appendChild(g); }
+  else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
+}
+function modalEl() {
+  const veil = $('div', null); veil.id = 'veil'; veil.className = modal ? 'on' : ''; veil.onclick = e => { if (e.target === veil) closeModal(); };
+  if (!modal) return veil;
+  const m = $('div'); m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Settings');
+  const nav = $('div'); nav.id = 'mnav'; nav.appendChild($('h4', null, 'Settings'));
+  for (const [l, id] of MODAL) { if (id === 'account') nav.appendChild($('h4', null, 'Account')); const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
+  nav.appendChild($('div', 'ver', 'Baton ' + (((S.extra || {}).about || {}).version || '')));
+  const body = $('div'); body.id = 'mbody'; const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body);
+  m.append(nav, body); veil.appendChild(m); return veil;
+}
+function closeModal() { modal = null; render(); }
+function go(t) { cur = t; render(); document.getElementById('panel').scrollTop = 0; }
+
+function render(state) {
+  if (state) S = state;
+  const keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
+  const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
+  const side = document.getElementById('side'); side.replaceChildren();
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.mark; brand.append(mk, $('b', null, 'Baton'), $('span', 'plan', 'Local')); side.appendChild(brand);
+  const nav = $('nav'); const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0;
+  for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+  side.appendChild(nav); side.appendChild($('div', 'spacer'));
+  const up = find('u.act');
+  if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Baton restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
+  const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
+  const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
+  foot.append(t3, st); side.appendChild(foot);
+  const top = document.getElementById('top'); top.replaceChildren();
+  const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
+  const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
+  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
+  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(ac);
+  const page = document.getElementById('page'); page.replaceChildren(); tabPage(page);
+  const old = document.getElementById('veil'); if (old) old.remove(); document.body.appendChild(modalEl());
+  if (keep && keep.indexOf('in-') === 0) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
+}
+addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
+if (real) ipc.on('baton-home:state', (_e, s) => render(s));
+get().then(s => render(s));
+`;
