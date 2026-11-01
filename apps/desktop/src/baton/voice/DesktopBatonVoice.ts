@@ -1693,6 +1693,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.sounds,
       },
       {
+        id: "v.pillCentre",
+        section: "On screen",
+        label: "Put the pill in the centre",
+        hint: "Or drag it: it lines up on a grid and snaps to centre, top and bottom. Hold Alt or Shift to place it freely. Right-click it for the same places.",
+        kind: "action",
+        button: "Centre",
+      },
+      {
         id: "v.pillRest",
         section: "On screen",
         label: "Show a small bar when Baton isn't listening",
@@ -1893,7 +1901,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         history?.update(turn.id, { audio: null });
       }
       render();
-    } else if (id === "v.sounds") save({ sounds: on });
+    } else if (id === "v.pillCentre") pill.moveTo("centre");
+    else if (id === "v.sounds") save({ sounds: on });
     else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);
