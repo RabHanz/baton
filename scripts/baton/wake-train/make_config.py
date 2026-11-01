@@ -1,9 +1,21 @@
 """The openWakeWord training config for one word. No "hey": the word alone is the phrase."""
+import os
 import sys
 
 import yaml
 
+# CLEAN=1: only data whose licence allows an MIT release (see docs/baton/WAKE_TRAINING_CLEAN.md).
+CLEAN = os.environ.get("CLEAN") == "1"
+
 WORDS = {
+    "tessaya": {
+        # teh-SAY-uh (the Director's British voice). Written as phonemes: espeak guesses the stress badly.
+        "target": ["tessaya"],
+        "ipa": ["tɛsˈeɪə", "təsˈeɪə", "tɛsˈeɪjə", "tɛsˈɑɪə", "təsˈɛɪə"],
+        "negative": ["tessa", "tesla", "the say", "to say", "this say", "it's a", "decayed", "essay", "tasia",
+                     "the sire", "teasing", "tess", "testing", "thesis", "that's a", "taser", "sayer", "tis a",
+                     "messiah", "to sail", "thesaurus", "tea say", "chaya", "tessier"],
+    },
     "onyx": {
         # ON-iks. He owns the name Onnyx, so it can come up when he is not addressing Baton.
         "target": ["onyx"],
@@ -48,10 +60,16 @@ if __name__ == "__main__":
         "rir_paths": ["./mit_rirs"],
         "background_paths": ["./background"],
         "background_paths_duplication_rate": [1],
-        "false_positive_validation_data_path": "./validation_set_features.npy",
+        "false_positive_validation_data_path": "./clean_validation_features.npy" if CLEAN else "./validation_set_features.npy",
         "augmentation_rounds": 1,
-        "feature_data_files": {"ACAV100M_sample": "./openwakeword_features_ACAV100M_2000_hrs_16bit.npy"},
-        "batch_n_per_class": {"ACAV100M_sample": 1024, "adversarial_negative": 70, "positive": 70},
+        "feature_data_files": (
+            {"clean_negatives": "./clean_negative_features.npy"} if CLEAN
+            else {"ACAV100M_sample": "./openwakeword_features_ACAV100M_2000_hrs_16bit.npy"}
+        ),
+        "batch_n_per_class": (
+            {"clean_negatives": 1024, "adversarial_negative": 70, "positive": 70} if CLEAN
+            else {"ACAV100M_sample": 1024, "adversarial_negative": 70, "positive": 70}
+        ),
         "model_type": "dnn",
         "layer_size": 64,
         "steps": steps,
