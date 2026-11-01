@@ -70,10 +70,14 @@ export function BatonSidebarSection(props: {
     batonDesktopBridge()?.setBatonUsage?.(JSON.parse(usage));
   }, [usage]);
   const quiet = { reportFailure: false } as const;
+  const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
   const jobRefine = useAtomCommand(batonWorkSessions.jobRefine, quiet);
+  const jobSplit = useAtomCommand(batonWorkSessions.jobSplit, quiet);
+  const jobStop = useAtomCommand(batonWorkSessions.jobStop, quiet);
+  const jobSchedule = useAtomCommand(batonWorkSessions.jobSchedule, quiet);
   const jobGrant = useAtomCommand(batonWorkSessions.jobGrant, quiet);
   const jobRevoke = useAtomCommand(batonWorkSessions.jobRevoke, quiet);
   if (primary === undefined) return null;
@@ -123,6 +127,8 @@ export function BatonSidebarSection(props: {
     switch (op) {
       case "list":
         return done(await jobList({ ...env, input: {} }));
+      case "watch":
+        return done(await watchGet({ ...env, input: {} }));
       case "start": {
         const wanted = text("project").trim().toLowerCase();
         const mine = projects.filter((p) => p.environmentId === primary);
@@ -144,7 +150,9 @@ export function BatonSidebarSection(props: {
         }
         const strings = (key: string) =>
           Array.isArray(args[key]) ? (args[key] as ReadonlyArray<string>) : [];
-        const tools = strings("tools") as ReadonlyArray<"read" | "edit" | "shell" | "web" | "sessions">;
+        const tools = strings("tools") as ReadonlyArray<
+          "read" | "edit" | "shell" | "web" | "sessions"
+        >;
         return done(
           await jobStart({
             ...env,
@@ -164,6 +172,28 @@ export function BatonSidebarSection(props: {
           }),
         );
       }
+      case "split":
+        return done(
+          await jobSplit({
+            ...env,
+            input: {
+              id: text("id") as never,
+              parts: (Array.isArray(args["parts"]) ? args["parts"] : []) as never,
+            },
+          }),
+        );
+      case "stop":
+        return done(await jobStop({ ...env, input: { id: text("id") as never } }));
+      case "schedule":
+        return done(
+          await jobSchedule({
+            ...env,
+            input: {
+              id: text("id") as never,
+              everyMinutes: typeof args["everyMinutes"] === "number" ? args["everyMinutes"] : null,
+            },
+          }),
+        );
       case "agree":
         return done(await jobAgree({ ...env, input: { id: text("id") as never } }));
       case "refine":
@@ -173,7 +203,7 @@ export function BatonSidebarSection(props: {
             input: {
               id: text("id") as never,
               text: text("text"),
-              via: "voice",
+              via: args["via"] === "text" ? "text" : "voice",
               widens: args["widens"] === true,
             },
           }),

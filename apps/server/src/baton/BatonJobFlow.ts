@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * The job's flow from his words to work (D145): the worker thread is made in plan mode with his
  * words verbatim, and only his agreement (or a standing "start" grant at plan time) lets it work.
@@ -5,17 +6,33 @@
  */
 import {
   type BatonJobRefineInput,
+  type BatonFleetEntry,
+  type BatonJobScheduleInput,
+  type BatonJobSplitInput,
   type BatonJobStartInput,
   WorkSessionId,
 } from "@t3tools/baton-contracts";
+import {
+  partsSettled,
+  partsSummary,
+  MAX_PARTS,
+  SUMMARY_MARK,
+} from "@t3tools/baton-shared/coordinator";
 import { permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
+import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ThreadId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Random from "effect/Random";
 
+import type { ScheduledTaskId } from "@t3tools/contracts";
+import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
+import * as NodePath from "node:path";
+
+import * as ServerConfig from "../config.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { planningFrame, readPack } from "./OperatingSystemPack.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -27,7 +44,26 @@ const threadOf = Effect.fn("BatonJobFlow.threadOf")(function* (id: WorkSessionId
   );
 });
 
-export const startJob = Effect.fn("BatonJobFlow.start")(function* (input: BatonJobStartInput) {
+/** The planning frame, with the brief of the specialist a part is given to. */
+const frame = (userdata: string, role: string | undefined): string => {
+  const base = planningFrame(userdata);
+  const brief = role === undefined ? undefined : readPack(userdata).roles[role];
+  return brief === undefined ? base : `${base}\n\nYour role (${role}): ${brief}`;
+};
+
+export interface StartOptions {
+  /** This job is a part of another (the coordinator, D148). */
+  readonly parentId?: WorkSessionId;
+  /** Already agreed as part of the parent's plan: no planning pause, and it works at once. */
+  readonly agreed?: boolean;
+  /** A specialist role of the pack, whose brief is put in the frame. */
+  readonly role?: string;
+}
+
+export const startJob = Effect.fn("BatonJobFlow.start")(function* (
+  input: BatonJobStartInput,
+  options: StartOptions = {},
+) {
   const jobs = yield* BatonJobService;
   const engine = yield* BatonEngine;
   const workSessions = yield* WorkSessionService;
@@ -45,6 +81,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (input: BatonJ
     permissions: input.permissions,
     ...(input.limits === undefined ? {} : { limits: input.limits }),
     workerInstanceId: input.modelSelection.instanceId,
+    ...(options.parentId === undefined ? {} : { parentId: options.parentId }),
   });
   // A retried start finds the thread it already made.
   const existing = yield* threadOf(id);
@@ -58,11 +95,13 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (input: BatonJ
     title: input.title,
     modelSelection: input.modelSelection,
     runtimeMode: input.runtimeMode,
-    interactionMode: "plan",
+    interactionMode: options.agreed === true ? "default" : "plan",
     worktreePath: workSession.primaryWorktreePath,
     branch: workSession.baseBranch,
     text: workerFirstMessage({
       verbatim: input.goal,
+      frame: frame(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath), options.role),
+      ...(options.agreed === true ? { agreed: true } : {}),
       permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
     }),
   });
@@ -76,11 +115,15 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (input: BatonJ
     providerDriver: null,
     origin: "created",
   });
+  if (options.agreed === true) {
+    yield* jobs.planReady(id);
+    return { terms: (yield* jobs.agree(id)) ?? terms, threadId: launched };
+  }
   return { terms, threadId: launched };
 });
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
-const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
+export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
   const engine = yield* BatonEngine;
   yield* engine
     .setInteractionMode({ tag: "job", threadId, interactionMode: "default" })
@@ -134,4 +177,146 @@ export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {
   const jobs = yield* BatonJobService;
   const fleet = yield* FleetQuery.getFleet({});
   return yield* jobs.view({ entries: fleet.entries });
+});
+
+/**
+ * A thread changed: if it is a job's worker that has finished writing its plan, the plan is ready
+ * (and a job holding a standing "start" permission begins at once). Anything else changes nothing.
+ */
+export const noticePlan = Effect.fn("BatonJobFlow.noticePlan")(function* (threadId: ThreadId) {
+  const jobs = yield* BatonJobService;
+  const id = yield* (yield* WorkSessionService).findForThread(threadId);
+  if (id === null) return;
+  const terms = yield* jobs.terms(id);
+  if (terms === null || terms.phase !== "drafting_plan") return;
+  const shell = yield* (yield* BatonEngine).threadShell(threadId);
+  if (shell?.status !== "completed") return;
+  const next = yield* jobs.planReady(id);
+  if (next?.phase === "approved") yield* beginWork(threadId);
+});
+
+/** His stop: the worker's running turn ends now. The job and its thread stay for him to read. */
+export const stopJob = Effect.fn("BatonJobFlow.stop")(function* (id: WorkSessionId) {
+  const threadId = yield* threadOf(id);
+  if (threadId === null) return false;
+  return yield* (yield* BatonEngine).interruptThread({ tag: "job", threadId });
+});
+
+/**
+ * A job that has been agreed runs again on a schedule in its own thread, so each run reports where
+ * the first one did. Schedules are T3's own scheduled tasks (D145); null takes the schedule off.
+ */
+export const scheduleJob = Effect.fn("BatonJobFlow.schedule")(function* (
+  input: BatonJobScheduleInput,
+) {
+  const jobs = yield* BatonJobService;
+  const tasks = yield* ScheduledTaskService;
+  const terms = yield* jobs.terms(input.id);
+  if (terms === null) return null;
+  if (input.everyMinutes === null) {
+    if (terms.scheduleTaskId !== null) {
+      yield* tasks
+        .delete({ id: terms.scheduleTaskId as ScheduledTaskId })
+        .pipe(Effect.ignoreCause({ log: true }));
+    }
+    return yield* jobs.setSchedule(input.id, null);
+  }
+  // Recurring work runs unattended, so only a plan he has agreed to is repeated.
+  if (terms.phase !== "approved") return terms;
+  const threadId = yield* threadOf(input.id);
+  const shell = threadId === null ? null : yield* (yield* BatonEngine).threadShell(threadId);
+  if (threadId === null || shell === null) return terms;
+  const workSession = yield* (yield* WorkSessionService).get(input.id);
+  const saved = yield* tasks
+    .upsert({
+      ...(terms.scheduleTaskId === null ? {} : { id: terms.scheduleTaskId as ScheduledTaskId }),
+      title: `${workSession.title} (scheduled)`,
+      prompt: `Run this job again and report what changed since the last run.\n\nThe job: ${terms.goal}`,
+      enabled: true,
+      schedule: {
+        type: "interval",
+        everyMs: Math.max(60_000, Math.round(input.everyMinutes * 60_000)),
+      },
+      projectId: shell.projectId,
+      threadId,
+      workspaceStrategy:
+        shell.worktreePath === null
+          ? { type: "root" }
+          : { type: "existing_worktree", worktreePath: shell.worktreePath },
+      modelSelection: shell.modelSelection,
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+    })
+    .pipe(Effect.catchTags({ ScheduledTaskError: () => Effect.succeed(null) }));
+  return saved === null ? terms : yield* jobs.setSchedule(input.id, saved.task.id);
+});
+
+/**
+ * Splits an agreed job into parts, each its own worker started already agreed (the parent's plan
+ * named them), inside the parent's own permissions. Refused for a plan not yet agreed.
+ */
+export const splitJob = Effect.fn("BatonJobFlow.split")(function* (input: BatonJobSplitInput) {
+  const jobs = yield* BatonJobService;
+  const parent = yield* jobs.terms(input.id);
+  if (parent === null || parent.phase !== "approved") return [];
+  const workSession = yield* (yield* WorkSessionService).get(input.id);
+  const parentThread = yield* threadOf(input.id);
+  const shell =
+    parentThread === null ? null : yield* (yield* BatonEngine).threadShell(parentThread);
+  if (shell === null) return [];
+  const started: Array<{ readonly id: WorkSessionId; readonly threadId: ThreadId }> = [];
+  for (const [i, part] of input.parts.slice(0, MAX_PARTS).entries()) {
+    const id = WorkSessionId.make(`${input.id}-part-${i + 1}`);
+    const result = yield* startJob(
+      {
+        id,
+        projectId: workSession.projectId,
+        title: part.title,
+        goal: part.goal,
+        // A part never has more than its parent: the same folders, projects and tools.
+        permissions: parent.permissions,
+        modelSelection: shell.modelSelection,
+        runtimeMode: "approval-required",
+      },
+      { parentId: input.id, agreed: true, ...(part.role === undefined ? {} : { role: part.role }) },
+    );
+    started.push({ id, threadId: result.threadId });
+  }
+  return started;
+});
+
+/**
+ * When every part has settled, one summary goes to the parent's thread, once: what each did and
+ * what failed, read from the cards and the watch. The mark in the parent's record keeps it once.
+ */
+export const summarizeParts = Effect.fn("BatonJobFlow.summarizeParts")(function* (
+  parentId: WorkSessionId,
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const jobs = yield* BatonJobService;
+  const parent = yield* jobs.terms(parentId);
+  if (parent === null || parent.revisions.some((r) => r.text.startsWith(SUMMARY_MARK)))
+    return false;
+  const parts = (yield* jobs.view({ entries })).filter((j) => j.terms.parentId === parentId);
+  if (!partsSettled(parts)) return false;
+  const threadId = yield* threadOf(parentId);
+  if (threadId === null) return false;
+  const now = yield* Clock.currentTimeMillis;
+  const text = partsSummary({
+    parentTitle: entries.find((e) => e.workSessionId === parentId)?.title ?? parentId,
+    parts,
+    findings: watchFleet(entries, now),
+  });
+  const at = DateTime.formatIso(DateTime.makeUnsafe(now));
+  yield* jobs.refine(parentId, { by: "baton", at, via: "thread", text });
+  return yield* (yield* BatonEngine).sendMessage({ tag: "job", threadId, text });
+});
+
+/** A thread changed: if it is a part, the coordinator looks at whether its parent's parts are all in. */
+export const noticePart = Effect.fn("BatonJobFlow.noticePart")(function* (threadId: ThreadId) {
+  const id = yield* (yield* WorkSessionService).findForThread(threadId);
+  if (id === null) return;
+  const terms = yield* (yield* BatonJobService).terms(id);
+  if (terms?.parentId == null) return;
+  yield* summarizeParts(terms.parentId, (yield* FleetQuery.getFleet({})).entries);
 });
