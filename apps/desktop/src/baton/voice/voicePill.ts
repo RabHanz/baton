@@ -23,7 +23,15 @@ import {
   type Spot,
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
-import { PILL_PARTIAL, PILL_SOUNDS, type PillSound } from "./pillSounds.ts";
+import {
+  CUE_TAIL_MS,
+  PILL_PARTIAL,
+  PILL_SOUNDS,
+  THINKING_AFTER_MS,
+  THINKING_EVERY_MS,
+  soundMs,
+  type PillSound,
+} from "./pillSounds.ts";
 import {
   IDLE_TURN,
   SILENT_AFTER_MS,
@@ -117,7 +125,7 @@ window.pill={
  level(n){if(live&&!calm)draw(Math.min(1,n));},
  hide(){$('p').className='';live=false;},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
- sound(name){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note(n,t);},
+ sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);},
 };
 </script></body></html>`;
 
@@ -136,7 +144,7 @@ window.hi=id=>{for(const d of dots){document.getElementById('d-'+d.id).classList
 </script>`;
 
 export interface VoicePill {
-  readonly on: (event: TurnEvent) => void;
+  readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
   readonly micLevel: (value: number) => void;
   /** Baton's own voice, while it speaks. */
@@ -163,7 +171,13 @@ const loadSpots = (file: string): Readonly<Record<string, Spot>> => {
 };
 
 export const createVoicePill = (input: {
-  readonly sounds: () => boolean;
+  /** 0 off, 0.5 quiet, 1 normal. */
+  readonly cueGain: () => number;
+  /** Holds a cue until he is quiet (true), or says to drop it (false); then tells the mic path it will sound. */
+  readonly cueGate?: {
+    readonly quiet: () => Promise<boolean>;
+    readonly playing: (ms: number) => void;
+  };
   readonly rest: () => boolean;
   readonly edge: () => "bottom" | "top";
   /** Where `baton-pill.json` is kept: the places he dragged it to. */
@@ -363,12 +377,39 @@ export const createVoicePill = (input: {
   };
 
   const sound = (name: PillSound) => {
-    if (input.sounds()) call(`window.pill.sound(${JSON.stringify(name)})`);
+    const gain = input.cueGain();
+    if (gain <= 0) return;
+    const play = () => {
+      input.cueGate?.playing(soundMs(name) + CUE_TAIL_MS);
+      call(`window.pill.sound(${JSON.stringify(name)},${gain})`);
+    };
+    if (input.cueGate === undefined) return play();
+    void input.cueGate.quiet().then((ok) => {
+      if (ok) play();
+    });
+  };
+  let thinkTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A quiet note after a long wait, then no more than one every eight seconds, until something else happens. */
+  const thinkingCue = (after: number) => {
+    if (thinkTimer !== null) clearTimeout(thinkTimer);
+    thinkTimer = setTimeout(() => {
+      if (state.phase !== "thinking" && state.phase !== "working") return;
+      sound("thinking");
+      thinkingCue(THINKING_EVERY_MS);
+    }, after);
   };
 
-  const on = (event: TurnEvent) => {
+  const on = (event: TurnEvent, options?: { readonly silent?: boolean }) => {
     const previous = state;
     state = reduceTurn(state, event);
+    const mute = options?.silent === true;
+    const sound_ = mute ? () => undefined : sound;
+    const waiting = (phase: string) => phase === "thinking" || phase === "working";
+    if (thinkTimer !== null && !waiting(state.phase)) {
+      clearTimeout(thinkTimer);
+      thinkTimer = null;
+    }
+    if (waiting(state.phase) && !waiting(previous.phase) && !mute) thinkingCue(THINKING_AFTER_MS);
     if (timer !== null) clearTimeout(timer);
     timer = null;
     if (silentTimer !== null) clearTimeout(silentTimer);
@@ -377,7 +418,7 @@ export const createVoicePill = (input: {
     if (view === null) {
       setEscape(false);
       if (previous.phase !== "idle") {
-        if (previous.phase !== "error" && previous.phase !== "done") sound("end");
+        if (previous.phase !== "error" && previous.phase !== "done") sound_("end");
         lower();
       }
     } else {
@@ -386,11 +427,11 @@ export const createVoicePill = (input: {
       call(`window.pill.show(${JSON.stringify({ ...view, phase: state.phase })})`);
       if (event.type === "wake") {
         loudest = 0;
-        sound("wake");
+        sound_("wake");
         const at = performance.now();
         void ready.then(() => input.onShown?.(performance.now() - at));
       }
-      if (state.phase === "error" && previous.phase !== "error") sound("error");
+      if (state.phase === "error" && previous.phase !== "error") sound_("error");
       if (state.phase === "listening" && !state.heard) {
         silentTimer = setTimeout(() => {
           if (loudest < DEAD_LEVEL) on({ type: "silent" });
