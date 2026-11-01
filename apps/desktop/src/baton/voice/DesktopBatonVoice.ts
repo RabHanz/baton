@@ -28,6 +28,16 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import { parseActivity, todayStats } from "../home/activityLog.ts";
+import type { HomeExtra } from "../home/batonHome.ts";
+import {
+  addEntry,
+  editEntry,
+  forgetLearned,
+  removeEntry,
+  saveDictionary,
+  type VocabEntry,
+} from "./dictionaryEdit.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -79,7 +89,7 @@ import { importWisprDictionary, makeRewriter, readDictionary } from "./dictation
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
-import type { AssistantActions } from "../screen/ScreenCompanion.ts";
+import { ASK_HOTKEY, type AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
@@ -143,15 +153,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   openAtLogin: false,
   pinnedLabel: null,
   modelsDir: null,
-  micOrder: [
-    // Applies only to devices that are present. A Scarlett Solo's mic input is its input 1;
-    // mixing in the empty input 2 halves the level.
-    { name: "Scarlett Solo", channel: 0 },
-    { name: "Focusrite", channel: 0 },
-    // How Windows names a DJI receiver.
-    { name: "Wireless Mic Rx", channel: null },
-    { name: "DJI", channel: null },
-  ],
+  // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
+  micOrder: [],
   sounds: true,
   pillAtRest: false,
   pillEdge: "bottom",
@@ -249,6 +252,9 @@ export interface TrayExtras extends BrainVoiceHook {
 
 export interface DesktopBatonVoiceInput {
   readonly stateDir: string;
+  /** Where the turn log and the lifecycle log are, for Home and Checks. */
+  readonly logDir: string;
+  readonly appVersion: string;
   readonly env: NodeJS.ProcessEnv;
   /** `HostProcessPlatform`, injected rather than read here. */
   readonly platform: string;
@@ -897,6 +903,115 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   let sessionsNote: string | null = null;
 
+  /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
+  const tails = new Map<string, { stamp: string; text: string }>();
+  const tailOf = (file: string): string => {
+    try {
+      const stat = NodeFS.statSync(file);
+      const stamp = `${stat.mtimeMs}:${stat.size}`;
+      const hit = tails.get(file);
+      if (hit?.stamp === stamp) return hit.text;
+      const fd = NodeFS.openSync(file, "r");
+      const length = Math.min(stat.size, 96 * 1024);
+      const buffer = Buffer.alloc(length);
+      NodeFS.readSync(fd, buffer, 0, length, stat.size - length);
+      NodeFS.closeSync(fd);
+      const text = buffer.toString("utf8");
+      tails.set(file, { stamp, text });
+      return text;
+    } catch {
+      return "";
+    }
+  };
+  const shortKey = (accelerator: string) => accelerator.replace("Control", "Ctrl");
+
+  const homeExtra = (): HomeExtra => {
+    const activity = parseActivity(tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")));
+    const today = todayStats(activity, new Date());
+    const sessionRows = input.sessions?.rows() ?? [];
+    const lifecycle = tailOf(NodePath.join(input.logDir, "baton-lifecycle.ndjson"))
+      .split("\n")
+      .flatMap((l) => {
+        try {
+          const e = JSON.parse(l) as {
+            at?: string;
+            event?: string;
+            reason?: string;
+            detail?: string;
+          };
+          const words: Record<string, string> = {
+            "previous-run-ended-badly":
+              "The last run ended without a clean exit (a crash, a kill or a power loss)",
+            "restarted-after-update": "Restarted after an update",
+            exiting: `Going down: ${e.reason ?? "quit"}${e.detail ? ` ${e.detail}` : ""}`,
+            "uncaught-exception": "An unexpected error stopped Baton",
+            "render-process-gone": "A window closed unexpectedly",
+            "child-process-gone": "A helper program stopped unexpectedly",
+          };
+          const text = e.event === undefined ? undefined : words[e.event];
+          return e.at === undefined || text === undefined ? [] : [{ at: e.at, text }];
+        } catch {
+          return [];
+        }
+      })
+      .toReversed()
+      .slice(0, 5);
+    return {
+      wakeWords: settings.wakeWords.filter((w) => w.enabled).map((w) => w.word),
+      activity,
+      stats: {
+        turns: today.turns,
+        dictations: today.dictations,
+        sessions: sessionRows.length,
+        needYou: sessionRows.filter((r) => r.urgent).length,
+      },
+      vocabulary: (dictionary as ReadonlyArray<VocabEntry>).map((d) => ({
+        phrase: d.phrase,
+        replacement: d.replacement,
+        source: d.source ?? "added",
+        count: d.count ?? null,
+        lastSeen: d.lastSeen ?? null,
+      })),
+      hotkeys: [
+        ...VOICE_HOTKEYS.map((h) => ({
+          label:
+            (
+              {
+                wake: "Wake now",
+                toggle_direct_session: "Send words to the focused session",
+                toggle_mute: "Mute",
+              } as Record<string, string>
+            )[h.activation] ?? h.activation,
+          keys: shortKey(h.accelerator),
+          tab: "voice",
+        })),
+        { label: "Hold to dictate", keys: settings.holdKey, tab: "dictation" },
+        { label: "Start and stop dictating", keys: settings.toggleKey, tab: "dictation" },
+        {
+          label: "Dictation on or off",
+          keys: shortKey(DICTATION_TOGGLE_HOTKEY.accelerator),
+          tab: "dictation",
+        },
+        { label: "Ask Baton", keys: shortKey(ASK_HOTKEY), tab: "screen" },
+        { label: "Cancel a recording, a card or a drive", keys: "Escape", tab: "screen" },
+      ],
+      usage: input.sessions?.usage() ?? [],
+      lifecycle,
+      paths: [
+        { id: "state", label: "State folder", path: input.stateDir },
+        { id: "logs", label: "Log folder", path: input.logDir },
+        { id: "models", label: "Voice models", path: modelsDir },
+        { id: "settings", label: "Voice settings file", path: settingsPath },
+      ],
+      about: {
+        version: input.appVersion,
+        source: "github.com/RabHanz/baton/releases",
+        licence: "MIT, with third-party notices",
+        notices: "docs/baton/THIRD_PARTY_NOTICES.md",
+      },
+    };
+  };
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -905,6 +1020,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mark: markSvg(markOptions()),
       brandMark: markSvg({ ...markOptions(), color: BRAND_COLOUR, muted: false }),
     },
+    extra: homeExtra(),
     controls: [
       ...(input.sessions === undefined
         ? []
@@ -1144,7 +1260,55 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
-    if (id === "n.empty") input.openMainWindow();
+    if (id === "q.wake") loop?.activate("wake");
+    else if (id === "q.ask" || id === "q.clear") {
+      const entry = input.extras
+        ?.menuItems()
+        .find((i) => i.label === (id === "q.ask" ? "Ask Baton…" : "Clear the screen"));
+      (entry?.click as (() => void) | undefined)?.();
+    } else if (id === "q.stop") {
+      input.onDismiss?.();
+      const entry = input.extras
+        ?.menuItems()
+        .find((i) => i.label === "Stop driving" || i.label === "Stop the lesson");
+      (entry?.click as (() => void) | undefined)?.();
+    } else if (id === "q.quit") Electron.app.quit();
+    else if (id.startsWith("q.open:")) {
+      const target = homeExtra().paths.find((p) => `q.open:${p.id}` === id);
+      if (target !== undefined) void Electron.shell.openPath(target.path);
+    } else if (id === "d.add" && typeof value === "string") {
+      try {
+        const entry = JSON.parse(value) as { phrase?: unknown; replacement?: unknown };
+        if (typeof entry.phrase === "string") {
+          dictionary = addEntry(dictionary, {
+            phrase: entry.phrase,
+            replacement: typeof entry.replacement === "string" ? entry.replacement : null,
+          });
+          saveDictionary(input.stateDir, dictionary);
+        }
+      } catch {
+        // A malformed add from the page is ignored; the list stays as it was.
+      }
+    } else if (id === "d.edit" && typeof value === "string") {
+      try {
+        const e = JSON.parse(value) as { from?: unknown; phrase?: unknown; replacement?: unknown };
+        if (typeof e.from === "string" && typeof e.phrase === "string") {
+          dictionary = editEntry(dictionary, e.from, {
+            phrase: e.phrase,
+            replacement: typeof e.replacement === "string" ? e.replacement : null,
+          });
+          saveDictionary(input.stateDir, dictionary);
+        }
+      } catch {
+        // A malformed edit is ignored; the list stays as it was.
+      }
+    } else if (id === "d.forget") {
+      dictionary = forgetLearned(dictionary);
+      saveDictionary(input.stateDir, dictionary);
+    } else if (id === "d.remove" && typeof value === "string") {
+      dictionary = removeEntry(dictionary, value);
+      saveDictionary(input.stateDir, dictionary);
+    } else if (id === "n.empty") input.openMainWindow();
     else if (id.startsWith("n:")) {
       void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
         sessionsNote = line;

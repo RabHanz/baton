@@ -95,6 +95,8 @@ interface ScreenSettings {
   readonly output: AnswerOutput;
   /** "system" is the OS voice, for a machine that should fetch nothing. */
   readonly voice: PocketVoice | "system";
+  /** How loud Baton speaks, 0.1 to 1, applied in the player. */
+  readonly volume: number;
   /** Low-risk work runs with no Run it box and no spoken yes. Off until he turns it on. */
   readonly actWithoutAsking: boolean;
   /** Who does the work behind Baton. Both answer to the same gate. */
@@ -115,6 +117,7 @@ const DEFAULTS: ScreenSettings = {
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
+  volume: 1,
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
@@ -227,6 +230,7 @@ export interface ScreenCompanion {
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
+  readonly volume: () => number;
   readonly stop: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
@@ -1342,6 +1346,7 @@ export const startScreenCompanion = (input: {
     },
     writtenOnly: () => settings.output === "written",
     voice: () => settings.voice,
+    volume: () => settings.volume,
     ask: windows.ask,
     stop,
     menuItems: () => [
@@ -1366,6 +1371,19 @@ export const startScreenCompanion = (input: {
         options: [
           { value: "spoken", label: "Spoken and written" },
           { value: "written", label: "Written only" },
+        ],
+      },
+      {
+        id: "s.volume",
+        section: "Answers",
+        label: "Speaking volume",
+        hint: "How loud Baton speaks, apart from your system volume.",
+        kind: "choice",
+        value: String(settings.volume),
+        options: [
+          { value: "0.4", label: "Quiet" },
+          { value: "0.7", label: "Medium" },
+          { value: "1", label: "Full" },
         ],
       },
       {
@@ -1457,6 +1475,9 @@ export const startScreenCompanion = (input: {
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
         save({ output: value });
+      } else if (id === "s.volume" && typeof value === "string") {
+        const volume = Number.parseFloat(value);
+        if (Number.isFinite(volume)) save({ volume: Math.min(1, Math.max(0.1, volume)) });
       } else if (id === "s.voice" && typeof value === "string") {
         save({ voice: value as PocketVoice });
       } else if (id === "s.brain" && typeof value === "string") {

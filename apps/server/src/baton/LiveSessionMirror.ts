@@ -251,7 +251,9 @@ export const liveMedia = (input: {
     }
     if (stat.size === 0 || stat.size > MAX_SENT_FILE_BYTES) {
       if (!quiet) {
-        notes.push(`_${label(name)} (${Math.round(stat.size / 1_048_576)} MB) is not copied here._`);
+        notes.push(
+          `_${label(name)} (${Math.round(stat.size / 1_048_576)} MB) is not copied here._`,
+        );
       }
       return;
     }
@@ -934,7 +936,15 @@ const make = Effect.gen(function* () {
           if (history) follow.open = run;
           follow.target = run.id;
         }
-        events.push(...messageEvents(follow.threadId, session.sessionId, message, follow.target, undefined, session.cwd),
+        events.push(
+          ...messageEvents(
+            follow.threadId,
+            session.sessionId,
+            message,
+            follow.target,
+            undefined,
+            session.cwd,
+          ),
         );
       }
       if (events.length > 0) yield* engine.writeEvents({ events });
