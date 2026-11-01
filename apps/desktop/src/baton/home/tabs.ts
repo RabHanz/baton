@@ -69,7 +69,7 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("v.wake:")) return "voice";
   if (id.startsWith("v.result:")) return "checks";
   if (id.startsWith("n:")) return "sessions";
-  if (id.startsWith("j:") || id.startsWith("j.")) return "jobs";
+  if (/^j[a-z]?[:.]/.test(id)) return "jobs";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";
