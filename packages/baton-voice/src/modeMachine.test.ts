@@ -135,7 +135,74 @@ describe("voice mode machine (§12.3)", () => {
       effects.filter((e) => e.kind === "dictate").map((e) => ("text" in e ? e.text : "")),
     ).toEqual(["Thanks, I'll send it tomorrow.", "Tell Claude to deploy.", "Best, Rab"]);
     expect(effects.some((e) => e.kind === "command" || e.kind === "session_message")).toBe(false);
-    expect(state.mode).toBe("sleeping");
+    expect(state.mode).toBe("conversation");
+  });
+
+  it("goes talk, dictation, talk with no second wake word", () => {
+    const { state, effects } = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "what needs me", at: 10 },
+      { type: "utterance", text: "I want to dictate", at: 20 },
+      { type: "utterance", text: "Dear Sam, stop by on Friday.", at: 30 },
+      { type: "utterance", text: "That is all for now. Stop dictating.", at: 40 },
+      { type: "utterance", text: "open my downloads", at: 50 },
+    ]);
+    expect(effects.map((e) => e.kind)).toEqual([
+      "command",
+      "dictate",
+      "dictate",
+      "speak",
+      "command",
+    ]);
+    expect(effects[2]).toMatchObject({ text: "That is all for now." });
+    expect(state.mode).toBe("conversation");
+  });
+
+  it("types a plain stop or done while dictating, and a wake-word stop leaves", () => {
+    const words = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "dictate", at: 10 },
+      { type: "utterance", text: "stop", at: 20 },
+      { type: "utterance", text: "I'm done.", at: 30 },
+    ]);
+    expect(words.state.mode).toBe("dictation");
+    expect(words.effects.map((e) => e.kind)).toEqual(["dictate", "dictate"]);
+    const named = play(
+      [{ type: "utterance", text: "Jarvis, stop dictating.", at: 40 }],
+      words.state,
+    );
+    expect(named.state.mode).toBe("conversation");
+    expect(named.effects.map((e) => e.kind)).toEqual(["speak"]);
+  });
+
+  it("closes the window on a short thanks, but not while asleep", () => {
+    for (const text of ["Thanks.", "thank you", "go to sleep", "Cheers"]) {
+      const { state, effects } = play([
+        { type: "wake", at: 0 },
+        { type: "utterance", text: "what needs me", at: 10 },
+        { type: "utterance", text, at: 20 },
+      ]);
+      expect(state.mode).toBe("sleeping");
+      expect(effects.map((e) => e.kind)).toEqual(["command"]);
+    }
+  });
+
+  it("keeps a window open while Baton talks past its deadline", () => {
+    const start = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "explain this", at: 10 },
+    ]);
+    const late = DEFAULT_TIMINGS.conversationMs + 5_000;
+    expect(
+      play(
+        [
+          { type: "keep_open", at: 20_000 },
+          { type: "tick", at: late },
+        ],
+        start.state,
+      ).state.mode,
+    ).toBe("conversation");
+    expect(play([{ type: "tick", at: late }], start.state).state.mode).toBe("sleeping");
   });
 
   it("a confirmation is answered by a later 'confirm', never by the wake word", () => {

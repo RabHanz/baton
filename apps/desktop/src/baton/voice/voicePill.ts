@@ -212,7 +212,7 @@ export const createVoicePill = (input: {
       }
     } else {
       raise();
-      setEscape(turnHoldsEscape(state.phase));
+      setEscape(turnHoldsEscape(state));
       call(`window.pill.show(${JSON.stringify(view)})`);
       if (event.type === "wake") {
         loudest = 0;
@@ -226,7 +226,10 @@ export const createVoicePill = (input: {
           if (loudest < DEAD_LEVEL) on({ type: "silent" });
         }, SILENT_AFTER_MS);
       }
-      timer = setTimeout(() => on({ type: "dismissed" }), turnLimitMs(state.phase));
+      // The core ends an open window, so Listening and spoken dictation stay as long as it lasts.
+      if (!(state.open && (state.phase === "dictating" || state.phase === "listening"))) {
+        timer = setTimeout(() => on({ type: "dismissed" }), turnLimitMs(state.phase));
+      }
     }
     if (previous !== state) input.onChange?.(state);
   };

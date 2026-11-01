@@ -22,7 +22,10 @@ import {
   type VoiceEvent,
   type VoiceMachineState,
   type VoiceTimings,
+  echoesSpeech,
   isAffirmative,
+  isFiller,
+  isStopPhrase,
   stripWake,
 } from "./modeMachine.ts";
 import type { RouteOutcome, VoiceRouter } from "./router.ts";
@@ -70,6 +73,10 @@ export type VoiceCoreEvent =
   | { readonly type: "thinking" }
   /** Speech recognition came back with nothing usable. */
   | { readonly type: "nothing" }
+  /** Heard and set aside: silence after a wake, a lone filler, its own voice over the speakers. */
+  | { readonly type: "dropped"; readonly text: string; readonly reason: string }
+  /** He said a stop phrase over Baton's voice. No wake word needed. */
+  | { readonly type: "stop_heard"; readonly text: string; readonly at: number }
   | { readonly type: "transcript"; readonly text: string; readonly at: number }
   | { readonly type: "effect"; readonly effect: VoiceEffect }
   | { readonly type: "outcome"; readonly outcome: RouteOutcome }
@@ -82,6 +89,12 @@ export interface VoiceCoreSnapshot {
   readonly currentTarget: string | null;
 }
 
+export interface SpokenQuestion {
+  readonly answer: Promise<"yes" | "no" | "expired">;
+  /** Answered some other way. */
+  readonly cancel: () => void;
+}
+
 export interface BatonVoiceCore extends VoiceCore {
   readonly snapshot: () => VoiceCoreSnapshot;
   readonly subscribe: (listener: (event: VoiceCoreEvent) => void) => () => void;
@@ -91,7 +104,14 @@ export interface BatonVoiceCore extends VoiceCore {
    * after, the mic hears Baton: only a wake word gets through.
    */
   readonly setSpeaking: (active: boolean) => void;
+  /** A sentence Baton is saying, so a stop phrase in it is not taken for his. */
+  readonly noteSpoken: (text: string) => void;
   readonly setContext: (bus: ContextBusState) => void;
+  /**
+   * A yes or no asked aloud, on the same rules as any confirmation: a later utterance, never the
+   * wake word, and never Baton's own voice. Runs out to "expired".
+   */
+  readonly confirm: (prompt: string) => SpokenQuestion;
   /** Feed a typed/known utterance as if transcribed (tests, push-to-talk text). */
   readonly hear: (text: string) => Promise<void>;
   /** Resolves when every queued transcription and route has finished. */
@@ -100,6 +120,14 @@ export interface BatonVoiceCore extends VoiceCore {
 
 /** Speech ends a little after the player says so, and a room rings on. */
 const ECHO_TAIL_MS = 500;
+/** The wake word's own tail reads as speech: it opens no turn by itself. */
+const WAKE_TAIL_MS = 200;
+const STOP_MIN_SPEECH_MS = 120;
+const STOP_END_SILENCE_MS = 350;
+/** Over the speakers his voice never falls silent to the VAD, so a window this long is cut. */
+const STOP_MAX_MS = 2_000;
+/** Generation reads ahead of playback, so this covers what is playing now. */
+const SPOKEN_KEPT = 12;
 
 const NOISE = /^(?:\[[^\]]*\]|\([^)]*\)|\s|[.,!?…-])*$/;
 
@@ -158,6 +186,22 @@ export const createVoiceCore = (input: {
     emit({ type: "state", state, target });
   };
 
+  const asked = new Map<string, (answer: "yes" | "no" | "expired") => void>();
+  let questions = 0;
+  const confirm = (prompt: string): SpokenQuestion => {
+    questions += 1;
+    const token = `spoken-${questions}`;
+    const answer = new Promise<"yes" | "no" | "expired">((resolve) => asked.set(token, resolve));
+    enqueue(() => dispatch({ type: "request_confirmation", token, prompt, at: now() }));
+    return {
+      answer,
+      cancel: () => {
+        asked.delete(token);
+        enqueue(() => dispatch({ type: "clear_pending", token, at: now() }));
+      },
+    };
+  };
+
   const modeOf = (
     effect: VoiceEffect,
     before: VoiceMachineState,
@@ -172,6 +216,16 @@ export const createVoiceCore = (input: {
   const handle = async (effects: ReadonlyArray<VoiceEffect>, before: VoiceMachineState) => {
     for (const effect of effects) {
       emit({ type: "effect", effect });
+      if (effect.kind === "confirmed" || effect.kind === "cancelled") {
+        const answer = asked.get(effect.token);
+        if (answer !== undefined) {
+          asked.delete(effect.token);
+          answer(
+            effect.kind === "confirmed" ? "yes" : effect.reason === "declined" ? "no" : "expired",
+          );
+          continue;
+        }
+      }
       const mode = modeOf(effect, before);
       if (mode !== null && "text" in effect)
         utteranceListeners.forEach((l) => l({ text: effect.text, mode }));
@@ -260,18 +314,24 @@ export const createVoiceCore = (input: {
     silenceSamples = 0;
     segmentSamples = 0;
     input.vad.reset();
-    if (parts === null || spoken < msToSamples(seg.minSpeechMs)) return show();
-    const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
-    let o = 0;
-    for (const p of parts) {
-      pcm.set(p, o);
-      o += p.length;
+    if (parts === null || spoken < msToSamples(seg.minSpeechMs)) {
+      if (parts !== null) emit({ type: "dropped", text: "", reason: "no speech" });
+      return show();
     }
+    const pcm = joined(parts);
     emit({ type: "thinking" });
     enqueue(async () => {
       const text = await input.stt.transcribe(pcm);
       const cleaned = text.trim();
-      if (NOISE.test(cleaned)) return emit({ type: "nothing" });
+      const dictating = machine.mode === "dictation";
+      if (NOISE.test(cleaned)) return dictating ? undefined : emit({ type: "nothing" });
+      if (
+        !dictating &&
+        machine.pending === null &&
+        isFiller(stripWake(cleaned, timings.wakeWords))
+      ) {
+        return emit({ type: "dropped", text: cleaned, reason: "filler" });
+      }
       // Baton's own reply can say a wake word and "confirm": a yes must not start over its voice.
       // Stop and cancel still count, and the question just runs out.
       if (
@@ -288,8 +348,77 @@ export const createVoiceCore = (input: {
     show();
   };
 
+  const joined = (parts: ReadonlyArray<Int16Array>) => {
+    const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+    let o = 0;
+    for (const p of parts) {
+      pcm.set(p, o);
+      o += p.length;
+    }
+    return pcm;
+  };
+
+  // A separate path from `work`: that queue waits on routing and on speech, which is what he
+  // is trying to stop. One transcription at a time; a window that arrives during one is skipped.
+  const spokenLately: string[] = [];
+  const noteSpoken = (text: string) => {
+    spokenLately.push(text);
+    spokenLately.splice(0, Math.max(0, spokenLately.length - SPOKEN_KEPT));
+  };
+  let stopFrames: Int16Array[] = [];
+  let stopSamples = 0;
+  let stopSpeech = 0;
+  let stopQuiet = 0;
+  let stopBusy = false;
+  const clearStop = () => {
+    stopFrames = [];
+    stopSamples = 0;
+    stopSpeech = 0;
+    stopQuiet = 0;
+  };
+  const finishStop = () => {
+    const parts = stopFrames;
+    const spoken = stopSpeech;
+    clearStop();
+    if (stopBusy || spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
+    stopBusy = true;
+    void input.stt
+      .transcribe(joined(parts))
+      .then((text) => {
+        const said = stripWake(text.trim(), timings.wakeWords);
+        if (!isStopPhrase(said)) return;
+        if (echoesSpeech(said, spokenLately)) {
+          return emit({ type: "dropped", text: said, reason: "own voice" });
+        }
+        emit({ type: "stop_heard", text: said, at: now() });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        stopBusy = false;
+      });
+  };
+  const watchForStop = (frame: Int16Array) => {
+    const speech = input.vad.isSpeech(frame);
+    if (stopFrames.length === 0) {
+      if (!speech) return;
+      stopFrames = [...preRoll];
+      stopSamples = preRollSamples;
+    }
+    stopFrames.push(frame);
+    stopSamples += frame.length;
+    if (speech) {
+      stopSpeech += frame.length;
+      stopQuiet = 0;
+    } else stopQuiet += frame.length;
+    if (stopQuiet >= msToSamples(STOP_END_SILENCE_MS) || stopSamples >= msToSamples(STOP_MAX_MS)) {
+      finishStop();
+    }
+  };
+
   let speaking = false;
   let echoUntil = 0;
+  /** Speech before this sample is the wake word's tail. */
+  let creditFrom = 0;
   /** A wake word cut in, and what he says next is being heard. Nothing may drop it. */
   let barged = false;
   /** What the speaker did while his words were being heard, applied when they end. */
@@ -307,6 +436,7 @@ export const createVoiceCore = (input: {
       silenceSamples = 0;
       segmentSamples = 0;
     } else echoUntil = samples + msToSamples(ECHO_TAIL_MS);
+    enqueue(() => dispatch({ type: "keep_open", at: now() }));
   };
   const hearingItself = () => speaking || samples < echoUntil;
 
@@ -323,23 +453,29 @@ export const createVoiceCore = (input: {
         speaking = false;
         echoUntil = 0;
         barged = true;
+        clearStop();
         emit({ type: "barge_in" });
       }
       emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });
       // Start the utterance at the wake: "hey jarvis, what's…" is one breath.
       if (segment === null) {
         // Kept over its own voice too: the detector fires late, and dropping this cost his first
-        // words ("what needs me" came out "hate me").
+        // words ("what needs me" came out "hate me"). The audio only: speech must still be heard
+        // after the wake, or silence goes to recognition, which invents words from it.
         segment = [...preRoll];
         segmentSamples = preRollSamples;
-        speechSamples = msToSamples(seg.minSpeechMs);
+        speechSamples = 0;
       }
+      creditFrom = samples + msToSamples(WAKE_TAIL_MS);
       silenceSamples = 0;
       enqueue(() => dispatch({ type: "wake", at: now() }));
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();
-      enqueue(() => dispatch({ type: "tick", at }));
+      enqueue(() => dispatch({ type: speaking ? "keep_open" : "tick", at }));
     }
+
+    if (hearingItself()) watchForStop(frame);
+    else if (stopFrames.length > 0) clearStop();
 
     if (listening() && !hearingItself()) {
       const speech = input.vad.isSpeech(frame);
@@ -351,7 +487,7 @@ export const createVoiceCore = (input: {
         segment.push(frame);
         segmentSamples += frame.length;
         if (speech) {
-          speechSamples += frame.length;
+          if (samples >= creditFrom) speechSamples += frame.length;
           silenceSamples = 0;
         } else {
           silenceSamples += frame.length;
@@ -411,6 +547,8 @@ export const createVoiceCore = (input: {
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
     setSpeaking,
+    noteSpoken,
+    confirm,
     subscribe: (l) => {
       listeners.add(l);
       return () => listeners.delete(l);

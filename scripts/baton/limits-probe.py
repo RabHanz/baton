@@ -38,9 +38,11 @@ def iso(ts):
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def window(headers, name):
+def window(headers, name, optional=False):
     util = headers.get(f"anthropic-ratelimit-unified-{name}-utilization")
     reset = headers.get(f"anthropic-ratelimit-unified-{name}-reset")
+    if optional and util is None and reset is None:
+        return None  # this account has no such window (D126); half a pair is still refused
     if util is None or reset is None:
         raise ValueError(f"no {name} headers")
     util, reset = float(util), int(reset)
@@ -52,7 +54,7 @@ def window(headers, name):
 
 def parse(headers):
     """Turn response headers (lower-case keys) into one reading. Raises ValueError if unusable."""
-    reading = {"five_hour": window(headers, "5h"), "seven_day": window(headers, "7d")}
+    reading = {"five_hour": window(headers, "5h", optional=True), "seven_day": window(headers, "7d")}
     reading["rejected_until"] = None
     if headers.get("anthropic-ratelimit-unified-status") == "rejected":
         reading["rejected_until"] = int(headers["anthropic-ratelimit-unified-reset"])
@@ -71,7 +73,13 @@ def self_test():
     r = parse(h)
     assert r["five_hour"] == {"pct": 20.0, "reset": 100} and r["rejected_until"] == 200
     assert doc_row("a", {**r, "measured_at": 0}, 150)["usage"]["fiveHour"] == {"pct": 0.0}
-    for bad in ({}, {**h, "anthropic-ratelimit-unified-7d-utilization": "21"}):
+    no_session = {k: v for k, v in h.items() if "-5h-" not in k}
+    weekly_only = parse(no_session)
+    assert weekly_only["five_hour"] is None and weekly_only["seven_day"]["pct"] == 100.0
+    row = doc_row("a", {**weekly_only, "measured_at": 0}, 150)
+    assert "fiveHour" not in row["usage"] and row["usage"]["sevenDay"]["pct"] == 100.0
+    half = {k: v for k, v in h.items() if k != "anthropic-ratelimit-unified-5h-reset"}
+    for bad in ({}, half, {**h, "anthropic-ratelimit-unified-7d-utilization": "21"}):
         try:
             parse(bad)
         except ValueError:
@@ -108,16 +116,15 @@ def doc_row(email, reading, now):
     limited = (reading.get("rejected_until") or 0) > now
     # A rejected account is not probed until its reset, and the state cannot change before then, so
     # the reading stays current. Its five-hour window can roll over meanwhile, with nothing spent.
-    five_json = {"pct": 0.0} if five["reset"] <= now else {"pct": five["pct"], "resetsAt": iso(five["reset"])}
+    usage = {"sevenDay": {"pct": reading["seven_day"]["pct"], "resetsAt": iso(reading["seven_day"]["reset"])}}
+    if five is not None:
+        usage["fiveHour"] = {"pct": 0.0} if five["reset"] <= now else {"pct": five["pct"], "resetsAt": iso(five["reset"])}
     return {
         "email": email,
         "organizationUuid": "",
         "usageStatus": "ok",
         "usageAgeSeconds": 0 if limited else max(0, now - reading["measured_at"]),
-        "usage": {
-            "fiveHour": five_json,
-            "sevenDay": {"pct": reading["seven_day"]["pct"], "resetsAt": iso(reading["seven_day"]["reset"])},
-        },
+        "usage": usage,
     }
 
 

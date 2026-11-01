@@ -147,6 +147,11 @@ export interface AssistantActions {
     readonly window: number;
     readonly label: string;
   } | null>;
+  /** A yes or no by voice, beside any box. Null when nothing is listening. */
+  readonly confirm?: (prompt: string) => {
+    readonly answer: Promise<"yes" | "no" | "expired">;
+    readonly cancel: () => void;
+  } | null;
   /** A command through the intent path and all its guards; the reply to speak. */
   readonly act: (command: string, restated?: boolean) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
@@ -165,7 +170,7 @@ export interface ScreenCompanion {
   /** Decide what was said and carry it out. "act" comes back for the caller's own guards. */
   readonly said: (
     text: string,
-    input: { readonly direct: boolean },
+    input: { readonly direct: boolean; readonly typed?: boolean },
   ) => Promise<
     | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
     | { readonly kind: "handled" }
@@ -176,6 +181,10 @@ export interface ScreenCompanion {
   readonly active: () => boolean;
   /** Silences what is queued and what an answer has yet to say. */
   readonly hush: () => void;
+  /** The tray's Clear the screen, also what a spoken stop does. */
+  readonly dismiss: () => void;
+  /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
+  readonly warm: () => void;
   readonly openAskBox: () => void;
   /** A reply from outside the assistant, shown in full when answers are written only. */
   readonly notice: (text: string) => void;
@@ -290,20 +299,32 @@ export const startScreenCompanion = (input: {
   let router: VisionSession | null = null;
   let routerIdle: ReturnType<typeof setTimeout> | null = null;
   let routerTurns = 0;
+  /** A started answer session, so the first answer skips the process's own start. */
+  let spareLook: VisionSession | null = null;
   const dropRouter = () => {
     router?.dispose();
     router = null;
     routerTurns = 0;
+    spareLook?.dispose();
+    spareLook = null;
   };
-  const routerAsk = async (turn: string): Promise<string> => {
+  const warmRouter = () => {
     // Whatever a page's title talked it into stops at the cap.
-    if (routerTurns >= ROUTER_MAX_TURNS) dropRouter();
-    routerTurns += 1;
+    if (routerTurns >= ROUTER_MAX_TURNS || router?.alive() === false) {
+      router?.dispose();
+      router = null;
+      routerTurns = 0;
+    }
     router ??= session(settings.routerModel, BRAIN_ROUTER_PROMPT, ROUTER_TIMEOUT_MS);
     if (routerIdle !== null) clearTimeout(routerIdle);
     routerIdle = setTimeout(dropRouter, ROUTER_IDLE_MS);
+    return router;
+  };
+  const routerAsk = async (turn: string): Promise<string> => {
+    const current = warmRouter();
+    routerTurns += 1;
     try {
-      return await router.ask([{ type: "text", text: turn }]);
+      return await current.ask([{ type: "text", text: turn }]);
     } catch (error) {
       dropRouter();
       throw error;
@@ -396,6 +417,34 @@ export const startScreenCompanion = (input: {
       now: Date.now(),
     });
 
+  /** This turn came by voice, so its questions can be answered by voice too. */
+  let voiceTurn = false;
+  /**
+   * The box, and on a voice turn the same question aloud, so no step needs his hands. Whichever he
+   * answers first counts; a question that runs out leaves the box up.
+   */
+  const askHandsFree = async (
+    box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
+    spoken: string,
+    yes = 0,
+  ): Promise<number> => {
+    const aloud = voiceTurn ? (actions?.confirm?.(spoken) ?? null) : null;
+    const boxed = windows.ask(box);
+    if (aloud === null) return boxed;
+    const first = await Promise.race([
+      boxed.then((index) => ({ index })),
+      aloud.answer.then((said) => ({ said })),
+    ]);
+    if ("index" in first) {
+      aloud.cancel();
+      return first.index;
+    }
+    if (first.said === "expired") return boxed;
+    windows.closePrompt();
+    await boxed;
+    return first.said === "yes" ? yes : box.cancel;
+  };
+
   /** His yes for a capture, or false. `forWhat` names the lesson or drive the yes covers. */
   const approveCapture = async (question: string, forWhat: string | null): Promise<boolean> => {
     if (
@@ -407,18 +456,21 @@ export const startScreenCompanion = (input: {
       })
     )
       return true;
-    const response = await windows.ask({
-      title: "Let Baton see your screen?",
-      detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
-      buttons: [
-        forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
-        "Allow for an hour",
-        "Always allow",
-        "Not now",
-      ],
-      cancel: 3,
-      scoped: true,
-    });
+    const response = await askHandsFree(
+      {
+        title: "Let Baton see your screen?",
+        detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
+        buttons: [
+          forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
+          "Allow for an hour",
+          "Always allow",
+          "Not now",
+        ],
+        cancel: 3,
+        scoped: true,
+      },
+      "Can I see your screen? Yes or no.",
+    );
     if (response === 1) allowedUntil = Date.now() + 60 * 60_000;
     if (response === 2) save({ captureApproval: "always" });
     // The box must be off the screen before the screenshot is taken.
@@ -502,7 +554,9 @@ export const startScreenCompanion = (input: {
   const answerTurn = async (question: string, withScreen: boolean, firstSentence: () => void) => {
     if (run?.mode !== "look" || Date.now() - run.lastAt > LOOK_MEMORY_MS) {
       end();
-      run = { mode: "look", vision: visionFor("look"), lastAt: Date.now() };
+      const spare = spareLook?.alive() === true ? spareLook : null;
+      spareLook = null;
+      run = { mode: "look", vision: spare ?? visionFor("look"), lastAt: Date.now() };
     }
     const current = run;
     const voiceTurn = hushes;
@@ -752,29 +806,35 @@ export const startScreenCompanion = (input: {
     await overlay.markers(marks);
     input.onActivity?.("Waiting for you", plan.title);
     say(reply.spoken);
-    const response = await windows.ask({
-      title: plan.title,
-      detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
-      buttons: ["Run it", "Not now"],
-      cancel: 1,
-      scoped: true,
-    });
+    const response = await askHandsFree(
+      {
+        title: plan.title,
+        detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
+        buttons: ["Run it", "Not now"],
+        cancel: 1,
+        scoped: true,
+      },
+      "Shall I run that? Yes or no.",
+    );
     const shellYes =
       response !== 0 || run !== current || !shell.ask
         ? 0
-        : await windows.ask({
-            title: shell.shell
-              ? "This plan reaches a command line"
-              : "I can't tell where these keys will go",
-            detail: `A command line runs what it is given. ${
-              shell.typed.length === 0
-                ? "This plan types nothing itself."
-                : `Baton would type:\n\n${shell.typed.join("\n")}`
-            }`,
-            buttons: ["Type it", "Not now"],
-            cancel: 1,
-            scoped: true,
-          });
+        : await askHandsFree(
+            {
+              title: shell.shell
+                ? "This plan reaches a command line"
+                : "I can't tell where these keys will go",
+              detail: `A command line runs what it is given. ${
+                shell.typed.length === 0
+                  ? "This plan types nothing itself."
+                  : `Baton would type:\n\n${shell.typed.join("\n")}`
+              }`,
+              buttons: ["Type it", "Not now"],
+              cancel: 1,
+              scoped: true,
+            },
+            "This goes to a command line. Shall I type it? Yes or no.",
+          );
     if (response !== 0 || shellYes !== 0 || run !== current) {
       input.onActivity?.(null);
       await wipe();
@@ -821,14 +881,17 @@ export const startScreenCompanion = (input: {
         ? { windowAt: actions.windowAt }
         : {}),
       pause: async (reason) =>
-        (await windows.ask({
-          title: "Carry on?",
-          detail: `${reason} I haven't clicked. Make sure the right window is up, then carry on.`,
-          buttons: ["Carry on", "Stop"],
-          cancel: 1,
-          scoped: true,
-          armMs: PAUSE_ARM_MS,
-        })) === 0,
+        (await askHandsFree(
+          {
+            title: "Carry on?",
+            detail: `${reason} I haven't clicked. Make sure the right window is up, then carry on.`,
+            buttons: ["Carry on", "Stop"],
+            cancel: 1,
+            scoped: true,
+            armMs: PAUSE_ARM_MS,
+          },
+          `${reason} Carry on? Yes or no.`,
+        )) === 0,
       shellAllowed: shell.ask,
       pasteText: clipboard,
       clipboard: () => Electron.clipboard.readText(),
@@ -963,8 +1026,9 @@ export const startScreenCompanion = (input: {
       sleep(FOCUS_WAIT_MS).then(() => null),
     ]);
 
-  const said: ScreenCompanion["said"] = async (text, { direct }) => {
+  const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
     const started = Date.now();
+    voiceTurn = !typed;
     // A stop never waits on the sidecar, and needs no window.
     const busy = runningMode() !== null || answering > 0 || speech.busy();
     if (instantDecision(text, busy)?.route !== "control") {
@@ -988,14 +1052,23 @@ export const startScreenCompanion = (input: {
         ...(decision.restated === true ? { restated: true } : {}),
       };
     }
-    if (decision.route === "refused") return { kind: "refused", reply: decision.text };
+    if (decision.route === "refused") {
+      input.onTimings?.({
+        route: "refused",
+        source: decision.source,
+        decideMs: decidedAt - started,
+        firstSentenceMs: null,
+        totalMs: decidedAt - started,
+      });
+      return { kind: "refused", reply: decision.text };
+    }
     perform(decision, started, decidedAt);
     return { kind: "handled" };
   };
 
   /** Typed asks: the same decision, with the card and the voice standing in for the voice side. */
   const typed = async (text: string) => {
-    const result = await said(text, { direct: false });
+    const result = await said(text, { direct: false, typed: true });
     if (result.kind === "handled") return;
     const reply =
       result.kind === "refused"
@@ -1033,6 +1106,14 @@ export const startScreenCompanion = (input: {
     },
     active: () => runningMode() !== null,
     hush,
+    dismiss,
+    warm: () => {
+      warmRouter();
+      if (run?.mode !== "look" && spareLook?.alive() !== true) {
+        spareLook?.dispose();
+        spareLook = visionFor("look");
+      }
+    },
     openAskBox,
     notice: (text) => {
       if (text.trim().length > 0) linger("Baton", text);

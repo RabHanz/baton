@@ -20,6 +20,7 @@ import {
   loadWindowsForegroundApi,
 } from "./WindowsForeground.ts";
 import { startWindowsForegroundFocusThread } from "./WindowsForegroundFocusThread.ts";
+import { isCompanionWindow } from "../baton/lastAppWindow.ts";
 
 function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
   return {
@@ -185,7 +186,9 @@ export const make = Effect.gen(function* () {
     }
 
     const first = Option.fromNullishOr(
-      (yield* listWindows).find((window) => !auxiliaryWindows.has(window)) ?? null,
+      (yield* listWindows).find(
+        (window) => !auxiliaryWindows.has(window) && !isCompanionWindow(window),
+      ) ?? null,
     );
     if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
       return Option.none<Electron.BrowserWindow>();

@@ -1,3 +1,4 @@
+import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/baton-shared/limitWindows";
 import type {
   ProviderInstanceId,
   ServerProvider,
@@ -73,6 +74,15 @@ export function ThreadDetailsUsage({
             left={null}
             value="Unavailable"
             tooltip={<span className="text-foreground">{notice}</span>}
+          />
+        ) : null}
+        {limits && !notice && absentSessionWindow(limits.windows) ? (
+          <UsageRow
+            label="Session"
+            left={null}
+            value={NOT_APPLICABLE}
+            muted
+            tooltip={<span className="text-foreground">This account has no session limit.</span>}
           />
         ) : null}
         {limits && !notice

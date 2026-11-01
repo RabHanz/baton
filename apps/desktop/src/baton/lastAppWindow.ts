@@ -1,35 +1,16 @@
 /**
- * "Last window closed, so quit" is about windows he opened. The ask box, a prompt, the pointer and
- * the pill come and go on their own, and when Baton started without its main window one of them
- * closing took the whole app down, sessions and all. Pure, so it can be tested without Electron.
+ * Baton lives in the tray, so a window closing is never the end of it (D118). Only the tray's Quit
+ * or a system shutdown ends the app. Without a tray there would be no way back, so a build or a
+ * machine that has none keeps upstream's rule. Pure, so it can be tested without Electron.
  */
-interface WindowLike {
-  readonly once: (event: "closed", listener: () => void) => unknown;
-}
-
 const companions = new WeakSet<object>();
 export const markCompanionWindow = (window: object): void => void companions.add(window);
+/** The ask box, a prompt, the pointer or the pill: never a window to bring up for him. */
+export const isCompanionWindow = (window: object): boolean => companions.has(window);
 
-let appWindowClosedLast: (() => boolean) | null = null;
-
-export const trackAppWindows = (app: {
-  readonly on: (
-    event: "browser-window-created",
-    listener: (event: unknown, window: WindowLike) => void,
-  ) => unknown;
-}): void => {
-  const open = new Set<WindowLike>();
-  let closedLast = false;
-  app.on("browser-window-created", (_event, window) => {
-    open.add(window);
-    window.once("closed", () => {
-      open.delete(window);
-      if (companions.has(window)) return;
-      closedLast = ![...open].some((other) => !companions.has(other));
-    });
-  });
-  appWindowClosedLast = () => closedLast;
+let trayHolds = false;
+export const keepRunningForTray = (): void => {
+  trayHolds = true;
 };
 
-/** True when nothing tracks windows, so a build without Baton keeps upstream's behaviour. */
-export const shouldQuitOnAllClosed = (): boolean => appWindowClosedLast?.() ?? true;
+export const shouldQuitOnAllClosed = (): boolean => !trayHolds;
