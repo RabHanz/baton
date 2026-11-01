@@ -106,6 +106,12 @@ export interface HomeExtra {
     readonly sessions: number;
     readonly needYou: number;
   };
+  readonly insights: {
+    readonly wordsToday: number;
+    readonly wpm: number | null;
+    readonly streak: number;
+    readonly topApps: ReadonlyArray<{ readonly app: string; readonly count: number }>;
+  };
   readonly vocabulary: ReadonlyArray<{
     readonly phrase: string;
     readonly replacement: string | null;
