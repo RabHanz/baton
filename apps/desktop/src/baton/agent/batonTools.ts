@@ -40,7 +40,16 @@ export interface ToolHost {
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
 
-type JobOp = "list" | "start" | "agree" | "refine" | "grant" | "revoke" | "watch";
+type JobOp =
+  | "list"
+  | "start"
+  | "agree"
+  | "refine"
+  | "grant"
+  | "revoke"
+  | "watch"
+  | "stop"
+  | "schedule";
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -255,8 +264,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   },
   {
     name: "memory_forget",
-    description:
-      "Delete one of his notes by its id (from memory_search). He is asked first.",
+    description: "Delete one of his notes by its id (from memory_search). He is asked first.",
     inputSchema: object({ id: { type: "string" } }, ["id"]),
     run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
   },
@@ -319,7 +327,11 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     description:
       "Pass his correction or answer to a job's worker, word for word. The plan is made again; the work does not start. Set widens when it adds a folder, tool or a longer leash.",
     inputSchema: object(
-      { id: { type: "string" }, text: { type: "string", maxLength: 4000 }, widens: { type: "boolean" } },
+      {
+        id: { type: "string" },
+        text: { type: "string", maxLength: 4000 },
+        widens: { type: "boolean" },
+      },
       ["id", "text"],
     ),
     run: async (a) => ({
@@ -336,6 +348,31 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "Start a job's work, only after he has said go ahead or yes to its plan in this conversation. Never on your own.",
     inputSchema: object({ id: { type: "string" } }, ["id"]),
     run: async (a) => ({ text: await host.jobs("agree", { id: str(a, "id", 200) }) }),
+  },
+  {
+    name: "job_stop",
+    description:
+      "Stop a job's worker now. Its thread and plan stay. Use it when he says stop that job.",
+    inputSchema: object({ id: { type: "string" } }, ["id"]),
+    run: async (a) => ({ text: await host.jobs("stop", { id: str(a, "id", 200) }) }),
+  },
+  {
+    name: "job_schedule",
+    description:
+      "Run an agreed job again on a schedule, in its own thread (every_minutes between 1 and 10080), or take the schedule off (every_minutes 0). He is asked first.",
+    inputSchema: object(
+      { id: { type: "string" }, every_minutes: { type: "number", minimum: 0, maximum: 10080 } },
+      ["id", "every_minutes"],
+    ),
+    run: async (a) => {
+      const minutes = Math.max(0, Math.min(10_080, num(a, "every_minutes")));
+      return {
+        text: await host.jobs("schedule", {
+          id: str(a, "id", 200),
+          everyMinutes: minutes === 0 ? null : minutes,
+        }),
+      };
+    },
   },
   {
     name: "job_grant",

@@ -54,7 +54,7 @@ import {
   type Binding,
   type BindingInput,
 } from "../bindings/bindings.ts";
-import { jobAction, jobControls } from "../sessions/jobRows.ts";
+import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
@@ -645,7 +645,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .catch(() => undefined);
   };
   let lastPcm: Int16Array | null = null;
-  const tidyStatus = (stage: string | undefined, failed: boolean): TidyStatus =>
+  const _tidyStatus = (stage: string | undefined, failed: boolean): TidyStatus =>
     failed ? "raw" : stage === "model" || stage === "local" ? "ok" : "raw";
   const record = (turn: {
     readonly kind: "dictation" | "spoken";
@@ -1023,7 +1023,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
         findings?: ReadonlyArray<WatchFinding>;
-        terms?: { phase?: string; workSessionId?: string } | null;
+        terms?: { phase?: string; workSessionId?: string; scheduleTaskId?: string | null } | null;
+        stopped?: boolean;
         threadId?: string;
       } | null;
       if (op === "list") return describeJobs(value?.jobs ?? []);
@@ -1031,11 +1032,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "start") {
         return `Started. The worker is writing its plan in its own thread; nothing happens until he agrees. The job id is ${value?.terms?.workSessionId ?? "unknown"}.`;
       }
+      if (op === "stop")
+        return value?.stopped === true ? "Stopped." : "Nothing was running to stop.";
       if (value?.terms === null || value?.terms === undefined) return "There is no job by that id.";
       if (op === "agree") {
         return value.terms.phase === "approved"
           ? "Agreed. The worker has been told to go ahead."
           : "The plan is not written yet, so nothing started. Ask again when it is ready.";
+      }
+      if (op === "schedule") {
+        return value.terms.scheduleTaskId === null
+          ? "It is not scheduled now (only a job he has agreed to can be scheduled)."
+          : "Scheduled. Each run reports in the job's own thread.";
       }
       return op === "refine" ? "Passed on. The worker will make the plan again." : "Done.";
     },
@@ -2285,13 +2293,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (file !== undefined) void Electron.shell.openPath(file);
       }
     } else if (id === "j.load") void refreshJobs().catch(() => undefined);
-    else if (id.startsWith("j:")) {
+    else if (/^j[as]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);
-      if (act?.approve === true) {
-        void requestKept({ kind: "job", op: "agree", args: { id: act.id } })
+      const job = (op: BatonJobBridgeRequest["op"], args: Record<string, unknown>) =>
+        void requestKept({ kind: "job", op, args })
           .then(refreshJobs)
           .catch(() => undefined);
-      } else input.openMainWindow();
+      if (act === null) return;
+      if (act.kind === "stop") job("stop", { id: act.id });
+      else if (act.kind === "schedule") {
+        job("schedule", { id: act.id, everyMinutes: act.scheduled ? null : DAILY_MINUTES });
+      } else if (act.kind === "answer") {
+        if (typeof value === "string" && value.trim() !== "") {
+          job("refine", { id: act.id, text: value, via: "text" });
+        }
+      } else if (act.approve) job("agree", { id: act.id });
+      else input.openMainWindow();
     } else if (id === "n.empty") input.openMainWindow();
     else if (id.startsWith("n:")) {
       void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
