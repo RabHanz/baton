@@ -72,7 +72,7 @@ export const withTrayState = (
       }
     }
   };
-  const r = Math.max(2, size * 0.17);
+  const r = Math.max(1.8, size * 0.13);
   dot(size - r - 0.5, size - r - 0.5, r, rgb(o.color));
   if (o.badge === true)
     dot(size - r - 0.5, r + 0.5, r, rgb(onDark ? BADGE_ON_DARK : BADGE_ON_LIGHT));
