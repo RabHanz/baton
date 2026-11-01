@@ -154,7 +154,9 @@ class Task {
 }
 
 const results: Result[] = [];
+const only = process.env["HANDS_ONLY"];
 const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) => {
+  if (only !== undefined && only !== "" && only !== id) return;
   const t = new Task(id);
   await t.snapshot();
   const started = Date.now();
@@ -464,6 +466,29 @@ await task(
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
   },
 );
+
+// Diagnostic: why did Ctrl+C not copy? Poll the clipboard after each way of asking for a copy.
+const poll = (n: number) => ps(`$o = @(); 1..${n} | ForEach-Object { Start-Sleep -Milliseconds 250; $o += '[' + (Get-Clipboard -Raw) + ']' }; $o -join ' '`);
+await task("diag-copy", "Diagnose Ctrl+C", async (t) => {
+  await t.launch("notepad.exe", [], "Notepad");
+  await t.waitTree(/notepad/i);
+  await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
+  await sleep(2500);
+  const notes: string[] = [];
+  const attempt = async (name: string, act: () => Promise<unknown>) => {
+    await ps("Set-Clipboard -Value 'SENTINEL'");
+    await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
+    await act();
+    notes.push(`${name}: ${await poll(8)}`);
+  };
+  await attempt("ctrl+c", () => t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" }));
+  await attempt("ctrl+c again", () => t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" }));
+  await attempt("ctrl+insert", () => t.tool("press_keys", { keys: ["ctrl", "insert"], why: "copy" }).catch((e) => String(e)));
+  await attempt("sendkeys ^c", () => ps("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^c')"));
+  await attempt("ctrl+x", () => t.tool("press_keys", { keys: ["ctrl", "x"], why: "cut" }));
+  t.evidence = notes.join(" || ");
+  console.log(`DIAG ${t.evidence}`);
+});
 
 host.dispose();
 const passed = results.filter((r) => r.result === "pass").length;

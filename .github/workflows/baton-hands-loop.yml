@@ -6,6 +6,11 @@ name: Baton hands loop
 # docs/baton/research/hands-loop-tasks.md.
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: "Run one task by id (blank runs all)"
+        required: false
+        default: ""
   push:
     branches: [baton/hands-ci]
     paths:
@@ -46,6 +51,7 @@ jobs:
         env:
           SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
           HANDS_OUT: ${{ github.workspace }}/hands-out
+          HANDS_ONLY: ${{ inputs.only }}
         run: |
           mkdir -p hands-out
           node scripts/baton/hands-ci/run.ts 2>&1 | tee hands-out/run.log
