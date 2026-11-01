@@ -43,7 +43,7 @@ export const makeClipboardInjection = (input: {
   insertText: async ({ text }) => {
     const command = pasteCommand(input.platform);
     if (command === null)
-      throw new Error("This platform does not let Baton paste into another app.");
+      throw new Error("This platform does not let Tessaya paste into another app.");
     const previous = await input.clipboard.readText();
     await input.clipboard.writeText(text);
     try {

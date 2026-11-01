@@ -139,8 +139,8 @@ export const startBatonDesktop = Effect.gen(function* () {
           restartAt: new Date(restartAt).toISOString(),
         });
         notify(
-          "Baton is updating",
-          `Restarting in 30 seconds to install ${version}. Click to restart now, or choose Later in Baton.`,
+          "Tessaya is updating",
+          `Restarting in 30 seconds to install ${version}. Click to restart now, or choose Later in Tessaya.`,
           () => batonUpdates.install(),
         );
       },
@@ -149,7 +149,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     if (afterUpdate !== null) {
       setTimeout(() => {
         voice?.openHome();
-        notify("Baton is back", afterUpdate);
+        notify("Tessaya is back", afterUpdate);
       }, 3_000).unref();
     }
     Effect.runForkWith(context)(

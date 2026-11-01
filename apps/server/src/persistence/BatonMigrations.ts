@@ -90,7 +90,7 @@ export const runBatonMigrations = Effect.fn("runBatonMigrations")(function* ({
   });
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
-    ? Effect.logDebug("Baton schema is current")
-    : Effect.log("Baton migrations ran successfully").pipe(Effect.annotateLogs({ migrations }));
+    ? Effect.logDebug("Tessaya schema is current")
+    : Effect.log("Tessaya migrations ran successfully").pipe(Effect.annotateLogs({ migrations }));
   return executedMigrations;
 });

@@ -142,7 +142,7 @@ describe("batonRowStatusPill", () => {
   });
 });
 
-describe("the sessions Baton's own window lists", () => {
+describe("the sessions Tessaya's own window lists", () => {
   it("reads state, thread and pane off the sidebar's rows, and nothing else", () => {
     const groups = [
       {

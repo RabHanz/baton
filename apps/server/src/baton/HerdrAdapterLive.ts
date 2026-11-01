@@ -463,7 +463,7 @@ export const make = Effect.gen(function* () {
       if (snapshot === null) {
         return refused(
           "unreadable",
-          "herdr answered, but its snapshot was not a shape Baton reads",
+          "herdr answered, but its snapshot was not a shape Tessaya reads",
         );
       }
 

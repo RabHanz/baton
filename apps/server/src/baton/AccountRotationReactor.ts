@@ -93,9 +93,9 @@ export const make = Effect.gen(function* () {
         paneRef: session.herdrPane,
         sessionId: session.sessionId,
       });
-      yield* Effect.logInfo("Baton respawned a Herdr Claude session", result);
+      yield* Effect.logInfo("Tessaya respawned a Herdr Claude session", result);
     }
-    yield* Effect.logInfo("Baton rotated the Claude account on a limit", {
+    yield* Effect.logInfo("Tessaya rotated the Claude account on a limit", {
       from: decision.from?.label ?? null,
       to: decision.target.label,
       reason: decision.reason,

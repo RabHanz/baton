@@ -50,7 +50,7 @@ export function seedBatonDatabase(batonPath: string, legacyPath: string): SeedRe
       .prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?")
       .get(BATON_MIGRATIONS_TABLE);
     if (hasMigrations === undefined) {
-      return { seeded: false, reason: "legacy file has no Baton tables", rows: {} };
+      return { seeded: false, reason: "legacy file has no Tessaya tables", rows: {} };
     }
     const expected: Record<string, number> = {};
     for (const { name } of legacy
@@ -85,7 +85,7 @@ export function seedBatonDatabase(batonPath: string, legacyPath: string): SeedRe
       for (const [name, count] of Object.entries(expected)) {
         rows[name] = (copy.prepare(`SELECT COUNT(*) AS n FROM "${name}"`).get() as { n: number }).n;
         if (rows[name] !== count) {
-          throw new Error(`Baton seed: ${name} has ${rows[name]} rows, expected ${count}`);
+          throw new Error(`Tessaya seed: ${name} has ${rows[name]} rows, expected ${count}`);
         }
       }
       copy.exec("VACUUM");
@@ -122,7 +122,7 @@ export const layer = Layer.unwrap(
       seedBatonDatabase(batonPath, NodePath.join(dir, LEGACY_STATE_FILE)),
     );
     if (report.seeded) {
-      yield* Effect.log("Baton database seeded").pipe(Effect.annotateLogs({ rows: report.rows }));
+      yield* Effect.log("Tessaya database seeded").pipe(Effect.annotateLogs({ rows: report.rows }));
     }
     return Layer.provideMerge(setup, NodeSqliteClient.layer({ filename: batonPath }));
   }),

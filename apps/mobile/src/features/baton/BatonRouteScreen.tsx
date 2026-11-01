@@ -48,13 +48,13 @@ export function BatonRouteScreen() {
   }, [environments, serverConfigs]);
 
   return (
-    <SettingsScreen title="Baton">
+    <SettingsScreen title="Tessaya">
       {environmentId === null ? (
         <View className="px-4 py-6">
           <Text className="text-sm text-muted-foreground">
             {batonAvailability({ capabilityAdvertised: false }).available
               ? ""
-              : "No connected environment is running a version with Baton work sessions."}
+              : "No connected environment is running a version with Tessaya work sessions."}
           </Text>
         </View>
       ) : (
