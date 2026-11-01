@@ -3,18 +3,20 @@
  * and every account, its live sessions as rows shaped like upstream's thread rows, T3's status
  * pills, and one Send composer for the selected session.
  */
-import type {
-  BatonFleetEntry,
-  BatonProjectRef,
-  EnvironmentId,
-  ProjectId,
+import {
+  batonDesktopBridge,
+  type BatonFleetEntry,
+  type BatonProjectRef,
+  type EnvironmentId,
+  type ProjectId,
 } from "@t3tools/baton-contracts";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { FolderIcon, PaperclipIcon, SendHorizontalIcon } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   batonRowStatusPill,
+  batonSessionSummaries,
   buildBatonProjects,
   type BatonProjectGroup,
   type BatonSessionRow,
@@ -47,8 +49,13 @@ export interface BatonProjectsBlockProps {
   /** The T3 project a Baton project key names, for its favicon. */
   readonly resolveProjectForKey: (key: string) => EnvironmentProject | null;
   readonly onOpenWorkSession: (environmentId: EnvironmentId, entry: BatonFleetEntry) => void;
+  /** Open a thread by id, for Baton's own window. */
+  readonly onOpenThreadById: (environmentId: EnvironmentId, threadId: string) => void;
   readonly listHandoffTargets: (environmentId: EnvironmentId) => ReadonlyArray<HandoffTarget>;
 }
+
+/** The block can render twice; one answers Baton's window. */
+let sessionListenerClaimed = false;
 
 const rowAccount = (props: BatonProjectsBlockProps, row: BatonSessionRow): string | null =>
   row.kind === "claude"
@@ -86,6 +93,42 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
     resolveWorkProject: props.resolveWorkProject,
   });
   const rows = groups.flatMap((group) => group.rows.map((row) => ({ row, group })));
+  const summaries = JSON.stringify(batonSessionSummaries(groups, (row) => rowAccount(props, row)));
+  // Baton's own window lists these sessions; the push is by change, not on a timer.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the desktop shell outside React
+  useEffect(() => {
+    batonDesktopBridge()?.setBatonSessions?.(JSON.parse(summaries));
+  }, [summaries]);
+  const sendToPane = useAtomCommand(batonWorkSessions.herdrSend, { reportFailure: false });
+  const answerWindow = useRef({ open: props.onOpenThreadById, send: sendToPane });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shell's handler on the latest callbacks
+  useEffect(() => {
+    answerWindow.current = { open: props.onOpenThreadById, send: sendToPane };
+  });
+  // Baton's window asks this sidebar to open a thread or type to a pane: the same handlers a click uses.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the desktop shell outside React
+  useEffect(() => {
+    const subscribe = batonDesktopBridge()?.onBatonSessionRequest;
+    if (subscribe === undefined || sessionListenerClaimed) return;
+    sessionListenerClaimed = true;
+    const unsubscribe = subscribe(async (request) => {
+      if (request.kind === "open") {
+        answerWindow.current.open(request.environmentId as EnvironmentId, request.threadId);
+        return { ok: true, detail: "Opened." };
+      }
+      const result = await answerWindow.current.send({
+        environmentId: request.environmentId as EnvironmentId,
+        input: { pane: request.pane, text: request.text },
+      });
+      return result._tag === "Success" && result.value.delivered
+        ? { ok: true, detail: "Sent." }
+        : { ok: false, detail: result._tag === "Success" ? result.value.detail : "Not sent." };
+    });
+    return () => {
+      unsubscribe();
+      sessionListenerClaimed = false;
+    };
+  }, []);
   // The first session is selected until the user picks one, so the composer always has a target.
   const selected =
     rows.find((entry) => entry.row.key === selectedKey) ?? rows.find(() => true) ?? null;

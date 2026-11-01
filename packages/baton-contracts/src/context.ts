@@ -202,6 +202,33 @@ export const describeInjection = (report: BatonInjectionReport): string => {
     : `I cannot type into anything from here: ${first.reason}`;
 };
 
+/** One live session as Baton's own window lists it (D138), built from the sidebar's own project rows. */
+export interface BatonSessionSummary {
+  readonly key: string;
+  readonly project: string;
+  readonly session: string;
+  /** What a person calls the login; the window masks it until clicked. */
+  readonly account: string | null;
+  readonly state: "working" | "waiting" | "idle";
+  /** Needs him: a question or an approval. */
+  readonly urgent: boolean;
+  readonly box: string;
+  readonly updatedAt: string | null;
+  /** The T3 thread to open, when this session has one. */
+  readonly thread: { readonly environmentId: string; readonly threadId: string } | null;
+  /** The terminal pane text can be typed into, when it has one. */
+  readonly pane: { readonly environmentId: string; readonly pane: string } | null;
+}
+
+export type BatonSessionRequest =
+  | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
+  | {
+      readonly kind: "send";
+      readonly environmentId: string;
+      readonly pane: string;
+      readonly text: string;
+    };
+
 /**
  * Baton's desktop bridge, `window.batonDesktopBridge`, beside upstream's `desktopBridge` rather
  * than patched into it or into `@t3tools/contracts`. Every member is optional: a desktop build without
@@ -233,6 +260,14 @@ export interface BatonDesktopBridge {
             readonly focusedWorkSessionId: string | null;
           },
     ) => Promise<unknown>,
+  ) => () => void;
+  /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
+  readonly setBatonSessions?: (sessions: ReadonlyArray<BatonSessionSummary>) => void;
+  /** Open a thread or send to a session on behalf of Baton's window; the answer is the result. */
+  readonly onBatonSessionRequest?: (
+    handler: (
+      request: BatonSessionRequest,
+    ) => Promise<{ readonly ok: boolean; readonly detail: string }>,
   ) => () => void;
   /** §14 rung 3 for the voice core: the work session on screen, or null. */
   readonly setBatonVoiceFocus?: (workSessionId: string | null) => void;

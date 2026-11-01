@@ -23,6 +23,8 @@ interface HomeControlBase {
   /** Behind "More" in its section. */
   readonly more?: boolean;
   readonly disabled?: boolean;
+  /** What the closed section's button says ("Show all"), when it is not "More options". */
+  readonly moreLabel?: string;
   /** Its section goes first: what he should do before anything else. */
   readonly lead?: boolean;
 }
@@ -45,6 +47,19 @@ export type HomeControl =
         readonly note: string;
         readonly state: "ready" | "unavailable" | "soon";
       }>;
+    })
+  /** One live session: open its thread, or type to it. */
+  | (HomeControlBase & {
+      readonly kind: "session";
+      readonly project: string;
+      readonly box: string;
+      readonly state: "working" | "waiting" | "idle";
+      readonly stateLabel: string;
+      readonly urgent: boolean;
+      readonly masked?: string;
+      readonly revealed?: string;
+      readonly canOpen: boolean;
+      readonly canSend: boolean;
     })
   /** One line of the Check area: how it is, and what to do. */
   | (HomeControlBase & {

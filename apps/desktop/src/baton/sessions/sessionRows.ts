@@ -1,0 +1,71 @@
+/**
+ * The Sessions area of Baton's window (D138): the sidebar's own project rows, ordered and turned
+ * into window rows. Pure: no new source of sessions, only the one the sidebar already holds.
+ */
+import type { BatonSessionSummary } from "@t3tools/baton-contracts";
+
+import type { HomeControl } from "../home/batonHome.ts";
+
+export const SESSIONS_SHOWN = 5;
+
+const rank = (s: BatonSessionSummary): number => (s.urgent ? 0 : s.state === "working" ? 1 : 2);
+
+/** What needs him first, then what is working, then the most recently touched. */
+export const orderSessions = (
+  rows: ReadonlyArray<BatonSessionSummary>,
+): ReadonlyArray<BatonSessionSummary> =>
+  rows.toSorted(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (Date.parse(b.updatedAt ?? "") || 0) - (Date.parse(a.updatedAt ?? "") || 0) ||
+      a.key.localeCompare(b.key),
+  );
+
+/** `alex@example.com` as `a•••@example.com`; a plain name as `a•••`. */
+export const maskAccount = (account: string): string => {
+  const at = account.indexOf("@");
+  return at > 0 ? `${account[0]}•••${account.slice(at)}` : `${account[0] ?? ""}•••`;
+};
+
+const STATE_WORDS = { working: "Working", waiting: "Needs you", idle: "Idle" } as const;
+
+export const sessionControls = (
+  rows: ReadonlyArray<BatonSessionSummary>,
+): ReadonlyArray<HomeControl> =>
+  orderSessions(rows).map((s, i) => ({
+    id: `n:${s.key}`,
+    section: "Sessions",
+    label: s.session,
+    kind: "session" as const,
+    project: s.project,
+    box: s.box,
+    state: s.state,
+    stateLabel: STATE_WORDS[s.state],
+    urgent: s.urgent,
+    ...(s.account === null ? {} : { masked: maskAccount(s.account), revealed: s.account }),
+    canOpen: s.thread !== null,
+    canSend: s.pane !== null,
+    ...(i >= SESSIONS_SHOWN ? { more: true, moreLabel: "Show all" } : {}),
+  }));
+
+/** Which request a window row's action makes: the row's own key tells which session. */
+export const requestFor = (
+  rows: ReadonlyArray<BatonSessionSummary>,
+  id: string,
+  text: string | null,
+) => {
+  const row = rows.find((s) => id === `n:${s.key}`);
+  if (row === undefined) return null;
+  if (text === null) {
+    return row.thread === null ? null : ({ kind: "open", ...row.thread } as const);
+  }
+  const body = text.trim();
+  return row.pane === null || body.length === 0
+    ? null
+    : ({
+        kind: "send",
+        environmentId: row.pane.environmentId,
+        pane: row.pane.pane,
+        text: body,
+      } as const);
+};

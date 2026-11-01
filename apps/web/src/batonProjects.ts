@@ -11,6 +11,7 @@
  */
 import type {
   AdoptedSessionCandidate,
+  BatonSessionSummary,
   BatonFleetEntry,
   BatonProjectRef,
   ClaudeLiveSession,
@@ -37,6 +38,7 @@ export type BatonSessionRow =
       readonly title: string;
       readonly state: string;
       readonly urgent: boolean;
+      readonly updatedAt: string | null;
       readonly entry: BatonFleetEntry;
     }
   | {
@@ -47,6 +49,7 @@ export type BatonSessionRow =
       readonly title: string;
       readonly state: string;
       readonly urgent: boolean;
+      readonly updatedAt: string | null;
       readonly account: string | null;
       readonly where: string;
       /** Herdr pane ref when typing is possible; null for a terminal or VS Code session. */
@@ -62,6 +65,7 @@ export type BatonSessionRow =
       readonly title: string;
       readonly state: string;
       readonly urgent: boolean;
+      readonly updatedAt: string | null;
       readonly pane: string;
       readonly prompt: string | null;
     };
@@ -109,6 +113,7 @@ export function buildBatonProjects(input: {
         title: entry.title,
         state: entry.state,
         urgent: entry.needsUser,
+        updatedAt: entry.updatedAt,
         entry,
       });
     }
@@ -125,6 +130,7 @@ export function buildBatonProjects(input: {
         title: session.name ?? leaf(session.cwd),
         state: blocked ? "blocked" : (session.status ?? "running"),
         urgent: blocked,
+        updatedAt: session.updatedAt,
         account: session.account,
         where: session.herdrPane !== null ? "Herdr" : (session.entrypoint ?? "terminal"),
         pane: session.herdrPane,
@@ -150,6 +156,7 @@ export function buildBatonProjects(input: {
             ? "blocked"
             : (candidate.state ?? candidate.runtimeState),
         urgent: candidate.state === "needs_input",
+        updatedAt: null,
         pane: candidate.location.pane,
         prompt: candidate.blockedPrompt ?? null,
       });
@@ -242,4 +249,43 @@ export function batonRowStatusPill(row: BatonSessionRow): ThreadStatusPill | nul
     default:
       return null;
   }
+}
+
+/**
+ * Every live session as Baton's own window lists it. The same rows the sidebar shows; Baton's
+ * window cannot have a second source of sessions to disagree with it.
+ */
+export function batonSessionSummaries(
+  groups: ReadonlyArray<BatonProjectGroup>,
+  resolveAccount: (row: BatonSessionRow) => string | null,
+): ReadonlyArray<BatonSessionSummary> {
+  return groups.flatMap((group) =>
+    group.rows.map((row): BatonSessionSummary => {
+      const pill = batonRowStatusPill(row);
+      const threadId =
+        row.kind === "work"
+          ? (row.entry.activeThreadId ?? row.entry.threads[0]?.threadId ?? null)
+          : null;
+      return {
+        key: row.key,
+        project: group.label,
+        session: row.title,
+        account: resolveAccount(row),
+        state:
+          row.urgent || pill?.label === "Pending Approval" || pill?.label === "Awaiting Input"
+            ? "waiting"
+            : pill?.label === "Working"
+              ? "working"
+              : "idle",
+        urgent: row.urgent,
+        box: row.box,
+        updatedAt: row.updatedAt,
+        thread: threadId === null ? null : { environmentId: row.environmentId, threadId },
+        pane:
+          row.kind === "work" || row.pane === null
+            ? null
+            : { environmentId: row.environmentId, pane: row.pane },
+      };
+    }),
+  );
 }
