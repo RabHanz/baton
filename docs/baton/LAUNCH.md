@@ -80,4 +80,4 @@ not installed"). That keeps a copyleft licence, if one applied, from reaching Ba
 
 ## 5. Private defaults removed (2026-11-01 audit)
 
-See D135 in `DECISIONS.md` for the list and what is left in operator scripts that are not shipped.
+See D135 in `DECISIONS.md` for the list, what to set on each machine and what is left in operator scripts that are not shipped.

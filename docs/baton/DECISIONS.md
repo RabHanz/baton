@@ -3303,10 +3303,14 @@ pool has them; the desktop does not reach it), and Codex has no account choice.
 
 Shipped code (apps/, packages/) searched for the Director's names, hostnames, paths and accounts. Changed:
 (1) The three cswap token instances `claudeAgent_rabee/_optima/_signzart` were a built-in table in
-`packages/baton-contracts/src/accountPool.ts`. It is now empty, and the server reads `BATON_CLAUDE_ACCOUNT_INSTANCES`
-(JSON of instance id to cswap slot) at start. His machines must set it, for example
-`{"claudeAgent_rabee":"4","claudeAgent_optima":"5","claudeAgent_signzart":"6"}`, or thread-to-account moves fall back
-to the active account. (2) The wake word "Freya" is off by default (its model still ships and can be turned on).
+`packages/baton-contracts/src/accountPool.ts`. It is now empty at start. The server fills it from
+`BATON_CLAUDE_ACCOUNT_INSTANCES` (JSON of instance id to cswap slot) when set; when unset, from `ClaudeAccountInstances.ts`'s
+compatibility table, which applies only to instances of those exact ids that exist in `settings.providerInstances`
+(settings hold no slot number, so it cannot be read from them). So his two boxes need nothing set and behave as before,
+and any other machine gets none. To retire the table later, set on each box
+`BATON_CLAUDE_ACCOUNT_INSTANCES={"claudeAgent_rabee":"4","claudeAgent_optima":"5","claudeAgent_signzart":"6"}` in the
+server's environment. (2) The wake word "Freya" is off for a fresh install only: a settings file that exists without a
+saved wake-word list keeps Freya on, and one with a list keeps exactly that list (`voice/wakeDefaults.ts`).
 (3) Example addresses in two comments. Left, by decision: the words "the Director" in comments, wake words
 Sebastian and Alfred (generic), the "Jarvis" speech prompt and the `jarvis|baton` prefix strip (a stock openWakeWord
 name), and everything under `scripts/baton/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
