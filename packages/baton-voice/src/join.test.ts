@@ -93,6 +93,26 @@ describe("one sentence with a breath in it", () => {
     expect(r.events.filter((e) => e.type === "outcome")).toHaveLength(1);
   });
 
+  it("lets a statement in the follow-up window go in silence, and takes a question", async () => {
+    const r = rig([
+      "What time is it?",
+      "Alfonso thinks the festival starts at eight",
+      "And in Rome?",
+    ]);
+    r.core.activate("wake");
+    await r.core.idle();
+    for (const _ of [0, 1, 2]) {
+      r.push(1, true);
+      r.push(1.2, false);
+      await r.settle();
+      r.push(1, false);
+      await r.settle();
+      await r.core.idle();
+    }
+    expect(r.routed).toEqual(["What time is it?", "And in Rome?"]);
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "not addressed")).toBe(true);
+  });
+
   it("ends the window on a dismissal with no router call", async () => {
     const r = rig(["Nothing, dismiss."]);
     r.core.activate("wake");
