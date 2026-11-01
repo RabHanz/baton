@@ -56,7 +56,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="$(gh release list -R "$GITHUB_REPOSITORY" --limit 50 --json tagName --jq '[.[] | select(.tagName | startswith("baton-v"))][0].tagName')"
+          # The last release still named Baton: later ones are Tessaya already, which this proof is not about.
+          tag=baton-v0.1.21
           echo "previous release: $tag"
           mkdir previous
           gh release download "$tag" -R "$GITHUB_REPOSITORY" --dir previous --pattern '*-x64.exe'

@@ -66,7 +66,8 @@ import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
-import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
+import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
+import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -324,19 +325,30 @@ const SESSIONS_NOTE_MS = 8_000;
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
 const BRIEF_HOUR = 8;
-/** Baton's own green: the sidebar's mark, whatever state the dot is in. */
-const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
 
-/** The mark at tray size (D131); 32 px is sharp on a high-density display and scaled down elsewhere. */
-const trayIcon = (options: MarkOptions): Electron.NativeImage =>
-  Electron.nativeImage.createFromBitmap(markBitmap(options, 32), {
-    width: 32,
-    height: 32,
-    scaleFactor: 2,
-  });
+/**
+ * The tray mark: the logo's hinted cut for the taskbar's own theme (white on dark, black on light), at
+ * every size Windows may ask for (100, 125, 150, 200, 250 and 300 %), with the state as a dot.
+ */
+const trayIcon = (options: MarkOptions): Electron.NativeImage => {
+  const dark = Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+  const image = Electron.nativeImage.createEmpty();
+  for (const size of TRAY_SIZES) {
+    const source = Electron.nativeImage.createFromBuffer(
+      Buffer.from(TRAY_PNG[`${dark ? "white" : "black"}-${size}`]!, "base64"),
+    );
+    image.addRepresentation({
+      scaleFactor: size / 16,
+      width: size,
+      height: size,
+      buffer: withTrayState(source.toBitmap(), size, options, dark),
+    });
+  }
+  return image;
+};
 
 export interface VoiceCoreHooks {
   /** The core router's intent calls, answered by the Baton window and the paste adapter. */
@@ -950,6 +962,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       badge: input.updates?.ready() ?? false,
     };
   };
+  // The taskbar's theme changes the tray mark's colour (white on dark, black on light).
+  Electron.nativeTheme.on("updated", () => render());
   const render = () => {
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     tray.setImage(trayIcon(markOptions()));
@@ -1924,7 +1938,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
       device: deviceName(),
       mark: markSvg(markOptions()),
-      brandMark: markSvg({ ...markOptions(), color: BRAND_COLOUR, muted: false }),
+      brandMark: brandMarkSvg(),
     },
     extra: homeExtra(),
     controls: [
