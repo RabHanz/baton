@@ -3248,7 +3248,7 @@ cannot make them safe: a paste too long to show first, and a paste into a comman
 
 ## D129 — A clean thread list, and titles that stick
 
-Cause of "titles default back": `LiveSessionMirror.retitle` ran every tick and treated any title without ` · `
+Cause of "titles default back": `LiveSessionMirror.retitle` ran every tick and treated any title without `·`
 as unnamed, so a rename or a regenerated title was overwritten with `name · account · box` within seconds
 (and after every restart). Now the mirror touches only a title ending in ` · <this box>`, which it wrote itself
 (`mirrorTitle`); a title he typed or T3 generated always wins, and nothing is stored to lose.
@@ -3288,6 +3288,7 @@ T3's window.
 D131 addendum (step 3): the window's header mark is the live one, in the state's colour, made by the main process
 (`HomeState.status.mark`). Motion is one 0.3 s rise on open and short transitions on switches and "More options"; nothing
 repaints continuously, and `prefers-reduced-motion` turns them off.
+
 ## D132 — The assistant's own Claude login
 
 Baton's window, Working for you, More options: "Claude login for Baton". Default "Follow the claude login" changes
@@ -3317,6 +3318,12 @@ it is not fine (`voice/selfChecks.ts`, pure). Microphone present, wake word mode
 screen capture permission (macOS; elsewhere none is needed) and disk free against the models still to fetch. Nothing runs
 on its own. The level is read from the stream the voice loop already has open, for four seconds, only after "Test
 microphone" is pressed, and only while Baton is listening; Baton never opens a microphone for it.
+
+## D136 — A repeatable proof of the gate
+
+`scripts/baton/operator-proof.sh`. To make the gate provable, three pieces of `ScreenCompanion` moved to
+`packages/baton-shared/src/operator.ts` unchanged in behaviour (`taintedAfter`, `gatePrompt`, `spokenOutcome`), and the
+Claude permission reply to `claudeVision.ts` (`toolAnswerOf`). The proof runs the real functions, not copies.
 
 ## D135 — Launch audit: private defaults
 
