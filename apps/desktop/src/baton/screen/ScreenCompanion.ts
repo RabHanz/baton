@@ -222,7 +222,17 @@ export interface AssistantActions {
   readonly sessionsList?: () => string;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
-    op: "list" | "start" | "agree" | "refine" | "grant" | "revoke" | "watch" | "stop" | "schedule",
+    op:
+      | "list"
+      | "start"
+      | "agree"
+      | "refine"
+      | "grant"
+      | "revoke"
+      | "watch"
+      | "stop"
+      | "schedule"
+      | "brief",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
   /** A session by id or name: what it is called, for the intent path. Null when none matches. */
@@ -262,6 +272,8 @@ export interface ScreenCompanion {
   readonly openAskBox: () => void;
   /** A reply from outside the assistant, shown in full when answers are written only. */
   readonly notice: (text: string) => void;
+  /** An unprompted line: a card, and aloud when asked and spoken answers are on. */
+  readonly announce: (text: string, speak: boolean) => void;
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
@@ -1745,6 +1757,11 @@ export const startScreenCompanion = (input: {
     openAskBox,
     notice: (text) => {
       if (text.trim().length > 0) linger("Tessaya", text);
+    },
+    announce: (text, speak) => {
+      if (text.trim().length === 0) return;
+      if (speak) say(text);
+      linger("Tessaya", text);
     },
     writtenOnly: () => settings.output === "written",
     voice: () => settings.voice,
