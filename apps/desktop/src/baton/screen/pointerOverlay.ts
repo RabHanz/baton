@@ -27,6 +27,9 @@ html,body{width:100%;height:100%;overflow:hidden;font-size:15px}
 #card.beside{width:400px}
 #top{display:flex;align-items:center;gap:8px;min-height:18px;margin-bottom:4px;color:var(--blue-soft);font-size:12.5px;font-weight:600}
 #dots{display:flex;gap:4px;margin-left:auto}
+#cp{all:unset;margin-left:8px;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.12);color:var(--text);font-size:12px;font-weight:600;cursor:default}
+#cp:hover{background:rgba(255,255,255,.22)}
+#cp:focus-visible{outline:2px solid var(--blue-soft)}
 #dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.2)}
 #dots i.done{background:var(--blue-soft)}
 #dots i.now{background:#fff}
@@ -43,7 +46,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-size:15px}
 </style></head><body>
 <svg id="ptr" viewBox="0 0 20 22"><path d="M10 1.6 18.4 20 10 15.7 1.6 20Z" fill="#3380FF" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
 <div id="ring"></div><div id="tag"></div>
-<div id="card" class="glass" role="status" aria-live="polite"><div id="top"><span id="k"></span><span id="pg"></span><span id="dots"></span></div><div id="t"></div><div id="h"></div><i id="bar"></i></div><div id="mks"></div>
+<div id="card" class="glass" role="status" aria-live="polite"><div id="top"><span id="k"></span><span id="pg"></span><span id="dots"></span><button id="cp" type="button" hidden>Copy</button></div><div id="t"></div><div id="h"></div><i id="bar"></i></div><div id="mks"></div>
 <script>
 const $=i=>document.getElementById(i),ptr=$('ptr'),tag=$('tag'),ring=$('ring'),card=$('card');
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -74,9 +77,13 @@ window.fly=(from,to,text)=>{clearTimeout(typing);landed=null;if(from)at=from;ptr
  const spot={x:clamp(to.x+8,20,innerWidth-20),y:clamp(to.y+12,20,innerHeight-20)};
  flight(spot,()=>{landed=spot;ring.style.left=to.x+'px';ring.style.top=to.y+'px';void ring.offsetWidth;if(!calm)ring.classList.add('on');label(text);placeCard();});};
 window.card=(c)=>{const on=!!(c&&(c.text||c.kicker));card.classList.toggle('on',on);if(!on)return;
- $('k').textContent=c.kicker||'';$('t').textContent=c.text||'';$('h').textContent=c.hint||'';$('pg').textContent=c.page||'';
+ $('k').textContent=c.kicker||'';$('t').textContent=c.text||'';$('h').textContent=c.hint||'';$('pg').textContent=c.page||'';$('cp').hidden=!c.text;
  const dots=$('dots');dots.replaceChildren();if(c.dots)for(let i=0;i<c.dots.of;i++){const d=document.createElement('i');d.className=i<c.dots.at?'done':i===c.dots.at?'now':'';dots.appendChild(d);}
  $('bar').getAnimations().forEach(a=>a.cancel());placeCard();};
+// The page has no bridge to main: console lines are the message, and main answers by taking the mouse while it is over the card.
+card.addEventListener('mouseenter',()=>console.log('baton:card:hover:1'));
+card.addEventListener('mouseleave',()=>console.log('baton:card:hover:0'));
+$('cp').onclick=()=>{console.log('baton:card:copy');$('cp').textContent='Copied';setTimeout(()=>{$('cp').textContent='Copy';},1200);};
 window.timer=(ms)=>{const b=$('bar');b.getAnimations().forEach(a=>a.cancel());b.animate([{transform:'scaleX(1)'},{transform:'scaleX(0)'}],{duration:ms,easing:'linear',fill:'forwards'});};
 window.marks=(list)=>{const box=$('mks');box.replaceChildren();for(const m of list){const e=document.createElement('div');e.className='mk'+(m.state?' '+m.state:'');e.style.left=m.x+'px';e.style.top=m.y+'px';e.textContent=m.n;box.appendChild(e);}};
 window.back=(to)=>{card.classList.remove('on');tag.classList.remove('on');ring.classList.remove('on');landed=null;if(to&&!calm)flight(to,()=>ptr.classList.remove('on'));else ptr.classList.remove('on');};
@@ -153,7 +160,16 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
     });
     win.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(win);
-    win.setIgnoreMouseEvents(true);
+    // Forwarded, so the page still sees the pointer over its card and can ask for the mouse.
+    win.setIgnoreMouseEvents(true, { forward: true });
+    win.webContents.on("console-message", (...args: ReadonlyArray<unknown>) => {
+      const first = args[0] as { message?: unknown } | undefined;
+      const message = typeof args[2] === "string" ? args[2] : first?.message;
+      if (message === "baton:card:hover:1") win.setIgnoreMouseEvents(false);
+      else if (message === "baton:card:hover:0") win.setIgnoreMouseEvents(true, { forward: true });
+      else if (message === "baton:card:copy" && shown !== null)
+        Electron.clipboard.writeText(shown.text);
+    });
     // Made on the primary's scale; set again so a 125 % display's window is the display's size.
     win.setBounds(display.bounds);
     win.setContentProtection(true);
