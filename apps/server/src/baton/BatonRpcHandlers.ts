@@ -48,6 +48,7 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
+import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonIntentService } from "./IntentService.ts";
@@ -71,6 +72,7 @@ export type BatonServices =
   | AdoptedSessionService
   | BatonEngine
   | BatonJobService
+  | ScheduledTaskService
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry;
@@ -316,8 +318,7 @@ export const make = Effect.gen(function* () {
           return { findings: watchFleet(fleet.entries, yield* Clock.currentTimeMillis) };
         }),
       ),
-    [BATON_JOB_WS_METHODS.jobList]: () =>
-      run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
+    [BATON_JOB_WS_METHODS.jobList]: () => run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
     [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
     [BATON_JOB_WS_METHODS.jobAgree]: (input) =>
       run(Effect.map(JobFlow.agreeJob(input.id), (terms) => ({ terms }))),
@@ -329,6 +330,10 @@ export const make = Effect.gen(function* () {
           Effect.map(jobs.grant(input.id, input.channel), (terms) => ({ terms })),
         ),
       ),
+    [BATON_JOB_WS_METHODS.jobStop]: (input) =>
+      run(Effect.map(JobFlow.stopJob(input.id), (stopped) => ({ stopped }))),
+    [BATON_JOB_WS_METHODS.jobSchedule]: (input) =>
+      run(Effect.map(JobFlow.scheduleJob(input), (terms) => ({ terms }))),
     [BATON_JOB_WS_METHODS.jobRevoke]: (input) =>
       run(
         Effect.flatMap(BatonJobService, (jobs) =>

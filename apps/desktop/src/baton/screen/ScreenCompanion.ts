@@ -199,7 +199,10 @@ export interface AssistantActions {
     anywhere?: boolean,
   ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
-  readonly uiTree?: () => Promise<{ readonly window: string; readonly controls: ReadonlyArray<string> } | null>;
+  readonly uiTree?: () => Promise<{
+    readonly window: string;
+    readonly controls: ReadonlyArray<string>;
+  } | null>;
   /** The top-level window under a desktop point, for a drive's click. */
   readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<{
     readonly window: number;
@@ -219,7 +222,7 @@ export interface AssistantActions {
   readonly sessionsList?: () => string;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
-    op: "list" | "start" | "agree" | "refine" | "grant" | "revoke" | "watch",
+    op: "list" | "start" | "agree" | "refine" | "grant" | "revoke" | "watch" | "stop" | "schedule",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
   /** A session by id or name: what it is called, for the intent path. Null when none matches. */
@@ -1525,8 +1528,7 @@ export const startScreenCompanion = (input: {
     },
     remember: async (text) => `Kept as a note [id: ${notes.add(text).id}].`,
     forget: async (id) => (notes.remove(id) ? "Forgotten." : "There is no note by that id."),
-    jobs: async (op, args) =>
-      actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
+    jobs: async (op, args) => actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
     target: async (label, workSessionId) => {
       conversation.add({
         route: "act",
@@ -1602,7 +1604,9 @@ export const startScreenCompanion = (input: {
     } catch (error) {
       // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
       if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
-      input.onNote?.("agent_fallback", { message: error instanceof Error ? error.message : String(error) });
+      input.onNote?.("agent_fallback", {
+        message: error instanceof Error ? error.message : String(error),
+      });
       const notice = "The one assistant couldn't answer, so the older router is handling this.";
       void show("Tessaya", notice);
       try {

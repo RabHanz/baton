@@ -5,6 +5,7 @@
  */
 import {
   type BatonJobRefineInput,
+  type BatonJobScheduleInput,
   type BatonJobStartInput,
   WorkSessionId,
 } from "@t3tools/baton-contracts";
@@ -15,6 +16,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Random from "effect/Random";
 
+import type { ScheduledTaskId } from "@t3tools/contracts";
+import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -80,7 +83,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (input: BatonJ
 });
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
-const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
+export const beginWork = Effect.fn("BatonJobFlow.beginWork")(function* (threadId: ThreadId) {
   const engine = yield* BatonEngine;
   yield* engine
     .setInteractionMode({ tag: "job", threadId, interactionMode: "default" })
@@ -134,4 +137,76 @@ export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {
   const jobs = yield* BatonJobService;
   const fleet = yield* FleetQuery.getFleet({});
   return yield* jobs.view({ entries: fleet.entries });
+});
+
+/**
+ * A thread changed: if it is a job's worker that has finished writing its plan, the plan is ready
+ * (and a job holding a standing "start" permission begins at once). Anything else changes nothing.
+ */
+export const noticePlan = Effect.fn("BatonJobFlow.noticePlan")(function* (threadId: ThreadId) {
+  const jobs = yield* BatonJobService;
+  const id = yield* (yield* WorkSessionService).findForThread(threadId);
+  if (id === null) return;
+  const terms = yield* jobs.terms(id);
+  if (terms === null || terms.phase !== "drafting_plan") return;
+  const shell = yield* (yield* BatonEngine).threadShell(threadId);
+  if (shell?.status !== "completed") return;
+  const next = yield* jobs.planReady(id);
+  if (next?.phase === "approved") yield* beginWork(threadId);
+});
+
+/** His stop: the worker's running turn ends now. The job and its thread stay for him to read. */
+export const stopJob = Effect.fn("BatonJobFlow.stop")(function* (id: WorkSessionId) {
+  const threadId = yield* threadOf(id);
+  if (threadId === null) return false;
+  return yield* (yield* BatonEngine).interruptThread({ tag: "job", threadId });
+});
+
+/**
+ * A job that has been agreed runs again on a schedule in its own thread, so each run reports where
+ * the first one did. Schedules are T3's own scheduled tasks (D145); null takes the schedule off.
+ */
+export const scheduleJob = Effect.fn("BatonJobFlow.schedule")(function* (
+  input: BatonJobScheduleInput,
+) {
+  const jobs = yield* BatonJobService;
+  const tasks = yield* ScheduledTaskService;
+  const terms = yield* jobs.terms(input.id);
+  if (terms === null) return null;
+  if (input.everyMinutes === null) {
+    if (terms.scheduleTaskId !== null) {
+      yield* tasks
+        .delete({ id: terms.scheduleTaskId as ScheduledTaskId })
+        .pipe(Effect.ignoreCause({ log: true }));
+    }
+    return yield* jobs.setSchedule(input.id, null);
+  }
+  // Recurring work runs unattended, so only a plan he has agreed to is repeated.
+  if (terms.phase !== "approved") return terms;
+  const threadId = yield* threadOf(input.id);
+  const shell = threadId === null ? null : yield* (yield* BatonEngine).threadShell(threadId);
+  if (threadId === null || shell === null) return terms;
+  const workSession = yield* (yield* WorkSessionService).get(input.id);
+  const saved = yield* tasks
+    .upsert({
+      ...(terms.scheduleTaskId === null ? {} : { id: terms.scheduleTaskId as ScheduledTaskId }),
+      title: `${workSession.title} (scheduled)`,
+      prompt: `Run this job again and report what changed since the last run.\n\nThe job: ${terms.goal}`,
+      enabled: true,
+      schedule: {
+        type: "interval",
+        everyMs: Math.max(60_000, Math.round(input.everyMinutes * 60_000)),
+      },
+      projectId: shell.projectId,
+      threadId,
+      workspaceStrategy:
+        shell.worktreePath === null
+          ? { type: "root" }
+          : { type: "existing_worktree", worktreePath: shell.worktreePath },
+      modelSelection: shell.modelSelection,
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+    })
+    .pipe(Effect.catchTags({ ScheduledTaskError: () => Effect.succeed(null) }));
+  return saved === null ? terms : yield* jobs.setSchedule(input.id, saved.task.id);
 });

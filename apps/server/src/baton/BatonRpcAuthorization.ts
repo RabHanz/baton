@@ -64,6 +64,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_JOB_WS_METHODS.jobRefine]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobGrant]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobRevoke]: AuthOrchestrationOperateScope,
+  [BATON_JOB_WS_METHODS.jobStop]: AuthOrchestrationOperateScope,
+  [BATON_JOB_WS_METHODS.jobSchedule]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
   // A rule starts provider sessions and messages threads when it fires, so
   // creating or re-enabling one is an operate-level act even though the RPC
