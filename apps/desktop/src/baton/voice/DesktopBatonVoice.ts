@@ -513,6 +513,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
+    sessionsList: () => {
+      const rows = input.sessions?.rows() ?? [];
+      return rows.length === 0
+        ? "No sessions are loaded yet."
+        : rows
+            .map(
+              (r) =>
+                `${r.session} (${r.project}, ${r.box}, ${r.state}${r.urgent ? ", needs him" : ""}) [id: ${r.key}]`,
+            )
+            .join("\n");
+    },
+    sessionName: (idOrName) => {
+      const rows = input.sessions?.rows() ?? [];
+      const wanted = idOrName.trim().toLowerCase();
+      return (
+        rows.find((r) => r.key === idOrName || r.session.toLowerCase() === wanted)?.session ?? null
+      );
+    },
+    dictation: async (on) => {
+      if (binary === null || sidecar === null)
+        return "Dictation is not available on this computer.";
+      if (parakeetPath === null) {
+        requestDictation();
+        return "The speech model is not downloaded yet; I started fetching it.";
+      }
+      const recording = releaseRecordingEscape !== null;
+      if (on !== recording) sidecar.toggle();
+      return on ? "Dictating. He says stop dictating to end it." : "Stopped dictating.";
+    },
     focus: async () => {
       const app = await sidecar?.foreground();
       if (app === undefined || app.exe.length === 0) return null;

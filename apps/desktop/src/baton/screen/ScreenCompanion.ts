@@ -30,6 +30,7 @@ import {
   planFromReply,
   runDrivePlan,
   screensDifference,
+  isShellWindow,
   screenLabel,
   shotFor,
   teachTurn,
@@ -64,6 +65,7 @@ import {
 import {
   SessionClosed,
   startVisionSession,
+  type ToolGate,
   type VisionContent,
   type VisionSession,
 } from "./claudeVision.ts";
@@ -71,7 +73,16 @@ import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
-import { routerLines, type ConversationRoute } from "@t3tools/baton-shared/conversation";
+import {
+  routerLines,
+  textIsFromConversation,
+  type ConversationRoute,
+} from "@t3tools/baton-shared/conversation";
+import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
+import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
+import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
+import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -104,6 +115,8 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
+  /** One continuous assistant with every tool, instead of the router's stages (D143). Off until measured. */
+  readonly oneAssistant: boolean;
   /** He has picked what Baton works through, so the first-run card is done. */
   readonly brainChosen: boolean;
   /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
@@ -123,6 +136,7 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
+  oneAssistant: false,
   brainChosen: false,
   assistantAccount: null,
 };
@@ -195,6 +209,12 @@ export interface AssistantActions {
   /** A command through the intent path and all its guards; the reply to speak. */
   readonly act: (command: string, restated?: boolean) => Promise<string>;
   readonly grammarPlaces: (said: string) => Promise<boolean>;
+  /** His live sessions, one per line, with the id each is named by. */
+  readonly sessionsList?: () => string;
+  /** A session by id or name: what it is called, for the intent path. Null when none matches. */
+  readonly sessionName?: (idOrName: string) => string | null;
+  /** Start or stop dictation into the focused field. */
+  readonly dictation?: (on: boolean) => Promise<string>;
 }
 
 /** One turn's timings in ms, for the report. Words are never written here. */
@@ -660,6 +680,7 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  let agent: AssistantAgent | null = null;
   let operator: { session: VisionSession; lastAt: number; home: string } | null = null;
   /** The turn has run a tool, so what comes next may be following its output. */
   let tainted = false;
@@ -668,6 +689,9 @@ export const startScreenCompanion = (input: {
   const dropOperator = () => {
     operator?.session.dispose();
     operator = null;
+    // Stopping Baton stops the assistant's turn too; the next one starts a fresh session from the file.
+    agent?.dispose();
+    agent = null;
   };
 
   const toolGate = async (call: ToolCall) => {
@@ -1312,6 +1336,209 @@ export const startScreenCompanion = (input: {
       sleep(FOCUS_WAIT_MS).then(() => null),
     ]);
 
+  /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
+  let agentMcp: BatonMcp | null = null;
+  let lastShots: ReadonlyArray<ScreenShot> = [];
+  const agentTaint = createTaint();
+  const agentTools: string[] = [];
+  const agentGate = createAgentGate({
+    actWithoutAsking: () => settings.actWithoutAsking,
+    taint: agentTaint,
+    textIsHis: (text) => textIsFromConversation(text, conversation.recent(12)),
+    shellFocused: async () => {
+      const seen = await focusSoon();
+      // A window that cannot be told apart from a command line is treated as one.
+      return seen === null || isShellWindow(seen.label);
+    },
+    confirm: async (p) =>
+      (await askHandsFree(
+        {
+          title: p.title,
+          detail: p.detail,
+          buttons: ["Do it", "Not now"],
+          cancel: 1,
+          scoped: true,
+        },
+        p.spoken,
+        0,
+        p.noOnExpiry,
+      )) === 0,
+    record: (entry) => {
+      if (typeof entry["tool"] === "string") agentTools.push(entry["tool"]);
+      input.onAction?.({ by: "assistant", ...entry });
+    },
+  });
+  /** Built-in tools go through the gate here; Baton's own run it inside the tool server. */
+  const harnessGate: ToolGate = async (call) =>
+    call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call);
+
+  const driverFor = () => {
+    driver ??= createInputDriver({
+      platform: input.platform,
+      toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
+      clipboard: Electron.clipboard,
+    });
+    return driver;
+  };
+  const desktopPoint = (a: {
+    readonly x: number;
+    readonly y: number;
+    readonly screen?: number;
+  }) => {
+    const shot = shotFor(lastShots, a.screen ?? null);
+    if (shot === null) throw new Error("Take a screenshot first, so I know where things are.");
+    return toDesktop(a, shot);
+  };
+  const toolHost: ToolHost = {
+    capture: async () => {
+      if (!(await approveCapture("what is on your screen", null))) {
+        throw new Error("He did not allow looking at his screen.");
+      }
+      const captured = await capture();
+      lastShots = captured.map((c) => c.shot);
+      return {
+        text: captured
+          .map(
+            (c) =>
+              `${screenLabel(c.shot, captured.length)}, image ${c.shot.width}x${c.shot.height}`,
+          )
+          .join("\n"),
+        images: captured.map((c) => ({ data: c.jpeg.toString("base64"), mimeType: "image/jpeg" })),
+      };
+    },
+    click: async (a) => {
+      await driverFor().clickAt(desktopPoint(a), a.button ?? "left", a.double === true ? 2 : 1);
+      return "Clicked.";
+    },
+    scroll: async (amount) => {
+      await driverFor().scrollAt(null, amount);
+      return "Scrolled.";
+    },
+    drag: async (a) => {
+      const d = driverFor();
+      await d.pressAt(desktopPoint(a));
+      await d.releaseAt(
+        desktopPoint({
+          x: a.toX,
+          y: a.toY,
+          ...(a.screen === undefined ? {} : { screen: a.screen }),
+        }),
+      );
+      return "Dragged.";
+    },
+    type: async (text) => {
+      await driverFor().type(text);
+      return "Typed.";
+    },
+    press: async (keys) => {
+      await driverFor().press(keys);
+      return "Pressed.";
+    },
+    sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
+    session: async (id) => {
+      const name = actions?.sessionName?.(id) ?? null;
+      if (name === null || actions === null)
+        return "There is no session by that id. Use sessions_list.";
+      return actions.act(`What's ${name} doing?`);
+    },
+    send: async (id, text) => {
+      const name = actions?.sessionName?.(id) ?? null;
+      if (name === null || actions === null)
+        return "There is no session by that id. Use sessions_list.";
+      return actions.act(`Tell ${name}: ${text}`);
+    },
+    fleet: async () =>
+      actions === null
+        ? "Sessions are not reachable from here yet."
+        : actions.act("What needs me?"),
+    dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
+    memory: async (query) => {
+      const hits = conversation.search(query);
+      return hits.length === 0
+        ? "Nothing earlier matches."
+        : hits
+            .map(
+              (t) =>
+                `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
+            )
+            .join("\n\n");
+    },
+    target: async (label, workSessionId) => {
+      conversation.add({
+        route: "act",
+        said: "(noted what this is about)",
+        reply: label,
+        target: { label, ...(workSessionId === undefined ? {} : { workSessionId }) },
+      });
+      return "Noted.";
+    },
+  };
+  const agentStart = async (systemPrompt: string): Promise<VisionSession> => {
+    await agentMcp?.close();
+    agentMcp = await startBatonMcp({ tools: buildBatonTools(toolHost), gate: agentGate });
+    return startVisionSession({
+      claudeBinary: settings.claudeBinary,
+      model: settings.model,
+      systemPrompt,
+      workDir: NodePath.join(input.stateDir, "screen"),
+      cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
+      env: claudeEnv(),
+      platform: input.platform,
+      timeoutMs: OPERATOR_TURN_MS,
+      gate: harnessGate,
+      mcp: { url: agentMcp.url, token: agentMcp.token },
+      onTool: (call) => agentTools.push(call.tool),
+    });
+  };
+  const agentOf = (): AssistantAgent => {
+    agent ??= createAssistantAgent({
+      start: agentStart,
+      conversation,
+      clockLine: () => clockLine(new Date()),
+      beginTurn: () => {
+        agentTaint.reset();
+        agentTools.length = 0;
+      },
+    });
+    return agent;
+  };
+  /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
+  const agentTurn = async (text: string, started: number, direct: boolean) => {
+    answering += 1;
+    let firstTokenAt: number | null = null;
+    let firstAudioAt: number | null = null;
+    try {
+      const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
+      input.onActivity?.("Thinking");
+      void show("Thinking", text);
+      const reply = await agentOf().say(
+        direct ? `(to the focused session) ${text}` : text,
+        { window: titlesAllowed() ? (focus?.label ?? null) : null, session: null },
+        (delta) => {
+          firstTokenAt ??= Date.now();
+          voice.feed(delta);
+        },
+      );
+      voice.finish(reply);
+      input.onActivity?.(null);
+      linger("Baton", reply);
+      input.onNote?.("agent_turn", {
+        said: text,
+        reply,
+        firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
+        firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
+        totalMs: Date.now() - started,
+        tools: [...agentTools],
+        route: "agent",
+      });
+    } catch (error) {
+      fail(error);
+    } finally {
+      answering -= 1;
+      input.onTurnEnd?.();
+    }
+  };
+
   const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
     const started = Date.now();
     voiceTurn = !typed;
@@ -1321,6 +1548,11 @@ export const startScreenCompanion = (input: {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;
+    // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
+    if (settings.oneAssistant && instantDecision(text, busy)?.route !== "control") {
+      void agentTurn(text, started, direct);
+      return { kind: "handled" };
+    }
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
     input.onTrace?.({
@@ -1402,6 +1634,7 @@ export const startScreenCompanion = (input: {
     hush,
     dismiss,
     warm: () => {
+      if (settings.oneAssistant) agentOf().warm();
       warmRouter();
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
@@ -1484,6 +1717,15 @@ export const startScreenCompanion = (input: {
         kind: "action",
         button: "Check again",
         more: settings.brainChosen,
+      },
+      {
+        id: "s.oneAssistant",
+        section: "Working for you",
+        label: "One assistant (new)",
+        hint: "Baton keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
+        kind: "toggle",
+        on: settings.oneAssistant,
+        more: true,
       },
       {
         id: "s.act",
@@ -1570,10 +1812,15 @@ export const startScreenCompanion = (input: {
         toldAbout = null;
         save({ assistantAccount: value === "" ? null : value });
         void accounts.refresh();
+      } else if (id === "s.oneAssistant") {
+        dropOperator();
+        save({ oneAssistant: value === true });
       } else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
     dispose: () => {
+      agent?.dispose();
+      void agentMcp?.close();
       end();
       dropRouter();
       if (routerIdle !== null) clearTimeout(routerIdle);
