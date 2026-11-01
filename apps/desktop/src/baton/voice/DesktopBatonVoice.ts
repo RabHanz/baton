@@ -230,6 +230,7 @@ export interface VoiceCoreHooks {
 export interface TrayExtras extends BrainVoiceHook {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
+  readonly needsBrainChoice: () => boolean;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
@@ -1149,6 +1150,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(onDeviceChange, MIC_POLL_MS).unref();
 
   render();
+  // Until he has chosen what Baton works through, the window opens on its own and asks.
+  if (input.extras?.needsBrainChoice() === true) setTimeout(() => home.open(), 2_000).unref();
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   if (binary !== null && settings.dictation === "baton" && modelPresent(modelsDir, speechModel())) {
     requestDictation();

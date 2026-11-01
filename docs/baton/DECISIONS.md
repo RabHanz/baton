@@ -3275,3 +3275,13 @@ reveals the raw ones. Each side owns its settings as data (`HomeControl`): the v
 (`v.` ids), the companion in `ScreenCompanion.ts` (`s.` ids). The tray right-click shrinks to status, listening, mute,
 wake now, Ask, Clear, Stop, Open Baton, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
 assistant's own account setting (queued separately). Copy ran through the uiux-stack copy check.
+
+## D133 — First-run: what Baton works through
+
+Until he picks, Baton's window opens by itself and leads with "Choose what Baton works through": Claude Code and Codex,
+each with whose subscription or billing it uses; API key and local model are listed as coming soon and cannot be picked
+(the real choices are the only controls). Only a tool that is installed and signed in can be chosen: `claude auth status`
+and `codex login status`, asked at startup and on "Check again" (`brainChoice.ts`, `brainDetect.ts`). The pick is saved as
+the operator and `brainChosen`, after which the same row lives under Working for you. A Codex login with an API key says
+each use is billed to that key. Voice stays local, and says so. Checked and found nothing to do: the Microphone double
+tick was in the tray's radio list, gone since D130; the voice turn log already rotates (5 files of 5 MiB).
