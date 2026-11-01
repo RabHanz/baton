@@ -42,7 +42,7 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 #side{background:var(--side);display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
 #app.collapsed #side{visibility:hidden}
 .brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
-.brand #mark{width:30px;height:30px;display:block;flex:none}
+.brand #mark{width:30px;height:30px;display:block;flex:none;color:var(--ink)}
 .brand #mark svg{width:100%;height:100%;display:block}
 .brand b{font:600 20px var(--serif);letter-spacing:-.01em}
 .plan{margin-left:auto;font:600 11px var(--sans);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px;color:var(--soft);background:var(--panel)}
