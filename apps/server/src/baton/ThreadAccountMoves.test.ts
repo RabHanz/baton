@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
+import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
 
 import {
   selectionOnInstance,
   threadHasQueuedRun,
   threadHasRunningTurn,
 } from "./ThreadAccountMoves.ts";
+
+setClaudeAccountInstances({
+  claudeAgent_rabee: "4",
+  claudeAgent_optima: "5",
+  claudeAgent_signzart: "6",
+});
 
 describe("what holds a move", () => {
   it("tells a turn in progress from a queued run", () => {

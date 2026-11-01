@@ -162,7 +162,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
     // Thresholds measured on 6.6 hours of real speech and held-out en-GB voices (D98).
     { word: "Sebastian", enabled: true, threshold: 0.97 },
     { word: "Alfred", enabled: true, threshold: 0.9 },
-    { word: "Freya", enabled: true, threshold: 0.95 },
+    // Off: a name that is his own, so a new install does not answer to it (D135).
+    { word: "Freya", enabled: false, threshold: 0.95 },
     // Off: as an ordinary word in speech it wakes too easily (D98).
     { word: "Onyx", enabled: false, threshold: 0.9 },
   ],
