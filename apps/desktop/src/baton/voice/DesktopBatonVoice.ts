@@ -55,6 +55,8 @@ import {
   type BindingInput,
 } from "../bindings/bindings.ts";
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
+import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
+import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
@@ -1041,6 +1043,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             .join("\n");
     },
     jobs: async (op, args) => {
+      if (op === "approvals") {
+        const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+          jobs?: ReadonlyArray<BatonJob>;
+        } | null;
+        return describeApprovals(
+          buildApprovals({ jobs: jobs?.jobs ?? [], sessions: input.sessions?.rows() ?? [] }),
+        );
+      }
       if (op === "brief") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
           jobs?: ReadonlyArray<BatonJob>;
@@ -1873,6 +1883,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     extra: homeExtra(),
     controls: [
+      ...approvalControls(
+        buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
+        jobsCache !== null,
+      ),
       ...noteControls(notes.list()),
       ...(jobsCache === null
         ? [
@@ -2399,6 +2413,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const file = notes.list().find((n) => n.id === act.id)?.file;
         if (file !== undefined) void Electron.shell.openPath(file);
       }
+    } else if (id === "a.load") void refreshJobs().catch(() => undefined);
+    else if (id.startsWith("a:")) {
+      const act = approvalAction(id);
+      if (act === null) return;
+      if (act.kind === "plan") {
+        // Approve is the same agree the voice path makes; Deny stops the worker, which has done nothing yet.
+        void requestKept({ kind: "job", op: act.deny ? "stop" : "agree", args: { id: act.ref } })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      } else void input.sessions?.act(`n:${act.ref}`, null);
     } else if (id === "j.load") void refreshJobs().catch(() => undefined);
     else if (/^j[as]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);
