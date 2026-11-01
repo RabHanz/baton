@@ -7,7 +7,7 @@ import {
   gatePrompt,
   judgeToolCall,
   spokenOutcome,
-  taintedAfter,
+  announceTool,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
 import { describe, expect, it } from "vite-plus/test";
@@ -19,13 +19,14 @@ type Said = "yes" | "no" | "expired";
 
 /** One operator turn as the companion runs it: calls announced, then asked, in order. */
 const turn = (options: { actWithoutAsking: boolean; said: Said }) => {
-  let announced = 0;
+  let ran = 0;
+  let tainted = false;
   const asked: Array<{ tool: string; risky: boolean; noOnExpiry: boolean }> = [];
-  const announce = () => void (announced += 1);
+  const announce = (tool = "x") => void ({ tainted, ran } = announceTool(ran, tool));
   const gate = async (call: ToolCall) => {
     const judged = judgeToolCall(call, {
       actWithoutAsking: options.actWithoutAsking,
-      tainted: taintedAfter(announced),
+      tainted,
     });
     if (judged.verdict === "allow") return { allow: true as const };
     const prompt = gatePrompt(judged, "x");
@@ -58,7 +59,7 @@ const claudeReply = async (t: ReturnType<typeof turn>, lines: ReadonlyArray<stri
   for (const line of lines) {
     const request = toolRequestOf(line);
     if (request === null) {
-      for (const _ of toolUsesOf(line)) t.announce();
+      for (const use of toolUsesOf(line)) t.announce(use.tool);
       continue;
     }
     replies.push(toolAnswerOf(await t.gate(request.call), request.call));
@@ -77,7 +78,7 @@ const codexReply = async (
 ) => {
   const sent: Array<Record<string, unknown>> = [];
   const client = makeCodexClient({ write: (line) => sent.push(JSON.parse(line)), gate: t.gate });
-  t.announce();
+  t.announce("commandExecution");
   client.onLine(JSON.stringify({ id: 1, method, params }));
   await settle();
   return sent;
@@ -138,5 +139,25 @@ describe("operator proof", () => {
       claudeLine("r4", "WebSearch", { query: "weather" }),
     ]);
     expect(alone.asked).toEqual([]);
+  });
+
+  it("PROOF 5: a live-fact lookup is never asked, searching again stays free, a search after a read asks", async () => {
+    const lookups = turn({ actWithoutAsking: false, said: "no" });
+    await claudeReply(lookups, [
+      claudeUse("WebSearch", { query: "weather in Lahore" }),
+      claudeLine("r5", "WebSearch", { query: "weather in Lahore" }),
+      claudeUse("WebSearch", { query: "weather in Lahore tomorrow" }),
+      claudeLine("r6", "WebSearch", { query: "weather in Lahore tomorrow" }),
+    ]);
+    expect(lookups.asked).toEqual([]);
+    const readThenSearch = turn({ actWithoutAsking: false, said: "no" });
+    await claudeReply(readThenSearch, [
+      claudeUse("WebSearch", { query: "a" }),
+      claudeLine("r7", "WebSearch", { query: "a" }),
+      claudeUse("Read", { file_path: "secret.env" }),
+      claudeUse("WebSearch", { query: "b" }),
+      claudeLine("r8", "WebSearch", { query: "b" }),
+    ]);
+    expect(readThenSearch.asked.map((a) => a.tool)).toEqual(["WebSearch"]);
   });
 });
