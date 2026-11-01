@@ -19,3 +19,8 @@ describe("appendMentionedMedia", () => {
     }
   });
 });
+
+it("treats a copy the server attached (named by its alt text) as shown", () => {
+  const text = "Saved shot.png\n\n![shot.png](</data/attachments/ab12.png>)";
+  expect(appendMentionedMedia(text)).toBe(text);
+});

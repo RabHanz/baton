@@ -3248,7 +3248,7 @@ cannot make them safe: a paste too long to show first, and a paste into a comman
 
 ## D129 — A clean thread list, and titles that stick
 
-Cause of "titles default back": `LiveSessionMirror.retitle` ran every tick and treated any title without ` · `
+Cause of "titles default back": `LiveSessionMirror.retitle` ran every tick and treated any title without `·`
 as unnamed, so a rename or a regenerated title was overwritten with `name · account · box` within seconds
 (and after every restart). Now the mirror touches only a title ending in ` · <this box>`, which it wrote itself
 (`mirrorTitle`); a title he typed or T3 generated always wins, and nothing is stored to lose.
@@ -3288,6 +3288,7 @@ T3's window.
 D131 addendum (step 3): the window's header mark is the live one, in the state's colour, made by the main process
 (`HomeState.status.mark`). Motion is one 0.3 s rise on open and short transitions on switches and "More options"; nothing
 repaints continuously, and `prefers-reduced-motion` turns them off.
+
 ## D132 — The assistant's own Claude login
 
 Baton's window, Working for you, More options: "Claude login for Baton". Default "Follow the claude login" changes
@@ -3317,6 +3318,29 @@ it is not fine (`voice/selfChecks.ts`, pure). Microphone present, wake word mode
 screen capture permission (macOS; elsewhere none is needed) and disk free against the models still to fetch. Nothing runs
 on its own. The level is read from the stream the voice loop already has open, for four seconds, only after "Test
 microphone" is pressed, and only while Baton is listening; Baton never opens a microphone for it.
+
+## D136 — A repeatable proof of the gate
+
+`scripts/baton/operator-proof.sh`. To make the gate provable, three pieces of `ScreenCompanion` moved to
+`packages/baton-shared/src/operator.ts` unchanged in behaviour (`taintedAfter`, `gatePrompt`, `spokenOutcome`), and the
+Claude permission reply to `claudeVision.ts` (`toolAnswerOf`). The proof runs the real functions, not copies.
+
+## D135 — Launch audit: private defaults
+
+Shipped code (apps/, packages/) searched for the Director's names, hostnames, paths and accounts. Changed:
+(1) The three cswap token instances `claudeAgent_rabee/_optima/_signzart` were a built-in table in
+`packages/baton-contracts/src/accountPool.ts`. It is now empty at start. The server fills it from
+`BATON_CLAUDE_ACCOUNT_INSTANCES` (JSON of instance id to cswap slot) when set; when unset, from `ClaudeAccountInstances.ts`'s
+compatibility table, which applies only to instances of those exact ids that exist in `settings.providerInstances`
+(settings hold no slot number, so it cannot be read from them). So his two boxes need nothing set and behave as before,
+and any other machine gets none. To retire the table later, set on each box
+`BATON_CLAUDE_ACCOUNT_INSTANCES={"claudeAgent_rabee":"4","claudeAgent_optima":"5","claudeAgent_signzart":"6"}` in the
+server's environment. (2) The wake word "Freya" is off for a fresh install only: a settings file that exists without a
+saved wake-word list keeps Freya on, and one with a list keeps exactly that list (`voice/wakeDefaults.ts`).
+(3) Example addresses in two comments. Left, by decision: the words "the Director" in comments, wake words
+Sebastian and Alfred (generic), the "Jarvis" speech prompt and the `jarvis|baton` prefix strip (a stock openWakeWord
+name), and everything under `scripts/baton/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
+Facts for launch: `docs/baton/LAUNCH.md`.
 
 ## D137 — Baton updates itself from this repository's releases
 

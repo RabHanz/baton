@@ -1,4 +1,5 @@
 <!-- retrieved_at: 2026-10-27; source: https://raw.githubusercontent.com/Bitshank-2338/clicky-windows/6c6216b7f80a86830b967eff5edde59f4caee9c1/RELEASE-NOTES-1.6.md ; verbatim, unmodified below this line -->
+
 # Clicky 1.6 preview — original Windows features
 
 This preview extends this project's Python/Qt architecture. It does not include code, assets, prompts, account services or binaries from official HeyClicky.
