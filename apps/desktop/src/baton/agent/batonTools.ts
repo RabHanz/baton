@@ -51,7 +51,8 @@ type JobOp =
   | "stop"
   | "schedule"
   | "brief"
-  | "approvals";
+  | "approvals"
+  | "split";
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -364,6 +365,47 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "Start a job's work, only after he has said go ahead or yes to its plan in this conversation. Never on your own.",
     inputSchema: object({ id: { type: "string" } }, ["id"]),
     run: async (a) => ({ text: await host.jobs("agree", { id: str(a, "id", 200) }) }),
+  },
+  {
+    name: "job_split",
+    description:
+      "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (engineering, marketing, research, operations). Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
+    inputSchema: object(
+      {
+        id: { type: "string" },
+        parts: {
+          type: "array",
+          minItems: 1,
+          maxItems: 8,
+          items: object(
+            {
+              title: { type: "string", maxLength: 120 },
+              goal: { type: "string", maxLength: 4000 },
+              role: { type: "string", maxLength: 40 },
+            },
+            ["title", "goal"],
+          ),
+        },
+      },
+      ["id", "parts"],
+    ),
+    run: async (a) => {
+      const parts = a["parts"];
+      if (!Array.isArray(parts) || parts.length === 0 || parts.length > 8) {
+        throw new Error("parts must be one to eight parts.");
+      }
+      const clean = parts.map((p) => {
+        const part = (typeof p === "object" && p !== null ? p : {}) as Args;
+        return {
+          title: str(part, "title", 120),
+          goal: str(part, "goal", 4_000),
+          ...(typeof part["role"] === "string" && part["role"] !== ""
+            ? { role: part["role"] }
+            : {}),
+        };
+      });
+      return { text: await host.jobs("split", { id: str(a, "id", 200), parts: clean }) };
+    },
   },
   {
     name: "job_stop",

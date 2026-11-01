@@ -102,6 +102,8 @@ export const BatonJobTerms = Schema.Struct({
   scheduleTaskId: Schema.NullOr(TrimmedNonEmptyString),
   /** The provider instance the worker runs on, chosen from the pool unless he said. */
   workerInstanceId: Schema.NullOr(TrimmedNonEmptyString),
+  /** The job this is a part of (the coordinator, D148); null for a job of its own. */
+  parentId: Schema.NullOr(WorkSessionId),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -133,6 +135,7 @@ export const BATON_JOB_WS_METHODS = {
   jobRevoke: "baton.job.revoke",
   jobStop: "baton.job.stop",
   jobSchedule: "baton.job.schedule",
+  jobSplit: "baton.job.split",
 } as const;
 
 /** His words verbatim become the goal; the worker starts in plan mode (D145). */
@@ -192,3 +195,21 @@ export const BatonJobScheduleInput = Schema.Struct({
   everyMinutes: Schema.NullOr(Schema.Number.check(Schema.isGreaterThanOrEqualTo(1))),
 });
 export type BatonJobScheduleInput = typeof BatonJobScheduleInput.Type;
+
+/** One part of a job that has several: its own title and goal (his words), and optionally a pack role. */
+export const BatonJobPart = Schema.Struct({
+  title: TrimmedNonEmptyString,
+  goal: TrimmedNonEmptyString,
+  role: Schema.optionalKey(TrimmedNonEmptyString),
+});
+
+export const BatonJobSplitInput = Schema.Struct({
+  id: WorkSessionId,
+  parts: Schema.Array(BatonJobPart).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
+});
+export type BatonJobSplitInput = typeof BatonJobSplitInput.Type;
+
+export const BatonJobSplitResult = Schema.Struct({
+  started: Schema.Array(Schema.Struct({ id: WorkSessionId, threadId: ThreadId })),
+});
+export type BatonJobSplitResult = typeof BatonJobSplitResult.Type;
