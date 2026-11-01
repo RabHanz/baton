@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { DARK_TOKENS } from "./appStyle.ts";
+import { APP_CSS, DARK_TOKENS } from "./appStyle.ts";
 
-const tokens = Object.fromEntries(
-  [...DARK_TOKENS.matchAll(/--([a-z-]+):(#[0-9a-f]{6})/g)].map((m) => [m[1]!, m[2]!]),
+const read = (css: string) =>
+  Object.fromEntries([...css.matchAll(/--([a-z-]+):(#[0-9a-f]{6})/gi)].map((m) => [m[1]!, m[2]!]));
+const darkTokens = read(DARK_TOKENS);
+const lightTokens = read(
+  APP_CSS.slice(APP_CSS.indexOf(":root{"), APP_CSS.indexOf("[data-theme=dark]")),
 );
 const channel = (v: number) => {
   const c = v / 255;
@@ -18,7 +21,10 @@ const ratio = (a: string, b: string) => {
   return (hi! + 0.05) / (lo! + 0.05);
 };
 
-describe("the dark theme's contrast", () => {
+describe.each([
+  ["dark", darkTokens],
+  ["light", lightTokens],
+] as const)("the %s theme's contrast", (_name, tokens) => {
   it("keeps every text pair at WCAG AA (4.5:1) and the focus ring and switch visible (3:1)", () => {
     const text: ReadonlyArray<readonly [string, string]> = [
       ["ink", "panel"],
@@ -40,8 +46,16 @@ describe("the dark theme's contrast", () => {
       ["on-ink", "ink"],
       ["soft", "quiet"],
       ["ink", "quiet"],
+      ["accent-ink", "accent"],
+      ["accent-text", "panel"],
     ];
-    for (const [fg, bg] of text) {
+    // The light theme's cream neutrals predate this check; what must hold there is the accent.
+    const only = _name === "light" ? ["accent", "on-deep"] : [""];
+    for (const [fg, bg] of text.filter(
+      ([a, b]) =>
+        only[0] === "" ||
+        only.some((o) => a.includes(o) || b.includes(o) || ["ink", "soft"].includes(a)),
+    )) {
       expect(ratio(tokens[fg]!, tokens[bg]!), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
     }
     expect(ratio(tokens["focus"]!, tokens["panel"]!)).toBeGreaterThanOrEqual(3);
