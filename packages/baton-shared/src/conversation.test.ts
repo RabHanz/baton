@@ -1,0 +1,80 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  conversationBlock,
+  currentTarget,
+  followUpSession,
+  parseTurn,
+  routerLines,
+  searchTurns,
+  withConversation,
+  type ConversationTurn,
+} from "./conversation.ts";
+
+const turn = (
+  id: number,
+  said: string,
+  reply: string,
+  route: ConversationTurn["route"] = "answer",
+): ConversationTurn => ({
+  id,
+  at: `2026-11-01T10:0${id}:00.000Z`,
+  route,
+  said,
+  reply,
+});
+
+describe("the shared conversation", () => {
+  it("puts the last replies in full in front of a request", () => {
+    const long = `Here is the plan. ${"Step. ".repeat(100)}Finally, ship it on Friday.`;
+    const block = conversationBlock({ recent: [turn(1, "what is the plan", long)], earlier: [] });
+    expect(block).toContain("Finally, ship it on Friday.");
+    expect(withConversation("type what you just said into the chat box", block)).toMatch(
+      /his request now:\ntype what/,
+    );
+    expect(withConversation("hello", "")).toBe("hello");
+  });
+  it("finds an older turn by its words, and not one already in the recent window", () => {
+    const turns = [
+      turn(
+        1,
+        "how do I reset the Scarlett gain",
+        "Open the Focusrite Control app and lower the gain knob.",
+      ),
+      turn(2, "what is the weather", "Sunny, 22 degrees."),
+      turn(3, "what time is it", "Ten past ten."),
+    ];
+    const hits = searchTurns(turns, "the Focusrite gain again", { exclude: new Set([3]) });
+    expect(hits.map((t) => t.id)).toEqual([1]);
+    expect(searchTurns(turns, "the Focusrite gain", { exclude: new Set([1]) })).toEqual([]);
+    expect(searchTurns(turns, "the and of", { exclude: new Set() })).toEqual([]);
+  });
+  it("hands the router whole thoughts, clipped, and reads a saved line without trusting it", () => {
+    expect(routerLines([turn(1, "hi", "Hello there.")])).toEqual([
+      "He said: hi",
+      "You answered: Hello there.",
+    ]);
+    expect(parseTurn('{"id":1,"at":"x","route":"answer","said":"a","reply":"b"}')).toMatchObject({
+      id: 1,
+    });
+    expect(parseTurn('{"id":"1"}')).toBeNull();
+    expect(parseTurn("garbage")).toBeNull();
+  });
+  it("carries what the last turn was about, so 'show it' and 'tell it' follow", () => {
+    const turns: ConversationTurn[] = [
+      {
+        ...turn(1, "what is Scheduler doing", "Claude is running the tests."),
+        route: "act",
+        target: { label: "Claude on Scheduler", workSessionId: "ws-1" },
+      },
+      turn(2, "what time is it", "Ten past ten."),
+    ];
+    expect(currentTarget(turns)).toEqual({ label: "Claude on Scheduler", workSessionId: "ws-1" });
+    expect(followUpSession("show it", currentTarget(turns))).toBe("ws-1");
+    expect(followUpSession("tell it to rerun the tests", currentTarget(turns))).toBe("ws-1");
+    expect(followUpSession("show the one on Hetzner", currentTarget(turns))).toBeNull();
+    expect(conversationBlock({ recent: turns, earlier: [] })).toContain("Claude on Scheduler");
+    expect(routerLines(turns).at(-1)).toContain("Claude on Scheduler");
+    expect(parseTurn(JSON.stringify(turns[0]))?.target?.workSessionId).toBe("ws-1");
+  });
+});
