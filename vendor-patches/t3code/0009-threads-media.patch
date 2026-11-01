@@ -1,26 +1,3 @@
-diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
-index 0c63f78b16401661d35bfb99fcbe31a781c51091..91aa8b77ca606bf9881a8de79403cfbc722d0213 100644
---- a/apps/mobile/src/features/threads/ThreadFeed.tsx
-+++ b/apps/mobile/src/features/threads/ThreadFeed.tsx
-@@ -55,6 +55,7 @@ import {
-   type ScheduledTaskId,
-   type ScopedThreadRef,
- } from "@t3tools/contracts";
-+import { appendMentionedMedia } from "@t3tools/shared/mediaMentions";
- import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
- import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
- import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
-@@ -1781,7 +1782,9 @@ function renderFeedEntry(
-     const { message } = entry;
-     const isUser = message.role === "user";
-     const presentation = resolveUserMessagePresentation(message);
--    const renderedText = renderAssistantCitationsAsText(presentation.text);
-+    const citedText = renderAssistantCitationsAsText(presentation.text);
-+    const renderedText =
-+      isUser || message.streaming ? citedText : appendMentionedMedia(citedText);
-     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
-     const timestampLabel = formatMessageTime(isUser ? message.createdAt : message.updatedAt);
-     const attachments = message.attachments ?? [];
 diff --git a/apps/server/scripts/dev-replay-agent.ts b/apps/server/scripts/dev-replay-agent.ts
 index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40a35d85e9 100644
 --- a/apps/server/scripts/dev-replay-agent.ts
@@ -34,7 +11,7 @@ index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40
      id: "todo-list",
      name: "Plan and reads",
 diff --git a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c273e33a7 100644
+index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..9ca99e70dc0335aef0c459d7b41a406f47d3b816 100644
 --- a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 +++ b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 @@ -26,6 +26,7 @@ import * as Context from "effect/Context";
@@ -45,18 +22,19 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c
  import * as Schema from "effect/Schema";
  import * as SqlError from "effect/sql/SqlError";
  
-@@ -36,7 +37,10 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
+@@ -36,7 +37,11 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
  import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import * as EventSink from "./EventSink.ts";
 +import * as ServerConfig from "../config.ts";
++import { pathsInto } from "@t3tools/shared/mediaPolicy";
 +import { withMentionedMedia } from "../mentionedMedia.ts";
  import * as ProjectionStore from "./ProjectionStore.ts";
 +import * as ProjectStore from "./ProjectStore.ts";
  import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
-@@ -341,6 +345,40 @@ export const layer: Layer.Layer<
+@@ -341,6 +346,57 @@ export const layer: Layer.Layer<
      const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
      const scope = yield* Effect.scope;
      const completedTurnAnalytics = new Set<string>();
@@ -69,10 +47,23 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c
 +     * gets the file attached as markdown media, for every provider and every client. The file
 +     * read happens here, at the commit boundary; the orchestrator stays pure.
 +     */
++    // Image and video paths each run's own tool calls used, so a file the agent wrote or read can show.
++    const touchedByRun = new Map<string, Set<string>>();
++    const noteTouched = (runId: string | null | undefined, item: unknown) => {
++      if (runId === null || runId === undefined) return;
++      const found = pathsInto(item);
++      if (found.size === 0) return;
++      const set = touchedByRun.get(runId) ?? new Set<string>();
++      found.forEach((path) => set.add(path));
++      touchedByRun.delete(runId);
++      touchedByRun.set(runId, set);
++      if (touchedByRun.size > 50) touchedByRun.delete(touchedByRun.keys().next().value!);
++    };
 +    const withNamedMedia = Effect.fn("ProviderEventIngestor.withNamedMedia")(function* (
 +      threadId: ThreadId,
 +      messageId: string,
 +      text: string,
++      runId?: string | null,
 +    ) {
 +      if (Option.isNone(serverConfig) || text.length === 0) return text;
 +      const thread = yield* projections.getThread(threadId).pipe(Effect.option);
@@ -92,12 +83,16 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c
 +        messageId,
 +        text,
 +        cwd,
++        touched: [
++          ...(runId === null || runId === undefined ? [] : (touchedByRun.get(runId) ?? [])),
++        ],
++        roots: [thread.value.worktreePath ?? cwd],
 +      });
 +    });
  
      const makeDomainEvent =
        /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
-@@ -643,28 +681,44 @@ export const layer: Layer.Layer<
+@@ -643,28 +699,61 @@ export const layer: Layer.Layer<
                    nodeId: input.event.subagent.id,
                  }),
                ];
@@ -108,7 +103,12 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c
 +                message.role === "assistant" && !message.streaming
 +                  ? {
 +                      ...message,
-+                      text: yield* withNamedMedia(message.threadId, message.id, message.text),
++                      text: yield* withNamedMedia(
++                        message.threadId,
++                        message.id,
++                        message.text,
++                        message.runId,
++                      ),
 +                    }
 +                  : message;
                return [
@@ -125,11 +125,23 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c
 +            }
 +            case "turn_item.updated": {
 +              const item = input.event.turnItem;
++              if (
++                item.type === "dynamic_tool" ||
++                item.type === "command_execution" ||
++                item.type === "file_change"
++              ) {
++                noteTouched(item.runId, item);
++              }
 +              const turnItem =
 +                item.type === "assistant_message" && !item.streaming
 +                  ? {
 +                      ...item,
-+                      text: yield* withNamedMedia(item.threadId, item.messageId, item.text),
++                      text: yield* withNamedMedia(
++                        item.threadId,
++                        item.messageId,
++                        item.text,
++                        item.runId,
++                      ),
 +                    }
 +                  : item;
                return [
@@ -148,11 +160,209 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c
              case "runtime_request.updated":
                return [
                  yield* makeDomainEvent(input, {
+diff --git a/apps/web/src/components/chat/ChatMarkdownMedia.tsx b/apps/web/src/components/chat/ChatMarkdownMedia.tsx
+index f2740de785b298f2c2db0b8bebdf390c66f0b232..b34708ee6e7b52482e8a0179cda0878f9ad1991b 100644
+--- a/apps/web/src/components/chat/ChatMarkdownMedia.tsx
++++ b/apps/web/src/components/chat/ChatMarkdownMedia.tsx
+@@ -125,10 +125,7 @@ export function ChatMarkdownImageFallback(props: {
+   const content = (
+     <span
+       data-markdown-copy={props.copyMarkdown}
+-      className={cn(
+-        CHAT_MARKDOWN_MEDIA_LAYOUT_CLASS_NAME,
+-        "rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-xs text-muted-foreground",
+-      )}
++      className={cn(CHAT_MARKDOWN_MEDIA_LAYOUT_CLASS_NAME, "text-xs text-muted-foreground")}
+     >
+       <ChatMarkdownMediaUnavailableLabel alt={props.alt} kind={props.kind} detail={props.detail} />
+     </span>
+@@ -236,6 +233,17 @@ export function ChatMarkdownImage(props: {
+       />
+     );
+   }
++  // A picture that will not load is one quiet line of text, never an empty frame.
++  if (failed) {
++    return (
++      <ChatMarkdownImageFallback
++        alt={props.alt}
++        copyMarkdown={props.copyMarkdown}
++        actionsSource={props.actionsSource}
++        detail={props.unavailableDetail}
++      />
++    );
++  }
+   return (
+     <MediaActions source={props.actionsSource}>
+       <span
+@@ -283,6 +291,16 @@ export function ChatMarkdownVideo(props: {
+   readonly actionsSource?: MediaActionSource | undefined;
+   readonly onRetry?: (() => Promise<unknown>) | undefined;
+ }) {
++  if (props.sourceFailed === true && props.src === null) {
++    return (
++      <ChatMarkdownImageFallback
++        alt={props.alt}
++        kind="video"
++        copyMarkdown={props.copyMarkdown}
++        actionsSource={props.actionsSource}
++      />
++    );
++  }
+   return (
+     <MediaVideoPlayer
+       key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
+diff --git a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
+index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70b5b38b89 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
++++ b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
+@@ -36,9 +36,12 @@ describe("long active tool groups", () => {
+       expect(live).toBeDefined();
+       expect(live?.entry.id).toBe("work-999");
+       expect(live && liveWorkEntryLabel(live.entry, undefined, live.active)).toContain("999");
+-      expect(live?.thought?.id).toBe("work-998");
++      // The newest thought is a row of its own; the rest stay in the group, in order.
++      expect(rows.filter((row) => row.kind === "thought").map((row) => row.id)).toEqual([
++        "thought:work-998",
++      ]);
+       expect(live?.groupedEntries.map(({ id }) => id)).toEqual(
+-        timelineEntries.map(({ entry }) => entry.id),
++        timelineEntries.map(({ entry }) => entry.id).filter((id) => id !== "work-998"),
+       );
+       expect(live?.groupId).toBe("work-group:work-entry-0");
+       const details = rows.filter((row) => row.kind === "work");
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index c9aec993bcd869941e08e49b24b923c12c2d7bed..bc037671c8d6180b52668a5f3ad84d2485186d00 100644
+index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a53dc53e2 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-@@ -2550,6 +2550,32 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -119,8 +119,9 @@ describe("deriveMessagesTimelineRows", () => {
+     const afterSteer = rows([first, steer]);
+     expect(afterSteer.some((row) => row.kind === "work-live")).toBe(false);
+     expect(afterSteer.at(-1)?.kind).toBe("thinking");
+-    expect(afterSteer.find((row) => row.kind === "work")).toMatchObject({
+-      groupedEntries: [{ id: "first-thought", toolLifecycleStatus: "completed" }],
++    expect(afterSteer.find((row) => row.kind === "thought")).toMatchObject({
++      id: "thought:first-thought",
++      text: "first-thought",
+     });
+     for (const entries of [
+       [first, steer, next],
+@@ -1669,6 +1670,103 @@ describe("deriveMessagesTimelineRows", () => {
+     expect(rows.some((row) => row.kind === "thinking")).toBe(false);
+   });
+ 
++  it("keeps a thinking summary open and in place through 20 streaming updates and the turn settling", () => {
++    const runId = RunId.make("thinking-run");
++    const at = "2026-01-01T00:00:02Z";
++    const thought = (text: string, status: "inProgress" | "completed"): TimelineEntry => ({
++      kind: "work",
++      id: "thought-1",
++      createdAt: at,
++      entry: {
++        id: "thought-1",
++        runId,
++        createdAt: at,
++        label: "Thinking",
++        tone: "thinking",
++        itemType: "reasoning",
++        detail: text,
++        toolLifecycleStatus: status,
++      },
++    });
++    const tool: TimelineEntry = {
++      kind: "work",
++      id: "tool-1",
++      createdAt: "2026-01-01T00:00:03Z",
++      entry: {
++        id: "tool-1",
++        runId,
++        createdAt: "2026-01-01T00:00:03Z",
++        label: "Ran ls",
++        tone: "tool",
++        command: "ls",
++        toolLifecycleStatus: "completed",
++      },
++    };
++    const user: TimelineEntry = {
++      kind: "message",
++      id: "u",
++      createdAt: "2026-01-01T00:00:01Z",
++      message: {
++        id: MessageId.make("u"),
++        role: "user",
++        text: "go",
++        runId,
++        streaming: false,
++        createdAt: "2026-01-01T00:00:01Z",
++        updatedAt: "2026-01-01T00:00:01Z",
++      },
++    };
++    const derive = (
++      entries: ReadonlyArray<TimelineEntry>,
++      isWorking: boolean,
++      closed?: ReadonlySet<string>,
++    ) =>
++      deriveMessagesTimelineRows({
++        timelineEntries: entries,
++        runningRunId: isWorking ? runId : null,
++        isWorking,
++        activeTurnStartedAt: at,
++        turnDiffSummaries: [],
++        supportsConversationRollback: false,
++        ...(closed ? { closedThoughtIds: closed } : {}),
++      });
++    for (let i = 1; i <= 20; i += 1) {
++      const entries = [
++        user,
++        thought(`Thinking step ${i}`, "inProgress"),
++        ...(i > 10 ? [tool] : []),
++      ];
++      const row = derive(entries, true).find((r) => r.kind === "thought");
++      expect(row, `update ${i}`).toMatchObject({
++        id: "thought:thought-1",
++        open: true,
++        text: `Thinking step ${i}`,
++      });
++    }
++    // The turn settles: the same row, still open, still the same id.
++    const settled = derive([user, thought("Thinking step 20", "completed"), tool], false).find(
++      (r) => r.kind === "thought",
++    );
++    expect(settled).toMatchObject({ id: "thought:thought-1", open: true });
++    // He can close it, and it stays closed; the next turn folds it.
++    expect(
++      derive([user, thought("x", "completed"), tool], false, new Set(["thought:thought-1"])).find(
++        (r) => r.kind === "thought",
++      ),
++    ).toMatchObject({ open: false });
++    const next: TimelineEntry = {
++      ...user,
++      id: "u2",
++      createdAt: "2026-01-01T00:05:00Z",
++      message: { ...user.message, id: MessageId.make("u2"), createdAt: "2026-01-01T00:05:00Z" },
++    } as TimelineEntry;
++    expect(
++      derive([user, thought("x", "completed"), tool, next], false).some(
++        (r) => r.kind === "thought",
++      ),
++    ).toBe(false);
++  });
++
+   it("carries the latest thought on the live row while a later tool runs", () => {
+     type WorkEntry = Extract<
+       Parameters<typeof deriveMessagesTimelineRows>[0]["timelineEntries"][number],
+@@ -1719,8 +1817,10 @@ describe("deriveMessagesTimelineRows", () => {
+ 
+     expect(rows.find((row) => row.kind === "work-live")).toMatchObject({
+       entry: { id: "running-command" },
+-      thought: { id: "new-thought" },
+     });
++    // The latest thought is a row of its own, open, ahead of the activity row.
++    const thoughts = rows.filter((row) => row.kind === "thought");
++    expect(thoughts.at(-1)).toMatchObject({ id: "thought:new-thought", open: true });
+   });
+ 
+   it("keeps an actually running tool in the shared activity row", () => {
+@@ -2550,6 +2650,32 @@ describe("deriveMessagesTimelineRows", () => {
        }
      },
    );
@@ -185,8 +395,39 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..bc037671c8d6180b52668a5f3ad84d24
  });
  
  describe("v2 run and attempt history", () => {
+@@ -4179,6 +4305,7 @@ describe("live subagents after their parent turn settles", () => {
+       expect(rows.map((row) => row.id)).toEqual([
+         "user",
+         `turn-fold:${runId}`,
++        "thought:reasoning",
+         "child",
+         "assistant",
+       ]);
+@@ -4187,7 +4314,13 @@ describe("live subagents after their parent turn settles", () => {
+ 
+   it("keeps a launch batch visible while any member is still running", () => {
+     const rows = rowsFor([child("done", 3, "completed"), child("live", 4, "running")]);
+-    expect(rows.map((row) => row.id)).toEqual(["user", `turn-fold:${runId}`, "done", "assistant"]);
++    expect(rows.map((row) => row.id)).toEqual([
++      "user",
++      `turn-fold:${runId}`,
++      "thought:reasoning",
++      "done",
++      "assistant",
++    ]);
+     expect(rows.find((row) => row.id === "done")).toMatchObject({
+       subagents: [{ item: { id: "done" } }, { item: { id: "live" } }],
+     });
+@@ -4337,6 +4470,7 @@ describe("subagent continued by a later turn", () => {
+       "answer-1",
+       "prompt-2",
+       `turn-fold:${run2}`,
++      "thought:reasoning-2",
+       "closing-2",
+     ]);
+   });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..1538b54d441c9df8e742206c398d722430b8e34a 100644
+index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d9b726a70 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -27,6 +27,7 @@ import {
@@ -197,7 +438,22 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..1538b54d441c9df8e742206c398d7224
    type ToolGroupSummaryKind,
  } from "@t3tools/client-runtime/work-log/presentation";
  import {
-@@ -551,6 +552,8 @@ type MessagesTimelineRowContent =
+@@ -531,6 +532,14 @@ type MessagesTimelineRowContent =
+       /** A running compaction owns the working row, so its divider appears only once it ends. */
+       compacting?: true;
+     }
++  | {
++      /** A thinking summary on its own: open for the latest turn, whatever the group around it does. */
++      kind: "thought";
++      id: string;
++      createdAt: string;
++      text: string;
++      open: boolean;
++    }
+   | {
+       kind: "thinking";
+       id: string;
+@@ -551,6 +560,8 @@ type MessagesTimelineRowContent =
        toolSurface?: WorkLogEntry["toolSurface"];
        toolIcon?: WorkLogEntry["toolIcon"];
        hasFailure: boolean;
@@ -206,7 +462,92 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..1538b54d441c9df8e742206c398d7224
      }
    | {
        kind: "turn-fold";
-@@ -1925,6 +1928,9 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1396,6 +1407,8 @@ export function deriveMessagesTimelineRows(input: {
+   expandedRunIds?: ReadonlySet<RunId>;
+   expandedAttemptIds?: ReadonlySet<RunAttemptId>;
+   expandedWorkGroupIds?: ReadonlySet<string>;
++  /** Thinking rows he closed, by item id; every other one of the latest turn is open. */
++  closedThoughtIds?: ReadonlySet<string>;
+   isWorking: boolean;
+   /** Native subagent work has no app run; runless entries form the live response. */
+   runlessWorkActive?: boolean;
+@@ -1664,16 +1677,49 @@ export function deriveMessagesTimelineRows(input: {
+   let hasActivityRow = false;
+   const hasActiveCompaction =
+     activeCompactionEntry !== undefined || (activeRunIsCompaction && !compactionRunFinished);
++  // Thinking summaries are rows of their own, keyed by their item id, so a regroup or a status change
++  // cannot close one. Open for the latest turn until he closes it; older turns fold.
++  const lastUserAt = timelineEntries.findLast(
++    (entry) => entry.kind === "message" && entry.message.role === "user",
++  )?.createdAt;
++  const hasThoughtText = (entry: WorkLogEntry) =>
++    entry.itemType === "reasoning" && Boolean(entry.detail?.trim());
++  /** One thinking summary is lifted out: the latest turn's newest. Earlier ones stay in their groups. */
++  const latestThoughtEntryId = timelineEntries.findLast(
++    (entry) =>
++      entry.kind === "work" &&
++      hasThoughtText(entry.entry) &&
++      (lastUserAt === undefined || entry.createdAt >= lastUserAt),
++  );
++  const isThought = (entry: WorkLogEntry) =>
++    latestThoughtEntryId?.kind === "work" && entry.id === latestThoughtEntryId.entry.id;
++  const thoughtRowOf = (
++    entry: WorkLogEntry,
++  ): Extract<MessagesTimelineRow, { kind: "thought" }> => ({
++    kind: "thought",
++    id: `thought:${entry.id}`,
++    createdAt: entry.createdAt,
++    text: entry.detail?.trim() ?? "",
++    open: !(input.closedThoughtIds?.has(`thought:${entry.id}`) ?? false),
++  });
+   const appendActiveWorkRows = () => {
+     if (activeWorkRow === null) return;
+-    nextRows.push(activeWorkRow);
++    nextRows.push(...activeWorkRow.groupedEntries.filter(isThought).map(thoughtRowOf));
++    const { thought: _thought, ...liveRow } = activeWorkRow as typeof activeWorkRow & {
++      thought?: unknown;
++    };
++    const activeWorkRow_ = {
++      ...liveRow,
++      groupedEntries: activeWorkRow.groupedEntries.filter((entry) => !isThought(entry)),
++    } as typeof activeWorkRow;
++    nextRows.push(activeWorkRow_);
+     hasActivityRow ||= activeWorkRow.active;
+     if (!activeWorkRow.expanded) return;
+     nextRows.push(
+       expandedWorkGroupRow(
+         activeWorkRow.groupId,
+         activeWorkRow.createdAt,
+-        activeWorkRow.groupedEntries,
++        activeWorkRow_.groupedEntries,
+       ),
+     );
+   };
+@@ -1726,6 +1772,10 @@ export function deriveMessagesTimelineRows(input: {
+     }
+ 
+     if (collapsedEntryIds.has(timelineEntry.id)) {
++      // A turn that is folded away still shows its thinking, in its own row.
++      if (timelineEntry.kind === "work" && isThought(timelineEntry.entry)) {
++        nextRows.push(thoughtRowOf(timelineEntry.entry));
++      }
+       continue;
+     }
+ 
+@@ -1843,9 +1893,11 @@ export function deriveMessagesTimelineRows(input: {
+         groupedEntries.push(nextEntry.entry);
+         cursor += 1;
+       }
+-      const visibleGroupedEntries = groupedEntries.filter((entry) =>
++      const allVisibleEntries = groupedEntries.filter((entry) =>
+         workEntryIsVisibleInGroup(entry, workEntryIsInActiveRun(entry)),
+       );
++      const visibleGroupedEntries = allVisibleEntries.filter((entry) => !isThought(entry));
++      nextRows.push(...allVisibleEntries.filter(isThought).map(thoughtRowOf));
+       if (visibleGroupedEntries.length > 0) {
+         const activeInProgressToolEntries = visibleGroupedEntries.filter(workEntryIsInActiveRun);
+         if (activeInProgressToolEntries.length > 0) {
+@@ -1925,6 +1977,9 @@ export function deriveMessagesTimelineRows(input: {
              hasFailure:
                latestToolEntry !== undefined &&
                workEntryDisplayIndicatesToolFailure(latestToolEntry),
@@ -216,7 +557,18 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..1538b54d441c9df8e742206c398d7224
            });
            if (expanded) {
              nextRows.push(
-@@ -2493,7 +2499,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+@@ -2391,6 +2446,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+       return (
+         a.createdAt === (b as typeof a).createdAt && a.compacting === (b as typeof a).compacting
+       );
++    case "thought": {
++      const bt = b as typeof a;
++      return a.text === bt.text && a.open === bt.open && a.createdAt === bt.createdAt;
++    }
+     case "thinking": {
+       const bt = b as typeof a;
+       return a.createdAt === bt.createdAt && a.groupId === bt.groupId && a.expanded === bt.expanded;
+@@ -2493,7 +2552,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
          a.summaryKind === bw.summaryKind &&
          a.toolSurface === bw.toolSurface &&
          Equal.equals(a.toolIcon, bw.toolIcon) &&
@@ -226,30 +578,58 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..1538b54d441c9df8e742206c398d7224
        );
      }
  
-diff --git a/apps/web/src/components/chat/TimelineAssistantRows.tsx b/apps/web/src/components/chat/TimelineAssistantRows.tsx
-index 458d84b9e982bd7ff75f220b040e19dc5829898c..172bb5640a2401f54f4afcd81d2d463422789ac2 100644
---- a/apps/web/src/components/chat/TimelineAssistantRows.tsx
-+++ b/apps/web/src/components/chat/TimelineAssistantRows.tsx
-@@ -1,3 +1,4 @@
-+import { appendMentionedMedia } from "@t3tools/shared/mediaMentions";
- import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
- import { type RunId } from "@t3tools/contracts";
- import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
-@@ -32,7 +33,11 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
-     row.projectedItem?.item.id,
-   );
-   const text = liveText ?? row.message.text;
--  const messageText = text || (row.message.streaming ? "" : "(empty response)");
-+  const messageText = row.message.streaming
-+    ? text
-+    : text
-+      ? appendMentionedMedia(text)
-+      : "(empty response)";
- 
-   return (
-     <>
+diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
+index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2ba940b99 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.tsx
++++ b/apps/web/src/components/chat/MessagesTimeline.tsx
+@@ -107,6 +107,7 @@ import {
+   WorkGroupSection,
+   WorkingTimelineRow,
+   ThinkingTimelineRow,
++  ThoughtTimelineRow,
+   LiveWorkEntryTimelineRow,
+   WorkGroupToggleTimelineRow,
+ } from "./TimelineWorkGroupRows";
+@@ -511,6 +512,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
+       return next;
+     });
+   };
++  const [closedThoughtIds, setClosedThoughtIds] = useState<ReadonlySet<string>>(() => new Set());
++  const onToggleThought = (rowId: string) =>
++    setClosedThoughtIds((existing) => {
++      const next = new Set(existing);
++      if (!next.delete(rowId)) next.add(rowId);
++      return next;
++    });
+   const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
+     suspendEndScrollMaintenanceForDisclosure(anchorKey);
+     setExpandedWorkGroupIds((existing) => {
+@@ -672,6 +680,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+     expandedRunIds: visibleExpandedRunIds,
+     expandedAttemptIds: visibleExpandedAttemptIds,
+     expandedWorkGroupIds,
++    closedThoughtIds,
+     isWorking,
+     runlessWorkActive,
+     activeTurnStartedAt,
+@@ -1044,6 +1053,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+     onToggleTurnFold,
+     onToggleAttemptFold,
+     onToggleWorkGroup,
++    onToggleThought,
+     onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
+     onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
+     retryableWorkspacePreparationRunIds,
+@@ -1489,6 +1499,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
+           {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
+         </WorkLogBlock>
+       ) : null}
++      {row.kind === "thought" ? <ThoughtTimelineRow row={row} /> : null}
+       {row.kind === "turn-fold" ? <TurnFoldTimelineRow key={row.id} row={row} /> : null}
+       {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
+       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
 diff --git a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-index a440b62a584d24bdc4a4e62e942589ffc0be2789..4e8df5db8192bad18fa000a97926175b9fa493ff 100644
+index a440b62a584d24bdc4a4e62e942589ffc0be2789..a42238da71defe52d339c1c0f13c55d0dc4632d1 100644
 --- a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 +++ b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 @@ -2,7 +2,11 @@ import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
@@ -265,16 +645,68 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..4e8df5db8192bad18fa000a97926175b
  import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
  import { observeResize } from "~/lib/observeResize";
  import { tickTextContent } from "~/lib/tickTextContent";
-@@ -500,7 +504,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -11,7 +15,7 @@ import { memo, use, useLayoutEffect, useRef, useState, type ReactNode } from "re
+ import { LegendList, type LegendListRef } from "@legendapp/list/react";
+ import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
+ import ChatMarkdown from "../ChatMarkdown";
+-import { Minimize2Icon, XIcon } from "lucide-react";
++import { ChevronRightIcon, Minimize2Icon, XIcon } from "lucide-react";
+ import { Button } from "../ui/button";
+ import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
+ import {
+@@ -357,6 +361,41 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
+   );
+ }
+ 
++/** A thinking summary: open while it is the latest turn's, closed only by him or by the next turn. */
++export function ThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thought" }> }) {
++  const ctx = use(TimelineRowCtx);
++  return (
++    <section aria-label="Thinking" className="py-0.5">
++      <button
++        type="button"
++        aria-expanded={row.open}
++        className="flex min-h-6 w-full cursor-pointer items-center gap-2 rounded-md text-left text-muted-foreground/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
++        onClick={() => ctx.onToggleThought(row.id)}
++      >
++        <ToolActivityIconView
++          icon={undefined}
++          fallbackName="brain"
++          className="block size-4 shrink-0 stroke-2"
++          muted
++        />
++        <span className="text-sm">Thought</span>
++        <ChevronRightIcon
++          aria-hidden
++          className={cn(
++            "size-3 shrink-0 opacity-70 transition-transform duration-200",
++            row.open && "rotate-90",
++          )}
++        />
++      </button>
++      {row.open ? (
++        <div className="max-h-72 overflow-y-auto pl-6 pr-2 text-sm text-muted-foreground">
++          <ChatMarkdown text={row.text} cwd={ctx.markdownCwd} parseRawHtml={false} />
++        </div>
++      ) : null}
++    </section>
++  );
++}
++
+ export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
+   const ctx = use(TimelineRowCtx);
+   const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+@@ -500,7 +539,8 @@ export function LiveWorkEntryTimelineRow({
    if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
  
    const failed = workEntryDisplayIndicatesToolFailure(row.entry);
 -  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "") : "";
-+  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
++  const thoughtLine =
++    row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
    const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
  
    return (
-@@ -531,7 +535,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -531,7 +571,7 @@ export function LiveWorkEntryTimelineRow({
              </span>
            }
            label={
@@ -283,7 +715,7 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..4e8df5db8192bad18fa000a97926175b
                <ChatMarkdown
                  inline
                  text={thoughtLine}
-@@ -585,17 +589,40 @@ export function WorkGroupToggleTimelineRow({
+@@ -585,17 +625,40 @@ export function WorkGroupToggleTimelineRow({
    row: Extract<TimelineRow, { kind: "work-toggle" }>;
  }) {
    const ctx = use(TimelineRowCtx);
@@ -334,6 +766,30 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..4e8df5db8192bad18fa000a97926175b
    );
  }
  
+diff --git a/apps/web/src/components/chat/timelineRowContext.ts b/apps/web/src/components/chat/timelineRowContext.ts
+index 6334ef53bd0500a8b15b00940bb370f1babd8163..c86958ca1565f93e5328e510c48c343e5e557b5c 100644
+--- a/apps/web/src/components/chat/timelineRowContext.ts
++++ b/apps/web/src/components/chat/timelineRowContext.ts
+@@ -90,6 +90,7 @@ export interface TimelineRowSharedState {
+   onFileDownload: (attachment: ChatFileAttachment) => void;
+   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
+   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
++  onToggleThought: (rowId: string) => void;
+   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
+   onCancelWorktreeSetup: (() => void) | null;
+   retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
+diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
+index fb5e12b08372b816f49dc830b0e5433ee23778c3..f45f002e4359665ad1bd71a4465c9d5d3a905e80 100644
+--- a/docs/user/thread-sidebar.md
++++ b/docs/user/thread-sidebar.md
+@@ -297,3 +297,7 @@ several selected threads together. Choose **Wake thread** to bring a thread back
+ A snoozed thread keeps working and stays hidden until its wake time, even while
+ its agent wakes itself for background work. It comes back early only when it needs
+ an approval or answer from you, when a run fails, or when you send it a message.
++
++## Pictures, videos and thinking in a thread
++
++A picture or video a session makes, reads or screenshots appears in the reply that mentions it, wherever on the machine it lives, up to a size limit and never from private folders such as `.ssh` or files named like secrets. A name that does not resolve stays plain text. The official T3 Code phone app shows these pictures and videos, because the server attaches them, but it cannot show the open "thinking" row or the quiet one-line note for a picture that failed to load: those are part of the web and desktop apps. Open the thread at app.t3.codes in your phone's browser to see them.
 diff --git a/packages/client-runtime/src/work-log/presentation.test.ts b/packages/client-runtime/src/work-log/presentation.test.ts
 index 28caf074e4fc010c249c9b03e0307e754f8e700e..a67d78bf1a93d02783708c85cb6119918ce0b23f 100644
 --- a/packages/client-runtime/src/work-log/presentation.test.ts
@@ -379,13 +835,17 @@ index 1d884f0b54eb9b33bddd5d8a23ce3af93b05c587..ded798bc82c8d9682bd50566a0fee5b4
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index e3d0b2ce57cf7087590490a50ab4deb302dfe267..04f38a7080d87aed1004d76ed78911457424547d 100644
+index e3d0b2ce57cf7087590490a50ab4deb302dfe267..54a382e7e44f725aea5274afb31c2f65e71a72e0 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -299,6 +299,10 @@
+@@ -299,6 +299,14 @@
        "types": "./src/previewViewport.ts",
        "import": "./src/previewViewport.ts"
      },
++    "./mediaPolicy": {
++      "types": "./src/mediaPolicy.ts",
++      "import": "./src/mediaPolicy.ts"
++    },
 +    "./mediaMentions": {
 +      "types": "./src/mediaMentions.ts",
 +      "import": "./src/mediaMentions.ts"

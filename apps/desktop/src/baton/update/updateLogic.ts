@@ -73,7 +73,7 @@ export const updateControls = (
   countdown: { readonly restartAt: number; readonly waiting: boolean } | null = null,
   backAfter: string | null = null,
 ): ReadonlyArray<HomeControl> => {
-  const base = { id: "u.act", section: "Updates", label: "Baton updates" } as const;
+  const base = { id: "u.act", section: "Updates", label: "Tessaya updates" } as const;
   if (!state.enabled) {
     return [
       {
@@ -96,8 +96,8 @@ export const updateControls = (
       {
         ...base,
         hint: countdown.waiting
-          ? `Baton is updating to ${state.downloadedVersion}. It restarts as soon as this conversation ends.`
-          : `Baton is updating to ${state.downloadedVersion} and restarts at ${at}. It reopens this window.`,
+          ? `Tessaya is updating to ${state.downloadedVersion}. It restarts as soon as this conversation ends.`
+          : `Tessaya is updating to ${state.downloadedVersion} and restarts at ${at}. It reopens this window.`,
         kind: "action",
         button: "Restart now",
         secondary: "Later",
@@ -110,7 +110,7 @@ export const updateControls = (
       {
         ...base,
         hint: pending
-          ? `${state.downloadedVersion} installs when Baton is not mid-conversation.`
+          ? `${state.downloadedVersion} installs when Tessaya is not mid-conversation.`
           : `Version ${state.downloadedVersion} is downloaded and waits. You are on ${state.currentVersion}.`,
         kind: "action",
         button: pending ? "Waiting…" : "Install and restart",

@@ -1,0 +1,80 @@
+name: Tessaya upgrade proof
+
+# Installs the latest published Baton release silently, then a fresh Tessaya build over it, and checks
+# the upgrade replaced the old install (scripts/baton/upgrade-proof.ps1). The Tessaya build is made the
+# way the release workflow makes it, at a version above any real one so it counts as the upgrade.
+
+on:
+  pull_request:
+    paths:
+      - scripts/baton/apply-release-branding.sh
+      - scripts/baton/upgrade-proof.ps1
+      - apps/desktop/resources/installer.nsh
+      - scripts/build-desktop-artifact.ts
+      - .github/workflows/baton-upgrade-proof.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply Tessaya branding (build only, not committed)
+        shell: bash
+        run: bash scripts/baton/apply-release-branding.sh
+
+      - name: T3 Connect public config
+        shell: bash
+        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the previous release's installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release list -R "$GITHUB_REPOSITORY" --limit 50 --json tagName --jq '[.[] | select(.tagName | startswith("baton-v"))][0].tagName')"
+          echo "previous release: $tag"
+          mkdir previous
+          gh release download "$tag" -R "$GITHUB_REPOSITORY" --dir previous --pattern '*-x64.exe'
+          ls previous
+
+      - name: Build the Tessaya installer
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 \
+            --build-version 99.0.0 --output-dir release --verbose
+          ls release
+
+      - name: Upgrade, then check
+        shell: pwsh
+        run: |
+          $old = (Get-ChildItem previous -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
+          $new = (Get-ChildItem release -Filter 'Tessaya-99.0.0-x64.exe').FullName
+          ./scripts/baton/upgrade-proof.ps1 -Old $old -New $new

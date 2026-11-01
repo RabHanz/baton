@@ -148,7 +148,7 @@ describe("adopting a session", () => {
   );
 });
 
-describe("what Baton may do to it", () => {
+describe("what Tessaya may do to it", () => {
   it.effect("refuses to type into a session whose runtime did not claim it", () =>
     Effect.gen(function* () {
       const service = yield* AdoptedSessionService;

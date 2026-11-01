@@ -36,7 +36,7 @@ for f in embedding_model melspectrogram; do
     "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/$f.tflite"
 done
 
-python "$here/fetch_data.py"
+if [ "${CLEAN:-0}" = "1" ]; then python "$here/fetch_data_clean.py"; else python "$here/fetch_data.py"; fi
 python "$here/make_config.py" "$WORD" "$N_SAMPLES" "$STEPS" > "$WORD.yaml"
 df -h . | tail -1
 

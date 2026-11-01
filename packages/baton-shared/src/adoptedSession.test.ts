@@ -107,7 +107,7 @@ describe("declared capabilities", () => {
       capabilities: HERDR_CAPABILITIES,
       capability: "approvals",
     });
-    expect(refusal).toContain("approvals belong to a provider session Baton started");
+    expect(refusal).toContain("approvals belong to a provider session Tessaya started");
     expect(
       refuseCapability({ capabilities: HERDR_CAPABILITIES, capability: "sendInput" }),
     ).toBeNull();

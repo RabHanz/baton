@@ -65,6 +65,8 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
   acpRegistryIconUrl?: string | undefined;
   showBadge?: boolean;
   badgeContent?: "initials" | "none";
+  /** Overrides the badge letters, so two accounts of one provider can be told apart. */
+  badgeText?: string | undefined;
   size?: "default" | "compact";
   className?: string;
   iconClassName?: string;
@@ -132,7 +134,9 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
           style={{ borderColor: indicatorBackground }}
           aria-hidden
         >
-          {badgeContent === "initials" ? providerInstanceInitials(props.displayName) : null}
+          {badgeContent === "initials"
+            ? (props.badgeText ?? providerInstanceInitials(props.displayName))
+            : null}
         </span>
       ) : null}
     </span>

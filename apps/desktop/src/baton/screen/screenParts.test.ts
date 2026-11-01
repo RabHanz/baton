@@ -46,6 +46,15 @@ describe("claudeVision", () => {
     expect(args).not.toContain("--bare"); // --bare would require an API key
   });
 
+  it("asks for medium effort on Opus, and none of the fast router model", () => {
+    const opus = visionArgs("/tmp/p.txt", "claude-opus-5-5");
+    expect(opus.slice(opus.indexOf("--effort"), opus.indexOf("--effort") + 2)).toEqual([
+      "--effort",
+      "medium",
+    ]);
+    expect(visionArgs("/tmp/p.txt", "haiku")).not.toContain("--effort");
+  });
+
   it("sends images as base64 blocks", () => {
     const line = JSON.parse(
       userMessage([

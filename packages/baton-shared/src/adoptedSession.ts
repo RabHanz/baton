@@ -121,12 +121,12 @@ export const HERDR_CAPABILITIES: AdoptedSessionCapabilities = {
 /** Why a capability is missing, in words a person can act on. */
 const CAPABILITY_REASONS: Readonly<Record<AdoptedSessionCapability, string>> = {
   readConversation:
-    "this session was not started by Baton, so there is no structured conversation to read — only what is on the terminal.",
-  sendInput: "its runtime does not allow Baton to type into this pane.",
+    "this session was not started by Tessaya, so there is no structured conversation to read — only what is on the terminal.",
+  sendInput: "its runtime does not allow Tessaya to type into this pane.",
   approvals:
-    "approvals belong to a provider session Baton started; an adopted terminal has none to answer.",
-  diffs: "diffs and checkpoints come from a thread Baton owns, and this one it does not.",
-  stop: "its runtime does not allow Baton to stop it; stop it where it was started.",
+    "approvals belong to a provider session Tessaya started; an adopted terminal has none to answer.",
+  diffs: "diffs and checkpoints come from a thread Tessaya owns, and this one it does not.",
+  stop: "its runtime does not allow Tessaya to stop it; stop it where it was started.",
   showTerminal: "its runtime cannot surface a terminal for this session.",
 };
 

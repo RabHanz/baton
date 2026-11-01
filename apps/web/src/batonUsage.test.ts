@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { batonUsageSummaries } from "./batonUsage";
 
-describe("the limits Baton's window shows", () => {
+describe("the limits Tessaya's window shows", () => {
   it("names each window the way the tile does, with when it resets", () => {
     const out = batonUsageSummaries([
       {

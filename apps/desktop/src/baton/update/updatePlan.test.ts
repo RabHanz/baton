@@ -5,7 +5,7 @@ import { COUNTDOWN_MS, nextStep, SNOOZE_MS, type Phase } from "./updatePlan.ts";
 const idle: Phase = { kind: "idle" };
 const base = { ready: true, quiet: true, now: 1_000, phase: idle, restartNow: false };
 
-describe("when Baton restarts itself", () => {
+describe("when Tessaya restarts itself", () => {
   it("does nothing until an update is downloaded", () => {
     expect(nextStep({ ...base, ready: false })).toBe("none");
   });

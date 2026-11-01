@@ -30,7 +30,7 @@ describe("companion windows", () => {
 });
 
 describe("which window opening the sessions reveals", () => {
-  it("is T3's, never Baton's own, so with only Baton's window up a new one is made", () => {
+  it("is T3's, never Tessaya's own, so with only Tessaya's window up a new one is made", () => {
     const baton = {};
     const t3 = {};
     const aux = {};

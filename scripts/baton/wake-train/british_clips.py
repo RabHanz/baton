@@ -32,6 +32,16 @@ VOICES = {
     "northern_english_male": ("en_GB-northern_english_male-medium", 1),
     "southern_english_female": ("en_GB-southern_english_female-low", 1),
 }
+# CLEAN=1: only voices whose dataset licence allows an MIT release (CC BY 4.0 or public domain).
+# Left out: semaine (CC BY-NC-SA), northern_english_male and southern_english_female (CC BY-SA),
+# jenny_dioco and alan (licence "see the page", unverified).
+if os.environ.get("CLEAN") == "1":
+    VOICES = {
+        "vctk": ("en_GB-vctk-medium", 99),
+        "aru": ("en_GB-aru-medium", 12),
+        "alba": ("en_GB-alba-medium", 1),
+        "cori": ("en_GB-cori-medium", 1),
+    }
 LOADED = {}
 
 

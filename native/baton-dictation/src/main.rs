@@ -50,11 +50,29 @@ fn emit(event: Value) {
     let _ = out.flush();
 }
 
+/// A hotkey setting as a list: null, one string, or an array of strings.
+fn keys_list<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Keys {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match Option::<Keys>::deserialize(deserializer)? {
+        None => Vec::new(),
+        Some(Keys::One(key)) => vec![key],
+        Some(Keys::Many(keys)) => keys,
+    })
+}
+
 #[derive(Deserialize, Default, Clone)]
 struct Config {
     model: Option<PathBuf>,
-    hold: Option<String>,
-    toggle: Option<String>,
+    /// One key or several: any of them holds. The desktop sends a list; an older one sent a string.
+    #[serde(default, deserialize_with = "keys_list")]
+    hold: Vec<String>,
+    #[serde(default, deserialize_with = "keys_list")]
+    toggle: Vec<String>,
     device: Option<String>,
     /// One input of a multi-input interface: the AT2020 is input 1 of the Scarlett.
     channel: Option<u16>,
@@ -337,19 +355,19 @@ impl Drop for Keys {
 }
 
 fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String> {
-    if config.hold.is_none() && config.toggle.is_none() {
+    if config.hold.is_empty() && config.toggle.is_empty() {
         return Ok(None);
     }
     // `new_with_blocking`: the chord must not also reach the focused app.
     let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
-    let register = |text: &Option<String>| -> Result<_, String> {
-        match text {
-            Some(text) => {
+    let register = |texts: &Vec<String>| -> Result<Vec<_>, String> {
+        texts
+            .iter()
+            .map(|text| {
                 let hotkey: Hotkey = text.parse().map_err(|e| format!("{text}: {e}"))?;
-                manager.register(hotkey).map(Some).map_err(|e| format!("{text}: {e}"))
-            }
-            None => Ok(None),
-        }
+                manager.register(hotkey).map_err(|e| format!("{text}: {e}"))
+            })
+            .collect()
     };
     let hold = register(&config.hold)?;
     register(&config.toggle)?;
@@ -361,7 +379,7 @@ fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String>
             match manager.try_recv() {
                 Some(event) => {
                     let pressed = event.state == HotkeyState::Pressed;
-                    let _ = tx.send(Msg::Key { hold: Some(event.id) == hold, pressed });
+                    let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed });
                 }
                 None => thread::sleep(Duration::from_millis(5)),
             }
@@ -521,16 +539,29 @@ fn window_at(_x: i32, _y: i32) -> isize {
 }
 
 #[cfg(windows)]
-fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32) -> Value {
-    let mut out = uia::locate(label, x, y).unwrap_or_else(|e| json!({"found": false, "error": e}));
+fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32, foreground: bool) -> Value {
+    let mut out = uia::locate(label, x, y, foreground).unwrap_or_else(|e| json!({"found": false, "error": e}));
     out["ev"] = json!("located");
     out["id"] = json!(id);
     out
 }
 
 #[cfg(not(windows))]
-fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32) -> Value {
+fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: bool) -> Value {
     json!({"ev": "located", "id": id, "found": false, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
+fn ui_tree(id: Option<u64>) -> Value {
+    let mut out = uia::tree(120).unwrap_or_else(|e| json!({"error": e}));
+    out["ev"] = json!("tree");
+    out["id"] = json!(id);
+    out
+}
+
+#[cfg(not(windows))]
+fn ui_tree(id: Option<u64>) -> Value {
+    json!({"ev": "tree", "id": id, "error": "not on this platform yet"})
 }
 
 /// Text goes only into the window it was spoken for. Windows reports 0 mid-switch, which is not it.
@@ -699,7 +730,12 @@ fn serve() {
                         let label = value["label"].as_str().unwrap_or("").to_string();
                         let (x, y) = (value["x"].as_i64().unwrap_or(0) as i32, value["y"].as_i64().unwrap_or(0) as i32);
                         // Its own thread: a big page can take a while, and the keys must not wait.
-                        thread::spawn(move || emit(locate_element(id, &label, x, y)));
+                        let foreground = value["foreground"].as_bool().unwrap_or(false);
+                        thread::spawn(move || emit(locate_element(id, &label, x, y, foreground)));
+                    }
+                    "ui_tree" => {
+                        let id = value["id"].as_u64();
+                        thread::spawn(move || emit(ui_tree(id)));
                     }
                     "toggle" => {
                         if recording.is_some() {
@@ -937,7 +973,11 @@ fn main() {
         Some("locate") => {
             let number = |name: &str| flag(&args, name).and_then(|v| v.parse().ok()).unwrap_or(0);
             let label = flag(&args, "--label").unwrap_or_default();
-            println!("{}", locate_element(None, &label, number("--x"), number("--y")));
+            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground")));
+            Ok(())
+        }
+        Some("ui_tree") => {
+            println!("{}", ui_tree(None));
             Ok(())
         }
         Some("transcribe") => cli_transcribe(&args[1..]),
@@ -954,6 +994,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hotkeys_come_as_nothing_one_key_or_a_list() {
+        let none: Config = serde_json::from_value(json!({"model": null, "hold": null})).unwrap();
+        assert!(none.hold.is_empty() && none.toggle.is_empty());
+        let old: Config = serde_json::from_value(json!({"hold": "Ctrl+Alt+Space"})).unwrap();
+        assert_eq!(old.hold, vec!["Ctrl+Alt+Space".to_string()]);
+        let many: Config = serde_json::from_value(json!({"toggle": ["F9", "Ctrl+Alt+D"]})).unwrap();
+        assert_eq!(many.toggle, vec!["F9".to_string(), "Ctrl+Alt+D".to_string()]);
+    }
 
     #[test]
     fn pastes_only_into_the_window_it_was_spoken_for() {

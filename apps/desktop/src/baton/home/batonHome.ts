@@ -12,7 +12,8 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
-import { HOME_DOCUMENT } from "./homeDocument.ts";
+import { homeDocumentFor } from "./homeDocument.ts";
+import { THEME_GROUND, resolveTheme, type Appearance } from "./theme.ts";
 import { tabOf, type TabId } from "./tabs.ts";
 
 export interface HomeOption {
@@ -135,13 +136,21 @@ export interface HomeExtra {
     readonly action: string;
     readonly label: string;
     readonly hint: string;
-    readonly input:
+    /** Up to four ways to do it; empty is off on purpose. */
+    readonly inputs: ReadonlyArray<
       | { readonly type: "key"; readonly accelerator: string }
       | { readonly type: "mouse"; readonly button: string }
-      | null;
+    >;
     readonly isDefault: boolean;
     readonly conflictsWith: ReadonlyArray<string>;
+    /** Per input who else has it, to say so beside the chip. */
+    readonly conflicts: ReadonlyArray<{
+      readonly index: number;
+      readonly with: ReadonlyArray<string>;
+    }>;
   }>;
+  /** Why the last change to a binding was refused, in plain words; null when it was not. */
+  readonly bindingsNote: string | null;
   /** Whether Baton can act on a mouse button yet; until then they are saved and say so. */
   readonly mouseReady: boolean;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;
@@ -178,6 +187,8 @@ export interface BatonHomeInput {
   readonly state: () => HomeState;
   readonly apply: (id: string, value: string | boolean | null) => void;
   readonly openSessions: () => void;
+  /** System, Light or Dark, as he chose it in Settings. */
+  readonly appearance: () => Appearance;
 }
 
 export interface BatonHome {
@@ -212,6 +223,7 @@ const GET = "baton-home:get";
 const SET = "baton-home:set";
 const SESSIONS = "baton-home:sessions";
 const PUSH = "baton-home:state";
+const THEME = "baton-home:theme";
 
 const withTabs = (state: HomeState): HomeState => ({
   ...state,
@@ -235,8 +247,20 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   Electron.ipcMain.on(SESSIONS, () => input.openSessions());
 
   const boundsFile = NodePath.join(input.stateDir, "baton-window.json");
+  const theme = () => resolveTheme(input.appearance(), Electron.nativeTheme.shouldUseDarkColors);
+  /** The page and the window's own colour, set live: no reload, no flicker. */
+  const applyTheme = () => {
+    const open = live();
+    if (open === null) return;
+    open.setBackgroundColor(THEME_GROUND[theme()]);
+    open.webContents.send(THEME, theme());
+  };
+  Electron.nativeTheme.on("updated", applyTheme);
   return {
-    refresh: () => live()?.webContents.send(PUSH, withTabs(input.state())),
+    refresh: () => {
+      live()?.webContents.send(PUSH, withTabs(input.state()));
+      applyTheme();
+    },
     open: () => {
       const existing = live();
       if (existing !== null) {
@@ -254,8 +278,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
           : { x: remembered.x, y: remembered.y }),
         minWidth: 860,
         minHeight: 580,
-        title: "Baton",
-        backgroundColor: "#f3f0e8",
+        title: "Tessaya",
+        backgroundColor: THEME_GROUND[theme()],
         autoHideMenuBar: true,
         show: false,
         webPreferences: { nodeIntegration: true, contextIsolation: false },
@@ -285,7 +309,9 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       created.on("closed", () => {
         if (win === created) win = null;
       });
-      void created.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(HOME_DOCUMENT)}`);
+      void created.loadURL(
+        `data:text/html;charset=utf-8,${encodeURIComponent(homeDocumentFor(theme()))}`,
+      );
       win = created;
     },
   };

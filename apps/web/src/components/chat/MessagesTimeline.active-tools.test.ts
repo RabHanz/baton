@@ -36,9 +36,12 @@ describe("long active tool groups", () => {
       expect(live).toBeDefined();
       expect(live?.entry.id).toBe("work-999");
       expect(live && liveWorkEntryLabel(live.entry, undefined, live.active)).toContain("999");
-      expect(live?.thought?.id).toBe("work-998");
+      // The newest thought is a row of its own; the rest stay in the group, in order.
+      expect(rows.filter((row) => row.kind === "thought").map((row) => row.id)).toEqual([
+        "thought:work-998",
+      ]);
       expect(live?.groupedEntries.map(({ id }) => id)).toEqual(
-        timelineEntries.map(({ entry }) => entry.id),
+        timelineEntries.map(({ entry }) => entry.id).filter((id) => id !== "work-998"),
       );
       expect(live?.groupId).toBe("work-group:work-entry-0");
       const details = rows.filter((row) => row.kind === "work");

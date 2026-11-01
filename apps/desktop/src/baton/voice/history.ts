@@ -12,6 +12,14 @@ export type TurnKind = "dictation" | "spoken";
 /** ok: tidied. raw: inserted as heard (tidy-up off or failed). none: spoken turn, nothing tidied. */
 export type TidyStatus = "ok" | "raw" | "failed" | "none";
 
+/** One reading of a turn's words: the first, and each retry, kept side by side. */
+export interface HistoryVersion {
+  readonly at: string;
+  readonly raw: string;
+  readonly cleaned: string | null;
+  readonly model: string | null;
+}
+
 export interface HistoryTurn {
   readonly id: string;
   /** ISO time. */
@@ -32,11 +40,13 @@ export interface HistoryTurn {
   /** How long he spoke, when known; for words per minute. */
   readonly seconds: number | null;
   readonly error: string | null;
+  /** Empty until the first retry; then v1 (as first heard) and each retry, in order. */
+  readonly versions: ReadonlyArray<HistoryVersion>;
 }
 
 export interface History {
   readonly add: (
-    turn: Omit<HistoryTurn, "id" | "corrected" | "audio" | "fixed" | "seconds"> & {
+    turn: Omit<HistoryTurn, "id" | "corrected" | "audio" | "fixed" | "seconds" | "versions"> & {
       readonly seconds?: number | null;
     } & { readonly audio?: string | null },
   ) => string;
@@ -54,6 +64,7 @@ export interface History {
         | "corrected"
         | "fixed"
         | "seconds"
+        | "versions"
       >
     >,
   ) => void;
@@ -69,7 +80,7 @@ export interface History {
 }
 
 const COLUMNS =
-  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds";
+  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds, versions";
 
 type Row = Record<string, string | number | null>;
 const toTurn = (row: Row): HistoryTurn => ({
@@ -89,7 +100,18 @@ const toTurn = (row: Row): HistoryTurn => ({
   seconds: typeof row["seconds"] === "number" ? row["seconds"] : null,
   fixed: row["fixed"] === null || row["fixed"] === undefined ? null : String(row["fixed"]),
   error: row["error"] === null ? null : String(row["error"]),
+  versions: parseVersions(row["versions"]),
 });
+
+const parseVersions = (value: unknown): ReadonlyArray<HistoryVersion> => {
+  if (typeof value !== "string" || value === "") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as ReadonlyArray<HistoryVersion>) : [];
+  } catch {
+    return [];
+  }
+};
 
 export const openHistory = (
   file: string,
@@ -115,6 +137,13 @@ export const openHistory = (
     )
   ) {
     db.exec("alter table turns add column seconds real");
+  }
+  if (
+    !(db.prepare("pragma table_info(turns)").all() as Array<{ name: string }>).some(
+      (c) => c.name === "versions",
+    )
+  ) {
+    db.exec("alter table turns add column versions text");
   }
   const get = (id: string): HistoryTurn | null => {
     const row = db.prepare(`select ${COLUMNS} from turns where id = ?`).get(id) as Row | undefined;
@@ -146,7 +175,13 @@ export const openHistory = (
       if (entries.length === 0) return;
       const sets = entries.map(([key]) => `${key} = ?`).join(", ");
       const values = entries.map(([, v]) =>
-        typeof v === "boolean" ? (v ? 1 : 0) : (v as string | null),
+        typeof v === "boolean"
+          ? v
+            ? 1
+            : 0
+          : Array.isArray(v)
+            ? JSON.stringify(v)
+            : (v as string | null),
       );
       db.prepare(`update turns set ${sets} where id = ?`).run(...values, id);
     },
