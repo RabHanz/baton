@@ -168,6 +168,19 @@ describe("a live message's media", () => {
     expect(NodeFS.readdirSync(attachmentsDir)).toEqual(stored);
   });
 
+  it("stores a screenshot a tool returned as the reply's own image attachment", () => {
+    const message = {
+      uuid: "a",
+      role: "assistant" as const,
+      text: "Here is the page.",
+      createdAt: "2026-10-29T10:00:00.000Z",
+      images: [{ mimeType: "image/png", data: png.toString("base64") }],
+    };
+    const shown = liveMedia({ attachmentsDir, threadId: "t", messageId: "m2", message });
+    expect(shown.text).toMatch(/^Here is the page\.\n\n!\[image-1\.png\]\(<.+>\)$/);
+    expect(shown.attachments).toEqual([]);
+  });
+
   it("puts sent files in the reply as markdown and names the ones that are gone", () => {
     const sent = NodePath.join(dir, "sheet.png");
     const doc = NodePath.join(dir, "notes.pdf");
