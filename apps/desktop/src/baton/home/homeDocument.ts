@@ -12,20 +12,22 @@ export const HOME_CSS = `
   --ease:cubic-bezier(.2,.8,.2,1);
 }
 *{box-sizing:border-box}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+main{animation:rise .32s var(--ease) both}
 html,body{margin:0;background:var(--ground);color:var(--ink);font:14px/1.45 var(--sans);-webkit-font-smoothing:antialiased;user-select:none;cursor:default}
 main{max-width:600px;margin:0 auto;padding:36px 28px 56px}
 header{display:flex;align-items:center;gap:14px;margin-bottom:28px}
-.mark{width:40px;height:40px;flex:none}
-h1{font:600 30px/1.1 var(--serif);letter-spacing:-.01em;margin:0}
+#mark{display:block;width:44px;height:44px;flex:none}#mark svg{width:100%;height:100%;display:block;filter:drop-shadow(0 1px 1px rgba(28,27,24,.18))}
+h1{font:600 32px/1.1 var(--serif);letter-spacing:-.01em;margin:0}
 .status{margin:2px 0 0;color:var(--soft);display:flex;align-items:center;gap:8px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
 .dot[data-tone=good]{background:var(--accent)}.dot[data-tone=warn]{background:var(--warn)}.dot[data-tone=off]{background:var(--bad)}
 h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:30px 0 10px 4px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 18px;border-top:1px solid var(--line)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 1px 0 rgba(28,27,24,.03),0 8px 24px -16px rgba(28,27,24,.18)}
+.row{transition:background .15s;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 18px;border-top:1px solid var(--line)}
 .card>.row:first-child,.card>.rows:first-child>.row:first-child{border-top:0}
 .row[data-disabled]{opacity:.5;pointer-events:none}
-.text{min-width:0}
+.row:hover{background:#fbf8f2}.text{min-width:0}
 .label{font-weight:600}
 .hint{color:var(--soft);font-size:13px;margin-top:1px}
 .more{display:grid;grid-template-rows:0fr;transition:grid-template-rows .24s var(--ease)}
@@ -76,6 +78,7 @@ function row(c){
 }
 function render(state){
   state=state||window.__last;window.__last=state;
+  document.getElementById('mark').innerHTML=state.status.mark;
   const m=document.getElementById('app');m.replaceChildren();
   const st=document.getElementById('status');st.replaceChildren();
   const d=$('span','dot');d.setAttribute('data-tone',state.status.tone);st.append(d,$('span',null,state.status.label+(state.status.device?' · '+state.status.device:'')));
@@ -99,11 +102,8 @@ if(real)ipc.on('baton-home:state',(_e,s)=>render(s));
 get().then(render);
 `;
 
-/** Placeholder until the new mark (step 2); sits in the same box so nothing moves. */
-const MARK = `<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#1f6f5b"/><path d="M12 28V12m6 12V16m6 8V10m6 18V15" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>`;
-
 export const HOME_DOCUMENT = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Baton</title><style>${HOME_CSS}</style></head><body><main>
-<header>${MARK}<div><h1>Baton</h1><p class="status" id="status"></p></div></header>
+<header><span id="mark"></span><div><h1>Baton</h1><p class="status" id="status"></p></div></header>
 <div id="app"></div>
 <footer><span>Changes save as you make them.</span><button class="btn" id="sessions">Open sessions</button></footer>
 </main><script>${PAGE_SCRIPT}</script></body></html>`;
