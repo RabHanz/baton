@@ -83,7 +83,8 @@ export const createAgentGate = (input: {
 }): Gate => {
   return async (call) => {
     const name = batonToolName(call.tool);
-    const text = typeof call.input["text"] === "string" ? call.input["text"] : "";
+    const words = call.input["text"] ?? call.input["goal"];
+    const text = typeof words === "string" ? words : "";
     const typing = name === "type_text" || name === "press_keys";
     const focus = typing ? await input.focusedWindow() : null;
     const scope: TypingScope | null =
@@ -94,7 +95,12 @@ export const createAgentGate = (input: {
       actWithoutAsking: input.actWithoutAsking(),
       tainted: input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope)),
       ...(focus === null ? {} : { focusedShell: focus.shell }),
-      textIsHis: (name === "type_text" || name === "session_send") && input.textIsHis(text),
+      textIsHis:
+        (name === "type_text" ||
+          name === "session_send" ||
+          name === "job_start" ||
+          name === "job_refine") &&
+        input.textIsHis(text),
     });
     const action = describeToolCall(call);
     /** A click names the box that typing goes to; Enter or a send ends any yes given to typing. */

@@ -34,8 +34,11 @@ export interface ToolHost {
   readonly fleet: () => Promise<string>;
   readonly dictation: (on: boolean) => Promise<string>;
   readonly memory: (query: string) => Promise<string>;
+  readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
+
+type JobOp = "list" | "start" | "agree" | "refine" | "grant" | "revoke";
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -52,6 +55,15 @@ const str = (a: Args, key: string, max = 20_000): string => {
     throw new Error(`${key} must be a non-empty string.`);
   if (v.length > max) throw new Error(`${key} is too long.`);
   return v;
+};
+
+const strings = (a: Args, key: string): ReadonlyArray<string> => {
+  const v = a[key];
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.some((x) => typeof x !== "string" || x.length > 300)) {
+    throw new Error(`${key} must be a list of short strings.`);
+  }
+  return v as string[];
 };
 
 const object = (props: Record<string, unknown>, required: ReadonlyArray<string> = []) => ({
@@ -242,6 +254,87 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
         str(a, "label", 300),
         typeof a["session_id"] === "string" ? a["session_id"] : undefined,
       ),
+    }),
+  },
+  {
+    name: "jobs_list",
+    description:
+      "List his jobs (long work handed to a worker): id, title, where it is (writing the plan, waiting for his OK, running, needs him, done, failed) and what it may do.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("list", {}) }),
+  },
+  {
+    name: "job_start",
+    description:
+      "Hand long work to a worker thread that PLANS FIRST and does nothing until he agrees. Put his words in goal exactly as he said them. Name the project. Say plainly which folders and tools it may use.",
+    inputSchema: object(
+      {
+        title: { type: "string", maxLength: 120 },
+        goal: { type: "string", maxLength: 4000 },
+        project: { type: "string", maxLength: 200 },
+        folders: { type: "array", items: { type: "string" }, maxItems: 10 },
+        tools: {
+          type: "array",
+          items: { enum: ["read", "edit", "shell", "web", "sessions"] },
+          maxItems: 5,
+        },
+      },
+      ["title", "goal", "project"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("start", {
+        title: str(a, "title", 120),
+        goal: str(a, "goal", 4_000),
+        project: str(a, "project", 200),
+        folders: strings(a, "folders"),
+        tools: strings(a, "tools"),
+      }),
+    }),
+  },
+  {
+    name: "job_refine",
+    description:
+      "Pass his correction or answer to a job's worker, word for word. The plan is made again; the work does not start. Set widens when it adds a folder, tool or a longer leash.",
+    inputSchema: object(
+      { id: { type: "string" }, text: { type: "string", maxLength: 4000 }, widens: { type: "boolean" } },
+      ["id", "text"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("refine", {
+        id: str(a, "id", 200),
+        text: str(a, "text", 4_000),
+        widens: a["widens"] === true,
+      }),
+    }),
+  },
+  {
+    name: "job_agree",
+    description:
+      "Start a job's work, only after he has said go ahead or yes to its plan in this conversation. Never on your own.",
+    inputSchema: object({ id: { type: "string" } }, ["id"]),
+    run: async (a) => ({ text: await host.jobs("agree", { id: str(a, "id", 200) }) }),
+  },
+  {
+    name: "job_grant",
+    description:
+      "Give one job a standing permission he asked for: start without waiting for his OK, or send on a channel. He is asked first, every time.",
+    inputSchema: object(
+      {
+        id: { type: "string" },
+        channel: { enum: ["start", "email", "social", "chat", "pr_comment", "other_public"] },
+      },
+      ["id", "channel"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("grant", { id: str(a, "id", 200), channel: str(a, "channel", 20) }),
+    }),
+  },
+  {
+    name: "job_revoke",
+    description: "Take a standing permission back from one job.",
+    inputSchema: object({ id: { type: "string" }, channel: { type: "string" } }, ["id", "channel"]),
+    run: async (a) => ({
+      text: await host.jobs("revoke", { id: str(a, "id", 200), channel: str(a, "channel", 20) }),
     }),
   },
   {
