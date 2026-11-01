@@ -116,6 +116,19 @@ import {
   type VocabularyEntry,
 } from "@t3tools/baton-shared/vocabulary";
 import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/baton-shared/dictationOneShot";
+import { createOneShot } from "./oneShotDictation.ts";
+import {
+  clipPaths,
+  freeBytesOf,
+  runRetention,
+  saveClip,
+  saveGate,
+  spaceUsed,
+  type KeepSettings,
+} from "./audioKeep.ts";
+import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
+import { makeOpusEncoder } from "./opusEncoder.ts";
+import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -149,6 +162,11 @@ interface VoiceSettings {
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   /** The soft sounds on wake and at the end of a turn. */
   readonly sounds: boolean;
+  /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
+  readonly keepVoice: boolean;
+  readonly keepDays: number;
+  /** Gigabytes of corrected clips kept past the days. */
+  readonly keepCapGb: number;
   /** A small mark while idle; nothing on screen otherwise. */
   readonly pillAtRest: boolean;
   readonly pillEdge: "bottom" | "top";
@@ -185,6 +203,9 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
   sounds: true,
+  keepVoice: false,
+  keepDays: 30,
+  keepCapGb: 2,
   pillAtRest: false,
   pillEdge: "bottom",
   dictation: "baton",
@@ -415,13 +436,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return next.entries;
     }).catch(() => undefined);
   /** A few seconds later, what he changed in the field teaches the words he meant. */
-  const learnFromEdits = (written: string) => {
+  const learnFromEdits = (written: string, turnId: string | null = null) => {
     setTimeout(() => {
       void readCaretContext(input.platform).then((around) => {
         if (around === null || written.trim().length === 0) return;
         const tail = around.before.slice(-(written.length + 2)).trim();
         const fixes = correctionsBetween(written.trim(), tail);
         if (fixes.length === 0) return;
+        if (turnId !== null) history?.update(turnId, { corrected: true, fixed: tail });
         return changeVocabulary((entries, now) =>
           fixes.reduce((all, fix) => {
             const next = learnCorrection(seenWords, all, fix, now);
@@ -476,60 +498,204 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     lastInsert = { text: fitted, at: Date.now(), key };
     return fitted;
   };
+  // Everything he says and what it became, kept forever on this machine (the History tab).
+  const history = (() => {
+    try {
+      return openHistory(NodePath.join(input.stateDir, "voice", "history.sqlite"));
+    } catch {
+      return null;
+    }
+  })();
+  const audioDir = NodePath.join(input.stateDir, "voice", "recordings");
+  const keepSettings = (): KeepSettings => ({
+    enabled: settings.keepVoice,
+    days: settings.keepDays,
+    capBytes: settings.keepCapGb * 1024 ** 3,
+    minFreeBytes: 5 * 1024 ** 3,
+  });
+  const encoder = makeOpusEncoder();
+  let keepNote: string | null = null;
+  /** Saves a clip for a turn, in the background, if he asked for it and the drive has room. */
+  const keepAudio = (turnId: string | null, pcm: Int16Array | null) => {
+    if (history === null || turnId === null || pcm === null || pcm.length === 0) return;
+    const gate = saveGate(keepSettings(), freeBytesOf(input.stateDir));
+    keepNote = gate.ok ? null : settings.keepVoice ? gate.reason : null;
+    if (!gate.ok) return;
+    void encoder
+      .encode(pcm)
+      .then((bytes) => {
+        const saved = saveClip({
+          dir: audioDir,
+          id: `${turnId}-${Date.now().toString(36)}`,
+          bytes,
+          at: new Date(),
+          keep: keepSettings(),
+          freeBytes: freeBytesOf(input.stateDir),
+        });
+        if (saved.path === null) return;
+        const turn = history.get(turnId);
+        history.update(turnId, {
+          audio: [
+            ...(turn?.audio === null || turn === null ? [] : clipPaths(turn.audio)),
+            saved.path,
+          ].join("\n"),
+        });
+      })
+      .catch(() => undefined);
+  };
+  let lastPcm: Int16Array | null = null;
+  const tidyStatus = (stage: string | undefined, failed: boolean): TidyStatus =>
+    failed ? "raw" : stage === "model" || stage === "local" ? "ok" : "raw";
+  const record = (turn: {
+    readonly kind: "dictation" | "spoken";
+    readonly app: string;
+    readonly raw: string;
+    readonly cleaned: string | null;
+    readonly status: TidyStatus;
+    readonly model?: string | null;
+    readonly delivery: string | null;
+    readonly error?: string | null;
+    readonly seconds?: number | null;
+  }): string | null => {
+    if (history === null || turn.raw.trim().length === 0) return null;
+    try {
+      return history.add({
+        at: new Date().toISOString(),
+        kind: turn.kind,
+        app: turn.app,
+        raw: turn.raw,
+        cleaned: turn.cleaned,
+        status: turn.status,
+        model: turn.model ?? null,
+        delivery: turn.delivery,
+        error: turn.error ?? null,
+        seconds: turn.seconds ?? null,
+      });
+    } catch {
+      return null;
+    }
+  };
+  const retention = () => {
+    if (history !== null) runRetention({ history, now: Date.now(), keep: keepSettings() });
+  };
+  setTimeout(retention, 30_000).unref();
+  setInterval(retention, 24 * 3_600_000).unref();
+  const listHistory = (query: string): ReadonlyArray<HistoryTurn> =>
+    history?.list({ query, limit: 300 }) ?? [];
+  Electron.ipcMain.handle("baton-history:list", (event, query: unknown) =>
+    Electron.BrowserWindow.fromWebContents(event.sender) === null
+      ? []
+      : listHistory(typeof query === "string" ? query : ""),
+  );
+  Electron.ipcMain.handle("baton-history:act", async (event, id: unknown, action: unknown) => {
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null)
+      return null;
+    if (typeof id !== "string" || typeof action !== "string") return null;
+    const turn = history.get(id);
+    if (turn === null) return null;
+    if (action === "copy_raw") void Electron.clipboard.writeText(turn.raw);
+    else if (action === "copy_cleaned") void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
+    else if (action === "delete") {
+      history.remove(id);
+      for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
+      return { deleted: true };
+    } else if (action === "retry") {
+      // Re-runs the tidy-up on the stored words; nothing is inserted unless he copies it.
+      const cleaned = await rewriter
+        .clean({
+          raw: biasTranscript(turn.raw, dictionary),
+          mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
+          level: settings.dictationCleanup === "off" ? "local" : "claude",
+        })
+        .catch(() => null);
+      const { text, failed } = settleOneShot(turn.raw, cleaned);
+      history.update(id, {
+        cleaned: text,
+        status: failed ? "failed" : "ok",
+        model: failed ? null : settings.cleanupModel,
+        error: failed ? "Clean-up failed again" : null,
+      });
+    }
+    return history.get(id);
+  });
+
   // Spoken dictation, all at once: the chunks wait here, on disk too, until one clean paste.
   const pendingFile = NodePath.join(input.stateDir, "voice", "dictation-pending.json");
-  let collected: Array<string> = [];
   let collecting = false;
-  const savePending = () => {
+  let flushApp: { readonly exe: string; readonly title: string } = { exe: "", title: "" };
+  const restored = ((): Array<string> => {
     try {
-      NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
-      if (collected.length === 0) NodeFS.rmSync(pendingFile, { force: true });
-      else NodeFS.writeFileSync(pendingFile, JSON.stringify(collected));
-    } catch {}
-  };
-  try {
-    const left = JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
-    if (left.length > 0) {
-      lastDictation = left.join(" ");
-      setTimeout(() => {
-        note = "A dictation was not inserted. Tray: Copy last dictation.";
-        render();
-      }, 0);
+      return JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
+    } catch {
+      return [];
     }
-  } catch {}
+  })();
+  if (restored.length > 0) {
+    lastDictation = restored.join(" ");
+    setTimeout(() => {
+      note = "A dictation was not inserted. Tray: Copy last transcript.";
+      render();
+    }, 0);
+  }
+  const oneShot = createOneShot(
+    {
+      save: (chunks) => {
+        try {
+          NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
+          if (chunks.length === 0) NodeFS.rmSync(pendingFile, { force: true });
+          else NodeFS.writeFileSync(pendingFile, JSON.stringify(chunks));
+        } catch {}
+      },
+      clean: async (raw) =>
+        rewriter.clean({
+          raw: biasTranscript(raw, dictionary),
+          mode: chooseMode(flushApp, settings.appModes),
+          level: await levelNow(flushApp),
+        }),
+      fit: (text) => fitToCaret(text, flushApp),
+      paste: (text) =>
+        sidecar === null
+          ? Promise.resolve(false)
+          : sidecar.paste(text).then(
+              () => true,
+              () => false,
+            ),
+    },
+    restored,
+  );
+  let openTurn: string | null = null;
   const flushDictation = async () => {
     collecting = false;
-    const raw = collected.join(" ").trim();
-    if (raw.length === 0 || sidecar === null) {
-      collected = [];
-      return savePending();
-    }
+    if (oneShot.pending().length === 0 || sidecar === null) return;
     pill.on({ type: "thinking" });
-    const app = await sidecar.foreground().catch(() => focusedApp);
-    const cleaned = await rewriter
-      .clean({
-        raw,
-        mode: chooseMode(app, settings.appModes),
-        level: await levelNow(app),
-      })
-      .catch(() => null);
-    const { text: whole, failed } = settleOneShot(raw, cleaned);
-    const fitted = await fitToCaret(whole, app);
-    lastDictation = fitted;
-    const pasted = await sidecar.paste(fitted).then(
-      () => true,
-      () => false,
-    );
-    if (pasted) {
-      collected = [];
-      savePending();
+    flushApp = await sidecar.foreground().catch(() => focusedApp);
+    const raw = oneShot.pending().join(" ");
+    const turnId = openTurn;
+    openTurn = null;
+    const result = await oneShot.flush();
+    if (result.status === "empty") return;
+    lastDictation = result.text;
+    history?.update(turnId ?? "", {
+      raw,
+      cleaned: result.text,
+      status: result.failed ? "raw" : "ok",
+      model: result.failed ? null : settings.cleanupModel,
+      error: result.failed
+        ? "Clean-up failed, inserted what was heard"
+        : result.status === "kept"
+          ? "Not pasted"
+          : null,
+    });
+    if (result.status === "pasted") {
+      learnWording(result.text);
+      learnFromEdits(result.text, turnId);
       pill.on(
-        failed
+        result.failed
           ? { type: "trouble", message: CLEANUP_FAILED_LINE }
           : { type: "done", label: "Pasted" },
       );
     } else {
-      keepText("Not pasted", fitted);
+      keepText("Not pasted", result.text);
     }
   };
   const injection: typeof clipboardInjection = {
@@ -540,8 +706,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     insertText: async (request) => {
       if (sidecar === null) return clipboardInjection.insertText(request);
       if (collecting) {
-        collected.push(request.text);
-        savePending();
+        oneShot.push(request.text);
+        const joined = oneShot.pending().join(" ");
+        if (openTurn === null) {
+          openTurn = record({
+            kind: "dictation",
+            app: "",
+            raw: joined,
+            cleaned: null,
+            status: "none",
+            delivery: "oneshot",
+            seconds: (lastPcm?.length ?? 0) / 16_000,
+          });
+        } else {
+          history?.update(openTurn, {
+            raw: joined,
+            seconds: (history.get(openTurn)?.seconds ?? 0) + (lastPcm?.length ?? 0) / 16_000,
+          });
+        }
+        keepAudio(openTurn, lastPcm);
         return;
       }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
@@ -754,7 +937,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
     lastDictation = text;
-    showDictation(`${why}. Tray: Copy last dictation.`);
+    showDictation(`${why}. Tray: Copy last transcript.`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
@@ -770,6 +953,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const { text, failed } = settleOneShot(raw, cleaned);
     const fitted = text.length === 0 ? text : await fitToCaret(text, focusedApp);
     lastDictation = fitted;
+    const turnId = record({
+      kind: "dictation",
+      app: focusedApp.exe,
+      raw,
+      cleaned: fitted,
+      status: failed ? "raw" : "ok",
+      model: failed ? null : settings.cleanupModel,
+      delivery: "hold key",
+      error: failed ? "Clean-up failed, inserted what was heard" : null,
+    });
+    if (fitted.length > 0) {
+      learnWording(fitted);
+      learnFromEdits(fitted, turnId);
+    }
     const pasted =
       target === null || target === undefined || text.length === 0
         ? false
@@ -870,7 +1067,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
-      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot") collecting = true;
+      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot")
+        collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
@@ -891,6 +1089,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return { type: "wake", word: wordName(event.word) };
         case "speech_end":
           return null;
+        case "audio":
+          lastPcm = event.pcm;
+          return null;
         case "thinking":
           return { type: "thinking" };
         case "nothing":
@@ -906,6 +1107,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             pill.on({ type: "dismissed" });
             input.onDismiss?.();
             return null;
+          }
+          if (!dictatingByVoice) {
+            lastDictation = event.text;
+            keepAudio(
+              record({
+                kind: "spoken",
+                app: "",
+                raw: event.text,
+                cleaned: null,
+                status: "none",
+                delivery: null,
+                seconds: lastPcm === null ? null : lastPcm.length / 16_000,
+              }),
+              lastPcm,
+            );
           }
           return { type: "heard", text: event.text };
         case "error":
@@ -1172,6 +1388,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         sessions: sessionRows.length,
         needYou: sessionRows.filter((r) => r.urgent).length,
       },
+      insights: computeInsights(history?.list({ limit: 20_000 }) ?? [], new Date()),
       vocabulary: (dictionary as ReadonlyArray<VocabEntry>).map((d) => ({
         phrase: d.phrase,
         replacement: d.replacement,
@@ -1412,11 +1629,60 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.copyLast",
         section: "Dictation",
-        label: "Last dictation",
+        label: "Last transcript",
         kind: "action",
         button: "Copy",
         disabled: lastDictation === null,
         more: true,
+      },
+      {
+        id: "v.keepVoice",
+        section: "Voice recordings",
+        label: "Keep my voice recordings",
+        hint: "Saves the audio of your dictations and of what you say to Baton, on this computer only. It keeps your voice. Never records anything else, and never listens in the background.",
+        kind: "toggle",
+        on: settings.keepVoice,
+      },
+      {
+        id: "v.keepDays",
+        section: "Voice recordings",
+        label: "Delete recordings after",
+        hint: "Clips you corrected are kept longer, up to the size limit below.",
+        kind: "choice",
+        value: String(settings.keepDays),
+        options: [
+          { value: "7", label: "7 days" },
+          { value: "30", label: "30 days" },
+          { value: "90", label: "90 days" },
+          { value: "365", label: "A year" },
+        ],
+        disabled: !settings.keepVoice,
+      },
+      {
+        id: "v.keepCap",
+        section: "Voice recordings",
+        label: "Keep corrected clips up to",
+        hint: "They teach Baton the most. The oldest go first when over.",
+        kind: "choice",
+        value: String(settings.keepCapGb),
+        options: [
+          { value: "1", label: "1 GB" },
+          { value: "2", label: "2 GB" },
+          { value: "5", label: "5 GB" },
+          { value: "10", label: "10 GB" },
+        ],
+        disabled: !settings.keepVoice,
+      },
+      {
+        id: "v.keepSpace",
+        section: "Voice recordings",
+        label: "Space used",
+        hint: `${(spaceUsed(audioDir) / 1024 ** 2).toFixed(1)} MB of recordings. ${
+          keepNote ?? "Saving pauses if the drive drops under 5 GB free."
+        }`,
+        kind: "action",
+        button: "Delete all recordings",
+        disabled: spaceUsed(audioDir) === 0,
       },
       {
         id: "v.sounds",
@@ -1613,6 +1879,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     } else if (id === "v.copyLast") {
       if (lastDictation !== null) void Electron.clipboard.writeText(lastDictation);
+    } else if (id === "v.keepVoice") save({ keepVoice: on });
+    else if (id === "v.keepDays" && typeof value === "string") {
+      save({ keepDays: Math.max(1, Number(value) || 30) });
+      retention();
+    } else if (id === "v.keepCap" && typeof value === "string") {
+      save({ keepCapGb: Math.max(1, Number(value) || 2) });
+      retention();
+    } else if (id === "v.keepSpace") {
+      for (const turn of history?.list({ limit: 1_000_000 }) ?? []) {
+        if (turn.audio === null) continue;
+        for (const path of clipPaths(turn.audio)) NodeFS.rmSync(path, { force: true });
+        history?.update(turn.id, { audio: null });
+      }
+      render();
     } else if (id === "v.sounds") save({ sounds: on });
     else if (id === "v.pillRest") {
       save({ pillAtRest: on });
@@ -1667,6 +1947,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           click: () => toggleMute(),
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
+        {
+          label: "Copy last transcript",
+          enabled: lastDictation !== null,
+          click: () => {
+            if (lastDictation !== null) Electron.clipboard.writeText(lastDictation);
+          },
+        },
         { type: "separator" },
         ...(input.extras?.menuItems() ?? []),
         ...(input.extras ? [{ type: "separator" as const }] : []),
@@ -1773,6 +2060,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     void audio?.stop();
     rewriter.dispose();
+    encoder.dispose();
+    history?.close();
     sidecar?.dispose();
   });
 
