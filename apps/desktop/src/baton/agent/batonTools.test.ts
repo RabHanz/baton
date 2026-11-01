@@ -5,6 +5,8 @@ import { buildBatonTools, type ToolHost } from "./batonTools.ts";
 
 const host = (log: string[]): ToolHost => ({
   capture: async () => ({ text: "shot" }),
+  clickElement: async (l, d) => (log.push(`element ${l}${d ? " double" : ""}`), "clicked"),
+  waitFor: async (l, s) => (log.push(`wait_for ${l} ${s}`), "found"),
   click: async (a) => (
     log.push(`click ${a.x},${a.y}${a.double === true ? " double" : ""}`),
     "clicked"
@@ -41,8 +43,12 @@ describe("the assistant's tool table", () => {
       "one to four",
     );
     expect(log).toEqual([]);
+    await expect(tools.get("click_element")!.run({ label: "", why: "w" })).rejects.toThrow(
+      "non-empty",
+    );
+    await tools.get("wait_for")!.run({ label: "Save", seconds: 99 });
     await tools.get("scroll")!.run({ amount: 99, why: "w" });
     await tools.get("click")!.run({ x: 3, y: 4, double: true, why: "w" });
-    expect(log).toEqual(["scroll 10", "click 3,4 double"]);
+    expect(log).toEqual(["wait_for Save 10", "scroll 10", "click 3,4 double"]);
   });
 });

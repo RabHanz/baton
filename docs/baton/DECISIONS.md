@@ -3590,3 +3590,15 @@ the first sentence goes to the speaker as it is written. Each turn writes `agent
 the moment his speech ended, so the time from his last word is these plus recognition; `latency-report.mjs` reads them).
 Stop interrupts the agent's turn (the session is dropped and the next one is re-seeded from the file). The router is unchanged
 and stays the default.
+
+**D143 push 5, the hands (D144).** New tools: `click_element` (a control by its name, through the accessibility tree: UIA first,
+pixels last) and `wait_for` (until a named control is on screen). `ui_tree`, a dump of the whole tree, waits for a command in the
+dictation sidecar, which today can only locate a named control near a point; it is not faked. The mouse stays his: if the pointer
+is not where Baton left it, the next move is refused with a plain line (`agent/pointerGuard.ts`), and Escape ends the turn at
+once. Two changes to the gate's taint rule, to make a see-act-check loop usable, and flagged for his say: a key or chord (not
+Enter, not a sensitive one) no longer asks after a read, since it carries nothing out; and one explicit yes to typing after a
+read covers the rest of that turn's typing, while Enter, sends, fetch, search, a command line and high risk still ask every
+time. Text that is his own words or Baton's reply still types with no question. The harness: `scripts/baton/computer-use-harness.sh
+dry` replays recorded traces through the real tool server and gate, no pointer; `real <out>` runs the six tasks three times on the
+Windows desktop and refuses unless `LAB_AWAY` names a time within four hours and `BATON_LAB=1`. Finished is automatic for task one
+only; the rest is read from the frames, and misclicks are counted in review. Not yet measured: any of it on his laptop.

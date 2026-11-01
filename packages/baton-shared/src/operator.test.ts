@@ -139,6 +139,9 @@ describe("Baton's own tools (D143)", () => {
     }
     expect(judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the text box" } }, off).verdict).toBe("allow");
     expect(judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the Send button" } }, off).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__click_element", input: { label: "Save", why: "save the note" } }, off).verdict).toBe("allow");
+    expect(judgeToolCall({ tool: "mcp__baton__click_element", input: { label: "Send", why: "send it" } }, off).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__wait_for", input: { label: "Save", seconds: 3 } }, off).verdict).toBe("allow");
     expect(judgeToolCall({ tool: "mcp__baton__press_keys", input: { keys: ["enter"] } }, on).verdict).toBe("ask");
     expect(judgeToolCall({ tool: "mcp__baton__drag", input: {} }, on).verdict).toBe("ask");
   });

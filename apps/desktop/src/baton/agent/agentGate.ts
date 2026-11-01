@@ -20,15 +20,24 @@ export type Gate = (
 export interface TurnTaint {
   readonly mark: () => void;
   readonly on: () => boolean;
+  /** His yes to typing, once, covers the rest of the typing in this turn (never Enter, a send or a command line). */
+  readonly allowTyping: () => void;
+  readonly typingAllowed: () => boolean;
   readonly reset: () => void;
 }
 
 export const createTaint = (): TurnTaint => {
   let tainted = false;
+  let typing = false;
   return {
     mark: () => void (tainted = true),
     on: () => tainted,
-    reset: () => void (tainted = false),
+    allowTyping: () => void (typing = true),
+    typingAllowed: () => typing,
+    reset: () => {
+      tainted = false;
+      typing = false;
+    },
   };
 };
 
@@ -56,7 +65,7 @@ export const createAgentGate = (input: {
     const typing = name === "type_text" || name === "press_keys";
     const judged = judgeToolCall(call, {
       actWithoutAsking: input.actWithoutAsking(),
-      tainted: input.taint.on(),
+      tainted: input.taint.on() && !(name === "type_text" && input.taint.typingAllowed()),
       ...(typing ? { focusedShell: await input.shellFocused() } : {}),
       textIsHis: (name === "type_text" || name === "session_send") && input.textIsHis(text),
     });
@@ -76,6 +85,7 @@ export const createAgentGate = (input: {
       why: judged.why,
     });
     if (!yes) return { allow: false, reason: `${judged.why} He said no. Stop and tell him.` };
+    if (name === "type_text" && judged.risky !== true) input.taint.allowTyping();
     if (READS_OUTSIDE.has(name) || READS_OUTSIDE.has(call.tool)) input.taint.mark();
     return { allow: true };
   };
