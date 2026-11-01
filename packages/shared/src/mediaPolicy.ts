@@ -34,7 +34,8 @@ export const deniedReason = (realPath: string): string | null => {
   const path = `${realPath.replace(/\\/g, "/").toLowerCase()}`;
   if (SECRET_DIRS.some((dir) => `${path}/`.includes(dir))) return "a folder that holds secrets";
   if (/\/\.claude[^/]*\//.test(path)) return "an assistant's own profile";
-  if (/\/\.config\/[^/]*(?:token|credential|secret)[^/]*\//.test(path)) return "a folder that holds secrets";
+  if (/\/\.config\/[^/]*(?:token|credential|secret)[^/]*\//.test(path))
+    return "a folder that holds secrets";
   const name = path.slice(path.lastIndexOf("/") + 1);
   if (SECRET_NAME.test(name)) return "a file named like a secret";
   return null;
@@ -64,7 +65,8 @@ export const judgeMedia = (input: {
   readonly roots: ReadonlyArray<string>;
 }): MediaVerdict => {
   const kind = mediaKindFromPath(input.real);
-  if (kind !== "image" && kind !== "video") return { verdict: "skip", reason: "not an image or video" };
+  if (kind !== "image" && kind !== "video")
+    return { verdict: "skip", reason: "not an image or video" };
   const denied = deniedReason(input.real);
   if (denied !== null) return { verdict: "skip", reason: denied };
   if (!input.touched && !input.roots.some((root) => within(input.real, root))) {
@@ -72,14 +74,22 @@ export const judgeMedia = (input: {
   }
   if (input.size <= 0) return { verdict: "skip", reason: "empty" };
   const limit = kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-  return input.size > limit ? { verdict: "link", kind, size: input.size } : { verdict: "attach", kind };
+  return input.size > limit
+    ? { verdict: "link", kind, size: input.size }
+    : { verdict: "attach", kind };
 };
 
 /** Media paths found anywhere in a tool call's input (any nested string) or its output text. */
-export const pathsInto = (value: unknown, found: Set<string> = new Set(), depth = 0): Set<string> => {
+export const pathsInto = (
+  value: unknown,
+  found: Set<string> = new Set(),
+  depth = 0,
+): Set<string> => {
   if (depth > 6) return found;
   if (typeof value === "string") {
-    for (const match of value.matchAll(/(?:~\/|\/|\.{1,2}\/|[\w@-][\w.@-]*\/)[^\s"'`<>|;&()]*\.[A-Za-z0-9]{2,5}\b|[\w@-][\w.@-]*\.[A-Za-z0-9]{2,5}\b/g)) {
+    for (const match of value.matchAll(
+      /(?:~\/|\/|\.{1,2}\/|[\w@-][\w.@-]*\/)[^\s"'`<>|;&()]*\.[A-Za-z0-9]{2,5}\b|[\w@-][\w.@-]*\.[A-Za-z0-9]{2,5}\b/g,
+    )) {
       const kind = mediaKindFromPath(match[0]);
       if (kind === "image" || kind === "video") found.add(match[0]);
     }

@@ -233,7 +233,12 @@ describe("a live message's media", () => {
       threadId: "t",
       messageId: "x",
       cwd,
-      message: { uuid: "x", role: "assistant" as const, text: "Here you go.", createdAt: "2026-10-29T10:00:00.000Z" },
+      message: {
+        uuid: "x",
+        role: "assistant" as const,
+        text: "Here you go.",
+        createdAt: "2026-10-29T10:00:00.000Z",
+      },
     };
     expect(liveMedia(base).text).toBe("Here you go.");
     expect(liveMedia({ ...base, touched: [shot] }).text).toMatch(/!\[screen\.png\]/);
