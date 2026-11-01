@@ -79,7 +79,7 @@ import {
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
-import { mentionedMediaPaths } from "@t3tools/shared/mediaMentions";
+import { mentionedMediaFiles } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -174,27 +174,6 @@ const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolS
 
 /** A file name as markdown link text: brackets would end the link. */
 const label = (name: string): string => name.replace(/[[\]\\]/g, "");
-
-/**
- * Real paths of the image and video files a reply names that sit inside the session's directory
- * (a symlink out of it, or any path elsewhere, is not read).
- */
-const mentionedMediaFiles = (text: string, cwd: string): ReadonlyArray<string> => {
-  let root: string;
-  try {
-    root = NodeFS.realpathSync(cwd);
-  } catch {
-    return [];
-  }
-  const files: Array<string> = [];
-  for (const mention of mentionedMediaPaths(text)) {
-    try {
-      const real = NodeFS.realpathSync(NodePath.resolve(root, mention));
-      if (real.startsWith(`${root}${NodePath.sep}`) && !files.includes(real)) files.push(real);
-    } catch {}
-  }
-  return files;
-};
 
 /** What a message shows beyond its words: T3 attachments and, for sent files, markdown. */
 export interface LiveMedia {
