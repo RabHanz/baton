@@ -137,7 +137,7 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
-  oneAssistant: false,
+  oneAssistant: true,
   brainChosen: false,
   assistantAccount: null,
 };
@@ -1562,7 +1562,7 @@ export const startScreenCompanion = (input: {
       );
       voice.finish(reply);
       input.onActivity?.(null);
-      linger("Baton", reply);
+      linger("Tessaya", reply);
       input.onNote?.("agent_turn", {
         said: text,
         reply,
@@ -1573,7 +1573,26 @@ export const startScreenCompanion = (input: {
         route: "agent",
       });
     } catch (error) {
-      fail(error);
+      // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
+      if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
+      input.onNote?.("agent_fallback", { message: error instanceof Error ? error.message : String(error) });
+      const notice = "The one assistant couldn't answer, so the older router is handling this.";
+      void show("Tessaya", notice);
+      try {
+        const result = await routed(text, started, direct);
+        if (result.kind !== "handled") {
+          const reply =
+            result.kind === "refused"
+              ? result.reply
+              : actions === null
+                ? "Tessaya's sessions aren't reachable from here yet."
+                : await actions.act(result.text, result.restated === true);
+          say(reply);
+          linger("Tessaya", reply);
+        }
+      } catch (inner) {
+        fail(inner);
+      }
     } finally {
       releaseEscape();
       answering -= 1;
@@ -1595,6 +1614,15 @@ export const startScreenCompanion = (input: {
       void agentTurn(text, started, direct);
       return { kind: "handled" };
     }
+    return routed(text, started, direct);
+  };
+
+  /** The older router: one stage per sentence. The fallback when the one assistant cannot answer, or when he turns it off. */
+  const routed = async (
+    text: string,
+    started: number,
+    direct: boolean,
+  ): ReturnType<ScreenCompanion["said"]> => {
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
     input.onTrace?.({
@@ -1763,8 +1791,8 @@ export const startScreenCompanion = (input: {
       {
         id: "s.oneAssistant",
         section: "Working for you",
-        label: "One assistant (new)",
-        hint: "Baton keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
+        label: "One assistant",
+        hint: "Tessaya keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
         kind: "toggle",
         on: settings.oneAssistant,
         more: true,

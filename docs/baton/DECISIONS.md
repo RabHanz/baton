@@ -3690,3 +3690,5 @@ The Director's request: the assistant works efficiently with an executive and sp
 
 **D139, update label.** An install over a running Baton stops it by force, so the next start found its marker and logged a crash. The start now compares the
 marker's version with its own: a different version logs `replaced-by-update {from, to}`; `previous-run-ended-badly` is kept for the same version (or one it cannot tell).
+
+**D143, shipped as the default.** The one assistant is on by default (setting "One assistant"). When it fails before saying anything (the harness will not start, or dies), the sentence goes to the older router and the card says "The one assistant couldn't answer, so the older router is handling this." (note `agent_fallback`). A stop he gives, or a failure after it has begun to speak, is not retried. Switching the setting off sends everything to the router, as before. Not proven: a live voice turn on his machine.

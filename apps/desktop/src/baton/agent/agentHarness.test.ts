@@ -78,7 +78,7 @@ describe("the hands, dry", () => {
     for (const step of notepadTrace) outcomes.push((await r.call(step)).isError !== true);
     // "notepad" was typed after a screenshot and is not his words, and Ctrl+S is not a navigation key: both asked.
     expect(outcomes).toEqual([true, true, true, false, true, true, true, false]);
-    expect(r.asked).toEqual(["Baton wants to do this", "Baton wants to do this"]);
+    expect(r.asked).toEqual(["Tessaya wants to do this", "Tessaya wants to do this"]);
     await r.mcp.close();
   });
 
