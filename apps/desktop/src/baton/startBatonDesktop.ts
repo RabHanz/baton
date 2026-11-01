@@ -39,6 +39,8 @@ import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 
 /** The one line a voice speaks when he plays or picks it. */
 const AUDITION_LINE = "Hello, this is how I sound.";
+/** Long enough for T3's own window reveal to finish first. */
+const SECOND_LAUNCH_RAISE_MS = 900;
 const VOICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const VOICE_LOG_MAX_FILES = 5;
 
@@ -247,6 +249,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       openMainWindow,
       onChange: () => voice?.refresh(),
+    });
+    // A second launch means "show me Tessaya". T3's own handler raises its main window first and slowly, so
+    // Tessaya's window is raised after it, or the T3 window ends up on top.
+    Electron.app.on("second-instance", () => {
+      setTimeout(() => voice?.openHome(), SECOND_LAUNCH_RAISE_MS).unref();
     });
     voice = startDesktopBatonVoice({
       stateDir: environment.stateDir,
