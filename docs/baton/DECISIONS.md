@@ -3276,6 +3276,18 @@ reveals the raw ones. Each side owns its settings as data (`HomeControl`): the v
 wake now, Ask, Clear, Stop, Open Baton, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
 assistant's own account setting (queued separately). Copy ran through the uiux-stack copy check.
 
+## D131 — The mark
+
+A rounded tile with three bars, one per capability he can switch on: listening, screen capture, acting without asking.
+Lit is on, dim is off. The tile colour is the state, exactly the old dot's colours; a slash across it is muted. One
+geometry (`voice/trayMark.ts`) draws the tray bitmap and the SVG that `scripts/baton/export-icons.mjs` turns into the
+app and installer icons in `assets/prod/` (the fork's production icon set; dev and nightly are untouched). The home page
+opens once by itself on the first run after install (`baton-home.shown` in the state dir); a second launch still opens
+T3's window.
+
+D131 addendum (step 3): the window's header mark is the live one, in the state's colour, made by the main process
+(`HomeState.status.mark`). Motion is one 0.3 s rise on open and short transitions on switches and "More options"; nothing
+repaints continuously, and `prefers-reduced-motion` turns them off.
 ## D133 — First-run: what Baton works through
 
 Until he picks, Baton's window opens by itself and leads with "Choose what Baton works through": Claude Code and Codex,

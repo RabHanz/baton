@@ -28,6 +28,7 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
@@ -196,20 +197,13 @@ const KEPT_TEXT_MS = 20_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
 
-/** A 16×16 filled dot in the state's colour, drawn rather than shipped. */
-const trayIcon = (color: string): Electron.NativeImage => {
-  const size = 16;
-  const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(color.slice(i, i + 2), 16));
-  const bitmap = Buffer.alloc(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const inside = (x - 7.5) ** 2 + (y - 7.5) ** 2 <= 36;
-      const at = (y * size + x) * 4;
-      bitmap.set(inside ? [b!, g!, r!, 255] : [0, 0, 0, 0], at); // BGRA
-    }
-  }
-  return Electron.nativeImage.createFromBitmap(bitmap, { width: size, height: size });
-};
+/** The mark at tray size (D131); 32 px is sharp on a high-density display and scaled down elsewhere. */
+const trayIcon = (options: MarkOptions): Electron.NativeImage =>
+  Electron.nativeImage.createFromBitmap(markBitmap(options, 32), {
+    width: 32,
+    height: 32,
+    scaleFactor: 2,
+  });
 
 export interface VoiceCoreHooks {
   /** The core router's intent calls, answered by the Baton window and the paste adapter. */
@@ -301,7 +295,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     NodeFS.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   };
 
-  const tray = new Electron.Tray(trayIcon(hudView("sleeping").color));
+  const tray = new Electron.Tray(
+    trayIcon({
+      color: hudView("sleeping").color,
+      caps: [settings.enabled, false, false],
+      muted: false,
+    }),
+  );
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
   // A left click is what an icon invites, and without this it did nothing on Windows.
@@ -369,8 +369,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let contextTimer: ReturnType<typeof setInterval> | null = null;
 
   const deviceName = () => (choice.kind === "pinned" ? choice.device.label : "System microphone");
+  const markOptions = (): MarkOptions => {
+    const on = (id: string) =>
+      input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
+    return {
+      color: hudView(state).color,
+      caps: [settings.enabled, on("s.capture"), on("s.act")],
+      muted: state === "muted",
+    };
+  };
   const render = () => {
-    tray.setImage(trayIcon(hudView(state).color));
+    tray.setImage(trayIcon(markOptions()));
     tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
     rebuildMenu();
   };
@@ -807,6 +816,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       label: hudView(state).label,
       tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
       device: deviceName(),
+      mark: markSvg(markOptions()),
     },
     controls: [
       {
@@ -1035,7 +1045,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({});
       void Electron.shell.openPath(settingsPath);
     }
-    rebuildMenu();
+    render();
   };
 
   const home = createBatonHome({
@@ -1150,8 +1160,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(onDeviceChange, MIC_POLL_MS).unref();
 
   render();
-  // Until he has chosen what Baton works through, the window opens on its own and asks.
-  if (input.extras?.needsBrainChoice() === true) setTimeout(() => home.open(), 2_000).unref();
+  // First run after install, and until he has chosen what Baton works through: the window opens on its own.
+  const shownPath = NodePath.join(input.stateDir, "baton-home.shown");
+  const firstRun = !NodeFS.existsSync(shownPath);
+  if (firstRun) NodeFS.writeFileSync(shownPath, new Date().toISOString());
+  if (firstRun || input.extras?.needsBrainChoice() === true) {
+    setTimeout(() => home.open(), 2_000).unref();
+  }
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
   if (binary !== null && settings.dictation === "baton" && modelPresent(modelsDir, speechModel())) {
     requestDictation();
