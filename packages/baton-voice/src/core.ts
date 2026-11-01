@@ -14,6 +14,7 @@
 import type { ContextBusState } from "@t3tools/baton-shared/contextBus";
 import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
 import { JOIN_WITHIN_MS, WAIT_DEFAULT_MS, commitMs } from "@t3tools/baton-shared/endOfTurn";
+import { isAddressedFollowUp } from "@t3tools/baton-shared/followUp";
 import { isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 import {
@@ -430,6 +431,16 @@ export const createVoiceCore = (input: {
         return emit({ type: "nothing" });
       }
       const said = turn.prefix === null ? cleaned : `${turn.prefix} ${cleaned}`;
+      // In the follow-up window nobody said the name: only what reads as meant for Tessaya goes on, and
+      // the rest is let go without extending the window, so a TV in the room cannot keep it open.
+      if (
+        machine.mode === "conversation" &&
+        machine.pending === null &&
+        stripWake(cleaned, timings.wakeWords) === cleaned &&
+        !isAddressedFollowUp(said)
+      ) {
+        return emit({ type: "dropped", text: cleaned, reason: "not addressed" });
+      }
       const joinable =
         machine.pending === null &&
         (machine.mode === "command_window" || machine.mode === "conversation");
