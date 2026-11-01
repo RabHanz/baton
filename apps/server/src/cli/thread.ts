@@ -7,6 +7,7 @@ import {
   ProjectId,
   RunId,
   ThreadId,
+  ThreadMetadataMcpUpdateResult,
   TrimmedNonEmptyString,
   type OrchestratorMcpThreadListItem,
   type OrchestratorMcpThreadStatus,
@@ -700,6 +701,58 @@ const threadShowCommand = Command.make("show", {
   ),
 );
 
+const threadRenameCommand = Command.make("rename", {
+  ...projectLocationFlags,
+  thread: threadArgument,
+  title: Argument.String("title").pipe(Argument.withDescription("The new title.")),
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Rename a thread. The title sticks until someone changes it."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const threadId = yield* decodeThreadId(flags.thread);
+      const title = yield* decodeTitle(flags.title).pipe(
+        Effect.mapError(() => new ThreadUsageError({ detail: "The title is empty." })),
+      );
+      yield* withThreadTools(
+        flags,
+        Effect.fn("cli.thread.rename")(function* (tools) {
+          const updated = yield* tools.call(
+            "t3_thread_update",
+            { threadId, action: "rename", title },
+            ThreadMetadataMcpUpdateResult,
+          );
+          yield* flags.json ? printJson(updated) : Console.log(updated.title);
+        }),
+      );
+    }).pipe(reportThreadErrors),
+  ),
+);
+
+const threadRetitleCommand = Command.make("retitle", {
+  ...projectLocationFlags,
+  thread: threadArgument,
+  json: jsonFlag,
+}).pipe(
+  Command.withDescription("Ask T3 to write a new title for a thread from its conversation."),
+  Command.withHandler((flags) =>
+    Effect.gen(function* () {
+      const threadId = yield* decodeThreadId(flags.thread);
+      yield* withThreadTools(
+        flags,
+        Effect.fn("cli.thread.retitle")(function* (tools) {
+          const updated = yield* tools.call(
+            "t3_thread_update",
+            { threadId, action: "regenerate_title" },
+            ThreadMetadataMcpUpdateResult,
+          );
+          yield* flags.json ? printJson(updated) : Console.log(updated.title);
+        }),
+      );
+    }).pipe(reportThreadErrors),
+  ),
+);
+
 export const threadCommand = Command.make("thread").pipe(
   Command.withDescription("Start, message, and read threads on the running server."),
   Command.withSubcommands([
@@ -707,5 +760,7 @@ export const threadCommand = Command.make("thread").pipe(
     threadStartCommand,
     threadSendCommand,
     threadShowCommand,
+    threadRenameCommand,
+    threadRetitleCommand,
   ]),
 );
