@@ -74,3 +74,24 @@ export const judgeToolCall = (
     ? { verdict: "allow" }
     : { verdict: "ask", why: "Act without asking is off." };
 };
+
+/** A call is announced before its own request reaches the gate: only the one after the first is tainted. */
+export const taintedAfter = (toolsThisTurn: number): boolean => toolsThisTurn > 1;
+
+/** What the gate says out loud and shows. A risky call's question that runs out is a no. */
+export const gatePrompt = (judged: Extract<ToolVerdict, { verdict: "ask" }>, action: string) => ({
+  title: judged.risky ? "This one is risky" : "Baton wants to do this",
+  detail: `${action}\n\n${judged.why}`,
+  spoken:
+    judged.risky === true
+      ? `${judged.why} Do you want me to do it? Say yes or no.`
+      : `${judged.why} Shall I go ahead? Yes or no.`,
+  noOnExpiry: judged.risky === true,
+});
+
+/** What a spoken answer decides: the button index, or null to go on waiting for the box. */
+export const spokenOutcome = (
+  said: "yes" | "no" | "expired",
+  option: { readonly yes: number; readonly cancel: number; readonly noOnExpiry: boolean },
+): number | null =>
+  said === "expired" && !option.noOnExpiry ? null : said === "yes" ? option.yes : option.cancel;

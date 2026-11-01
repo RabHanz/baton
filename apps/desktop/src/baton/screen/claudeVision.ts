@@ -191,6 +191,15 @@ export const toolRequestOf = (
   }
 };
 
+/** The permission reply the CLI is waiting for. */
+export const toolAnswerOf = (
+  answer: { readonly allow: true } | { readonly allow: false; readonly reason: string },
+  call: ToolCall,
+) =>
+  answer.allow
+    ? { behavior: "allow" as const, updatedInput: call.input }
+    : { behavior: "deny" as const, message: answer.reason };
+
 /** The tool calls in one stream-json line. */
 export const toolUsesOf = (line: string): ReadonlyArray<ToolCall> => {
   try {
@@ -309,14 +318,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       void options.gate!(request.call)
         // An answer that fails is a no.
         .catch(() => ({ allow: false as const, reason: "Baton could not check that." }))
-        .then((answer) =>
-          answerTool(
-            request.requestId,
-            answer.allow
-              ? { behavior: "allow", updatedInput: request.call.input }
-              : { behavior: "deny", message: answer.reason },
-          ),
-        );
+        .then((answer) => answerTool(request.requestId, toolAnswerOf(answer, request.call)));
       return;
     }
     for (const call of toolUsesOf(line)) options.onTool?.(call);
