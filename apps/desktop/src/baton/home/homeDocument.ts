@@ -72,6 +72,7 @@ button.sname:hover{text-decoration:underline}
 .send{display:flex;gap:8px;margin-top:8px}
 .send input{flex:1;min-width:0;font:inherit;padding:6px 10px;border:1px solid var(--line-strong);border-radius:9px;background:var(--card);user-select:text}
 .send input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pair{display:flex;gap:8px;flex:none}
 footer{margin-top:30px;display:flex;justify-content:space-between;align-items:center;color:var(--faint);font-size:13px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 `;
@@ -91,7 +92,9 @@ function control(c){
     const s=$('select');s.setAttribute('aria-label',c.label);for(const o of c.options){const p=$('option',null,o.label);p.value=o.value;p.selected=o.value===c.value;s.appendChild(p);}s.onchange=()=>set(c.id,s.value);return s;
   }
   if(c.kind==='secret'){const b=$('button','btn',c.masked);b.setAttribute('aria-label','Show address');b.onclick=()=>{b.textContent=b.textContent===c.masked?c.revealed:c.masked;};return b;}
-  const b=$('button','btn',c.button);b.onclick=()=>set(c.id,null);return b;
+  const b=$('button','btn',c.button);b.onclick=()=>set(c.id,null);
+  if(c.secondary){const w=$('div','pair');const b2=$('button','btn',c.secondary);b2.onclick=()=>set(c.id+':later',null);w.append(b2,b);return w;}
+  return b;
 }
 function brain(c){
   const list=$('div','brain');
