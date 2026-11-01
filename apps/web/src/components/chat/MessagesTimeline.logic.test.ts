@@ -119,8 +119,9 @@ describe("deriveMessagesTimelineRows", () => {
     const afterSteer = rows([first, steer]);
     expect(afterSteer.some((row) => row.kind === "work-live")).toBe(false);
     expect(afterSteer.at(-1)?.kind).toBe("thinking");
-    expect(afterSteer.find((row) => row.kind === "work")).toMatchObject({
-      groupedEntries: [{ id: "first-thought", toolLifecycleStatus: "completed" }],
+    expect(afterSteer.find((row) => row.kind === "thought")).toMatchObject({
+      id: "thought:first-thought",
+      text: "first-thought",
     });
     for (const entries of [
       [first, steer, next],
@@ -1669,6 +1670,103 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.some((row) => row.kind === "thinking")).toBe(false);
   });
 
+  it("keeps a thinking summary open and in place through 20 streaming updates and the turn settling", () => {
+    const runId = RunId.make("thinking-run");
+    const at = "2026-01-01T00:00:02Z";
+    const thought = (text: string, status: "inProgress" | "completed"): TimelineEntry => ({
+      kind: "work",
+      id: "thought-1",
+      createdAt: at,
+      entry: {
+        id: "thought-1",
+        runId,
+        createdAt: at,
+        label: "Thinking",
+        tone: "thinking",
+        itemType: "reasoning",
+        detail: text,
+        toolLifecycleStatus: status,
+      },
+    });
+    const tool: TimelineEntry = {
+      kind: "work",
+      id: "tool-1",
+      createdAt: "2026-01-01T00:00:03Z",
+      entry: {
+        id: "tool-1",
+        runId,
+        createdAt: "2026-01-01T00:00:03Z",
+        label: "Ran ls",
+        tone: "tool",
+        command: "ls",
+        toolLifecycleStatus: "completed",
+      },
+    };
+    const user: TimelineEntry = {
+      kind: "message",
+      id: "u",
+      createdAt: "2026-01-01T00:00:01Z",
+      message: {
+        id: MessageId.make("u"),
+        role: "user",
+        text: "go",
+        runId,
+        streaming: false,
+        createdAt: "2026-01-01T00:00:01Z",
+        updatedAt: "2026-01-01T00:00:01Z",
+      },
+    };
+    const derive = (
+      entries: ReadonlyArray<TimelineEntry>,
+      isWorking: boolean,
+      closed?: ReadonlySet<string>,
+    ) =>
+      deriveMessagesTimelineRows({
+        timelineEntries: entries,
+        runningRunId: isWorking ? runId : null,
+        isWorking,
+        activeTurnStartedAt: at,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+        ...(closed ? { closedThoughtIds: closed } : {}),
+      });
+    for (let i = 1; i <= 20; i += 1) {
+      const entries = [
+        user,
+        thought(`Thinking step ${i}`, "inProgress"),
+        ...(i > 10 ? [tool] : []),
+      ];
+      const row = derive(entries, true).find((r) => r.kind === "thought");
+      expect(row, `update ${i}`).toMatchObject({
+        id: "thought:thought-1",
+        open: true,
+        text: `Thinking step ${i}`,
+      });
+    }
+    // The turn settles: the same row, still open, still the same id.
+    const settled = derive([user, thought("Thinking step 20", "completed"), tool], false).find(
+      (r) => r.kind === "thought",
+    );
+    expect(settled).toMatchObject({ id: "thought:thought-1", open: true });
+    // He can close it, and it stays closed; the next turn folds it.
+    expect(
+      derive([user, thought("x", "completed"), tool], false, new Set(["thought:thought-1"])).find(
+        (r) => r.kind === "thought",
+      ),
+    ).toMatchObject({ open: false });
+    const next: TimelineEntry = {
+      ...user,
+      id: "u2",
+      createdAt: "2026-01-01T00:05:00Z",
+      message: { ...user.message, id: MessageId.make("u2"), createdAt: "2026-01-01T00:05:00Z" },
+    } as TimelineEntry;
+    expect(
+      derive([user, thought("x", "completed"), tool, next], false).some(
+        (r) => r.kind === "thought",
+      ),
+    ).toBe(false);
+  });
+
   it("carries the latest thought on the live row while a later tool runs", () => {
     type WorkEntry = Extract<
       Parameters<typeof deriveMessagesTimelineRows>[0]["timelineEntries"][number],
@@ -1719,8 +1817,10 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.find((row) => row.kind === "work-live")).toMatchObject({
       entry: { id: "running-command" },
-      thought: { id: "new-thought" },
     });
+    // The latest thought is a row of its own, open, ahead of the activity row.
+    const thoughts = rows.filter((row) => row.kind === "thought");
+    expect(thoughts.at(-1)).toMatchObject({ id: "thought:new-thought", open: true });
   });
 
   it("keeps an actually running tool in the shared activity row", () => {
@@ -4205,6 +4305,7 @@ describe("live subagents after their parent turn settles", () => {
       expect(rows.map((row) => row.id)).toEqual([
         "user",
         `turn-fold:${runId}`,
+        "thought:reasoning",
         "child",
         "assistant",
       ]);
@@ -4213,7 +4314,13 @@ describe("live subagents after their parent turn settles", () => {
 
   it("keeps a launch batch visible while any member is still running", () => {
     const rows = rowsFor([child("done", 3, "completed"), child("live", 4, "running")]);
-    expect(rows.map((row) => row.id)).toEqual(["user", `turn-fold:${runId}`, "done", "assistant"]);
+    expect(rows.map((row) => row.id)).toEqual([
+      "user",
+      `turn-fold:${runId}`,
+      "thought:reasoning",
+      "done",
+      "assistant",
+    ]);
     expect(rows.find((row) => row.id === "done")).toMatchObject({
       subagents: [{ item: { id: "done" } }, { item: { id: "live" } }],
     });
@@ -4363,6 +4470,7 @@ describe("subagent continued by a later turn", () => {
       "answer-1",
       "prompt-2",
       `turn-fold:${run2}`,
+      "thought:reasoning-2",
       "closing-2",
     ]);
   });
