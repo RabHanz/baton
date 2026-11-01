@@ -630,8 +630,11 @@ export function toolGroupSummaryKind(
   return fallbackKinds.size === 1 ? fallbackKinds.values().next().value! : "mixed";
 }
 
-export function liveThoughtLine(markdown: string): string {
-  const heading = /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
+/** `full` keeps the whole thought (the live one stays open); otherwise only its title or first sentence. */
+export function liveThoughtLine(markdown: string, full = false): string {
+  const heading = full
+    ? undefined
+    : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
   const text = (heading ?? markdown)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^[ \t]*(?:#{1,6}|[-*+]|\d+\.)[ \t]+/gm, "")
@@ -639,7 +642,7 @@ export function liveThoughtLine(markdown: string): string {
     .replace(/(^|[^\w*])[*_]([^*_\n]+)[*_](?![\w*])/g, "$1$2")
     .replace(/\s+/g, " ")
     .trim();
-  if (heading !== undefined) return text;
+  if (full || heading !== undefined) return text;
   const end = /[.?!]["'”’)]?(?=\s)/.exec(text);
   return end ? text.slice(0, end.index + end[0].length) : text;
 }

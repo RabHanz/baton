@@ -3299,6 +3299,25 @@ opens; a turn reads the remembered answer and never waits. A login that is gone 
 one plain line on the pill. The address is masked until clicked. Not done: per-account limits in this list (the server's
 pool has them; the desktop does not reach it), and Codex has no account choice.
 
+## D133 — First-run: what Baton works through
+
+Until he picks, Baton's window opens by itself and leads with "Choose what Baton works through": Claude Code and Codex,
+each with whose subscription or billing it uses; API key and local model are listed as coming soon and cannot be picked
+(the real choices are the only controls). Only a tool that is installed and signed in can be chosen: `claude auth status`
+and `codex login status`, asked at startup and on "Check again" (`brainChoice.ts`, `brainDetect.ts`). The pick is saved as
+the operator and `brainChosen`, after which the same row lives under Working for you. A Codex login with an API key says
+each use is billed to that key. Voice stays local, and says so. Checked and found nothing to do: the Microphone double
+tick was in the tray's radio list, gone since D130; the voice turn log already rotates (5 files of 5 MiB).
+
+## D134 — The Check area
+
+Baton's window, More options, "Check": one button runs the checks and shows a plain row for each, with a one-line fix when
+it is not fine (`voice/selfChecks.ts`, pure). Microphone present, wake word models (the voice core's own
+`resolveWakeModels` and `missingVoiceAssets`), speech model, Claude Code and Codex sign-in (the first-run detection),
+screen capture permission (macOS; elsewhere none is needed) and disk free against the models still to fetch. Nothing runs
+on its own. The level is read from the stream the voice loop already has open, for four seconds, only after "Test
+microphone" is pressed, and only while Baton is listening; Baton never opens a microphone for it.
+
 ## D135 — Launch audit: private defaults
 
 Shipped code (apps/, packages/) searched for the Director's names, hostnames, paths and accounts. Changed:

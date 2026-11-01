@@ -500,7 +500,7 @@ export function LiveWorkEntryTimelineRow({
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
-  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "") : "";
+  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
   return (
@@ -531,7 +531,7 @@ export function LiveWorkEntryTimelineRow({
             </span>
           }
           label={
-            <span className="line-clamp-4">
+            <span className={row.active ? "line-clamp-8" : "line-clamp-4"}>
               <ChatMarkdown
                 inline
                 text={thoughtLine}
