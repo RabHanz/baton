@@ -6,13 +6,20 @@
  * by data (`HomeControl`), so the tray, the voice side and the companion each own their settings and
  * this file owns only how they look.
  */
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 import * as Electron from "electron";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
+import { markCompanionWindow } from "../lastAppWindow.ts";
 import { HOME_DOCUMENT } from "./homeDocument.ts";
+import { tabOf, type TabId } from "./tabs.ts";
 
 export interface HomeOption {
   readonly value: string;
   readonly label: string;
+  /** One line saying what choosing it does. */
+  readonly note?: string;
 }
 
 interface HomeControlBase {
@@ -25,6 +32,8 @@ interface HomeControlBase {
   readonly disabled?: boolean;
   /** What the closed section's button says ("Show all"), when it is not "More options". */
   readonly moreLabel?: string;
+  /** Which tab it is drawn on; filled in here from its id. */
+  readonly tab?: TabId;
   /** Its section goes first: what he should do before anything else. */
   readonly lead?: boolean;
 }
@@ -80,6 +89,69 @@ export type HomeControl =
       readonly revealed: string;
     });
 
+export interface HomeActivity {
+  readonly at: string;
+  readonly text: string;
+  readonly kind: string;
+  readonly dim?: boolean;
+}
+
+/** What the tabs show beyond the controls: all data, nothing the page decides. */
+export interface HomeExtra {
+  readonly wakeWords: ReadonlyArray<string>;
+  readonly activity: ReadonlyArray<HomeActivity>;
+  readonly stats: {
+    readonly turns: number;
+    readonly dictations: number;
+    readonly sessions: number;
+    readonly needYou: number;
+  };
+  readonly vocabulary: ReadonlyArray<{
+    readonly phrase: string;
+    readonly replacement: string | null;
+  }>;
+  readonly hotkeys: ReadonlyArray<{
+    readonly label: string;
+    readonly keys: string;
+    readonly tab: string;
+    readonly hint?: string;
+  }>;
+  readonly usage: ReadonlyArray<{
+    readonly account: string;
+    readonly box: string;
+    readonly windows: ReadonlyArray<{
+      readonly label: string;
+      readonly usedPercent: number | null;
+      readonly resetsAt: string | null;
+    }>;
+  }>;
+  readonly bindings: ReadonlyArray<{
+    readonly action: string;
+    readonly label: string;
+    readonly hint: string;
+    readonly input:
+      | { readonly type: "key"; readonly accelerator: string }
+      | { readonly type: "mouse"; readonly button: string }
+      | null;
+    readonly isDefault: boolean;
+    readonly conflictsWith: ReadonlyArray<string>;
+  }>;
+  /** Whether Baton can act on a mouse button yet; until then they are saved and say so. */
+  readonly mouseReady: boolean;
+  readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;
+  readonly paths: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly path: string;
+  }>;
+  readonly about: {
+    readonly version: string;
+    readonly source: string;
+    readonly licence: string;
+    readonly notices: string;
+  };
+}
+
 export interface HomeState {
   readonly status: {
     readonly label: string;
@@ -87,11 +159,16 @@ export interface HomeState {
     readonly device: string;
     /** The mark in the state's colour, made by the main process. */
     readonly mark: string;
+    /** The same mark in Baton's own colour, for the sidebar. */
+    readonly brandMark?: string;
   };
   readonly controls: ReadonlyArray<HomeControl>;
+  readonly extra?: HomeExtra;
 }
 
 export interface BatonHomeInput {
+  /** Where the window remembers its size. */
+  readonly stateDir: string;
   readonly state: () => HomeState;
   readonly apply: (id: string, value: string | boolean | null) => void;
   readonly openSessions: () => void;
@@ -103,16 +180,43 @@ export interface BatonHome {
   readonly refresh: () => void;
 }
 
+const DEFAULT_WIDTH = 1100;
+const DEFAULT_HEIGHT = 740;
+
+/** The last size and place, or null: a missing or odd file is the default size. */
+const readBounds = (file: string) => {
+  try {
+    const parsed: unknown = JSON.parse(NodeFS.readFileSync(file, "utf8"));
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const { x, y, width, height } = parsed as Record<string, unknown>;
+    if (typeof width !== "number" || typeof height !== "number") return null;
+    if (width < 860 || height < 580 || width > 6000 || height > 4000) return null;
+    return {
+      width,
+      height,
+      ...(typeof x === "number" ? { x } : {}),
+      ...(typeof y === "number" ? { y } : {}),
+    };
+  } catch {
+    return null;
+  }
+};
+
 const GET = "baton-home:get";
 const SET = "baton-home:set";
 const SESSIONS = "baton-home:sessions";
 const PUSH = "baton-home:state";
 
+const withTabs = (state: HomeState): HomeState => ({
+  ...state,
+  controls: state.controls.map((c) => ({ ...c, tab: c.tab ?? tabOf(c.id) })),
+});
+
 export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   let win: Electron.BrowserWindow | null = null;
   const live = () => (win !== null && !win.isDestroyed() ? win : null);
 
-  Electron.ipcMain.handle(GET, () => input.state());
+  Electron.ipcMain.handle(GET, () => withTabs(input.state()));
   Electron.ipcMain.handle(SET, (_event, id: unknown, value: unknown) => {
     if (
       typeof id === "string" &&
@@ -120,12 +224,13 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     ) {
       input.apply(id, value as string | boolean | null);
     }
-    return input.state();
+    return withTabs(input.state());
   });
   Electron.ipcMain.on(SESSIONS, () => input.openSessions());
 
+  const boundsFile = NodePath.join(input.stateDir, "baton-window.json");
   return {
-    refresh: () => live()?.webContents.send(PUSH, input.state()),
+    refresh: () => live()?.webContents.send(PUSH, withTabs(input.state())),
     open: () => {
       const existing = live();
       if (existing !== null) {
@@ -134,17 +239,38 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         existing.focus();
         return;
       }
+      const remembered = readBounds(boundsFile);
       const created = new Electron.BrowserWindow({
-        width: 640,
-        height: 760,
-        minWidth: 480,
-        minHeight: 520,
+        width: remembered?.width ?? DEFAULT_WIDTH,
+        height: remembered?.height ?? DEFAULT_HEIGHT,
+        ...(remembered?.x === undefined || remembered.y === undefined
+          ? {}
+          : { x: remembered.x, y: remembered.y }),
+        minWidth: 860,
+        minHeight: 580,
         title: "Baton",
-        backgroundColor: "#f5f2ec",
+        backgroundColor: "#f3f0e8",
         autoHideMenuBar: true,
         show: false,
         webPreferences: { nodeIntegration: true, contextIsolation: false },
       });
+      // Baton's own window is not T3's: without this "Open sessions" reveals this window and T3 never opens.
+      markCompanionWindow(created);
+      let saveTimer: ReturnType<typeof setTimeout> | null = null;
+      const saveBounds = () => {
+        if (saveTimer !== null) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          if (created.isDestroyed() || created.isMinimized() || created.isMaximized()) return;
+          try {
+            NodeFS.writeFileSync(boundsFile, JSON.stringify(created.getBounds()));
+          } catch {
+            // The size is a nicety; losing it must never matter.
+          }
+        }, 400);
+        saveTimer.unref();
+      };
+      created.on("resized", saveBounds);
+      created.on("moved", saveBounds);
       created.removeMenu();
       // The page is ours alone: it never navigates, and a link opens nothing.
       created.webContents.on("will-navigate", (event) => event.preventDefault());
