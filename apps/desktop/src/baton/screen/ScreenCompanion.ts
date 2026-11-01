@@ -61,6 +61,8 @@ import {
 } from "./claudeVision.ts";
 import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
+import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
+import { detectBrains } from "./brainDetect.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -90,9 +92,13 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
+  /** He has picked what Baton works through, so the first-run card is done. */
+  readonly brainChosen: boolean;
   /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
   readonly assistantAccount: string | null;
 }
+
+const UNKNOWN_BRAINS: BrainStatus = { claude: { state: "missing" }, codex: { state: "missing" } };
 
 const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
@@ -104,6 +110,7 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
+  brainChosen: false,
   assistantAccount: null,
 };
 
@@ -217,6 +224,7 @@ export interface ScreenCompanion {
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
+  readonly needsBrainChoice: () => boolean;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly dispose: () => void;
 }
@@ -281,6 +289,17 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  let brains: BrainStatus | null = null;
+  const checkBrains = async () => {
+    brains = await detectBrains({
+      env: input.env,
+      platform: input.platform,
+      claudeBinary: settings.claudeBinary,
+      codexBinary: settings.codexBinary,
+    });
+    input.onChange?.();
+  };
+  void checkBrains();
   const accounts = createAssistantAccounts({
     env: input.env,
     platform: input.platform,
@@ -1351,16 +1370,22 @@ export const startScreenCompanion = (input: {
         ],
       },
       {
-        id: "s.operator",
-        section: "Working for you",
+        id: "s.brain",
+        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
         label: "Works through",
-        hint: "The tool Baton uses to carry out what you ask.",
-        kind: "choice",
+        ...(settings.brainChosen ? {} : { hint: "Listening and speaking stay on this computer." }),
+        kind: "brain",
         value: settings.operator,
-        options: [
-          { value: "claude", label: "Claude" },
-          { value: "codex", label: "Codex" },
-        ],
+        options: brainRows(brains ?? UNKNOWN_BRAINS),
+        lead: !settings.brainChosen,
+      },
+      {
+        id: "s.brainCheck",
+        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
+        label: "Installed and signed in?",
+        kind: "action",
+        button: "Check again",
+        more: settings.brainChosen,
       },
       {
         id: "s.act",
@@ -1411,15 +1436,20 @@ export const startScreenCompanion = (input: {
         more: true,
       },
     ],
+    needsBrainChoice: () => !settings.brainChosen,
     applySetting: (id, value) => {
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
         save({ output: value });
       } else if (id === "s.voice" && typeof value === "string") {
         save({ voice: value as PocketVoice });
-      } else if (id === "s.operator" && (value === "claude" || value === "codex")) {
-        dropOperator();
-        save({ operator: value });
+      } else if (id === "s.brain" && typeof value === "string") {
+        if (brains !== null && canChoose(brains, value)) {
+          dropOperator();
+          save({ operator: value, brainChosen: true });
+        }
+      } else if (id === "s.brainCheck") {
+        void checkBrains();
       } else if (id === "s.account" && typeof value === "string") {
         dropOperator();
         dropRouter();

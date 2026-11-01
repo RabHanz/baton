@@ -23,6 +23,8 @@ interface HomeControlBase {
   /** Behind "More" in its section. */
   readonly more?: boolean;
   readonly disabled?: boolean;
+  /** Its section goes first: what he should do before anything else. */
+  readonly lead?: boolean;
 }
 
 export type HomeControl =
@@ -33,6 +35,17 @@ export type HomeControl =
       readonly options: ReadonlyArray<HomeOption>;
     })
   | (HomeControlBase & { readonly kind: "action"; readonly button: string })
+  /** One of several, each with a note; "soon" rows are shown and cannot be picked. */
+  | (HomeControlBase & {
+      readonly kind: "brain";
+      readonly value: string;
+      readonly options: ReadonlyArray<{
+        readonly value: string;
+        readonly label: string;
+        readonly note: string;
+        readonly state: "ready" | "unavailable" | "soon";
+      }>;
+    })
   /** Shown masked until he clicks it. */
   | (HomeControlBase & {
       readonly kind: "secret";

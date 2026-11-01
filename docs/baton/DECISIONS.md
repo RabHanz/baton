@@ -3298,3 +3298,13 @@ by asking `claude auth status` of each directory (`assistantAccounts.ts`), at st
 opens; a turn reads the remembered answer and never waits. A login that is gone or signed out falls back to his own with
 one plain line on the pill. The address is masked until clicked. Not done: per-account limits in this list (the server's
 pool has them; the desktop does not reach it), and Codex has no account choice.
+
+## D133 — First-run: what Baton works through
+
+Until he picks, Baton's window opens by itself and leads with "Choose what Baton works through": Claude Code and Codex,
+each with whose subscription or billing it uses; API key and local model are listed as coming soon and cannot be picked
+(the real choices are the only controls). Only a tool that is installed and signed in can be chosen: `claude auth status`
+and `codex login status`, asked at startup and on "Check again" (`brainChoice.ts`, `brainDetect.ts`). The pick is saved as
+the operator and `brainChosen`, after which the same row lives under Working for you. A Codex login with an API key says
+each use is billed to that key. Voice stays local, and says so. Checked and found nothing to do: the Microphone double
+tick was in the tray's radio list, gone since D130; the voice turn log already rotates (5 files of 5 MiB).
