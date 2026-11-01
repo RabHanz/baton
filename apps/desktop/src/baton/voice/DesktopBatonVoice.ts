@@ -50,6 +50,7 @@ import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
 import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
+import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
@@ -162,6 +163,8 @@ interface VoiceSettings {
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   /** The soft sounds on wake and at the end of a turn. */
   readonly sounds: boolean;
+  /** Baton's window: System follows Windows. */
+  readonly appearance: Appearance;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -203,6 +206,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
   sounds: true,
+  appearance: "system",
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -243,6 +247,7 @@ const readSettings = (path: string): VoiceSettings => {
       ...DEFAULT_SETTINGS,
       wakeWords: wakeWordsFor(saved),
       bindings: parseBindings(saved["bindings"]),
+      appearance: parseAppearance(saved["appearance"]),
       ...cleanupFromSaved(saved),
     };
   } catch {
@@ -1707,6 +1712,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         disabled: spaceUsed(audioDir) === 0,
       },
       {
+        id: "v.appearance",
+        section: "Appearance",
+        label: "Appearance",
+        hint: "Follows Windows by default. Light or Dark applies at once.",
+        kind: "choice",
+        value: settings.appearance,
+        options: [
+          { value: "system", label: "System" },
+          { value: "light", label: "Light" },
+          { value: "dark", label: "Dark" },
+        ],
+      },
+      {
         id: "v.sounds",
         section: "On screen",
         label: "Sounds",
@@ -1948,6 +1966,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     state: homeState,
     apply: applyHome,
     openSessions: input.openMainWindow,
+    appearance: () => settings.appearance,
   });
 
   let speakingNow = false;
