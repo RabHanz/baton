@@ -3607,3 +3607,10 @@ only; the rest is read from the frames, and misclicks are counted in review. Not
 his own words type with no question after a screenshot; text from the screen asks and is not typed without a yes; high risk and a
 command line ask and a question that runs out is a no; Enter, a drag and a send always ask; nothing reaches a tool without the
 token or from a browser. `STATUS.md` says what is proven and what is not.
+
+**D144, rulings on the two gate changes.** (1) After a read, a key or chord is free only if it is navigation or editing with no Windows key and no
+Alt: arrows, Tab, Shift+Tab, Home, End, the page keys, Backspace, Delete, Escape, and Ctrl+A, C, X, V, Z, Y, F, each with Shift or Ctrl only
+(`keyIsNavigation`). The Windows key, Alt (Alt+F4, Alt+Tab, Alt+Space), Ctrl+Alt+Delete, Ctrl+Shift+Escape, Ctrl+W, T, N, Q, R, L, Ctrl+S, Enter,
+the F-keys, Ctrl+Shift+Delete and anything not sure to be one of these ask; unknown is ask. Before a read they are as he asked. (2) One yes to
+typing after a read covers more typing only into the same window and the same box (the control last clicked, by name or by a coarse place); it is
+asked again when the window with the keyboard or the box changes, after Enter or a send, and it ends with the turn. Proof cases 10 and 11.

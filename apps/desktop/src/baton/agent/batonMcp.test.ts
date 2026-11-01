@@ -7,7 +7,12 @@ import { startBatonMcp, type BatonTool } from "./batonMcp.ts";
 const rpc = (method: string, params?: unknown) =>
   JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
 
-const rig = async (opts: { yes: boolean; his?: (text: string) => boolean; shell?: boolean }) => {
+const rig = async (opts: {
+  yes: boolean;
+  his?: (text: string) => boolean;
+  shell?: boolean;
+  window?: string;
+}) => {
   const ran: string[] = [];
   const asked: string[] = [];
   const tools: BatonTool[] = ["type_text", "screen_capture", "sessions_list"].map((name) => ({
@@ -24,7 +29,7 @@ const rig = async (opts: { yes: boolean; his?: (text: string) => boolean; shell?
     actWithoutAsking: () => false,
     taint,
     textIsHis: opts.his ?? (() => false),
-    shellFocused: async () => opts.shell === true,
+    focusedWindow: async () => ({ label: opts.window ?? "Notepad", shell: opts.shell === true }),
     confirm: async (p) => {
       asked.push(p.title);
       return opts.yes;

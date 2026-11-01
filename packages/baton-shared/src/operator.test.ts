@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { decide, guardDecision, parseBrainReply } from "./brain.ts";
-import { describeToolCall, judgeToolCall, type ToolCall } from "./operator.ts";
+import { describeToolCall, judgeToolCall, keyIsNavigation, type ToolCall } from "./operator.ts";
 import { planSensitive } from "./screenCompanion.ts";
 
 const on = { actWithoutAsking: true, tainted: false };
@@ -148,5 +148,25 @@ describe("Baton's own tools (D143)", () => {
   it("keeps the harness's own tools exactly as they were", () => {
     expect(judgeToolCall(bash("npm test"), off).verdict).toBe("ask");
     expect(judgeToolCall({ tool: "mcp__baton__unknown_tool", input: {} }, on).verdict).toBe("ask");
+  });
+});
+
+describe("keys after a read", () => {
+  it("are free only when they are navigation or editing, with no Windows key and no Alt", () => {
+    for (const keys of [["up"], ["tab"], ["shift", "tab"], ["home"], ["pagedown"], ["backspace"], ["delete"], ["escape"], ["ctrl", "a"], ["ctrl", "c"], ["ctrl", "v"], ["ctrl", "z"], ["ctrl", "f"], ["ctrl", "shift", "left"], ["shift", "end"]]) {
+      expect(keyIsNavigation(keys)).toBe(true);
+    }
+  });
+  it("ask when they open, close, navigate, send or are not sure", () => {
+    for (const keys of [["win", "r"], ["alt", "f4"], ["alt", "tab"], ["alt", "space"], ["ctrl", "alt", "delete"], ["ctrl", "shift", "escape"], ["ctrl", "w"], ["ctrl", "t"], ["ctrl", "n"], ["ctrl", "q"], ["ctrl", "r"], ["ctrl", "l"], ["enter"], ["f5"], ["ctrl", "s"], ["ctrl", "shift", "delete"], ["a"], ["ctrl", "k", "j"]]) {
+      expect(keyIsNavigation(keys)).toBe(false);
+    }
+  });
+  it("is judged by that after a read, and left alone before one", () => {
+    const press = (keys: string[]): ToolCall => ({ tool: "mcp__baton__press_keys", input: { keys, why: "a key" } });
+    expect(judgeToolCall(press(["ctrl", "a"]), { ...on, tainted: true }).verdict).toBe("allow");
+    expect(judgeToolCall(press(["win", "r"]), { ...on, tainted: true }).verdict).toBe("ask");
+    expect(judgeToolCall(press(["alt", "f4"]), { ...on, tainted: true }).verdict).toBe("ask");
+    expect(judgeToolCall(press(["win", "r"]), on).verdict).toBe("allow");
   });
 });

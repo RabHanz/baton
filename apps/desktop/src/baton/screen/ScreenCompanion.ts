@@ -1346,10 +1346,12 @@ export const startScreenCompanion = (input: {
     actWithoutAsking: () => settings.actWithoutAsking,
     taint: agentTaint,
     textIsHis: (text) => textIsFromConversation(text, conversation.recent(12)),
-    shellFocused: async () => {
+    focusedWindow: async () => {
       const seen = await focusSoon();
       // A window that cannot be told apart from a command line is treated as one.
-      return seen === null || isShellWindow(seen.label);
+      return seen === null
+        ? { label: "unknown", shell: true }
+        : { label: seen.label, shell: isShellWindow(seen.label) };
     },
     confirm: async (p) =>
       (await askHandsFree(

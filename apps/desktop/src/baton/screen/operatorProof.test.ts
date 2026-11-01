@@ -168,11 +168,11 @@ describe("operator proof", () => {
 /** The one assistant's own tools (D143): the same gate, inside the tool server. */
 const assistant = async (
   answer: "yes" | "no" | "expired",
-  options: { shell?: boolean; his?: (t: string) => boolean } = {},
+  options: { shell?: boolean; window?: () => string; his?: (t: string) => boolean } = {},
 ) => {
   const ran: string[] = [];
   const asked: string[] = [];
-  const names = ["screen_capture", "type_text", "press_keys", "drag", "click"];
+  const names = ["screen_capture", "type_text", "press_keys", "drag", "click", "click_element"];
   const tools: BatonTool[] = names.map((name) => ({
     name,
     description: name,
@@ -183,7 +183,10 @@ const assistant = async (
     actWithoutAsking: () => true,
     taint: createTaint(),
     textIsHis: options.his ?? (() => false),
-    shellFocused: async () => options.shell === true,
+    focusedWindow: async () => ({
+      label: options.window?.() ?? "Notepad",
+      shell: options.shell === true,
+    }),
     confirm: async (p) => {
       asked.push(p.title);
       // A question that runs out is a no when it is risky; so is the answer "no".
@@ -285,6 +288,44 @@ describe("operator proof: the one assistant's tools", () => {
       await a.call("click", { x: 1, y: 1, why: "the box" }, { origin: "https://evil.example" }),
     ).toBeNull();
     expect(a.ran).toEqual([]);
+    await a.mcp.close();
+  });
+
+  it("PROOF 10: after a read, only navigation and editing keys are free; a Win or Alt chord asks", async () => {
+    const a = await assistant("no");
+    await a.call("screen_capture", {});
+    for (const keys of [["ctrl", "a"], ["tab"], ["shift", "tab"], ["escape"]]) {
+      expect((await a.call("press_keys", { keys, why: "a key" }))?.isError).toBeUndefined();
+    }
+    for (const keys of [
+      ["win", "r"],
+      ["alt", "f4"],
+      ["alt", "tab"],
+      ["ctrl", "w"],
+      ["ctrl", "shift", "escape"],
+      ["f5"],
+      ["ctrl", "s"],
+    ]) {
+      expect((await a.call("press_keys", { keys, why: "a key" }))?.isError).toBe(true);
+    }
+    await a.mcp.close();
+  });
+
+  it("PROOF 11: one yes to typing covers that window and box only, and ends at Enter or a change", async () => {
+    let window = "Notepad";
+    const a = await assistant("yes", { window: () => window });
+    const type = (text: string) => a.call("type_text", { text, why: "into the box" });
+    await a.call("screen_capture", {});
+    await a.call("click_element", { label: "Body", why: "the box" });
+    await type("one");
+    await type("two");
+    expect(a.asked).toHaveLength(1);
+    window = "Slack";
+    await type("three");
+    expect(a.asked).toHaveLength(2);
+    await a.call("click_element", { label: "Other box", why: "another box" });
+    await type("four");
+    expect(a.asked).toHaveLength(3);
     await a.mcp.close();
   });
 });
