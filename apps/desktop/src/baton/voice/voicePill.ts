@@ -11,10 +11,19 @@ import * as Electron from "electron";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { defaultPosition, parseSpots, positionOf, spotFrom, type Spot } from "./pillPlacement.ts";
+import {
+  PLACES,
+  defaultPosition,
+  parseSpots,
+  placePosition,
+  positionOf,
+  snapPosition,
+  spotFrom,
+  type PlaceId,
+  type Spot,
+} from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { PILL_PARTIAL, PILL_SOUNDS, type PillSound } from "./pillSounds.ts";
-import { markSvg, type MarkOptions } from "./trayMark.ts";
 import {
   IDLE_TURN,
   SILENT_AFTER_MS,
@@ -38,61 +47,46 @@ const DEAD_LEVEL = 0.03;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
 
-/** Baton's window palette (home/homeDocument.ts), so the pill reads as part of the same app. */
-const TILE = {
-  accent: "#1f6f5b",
-  quiet: "#6b675e",
-  bad: "#b3423a",
-  faint: "#9a958a",
-  warn: "#b4691f",
-} as const;
+/** The phases that show a waveform and no word: his voice or Baton's, live. */
+const WAVE_PHASES = ["listening", "speaking", "dictating"];
 
-/** The state glyph is the capability mark: its colour is the state, its lit bars say what is on. */
-const GLYPHS = {
-  listening: { color: TILE.accent, caps: [true, true, true], muted: false },
-  speaking: { color: TILE.accent, caps: [true, true, true], muted: false },
-  dictating: { color: TILE.accent, caps: [false, true, true], muted: false },
-  done: { color: TILE.accent, caps: [true, true, true], muted: false },
-  thinking: { color: TILE.quiet, caps: [false, true, false], muted: false },
-  working: { color: TILE.quiet, caps: [true, true, false], muted: false },
-  muted: { color: TILE.bad, caps: [true, true, true], muted: true },
-  ended: { color: TILE.faint, caps: [false, false, false], muted: false },
-  error: { color: TILE.warn, caps: [false, false, false], muted: false },
-} as const satisfies Record<string, MarkOptions>;
-
-export const PILL_GLYPHS: Record<string, string> = Object.fromEntries(
-  Object.entries(GLYPHS).map(([phase, mark]) => [phase, markSvg(mark)]),
-);
-
+/**
+ * The pill: black in every theme, 24 px tall, nothing it does not need. A live waveform while he or
+ * Baton is speaking; otherwise one short word; soft text only for an error or where words go. No
+ * icon, no button, no shadow beyond a hairline. The bars move when a level arrives, not on a timer.
+ */
 export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-:root{--card:#fffdf9;--ink:#1c1b18;--soft:#6b675e;--faint:#9a958a;--line:#e6e1d6;--bad:#b3423a;--warn:#b4691f;
---sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--ease:cubic-bezier(.2,.8,.2,1)}
-html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:13px/1.3 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
+:root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
+--sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
 body{display:flex;align-items:center;justify-content:center}
-#p{box-sizing:border-box;display:flex;align-items:center;gap:10px;height:40px;max-width:${WIDTH - 16}px;padding:0 16px 0 8px;border-radius:14px;background:var(--card);border:1px solid var(--line);color:var(--ink);box-shadow:0 0 0 1px rgba(28,27,24,.08),0 10px 28px -10px rgba(28,27,24,.4);opacity:0;transform:translateY(6px);transition:opacity .14s,transform .22s var(--ease)}
+#p{box-sizing:border-box;display:flex;align-items:center;gap:7px;height:24px;max-width:${WIDTH - 16}px;padding:0 11px;border-radius:999px;background:var(--ink);border:1px solid var(--line);box-shadow:0 0 0 1px rgba(0,0,0,.5);color:var(--text);opacity:0;transform:translateY(4px);transition:opacity .12s,transform .16s cubic-bezier(.2,.8,.2,1),border-color .15s;cursor:grab}
 #p.on{opacity:1;transform:none}
-#p.rest{height:14px;width:64px;padding:0;border-radius:999px;border-style:solid}
-#p.rest[data-rest=muted]{border-color:var(--bad);background:#f6e1de}
-#p.rest[data-rest=off]{border:1px dashed var(--faint);background:rgba(255,253,249,.55);box-shadow:none}
-#p{cursor:grab}
 #p.drag{cursor:grabbing}
+#p.rest{height:6px;width:36px;padding:0;gap:0;border-color:rgba(255,255,255,.4);background:rgba(13,13,17,.78)}
+#p.rest[data-rest=muted]{border-color:var(--red)}
+#p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
-#g{display:block;width:24px;height:24px;flex:none;transition:transform .09s linear}
-#g svg{display:block;width:100%;height:100%}
-#g.swap{animation:swap .18s var(--ease)}
-@keyframes swap{from{transform:scale(.8);opacity:.4}to{transform:none;opacity:1}}
-#t{font-weight:600;white-space:nowrap}
-#c{color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-#c:empty{display:none}
-#p[data-phase=error]{border-color:var(--warn)}
-#p[data-phase=muted] #t{color:var(--bad)}
-#p[data-phase=ended] #t{color:var(--soft)}
-@media (prefers-reduced-motion:reduce){#p,#g{transition:none}#g.swap{animation:none}}
-</style></head><body><div id="p" role="status" aria-live="polite"><span id="g"></span><span id="t"></span><span id="c"></span></div>
+#w{display:none;align-items:center;gap:2px;height:14px;flex:none}
+#w i{display:block;width:2px;height:2px;border-radius:1px;background:var(--bar,#fff);transition:height .09s linear}
+#p[data-wave=on] #w{display:flex}
+#t{white-space:nowrap}
+#t:empty,#c:empty{display:none}
+#c{color:var(--soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#p[data-tone=voice]{--bar:var(--blue)}
+#p[data-tone=write],#p[data-tone=good]{--bar:var(--green)}
+#p[data-tone=good] #t{color:var(--green)}
+#p[data-tone=off] #t{color:var(--red)}
+#p[data-tone=warn]{border-color:var(--amber)}
+@media (prefers-reduced-motion:reduce){#p,#w i{transition:none}}
+</style></head><body><div id="p" role="status" aria-live="polite"><span id="w"></span><span id="t"></span><span id="c"></span></div>
 <script>
-const $=i=>document.getElementById(i),SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},GLYPHS=${JSON.stringify(PILL_GLYPHS)};
+const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
-let ctx=null,live=false,shown='';
+const bars=Array.from({length:BARS},()=>{const b=document.createElement('i');$('w').appendChild(b);return b;});
+const shape=bars.map((_,i)=>{const h=Math.abs((BARS-1)/2-i);return Math.max(.25,1-h*h/18);});
+let ctx=null,live=false,tick=0;
+const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=calm?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.height=(2+10*shape[i]*n*wobble).toFixed(1)+'px';});};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
 let dragging=false;
@@ -103,17 +97,36 @@ grab.addEventListener('mouseleave',()=>{if(dragging){dragging=false;grab.classLi
 grab.addEventListener('mousedown',e=>{if(e.button!==0)return;dragging=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);});
 addEventListener('mouseup',()=>{if(dragging){dragging=false;grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false);}});
 grab.addEventListener('dblclick',()=>ipcRenderer.send('baton-pill:reset'));
+grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
+let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
+addEventListener('mousemove',setBypass);addEventListener('mousedown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
- show(v){$('t').textContent=v.label;$('c').textContent=v.caption||'';const p=$('p'),g=$('g');p.dataset.phase=v.phase;p.className='on';
-  if(shown!==v.phase){shown=v.phase;g.innerHTML=GLYPHS[v.phase]||'';g.style.transform='';g.classList.remove('swap');void g.offsetWidth;g.classList.add('swap');}
-  live=v.wave==='live';if(!live)g.style.transform='';},
- rest(why){const p=$('p');p.className='on rest';delete p.dataset.phase;p.dataset.rest=why||'sleeping';shown='';},
- level(n){if(live&&!calm)$('g').style.transform='scale('+(1+Math.min(1,n)*.16).toFixed(3)+')';},
- hide(){$('p').className='';shown='';},
+ show(v){const p=$('p'),wave=WAVE.includes(v.phase);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';
+  live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
+  // A word only when the waveform does not say it; soft text only for where words go or an error.
+  $('t').textContent=wave?'':v.phase==='ended'?'':v.label;
+  $('c').textContent=v.phase==='ended'?'Say the wake word':(v.caption&&/^to /.test(v.caption)?v.caption:'');},
+ rest(why){const p=$('p');p.className='on rest';delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.rest=why||'sleeping';live=false;},
+ level(n){if(live&&!calm)draw(Math.min(1,n));},
+ hide(){$('p').className='';live=false;},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note(n,t);},
 };
 </script></body></html>`;
+
+export const markersDocument = (
+  dots: ReadonlyArray<{ id: string; label: string; x: number; y: number }>,
+): string =>
+  `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;overflow:hidden;background:transparent;font:600 12px "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+.d{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:rgba(31,111,91,.35);border:2px solid #1f6f5b;box-sizing:border-box}
+.d.on{background:#1f6f5b;transform:scale(1.5)}
+.l{position:absolute;transform:translate(-50%,14px);color:#1f6f5b;background:rgba(255,253,249,.92);padding:2px 8px;border-radius:6px;border:1px solid #e6e1d6;white-space:nowrap;opacity:0}
+.l.on{opacity:1}</style><body></body><script>
+const dots=${JSON.stringify(dots)};
+for(const d of dots){const e=document.createElement('div');e.className='d';e.id='d-'+d.id;e.style.left=d.x+'px';e.style.top=d.y+'px';document.body.appendChild(e);
+const l=document.createElement('div');l.className='l';l.id='l-'+d.id;l.textContent=d.label;l.style.left=d.x+'px';l.style.top=d.y+'px';document.body.appendChild(l);}
+window.hi=id=>{for(const d of dots){document.getElementById('d-'+d.id).classList.toggle('on',d.id===id);document.getElementById('l-'+d.id).classList.toggle('on',d.id===id);}};
+</script>`;
 
 export interface VoicePill {
   readonly on: (event: TurnEvent) => void;
@@ -128,6 +141,8 @@ export interface VoicePill {
   /** Why it is not hearing him, so the rest bar can say so: asleep, muted, or off. */
   readonly setReason: (reason: "sleeping" | "muted" | "off") => void;
   readonly setEdge: (edge: "bottom" | "top") => void;
+  /** Puts it on a named place of the display it is on and keeps it there. */
+  readonly moveTo: (place: PlaceId) => void;
   readonly state: () => TurnState;
   readonly dispose: () => void;
 }
@@ -166,6 +181,10 @@ export const createVoicePill = (input: {
   const spotsFile = NodePath.join(input.stateDir, "baton-pill.json");
   let spots = loadSpots(spotsFile);
   let dragTimer: ReturnType<typeof setInterval> | null = null;
+  let bypassSnap = false;
+  let markers: Electron.BrowserWindow | null = null;
+  let markerPlace: PlaceId | null = null;
+  const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
 
   const displayKey = (display: Electron.Display) => String(display.id);
   /** Where it goes on this display: his place if he moved it, else the default. */
@@ -187,10 +206,51 @@ export const createVoicePill = (input: {
     }
   };
 
+  /** The named places and the grid, drawn on the display while it is dragged. */
+  const openMarkers = (display: Electron.Display) => {
+    closeMarkers();
+    const area = display.workArea;
+    const size = { width: WIDTH, height: HEIGHT };
+    const dots = PLACES.map((place) => {
+      const at = placePosition(area, size, place.id, margins());
+      return {
+        id: place.id,
+        label: place.label,
+        x: at.x - area.x + WIDTH / 2,
+        y: at.y - area.y + HEIGHT / 2,
+      };
+    });
+    const win = new Electron.BrowserWindow({
+      ...area,
+      frame: false,
+      transparent: true,
+      focusable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      show: false,
+      resizable: false,
+    });
+    win.setIgnoreMouseEvents(true);
+    win.setAlwaysOnTop(true, "screen-saver");
+    markCompanionWindow(win);
+    win.setContentProtection(true);
+    const page = markersDocument(dots);
+    void win.loadURL(`data:text/html,${encodeURIComponent(page)}`).then(() => {
+      if (!win.isDestroyed()) win.showInactive();
+    });
+    markers = win;
+    markerPlace = null;
+  };
+  const closeMarkers = () => {
+    if (markers !== null && !markers.isDestroyed()) markers.destroy();
+    markers = null;
+  };
   const stopDrag = (save: boolean) => {
     if (dragTimer === null) return;
     clearInterval(dragTimer);
     dragTimer = null;
+    closeMarkers();
     if (!save || window === null || window.isDestroyed()) return;
     const bounds = window.getBounds();
     const display = Electron.screen.getDisplayMatching(bounds);
@@ -353,27 +413,59 @@ export const createVoicePill = (input: {
     const start = Electron.screen.getCursorScreenPoint();
     const from = window.getBounds();
     const target = window;
+    openMarkers(Electron.screen.getDisplayMatching(from));
     dragTimer = setInterval(() => {
       if (target.isDestroyed()) return stopDrag(false);
       const cursor = Electron.screen.getCursorScreenPoint();
       const display = Electron.screen.getDisplayNearestPoint(cursor);
       const area = display.workArea;
-      const x = Math.min(
-        Math.max(from.x + cursor.x - start.x, area.x),
-        area.x + area.width - from.width,
+      const snapped = snapPosition(
+        area,
+        { width: from.width, height: from.height },
+        { x: from.x + cursor.x - start.x, y: from.y + cursor.y - start.y },
+        { bypass: bypassSnap, margins: margins() },
       );
-      const y = Math.min(
-        Math.max(from.y + cursor.y - start.y, area.y),
-        area.y + area.height - from.height,
-      );
+      if (snapped.place !== markerPlace && markers !== null && !markers.isDestroyed()) {
+        markerPlace = snapped.place;
+        void markers.webContents
+          .executeJavaScript(`window.hi(${JSON.stringify(snapped.place)})`)
+          .catch(() => undefined);
+      }
       target.setBounds({
-        x: Math.round(x),
-        y: Math.round(y),
+        x: snapped.x,
+        y: snapped.y,
         width: from.width,
         height: from.height,
       });
     }, DRAG_MS);
     dragTimer.unref();
+  });
+  Electron.ipcMain.on("baton-pill:bypass", (event, on: unknown) => {
+    if (mine(event)) bypassSnap = on === true;
+  });
+  const moveTo = (id: PlaceId) => {
+    if (window === null || window.isDestroyed()) {
+      build();
+    }
+    const target = window;
+    if (target === null || target.isDestroyed()) return;
+    const display = Electron.screen.getDisplayMatching(target.getBounds());
+    const size = { width: WIDTH, height: HEIGHT };
+    const at = placePosition(display.workArea, size, id, margins());
+    spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, size, at) };
+    saveSpots();
+    target.setBounds({ ...at, ...size });
+  };
+  Electron.ipcMain.on("baton-pill:menu", (event) => {
+    if (!mine(event) || window === null || window.isDestroyed()) return;
+    Electron.Menu.buildFromTemplate([
+      ...(["centre", "top", "bottom"] as const).map((id) => ({
+        label: `Move to ${PLACES.find((p) => p.id === id)!.label.toLowerCase()}`,
+        click: () => moveTo(id),
+      })),
+      { type: "separator" as const },
+      { label: "Put it back", click: () => Electron.ipcMain.emit("baton-pill:reset", event) },
+    ]).popup({ window });
   });
   Electron.ipcMain.on("baton-pill:reset", (event) => {
     if (!mine(event) || window === null || window.isDestroyed()) return;
@@ -412,10 +504,12 @@ export const createVoicePill = (input: {
         call(`window.pill.rest(${JSON.stringify(why)})`);
       }
     },
+    moveTo,
     state: () => state,
     dispose: () => {
       if (timer !== null) clearTimeout(timer);
       if (silentTimer !== null) clearTimeout(silentTimer);
+      closeMarkers();
       Electron.app.removeListener("browser-window-created", follow);
       setEscape(false);
       stopDrag(false);
