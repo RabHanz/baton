@@ -29,11 +29,16 @@ export const BATON_ACCOUNT_WS_METHODS = {
 
 export const BATON_DEFAULT_CLAUDE_INSTANCE = "claudeAgent";
 
-/** cswap slots of the token instances; the same table as scripts/baton/provider-token-instances.py. */
-export const BATON_CLAUDE_ACCOUNT_INSTANCES: Readonly<Record<string, string>> = {
-  claudeAgent_rabee: "4",
-  claudeAgent_optima: "5",
-  claudeAgent_signzart: "6",
+/**
+ * cswap slots of the token instances, by provider instance id. Empty until a machine says which it
+ * has: the server reads `BATON_CLAUDE_ACCOUNT_INSTANCES` (JSON, `{"claudeAgent_work":"4"}`) at start.
+ */
+export const BATON_CLAUDE_ACCOUNT_INSTANCES: Record<string, string> = {};
+
+export const setClaudeAccountInstances = (map: Readonly<Record<string, string>>): void => {
+  for (const key of Object.keys(BATON_CLAUDE_ACCOUNT_INSTANCES))
+    delete BATON_CLAUDE_ACCOUNT_INSTANCES[key];
+  Object.assign(BATON_CLAUDE_ACCOUNT_INSTANCES, map);
 };
 
 /** Identifies an account inside a pool. Opaque: the adapter chooses the form. */

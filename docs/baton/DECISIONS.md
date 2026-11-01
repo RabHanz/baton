@@ -3298,3 +3298,16 @@ by asking `claude auth status` of each directory (`assistantAccounts.ts`), at st
 opens; a turn reads the remembered answer and never waits. A login that is gone or signed out falls back to his own with
 one plain line on the pill. The address is masked until clicked. Not done: per-account limits in this list (the server's
 pool has them; the desktop does not reach it), and Codex has no account choice.
+
+## D135 — Launch audit: private defaults
+
+Shipped code (apps/, packages/) searched for the Director's names, hostnames, paths and accounts. Changed:
+(1) The three cswap token instances `claudeAgent_rabee/_optima/_signzart` were a built-in table in
+`packages/baton-contracts/src/accountPool.ts`. It is now empty, and the server reads `BATON_CLAUDE_ACCOUNT_INSTANCES`
+(JSON of instance id to cswap slot) at start. His machines must set it, for example
+`{"claudeAgent_rabee":"4","claudeAgent_optima":"5","claudeAgent_signzart":"6"}`, or thread-to-account moves fall back
+to the active account. (2) The wake word "Freya" is off by default (its model still ships and can be turned on).
+(3) Example addresses in two comments. Left, by decision: the words "the Director" in comments, wake words
+Sebastian and Alfred (generic), the "Jarvis" speech prompt and the `jarvis|baton` prefix strip (a stock openWakeWord
+name), and everything under `scripts/baton/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
+Facts for launch: `docs/baton/LAUNCH.md`.

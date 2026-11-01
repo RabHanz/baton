@@ -48,7 +48,7 @@ export const candidateDirs = (input: {
   return [...new Set(dirs)];
 };
 
-/** `rabee@example.com` as `r•••@example.com`, until he clicks. */
+/** `alex@example.com` as `a•••@example.com`, until he clicks. */
 export const maskEmail = (email: string): string => {
   const at = email.indexOf("@");
   return at < 1 ? "•••" : `${email[0]}•••${email.slice(at)}`;
