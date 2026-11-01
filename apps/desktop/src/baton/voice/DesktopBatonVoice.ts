@@ -28,6 +28,8 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import { sessionControls } from "../sessions/sessionRows.ts";
+import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -199,6 +201,7 @@ const TYPED_CONFIRM_MS = 30_000;
 const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
+const SESSIONS_NOTE_MS = 8_000;
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
@@ -260,6 +263,8 @@ export interface DesktopBatonVoiceInput {
   /** A wake word cut across Baton's voice. */
   readonly onBargeIn?: () => void;
   readonly extras?: TrayExtras;
+  /** The Sessions area's rows and actions (D138). */
+  readonly sessions?: SessionsBridge;
   /** Where the wake and listening models are, for the Check area. */
   readonly voiceAssets?: (modelsDir: string | null) => VoiceAssets;
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
@@ -884,6 +889,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }, MIC_TEST_MS).unref();
   };
 
+  let sessionsNote: string | null = null;
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -892,6 +899,34 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mark: markSvg(markOptions()),
     },
     controls: [
+      ...(input.sessions === undefined
+        ? []
+        : input.sessions.rows().length > 0
+          ? [
+              ...sessionControls(input.sessions.rows()),
+              ...(sessionsNote === null
+                ? []
+                : [
+                    {
+                      id: "n.note",
+                      section: "Sessions",
+                      label: "Last action",
+                      kind: "check" as const,
+                      status: "ok" as const,
+                      detail: sessionsNote,
+                    },
+                  ]),
+            ]
+          : [
+              {
+                id: "n.empty",
+                section: "Sessions",
+                label: "No sessions loaded yet",
+                hint: "They appear here once T3's sessions view has opened.",
+                kind: "action" as const,
+                button: "Open sessions",
+              },
+            ]),
       {
         id: "v.enabled",
         section: "Listening",
@@ -1101,7 +1136,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
-    if (id.startsWith("s.")) input.extras?.applySetting(id, value);
+    if (id === "n.empty") input.openMainWindow();
+    else if (id.startsWith("n:")) {
+      void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
+        sessionsNote = line;
+        setTimeout(() => {
+          sessionsNote = null;
+          home.refresh();
+        }, SESSIONS_NOTE_MS).unref();
+        home.refresh();
+      });
+    } else if (id.startsWith("s.")) input.extras?.applySetting(id, value);
     else if (id === "v.enabled") {
       save({ enabled: on });
       void (on ? start().catch(failed) : stop());

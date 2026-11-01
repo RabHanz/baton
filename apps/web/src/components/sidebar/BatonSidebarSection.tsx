@@ -11,6 +11,7 @@ import type {
   ProjectId,
   ScopedThreadRef,
 } from "@t3tools/baton-contracts";
+import type { ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type { ReactNode } from "react";
@@ -106,6 +107,9 @@ export function BatonSidebarSection(props: {
         resolveWorkAccount={resolveWorkAccount}
         resolveProjectForKey={(key) => projectByKey.get(key) ?? null}
         onOpenWorkSession={openWorkSession}
+        onOpenThreadById={(environmentId, threadId) =>
+          void props.onOpenThread(scopeThreadRef(environmentId, threadId as ThreadId))
+        }
         listHandoffTargets={listHandoffTargets}
       />
     </div>

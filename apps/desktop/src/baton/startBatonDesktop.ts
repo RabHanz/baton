@@ -21,6 +21,7 @@ import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
+import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
 import { createPocketEngine } from "./voice/pocketVoice.ts";
@@ -110,12 +111,18 @@ export const startBatonDesktop = Effect.gen(function* () {
     } catch (cause) {
       Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
     }
+    const sessions = createSessionsBridge({
+      ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
+      openMainWindow,
+      onChange: () => voice?.refresh(),
+    });
     voice = startDesktopBatonVoice({
       stateDir: environment.stateDir,
       platform: environment.platform,
       env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
+      sessions,
       holdEscape,
       onBargeIn: () => {
         speaker.cancel();
