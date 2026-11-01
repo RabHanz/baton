@@ -201,6 +201,8 @@ export const BatonJobPart = Schema.Struct({
   title: TrimmedNonEmptyString,
   goal: TrimmedNonEmptyString,
   role: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Mechanical, repeatable work: runs on the cheap model of the routing table. */
+  routine: Schema.optionalKey(Schema.Boolean),
 });
 
 export const BatonJobSplitInput = Schema.Struct({

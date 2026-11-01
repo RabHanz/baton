@@ -369,7 +369,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   {
     name: "job_split",
     description:
-      "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (engineering, marketing, research, operations). Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
+      "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (engineering, marketing, research, operations) and routine: true for mechanical, repeatable work, which runs on the cheaper model. Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
     inputSchema: object(
       {
         id: { type: "string" },
@@ -382,6 +382,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
               title: { type: "string", maxLength: 120 },
               goal: { type: "string", maxLength: 4000 },
               role: { type: "string", maxLength: 40 },
+              routine: { type: "boolean" },
             },
             ["title", "goal"],
           ),
@@ -402,6 +403,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
           ...(typeof part["role"] === "string" && part["role"] !== ""
             ? { role: part["role"] }
             : {}),
+          ...(part["routine"] === true ? { routine: true } : {}),
         };
       });
       return { text: await host.jobs("split", { id: str(a, "id", 200), parts: clean }) };
