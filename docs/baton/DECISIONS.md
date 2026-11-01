@@ -3490,3 +3490,29 @@ allowed, `type_text` is routine unless the text is high risk, the window is a co
 the text did not come from the conversation (`textIsFromConversation`); Enter, drag and a sensitive click ask. Tests: no
 token, wrong token and a browser are refused; a high-risk call without a yes never runs; plain typing runs with no question;
 after a screenshot other text asks and his own words do not.
+
+**D143 push 3.** `agent/agentSession.ts` keeps one session warm, seeds it from the conversation file (the last six turns in
+full, the current target), puts every turn back into the file, and replaces the session when it dies, after 40 turns or six
+hours idle, re-seeded, so nothing is lost. `agent/agentPrompt.ts` is what it is told: §14's order for what "it" means, §20's
+quiet about progress, §24's lines, and "type what you said" as a recipe (screenshot, click the box, `type_text` exactly the
+words from the conversation). A test seeds a fixture conversation and checks that the session's first prompt holds the last
+reply in full and that the turn goes back into the file. `claudeVision` takes an `mcp` option: a private config file naming
+Baton's tool server and its token, passed with `--mcp-config --strict-mcp-config`, removed with the session.
+
+## D144 — The assistant's hands (folds issue #52 into D143)
+
+Computer use is not a stage. It is the agent calling tools itself, in a loop it controls: see, act, check, and again, with
+retries and a changed plan when the screen is not what it expected, several tools in one turn, in any app. Today's drive is
+one plan from one screenshot with a check after each step and an accessibility lookup for where a control is (D111); it
+cannot replan. In the new design the tools are `screen_capture` (the existing consent), `ui_tree` and `locate` (Windows UI
+Automation: names, roles and rectangles of what is on screen), `click`, `double_click`, `drag`, `scroll`, `press_keys`,
+`type_text`, `wait_for` (waits until a named control or text appears, or gives up), and the agent looks again after each
+action. UFO's idea, taken (MIT; its code is read first-hand before anything is ported): use the API or UIA first and pixels
+last, so a control the tree names is clicked by name and a screenshot is for what the tree cannot see. Visual plus UIA
+detection comes only where a before and after on the task set shows a gain. The guards stay and move into the tools: the gate
+on every call; plain text into a named box is routine; send, delete, pay, publish and secrets are a spoken yes; no pointer
+move while he is using the mouse unless he asked (D115); Escape and "stop" end it at once, before any model.
+The Windows task set of the research note (six tasks, three runs each) runs only when he is away and has been told; the
+harness is built with a dry run on fixtures that touches no pointer, so the real run is one command.
+Push order from here: 4 the host and the voice wiring behind "One assistant (new)"; 5 the hands tools and the harness;
+6 the proof script for every new tool.
