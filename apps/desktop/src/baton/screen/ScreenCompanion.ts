@@ -79,6 +79,7 @@ import {
   type ConversationRoute,
 } from "@t3tools/baton-shared/conversation";
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
+import { pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
@@ -1389,6 +1390,16 @@ export const startScreenCompanion = (input: {
     if (shot === null) throw new Error("Take a screenshot first, so I know where things are.");
     return toDesktop(a, shot);
   };
+  /** Where Baton last left the pointer this turn; null before its first move. */
+  let leftPointer: { x: number; y: number } | null = null;
+  const pointerAction = async (to: { x: number; y: number }, act: () => Promise<void>) => {
+    const here = Electron.screen.getCursorScreenPoint();
+    if (pointerMoved(leftPointer, here)) {
+      throw new Error("He moved the mouse, so I stopped. Tell him, and carry on only if he asks.");
+    }
+    await act();
+    leftPointer = to;
+  };
   const toolHost: ToolHost = {
     capture: async () => {
       if (!(await approveCapture("what is on your screen", null))) {
@@ -1407,8 +1418,31 @@ export const startScreenCompanion = (input: {
       };
     },
     click: async (a) => {
-      await driverFor().clickAt(desktopPoint(a), a.button ?? "left", a.double === true ? 2 : 1);
+      const to = desktopPoint(a);
+      await pointerAction(to, () =>
+        driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
+      );
       return "Clicked.";
+    },
+    clickElement: async (label, double) => {
+      const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint());
+      if (found === null || found === undefined) {
+        throw new Error(
+          `No control is named "${label}" here. Take a screenshot and click by position.`,
+        );
+      }
+      const to = { x: found.x, y: found.y };
+      await pointerAction(to, () => driverFor().clickAt(to, "left", double ? 2 : 1));
+      return `Clicked ${found.name}.`;
+    },
+    waitFor: async (label, seconds) => {
+      const until = Date.now() + seconds * 1000;
+      do {
+        const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint());
+        if (found !== null && found !== undefined) return `${found.name} is there.`;
+        await sleep(400);
+      } while (Date.now() < until);
+      return `No control named "${label}" appeared in ${seconds} seconds.`;
     },
     scroll: async (amount) => {
       await driverFor().scrollAt(null, amount);
@@ -1498,6 +1532,7 @@ export const startScreenCompanion = (input: {
       beginTurn: () => {
         agentTaint.reset();
         agentTools.length = 0;
+        leftPointer = null;
       },
     });
     return agent;
@@ -1505,6 +1540,8 @@ export const startScreenCompanion = (input: {
   /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
   const agentTurn = async (text: string, started: number, direct: boolean) => {
     answering += 1;
+    // Escape ends the turn at once, before anything else is asked of the model.
+    const releaseEscape = input.holdEscape(dismiss, "drive");
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
     try {
@@ -1534,6 +1571,7 @@ export const startScreenCompanion = (input: {
     } catch (error) {
       fail(error);
     } finally {
+      releaseEscape();
       answering -= 1;
       input.onTurnEnd?.();
     }

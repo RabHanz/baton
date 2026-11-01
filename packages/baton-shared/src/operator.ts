@@ -69,11 +69,12 @@ const BATON_QUIET = new Set([
   "memory_search",
   "remember_target",
   "wait",
+  "wait_for",
   "dictation_start",
   "dictation_stop",
   "screen_capture",
 ]);
-const BATON_POINTER = new Set(["click", "scroll"]);
+const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
 export const BATON_TOOLS: ReadonlySet<string> = new Set([
   ...BATON_QUIET,
   ...BATON_POINTER,
@@ -126,8 +127,10 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
         return { verdict: "ask", why: "That may send what is typed." };
       }
-      if (sensitiveAction(text)) return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
-      return context.tainted ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };
+      // A key or a chord carries nothing out; only Enter, which may send, and the sensitive ones ask.
+      return sensitiveAction(text)
+        ? { verdict: "ask", why: "It deletes, sends, pays or publishes." }
+        : { verdict: "allow" };
     case "session_send":
       // The intent layer applies the same gates as typing it; a secret carried out is the risk here.
       return outgoing ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };

@@ -8,6 +8,8 @@ import type { BatonTool, ToolOutput } from "./batonMcp.ts";
 
 export interface ToolHost {
   readonly capture: () => Promise<ToolOutput>;
+  readonly clickElement: (label: string, double: boolean) => Promise<string>;
+  readonly waitFor: (label: string, seconds: number) => Promise<string>;
   readonly click: (a: {
     x: number;
     y: number;
@@ -94,6 +96,30 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
         ...(a["button"] === "right" ? { button: "right" as const } : {}),
         ...(a["double"] === true ? { double: true } : {}),
       }),
+    }),
+  },
+  {
+    name: "click_element",
+    description:
+      "Click a control by its name, found through the accessibility tree: more reliable than a point when the control has a name (a button, a menu item, a field). Falls back with an error if no control has that name; then use a screenshot and click.",
+    inputSchema: object({ label: { type: "string" }, double: { type: "boolean" }, why: WHY }, [
+      "label",
+      "why",
+    ]),
+    run: async (a) => ({
+      text: await host.clickElement(str(a, "label", 200), a["double"] === true),
+    }),
+  },
+  {
+    name: "wait_for",
+    description:
+      "Wait, up to ten seconds, until a control with this name is on screen. Use it after an action that opens something.",
+    inputSchema: object(
+      { label: { type: "string" }, seconds: { type: "number", minimum: 0, maximum: 10 } },
+      ["label", "seconds"],
+    ),
+    run: async (a) => ({
+      text: await host.waitFor(str(a, "label", 200), Math.max(0, Math.min(10, num(a, "seconds")))),
     }),
   },
   {
