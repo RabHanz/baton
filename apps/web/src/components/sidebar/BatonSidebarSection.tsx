@@ -70,6 +70,7 @@ export function BatonSidebarSection(props: {
     batonDesktopBridge()?.setBatonUsage?.(JSON.parse(usage));
   }, [usage]);
   const quiet = { reportFailure: false } as const;
+  const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
@@ -123,6 +124,8 @@ export function BatonSidebarSection(props: {
     switch (op) {
       case "list":
         return done(await jobList({ ...env, input: {} }));
+      case "watch":
+        return done(await watchGet({ ...env, input: {} }));
       case "start": {
         const wanted = text("project").trim().toLowerCase();
         const mine = projects.filter((p) => p.environmentId === primary);

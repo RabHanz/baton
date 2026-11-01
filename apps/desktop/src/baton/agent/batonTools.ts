@@ -38,7 +38,7 @@ export interface ToolHost {
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
 
-type JobOp = "list" | "start" | "agree" | "refine" | "grant" | "revoke";
+type JobOp = "list" | "start" | "agree" | "refine" | "grant" | "revoke" | "watch";
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -262,6 +262,13 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "List his jobs (long work handed to a worker): id, title, where it is (writing the plan, waiting for his OK, running, needs him, done, failed) and what it may do.",
     inputSchema: object({}),
     run: async () => ({ text: await host.jobs("list", {}) }),
+  },
+  {
+    name: "watch_report",
+    description:
+      "Which sessions and jobs are being left alone: failed, out of room, offline, stalled (working but silent for half an hour), waiting for him too long, or finished and never looked at. Read from state, with what each last did. Use it for 'is anything stuck' and the morning check.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("watch", {}) }),
   },
   {
     name: "job_start",
