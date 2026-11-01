@@ -20,7 +20,17 @@ describe("the coordinator's summary", () => {
       findings: [{ workSessionId: "b", lastDid: "ran the tests" } as never],
     });
     expect(text).toBe(
-      `${SUMMARY_MARK} Site\n- Part a: done\n- Part b: failed. Last: ran the tests\n1 of 2 failed. Say what is missing, what it blocks, and what to do next.`,
+      `${SUMMARY_MARK} Site\n- Part a: done\n- Part b: failed. Last: ran the tests\n1 of 2 failed or did not start. Say what is missing, what it blocks, and what to do next.`,
     );
+  });
+  it("counts a part that never started among the failures, and says why", () => {
+    const text = partsSummary({
+      parentTitle: "Site",
+      parts: [part("a", "failed")],
+      findings: [],
+      blocked: [{ title: "Report", why: "Part a failed" }],
+    });
+    expect(text).toContain("- Report: not started. Part a failed");
+    expect(text).toContain("2 of 2 failed or did not start.");
   });
 });
