@@ -40,7 +40,7 @@ describe("the state on the tray mark", () => {
     const mark = Buffer.alloc(size * size * 4, 255);
     const out = withTrayState(mark, size, base, false);
     expect(px(out, size, 2, 2)).toEqual([255, 255, 255, 255]);
-    expect(px(out, size, 20, 28)[3]).toBe(0);
+    expect(px(out, size, 22, 28)[3]).toBe(0);
   });
   it("keeps the status tile for the Home page", () => {
     expect(markSvg({ ...base, muted: true })).toContain("<line");
