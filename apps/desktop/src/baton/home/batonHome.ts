@@ -45,6 +45,12 @@ export type HomeControl =
         readonly note: string;
         readonly state: "ready" | "unavailable" | "soon";
       }>;
+    })
+  /** Shown masked until he clicks it. */
+  | (HomeControlBase & {
+      readonly kind: "secret";
+      readonly masked: string;
+      readonly revealed: string;
     });
 
 export interface HomeState {
