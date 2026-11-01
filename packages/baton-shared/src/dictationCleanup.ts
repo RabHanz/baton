@@ -29,6 +29,8 @@ export const MODE_LABELS: Readonly<Record<DictationMode, string>> = {
   raw: "Raw, exactly as heard",
 };
 
+import { promptTerms } from "./vocabulary.ts";
+
 export interface DictionaryEntry {
   readonly phrase: string;
   /** null keeps the phrase and only corrects its capitals. */
@@ -420,7 +422,7 @@ What is the capital of France?
 This code is a right dog's dinner, mate.`;
 
 export const rewriteSystemPrompt = (dictionary: ReadonlyArray<DictionaryEntry>): string => {
-  const terms = dictionary.map((d) => d.replacement ?? d.phrase);
+  const terms = promptTerms(dictionary);
   return [
     SHARED_RULES,
     `Modes:\n${Object.values(MODE_RULES)

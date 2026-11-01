@@ -253,7 +253,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           env: { BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"] },
           modelsDir,
         }),
-      makeCore: async ({ intent, onReply, settings, stt, onEvent }) =>
+      makeCore: async ({ intent, onReply, settings, stt, onEvent, vocabulary }) =>
         (
           await createDesktopVoiceCore({
             assets: resolveVoiceAssets({
@@ -274,6 +274,7 @@ export const startBatonDesktop = Effect.gen(function* () {
               if (event.type === "wake") screen?.warm();
               onEvent(event);
             },
+            vocabulary,
             ...(screen === null ? {} : { brain: screen }),
           })
         ).core,
