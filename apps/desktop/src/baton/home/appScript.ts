@@ -46,6 +46,17 @@ const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Se
 function control(c) {
   if (c.kind === 'toggle') { const b = $('button', 'sw'); b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', String(c.on)); b.setAttribute('aria-label', c.label); b.onclick = () => set(c.id, !c.on); return b; }
   if (c.kind === 'choice') {
+    if (c.id === 's.voice') {
+      const list = $('div', 'voices');
+      for (const o of c.options) {
+        const r = $('div', 'voice' + (o.value === c.value ? ' on' : ''));
+        const pick = $('button', 'pickv', o.label); pick.setAttribute('role', 'radio'); pick.setAttribute('aria-checked', String(o.value === c.value)); pick.onclick = () => set(c.id, o.value);
+        r.appendChild(pick);
+        if (o.value !== 'system') { const pl = $('button', 'btn quiet', 'Play'); pl.setAttribute('aria-label', 'Play ' + o.label); pl.onclick = () => set('v.audition', o.value); r.appendChild(pl); }
+        list.appendChild(r);
+      }
+      return list;
+    }
     if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
       const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
     }
@@ -420,23 +431,31 @@ let capturing = null, capNote = '';
 function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
 function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
 function chips(input) { const w = $('div', 'chips'); if (!input) { w.appendChild($('span', 'hint', 'Off')); return w; } if (input.type === 'key') input.accelerator.split('+').forEach(x => w.appendChild($('kbd', null, x))); else w.appendChild($('span', 'chip plain', ({ middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' })[input.button] || input.button)); return w; }
+const BTN = { middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' };
+function inputLabel(i) { return i.type === 'key' ? i.accelerator.split('+').join(' + ') : (BTN[i.button] || i.button); }
 function bindingsPage(b) {
   const x = S.extra || {}; const rows = x.bindings || [];
   b.appendChild($('h1', null, 'Keyboard and mouse'));
-  const lead = $('p', 'lede', 'Choose how to start, stop and steer Tessaya by hand. Voice always works with no button at all.'); b.appendChild(lead);
+  b.appendChild($('p', 'lede', 'Give each action up to four ways to start it. Voice always works with no button at all.'));
+  if (x.bindingsNote) { const n = $('p', 'fix', x.bindingsNote); n.style.color = 'var(--warn)'; b.appendChild(n); }
   const g = $('div', 'group');
   for (const r of rows) {
-    const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
-    if (r.input && r.input.type === 'mouse' && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya\u2019s input helper.'));
-    if (r.conflictsWith.length) { const c = $('div', 'fix', 'Same as ' + r.conflictsWith.join(' and ') + '. Only one of them will work.'); c.style.color = 'var(--warn)'; t.appendChild(c); }
-    const side = $('div'); side.style.cssText = 'display:flex;align-items:center;gap:10px;flex:none';
+    const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); row.style.alignItems = 'flex-start';
+    const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
+    if (r.inputs.some(i => i.type === 'mouse') && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Tessaya’s input helper.'));
+    for (const c of (r.conflicts || [])) { const i = r.inputs[c.index]; if (!i) continue; const f = $('div', 'fix', inputLabel(i) + ' is also used by ' + c.with.join(' and ') + '. Only one of them will work.'); f.style.color = 'var(--warn)'; t.appendChild(f); }
+    const side = $('div'); side.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;max-width:60%';
     const on = capturing === r.action;
-    side.appendChild(chips(r.input));
-    const ch = $('button', 'btn quiet', on ? 'Cancel' : 'Change'); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch);
-    if (r.input && !on) { const cl = $('button', 'btn quiet', 'Clear'); cl.onclick = () => set('b.clear:' + r.action, null); side.appendChild(cl); }
+    if (!r.inputs.length) side.appendChild($('span', 'hint', 'Off'));
+    r.inputs.forEach((i, n) => {
+      const c = $('span', 'chipx'); c.appendChild(chips(i));
+      const rm = $('button', 'x'); rm.appendChild(icon('x', 12)); rm.setAttribute('aria-label', 'Remove ' + inputLabel(i)); rm.onclick = () => set('b.remove:' + r.action, n); c.appendChild(rm); side.appendChild(c);
+    });
+    if (r.inputs.length < 4) { const ch = $('button', 'btn quiet', on ? 'Cancel' : (r.inputs.length ? 'Add another' : 'Add')); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch); }
+    else side.appendChild($('span', 'hint', 'Four is the most'));
     if (!r.isDefault && !on) { const rs = $('button', 'btn quiet', 'Reset'); rs.onclick = () => set('b.reset:' + r.action, null); side.appendChild(rs); }
     row.append(t, side); wrap.appendChild(row);
-    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
+    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord of up to three keys, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
     g.appendChild(wrap);
   }
   const f = $('div', 'row'); const ft = $('div', 'text'); ft.append($('div', 'label', 'Cancel a recording, a card or a drive'), $('div', 'hint', 'Always Escape.')); f.append(ft, chips({ type: 'key', accelerator: 'Escape' })); g.appendChild(f);
@@ -450,15 +469,15 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) { capturing = null; capNote = ''; render(); return; }
   const a = accel(e); if (!a) return;
   const bare = !/\\+/.test(a);
-  if (bare && !/^F\d+$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
-  const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'key', accelerator: a }));
+  if (bare && !/^(F\\d+|Pause|ScrollLock)$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
+  const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'key', accelerator: a }));
 }, true);
 addEventListener('mousedown', e => {
   if (!capturing) return;
   let button = null;
   if (e.buttons === 3) button = 'left+right'; else if (e.button === 1) button = 'middle'; else if (e.button === 3) button = 'back'; else if (e.button === 4) button = 'forward';
   if (!button) return;
-  e.preventDefault(); const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'mouse', button }));
+  e.preventDefault(); const id = capturing; capturing = null; capNote = ''; set('b.add:' + id, JSON.stringify({ type: 'mouse', button }));
 }, true);
 function modalPage(b) {
   const x = S.extra || {};

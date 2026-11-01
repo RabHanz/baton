@@ -172,6 +172,8 @@ export interface VoicePill {
   readonly setEdge: (edge: "bottom" | "top") => void;
   /** Puts it on a named place of the display it is on and keeps it there. */
   readonly moveTo: (place: PlaceId) => void;
+  /** Where the pill is, or would appear: what the vocabulary toast sits beside. */
+  readonly anchor: () => Electron.Rectangle;
   readonly state: () => TurnState;
   readonly dispose: () => void;
 }
@@ -611,6 +613,13 @@ export const createVoicePill = (input: {
       }
     },
     moveTo,
+    anchor: () => {
+      if (window !== null && !window.isDestroyed()) return window.getBounds();
+      const display = Electron.screen.getDisplayNearestPoint(
+        Electron.screen.getCursorScreenPoint(),
+      );
+      return { ...placeFor(display), width: WIDTH, height: HEIGHT };
+    },
     state: () => state,
     dispose: () => {
       if (timer !== null) clearTimeout(timer);
