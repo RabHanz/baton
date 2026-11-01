@@ -1127,7 +1127,7 @@ Written 2026-11-01. Proven means seen working on his laptop; "tests" means unit 
 | Clean thread list, renames stick | Deployed to both boxes (0.1.5-baton.47); sweep ran, 7 to 3 and 134 to 7 |
 | Updates warn and relaunch | Merged (#69); the install script warns 30 s first, proven on 0.1.15 |
 | Dictation pack (voice-only dictate, quick pill, caret context, learned vocabulary, one-shot default, cleanup eval) | Merged (#77); tests only |
-| History, optional Opus recordings, hour-long dictation | PR #79; tests and renders only |
+| History, optional Opus recordings, hour-long dictation | PR #79; tests and renders only. Local History store and tab (search, copy, retry clean-up, delete); recordings off by default (30 days, 2 GB of corrected clips, paused under 5 GB free); sidecar recording cap an hour (uncompiled); Insights on Home |
 | Mouse bindings (middle click, left+right chord) | Reducer and schema merged; the Windows hook is not written |
 | One assistant (no router) | Pushes 1 to 4 on `baton/conversation-memory`, behind a setting, never run live |
 | Full computer use as its hands (#52) | Designed (D144); not built |
