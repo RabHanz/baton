@@ -28,7 +28,7 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
-import { markBitmap, type MarkOptions } from "./trayMark.ts";
+import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
@@ -815,6 +815,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       label: hudView(state).label,
       tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
       device: deviceName(),
+      mark: markSvg(markOptions()),
     },
     controls: [
       {

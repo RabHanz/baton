@@ -3284,3 +3284,7 @@ geometry (`voice/trayMark.ts`) draws the tray bitmap and the SVG that `scripts/b
 app and installer icons in `assets/prod/` (the fork's production icon set; dev and nightly are untouched). The home page
 opens once by itself on the first run after install (`baton-home.shown` in the state dir); a second launch still opens
 T3's window.
+
+D131 addendum (step 3): the window's header mark is the live one, in the state's colour, made by the main process
+(`HomeState.status.mark`). Motion is one 0.3 s rise on open and short transitions on switches and "More options"; nothing
+repaints continuously, and `prefers-reduced-motion` turns them off.

@@ -35,7 +35,13 @@ export type HomeControl =
   | (HomeControlBase & { readonly kind: "action"; readonly button: string });
 
 export interface HomeState {
-  readonly status: { readonly label: string; readonly tone: string; readonly device: string };
+  readonly status: {
+    readonly label: string;
+    readonly tone: string;
+    readonly device: string;
+    /** The mark in the state's colour, made by the main process. */
+    readonly mark: string;
+  };
   readonly controls: ReadonlyArray<HomeControl>;
 }
 
