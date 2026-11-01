@@ -52,6 +52,8 @@ export interface VisionSessionOptions {
   readonly onTool?: (call: ToolCall) => void;
   /** Baton's own tool server for this session: its address and the token it needs (D143). */
   readonly mcp?: { readonly url: string; readonly token: string };
+  /** Pass `--chrome` so the session can use his Claude in Chrome extension (D3). */
+  readonly chrome?: boolean;
 }
 
 /** Files, shell and the web. Nothing that outlives the turn, such as schedules or triggers. */
@@ -77,6 +79,8 @@ export const visionArgs = (
   operator = false,
   /** A file naming the MCP servers this session may use, and no others (D143). */
   mcpConfigFile?: string,
+  /** Claude in Chrome: the session can drive his own browser (D3). Off unless he turned it on. */
+  chrome = false,
 ): ReadonlyArray<string> => [
   "-p",
   "--safe-mode",
@@ -94,6 +98,7 @@ export const visionArgs = (
   operator ? OPERATOR_TOOLS : "",
   ...(operator ? OPERATOR_FLAGS : []),
   ...(mcpConfigFile === undefined ? [] : ["--mcp-config", mcpConfigFile, "--strict-mcp-config"]),
+  ...(chrome ? ["--chrome"] : []),
   "--no-session-persistence",
   "--system-prompt-file",
   systemPromptFile,
@@ -274,9 +279,13 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
   const viaShell = options.platform === "win32" && /\.cmd$/i.test(binary);
   const child = NodeChildProcess.spawn(
     binary,
-    visionArgs(promptFile, options.model, options.gate !== undefined, mcpFile).map((a) =>
-      viaShell ? `"${a}"` : a,
-    ),
+    visionArgs(
+      promptFile,
+      options.model,
+      options.gate !== undefined,
+      mcpFile,
+      options.chrome === true,
+    ).map((a) => (viaShell ? `"${a}"` : a)),
     {
       cwd: options.cwd ?? options.workDir,
       env: subscriptionEnv(options.env),
