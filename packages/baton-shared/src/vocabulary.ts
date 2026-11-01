@@ -172,19 +172,66 @@ export const candidateWords = (text: string): ReadonlyArray<string> => {
 /** Seen-count state for repeated terms; promoted into the vocabulary at LEARN_THRESHOLD. */
 export type SeenWords = Readonly<Record<string, number>>;
 
+const NAMES = new Set(
+  (
+    "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori sam tom bob jim tim dan mike steve chris nick ben will liz kate jen"
+  ).split(" "),
+);
+const FILE_EXT = /\.(?:png|jpe?g|gif|webp|svg|pdf|docx?|xlsx?|pptx?|csv|txt|md|json|ya?ml|zip|exe|msi|dll|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|cpp|html?|css|sql|log|mp[34]|wav|mov)$/i;
+
+/** Why a word is never learned, or null when it may be: paths, URLs, code, numbers, acronyms and common names. */
+export const skipWord = (word: string): string | null => {
+  const w = word.trim();
+  if (w.length < 3) return "short";
+  if (/:\/\/|^www\.|\.(?:com|org|net|io|dev|app|co|ai)$/i.test(w)) return "url";
+  if (/[\\/]/.test(w)) return "path";
+  if (FILE_EXT.test(w)) return "file";
+  if (/[_=(){}<>$#`@]|::|=>/.test(w)) return "code";
+  if (/^[\d.,:%£$€-]+$/.test(w) || /^\d/.test(w)) return "number";
+  if (/^[0-9a-f]{7,}$/i.test(w)) return "code";
+  if (w.length > 1 && w === w.toUpperCase() && /\p{L}/u.test(w) && !/\p{N}/u.test(w)) return "acronym";
+  if (NAMES.has(w.toLowerCase())) return "common name";
+  return null;
+};
+
+/** A word he fixed himself may be a name or an acronym; only paths, files, URLs, code and numbers are skipped. */
+const skipsCorrection = (word: string): boolean => {
+  const why = skipWord(word);
+  return why !== null && why !== "common name" && why !== "acronym" && why !== "short";
+};
+
+/** Words he has deleted or discarded: they never come back on their own. */
+export type NeverList = ReadonlyArray<string>;
+export const isNever = (never: NeverList, word: string): boolean =>
+  never.some((n) => n.toLowerCase() === word.toLowerCase());
+export const addNever = (never: NeverList, word: string): NeverList =>
+  isNever(never, word) ? never : [...never, word];
+export const parseNever = (value: unknown): NeverList =>
+  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+
+export interface Learned {
+  readonly seen: SeenWords;
+  readonly entries: ReadonlyArray<VocabularyEntry>;
+  /** What entered the vocabulary in this call, for the toast. */
+  readonly added: ReadonlyArray<VocabularyEntry>;
+}
+
 export const observeWording = (
   seen: SeenWords,
   entries: ReadonlyArray<VocabularyEntry>,
   text: string,
   now: string,
   wakeWords: ReadonlyArray<string> = [],
-): { readonly seen: SeenWords; readonly entries: ReadonlyArray<VocabularyEntry> } => {
+  never: NeverList = [],
+): Learned => {
   const skip = new Set(wakeWords.map((word) => word.toLowerCase()));
   let nextSeen: Record<string, number> = { ...seen };
   let nextEntries = entries;
+  const added: VocabularyEntry[] = [];
   for (const word of candidateWords(text)) {
     const key = word.toLowerCase();
-    if (skip.has(key) || entries.some((entry) => sameWord(entry.phrase, word))) continue;
+    if (skip.has(key) || isNever(never, word) || skipWord(word) !== null) continue;
+    if (entries.some((entry) => sameWord(entry.phrase, word))) continue;
     nextSeen[key] = (nextSeen[key] ?? 0) + 1;
     if (nextSeen[key]! >= LEARN_THRESHOLD) {
       nextEntries = upsertEntry(
@@ -193,11 +240,12 @@ export const observeWording = (
         now,
         nextSeen[key]!,
       );
+      added.push(nextEntries.find((e) => sameWord(e.phrase, word))!);
       const { [key]: _gone, ...rest } = nextSeen;
       nextSeen = rest;
     }
   }
-  return { seen: nextSeen, entries: nextEntries };
+  return { seen: nextSeen, entries: nextEntries, added };
 };
 
 /**
@@ -209,19 +257,25 @@ export const learnCorrection = (
   entries: ReadonlyArray<VocabularyEntry>,
   fix: { readonly heard: string; readonly meant: string },
   now: string,
-): { readonly seen: SeenWords; readonly entries: ReadonlyArray<VocabularyEntry> } => {
+  never: NeverList = [],
+): Learned => {
+  if (isNever(never, fix.meant) || isNever(never, fix.heard) || skipsCorrection(fix.meant)) {
+    return { seen, entries, added: [] };
+  }
   const key = `${fix.heard.toLowerCase()}>${fix.meant}`;
   const count = (seen[key] ?? 0) + 1;
-  if (count < CORRECTION_THRESHOLD) return { seen: { ...seen, [key]: count }, entries };
+  if (count < CORRECTION_THRESHOLD) return { seen: { ...seen, [key]: count }, entries, added: [] };
   const { [key]: _gone, ...rest } = seen;
+  const next = upsertEntry(
+    entries,
+    { phrase: fix.heard, replacement: fix.meant, source: "learned" },
+    now,
+    count,
+  );
   return {
     seen: rest,
-    entries: upsertEntry(
-      entries,
-      { phrase: fix.heard, replacement: fix.meant, source: "learned" },
-      now,
-      count,
-    ),
+    entries: next,
+    added: next.filter((e) => sameWord(e.phrase, fix.heard) && e.replacement === fix.meant),
   };
 };
 
