@@ -57,6 +57,8 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
+import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
+import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
@@ -1685,6 +1687,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }, MIC_TEST_MS).unref();
   };
 
+  const claudeDir = () =>
+    process.env["CLAUDE_CONFIG_DIR"] ?? NodePath.join(Electron.app.getPath("home"), ".claude");
+  const harnessItems = () =>
+    readInventory({
+      claudeDir: claudeDir(),
+      claudeJson: NodePath.join(Electron.app.getPath("home"), ".claude.json"),
+      codexDir: NodePath.join(Electron.app.getPath("home"), ".codex"),
+    });
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   let sessionsNote: string | null = null;
   /** The job cards as the window last read them; null until he loads them once (no window is opened unasked). */
@@ -1888,6 +1898,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null,
       ),
       ...noteControls(notes.list()),
+      ...harnessControls(harnessItems()),
       ...(jobsCache === null
         ? [
             {
@@ -2401,6 +2412,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
+    } else if (pluginOfControl(id) !== null) {
+      const result = setPluginEnabled(claudeDir(), pluginOfControl(id)!, on);
+      if (result === "refused")
+        note = "Could not change that plugin; its settings file was left alone.";
+      home.refresh();
     } else if (id === "m.folder") {
       NodeFS.mkdirSync(notes.dir, { recursive: true });
       void Electron.shell.openPath(notes.dir);
