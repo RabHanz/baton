@@ -115,6 +115,9 @@ import {
   correctionsBetween,
   learnCorrection,
   observeWording,
+  addNever,
+  parseNever,
+  type NeverList,
   parseAddToDictionary,
   upsertEntry,
   type SeenWords,
@@ -131,6 +134,7 @@ import {
   spaceUsed,
   type KeepSettings,
 } from "./audioKeep.ts";
+import { createVocabToast } from "./vocabToast.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
@@ -175,6 +179,8 @@ interface VoiceSettings {
   readonly holdKeyCues: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
+  /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
+  readonly learnWords: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -219,6 +225,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
+  learnWords: true,
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -259,6 +266,7 @@ const readSettings = (path: string): VoiceSettings => {
       ...DEFAULT_SETTINGS,
       wakeWords: wakeWordsFor(saved),
       bindings: parseBindings(saved["bindings"]),
+      learnWords: saved["learnWords"] !== false,
       appearance: parseAppearance(saved["appearance"]),
       ...cleanupFromSaved(saved),
     };
@@ -457,8 +465,42 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       NodeFS.writeFileSync(seenPath, JSON.stringify(seenWords));
     } catch {}
   };
+  // Words he deleted or discarded never come back by themselves.
+  const neverPath = NodePath.join(input.stateDir, "voice", "vocabulary-never.json");
+  let never: NeverList = [];
+  try {
+    never = parseNever(JSON.parse(NodeFS.readFileSync(neverPath, "utf8")));
+  } catch {}
+  const rememberNever = (words: ReadonlyArray<string>) => {
+    never = words.reduce(addNever, never);
+    try {
+      NodeFS.mkdirSync(NodePath.dirname(neverPath), { recursive: true });
+      NodeFS.writeFileSync(neverPath, JSON.stringify(never));
+    } catch {}
+  };
+  const toast = createVocabToast({
+    anchor: () => pill.anchor(),
+    onDiscard: (words) => {
+      rememberNever(words);
+      void changeVocabulary((entries) =>
+        words.reduce(
+          (all, word) =>
+            all.filter(
+              (e) =>
+                e.phrase.toLowerCase() !== word.toLowerCase() &&
+                (e.replacement ?? "").toLowerCase() !== word.toLowerCase(),
+            ),
+          entries,
+        ),
+      );
+    },
+  });
+  const announce = (added: ReadonlyArray<VocabularyEntry>) => {
+    for (const entry of added) toast.add(entry.replacement ?? entry.phrase);
+  };
   /** Names and terms he keeps using join the vocabulary once they repeat. */
-  const learnWording = (text: string) =>
+  const learnWording = (text: string) => {
+    if (!settings.learnWords) return;
     void changeVocabulary((entries, now) => {
       const next = observeWording(
         seenWords,
@@ -466,13 +508,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         text,
         now,
         settings.wakeWords.map((w) => w.word),
+        never,
       );
       seenWords = next.seen;
       saveSeen();
+      announce(next.added);
       return next.entries;
     }).catch(() => undefined);
+  };
   /** A few seconds later, what he changed in the field teaches the words he meant. */
   const learnFromEdits = (written: string, turnId: string | null = null) => {
+    if (!settings.learnWords) return;
     setTimeout(() => {
       void readCaretContext(input.platform).then((around) => {
         if (around === null || written.trim().length === 0) return;
@@ -482,8 +528,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (turnId !== null) history?.update(turnId, { corrected: true, fixed: tail });
         return changeVocabulary((entries, now) =>
           fixes.reduce((all, fix) => {
-            const next = learnCorrection(seenWords, all, fix, now);
+            const next = learnCorrection(seenWords, all, fix, now, never);
             seenWords = next.seen;
+            announce(next.added);
             return next.entries;
           }, entries),
         ).then(saveSeen);
@@ -1724,6 +1771,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
+        id: "v.learnWords",
+        section: "Dictation",
+        label: "Learn words from my edits",
+        hint: "When you fix a word Tessaya wrote, or keep using a name, it joins your vocabulary and says so. Discard takes it out for good.",
+        kind: "toggle",
+        on: settings.learnWords,
+      },
+      {
         id: "v.copyLast",
         section: "Dictation",
         label: "Last transcript",
@@ -1986,9 +2041,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         applyBindings();
       }
     } else if (id === "d.forget") {
+      rememberNever(dictionary.filter((e) => e.source === "learned").map((e) => e.phrase));
       dictionary = forgetLearned(dictionary);
       saveDictionary(input.stateDir, dictionary);
     } else if (id === "d.remove" && typeof value === "string") {
+      // Deleting a word he did not add himself means he does not want it: it never comes back.
+      if (dictionary.some((e) => e.phrase === value && e.source === "learned"))
+        rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
     } else if (id === "n.empty") input.openMainWindow();
@@ -2058,6 +2117,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     } else if (id === "v.pillCentre") pill.moveTo("centre");
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
@@ -2198,7 +2258,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (clear?.click as (() => void) | undefined)?.();
     },
     ask: () => {
-      const ask = input.extras?.menuItems().find((i) => i.label === "Ask Baton…");
+      const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");
       (ask?.click as (() => void) | undefined)?.();
     },
   };
@@ -2241,6 +2301,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     void audio?.stop();
     rewriter.dispose();
     encoder.dispose();
+    toast.dispose();
     history?.close();
     sidecar?.dispose();
   });
