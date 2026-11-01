@@ -48,6 +48,9 @@ sedi 's/{ current: "t3code-v2", legacy: "T3 Code (Alpha)" }/{ current: "baton", 
 sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Baton";/' \
   apps/desktop/src/app/DesktopEnvironment.ts
 
+# Baton's mark over upstream's icon files, under the names the build already reads (D131).
+cp assets/baton/* assets/prod/
+
 grep -q 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
 grep -q 'artifactName: "Baton-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
 grep -q '"productName": "Baton"' apps/desktop/package.json
