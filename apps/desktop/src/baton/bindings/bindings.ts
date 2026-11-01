@@ -11,9 +11,14 @@ export type BindingInput =
 
 export interface Binding {
   readonly action: string;
-  /** null: he switched it off. */
-  readonly input: BindingInput | null;
+  /** Up to four ways to do it; empty means he switched it off on purpose. */
+  readonly inputs: ReadonlyArray<BindingInput>;
 }
+
+/** Most ways to do one action, as in Wispr Flow. */
+export const MAX_PER_ACTION = 4;
+/** Most keys in one chord, modifiers included. */
+export const MAX_KEYS = 3;
 
 export interface ActionDef {
   readonly id: string;
@@ -126,29 +131,47 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
 const isButton = (v: unknown): v is MouseButton =>
   v === "middle" || v === "back" || v === "forward" || v === "left+right";
 
-/** The saved list is untrusted: only a known action with a well-formed input survives. */
+const parseInput = (value: unknown): BindingInput | null => {
+  if (typeof value !== "object" || value === null) return null;
+  const i = value as { type?: unknown; accelerator?: unknown; button?: unknown };
+  if (
+    i.type === "key" &&
+    typeof i.accelerator === "string" &&
+    normaliseAccelerator(i.accelerator) !== ""
+  ) {
+    return { type: "key", accelerator: normaliseAccelerator(i.accelerator) };
+  }
+  if (i.type === "mouse" && isButton(i.button)) return { type: "mouse", button: i.button };
+  return null;
+};
+
+/** Without duplicates, and never more than the limit. */
+const tidy = (inputs: ReadonlyArray<BindingInput>): ReadonlyArray<BindingInput> =>
+  inputs
+    .reduce<BindingInput[]>(
+      (all, next) => (all.some((x) => sameInput(x, next)) ? all : [...all, next]),
+      [],
+    )
+    .slice(0, MAX_PER_ACTION);
+
+/** The saved list is untrusted: only a known action with well-formed inputs survives. Old files held one `input`. */
 export const parseBindings = (raw: unknown): ReadonlyArray<Binding> => {
   if (!Array.isArray(raw)) return [];
   const known = new Set(ACTIONS.map((a) => a.id));
   const out = new Map<string, Binding>();
   for (const item of raw) {
-    const { action, input } = (item ?? {}) as { action?: unknown; input?: unknown };
+    const { action, input, inputs } = (item ?? {}) as {
+      action?: unknown;
+      input?: unknown;
+      inputs?: unknown;
+    };
     if (typeof action !== "string" || !known.has(action)) continue;
-    if (input === null) out.set(action, { action, input: null });
-    else if (typeof input === "object" && input !== undefined) {
-      const i = input as { type?: unknown; accelerator?: unknown; button?: unknown };
-      if (
-        i.type === "key" &&
-        typeof i.accelerator === "string" &&
-        normaliseAccelerator(i.accelerator) !== ""
-      ) {
-        out.set(action, {
-          action,
-          input: { type: "key", accelerator: normaliseAccelerator(i.accelerator) },
-        });
-      } else if (i.type === "mouse" && isButton(i.button)) {
-        out.set(action, { action, input: { type: "mouse", button: i.button } });
-      }
+    if (Array.isArray(inputs)) {
+      out.set(action, { action, inputs: tidy(inputs.flatMap((i) => parseInput(i) ?? [])) });
+    } else if (input === null) out.set(action, { action, inputs: [] });
+    else {
+      const one = parseInput(input);
+      if (one !== null) out.set(action, { action, inputs: [one] });
     }
   }
   return [...out.values()];
@@ -156,10 +179,15 @@ export const parseBindings = (raw: unknown): ReadonlyArray<Binding> => {
 
 export interface Effective {
   readonly def: ActionDef;
-  readonly input: BindingInput | null;
+  readonly inputs: ReadonlyArray<BindingInput>;
   readonly isDefault: boolean;
-  /** The other actions that use the same input. */
+  /** The other actions that use any of the same inputs. */
   readonly conflictsWith: ReadonlyArray<string>;
+  /** Per input: who else has it, so the page can say so beside the chip. */
+  readonly conflicts: ReadonlyArray<{
+    readonly input: BindingInput;
+    readonly with: ReadonlyArray<string>;
+  }>;
 }
 
 export const effective = (
@@ -170,23 +198,99 @@ export const effective = (
   const rows = ACTIONS.map((def) => {
     const own = saved.find((b) => b.action === def.id);
     const fallback = def.id in fallbacks ? (fallbacks[def.id] ?? null) : def.fallback;
-    return { def, input: own === undefined ? fallback : own.input, isDefault: own === undefined };
+    const inputs = own === undefined ? (fallback === null ? [] : [fallback]) : own.inputs;
+    return { def, inputs, isDefault: own === undefined };
   });
-  return rows.map((row) => ({
-    ...row,
-    conflictsWith: rows
-      .filter((o) => o.def.id !== row.def.id && sameInput(o.input, row.input))
-      .map((o) => o.def.label),
-  }));
+  return rows.map((row) => {
+    const conflicts = row.inputs
+      .map((input) => ({
+        input,
+        with: rows
+          .filter((o) => o.def.id !== row.def.id && o.inputs.some((x) => sameInput(x, input)))
+          .map((o) => o.def.label),
+      }))
+      .filter((c) => c.with.length > 0);
+    return { ...row, conflicts, conflictsWith: [...new Set(conflicts.flatMap((c) => c.with))] };
+  });
 };
 
-/** A new input for one action, or the saved list with that action put back to its default. */
+/** One action's list set outright, or put back to its default. */
 export const withBinding = (
   saved: ReadonlyArray<Binding>,
   action: string,
-  input: BindingInput | null | "reset",
+  inputs: ReadonlyArray<BindingInput> | "reset",
 ): ReadonlyArray<Binding> => {
   const rest = saved.filter((b) => b.action !== action);
-  if (input === "reset") return rest;
-  return [...rest, { action, input: input === null ? null : input }];
+  return inputs === "reset" ? rest : [...rest, { action, inputs: tidy(inputs) }];
 };
+
+const RESERVED: Readonly<Record<string, string>> = {
+  "Ctrl+Alt+Delete": "Windows keeps Ctrl+Alt+Delete for itself.",
+  "Ctrl+Shift+Escape": "Windows opens Task Manager with Ctrl+Shift+Esc.",
+  "Alt+F4": "Alt+F4 closes the window you are in.",
+  "Alt+Tab": "Alt+Tab switches windows.",
+  "Meta+Tab": "Win+Tab shows your open windows.",
+  "Meta+L": "Win+L locks the computer.",
+  "Meta+D": "Win+D shows the desktop.",
+  "Ctrl+Escape": "Ctrl+Esc opens the Start menu.",
+  "Ctrl+C": "Every app uses Ctrl+C to copy.",
+  "Ctrl+V": "Every app uses Ctrl+V to paste.",
+  "Ctrl+X": "Every app uses Ctrl+X to cut.",
+  "Ctrl+Z": "Every app uses Ctrl+Z to undo.",
+  "Ctrl+A": "Every app uses Ctrl+A to select all.",
+};
+const SAFE_ALONE = /^(?:F(?:[1-9]|1\d|2[0-4])|Pause|ScrollLock)$/;
+
+export type InputCheck = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+
+/** Whether a captured input may be bound, and the plain reason when not. Mouse buttons are always fine. */
+export const checkInput = (input: BindingInput): InputCheck => {
+  if (input.type === "mouse") return { ok: true };
+  const accelerator = normaliseAccelerator(input.accelerator);
+  const parts = accelerator.split("+");
+  const main = parts.at(-1) ?? "";
+  if (main === "" || (MODIFIERS as ReadonlyArray<string>).includes(main)) {
+    return { ok: false, reason: "Press a key as well, not only Ctrl, Alt, Shift or Win." };
+  }
+  if (parts.length > MAX_KEYS)
+    return { ok: false, reason: `Use at most ${MAX_KEYS} keys together.` };
+  const reserved = RESERVED[accelerator];
+  if (reserved !== undefined) return { ok: false, reason: reserved };
+  if (parts.length === 1 && !SAFE_ALONE.test(main)) {
+    return {
+      ok: false,
+      reason: "Add Ctrl, Alt, Shift or Win so it does not get in the way of typing.",
+    };
+  }
+  return { ok: true };
+};
+
+export type Change = { readonly saved: ReadonlyArray<Binding> } | { readonly error: string };
+
+/** Adds one more way to do an action. `current` is what the row shows now, defaults included. */
+export const addInput = (
+  saved: ReadonlyArray<Binding>,
+  action: string,
+  current: ReadonlyArray<BindingInput>,
+  input: BindingInput,
+): Change => {
+  const check = checkInput(input);
+  if (!check.ok) return { error: check.reason };
+  if (current.some((x) => sameInput(x, input))) return { error: "That one is already set here." };
+  if (current.length >= MAX_PER_ACTION) {
+    return { error: `Four is the most for one action. Remove one first.` };
+  }
+  return { saved: withBinding(saved, action, [...current, input]) };
+};
+
+export const removeInput = (
+  saved: ReadonlyArray<Binding>,
+  action: string,
+  current: ReadonlyArray<BindingInput>,
+  index: number,
+): ReadonlyArray<Binding> =>
+  withBinding(
+    saved,
+    action,
+    current.filter((_, i) => i !== index),
+  );
