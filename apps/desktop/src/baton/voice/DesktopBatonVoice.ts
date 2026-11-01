@@ -116,6 +116,7 @@ import {
   type VocabularyEntry,
 } from "@t3tools/baton-shared/vocabulary";
 import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/baton-shared/dictationOneShot";
+import { createOneShot } from "./oneShotDictation.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -478,58 +479,66 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // Spoken dictation, all at once: the chunks wait here, on disk too, until one clean paste.
   const pendingFile = NodePath.join(input.stateDir, "voice", "dictation-pending.json");
-  let collected: Array<string> = [];
   let collecting = false;
-  const savePending = () => {
+  let flushApp: { readonly exe: string; readonly title: string } = { exe: "", title: "" };
+  const restored = ((): Array<string> => {
     try {
-      NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
-      if (collected.length === 0) NodeFS.rmSync(pendingFile, { force: true });
-      else NodeFS.writeFileSync(pendingFile, JSON.stringify(collected));
-    } catch {}
-  };
-  try {
-    const left = JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
-    if (left.length > 0) {
-      lastDictation = left.join(" ");
-      setTimeout(() => {
-        note = "A dictation was not inserted. Tray: Copy last dictation.";
-        render();
-      }, 0);
+      return JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
+    } catch {
+      return [];
     }
-  } catch {}
+  })();
+  if (restored.length > 0) {
+    lastDictation = restored.join(" ");
+    setTimeout(() => {
+      note = "A dictation was not inserted. Tray: Copy last dictation.";
+      render();
+    }, 0);
+  }
+  const oneShot = createOneShot(
+    {
+      save: (chunks) => {
+        try {
+          NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
+          if (chunks.length === 0) NodeFS.rmSync(pendingFile, { force: true });
+          else NodeFS.writeFileSync(pendingFile, JSON.stringify(chunks));
+        } catch {}
+      },
+      clean: async (raw) =>
+        rewriter.clean({
+          raw: biasTranscript(raw, dictionary),
+          mode: chooseMode(flushApp, settings.appModes),
+          level: await levelNow(flushApp),
+        }),
+      fit: (text) => fitToCaret(text, flushApp),
+      paste: (text) =>
+        sidecar === null
+          ? Promise.resolve(false)
+          : sidecar.paste(text).then(
+              () => true,
+              () => false,
+            ),
+    },
+    restored,
+  );
   const flushDictation = async () => {
     collecting = false;
-    const raw = collected.join(" ").trim();
-    if (raw.length === 0 || sidecar === null) {
-      collected = [];
-      return savePending();
-    }
+    if (oneShot.pending().length === 0 || sidecar === null) return;
     pill.on({ type: "thinking" });
-    const app = await sidecar.foreground().catch(() => focusedApp);
-    const cleaned = await rewriter
-      .clean({
-        raw,
-        mode: chooseMode(app, settings.appModes),
-        level: await levelNow(app),
-      })
-      .catch(() => null);
-    const { text: whole, failed } = settleOneShot(raw, cleaned);
-    const fitted = await fitToCaret(whole, app);
-    lastDictation = fitted;
-    const pasted = await sidecar.paste(fitted).then(
-      () => true,
-      () => false,
-    );
-    if (pasted) {
-      collected = [];
-      savePending();
+    flushApp = await sidecar.foreground().catch(() => focusedApp);
+    const result = await oneShot.flush();
+    if (result.status === "empty") return;
+    lastDictation = result.text;
+    if (result.status === "pasted") {
+      learnWording(result.text);
+      learnFromEdits(result.text);
       pill.on(
-        failed
+        result.failed
           ? { type: "trouble", message: CLEANUP_FAILED_LINE }
           : { type: "done", label: "Pasted" },
       );
     } else {
-      keepText("Not pasted", fitted);
+      keepText("Not pasted", result.text);
     }
   };
   const injection: typeof clipboardInjection = {
@@ -540,8 +549,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     insertText: async (request) => {
       if (sidecar === null) return clipboardInjection.insertText(request);
       if (collecting) {
-        collected.push(request.text);
-        savePending();
+        oneShot.push(request.text);
         return;
       }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
@@ -870,7 +878,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
-      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot") collecting = true;
+      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot")
+        collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
