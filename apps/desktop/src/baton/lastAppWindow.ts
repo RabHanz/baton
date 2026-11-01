@@ -14,3 +14,12 @@ export const keepRunningForTray = (): void => {
 };
 
 export const shouldQuitOnAllClosed = (): boolean => !trayHolds;
+
+/**
+ * The window to reveal for "open Baton's sessions": the first that is neither an auxiliary window nor
+ * one of Baton's own. With only Baton's window up this is nothing, and the caller creates T3's.
+ */
+export const pickRevealable = <W extends object>(
+  windows: ReadonlyArray<W>,
+  isAuxiliary: (window: W) => boolean,
+): W | undefined => windows.find((w) => !isAuxiliary(w) && !isCompanionWindow(w));
