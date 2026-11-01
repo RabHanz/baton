@@ -130,6 +130,7 @@ import {
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
+import { NO_RECORDING, retryPlan, rowMenu, useVersion, withRetry } from "./historyRetry.ts";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -610,8 +611,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   setTimeout(retention, 30_000).unref();
   setInterval(retention, 24 * 3_600_000).unref();
-  const listHistory = (query: string): ReadonlyArray<HistoryTurn> =>
-    history?.list({ query, limit: 300 }) ?? [];
+  let retrying: string | null = null;
+  const withMenu = (turn: HistoryTurn) => ({ ...turn, menu: rowMenu(turn, retrying !== null) });
+  const listHistory = (query: string) => (history?.list({ query, limit: 300 }) ?? []).map(withMenu);
   Electron.ipcMain.handle("baton-history:list", (event, query: unknown) =>
     Electron.BrowserWindow.fromWebContents(event.sender) === null
       ? []
@@ -624,11 +626,64 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turn = history.get(id);
     if (turn === null) return null;
     if (action === "copy_raw") void Electron.clipboard.writeText(turn.raw);
-    else if (action === "copy_cleaned") void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
-    else if (action === "delete") {
+    else if (action === "copy") {
+      void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
+    } else if (action === "copy_cleaned")
+      void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
+    else if (action.startsWith("copy_version:")) {
+      const v = useVersion(turn, Number(action.slice("copy_version:".length)));
+      if (v !== null) void Electron.clipboard.writeText(v.cleaned ?? v.raw);
+    } else if (action.startsWith("use_version:")) {
+      const v = useVersion(turn, Number(action.slice("use_version:".length)));
+      if (v !== null) history.update(id, { raw: v.raw, cleaned: v.cleaned, model: v.model });
+    } else if (action === "delete") {
       history.remove(id);
       for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
       return { deleted: true };
+    } else if (action === "retry_transcript") {
+      // Not while he is dictating, and one at a time. The original stays as it was if this fails.
+      if (retrying !== null || dictatingByVoice || releaseRecordingEscape !== null) {
+        return { failed: "Not now: finish dictating first" };
+      }
+      if (retryPlan(turn).kind !== "transcript" || sidecar === null) {
+        return { failed: retryPlan(turn).kind === "transcript" ? "Retry failed" : NO_RECORDING };
+      }
+      retrying = id;
+      try {
+        const parts: Int16Array[] = [];
+        for (const path of clipPaths(turn.audio ?? "")) {
+          parts.push(await encoder.decode(NodeFS.readFileSync(path)));
+        }
+        const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+        let at = 0;
+        for (const p of parts) {
+          pcm.set(p, at);
+          at += p.length;
+        }
+        const heard = (await makeSidecarStt(sidecar).transcribe(pcm)).trim();
+        if (heard === "") throw new Error("nothing recognised");
+        let cleaned: string | null = null;
+        let model: string | null = null;
+        if (turn.kind === "dictation") {
+          const tidy = await rewriter
+            .clean({
+              raw: biasTranscript(heard, dictionary),
+              mode: chooseMode({ exe: turn.app, title: "" }, settings.appModes),
+              level: settings.dictationCleanup === "off" ? "local" : "claude",
+            })
+            .catch(() => null);
+          const settled = settleOneShot(heard, tidy);
+          cleaned = settled.text;
+          model = settled.failed ? null : settings.cleanupModel;
+        }
+        history.update(id, {
+          versions: withRetry(turn, { at: new Date().toISOString(), raw: heard, cleaned, model }),
+        });
+      } catch {
+        return { failed: "Retry failed" };
+      } finally {
+        retrying = null;
+      }
     } else if (action === "retry") {
       // Re-runs the tidy-up on the stored words; nothing is inserted unless he copies it.
       const cleaned = await rewriter
@@ -646,7 +701,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         error: failed ? "Clean-up failed again" : null,
       });
     }
-    return history.get(id);
+    const after = history.get(id);
+    return after === null ? null : withMenu(after);
   });
 
   // Spoken dictation, all at once: the chunks wait here, on disk too, until one clean paste.

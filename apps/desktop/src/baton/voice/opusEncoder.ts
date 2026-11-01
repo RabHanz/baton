@@ -8,6 +8,16 @@
 import * as Electron from "electron";
 
 const PAGE = `<!doctype html><meta charset="utf-8"><script>
+window.decode = async (base64) => {
+  const bin = atob(base64); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const buffer = await ctx.decodeAudioData(bytes.buffer); await ctx.close();
+  const f = buffer.getChannelData(0); const out = new Uint8Array(f.length * 2); const view = new DataView(out.buffer);
+  for (let i = 0; i < f.length; i++) view.setInt16(2 * i, Math.max(-1, Math.min(1, f[i])) * 32767, true);
+  let s = ''; for (let i = 0; i < out.length; i += 0x8000) s += String.fromCharCode.apply(null, out.subarray(i, i + 0x8000));
+  return btoa(s);
+};
 window.encode = async (base64, rate) => {
   const bin = atob(base64); const n = bin.length / 2; const f = new Float32Array(n);
   for (let i = 0; i < n; i++) { let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8); if (v > 32767) v -= 65536; f[i] = v / 32768; }
@@ -48,6 +58,20 @@ export const makeOpusEncoder = () => {
           `window.encode(${JSON.stringify(base64)}, ${rate})`,
         )) as string;
         return Buffer.from(out, "base64");
+      });
+      queue = job.catch(() => undefined);
+      return job;
+    },
+    /** A kept clip back to mono 16 kHz PCM, for recognising it again. */
+    decode: (bytes: Uint8Array): Promise<Int16Array> => {
+      const job = queue.then(async () => {
+        const target = open();
+        await ready;
+        const out = (await target.webContents.executeJavaScript(
+          `window.decode(${JSON.stringify(Buffer.from(bytes).toString("base64"))})`,
+        )) as string;
+        const raw = Buffer.from(out, "base64");
+        return new Int16Array(raw.buffer, raw.byteOffset, raw.byteLength / 2);
       });
       queue = job.catch(() => undefined);
       return job;
