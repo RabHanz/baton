@@ -49,6 +49,7 @@ import {
   type Binding,
   type BindingInput,
 } from "../bindings/bindings.ts";
+import { jobAction, jobControls } from "../sessions/jobRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -284,6 +285,8 @@ const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const SESSIONS_NOTE_MS = 8_000;
+/** Jobs change slowly; a local read every so often once he has loaded them. */
+const JOBS_REFRESH_MS = 15_000;
 /** Baton's own green: the sidebar's mark, whatever state the dot is in. */
 const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
@@ -1624,6 +1627,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   let sessionsNote: string | null = null;
+  /** The job cards as the window last read them; null until he loads them once (no window is opened unasked). */
+  let jobsCache: ReadonlyArray<BatonJob> | null = null;
+  const refreshJobs = async () => {
+    const value = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+      jobs?: ReadonlyArray<BatonJob>;
+    } | null;
+    const next = value?.jobs ?? [];
+    if (JSON.stringify(next) !== JSON.stringify(jobsCache)) {
+      jobsCache = next;
+      home.refresh();
+    }
+  };
+  setInterval(() => {
+    if (jobsCache !== null) void refreshJobs().catch(() => undefined);
+  }, JOBS_REFRESH_MS).unref();
 
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
@@ -1768,6 +1786,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     extra: homeExtra(),
     controls: [
+      ...(jobsCache === null
+        ? [
+            {
+              id: "j.load",
+              section: "Jobs",
+              label: "Load jobs",
+              hint: "Reads the jobs from your sessions window, which opens if it is not already.",
+              kind: "action" as const,
+              button: "Load",
+            },
+          ]
+        : jobsCache.length === 0
+          ? [
+              {
+                id: "j.empty",
+                section: "Jobs",
+                label: "No jobs yet",
+                hint: "Ask Tessaya to take on some long work. It plans first and waits for your OK.",
+                kind: "check" as const,
+                status: "ok" as const,
+                detail: "Nothing is running for you.",
+              },
+            ]
+          : jobControls(jobsCache)),
       ...(input.sessions === undefined
         ? []
         : input.sessions.rows().length > 0
@@ -2218,6 +2260,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
+    } else if (id === "j.load") void refreshJobs().catch(() => undefined);
+    else if (id.startsWith("j:")) {
+      const act = jobAction(jobsCache ?? [], id);
+      if (act?.approve === true) {
+        void requestKept({ kind: "job", op: "agree", args: { id: act.id } })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      } else input.openMainWindow();
     } else if (id === "n.empty") input.openMainWindow();
     else if (id.startsWith("n:")) {
       void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
