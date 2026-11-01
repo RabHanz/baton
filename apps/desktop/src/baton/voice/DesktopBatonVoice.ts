@@ -82,7 +82,7 @@ import { hudView, utteranceCaption } from "./voiceHud.ts";
 import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
-import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import { frameLevel, isCancelPhrase, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -275,6 +275,8 @@ export interface DesktopBatonVoiceInput {
   readonly openMainWindow: () => void;
   /** Wake-to-pill, for the record. */
   readonly onWakeShown?: (ms: number) => void;
+  /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
+  readonly onPillState?: (phase: string) => void;
 }
 
 export interface DesktopBatonVoice {
@@ -674,6 +676,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       input.onDismiss?.();
     },
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
+    onChange: (turn) => input.onPillState?.(turn.phase),
   });
   if (settings.pillAtRest) pill.setRest(true);
   let dictatingByVoice = false;
@@ -695,6 +698,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       switch (event.type) {
         case "wake":
           return { type: "wake", word: wordName(event.word) };
+        case "speech_end":
+          return null;
         case "thinking":
           return { type: "thinking" };
         case "nothing":
@@ -705,6 +710,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           input.onSpokenStop?.();
           return null;
         case "transcript":
+          // A spoken cancel takes the pill down at once, the way Esc does.
+          if (!dictatingByVoice && isCancelPhrase(event.text)) {
+            pill.on({ type: "dismissed" });
+            input.onDismiss?.();
+            return null;
+          }
           return { type: "heard", text: event.text };
         case "error":
           return { type: "failed", message: event.message };
