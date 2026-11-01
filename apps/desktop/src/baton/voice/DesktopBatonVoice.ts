@@ -9,7 +9,12 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget, BatonJob, BatonJobBridgeRequest } from "@t3tools/baton-contracts";
+import type {
+  BatonFocusTarget,
+  BatonJob,
+  BatonJobBridgeRequest,
+  WatchFinding,
+} from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
@@ -49,6 +54,13 @@ import {
   type Binding,
   type BindingInput,
 } from "../bindings/bindings.ts";
+import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
+import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
+import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
+import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
+import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
+import { createNotesStore } from "../memory/memoryNotes.ts";
+import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -145,6 +157,13 @@ import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
+import { describeWatch } from "@t3tools/baton-shared/watch";
+import {
+  freshFindings,
+  inQuietHours,
+  morningBrief,
+  noticeLine,
+} from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -194,6 +213,13 @@ interface VoiceSettings {
   readonly keepCapGb: number;
   /** A small mark while idle; nothing on screen otherwise. */
   readonly pillAtRest: boolean;
+  /** A line when something first needs him: Off, a card only, or said aloud as well. */
+  readonly noticeMode: "off" | "written" | "spoken";
+  /** "22-8" is silent from 22:00 to 08:00; "none" is never silent. */
+  readonly quietHours: string;
+  readonly briefMode: "off" | "written" | "spoken";
+  /** The day (local) the morning brief was last given, so it comes once. */
+  readonly briefDay: string | null;
   readonly pillEdge: "bottom" | "top";
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
@@ -237,6 +263,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   keepDays: 30,
   keepCapGb: 2,
   pillAtRest: false,
+  noticeMode: "written",
+  quietHours: "22-8",
+  briefMode: "written",
+  briefDay: null,
   pillEdge: "bottom",
   dictation: "baton",
   speechModel: "v3",
@@ -288,6 +318,10 @@ const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const SESSIONS_NOTE_MS = 8_000;
+/** Jobs change slowly; a local read every so often once he has loaded them. */
+const JOBS_REFRESH_MS = 15_000;
+const ATTENTION_MS = 5 * 60_000;
+const BRIEF_HOUR = 8;
 /** Baton's own green: the sidebar's mark, whatever state the dot is in. */
 const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
@@ -333,6 +367,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
+  /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
+  readonly announce: (text: string, speak: boolean) => void;
   readonly writtenOnly: () => boolean;
   readonly ask: (input: {
     readonly title: string;
@@ -640,7 +676,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .catch(() => undefined);
   };
   let lastPcm: Int16Array | null = null;
-  const tidyStatus = (stage: string | undefined, failed: boolean): TidyStatus =>
+  const _tidyStatus = (stage: string | undefined, failed: boolean): TidyStatus =>
     failed ? "raw" : stage === "model" || stage === "local" ? "ok" : "raw";
   const record = (turn: {
     readonly kind: "dictation" | "spoken";
@@ -1015,20 +1051,54 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             .join("\n");
     },
     jobs: async (op, args) => {
+      if (op === "approvals") {
+        const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+          jobs?: ReadonlyArray<BatonJob>;
+        } | null;
+        return describeApprovals(
+          buildApprovals({ jobs: jobs?.jobs ?? [], sessions: input.sessions?.rows() ?? [] }),
+        );
+      }
+      if (op === "brief") {
+        const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+          jobs?: ReadonlyArray<BatonJob>;
+        } | null;
+        return morningBrief({
+          jobs: jobs?.jobs ?? [],
+          findings: await watchFindings(),
+          now: Date.now(),
+        });
+      }
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
-        terms?: { phase?: string; workSessionId?: string } | null;
+        findings?: ReadonlyArray<WatchFinding>;
+        terms?: { phase?: string; workSessionId?: string; scheduleTaskId?: string | null } | null;
+        stopped?: boolean;
         threadId?: string;
       } | null;
       if (op === "list") return describeJobs(value?.jobs ?? []);
+      if (op === "watch") return describeWatch(value?.findings ?? []);
       if (op === "start") {
         return `Started. The worker is writing its plan in its own thread; nothing happens until he agrees. The job id is ${value?.terms?.workSessionId ?? "unknown"}.`;
       }
+      if (op === "split") {
+        const started = (value as { started?: ReadonlyArray<unknown> } | null)?.started ?? [];
+        return started.length === 0
+          ? "Nothing was split: the job is not agreed yet, or it has no thread."
+          : `Started ${started.length} workers, one per part. One summary will go to the job's thread when they are all in.`;
+      }
+      if (op === "stop")
+        return value?.stopped === true ? "Stopped." : "Nothing was running to stop.";
       if (value?.terms === null || value?.terms === undefined) return "There is no job by that id.";
       if (op === "agree") {
         return value.terms.phase === "approved"
           ? "Agreed. The worker has been told to go ahead."
           : "The plan is not written yet, so nothing started. Ask again when it is ready.";
+      }
+      if (op === "schedule") {
+        return value.terms.scheduleTaskId === null
+          ? "It is not scheduled now (only a job he has agreed to can be scheduled)."
+          : "Scheduled. Each run reports in the job's own thread.";
       }
       return op === "refine" ? "Passed on. The worker will make the plan again." : "Done.";
     },
@@ -1638,7 +1708,68 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }, MIC_TEST_MS).unref();
   };
 
+  const claudeDir = () =>
+    process.env["CLAUDE_CONFIG_DIR"] ?? NodePath.join(Electron.app.getPath("home"), ".claude");
+  const harnessItems = () =>
+    readInventory({
+      claudeDir: claudeDir(),
+      claudeJson: NodePath.join(Electron.app.getPath("home"), ".claude.json"),
+      codexDir: NodePath.join(Electron.app.getPath("home"), ".codex"),
+    });
+  const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   let sessionsNote: string | null = null;
+  /** The job cards as the window last read them; null until he loads them once (no window is opened unasked). */
+  let jobsCache: ReadonlyArray<BatonJob> | null = null;
+  const refreshJobs = async () => {
+    const value = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+      jobs?: ReadonlyArray<BatonJob>;
+    } | null;
+    const next = value?.jobs ?? [];
+    if (JSON.stringify(next) !== JSON.stringify(jobsCache)) {
+      jobsCache = next;
+      home.refresh();
+    }
+  };
+  setInterval(() => {
+    if (jobsCache !== null) void refreshJobs().catch(() => undefined);
+  }, JOBS_REFRESH_MS).unref();
+
+  // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
+  let announced: ReadonlySet<string> = new Set();
+  const watchFindings = async () =>
+    (
+      (await requestKept({ kind: "job", op: "watch", args: {} })) as {
+        findings?: ReadonlyArray<WatchFinding>;
+      } | null
+    )?.findings ?? [];
+  const checkAttention = async () => {
+    if (mainContents === null || mainContents.isDestroyed()) return;
+    const at = new Date();
+    if (inQuietHours(settings.quietHours, at.getHours())) return;
+    const found = await watchFindings();
+    if (settings.noticeMode !== "off") {
+      const { fresh, next } = freshFindings(found, announced);
+      announced = next;
+      const line = noticeLine(fresh);
+      if (line !== null) input.extras?.announce(line, settings.noticeMode === "spoken");
+    }
+    const today = `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`;
+    if (
+      settings.briefMode !== "off" &&
+      at.getHours() >= BRIEF_HOUR &&
+      settings.briefDay !== today
+    ) {
+      const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+        jobs?: ReadonlyArray<BatonJob>;
+      } | null;
+      save({ briefDay: today });
+      input.extras?.announce(
+        morningBrief({ jobs: jobs?.jobs ?? [], findings: found, now: Date.now() }),
+        settings.briefMode === "spoken",
+      );
+    }
+  };
+  setInterval(() => void checkAttention().catch(() => undefined), ATTENTION_MS).unref();
 
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
@@ -1783,6 +1914,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     extra: homeExtra(),
     controls: [
+      ...approvalControls(
+        buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
+        jobsCache !== null,
+      ),
+      ...noteControls(notes.list()),
+      ...harnessControls(harnessItems()),
+      ...(jobsCache === null
+        ? [
+            {
+              id: "j.load",
+              section: "Jobs",
+              label: "Load jobs",
+              hint: "Reads the jobs from your sessions window, which opens if it is not already.",
+              kind: "action" as const,
+              button: "Load",
+            },
+          ]
+        : jobsCache.length === 0
+          ? [
+              {
+                id: "j.empty",
+                section: "Jobs",
+                label: "No jobs yet",
+                hint: "Ask Tessaya to take on some long work. It plans first and waits for your OK.",
+                kind: "check" as const,
+                status: "ok" as const,
+                detail: "Nothing is running for you.",
+              },
+            ]
+          : jobControls(jobsCache)),
       ...(input.sessions === undefined
         ? []
         : input.sessions.rows().length > 0
@@ -2100,6 +2261,45 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         on: settings.pillAtRest,
       },
       {
+        id: "v.notice",
+        section: "Notices",
+        label: "Tell me when something needs me",
+        hint: "A failed, stalled or waiting session, once. It says it aloud only if you choose that, and never in quiet hours. Starts once T3's window has opened.",
+        kind: "choice",
+        value: settings.noticeMode,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "written", label: "A card" },
+          { value: "spoken", label: "A card and one spoken line" },
+        ],
+      },
+      {
+        id: "v.quiet",
+        section: "Notices",
+        label: "Quiet hours",
+        kind: "choice",
+        value: settings.quietHours,
+        options: [
+          { value: "none", label: "None" },
+          { value: "22-8", label: "10 pm to 8 am" },
+          { value: "23-7", label: "11 pm to 7 am" },
+          { value: "0-9", label: "Midnight to 9 am" },
+        ],
+      },
+      {
+        id: "v.brief",
+        section: "Notices",
+        label: "Morning brief",
+        hint: "What finished, failed or waits, once a day from 8 am. Ask for it any time with 'what happened overnight'.",
+        kind: "choice",
+        value: settings.briefMode,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "written", label: "A card" },
+          { value: "spoken", label: "Spoken" },
+        ],
+      },
+      {
         id: "v.pillEdge",
         section: "On screen",
         label: "Where the pill sits",
@@ -2241,6 +2441,50 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
+    } else if (pluginOfControl(id) !== null) {
+      const result = setPluginEnabled(claudeDir(), pluginOfControl(id)!, on);
+      if (result === "refused")
+        note = "Could not change that plugin; its settings file was left alone.";
+      home.refresh();
+    } else if (id === "m.folder") {
+      NodeFS.mkdirSync(notes.dir, { recursive: true });
+      void Electron.shell.openPath(notes.dir);
+    } else if (noteAction(id) !== null) {
+      const act = noteAction(id)!;
+      if (act.remove) {
+        notes.remove(act.id);
+        home.refresh();
+      } else {
+        const file = notes.list().find((n) => n.id === act.id)?.file;
+        if (file !== undefined) void Electron.shell.openPath(file);
+      }
+    } else if (id === "a.load") void refreshJobs().catch(() => undefined);
+    else if (id.startsWith("a:")) {
+      const act = approvalAction(id);
+      if (act === null) return;
+      if (act.kind === "plan") {
+        // Approve is the same agree the voice path makes; Deny stops the worker, which has done nothing yet.
+        void requestKept({ kind: "job", op: act.deny ? "stop" : "agree", args: { id: act.ref } })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      } else void input.sessions?.act(`n:${act.ref}`, null);
+    } else if (id === "j.load") void refreshJobs().catch(() => undefined);
+    else if (/^j[as]?:/.test(id)) {
+      const act = jobAction(jobsCache ?? [], id);
+      const job = (op: BatonJobBridgeRequest["op"], args: Record<string, unknown>) =>
+        void requestKept({ kind: "job", op, args })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      if (act === null) return;
+      if (act.kind === "stop") job("stop", { id: act.id });
+      else if (act.kind === "schedule") {
+        job("schedule", { id: act.id, everyMinutes: act.scheduled ? null : DAILY_MINUTES });
+      } else if (act.kind === "answer") {
+        if (typeof value === "string" && value.trim() !== "") {
+          job("refine", { id: act.id, text: value, via: "text" });
+        }
+      } else if (act.approve) job("agree", { id: act.id });
+      else input.openMainWindow();
     } else if (id === "n.empty") input.openMainWindow();
     else if (id.startsWith("n:")) {
       void input.sessions?.act(id, typeof value === "string" ? value : null).then((line) => {
@@ -2314,7 +2558,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
-    else if (id === "v.pillRest") {
+    else if (id === "v.notice" && (value === "off" || value === "written" || value === "spoken")) {
+      save({ noticeMode: value });
+    } else if (id === "v.brief" && (value === "off" || value === "written" || value === "spoken")) {
+      save({ briefMode: value });
+    } else if (
+      id === "v.quiet" &&
+      typeof value === "string" &&
+      /^(none|\d{1,2}-\d{1,2})$/.test(value)
+    ) {
+      save({ quietHours: value });
+    } else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);
     } else if (id === "v.pillEdge" && (value === "top" || value === "bottom")) {

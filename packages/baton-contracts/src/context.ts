@@ -298,6 +298,16 @@ export const batonDesktopBridge = (): BatonDesktopBridge | undefined =>
 /** The desktop's job tools (D145), answered by the window with the job RPCs; arguments are checked server-side. */
 export interface BatonJobBridgeRequest {
   readonly kind: "job";
-  readonly op: "list" | "start" | "agree" | "refine" | "grant" | "revoke";
+  readonly op:
+    | "list"
+    | "start"
+    | "agree"
+    | "refine"
+    | "grant"
+    | "revoke"
+    | "watch"
+    | "stop"
+    | "schedule"
+    | "split";
   readonly args: Readonly<Record<string, unknown>>;
 }

@@ -197,7 +197,8 @@ export const liveSetModel = (
             try {
               return path === null ? null : NodeFS.statSync(path).size;
             } catch {
-              return null;
+              // A fresh session has no transcript until its first line, which may be this command's.
+              return path === null ? null : 0;
             }
           },
           since: (mark) => {

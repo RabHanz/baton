@@ -1,11 +1,25 @@
 import { ProjectId, ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
 import { ProviderInstanceId, type OrchestrationV2ThreadShell } from "@t3tools/contracts";
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { assert, it } from "@effect/vitest";
+import * as ServerConfig from "../config.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { agreeJob, refineJob, startJob } from "./BatonJobFlow.ts";
+import {
+  agreeJob,
+  noticePlan,
+  refineJob,
+  scheduleJob,
+  splitJob,
+  startJob,
+  summarizeParts,
+} from "./BatonJobFlow.ts";
+import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
@@ -14,18 +28,32 @@ const launched: BatonThreadLaunch[] = [];
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
 
+const serverConfig = Layer.succeed(ServerConfig.ServerConfig, {
+  dbPath: NodePath.join(NodeOS.tmpdir(), "baton-flow-test", "state.sqlite"),
+} as never);
+
+const upserts: Array<{ threadId?: unknown; schedule: unknown; id?: unknown }> = [];
+const deleted: unknown[] = [];
+const scheduledTasks = Layer.succeed(ScheduledTaskService, {
+  upsert: (input: (typeof upserts)[number]) =>
+    Effect.sync(() => {
+      upserts.push(input);
+      return { task: { id: "task-1" } };
+    }),
+  delete: ({ id }: { id: unknown }) => Effect.sync(() => (deleted.push(id), { id })),
+} as never);
+
 const layer = it.layer(
   Layer.mergeAll(
     jobLayer,
+    scheduledTasks,
+    serverConfig,
     layerStatic({
       launch: (launch) => (launched.push(launch), launch.threadId ?? null),
       sent,
       shells,
     }),
-  ).pipe(
-    Layer.provideMerge(workSessionLayer),
-    Layer.provideMerge(SqlitePersistenceMemory),
-  ),
+  ).pipe(Layer.provideMerge(workSessionLayer), Layer.provideMerge(SqlitePersistenceMemory)),
 );
 
 layer("BatonJobFlow", (it) => {
@@ -46,6 +74,7 @@ layer("BatonJobFlow", (it) => {
       assert.strictEqual(launched[0]?.interactionMode, "plan");
       assert.include(launched[0]?.text ?? "", `He asked: ${goal}`);
       assert.include(launched[0]?.text ?? "", "Do not start the work");
+      assert.include(launched[0]?.text ?? "", "How to frame this job");
 
       // Agreeing before the plan exists starts nothing.
       yield* agreeJob(id);
@@ -55,7 +84,10 @@ layer("BatonJobFlow", (it) => {
       shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
       yield* jobs.planReady(id);
       yield* refineJob({ id, text: "Use the blue palette", via: "voice" });
-      assert.deepEqual(sent.map((s) => s.text), ["Use the blue palette"]);
+      assert.deepEqual(
+        sent.map((s) => s.text),
+        ["Use the blue palette"],
+      );
       const agreed = yield* agreeJob(id);
       assert.strictEqual(agreed?.phase, "approved");
       assert.lengthOf(sent, 2);
@@ -63,5 +95,140 @@ layer("BatonJobFlow", (it) => {
       yield* agreeJob(id);
       assert.lengthOf(sent, 2);
     }),
+  );
+
+  it.effect(
+    "notices a finished plan by itself, and starts only a job he gave a standing start",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const base = {
+          projectId: ProjectId.make("project-site"),
+          permissions: { folders: [], projects: [], tools: ["read" as const] },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required" as const,
+        };
+        const a = WorkSessionId.make("job-flow-2");
+        const b = WorkSessionId.make("job-flow-3");
+        const ta = (yield* startJob({ ...base, id: a, title: "A", goal: "do a" })).threadId;
+        const tb = (yield* startJob({ ...base, id: b, title: "B", goal: "do b" })).threadId;
+        yield* jobs.grant(b, "start");
+        const before = sent.length;
+        yield* noticePlan(ta);
+        assert.strictEqual((yield* jobs.terms(a))?.phase, "drafting_plan");
+        shells.push(
+          { id: ta, status: "completed" } as OrchestrationV2ThreadShell,
+          { id: tb, status: "completed" } as OrchestrationV2ThreadShell,
+        );
+        yield* noticePlan(ta);
+        yield* noticePlan(tb);
+        assert.strictEqual((yield* jobs.terms(a))?.phase, "awaiting_agreement");
+        assert.strictEqual((yield* jobs.terms(b))?.phase, "approved");
+        assert.deepEqual(
+          sent.slice(before).map((m) => m.threadId),
+          [tb],
+        );
+      }),
+  );
+
+  it.effect("schedules an agreed job in its own thread, and takes the schedule off", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BatonJobService;
+      const id = WorkSessionId.make("job-flow-2");
+      const waiting = yield* scheduleJob({ id, everyMinutes: 60 });
+      assert.lengthOf(upserts, 0);
+      assert.strictEqual(waiting?.scheduleTaskId, null);
+      yield* agreeJob(id);
+      const set = yield* scheduleJob({ id, everyMinutes: 1440 });
+      assert.lengthOf(upserts, 1);
+      assert.deepEqual(upserts[0]?.schedule, { type: "interval", everyMs: 86_400_000 });
+      assert.strictEqual(set?.scheduleTaskId, "task-1");
+      const off = yield* scheduleJob({ id, everyMinutes: null });
+      assert.deepEqual(deleted, ["task-1"]);
+      assert.strictEqual(off?.scheduleTaskId, null);
+      assert.strictEqual((yield* jobs.terms(id))?.scheduleTaskId, null);
+    }),
+  );
+
+  it.effect(
+    "splits an agreed job into agreed parts, and writes one summary when they are all in",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const parent = WorkSessionId.make("job-flow-4");
+        const { threadId } = yield* startJob({
+          id: parent,
+          projectId: ProjectId.make("project-site"),
+          title: "Site",
+          goal: "do the site",
+          permissions: {
+            folders: ["~/site"],
+            projects: [],
+            tools: ["read" as const, "edit" as const],
+          },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        const shell = (id: ThreadId) =>
+          ({
+            id,
+            status: "completed",
+            modelSelection: { instanceId: "claude", model: "sonnet" },
+          }) as unknown as OrchestrationV2ThreadShell;
+        shells.push(shell(threadId));
+        assert.lengthOf(yield* splitJob({ id: parent, parts: [{ title: "A", goal: "do a" }] }), 0);
+        yield* agreeJob(parent);
+        const before = launched.length;
+        const started = yield* splitJob({
+          id: parent,
+          parts: [
+            { title: "Copy", goal: "write the copy", role: "marketing" },
+            { title: "Code", goal: "build the page" },
+          ],
+        });
+        assert.lengthOf(started, 2);
+        const mine = launched.slice(before);
+        assert.deepEqual(
+          mine.map((l) => l.interactionMode),
+          ["default", "default"],
+        );
+        assert.include(mine[0]?.text ?? "", "Your role (marketing)");
+        assert.include(mine[0]?.text ?? "", "already agreed");
+        const parts = yield* jobs.parts(parent);
+        assert.deepEqual(
+          parts.map((p) => [p.parentId, p.phase, p.permissions.tools.length]),
+          [
+            [parent, "approved", 2],
+            [parent, "approved", 2],
+          ],
+        );
+        const entry = (id: string, state: string) =>
+          ({
+            workSessionId: id,
+            title: id,
+            lifecycle: "active",
+            state,
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [],
+            synopsis: null,
+          }) as never;
+        const sentBefore = sent.length;
+        const running = [
+          entry(parent, "working"),
+          entry(parts[0]!.workSessionId, "done_unseen"),
+          entry(parts[1]!.workSessionId, "working"),
+        ];
+        assert.isFalse(yield* summarizeParts(parent, running));
+        const done = [
+          entry(parent, "working"),
+          entry(parts[0]!.workSessionId, "done_unseen"),
+          entry(parts[1]!.workSessionId, "failed"),
+        ];
+        assert.isTrue(yield* summarizeParts(parent, done));
+        assert.isFalse(yield* summarizeParts(parent, done));
+        assert.lengthOf(sent.slice(sentBefore), 1);
+        assert.include(sent.at(-1)?.text ?? "", "Summary of the parts:");
+        assert.include(sent.at(-1)?.text ?? "", "1 of 2 failed");
+      }),
   );
 });

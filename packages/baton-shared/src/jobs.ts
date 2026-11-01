@@ -12,7 +12,6 @@ import {
   type BatonGrantKind,
   type BatonJobPhase,
   type BatonJobRevision,
-  type BatonOutboundChannel,
   type BatonSessionState,
 } from "@t3tools/baton-contracts";
 
@@ -33,7 +32,10 @@ export const jobGroupFor = (
 ): BatonJobGroup =>
   phase === "awaiting_agreement"
     ? "needs_you"
-    : phase === "drafting_plan" && state !== "failed" && state !== "needs_input" && state !== "needs_approval"
+    : phase === "drafting_plan" &&
+        state !== "failed" &&
+        state !== "needs_input" &&
+        state !== "needs_approval"
       ? "running"
       : jobGroup(state, settled);
 
@@ -222,9 +224,16 @@ export const phaseLabel = (phase: BatonJobPhase): string | null =>
 export const workerFirstMessage = (input: {
   readonly verbatim: string;
   readonly permissionsSummary: string;
+  /** How to frame the job (the operating-system pack, D148), after his words and before the rest. */
+  readonly frame?: string;
+  /** A part of a larger plan that he has already agreed: no planning pause. */
+  readonly agreed?: boolean;
 }): string =>
   [
     `He asked: ${input.verbatim}`,
+    ...(input.frame === undefined || input.frame === "" ? [] : [input.frame]),
     `What you may do: ${input.permissionsSummary}`,
-    "Plan first. Write the plan, and any question you need answered, here in this thread. Do not start the work. He will refine the plan here and tell you when to go.",
+    input.agreed === true
+      ? "This is one part of a larger plan he has already agreed. Do it now, inside what you were allowed, and report what changed, the evidence, and what blocks you."
+      : "Plan first. Write the plan, and any question you need answered, here in this thread. Do not start the work. He will refine the plan here and tell you when to go.",
   ].join("\n\n");
