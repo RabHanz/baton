@@ -3388,3 +3388,18 @@ reason and exit code. A start that finds the previous run's `baton-running.json`
 child process dying; renderer loss was only handled in the window code.
 
 **Not proven:** the real restart on Windows, the toast, and `forceRunAfter` bringing the app back, all tests-only.
+
+## D138 — Sessions in Baton's own window
+
+Baton's window leads with Sessions: the five that matter (needs him, then working, then newest), "Show all" for the
+rest. Each row: session, project, box, state (Working, Needs you, Idle) and the account, masked until clicked. A click
+on the name opens that thread in T3's window; a row with a terminal pane has a one-line Send.
+
+**One source.** The rows are the sidebar's own: `BatonProjectsBlock` builds them with `buildBatonProjects` from the
+fleet atoms it already subscribes to (every connected environment, Claude live sessions and Herdr panes included), and
+pushes a summary to the desktop shell whenever it changes (`setBatonSessions`). Nothing polls, and Baton's window has no
+list of its own to disagree with the sidebar. Open and Send go back through the same sidebar (`onBatonSessionRequest`)
+and take the same paths as a click there: `onOpenThread`, and `herdrSend` for text. Because the rows come from T3's
+renderer, the list fills in once T3's window has loaded its sessions view; until then the window says so and offers
+"Open sessions". A work session that is a T3 thread has no pane, so it has Open and no Send; replying there is T3's
+composer.
