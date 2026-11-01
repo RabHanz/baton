@@ -293,7 +293,7 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false;
+let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false;
 function loadHistory() {
   const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
@@ -301,11 +301,14 @@ function loadHistory() {
 function hact(t, action) {
   if (action === 'delete') { hask = null; }
   if (!real) { if (action === 'delete') { hrows = hrows.filter(x => x.id !== t.id); render(); } else { hnote = 'Copied.'; render(); } return; }
-  if (action === 'retry') { hbusy.add(t.id); render(); }
+  const retry = action === 'retry' || action === 'retry_transcript';
+  if (retry) { hbusy.add(t.id); hnote = action === 'retry_transcript' ? 'Listening to the recording again. A long one takes a while.' : ''; render(); }
   ipc.invoke('baton-history:act', t.id, action).then(r => {
     hbusy.delete(t.id);
     if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id);
-    else if (action === 'retry' && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'; }
+    else if (r && r.failed) { hnote = r.failed; }
+    else if (retry && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
+    else if (action.indexOf('use_version') === 0 && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hnote = 'Now using that version.'; }
     else if (action.indexOf('copy') === 0) { hnote = 'Copied.'; }
     render();
   });
@@ -325,6 +328,7 @@ function recordings(p) {
 }
 function historyPage(p) {
   if (hrows === null) loadHistory();
+  if (!window.__hm) { window.__hm = 1; document.addEventListener('click', e => { if (hmenu && !e.target.closest('.hmenuwrap')) { hmenu = null; render(); } }); }
   const f = $('div', 'hsearch'); const q = $('input'); q.type = 'search'; q.id = 'in-hq'; q.placeholder = 'Search what you said'; q.setAttribute('aria-label', 'Search history'); q.value = hq;
   q.oninput = () => { hq = q.value; hlimit = 40; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
   f.appendChild(q); p.appendChild(f);
@@ -337,21 +341,58 @@ function historyPage(p) {
   for (const t of shownRows) {
     const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); p.appendChild(dh); g = $('div', 'group'); p.appendChild(g); }
     const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
-    const text = (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
+    const text = t.kind === 'spoken' ? t.raw : (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
     head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
-    const cp = $('button', 'hcopy', 'Copy'); cp.setAttribute('aria-label', 'Copy this transcript'); cp.onclick = () => hact(t, t.cleaned ? 'copy_cleaned' : 'copy_raw');
-    line.append(head, cp); wrap.appendChild(line);
+    const cp = $('button', 'hcopy', 'Copy'); cp.setAttribute('aria-label', t.kind === 'spoken' && t.cleaned ? 'Copy the reply' : 'Copy this transcript'); cp.onclick = () => hact(t, 'copy');
+    line.append(head, cp);
+    if (t.menu && t.menu.length) {
+      const mw = $('span', 'hmenuwrap'); const more = $('button', 'hmore', '\u22EF'); more.setAttribute('aria-label', 'More actions'); more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', String(hmenu === t.id));
+      more.onclick = (e) => { e.stopPropagation(); hmenu = hmenu === t.id ? null : t.id; render(); };
+      mw.appendChild(more);
+      if (hmenu === t.id) {
+        const m = $('div', 'hmenu'); m.setAttribute('role', 'menu');
+        for (const it of t.menu) {
+          const b = $('button', 'hitem' + (it.enabled ? '' : ' off'), hbusy.has(t.id) && it.id === 'retry_transcript' ? 'Retrying' : it.label); b.setAttribute('role', 'menuitem');
+          if (it.note) b.title = it.note;
+          b.onclick = (e) => { e.stopPropagation(); hmenu = null;
+            if (it.id === 'delete') { hask = t.id; hopen.add(t.id); render(); }
+            else if (!it.enabled) { hnote = it.note || 'Not available right now.'; render(); }
+            else hact(t, it.id); };
+          m.appendChild(b);
+        }
+        mw.appendChild(m);
+      }
+      line.appendChild(mw);
+    }
+    wrap.appendChild(line);
     if (hopen.has(t.id)) {
       const body = $('div', 'hbody');
       const blk = (l, x) => { const b = $('div', 'hblock'); b.append($('div', 'hint', l), $('div', 'hpre', x)); return b; };
-      body.appendChild(blk('As heard', t.raw)); if (t.cleaned) body.appendChild(blk('Written', t.cleaned));
+      if (t.kind === 'spoken') { body.appendChild(blk('You said', t.raw)); if (t.cleaned) body.appendChild(blk('Tessaya replied', t.cleaned)); }
+      else { body.appendChild(blk('As heard', t.raw)); if (t.cleaned) body.appendChild(blk('Written', t.cleaned)); }
+      const rt = (t.menu || []).find(i => i.id === 'retry_transcript');
+      if (rt && rt.note) body.appendChild($('div', 'hint', rt.note + '.'));
+      if (t.versions && t.versions.length > 1) {
+        const cmp = $('div', 'hblock'); cmp.appendChild($('div', 'hint', 'Compare'));
+        t.versions.forEach((v, i) => {
+          const inUse = v.raw === t.raw && (v.cleaned || null) === (t.cleaned || null);
+          const row = $('div', 'hver'); const lab = $('div', 'hint', 'Version ' + (i + 1) + (i === 0 ? ' (first heard)' : '') + (inUse ? ' - in use' : ''));
+          const txt = $('div', 'hpre', t.kind === 'spoken' ? v.raw : (v.cleaned || v.raw));
+          const ra = $('div', 'hacts');
+          const vb = (l, a) => { const b = $('button', 'btn quiet', l); b.onclick = () => hact(t, a + ':' + i); return b; };
+          ra.appendChild(vb('Copy', 'copy_version')); if (!inUse) ra.appendChild(vb('Use this one', 'use_version'));
+          row.append(lab, txt, ra); cmp.appendChild(row);
+        });
+        body.appendChild(cmp);
+      }
       const meta = [t.app && ('in ' + t.app), t.delivery && ('delivered: ' + t.delivery), t.model && ('tidied by ' + t.model), t.audio ? 'recording kept' : null, t.corrected ? 'you corrected it' : null, t.error].filter(Boolean).join(' · ');
       if (meta) body.appendChild($('div', 'hint', meta));
       const acts = $('div', 'hacts');
       const mk = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
       acts.appendChild(mk('Copy as heard', () => hact(t, 'copy_raw')));
-      if (t.cleaned) acts.appendChild(mk('Copy written', () => hact(t, 'copy_cleaned')));
-      if (t.kind === 'dictation' && (t.status === 'raw' || t.status === 'failed')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
+      if (t.cleaned) acts.appendChild(mk(t.kind === 'spoken' ? 'Copy reply' : 'Copy written', () => hact(t, 'copy_cleaned')));
+      if (rt && rt.enabled) acts.appendChild(mk(hbusy.has(t.id) ? 'Retrying' : 'Retry transcript', () => hact(t, 'retry_transcript')));
+      if ((t.menu || []).some(i => i.id === 'retry')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
       if (hask === t.id) { acts.append($('span', 'hint', 'Delete this for good?'), mk('Delete', () => hact(t, 'delete'), 'primary'), mk('Keep', () => { hask = null; render(); })); }
       else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
       body.appendChild(acts); wrap.appendChild(body);
