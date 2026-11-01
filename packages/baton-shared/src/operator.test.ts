@@ -143,6 +143,12 @@ describe("Baton's own tools (D143)", () => {
       tool: "mcp__baton__job_start",
       input: { title: "Site", goal: "rebuild the site", project: "Site" },
     };
+    const split = {
+      tool: "mcp__baton__job_split",
+      input: { id: "j1", parts: [{ title: "A", goal: "do a" }] },
+    };
+    expect(judgeToolCall(split, off).verdict).toBe("allow");
+    expect(judgeToolCall(split, { ...off, tainted: true }).verdict).toBe("ask");
     const agree = { tool: "mcp__baton__job_agree", input: { id: "j1" } };
     expect(judgeToolCall(start, off).verdict).toBe("allow");
     expect(judgeToolCall(agree, off).verdict).toBe("allow");

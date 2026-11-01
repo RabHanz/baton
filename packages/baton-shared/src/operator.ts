@@ -102,6 +102,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "press_keys",
   "session_send",
   "job_start",
+  "job_split",
   "job_refine",
   "job_agree",
   "job_grant",
@@ -210,6 +211,7 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "job_start":
+    case "job_split":
     case "job_refine":
     case "job_agree":
       // A job's words are his own or they came from something it read; only the second asks.

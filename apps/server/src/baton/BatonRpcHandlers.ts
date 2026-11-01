@@ -334,6 +334,8 @@ export const make = Effect.gen(function* () {
       ),
     [BATON_JOB_WS_METHODS.jobStop]: (input) =>
       run(Effect.map(JobFlow.stopJob(input.id), (stopped) => ({ stopped }))),
+    [BATON_JOB_WS_METHODS.jobSplit]: (input) =>
+      run(Effect.map(JobFlow.splitJob(input), (started) => ({ started }))),
     [BATON_JOB_WS_METHODS.jobSchedule]: (input) =>
       run(Effect.map(JobFlow.scheduleJob(input), (terms) => ({ terms }))),
     [BATON_JOB_WS_METHODS.jobRevoke]: (input) =>
