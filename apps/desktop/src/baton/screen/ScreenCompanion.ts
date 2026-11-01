@@ -83,6 +83,7 @@ import { pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
+import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { checkChrome, realProbe, type ChromeCheck } from "./chromeCheck.ts";
@@ -1583,7 +1584,10 @@ export const startScreenCompanion = (input: {
   };
   const agentStart = async (systemPrompt: string): Promise<VisionSession> => {
     await agentMcp?.close();
-    agentMcp = await startBatonMcp({ tools: buildBatonTools(toolHost), gate: agentGate });
+    agentMcp = await startBatonMcp({
+      tools: withFailureGuard(buildBatonTools(toolHost)),
+      gate: agentGate,
+    });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
       model: settings.model,
