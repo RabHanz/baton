@@ -199,6 +199,8 @@ const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
 const SESSIONS_NOTE_MS = 8_000;
+/** Baton's own green: the sidebar's mark, whatever state the dot is in. */
+const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
@@ -901,6 +903,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
       device: deviceName(),
       mark: markSvg(markOptions()),
+      brandMark: markSvg({ ...markOptions(), color: BRAND_COLOUR, muted: false }),
     },
     controls: [
       ...(input.sessions === undefined
