@@ -90,6 +90,7 @@ import {
   BatonHerdrSendInput,
   BatonHerdrSendResult,
 } from "./liveSessions.ts";
+import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
 import {
   BATON_JOB_WS_METHODS,
   BatonJobGrantInput,
@@ -242,6 +243,12 @@ const WsBatonJobGrantRpc = Rpc.make(BATON_JOB_WS_METHODS.jobGrant, {
 const WsBatonJobRevokeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRevoke, {
   payload: BatonJobGrantInput,
   success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
+  payload: Schema.Struct({}),
+  success: WatchResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
@@ -416,6 +423,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobRefineRpc,
   WsBatonJobGrantRpc,
   WsBatonJobRevokeRpc,
+  WsBatonWatchGetRpc,
   WsBatonOrchestrationRuleCreateRpc,
   WsBatonOrchestrationRuleListRpc,
   WsBatonOrchestrationRuleDisableRpc,

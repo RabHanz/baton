@@ -16,6 +16,7 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
+  BATON_WATCH_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_LIVE_WS_METHODS,
@@ -119,6 +120,10 @@ export function createBatonWorkSessionAtoms<R, E>(
       tag: BATON_WS_METHODS.fleetGet,
     }),
     /** Jobs (D145): the same server flow for the desktop's tools, the window and the phone. */
+    watchGet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:watch-get",
+      tag: BATON_WATCH_WS_METHODS.watchGet,
+    }),
     jobList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-list",
       tag: BATON_JOB_WS_METHODS.jobList,
