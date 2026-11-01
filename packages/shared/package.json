@@ -299,6 +299,10 @@
       "types": "./src/previewViewport.ts",
       "import": "./src/previewViewport.ts"
     },
+    "./mediaMentions": {
+      "types": "./src/mediaMentions.ts",
+      "import": "./src/mediaMentions.ts"
+    },
     "./mediaPreview": {
       "types": "./src/mediaPreview.ts",
       "import": "./src/mediaPreview.ts"
