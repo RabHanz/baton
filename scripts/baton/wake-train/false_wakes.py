@@ -9,6 +9,8 @@ per hour per word, in four rooms:
           or a video playing in the room
   bleed   the same speech low-passed, attenuated and run through a room impulse response (MIT, davidscripka),
           as speaker bleed into a microphone
+  near    near-miss sentences (scripts/baton/wake-train/near_misses.txt: Alfonso, Sabrina, Sebastopol, Tessa...)
+          spoken by espeak-ng at two speeds, when --near is given; counted as fires, not per hour
   noise   DEMAND room noise alone (CC BY 4.0, zenodo.org/records/1227121): kitchen, living room, car, street
 
 Everything is public and licence-clean: no recording of a person is used. Clips of every false fire are saved
@@ -88,6 +90,7 @@ def main():
     ap.add_argument("--models", required=True)
     ap.add_argument("--data", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--near", help="a text file of near-miss sentences, one per line (needs espeak-ng)")
     ap.add_argument("--hours", type=float, default=2.0, help="of audio per room")
     ap.add_argument("--target", type=float, default=1.0, help="false wakes per hour allowed")
     args = ap.parse_args()
@@ -115,14 +118,24 @@ def main():
     rng.shuffle(speech)
     rng.shuffle(noise)
     rooms = {}
-    for kind in ("clean", "tv", "bleed", "noise"):
-        budget, seconds, found = args.hours * 3600, 0.0, []
-        pool = noise if kind == "noise" else speech
+    near_dir = None
+    if args.near:
+        import subprocess
+        near_dir = out / "near-audio"
+        near_dir.mkdir(exist_ok=True)
+        for i, line in enumerate(pathlib.Path(args.near).read_text().splitlines()):
+            for speed in (140, 175):
+                subprocess.run(["espeak-ng", "-v", "en-gb", "-s", str(speed), "-w", str(near_dir / f"{i:02d}-{speed}.wav"), line], check=True)
+    for kind in ("clean", "tv", "bleed", "near", "noise"):
+        if kind == "near" and near_dir is None:
+            continue
+        budget, seconds, found = (1e9 if kind == "near" else args.hours * 3600), 0.0, []
+        pool = noise if kind == "noise" else sorted(near_dir.glob("*.wav")) if kind == "near" else speech
         for path in pool:
             if seconds >= budget:
                 break
             audio = load(path)
-            if kind != "noise":
+            if kind not in ("noise", "near"):
                 audio = room(kind, audio, noise, rirs, rng, speech)
             # every score is kept at the lowest threshold of the sweep, then counted at each
             low = {w: SWEEP[0] for w in words}
@@ -138,7 +151,7 @@ def main():
         rooms[kind] = {"hours": seconds / 3600, "fires": found}
         print(kind, f"{seconds / 3600:.2f} h", len(found), "candidate fires", flush=True)
 
-    total_h = sum(r["hours"] for r in rooms.values())
+    total_h = sum(r["hours"] for k, r in rooms.items() if k != "near")
     report = {"hours": total_h, "target_per_hour": args.target, "words": {}}
     for w in words:
         rows = {}
@@ -149,7 +162,7 @@ def main():
                 "now": sum(f[1] >= thresholds[w] for f in fires) / r["hours"],
                 "sweep": {str(t): sum(f[1] >= t for f in fires) / r["hours"] for t in SWEEP},
             }
-        every = [f for r in rooms.values() for f in r["fires"] if f[0] == w]
+        every = [f for k, r in rooms.items() if k != "near" for f in r["fires"] if f[0] == w]
         per_hour = lambda t: sum(f[1] >= t for f in every) / total_h
         ok = [t for t in SWEEP + [0.999] if per_hour(t) <= args.target]
         report["words"][w] = {
@@ -160,11 +173,14 @@ def main():
         }
     (out / "report.json").write_text(json.dumps(report, indent=2))
     lines = [f"False wakes per hour over {total_h:.1f} h of public audio (target at most {args.target}):", "",
-             "| word | threshold | clean | tv | bleed | noise | all | recommended |", "|---|---|---|---|---|---|---|---|"]
+             "| word | threshold | " + " | ".join(k + (" (fires)" if k == "near" else "/h") for k in rooms) + " | all /h | recommended |",
+             "|---" * (len(rooms) + 4) + "|"]
     for w, d in report["words"].items():
         r = d["rooms"]
         lines.append(
-            f"| {w} | {d['threshold']} | " + " | ".join(f"{r[k]['now']:.2f}" for k in rooms)
+            f"| {w} | {d['threshold']} | " + " | ".join(
+                str(round(r[k]["now"] * r[k]["hours"])) if k == "near" else f"{r[k]['now']:.2f}" for k in rooms
+            )
             + f" | {d['false_wakes_per_hour_now']:.2f} | {d['recommended_threshold']} |"
         )
     (out / "report.md").write_text("\n".join(lines) + "\n")
