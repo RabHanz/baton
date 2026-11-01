@@ -51,7 +51,7 @@ const subject = (workSession: SpokenWorkSession): string =>
   workSession.providerLabel ?? workSession.projectLabel ?? workSession.title;
 
 /**
- * "What's VentureOS doing?" — one work session, answered from its state and
+ * "What's Storefront doing?" — one work session, answered from its state and
  * synopsis.
  *
  * A stale synopsis is said to be stale rather than read out as current. §11:

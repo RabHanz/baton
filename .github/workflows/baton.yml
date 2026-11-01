@@ -16,6 +16,8 @@ jobs:
         with:
           fetch-depth: 0
           filter: blob:none
+      - name: Nothing private ships by default
+        run: node scripts/baton/guard-private.mjs
       - name: Upstream paths equal PIN + series
         run: bash scripts/baton/patches.sh verify
       - name: patches.sh self-test

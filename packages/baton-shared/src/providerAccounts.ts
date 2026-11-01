@@ -87,7 +87,7 @@ export const cswapSessionsRoot = (input: {
 /**
  * Is this the account the user means?
  *
- * By the email's own slug — "rabeehanzla@gmail.com" and "rabee" are the same
+ * By the email's own slug — "alex@example.com" and "alex" are the same
  * account to a person, and a second directory for one login is how somebody
  * ends up wondering which one a rate limit belongs to. The directory name is
  * checked too, because that is what `cswap list` shows next to the number.
