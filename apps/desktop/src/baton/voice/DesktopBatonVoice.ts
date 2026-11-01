@@ -98,6 +98,7 @@ import {
   readDictionary,
   writeDictionary,
 } from "./dictationRewriter.ts";
+import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
@@ -2061,6 +2062,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** Puts every key he has set in place, and takes the old ones away. Mouse buttons are only kept. */
   const applyBindings = () => {
+    // The mouse side: the hook in the dictation sidecar reads this file; an empty list is no hook.
+    try {
+      NodeFS.mkdirSync(NodePath.join(input.stateDir, "voice"), { recursive: true });
+      NodeFS.writeFileSync(
+        NodePath.join(input.stateDir, "voice", "input-bindings.json"),
+        JSON.stringify(mouseHookConfig(currentBindings())),
+      );
+    } catch {}
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     registered = [];
     for (const row of currentBindings()) {
