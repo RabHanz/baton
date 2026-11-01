@@ -125,8 +125,9 @@ np.save("clean_negative_features.npy", np.concatenate([
 ]))
 print("negative features done", flush=True)
 dev = parquet_audio(["clean/validation/0000.parquet", "clean/test/0000.parquet"])
+# float32: the trainer feeds validation features straight to its float32 model (float16 stops the run at 75 %).
 np.save("clean_validation_features.npy", np.concatenate([
     to_features(clips_from(dev, 4)),
     to_features(clips_from(sorted(held_noise.glob("*.wav")), 2)),
-]))
+]).astype(np.float32))
 print("validation features done", flush=True)
