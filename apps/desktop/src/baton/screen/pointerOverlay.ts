@@ -11,6 +11,7 @@ import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
 
+import { loadDocument } from "../voice/loadDocument.ts";
 import { COMPANION_CSS } from "./companionStyle.ts";
 
 export const OVERLAY_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
@@ -176,10 +177,12 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     const bottom = display.bounds.y + display.bounds.height;
     const inset = bottom - (display.workArea.y + display.workArea.height) + CARD_ABOVE_WORK_AREA;
-    const ready = win
-      .loadURL(`data:text/html,${encodeURIComponent(OVERLAY_DOCUMENT)}`)
-      .then(() => win.webContents.executeJavaScript(`window.inset(${inset})`))
-      .then(() => win.showInactive());
+    const ready = loadDocument(win, OVERLAY_DOCUMENT)
+      .then((loaded) =>
+        loaded ? win.webContents.executeJavaScript(`window.inset(${inset})`) : undefined,
+      )
+      .then(() => (win.isDestroyed() ? undefined : win.showInactive()))
+      .catch(() => undefined);
     const entry = { win, ready };
     windows.set(display.id, entry);
     return entry;
