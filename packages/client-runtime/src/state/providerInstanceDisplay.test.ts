@@ -2,6 +2,7 @@ import { ProviderDriverKind } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  distinctInstanceInitials,
   normalizeProviderAccentColor,
   providerAccentForegroundColor,
   providerInstanceInitials,
@@ -76,5 +77,20 @@ describe("shouldShowInstanceBadge", () => {
     expect(shouldShowInstanceBadge(disabled, [enabled, disabled])).toBe(true);
     expect(shouldShowInstanceBadge(disabled, [disabled, { ...disabled }])).toBe(true);
     expect(shouldShowInstanceBadge(disabled, [disabled])).toBe(false);
+  });
+});
+
+describe("distinctInstanceInitials", () => {
+  it("gives two accounts that read alike different badges, and leaves distinct ones alone", () => {
+    expect(distinctInstanceInitials(["Rabee Work", "Rabee Wife", "Codex"])).toEqual([
+      "RO",
+      "RI",
+      "CO",
+    ]);
+    expect(distinctInstanceInitials(["Claude", "Codex"])).toEqual(["CL", "CO"]);
+  });
+
+  it("numbers instances whose labels are identical", () => {
+    expect(distinctInstanceInitials(["Rabee", "Rabee"])).toEqual(["R1", "R2"]);
   });
 });

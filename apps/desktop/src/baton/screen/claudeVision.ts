@@ -88,6 +88,8 @@ export const visionArgs = (
   "--include-partial-messages",
   "--model",
   model,
+  // Medium is the default effort for the models Tessaya starts; the fast router model takes none.
+  ...(/haiku/i.test(model) ? [] : ["--effort", "medium"]),
   "--tools",
   operator ? OPERATOR_TOOLS : "",
   ...(operator ? OPERATOR_FLAGS : []),

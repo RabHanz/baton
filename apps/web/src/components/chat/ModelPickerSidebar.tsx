@@ -1,5 +1,6 @@
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
+import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -38,6 +39,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
 }) {
+  const badgeLetters = distinctInstanceInitials(props.instanceEntries.map((e) => e.displayName));
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
   };
@@ -122,7 +124,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             </>
           ) : null}
 
-          {props.instanceEntries.map((entry) => {
+          {props.instanceEntries.map((entry, entryIndex) => {
             const isUnavailable = !isProviderInstancePickerReady(entry);
             const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
             const unavailableSelectionIsReachable =
@@ -168,6 +170,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   acpRegistryAgentId={entry.acpRegistryAgentId}
                   acpRegistryIconUrl={entry.acpRegistryIconUrl}
                   showBadge={showInstanceBadge}
+                  badgeText={badgeLetters[entryIndex]}
                   className="size-6 z-30"
                   iconClassName="size-5"
                   indicatorBackground={
