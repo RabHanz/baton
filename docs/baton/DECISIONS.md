@@ -3275,3 +3275,12 @@ reveals the raw ones. Each side owns its settings as data (`HomeControl`): the v
 (`v.` ids), the companion in `ScreenCompanion.ts` (`s.` ids). The tray right-click shrinks to status, listening, mute,
 wake now, Ask, Clear, Stop, Open Baton, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
 assistant's own account setting (queued separately). Copy ran through the uiux-stack copy check.
+
+## D131 — The mark
+
+A rounded tile with three bars, one per capability he can switch on: listening, screen capture, acting without asking.
+Lit is on, dim is off. The tile colour is the state, exactly the old dot's colours; a slash across it is muted. One
+geometry (`voice/trayMark.ts`) draws the tray bitmap and the SVG that `scripts/baton/export-icons.mjs` turns into the
+app and installer icons in `assets/prod/` (the fork's production icon set; dev and nightly are untouched). The home page
+opens once by itself on the first run after install (`baton-home.shown` in the state dir); a second launch still opens
+T3's window.
