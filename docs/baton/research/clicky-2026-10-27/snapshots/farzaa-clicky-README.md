@@ -1,4 +1,5 @@
 <!-- retrieved_at: 2026-10-27; source: https://raw.githubusercontent.com/farzaa/clicky/a80fa80721a8aebe51a170a7780705024ebc6e46/README.md ; verbatim, unmodified below this line -->
+
 Update: April 27, 2026.
 
 Hi there! I'm Farza, the guy that made Clicky.
@@ -10,6 +11,7 @@ I also tweeted about this [here](https://x.com/FarzaTV/status/204340273782896248
 Go crazy with this repo!! It's an MIT license.
 
 # Hi, this is Clicky.
+
 It's an AI teacher that lives as a buddy next to your cursor. It can see your screen, talk to you, and even point at stuff. Kinda like having a real teacher next to you.
 
 Download it [here](https://www.clicky.so/) for free.
@@ -111,6 +113,7 @@ grep -r "clicky-proxy" leanring-buddy/
 ```
 
 You'll find it in:
+
 - `CompanionManager.swift` — Claude chat + ElevenLabs TTS
 - `AssemblyAIStreamingTranscriptionProvider.swift` — AssemblyAI token endpoint
 
@@ -121,6 +124,7 @@ open leanring-buddy.xcodeproj
 ```
 
 In Xcode:
+
 1. Select the `leanring-buddy` scheme (yes, the typo is intentional, long story)
 2. Set your signing team under Signing & Capabilities
 3. Hit **Cmd + R** to build and run

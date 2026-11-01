@@ -1,4 +1,5 @@
 <!-- retrieved_at: 2026-10-27; source: https://raw.githubusercontent.com/Bitshank-2338/clicky-windows/6c6216b7f80a86830b967eff5edde59f4caee9c1/README.md ; verbatim, unmodified below this line -->
+
 # Clicky for Windows 🔵
 
 **1.6 preview:** original Clicky Sketch and Drive, typed chat/history, offline Windows voice, local jobs/routines, Browser Link, reviewed MCP tools, dictation and narrated recordings. Read [what changed and what still needs live testing](RELEASE-NOTES-1.6.md). Configure these from the panel's **Settings**, **Sketch**, and **Work & routines** controls.
@@ -50,17 +51,20 @@ The blue triangle sits **35 px right / 25 px below** your real cursor. When you 
 ## Feature List
 
 ### 🎙️ Voice Activation
+
 - Hold **Ctrl + Win** and speak — or tap it once and talk; Clicky answers when you stop
 - The mic stays closed until you press it. For hands-free, turn on the **"Clicky"** wake word from the tray
 - Press **Esc** to stop any response or TTS mid-stream
 
 ### 👁️ Screen Aware
+
 - Full multi-monitor screenshot on every query
 - Describes only what it sees — never hallucinates
 - Detects active window title for per-app memory
 
 ### 🎯 Pixel-Perfect Pointing
-- **Two-stage grid locator** works with *any* vision LLM — Claude, Copilot, OpenAI, Gemini, Ollama, LM Studio
+
+- **Two-stage grid locator** works with _any_ vision LLM — Claude, Copilot, OpenAI, Gemini, Ollama, LM Studio
 - Stage 1: draws a numbered 12×8 grid on the screenshot, the LLM picks a cell
 - Stage 2: zooms into that cell and runs a 6×6 fine-grid pass for sub-cell precision
 - Bezier arc flight with configurable teacher pace
@@ -68,6 +72,7 @@ The blue triangle sits **35 px right / 25 px below** your real cursor. When you 
 - Works on any DPI scale (4K, HiDPI, multi-monitor setups)
 
 ### 🧑‍🏫 Real Tutor Behaviour
+
 - **Locate queries** → points + 1-sentence explanation (no generic text directions)
 - **Multi-step tasks** → breaks into steps, says "Say 'next' when ready"
 - **"Next" / "Continue"** → advances the lesson without a new LLM call
@@ -75,6 +80,7 @@ The blue triangle sits **35 px right / 25 px below** your real cursor. When you 
 - **"Stop" / "Cancel"** → cancels generation instantly
 
 ### 🌐 Web Search (Real-Time Data)
+
 - DuckDuckGo HTML scrape + concurrent page fetch — **no API key needed**
 - Optional Tavily upgrade for deeper results
 - Responses grounded in today's data with `[1]`, `[2]` citations
@@ -82,20 +88,21 @@ The blue triangle sits **35 px right / 25 px below** your real cursor. When you 
 
 ### 🔄 Multi-Provider LLM (Runtime Switching)
 
-| Provider | How to unlock |
-|---|---|
+| Provider                                             | How to unlock                                                             |
+| ---------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Claude** (Anthropic) — default `claude-sonnet-5-5` | Tray → Setup & Diagnostics → API Keys… (or `ANTHROPIC_API_KEY` in `.env`) |
-| **OpenAI** — default `gpt-6-sol` | Tray → Setup & Diagnostics → API Keys… (or `OPENAI_API_KEY` in `.env`) |
-| **GitHub Copilot** | Free for students — device-flow login via tray |
-| **Gemini** — default `gemini-3.8-flash` | Tray → Setup & Diagnostics → API Keys… (or `GOOGLE_API_KEY` in `.env`) |
-| **Ollama** (local) | Run `ollama serve` — free, always available |
-| **LM Studio** (local) | Start the local server in LM Studio's Developer tab — free, no key |
+| **OpenAI** — default `gpt-6-sol`                     | Tray → Setup & Diagnostics → API Keys… (or `OPENAI_API_KEY` in `.env`)    |
+| **GitHub Copilot**                                   | Free for students — device-flow login via tray                            |
+| **Gemini** — default `gemini-3.8-flash`              | Tray → Setup & Diagnostics → API Keys… (or `GOOGLE_API_KEY` in `.env`)    |
+| **Ollama** (local)                                   | Run `ollama serve` — free, always available                               |
+| **LM Studio** (local)                                | Start the local server in LM Studio's Developer tab — free, no key        |
 
 Priority chain (auto-detected): **Claude → OpenAI → Copilot → Gemini → Ollama / LM Studio**
 
 Switch mid-session from the system tray — takes about a second, no restart needed.
 
 ### 📋 Live Model Lists (Auto-Refreshed)
+
 - Claude, OpenAI, Gemini: live model list fetched from vendor APIs, **24-hour cache** — a new release shows up within a day
 - Lists are ordered newest-first with the recommended default on top. The first entry is the model Clicky starts on, so the default is a deliberate choice per provider: the fast, vision-capable tier of the newest generation
 - Only models that can actually hold a conversation are listed: OpenAI's deprecated and Responses-only models, and Gemini's image / speech / live-audio models, are filtered out
@@ -105,28 +112,30 @@ Switch mid-session from the system tray — takes about a second, no restart nee
 
 ### 🔊 Multi-Provider TTS
 
-| Provider | Quality | Key needed |
-|---|---|---|
-| **ElevenLabs** | Premium voice clone | `ELEVENLABS_API_KEY` |
-| **OpenAI TTS** | High quality | `OPENAI_API_KEY` |
-| **Windows SAPI** | Offline system voice (local default) | None |
-| **Edge TTS** | Internet neural voices (optional) | None |
+| Provider         | Quality                              | Key needed           |
+| ---------------- | ------------------------------------ | -------------------- |
+| **ElevenLabs**   | Premium voice clone                  | `ELEVENLABS_API_KEY` |
+| **OpenAI TTS**   | High quality                         | `OPENAI_API_KEY`     |
+| **Windows SAPI** | Offline system voice (local default) | None                 |
+| **Edge TTS**     | Internet neural voices (optional)    | None                 |
 
 ### 🗣️ Multi-Provider STT
 
-| Provider | Speed | Key needed |
-|---|---|---|
-| **Deepgram** | Fast, accurate | `DEEPGRAM_API_KEY` |
-| **OpenAI Whisper** | Very accurate | `OPENAI_API_KEY` |
-| **whisper.cpp** | 3–5× faster, local | None (`pip install pywhispercpp`) |
-| **Faster-Whisper** | Local, free fallback | None |
+| Provider           | Speed                | Key needed                        |
+| ------------------ | -------------------- | --------------------------------- |
+| **Deepgram**       | Fast, accurate       | `DEEPGRAM_API_KEY`                |
+| **OpenAI Whisper** | Very accurate        | `OPENAI_API_KEY`                  |
+| **whisper.cpp**    | 3–5× faster, local   | None (`pip install pywhispercpp`) |
+| **Faster-Whisper** | Local, free fallback | None                              |
 
 ### 🧠 Per-App Memory
+
 - Separate conversation history per active application
 - Context never bleeds between Premiere, VS Code, Chrome, etc.
 - History cap: last 20 messages per app
 
 ### 📝 Knowledge Journal + Spaced Repetition
+
 - Every Q&A automatically logged to a local SQLite database
 - Ask **"what did we cover today?"** → summary of today's session
 - Ask **"what did we cover this week?"** → weekly digest
@@ -135,34 +144,38 @@ Switch mid-session from the system tray — takes about a second, no restart nee
 - Journal stored at `%LOCALAPPDATA%\Clicky\journal.db`
 
 ### 📄 Document Context (Drag & Drop)
+
 - Drag a **PDF, DOCX, TXT, MD, CSV, or code file** onto the Clicky panel
 - Clicky reads it and uses it as context for your next questions
 - Or use **Tray → Journal → Attach document…** for a file picker
 - Supports multi-file: attach several docs and ask cross-document questions
 
 ### 🔍 OCR Fallback (Fine Print)
+
 - When your query mentions "fine print", "small text", "read that", etc., Clicky runs **Tesseract OCR** on the screenshot
 - Extracts text too small or low-contrast for the LLM's vision to read
 - Requires the Tesseract binary from [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
 - Gracefully skipped if Tesseract isn't installed
 
 ### 💻 Code Mode (Auto-Detect)
+
 - Detects VS Code, Cursor, IntelliJ, PyCharm, Vim, Neovim, Sublime, etc. by window title
 - Automatically injects a **code-specialist system prompt addendum**: prefers code blocks, includes language tags, explains algorithms step by step
 - Toggle: **Tray → Tutor Mode → Code Mode (auto)**
 
 ### 🎓 Tutor Modes (Tray → Tutor Mode)
 
-| Toggle | What it does |
-|---|---|
-| **Slow Mode** | 1.7× slower bezier flight + longer dwell — easier to follow |
-| **Quiz Mode** | Clicky asks *you* questions instead of answering; evaluates in one sentence |
-| **Privacy Guard** | Skips the screenshot when a password manager / banking window is detected |
-| **Code Mode (auto)** | Code-specialist prompt when an IDE is active |
-| **Multilingual** | Auto-detects language, replies in kind, switches TTS voice |
-| **OCR Fallback** | Runs Tesseract on screenshots when fine text is mentioned |
+| Toggle               | What it does                                                                |
+| -------------------- | --------------------------------------------------------------------------- |
+| **Slow Mode**        | 1.7× slower bezier flight + longer dwell — easier to follow                 |
+| **Quiz Mode**        | Clicky asks _you_ questions instead of answering; evaluates in one sentence |
+| **Privacy Guard**    | Skips the screenshot when a password manager / banking window is detected   |
+| **Code Mode (auto)** | Code-specialist prompt when an IDE is active                                |
+| **Multilingual**     | Auto-detects language, replies in kind, switches TTS voice                  |
+| **OCR Fallback**     | Runs Tesseract on screenshots when fine text is mentioned                   |
 
 ### 🌍 Multilingual Auto-Detect
+
 - Detects query language via `langdetect` + Unicode script heuristics
 - Responds in the same language automatically
 - Switches the Edge TTS voice to match (Hindi → HiRA-Neha, French → fr-FR-DeniseNeural, etc.)
@@ -170,13 +183,16 @@ Switch mid-session from the system tray — takes about a second, no restart nee
 - Toggle: **Tray → Tutor Mode → Multilingual**
 
 ### 🎬 Lesson Recording (MP4 + Transcript)
+
 - Records the screen at 8 fps as an MP4 alongside a Markdown transcript of all Q&A
 - Start: **Tray → Lesson Recording → Start recording**
 - Stop: tray menu → produces `lesson_YYYY-MM-DD_HH-MM.mp4` + `lesson_YYYY-MM-DD_HH-MM_transcript.md`
 - Saved to `%LOCALAPPDATA%\Clicky\recordings\` (each session includes raw video, narration WAV, narrated MP4, and transcript).
 
 ### 🖊️ Whiteboard Annotations
+
 Clicky can draw directly on your screen as it explains:
+
 - `[ARROW:x1,y1->x2,y2]` — animated arrow between two points
 - `[CIRCLE:x,y,r:label]` — pulsing circle with optional label
 - `[UNDERLINE:x,y,w]` — underline beneath text
@@ -185,6 +201,7 @@ Clicky can draw directly on your screen as it explains:
 Annotations fade out after ~4 seconds and clear automatically on the next query.
 
 ### 🖱️ Workflow Capture
+
 - Records your mouse clicks and keystrokes while you work
 - Start: **Tray → Workflow Capture → Start capturing my clicks**
 - Stop: **Tray → Workflow Capture → Stop + send to Clicky**
@@ -192,6 +209,7 @@ Annotations fade out after ~4 seconds and clear automatically on the next query.
 - Requires `pynput` (included in `requirements.txt`)
 
 ### 🎤 Voice Picker
+
 - Switch TTS voice mid-session: say **"change voice to [voice name]"**
 - Edge TTS voices: `AvaNeural`, `JennyNeural`, `GuyNeural`, `AriaNeural`, etc.
 - List all 400+ voices:
@@ -200,11 +218,14 @@ Annotations fade out after ~4 seconds and clear automatically on the next query.
   ```
 
 ### 🔒 Privacy Guard (on by default)
+
 Detects sensitive windows and skips the screenshot entirely:
+
 - Password managers: KeePass, Bitwarden, 1Password, LastPass, Authenticator
 - Sensitive pages: `login`, `sign in`, `banking`, `.env` files, `credit card`
 
 ### 🛠️ Skills System (User-Extensible)
+
 Create your own voice triggers — no pull request needed:
 
 ```python
@@ -231,17 +252,20 @@ Place skill files in `~/.clicky/skills/` — Clicky auto-loads them on startup.
 ## Installation
 
 ### Prerequisites
+
 - Windows 10 / 11 (64-bit)
 - Python 3.11, 3.12, or 3.14
 - A working microphone
 
 ### 1. Clone
+
 ```bash
 git clone https://github.com/Bitshank-2338/clicky-windows.git
 cd clicky-windows
 ```
 
 ### 2. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -285,16 +309,20 @@ WHISPERCPP_MODEL=base
 ```
 
 ### 4. GitHub Copilot (free for students)
+
 ```
 Tray → Model → Sign in to GitHub Copilot…
 → visit github.com/login/device → enter the code shown in the terminal
 ```
+
 Token cached at `%LOCALAPPDATA%\Clicky\github_token.json`. Default model: `gpt-4o-mini` (free tier).
 
 ### 5. Run
+
 ```bash
 python main.py
 ```
+
 A blue dot appears in your system tray. Clicky is now running.
 
 ---
@@ -316,15 +344,15 @@ Clicky has **two Ollama model slots**: a vision model for screen-aware questions
 
 **Recommended free models (Tray → Ollama → Pull recommended…):**
 
-| Slot | Model | Size | Good for |
-|---|---|---|---|
-| Vision + text | `qwen2.5vl:3b` | 3.2 GB | **Default** — accurate, concise, fast even without a GPU |
-| Vision + text | `qwen2.5vl:7b` | 6 GB | Same family, stronger — for 8 GB+ graphics cards |
-| Vision | `qwen3.5:4b` | 3.3 GB | Newest; reads screens very well but needs a GPU |
-| Vision | `llava:7b` | 4.7 GB | Older fallback |
-| Text | `qwen2.5-coder:7b` | 4.7 GB | Code questions — excellent |
-| Text | `llama3.2:3b` | 2 GB | Fastest text-only model |
-| Text | `mistral:7b` | 4 GB | General Q&A |
+| Slot          | Model              | Size   | Good for                                                 |
+| ------------- | ------------------ | ------ | -------------------------------------------------------- |
+| Vision + text | `qwen2.5vl:3b`     | 3.2 GB | **Default** — accurate, concise, fast even without a GPU |
+| Vision + text | `qwen2.5vl:7b`     | 6 GB   | Same family, stronger — for 8 GB+ graphics cards         |
+| Vision        | `qwen3.5:4b`       | 3.3 GB | Newest; reads screens very well but needs a GPU          |
+| Vision        | `llava:7b`         | 4.7 GB | Older fallback                                           |
+| Text          | `qwen2.5-coder:7b` | 4.7 GB | Code questions — excellent                               |
+| Text          | `llama3.2:3b`      | 2 GB   | Fastest text-only model                                  |
+| Text          | `mistral:7b`       | 4 GB   | General Q&A                                              |
 
 **Limitations vs. paid providers:** slower responses, web search uses DuckDuckGo only.
 
@@ -357,30 +385,32 @@ See [BUILD.md](BUILD.md) for full packaging instructions, including the Inno Set
 
 ### Voice Commands
 
-| Say | Action |
-|---|---|
-| *"Where is the search bar?"* | Points at it + 1-sentence explanation |
-| *"How do I export this video?"* | Step-by-step lesson mode |
-| *"What's on screen?"* | Screen description |
-| *"Search for [topic]"* | Web search + cited answer |
-| *"next" / "continue"* | Advance to next lesson step |
-| *"repeat"* | Replay last answer via TTS |
-| *"stop" / "cancel"* | End current lesson |
-| *"quiz me"* | Quiz mode on current screen |
-| *"what did we cover today?"* | Today's journal summary |
-| *"what should I review?"* | Spaced repetition flashcards |
-| *"what did I just do?"* | Workflow capture narration |
-| *"change voice to Jenny"* | Switch TTS voice |
+| Say                             | Action                                |
+| ------------------------------- | ------------------------------------- |
+| _"Where is the search bar?"_    | Points at it + 1-sentence explanation |
+| _"How do I export this video?"_ | Step-by-step lesson mode              |
+| _"What's on screen?"_           | Screen description                    |
+| _"Search for [topic]"_          | Web search + cited answer             |
+| _"next" / "continue"_           | Advance to next lesson step           |
+| _"repeat"_                      | Replay last answer via TTS            |
+| _"stop" / "cancel"_             | End current lesson                    |
+| _"quiz me"_                     | Quiz mode on current screen           |
+| _"what did we cover today?"_    | Today's journal summary               |
+| _"what should I review?"_       | Spaced repetition flashcards          |
+| _"what did I just do?"_         | Workflow capture narration            |
+| _"change voice to Jenny"_       | Switch TTS voice                      |
 
 ### Keyboard
 
-| Key | Action |
-|---|---|
-| `Ctrl + Win` (hold) | Push-to-talk |
-| `Esc` | Stop response / TTS immediately |
+| Key                 | Action                          |
+| ------------------- | ------------------------------- |
+| `Ctrl + Win` (hold) | Push-to-talk                    |
+| `Esc`               | Stop response / TTS immediately |
 
 ### Tray Menu
+
 Right-click the tray icon → full menu including:
+
 - Provider switcher (Claude / OpenAI / Copilot / Gemini / Ollama / LM Studio)
 - Tutor Mode submenus
 - Lesson Recording controls
@@ -427,6 +457,7 @@ main.py
 ```
 
 ### Coordinate Pipeline (Pixel-Perfect Pointing)
+
 ```
 Screenshot → JPEG (1280px max, for LLM tokens)
                 │
@@ -523,30 +554,30 @@ clicky-windows/
 
 ## Configuration Reference
 
-| Variable | Default | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | — | Claude LLM + Computer Use pointing |
-| `OPENAI_API_KEY` | — | OpenAI LLM (GPT-6 / GPT-5 / o-series) + Whisper STT + OpenAI TTS |
-| `GOOGLE_API_KEY` | — | Gemini LLM |
-| `DEEPGRAM_API_KEY` | — | Deepgram STT |
-| `ELEVENLABS_API_KEY` | — | ElevenLabs TTS |
-| `ELEVENLABS_VOICE_ID` | — | Your ElevenLabs voice clone ID |
-| `TAVILY_API_KEY` | — | Tavily search (upgrades DuckDuckGo) |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `qwen2.5vl:3b` | Legacy single-model fallback |
-| `OLLAMA_VISION_MODEL` | *(empty → `qwen2.5vl:3b`)* | Ollama model for screen-aware tasks (pointing, describe screen) |
-| `OLLAMA_TEXT_MODEL` | *(empty → `qwen2.5vl:3b`)* | Ollama model for Code Mode + journal Q&A |
-| `LMSTUDIO_HOST` | `http://localhost:1234/v1` | LM Studio local server URL |
-| `LMSTUDIO_MODEL` | *(empty)* | Force a specific model; empty = whatever's loaded |
-| `CLICKY_HOTKEY` | `ctrl+win` | Global push-to-talk combo |
-| `CLICKY_STT` | *(auto)* | Force STT: `deepgram` / `openai` / `whisper_cpp` / `faster_whisper` |
-| `CLICKY_ACTIVE_LLM` | *(auto)* | Force LLM: `claude` / `openai` / `copilot` / `gemini` / `ollama` / `lmstudio` |
-| `WHISPER_MODEL` | `base` | Faster-Whisper model (`tiny` / `base` / `small` / `medium`) |
-| `WHISPERCPP_MODEL` | `base` | whisper.cpp model size (avoid `.en` variants for non-English use) |
-| `WHISPER_LANGUAGE` | *(empty)* | Force transcription language (ISO code, e.g. `de`); empty = auto-detect |
-| `RESPONSE_LANGUAGE` | *(empty)* | Force Clicky's reply language regardless of input; empty = auto-detect |
-| `MIC_DEVICE_INDEX` | *(empty)* | Force a specific input device; empty = system default |
-| `CUSTOM_INSTRUCTIONS` | *(built-in prompt)* | Full override of Clicky's system prompt — also editable live via Tray |
+| Variable              | Default                    | Description                                                                   |
+| --------------------- | -------------------------- | ----------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`   | —                          | Claude LLM + Computer Use pointing                                            |
+| `OPENAI_API_KEY`      | —                          | OpenAI LLM (GPT-6 / GPT-5 / o-series) + Whisper STT + OpenAI TTS              |
+| `GOOGLE_API_KEY`      | —                          | Gemini LLM                                                                    |
+| `DEEPGRAM_API_KEY`    | —                          | Deepgram STT                                                                  |
+| `ELEVENLABS_API_KEY`  | —                          | ElevenLabs TTS                                                                |
+| `ELEVENLABS_VOICE_ID` | —                          | Your ElevenLabs voice clone ID                                                |
+| `TAVILY_API_KEY`      | —                          | Tavily search (upgrades DuckDuckGo)                                           |
+| `OLLAMA_HOST`         | `http://localhost:11434`   | Ollama server URL                                                             |
+| `OLLAMA_MODEL`        | `qwen2.5vl:3b`             | Legacy single-model fallback                                                  |
+| `OLLAMA_VISION_MODEL` | _(empty → `qwen2.5vl:3b`)_ | Ollama model for screen-aware tasks (pointing, describe screen)               |
+| `OLLAMA_TEXT_MODEL`   | _(empty → `qwen2.5vl:3b`)_ | Ollama model for Code Mode + journal Q&A                                      |
+| `LMSTUDIO_HOST`       | `http://localhost:1234/v1` | LM Studio local server URL                                                    |
+| `LMSTUDIO_MODEL`      | _(empty)_                  | Force a specific model; empty = whatever's loaded                             |
+| `CLICKY_HOTKEY`       | `ctrl+win`                 | Global push-to-talk combo                                                     |
+| `CLICKY_STT`          | _(auto)_                   | Force STT: `deepgram` / `openai` / `whisper_cpp` / `faster_whisper`           |
+| `CLICKY_ACTIVE_LLM`   | _(auto)_                   | Force LLM: `claude` / `openai` / `copilot` / `gemini` / `ollama` / `lmstudio` |
+| `WHISPER_MODEL`       | `base`                     | Faster-Whisper model (`tiny` / `base` / `small` / `medium`)                   |
+| `WHISPERCPP_MODEL`    | `base`                     | whisper.cpp model size (avoid `.en` variants for non-English use)             |
+| `WHISPER_LANGUAGE`    | _(empty)_                  | Force transcription language (ISO code, e.g. `de`); empty = auto-detect       |
+| `RESPONSE_LANGUAGE`   | _(empty)_                  | Force Clicky's reply language regardless of input; empty = auto-detect        |
+| `MIC_DEVICE_INDEX`    | _(empty)_                  | Force a specific input device; empty = system default                         |
+| `CUSTOM_INSTRUCTIONS` | _(built-in prompt)_        | Full override of Clicky's system prompt — also editable live via Tray         |
 
 ---
 
@@ -603,6 +634,7 @@ clicky-windows/
 Clicky is open to contributors from **anywhere in the world**. Whether you're a student who uses it every day, a developer who wants to add a feature, or someone who speaks a language we haven't supported yet — you're welcome here.
 
 ### Ways to contribute
+
 - 🐛 **Bug reports** — open an [Issue](https://github.com/Bitshank-2338/clicky-windows/issues) with steps to reproduce
 - 💡 **Feature ideas** — open an Issue tagged `enhancement`
 - 🌐 **Translations** — add your language to `tutor_features/multilang.py`
@@ -629,6 +661,7 @@ git push origin feat/your-feature-name
 ```
 
 ### Code style
+
 - Python 3.11+ — type hints encouraged, `async/await` for I/O
 - Keep providers self-contained in `ai/`, `audio/stt/`, `audio/tts/`
 - New features belong in `tutor_features/` — one file per feature
@@ -636,11 +669,13 @@ git push origin feat/your-feature-name
 - Test locally with `python main.py` before opening a PR
 
 ### First-time contributor?
+
 Look for Issues tagged **`good first issue`** — small, well-scoped tasks that don't require deep knowledge of the codebase. Just comment "I'll take this" and we'll help you get started.
 
 ---
 
 ## Credits
+
 - Original concept & macOS app: [farzaa/clicky](https://github.com/farzaa/clicky)
 - Windows port: Shashank Singh
 - Pointing engine: [Anthropic Computer Use API](https://docs.anthropic.com/en/docs/computer-use)
@@ -651,4 +686,5 @@ Look for Issues tagged **`good first issue`** — small, well-scoped tasks that 
 ---
 
 ## License
+
 MIT — see [LICENSE](LICENSE)

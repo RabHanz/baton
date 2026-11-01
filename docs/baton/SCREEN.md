@@ -42,20 +42,20 @@ to your plan. Baton strips `ANTHROPIC_API_KEY` from what it starts, so it can ne
 Their claims, verbatim and with frames: `research/clicky-videos-2026-10-27/`. These are the
 vendor's own words; none of it was installed or measured.
 
-| They claim                                                                                                             | Baton now                                                                                                                                    |
-| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Asks about anything on screen, by hotkey or voice, any app                                                             | **Has it** (Look; voice, ask box, tray)                                                                                                       |
-| A triangle pointer flies to the target; the real cursor never moves while guiding                                      | **Has it** (farzaa's pointer and flight; the cursor only moves in Drive)                                                                     |
-| Teach: step labels beside each target, speaks the step, notices you did it, gives the next                             | **Has it**, by watching the screen change rather than the click itself; label pill and step card                                             |
+| They claim                                                                                                                                               | Baton now                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Asks about anything on screen, by hotkey or voice, any app                                                                                               | **Has it** (Look; voice, ask box, tray)                                                                                                      |
+| A triangle pointer flies to the target; the real cursor never moves while guiding                                                                        | **Has it** (farzaa's pointer and flight; the cursor only moves in Drive)                                                                     |
+| Teach: step labels beside each target, speaks the step, notices you did it, gives the next                                                               | **Has it**, by watching the screen change rather than the click itself; label pill and step card                                             |
 | Drive: one consent card, "Esc takes it back", narrates the current step, stops on Esc, a Stop button or speech; the mouse stays his, checks its own work | **Has it**, with the full plan listed and its clicks drawn before consent; Esc, "stop" or the mouse stop it; steps with `expect` are checked |
-| Drawing arrows, circles, explanation cards, 3D models                                                                  | Partly: caption card and numbered dots; no free drawing or 3D                                                                                |
-| "Spatial context": you paint on screen to show what you mean                                                           | Not built                                                                                                                                    |
-| Agents in your own Chrome, routines by voice                                                                           | Not here: Baton's sessions and rules (Phases 4, 9) do this through Claude Code instead                                                       |
-| Memory files (profile, recent screens hours back)                                                                      | Partly: a look conversation lasts five minutes, a lesson or drive its whole run; nothing kept across them                                    |
-| Skill files per program                                                                                                | Not built                                                                                                                                    |
-| Dictation, screen-aware                                                                                                | **Partly.** Mode comes from the focused app (D105); the screen is not read                                                                   |
-| Mac and Windows                                                                                                        | Windows and Linux; macOS capture and pointing should work, Drive refuses there                                                               |
-| Free / $20 / $100 plans with message caps                                                                              | His own Claude subscription; no caps of Baton's                                                                                              |
+| Drawing arrows, circles, explanation cards, 3D models                                                                                                    | Partly: caption card and numbered dots; no free drawing or 3D                                                                                |
+| "Spatial context": you paint on screen to show what you mean                                                                                             | Not built                                                                                                                                    |
+| Agents in your own Chrome, routines by voice                                                                                                             | Not here: Baton's sessions and rules (Phases 4, 9) do this through Claude Code instead                                                       |
+| Memory files (profile, recent screens hours back)                                                                                                        | Partly: a look conversation lasts five minutes, a lesson or drive its whole run; nothing kept across them                                    |
+| Skill files per program                                                                                                                                  | Not built                                                                                                                                    |
+| Dictation, screen-aware                                                                                                                                  | **Partly.** Mode comes from the focused app (D105); the screen is not read                                                                   |
+| Mac and Windows                                                                                                                                          | Windows and Linux; macOS capture and pointing should work, Drive refuses there                                                               |
+| Free / $20 / $100 plans with message caps                                                                                                                | His own Claude subscription; no caps of Baton's                                                                                              |
 
 ## Settings
 
@@ -71,15 +71,15 @@ vendor's own words; none of it was installed or measured.
 
 ## What the Windows laptop showed (2026-10-31)
 
-| # | Check | Result |
-| --- | --- | --- |
-| 1 | Claude found and signed in | **Pass.** 24 real requests traced, `D:\baton-voice-lab\lab\trace2` |
-| 2 | Pointer lands, 175 % and 125 %, both displays | **Pass.** Mapping 18 of 18 and the model 10 of 10 within 1 DIP on known markers (D101) |
-| 3 | Overlay stays out of a capture | **Pass on both displays.** 18 markers visible without protection, 0 with |
-| 4 | Teach notices him | **Pass after a fix.** It watched only the cursor's display; it now watches all of them (D107). Step 2 came with no "next" |
-| 5 | Drive, Esc | **Pass after two fixes** (D107). A real Esc stopped a longer plan at step 1. The mouse no longer stops anything (D115) |
-| 6 | Voice reaches the companion, reads answers | **Path passes from WAVs**, wake to brain to router. Nothing has been heard through his speakers |
-| 7 | Ctrl+Alt+Shift+B free | **Pass.** Registered on his desktop |
+| #   | Check                                         | Result                                                                                                                    |
+| --- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Claude found and signed in                    | **Pass.** 24 real requests traced, `D:\baton-voice-lab\lab\trace2`                                                        |
+| 2   | Pointer lands, 175 % and 125 %, both displays | **Pass.** Mapping 18 of 18 and the model 10 of 10 within 1 DIP on known markers (D101)                                    |
+| 3   | Overlay stays out of a capture                | **Pass on both displays.** 18 markers visible without protection, 0 with                                                  |
+| 4   | Teach notices him                             | **Pass after a fix.** It watched only the cursor's display; it now watches all of them (D107). Step 2 came with no "next" |
+| 5   | Drive, Esc                                    | **Pass after two fixes** (D107). A real Esc stopped a longer plan at step 1. The mouse no longer stops anything (D115)    |
+| 6   | Voice reaches the companion, reads answers    | **Path passes from WAVs**, wake to brain to router. Nothing has been heard through his speakers                           |
+| 7   | Ctrl+Alt+Shift+B free                         | **Pass.** Registered on his desktop                                                                                       |
 
 UI Automation now snaps on real elements on the 125 % display; the 175 % display and the taskbar are not rerun.
 
