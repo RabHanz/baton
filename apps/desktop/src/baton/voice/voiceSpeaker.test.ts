@@ -9,8 +9,11 @@ import {
   pcmLevel,
   speakableText,
   wavFormat,
+  type VoiceChoice,
   type VoicePlayer,
 } from "./voiceSpeaker.ts";
+
+const SYSTEM: VoiceChoice = { kind: "system" };
 
 const player: VoicePlayer = { play: async () => true, stop: () => {}, dispose: () => {} };
 const drain = async (stream: AsyncIterable<Buffer>) => {
@@ -31,7 +34,7 @@ describe("createSpeaker on the OS voice", () => {
     const active: boolean[] = [];
     const speaker = createSpeaker({
       os: { name: "os", speak: async (text) => void said.push(text) },
-      voice: () => null,
+      voice: () => SYSTEM,
       player,
       onActive: (value) => active.push(value),
     });
@@ -44,7 +47,7 @@ describe("createSpeaker on the OS voice", () => {
     const said: string[] = [];
     const speaker = createSpeaker({
       os: { name: "os", speak: async (text) => void said.push(text) },
-      voice: () => null,
+      voice: () => SYSTEM,
       player,
     });
     const run = Promise.all([speaker.speak("one."), speaker.speak("two.")]);
@@ -59,14 +62,17 @@ describe("createSpeaker on the OS voice", () => {
     const held = new Promise<void>((resolve) => (release = resolve));
     const speaker = createSpeaker({
       os: { name: "os", speak: async () => {} },
-      voice: () => (text) => ({
-        stream: (async function* () {
-          order.push(`start ${text}`);
-          if (text === "one.") await held;
-          yield Buffer.alloc(2);
-          order.push(`end ${text}`);
-        })(),
-        cancel: () => {},
+      voice: () => ({
+        kind: "synth",
+        synth: (text) => ({
+          stream: (async function* () {
+            order.push(`start ${text}`);
+            if (text === "one.") await held;
+            yield Buffer.alloc(2);
+            order.push(`end ${text}`);
+          })(),
+          cancel: () => {},
+        }),
       }),
       player: {
         ...player,
@@ -88,7 +94,7 @@ describe("createSpeaker on the OS voice", () => {
     const active: boolean[] = [];
     const speaker = createSpeaker({
       os: { name: "os", speak: async (text) => void said.push(text) },
-      voice: () => null,
+      voice: () => SYSTEM,
       player,
       silent: () => true,
       onActive: (value) => active.push(value),
@@ -98,18 +104,22 @@ describe("createSpeaker on the OS voice", () => {
     expect(active).toEqual([]);
   });
 
-  it("plays a voice's bytes and falls back to the OS voice when it fails", async () => {
+  it("plays a voice's bytes, and when it fails says nothing aloud, only that it could not", async () => {
     const said: string[] = [];
     const played: number[] = [];
+    const unavailable: string[] = [];
     let fail = false;
     const speaker = createSpeaker({
       os: { name: "os", speak: async (text) => void said.push(text) },
-      voice: () => () => ({
-        stream: (async function* () {
-          if (fail) throw new Error("no");
-          yield Buffer.alloc(3);
-        })(),
-        cancel: () => {},
+      voice: () => ({
+        kind: "synth",
+        synth: () => ({
+          stream: (async function* () {
+            if (fail) throw new Error("no");
+            yield Buffer.alloc(3);
+          })(),
+          cancel: () => {},
+        }),
       }),
       player: {
         ...player,
@@ -119,12 +129,99 @@ describe("createSpeaker on the OS voice", () => {
           return true;
         },
       },
+      onUnavailable: (text) => unavailable.push(text),
     });
     await speaker.speak("one.");
     fail = true;
     await speaker.speak("two.");
     expect(played).toEqual([3]);
-    expect(said).toEqual(["two."]);
+    expect(said).toEqual([]);
+    expect(unavailable).toEqual(["two."]);
+  });
+});
+
+describe("the voice is still loading", () => {
+  const synthOf = (): VoiceChoice => ({
+    kind: "synth",
+    synth: () => ({
+      stream: (async function* () {
+        yield Buffer.alloc(4);
+      })(),
+      cancel: () => {},
+    }),
+  });
+  const playing = (played: number[]): VoicePlayer => ({
+    ...player,
+    play: async (wav) => {
+      played.push(await drain(wav));
+      return true;
+    },
+  });
+
+  it("holds the line until Tessaya's own voice is ready, then speaks it in that voice, never the OS one", async () => {
+    const said: string[] = [];
+    const played: number[] = [];
+    const waiting: boolean[] = [];
+    let ready = false;
+    let release!: (ok: boolean) => void;
+    const loaded = new Promise<boolean>((resolve) => (release = resolve));
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async (text) => void said.push(text) },
+      voice: () => (ready ? synthOf() : { kind: "wait", ready: loaded }),
+      player: playing(played),
+      onWaiting: (w) => waiting.push(w),
+    });
+    const line = speaker.speak("Hello there.");
+    await vi.waitFor(() => expect(waiting).toEqual([true]));
+    expect(played).toEqual([]);
+    expect(said).toEqual([]);
+    ready = true;
+    release(true);
+    await line;
+    expect(played).toEqual([4]);
+    expect(said).toEqual([]);
+    expect(waiting).toEqual([true, false]);
+  });
+
+  it("says nothing aloud when it cannot load for good, and reports the line as text only", async () => {
+    const said: string[] = [];
+    const played: number[] = [];
+    const unavailable: string[] = [];
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async (text) => void said.push(text) },
+      voice: () => ({ kind: "wait", ready: Promise.resolve(false) }),
+      player: playing(played),
+      onUnavailable: (text) => unavailable.push(text),
+    });
+    await speaker.speak("Hello there.");
+    expect(said).toEqual([]);
+    expect(played).toEqual([]);
+    expect(unavailable).toEqual(["Hello there."]);
+  });
+
+  it("uses the OS voice only when he chose System voice", async () => {
+    const said: string[] = [];
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async (text) => void said.push(text) },
+      voice: () => SYSTEM,
+      player,
+    });
+    await speaker.speak("Hello there.");
+    expect(said).toEqual(["Hello there."]);
+  });
+
+  it("plays a sample in a voice he is trying, even in Written only, and the OS voice never", async () => {
+    const said: string[] = [];
+    const played: number[] = [];
+    const speaker = createSpeaker({
+      os: { name: "os", speak: async (text) => void said.push(text) },
+      voice: () => SYSTEM,
+      player: playing(played),
+      silent: () => true,
+    });
+    await speaker.sample(synthOf(), "Hello, this is how I sound.");
+    expect(played).toEqual([4]);
+    expect(said).toEqual([]);
   });
 });
 
@@ -168,7 +265,7 @@ describe("silencing a reply of several sentences", () => {
           await held;
         },
       },
-      voice: () => null,
+      voice: () => SYSTEM,
       player,
     });
     const queue = queueSpeech(speaker.speak);
