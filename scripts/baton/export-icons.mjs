@@ -1,4 +1,4 @@
-// Renders Baton's mark (apps/desktop/src/baton/voice/trayMark.ts) to the app and installer icons
+// Renders Baton's mark (apps/desktop/src/baton/voice/trayMark.ts) to the app and installer icons into assets/baton/
 // and a sheet of every tray state. Run: node scripts/baton/export-icons.mjs [frames-dir]
 // Needs playwright's chromium and ImageMagick `convert`. macOS .icns is still made by the build.
 import { execFileSync } from "node:child_process";
@@ -24,7 +24,9 @@ const STATES = [
   ["muted", "#ef4444"],
 ];
 const framesDir = process.argv[2];
-const prod = "assets/prod";
+// Baton-owned; apply-release-branding.sh copies these over assets/prod at release time.
+const prod = "assets/baton";
+mkdirSync(prod, { recursive: true });
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: 1 });
