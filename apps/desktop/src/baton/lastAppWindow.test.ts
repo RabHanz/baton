@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   isCompanionWindow,
+  pickRevealable,
   keepRunningForTray,
   markCompanionWindow,
   shouldQuitOnAllClosed,
@@ -25,5 +26,18 @@ describe("companion windows", () => {
     markCompanionWindow(pill);
     expect(isCompanionWindow(pill)).toBe(true);
     expect(isCompanionWindow({})).toBe(false);
+  });
+});
+
+describe("which window opening the sessions reveals", () => {
+  it("is T3's, never Baton's own, so with only Baton's window up a new one is made", () => {
+    const baton = {};
+    const t3 = {};
+    const aux = {};
+    markCompanionWindow(baton);
+    const isAux = (w: object) => w === aux;
+    expect(pickRevealable([baton], isAux)).toBeUndefined();
+    expect(pickRevealable([baton, aux], isAux)).toBeUndefined();
+    expect(pickRevealable([baton, aux, t3], isAux)).toBe(t3);
   });
 });
