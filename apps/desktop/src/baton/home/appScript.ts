@@ -13,6 +13,7 @@ const $ = (t, c, x) => { const e = document.createElement(t); if (c) e.className
 const ICON = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
   sessions: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/>',
+  approvals: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   jobs: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   dictation: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   assistant: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/>',
@@ -31,9 +32,10 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['sessions','Sessions'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
+  approvals: ['Approvals', 'Everything waiting for your yes, with what it would do and what it would use. High-risk actions still ask you aloud when they happen.'],
   jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
   memory: ['Memory', 'What Tessaya has been asked to remember, as plain notes. Open one to correct it, or delete it. Clearing a note never touches Tessaya itself.'],
