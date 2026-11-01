@@ -137,6 +137,7 @@ import {
 } from "./audioKeep.ts";
 import { createVocabToast } from "./vocabToast.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
+import { wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import { NO_RECORDING, retryPlan, rowMenu, useVersion, withRetry } from "./historyRetry.ts";
@@ -182,6 +183,8 @@ interface VoiceSettings {
   readonly holdKeyCues: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
+  /** Recognise the audio before a wake and wake only when the wake word is in it. */
+  readonly verifyWake: boolean;
   /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
   readonly learnWords: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -228,6 +231,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
+  verifyWake: true,
   learnWords: true,
   keepVoice: false,
   keepDays: 30,
@@ -315,6 +319,8 @@ export interface VoiceCoreHooks {
   readonly vocabulary: (text: string) => Promise<string | null>;
   /** How long he must be quiet for a turn to be over, read each turn. */
   readonly waitMs: () => number;
+  /** The second check before a wake from sleep: was the wake word really said. */
+  readonly verifyWake: (pcm: Int16Array, word: string | null) => Promise<boolean>;
 }
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
@@ -1503,6 +1509,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
+      verifyWake: async (pcm, word) => {
+        // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
+        if (!settings.verifyWake || word === null || sidecar === null) return true;
+        try {
+          return wakeWordHeard(await makeSidecarStt(sidecar).transcribe(pcm), word);
+        } catch {
+          return true;
+        }
+      },
       vocabulary: async (text) => {
         const word = parseAddToDictionary(text);
         if (word === null) return null;
@@ -2052,6 +2067,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         })),
       },
       {
+        id: "v.verifyWake",
+        section: "Listening",
+        label: "Check the wake word before waking",
+        hint: "Tessaya listens to what it just heard and wakes only if the name is in it. Fewer false wakes from TV and music; the pill appears a moment later.",
+        kind: "toggle",
+        on: settings.verifyWake,
+      },
+      {
         id: "v.holdKeyCues",
         section: "On screen",
         label: "Sounds for the dictation key",
@@ -2289,6 +2312,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
+    else if (id === "v.verifyWake") save({ verifyWake: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
     else if (id === "v.pillRest") {
       save({ pillAtRest: on });

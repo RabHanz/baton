@@ -296,7 +296,11 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     description:
       "Pass his correction or answer to a job's worker, word for word. The plan is made again; the work does not start. Set widens when it adds a folder, tool or a longer leash.",
     inputSchema: object(
-      { id: { type: "string" }, text: { type: "string", maxLength: 4000 }, widens: { type: "boolean" } },
+      {
+        id: { type: "string" },
+        text: { type: "string", maxLength: 4000 },
+        widens: { type: "boolean" },
+      },
       ["id", "text"],
     ),
     run: async (a) => ({
