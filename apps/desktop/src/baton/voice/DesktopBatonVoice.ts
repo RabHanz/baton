@@ -437,6 +437,8 @@ export interface DesktopBatonVoiceInput {
   readonly onPillState?: (phase: string) => void;
   /** How a pill drag ended, for the turn log. */
   /** BATON_TEST_WAV is set: the start of the recording, each file as it begins, and its end, for the turn log. */
+  /** The Run entry name the installer writes: the app's AppUserModelId. */
+  readonly loginEntry: string;
   readonly onTestAudio?: (event: TestAudioEvent) => void;
   readonly onPillDrag?: (outcome: {
     readonly reason: string;
@@ -492,7 +494,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   if (input.platform === "win32") {
     Electron.app.setLoginItemSettings({ openAtLogin: false, name: "Baton" });
     // The switch follows the real entry (the installer writes it too); an entry from an older exe is rewritten.
-    if (loginItemOn(Electron.app)) setLoginItem(Electron.app, true);
+    if (loginItemOn(Electron.app, input.loginEntry))
+      setLoginItem(Electron.app, input.loginEntry, true);
   }
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
@@ -2373,7 +2376,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         section: "On screen",
         label: "Start Tessaya when I sign in",
         kind: "toggle",
-        on: loginItemOn(Electron.app),
+        on: loginItemOn(Electron.app, input.loginEntry),
         more: true,
       },
       {
@@ -2647,7 +2650,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.setEdge(value);
     } else if (id === "v.login") {
       save({ openAtLogin: on });
-      setLoginItem(Electron.app, on);
+      setLoginItem(Electron.app, input.loginEntry, on);
     } else if (id === "v.check") void runAllChecks();
     else if (id === "v.micTest") testMic();
     else if (id === "v.file") {
