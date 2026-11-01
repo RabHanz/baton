@@ -31,6 +31,8 @@ const rig = async (opts: { yes: boolean; his?: (t: string) => boolean; window?: 
   const asked: string[] = [];
   const host: ToolHost = {
     capture: async () => ({ text: "screen 1", images: [] }),
+    remember: async () => "kept",
+    forget: async () => "gone",
     jobs: async () => "jobs",
     uiTree: async () => "Window",
     clickElement: async (l) => (log.push(`element ${l}`), `Clicked ${l}.`),

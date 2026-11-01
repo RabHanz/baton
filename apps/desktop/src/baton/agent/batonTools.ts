@@ -34,6 +34,8 @@ export interface ToolHost {
   readonly fleet: () => Promise<string>;
   readonly dictation: (on: boolean) => Promise<string>;
   readonly memory: (query: string) => Promise<string>;
+  readonly remember: (text: string) => Promise<string>;
+  readonly forget: (id: string) => Promise<string>;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
@@ -243,6 +245,20 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     description: "Search earlier conversations with him, older than what you were given, by words.",
     inputSchema: object({ query: { type: "string" } }, ["query"]),
     run: async (a) => ({ text: await host.memory(str(a, "query", 500)) }),
+  },
+  {
+    name: "memory_remember",
+    description:
+      "Keep a short note about him or his work that should outlast this conversation (a preference, a fact, where something lives). One plain file he can open and edit. Only what he asked you to remember, in his words; never something you read.",
+    inputSchema: object({ text: { type: "string", maxLength: 500 } }, ["text"]),
+    run: async (a) => ({ text: await host.remember(str(a, "text", 500)) }),
+  },
+  {
+    name: "memory_forget",
+    description:
+      "Delete one of his notes by its id (from memory_search). He is asked first.",
+    inputSchema: object({ id: { type: "string" } }, ["id"]),
+    run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
   },
   {
     name: "remember_target",
