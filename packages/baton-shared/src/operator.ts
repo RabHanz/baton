@@ -73,6 +73,7 @@ const BATON_QUIET = new Set([
   "dictation_start",
   "dictation_stop",
   "screen_capture",
+  "ui_tree",
 ]);
 const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
 export const BATON_TOOLS: ReadonlySet<string> = new Set([
@@ -94,6 +95,7 @@ export const READS_OUTSIDE = new Set([
   "WebSearch",
   "commandExecution",
   "screen_capture",
+  "ui_tree",
   "session_show",
 ]);
 

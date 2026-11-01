@@ -56,6 +56,14 @@ export interface LocatedElement {
   readonly error?: string;
 }
 
+/** The names and kinds of what the keyboard's window offers, from the accessibility tree. */
+export interface UiTree {
+  readonly window?: string;
+  readonly controls?: ReadonlyArray<string>;
+  readonly total?: number;
+  readonly error?: string;
+}
+
 export type DictationEvent =
   | { readonly ev: "ready" }
   | { readonly ev: "configured"; readonly mouse?: boolean }
@@ -106,7 +114,10 @@ export interface DictationSidecar {
     readonly label: string;
     readonly x: number;
     readonly y: number;
+    /** Search the window with the keyboard instead of the one under the point. */
+    readonly foreground?: boolean;
   }) => Promise<LocatedElement>;
+  readonly uiTree: () => Promise<UiTree>;
   readonly dispose: () => void;
 }
 
@@ -232,7 +243,7 @@ export const startDictationSidecar = (input: {
               : null,
         });
       }
-      if (event["ev"] === "located") {
+      if (event["ev"] === "located" || event["ev"] === "tree") {
         return settle(event["id"] as number, { value: event });
       }
       if (event["ev"] === "text" && event["dictated"] !== true) {
@@ -287,6 +298,7 @@ export const startDictationSidecar = (input: {
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),
     nudge: (dx, dy) => send({ cmd: "nudge", dx, dy }),
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
+    uiTree: () => call<UiTree>({ cmd: "ui_tree" }),
     dispose: () => {
       disposed = true;
       child?.stdin.end();
