@@ -128,6 +128,7 @@ import {
 } from "./audioKeep.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import { makeOpusEncoder } from "./opusEncoder.ts";
+import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -554,6 +555,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly model?: string | null;
     readonly delivery: string | null;
     readonly error?: string | null;
+    readonly seconds?: number | null;
   }): string | null => {
     if (history === null || turn.raw.trim().length === 0) return null;
     try {
@@ -567,6 +569,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         model: turn.model ?? null,
         delivery: turn.delivery,
         error: turn.error ?? null,
+        seconds: turn.seconds ?? null,
       });
     } catch {
       return null;
@@ -630,7 +633,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   if (restored.length > 0) {
     lastDictation = restored.join(" ");
     setTimeout(() => {
-      note = "A dictation was not inserted. Tray: Copy last dictation.";
+      note = "A dictation was not inserted. Tray: Copy last transcript.";
       render();
     }, 0);
   }
@@ -713,8 +716,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             cleaned: null,
             status: "none",
             delivery: "oneshot",
+            seconds: (lastPcm?.length ?? 0) / 16_000,
           });
-        } else history?.update(openTurn, { raw: joined });
+        } else {
+          history?.update(openTurn, {
+            raw: joined,
+            seconds: (history.get(openTurn)?.seconds ?? 0) + (lastPcm?.length ?? 0) / 16_000,
+          });
+        }
         keepAudio(openTurn, lastPcm);
         return;
       }
@@ -928,7 +937,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Words that have no home yet: on the pill for a while, and in the tray until the next ones. */
   const keepText = (why: string, text: string) => {
     lastDictation = text;
-    showDictation(`${why}. Tray: Copy last dictation.`);
+    showDictation(`${why}. Tray: Copy last transcript.`);
     if (keptTimer !== null) clearTimeout(keptTimer);
     keptTimer = setTimeout(() => showDictation(null), KEPT_TEXT_MS);
   };
@@ -1100,6 +1109,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             return null;
           }
           if (!dictatingByVoice) {
+            lastDictation = event.text;
             keepAudio(
               record({
                 kind: "spoken",
@@ -1108,6 +1118,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 cleaned: null,
                 status: "none",
                 delivery: null,
+                seconds: lastPcm === null ? null : lastPcm.length / 16_000,
               }),
               lastPcm,
             );
@@ -1377,6 +1388,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         sessions: sessionRows.length,
         needYou: sessionRows.filter((r) => r.urgent).length,
       },
+      insights: computeInsights(history?.list({ limit: 20_000 }) ?? [], new Date()),
       vocabulary: (dictionary as ReadonlyArray<VocabEntry>).map((d) => ({
         phrase: d.phrase,
         replacement: d.replacement,
@@ -1617,7 +1629,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.copyLast",
         section: "Dictation",
-        label: "Last dictation",
+        label: "Last transcript",
         kind: "action",
         button: "Copy",
         disabled: lastDictation === null,
@@ -1935,6 +1947,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           click: () => toggleMute(),
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
+        {
+          label: "Copy last transcript",
+          enabled: lastDictation !== null,
+          click: () => {
+            if (lastDictation !== null) Electron.clipboard.writeText(lastDictation);
+          },
+        },
         { type: "separator" },
         ...(input.extras?.menuItems() ?? []),
         ...(input.extras ? [{ type: "separator" as const }] : []),

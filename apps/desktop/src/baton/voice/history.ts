@@ -29,17 +29,32 @@ export interface HistoryTurn {
   readonly corrected: boolean;
   /** The text in the field after he fixed it, when the field could be read back. */
   readonly fixed: string | null;
+  /** How long he spoke, when known; for words per minute. */
+  readonly seconds: number | null;
   readonly error: string | null;
 }
 
 export interface History {
   readonly add: (
-    turn: Omit<HistoryTurn, "id" | "corrected" | "audio" | "fixed"> & { readonly audio?: string | null },
+    turn: Omit<HistoryTurn, "id" | "corrected" | "audio" | "fixed" | "seconds"> & {
+      readonly seconds?: number | null;
+    } & { readonly audio?: string | null },
   ) => string;
   readonly update: (
     id: string,
     change: Partial<
-      Pick<HistoryTurn, "raw" | "cleaned" | "status" | "model" | "error" | "audio" | "corrected" | "fixed">
+      Pick<
+        HistoryTurn,
+        | "raw"
+        | "cleaned"
+        | "status"
+        | "model"
+        | "error"
+        | "audio"
+        | "corrected"
+        | "fixed"
+        | "seconds"
+      >
     >,
   ) => void;
   readonly get: (id: string) => HistoryTurn | null;
@@ -54,7 +69,7 @@ export interface History {
 }
 
 const COLUMNS =
-  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed";
+  "id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, fixed, seconds";
 
 type Row = Record<string, string | number | null>;
 const toTurn = (row: Row): HistoryTurn => ({
@@ -71,6 +86,7 @@ const toTurn = (row: Row): HistoryTurn => ({
   delivery: row["delivery"] === null ? null : String(row["delivery"]),
   audio: row["audio"] === null ? null : String(row["audio"]),
   corrected: row["corrected"] === 1,
+  seconds: typeof row["seconds"] === "number" ? row["seconds"] : null,
   fixed: row["fixed"] === null || row["fixed"] === undefined ? null : String(row["fixed"]),
   error: row["error"] === null ? null : String(row["error"]),
 });
@@ -93,6 +109,13 @@ export const openHistory = (
   ) {
     db.exec("alter table turns add column fixed text");
   }
+  if (
+    !(db.prepare("pragma table_info(turns)").all() as Array<{ name: string }>).some(
+      (c) => c.name === "seconds",
+    )
+  ) {
+    db.exec("alter table turns add column seconds real");
+  }
   const get = (id: string): HistoryTurn | null => {
     const row = db.prepare(`select ${COLUMNS} from turns where id = ?`).get(id) as Row | undefined;
     return row === undefined ? null : toTurn(row);
@@ -101,7 +124,7 @@ export const openHistory = (
     add: (turn) => {
       const id = newId();
       db.prepare(
-        `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        `insert into turns (id, at, kind, app, raw, cleaned, status, model, delivery, audio, corrected, error, seconds) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       ).run(
         id,
         turn.at,
@@ -114,6 +137,7 @@ export const openHistory = (
         turn.delivery,
         turn.audio ?? null,
         turn.error,
+        turn.seconds ?? null,
       );
       return id;
     },
