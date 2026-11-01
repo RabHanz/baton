@@ -1,4 +1,5 @@
 <!-- retrieved_at: 2026-10-27; source: https://raw.githubusercontent.com/jasonkneen/openclicky/e9eb06a29ff5cd82033d032238f51a936168b05a/README.md ; verbatim, unmodified below this line -->
+
 # OpenClicky
 
 OpenClicky is a native macOS menu-bar companion by Jason Kneen. It hosts Clicky, an AI companion that provides push-to-talk voice help, screen-aware responses, image gallery views, local agent work, and a cursor overlay for pointing at UI elements.

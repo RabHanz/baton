@@ -43,7 +43,14 @@ import {
   planSensitive,
   shellCheck,
 } from "@t3tools/baton-shared/screenCompanion";
-import { describeToolCall, judgeToolCall, type ToolCall } from "@t3tools/baton-shared/operator";
+import {
+  describeToolCall,
+  gatePrompt,
+  judgeToolCall,
+  spokenOutcome,
+  taintedAfter,
+  type ToolCall,
+} from "@t3tools/baton-shared/operator";
 import * as Electron from "electron";
 
 import {
@@ -507,10 +514,11 @@ export const startScreenCompanion = (input: {
       aloud.cancel();
       return first.index;
     }
-    if (first.said === "expired" && !noOnExpiry) return boxed;
+    const outcome = spokenOutcome(first.said, { yes, cancel: box.cancel, noOnExpiry });
+    if (outcome === null) return boxed;
     windows.closePrompt();
     await boxed;
-    return first.said === "yes" ? yes : box.cancel;
+    return outcome;
   };
 
   /** His yes for a capture, or false. `forWhat` names the lesson or drive the yes covers. */
@@ -632,19 +640,18 @@ export const startScreenCompanion = (input: {
       record("allowed");
       return { allow: true as const };
     }
+    const prompt = gatePrompt(judged, action);
     const response = await askHandsFree(
       {
-        title: judged.risky ? "This one is risky" : "Baton wants to do this",
-        detail: `${action}\n\n${judged.why}`,
+        title: prompt.title,
+        detail: prompt.detail,
         buttons: ["Do it", "Not now"],
         cancel: 1,
         scoped: true,
       },
-      judged.risky
-        ? `${judged.why} Do you want me to do it? Say yes or no.`
-        : `${judged.why} Shall I go ahead? Yes or no.`,
+      prompt.spoken,
       0,
-      judged.risky === true,
+      prompt.noOnExpiry,
     );
     record(response === 0 ? "he said yes" : "he said no");
     return response === 0
@@ -655,7 +662,7 @@ export const startScreenCompanion = (input: {
   const operatorSession = (home: string): VisionSession => {
     const onTool = (call: ToolCall) => {
       toolsThisTurn += 1;
-      tainted = toolsThisTurn > 1;
+      tainted = taintedAfter(toolsThisTurn);
       input.onAction?.({ by: settings.operator, tool: call.tool, action: describeToolCall(call) });
     };
     return settings.operator === "codex"
