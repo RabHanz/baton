@@ -38,8 +38,11 @@ import {
   type VocabEntry,
 } from "./dictionaryEdit.ts";
 import {
+  addInput,
   effective,
   parseBindings,
+  removeInput,
+  sameInput,
   toElectronAccelerator,
   withBinding,
   type Binding,
@@ -99,6 +102,7 @@ import {
   readDictionary,
   writeDictionary,
 } from "./dictationRewriter.ts";
+import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
@@ -111,6 +115,9 @@ import {
   correctionsBetween,
   learnCorrection,
   observeWording,
+  addNever,
+  parseNever,
+  type NeverList,
   parseAddToDictionary,
   upsertEntry,
   type SeenWords,
@@ -127,6 +134,7 @@ import {
   spaceUsed,
   type KeepSettings,
 } from "./audioKeep.ts";
+import { createVocabToast } from "./vocabToast.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
@@ -172,6 +180,8 @@ interface VoiceSettings {
   readonly holdKeyCues: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
+  /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
+  readonly learnWords: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -216,6 +226,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
+  learnWords: true,
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -256,6 +267,7 @@ const readSettings = (path: string): VoiceSettings => {
       ...DEFAULT_SETTINGS,
       wakeWords: wakeWordsFor(saved),
       bindings: parseBindings(saved["bindings"]),
+      learnWords: saved["learnWords"] !== false,
       appearance: parseAppearance(saved["appearance"]),
       ...cleanupFromSaved(saved),
     };
@@ -352,6 +364,8 @@ export interface DesktopBatonVoiceInput {
   readonly onDismiss?: () => void;
   /** He said stop over Baton's voice. The tray's dismiss; the window stays open. */
   readonly onSpokenStop?: () => void;
+  /** Plays one fixed line in a voice (null: the chosen one), for the Voice page's Play. */
+  readonly audition?: (voice: string | null) => void;
   /** Bring the main window up, however it was left. */
   readonly openMainWindow: () => void;
   /** Wake-to-pill, for the record. */
@@ -452,8 +466,42 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       NodeFS.writeFileSync(seenPath, JSON.stringify(seenWords));
     } catch {}
   };
+  // Words he deleted or discarded never come back by themselves.
+  const neverPath = NodePath.join(input.stateDir, "voice", "vocabulary-never.json");
+  let never: NeverList = [];
+  try {
+    never = parseNever(JSON.parse(NodeFS.readFileSync(neverPath, "utf8")));
+  } catch {}
+  const rememberNever = (words: ReadonlyArray<string>) => {
+    never = words.reduce(addNever, never);
+    try {
+      NodeFS.mkdirSync(NodePath.dirname(neverPath), { recursive: true });
+      NodeFS.writeFileSync(neverPath, JSON.stringify(never));
+    } catch {}
+  };
+  const toast = createVocabToast({
+    anchor: () => pill.anchor(),
+    onDiscard: (words) => {
+      rememberNever(words);
+      void changeVocabulary((entries) =>
+        words.reduce(
+          (all, word) =>
+            all.filter(
+              (e) =>
+                e.phrase.toLowerCase() !== word.toLowerCase() &&
+                (e.replacement ?? "").toLowerCase() !== word.toLowerCase(),
+            ),
+          entries,
+        ),
+      );
+    },
+  });
+  const announce = (added: ReadonlyArray<VocabularyEntry>) => {
+    for (const entry of added) toast.add(entry.replacement ?? entry.phrase);
+  };
   /** Names and terms he keeps using join the vocabulary once they repeat. */
-  const learnWording = (text: string) =>
+  const learnWording = (text: string) => {
+    if (!settings.learnWords) return;
     void changeVocabulary((entries, now) => {
       const next = observeWording(
         seenWords,
@@ -461,13 +509,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         text,
         now,
         settings.wakeWords.map((w) => w.word),
+        never,
       );
       seenWords = next.seen;
       saveSeen();
+      announce(next.added);
       return next.entries;
     }).catch(() => undefined);
+  };
   /** A few seconds later, what he changed in the field teaches the words he meant. */
   const learnFromEdits = (written: string, turnId: string | null = null) => {
+    if (!settings.learnWords) return;
     setTimeout(() => {
       void readCaretContext(input.platform).then((around) => {
         if (around === null || written.trim().length === 0) return;
@@ -477,8 +529,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         if (turnId !== null) history?.update(turnId, { corrected: true, fixed: tail });
         return changeVocabulary((entries, now) =>
           fixes.reduce((all, fix) => {
-            const next = learnCorrection(seenWords, all, fix, now);
+            const next = learnCorrection(seenWords, all, fix, now, never);
             seenWords = next.seen;
+            announce(next.added);
             return next.entries;
           }, entries),
         ).then(saveSeen);
@@ -993,14 +1046,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       settings.micOrder,
     );
 
+  /** Every key set for an action, for the sidecar's hotkeys. */
+  const keysOf = (action: string): ReadonlyArray<string> =>
+    currentBindings()
+      .find((row) => row.def.id === action)
+      ?.inputs.flatMap((i) => (i.type === "key" ? [i.accelerator] : [])) ?? [];
+  let bindingsNote: string | null = null;
   const configureDictation = () => {
     if (sidecar === null) return;
     const device = choice.kind === "pinned" ? choice.device.label : null;
     const baton = settings.dictation === "baton" && parakeetPath !== null;
     sidecar.configure({
       model: parakeetPath,
-      hold: baton ? settings.holdKey : null,
-      toggle: baton ? settings.toggleKey : null,
+      hold: baton ? keysOf("hold") : null,
+      toggle: baton ? keysOf("toggle") : null,
       device,
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
@@ -1532,25 +1591,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       })),
       hotkeys: [
         ...currentBindings().flatMap((row) =>
-          row.input?.type === "key"
-            ? [
-                {
-                  label: row.def.label,
-                  keys: row.input.accelerator,
-                  tab:
-                    (
-                      {
-                        hold: "dictation",
-                        toggle: "dictation",
-                        dictation: "dictation",
-                        ask: "screen",
-                        clear: "screen",
-                        stop: "screen",
-                      } as Record<string, string>
-                    )[row.def.id] ?? "voice",
-                },
-              ]
-            : [],
+          row.inputs.flatMap((one) =>
+            one.type === "key"
+              ? [
+                  {
+                    label: row.def.label,
+                    keys: one.accelerator,
+                    tab:
+                      (
+                        {
+                          hold: "dictation",
+                          toggle: "dictation",
+                          dictation: "dictation",
+                          ask: "screen",
+                          clear: "screen",
+                          stop: "screen",
+                        } as Record<string, string>
+                      )[row.def.id] ?? "voice",
+                  },
+                ]
+              : [],
+          ),
         ),
         { label: "Cancel a recording, a card or a drive", keys: "Escape", tab: "screen" },
       ],
@@ -1558,10 +1619,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         action: row.def.id,
         label: row.def.label,
         hint: row.def.hint,
-        input: row.input,
+        inputs: row.inputs,
         isDefault: row.isDefault,
         conflictsWith: row.conflictsWith,
+        conflicts: row.conflicts.map((c) => ({
+          index: row.inputs.findIndex((i) => sameInput(i, c.input)),
+          with: c.with,
+        })),
       })),
+      bindingsNote,
       mouseReady: mouseHookReady,
       usage: input.sessions?.usage() ?? [],
       lifecycle,
@@ -1761,6 +1827,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
+        id: "v.learnWords",
+        section: "Dictation",
+        label: "Learn words from my edits",
+        hint: "When you fix a word Tessaya wrote, or keep using a name, it joins your vocabulary and says so. Discard takes it out for good.",
+        kind: "toggle",
+        on: settings.learnWords,
+      },
+      {
         id: "v.copyLast",
         section: "Dictation",
         label: "Last transcript",
@@ -1832,6 +1906,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
 
+      {
+        id: "v.audition",
+        section: "Answers",
+        label: "Hear the voice",
+        hint: "Plays one line in the voice chosen above. Play beside a voice plays that one. Tessaya's own voices only.",
+        kind: "action",
+        button: "Play",
+      },
       {
         id: "v.cues",
         section: "On screen",
@@ -1990,29 +2072,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id.startsWith("b.")) {
       const [verb, action] = [id.slice(2, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
       let next: ReadonlyArray<Binding> | null = null;
-      if (verb === "set" && typeof value === "string") {
+      const row = currentBindings().find((r) => r.def.id === action);
+      bindingsNote = null;
+      if (verb === "add" && typeof value === "string" && row !== undefined) {
         try {
-          next = parseBindings([{ action, input: JSON.parse(value) }]).length
-            ? withBinding(
-                settings.bindings,
-                action,
-                parseBindings([{ action, input: JSON.parse(value) }])[0]!.input,
-              )
-            : null;
+          const parsed = parseBindings([{ action, inputs: [JSON.parse(value)] }])[0]?.inputs[0];
+          if (parsed === undefined) bindingsNote = "That input could not be read.";
+          else {
+            const change = addInput(settings.bindings, action, row.inputs, parsed);
+            if ("error" in change) bindingsNote = change.error;
+            else next = change.saved;
+          }
         } catch {
           next = null;
         }
-      } else if (verb === "clear") next = withBinding(settings.bindings, action, null);
+      } else if (verb === "remove" && typeof value === "number" && row !== undefined) {
+        next = removeInput(settings.bindings, action, row.inputs, value);
+      } else if (verb === "clear") next = withBinding(settings.bindings, action, []);
       else if (verb === "reset") next = withBinding(settings.bindings, action, "reset");
       else if (verb === "resetAll") next = [];
+      if (next === null) home.refresh();
       if (next !== null) {
         save({ bindings: next });
         applyBindings();
       }
     } else if (id === "d.forget") {
+      rememberNever(dictionary.filter((e) => e.source === "learned").map((e) => e.phrase));
       dictionary = forgetLearned(dictionary);
       saveDictionary(input.stateDir, dictionary);
     } else if (id === "d.remove" && typeof value === "string") {
+      // Deleting a word he did not add himself means he does not want it: it never comes back.
+      if (dictionary.some((e) => e.phrase === value && e.source === "learned"))
+        rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
     } else if (id === "n.empty") input.openMainWindow();
@@ -2026,8 +2117,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         home.refresh();
       });
     } else if (id.startsWith("u.")) input.updates?.apply(id);
-    else if (id.startsWith("s.")) input.extras?.applySetting(id, value);
-    else if (id === "v.enabled") {
+    else if (id.startsWith("s.")) {
+      input.extras?.applySetting(id, value);
+      // Picking a voice plays a short sample of it, so choosing is not guessing.
+      if (id === "s.voice" && typeof value === "string" && value !== "system")
+        input.audition?.(value);
+    } else if (id === "v.enabled") {
       save({ enabled: on });
       void (on ? start().catch(failed) : stop());
     } else if (id === "v.muted") {
@@ -2077,6 +2172,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       render();
     } else if (id === "v.pillCentre") pill.moveTo("centre");
+    else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.learnWords") save({ learnWords: on });
+    else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
@@ -2215,33 +2313,43 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const clear = input.extras?.menuItems().find((i) => i.label === "Clear the screen");
       (clear?.click as (() => void) | undefined)?.();
     },
+    ask: () => {
+      const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");
+      (ask?.click as (() => void) | undefined)?.();
+    },
   };
-  /** Puts every key he has set in place, and takes the old ones away. Mouse buttons are only kept. */
+  /** Puts every key he has set in place, and takes the old ones away. Mouse buttons go to the hook. */
   const applyBindings = () => {
     for (const accelerator of registered) Electron.globalShortcut.unregister(accelerator);
     registered = [];
+    // The mouse side: the hook in the dictation sidecar reads this file; an empty list is no hook.
+    try {
+      NodeFS.mkdirSync(NodePath.join(input.stateDir, "voice"), { recursive: true });
+      NodeFS.writeFileSync(
+        NodePath.join(input.stateDir, "voice", "input-bindings.json"),
+        JSON.stringify(mouseHookConfig(currentBindings())),
+      );
+    } catch {}
     for (const row of currentBindings()) {
-      const input2 = row.input;
-      if (input2?.type !== "key") {
-        if (row.def.id === "ask") input.extras?.setAskHotkey(null);
-        continue;
-      }
-      const accelerator = toElectronAccelerator(input2.accelerator);
-      if (row.def.id === "ask") input.extras?.setAskHotkey(accelerator);
-      else if (row.def.id === "hold" || row.def.id === "toggle") {
-        const field = row.def.id === "hold" ? "holdKey" : "toggleKey";
-        if (settings[field] !== input2.accelerator) {
-          save({ [field]: input2.accelerator });
-          configureDictation();
-        }
-      } else {
-        const handler = handlers[row.def.id];
+      const keys = row.inputs.flatMap((i) =>
+        i.type === "key" ? [toElectronAccelerator(i.accelerator)] : [],
+      );
+      if (row.def.id === "ask") input.extras?.setAskHotkey(keys[0] ?? null);
+      if (row.def.id === "hold" || row.def.id === "toggle") continue;
+      const handler = row.def.id === "ask" ? handlers["ask"] : handlers[row.def.id];
+      for (const accelerator of row.def.id === "ask" ? keys.slice(1) : keys) {
         // A chord another app already owns is skipped, not fatal; the tray still works.
         if (handler !== undefined && Electron.globalShortcut.register(accelerator, handler)) {
           registered.push(accelerator);
         }
       }
     }
+    const first = (action: string) => keysOf(action)[0];
+    const holdKey = first("hold") ?? settings.holdKey;
+    const toggleKey = first("toggle") ?? settings.toggleKey;
+    if (holdKey !== settings.holdKey || toggleKey !== settings.toggleKey)
+      save({ holdKey, toggleKey });
+    configureDictation();
   };
   applyBindings();
   Electron.app.on("will-quit", () => {
@@ -2249,6 +2357,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     void audio?.stop();
     rewriter.dispose();
     encoder.dispose();
+    toast.dispose();
     history?.close();
     sidecar?.dispose();
   });
