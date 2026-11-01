@@ -3,6 +3,8 @@
  * Electron it reads `window.__BATON_STATE__` so the page can be looked at in any browser.
  * Text goes in with textContent only; the state is data, never markup.
  */
+import { markSvg } from "../voice/trayMark.ts";
+
 export const HOME_CSS = `
 :root{
   --ground:#f5f2ec;--card:#fffdf9;--ink:#1c1b18;--soft:#6b675e;--faint:#9a958a;--line:#e6e1d6;--line-strong:#d6d0c2;
@@ -99,8 +101,10 @@ if(real)ipc.on('baton-home:state',(_e,s)=>render(s));
 get().then(render);
 `;
 
-/** Placeholder until the new mark (step 2); sits in the same box so nothing moves. */
-const MARK = `<svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#1f6f5b"/><path d="M12 28V12m6 12V16m6 8V10m6 18V15" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>`;
+const MARK = markSvg({ color: "#1f6f5b", caps: [true, true, true], muted: false }).replace(
+  "<svg ",
+  '<svg class="mark" aria-hidden="true" ',
+);
 
 export const HOME_DOCUMENT = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Baton</title><style>${HOME_CSS}</style></head><body><main>
 <header>${MARK}<div><h1>Baton</h1><p class="status" id="status"></p></div></header>
