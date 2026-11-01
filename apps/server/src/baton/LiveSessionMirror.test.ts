@@ -195,4 +195,30 @@ describe("a live message's media", () => {
     NodeFS.rmSync(sent);
     expect(NodeFS.existsSync(image!.slice(image!.indexOf("<") + 1, -2))).toBe(true);
   });
+
+  it("shows image and video files a reply names inside the session cwd, and nothing outside it", () => {
+    const cwd = NodePath.join(dir, "ws");
+    NodeFS.mkdirSync(cwd, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(cwd, "shot.png"), png);
+    NodeFS.writeFileSync(NodePath.join(cwd, "clip.mp4"), "mp4bytes");
+    const secret = NodePath.join(dir, "secret.png");
+    NodeFS.writeFileSync(secret, png);
+    NodeFS.symlinkSync(secret, NodePath.join(cwd, "leak.png"));
+    const media = liveMedia({
+      attachmentsDir,
+      threadId: "t",
+      messageId: "n",
+      cwd,
+      message: {
+        uuid: "n",
+        role: "assistant",
+        text: "Saved shot.png, clip.mp4, leak.png, ../secret.png and missing.png",
+        createdAt: "2026-10-29T10:00:00.000Z",
+      },
+    });
+    const [, image, video, extra] = media.text.split("\n\n");
+    expect(image).toMatch(/^!\[shot\.png\]\(<.+\.png>\)$/);
+    expect(video).toMatch(/^!\[clip\.mp4\]\(<.+\.mp4>\)$/);
+    expect(extra).toBeUndefined();
+  });
 });

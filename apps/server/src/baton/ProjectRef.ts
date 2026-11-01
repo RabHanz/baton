@@ -3,7 +3,7 @@
  * The project a directory belongs to, the same answer on every box (D72).
  *
  * Reuses T3's own `RepositoryIdentityResolver` (git remote → canonical key),
- * so a VentureOS checkout on signzart and one on onnyx are the same project
+ * so a checkout on one machine and one on another are the same project
  * even when their paths differ. A directory with no remote falls back to its
  * folder name, which is weaker and is marked `dir:` so it never collides with
  * a repository key.
