@@ -62,6 +62,7 @@ import {
 import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { createInputDriver } from "./inputDriver.ts";
+import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { createPointerOverlay, type OverlayCard, type OverlayMarker } from "./pointerOverlay.ts";
 import type { EscapeRank } from "./escapeKey.ts";
@@ -210,6 +211,8 @@ export interface ScreenCompanion {
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
+  readonly controls: () => ReadonlyArray<HomeControl>;
+  readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly dispose: () => void;
 }
 
@@ -1298,76 +1301,74 @@ export const startScreenCompanion = (input: {
             },
           ]
         : []),
+    ],
+    controls: () => [
       {
-        label: "Act without asking",
-        type: "checkbox" as const,
-        checked: settings.actWithoutAsking,
-        click: (item: Electron.MenuItem) => save({ actWithoutAsking: item.checked }),
+        id: "s.output",
+        section: "Answers",
+        label: "How Baton answers",
+        kind: "choice",
+        value: settings.output,
+        options: [
+          { value: "spoken", label: "Spoken and written" },
+          { value: "written", label: "Written only" },
+        ],
       },
       {
-        label: "Works through",
-        submenu: (["claude", "codex"] as const).map((name) => ({
-          label: name === "claude" ? "Claude" : "Codex",
-          type: "radio" as const,
-          checked: settings.operator === name,
-          click: () => {
-            dropOperator();
-            save({ operator: name });
-          },
-        })),
-      },
-      {
-        label: "Always allow screen capture",
-        type: "checkbox" as const,
-        checked: settings.captureApproval === "always",
-        click: (item: Electron.MenuItem) =>
-          save({ captureApproval: item.checked ? "always" : "ask" }),
-      },
-      {
+        id: "s.voice",
+        section: "Answers",
         label: "Voice",
-        submenu: [
-          ...POCKET_VOICES.map((voice) => ({
-            label: `${voice[0]!.toUpperCase()}${voice.slice(1)}`,
-            type: "radio" as const,
-            checked: settings.voice === voice,
-            click: () => save({ voice }),
-          })),
-          { type: "separator" as const },
-          {
-            label: "Quick (smaller, less accurate)",
-            type: "radio" as const,
-            checked: settings.voice === "quick",
-            click: () => save({ voice: "quick" }),
-          },
-          {
-            label: "System voice",
-            type: "radio" as const,
-            checked: settings.voice === "system",
-            click: () => save({ voice: "system" }),
-          },
+        hint: "Quick is smaller and less accurate. System uses your computer's voice.",
+        kind: "choice",
+        value: settings.voice,
+        options: [
+          ...POCKET_VOICES.map((v) => ({ value: v, label: `${v[0]!.toUpperCase()}${v.slice(1)}` })),
+          { value: "quick", label: "Quick" },
+          { value: "system", label: "System voice" },
         ],
       },
       {
-        label: "Answers",
-        submenu: [
-          {
-            label: "Spoken and written",
-            type: "radio" as const,
-            checked: settings.output === "spoken",
-            click: () => save({ output: "spoken" }),
-          },
-          {
-            label: "Written only",
-            type: "radio" as const,
-            checked: settings.output === "written",
-            click: () => {
-              hush();
-              save({ output: "written" });
-            },
-          },
+        id: "s.operator",
+        section: "Working for you",
+        label: "Works through",
+        hint: "The tool Baton uses to carry out what you ask.",
+        kind: "choice",
+        value: settings.operator,
+        options: [
+          { value: "claude", label: "Claude" },
+          { value: "codex", label: "Codex" },
         ],
+      },
+      {
+        id: "s.act",
+        section: "Working for you",
+        label: "Act without asking",
+        hint: "Routine steps run on their own. Anything that deletes, sends, pays or publishes still asks.",
+        kind: "toggle",
+        on: settings.actWithoutAsking,
+      },
+      {
+        id: "s.capture",
+        section: "Working for you",
+        label: "Always allow screen capture",
+        hint: "Off, Baton asks before it looks at your screen.",
+        kind: "toggle",
+        on: settings.captureApproval === "always",
+        more: true,
       },
     ],
+    applySetting: (id, value) => {
+      if (id === "s.output" && (value === "spoken" || value === "written")) {
+        if (value === "written") hush();
+        save({ output: value });
+      } else if (id === "s.voice" && typeof value === "string") {
+        save({ voice: value as PocketVoice });
+      } else if (id === "s.operator" && (value === "claude" || value === "codex")) {
+        dropOperator();
+        save({ operator: value });
+      } else if (id === "s.act") save({ actWithoutAsking: value === true });
+      else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
+    },
     dispose: () => {
       end();
       dropRouter();

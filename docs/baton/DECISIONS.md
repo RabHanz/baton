@@ -3266,3 +3266,12 @@ session's thread, or its newest thread if none is live; the projects `baton-prom
 Two live sessions in one project (for example the manager beside `baton-autosync-b2`): both threads stay listed
 for as long as both sessions are live, each titled with its own session name. When one ends, its thread leaves the
 list after about five minutes unless he wrote in it from T3. Nothing is deleted.
+
+## D130 — Baton's own window
+
+Tray left-click and "Open Baton" open Baton's own window (`apps/desktop/src/baton/home/`), not T3's web app. It is a
+local page in its own BrowserWindow, like the pill and the ask box. A few plain choices per section; "More options"
+reveals the raw ones. Each side owns its settings as data (`HomeControl`): the voice side in `DesktopBatonVoice.ts`
+(`v.` ids), the companion in `ScreenCompanion.ts` (`s.` ids). The tray right-click shrinks to status, listening, mute,
+wake now, Ask, Clear, Stop, Open Baton, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
+assistant's own account setting (queued separately). Copy ran through the uiux-stack copy check.
