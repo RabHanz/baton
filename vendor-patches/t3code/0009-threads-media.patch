@@ -33,6 +33,85 @@ index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40
    {
      id: "todo-list",
      name: "Plan and reads",
+diff --git a/apps/server/src/cli/thread.ts b/apps/server/src/cli/thread.ts
+index 777213bc9ff5f611ab150891d0c9ba21e587de47..ee12aea61e6e0849d17784df6661c5a0c0337046 100644
+--- a/apps/server/src/cli/thread.ts
++++ b/apps/server/src/cli/thread.ts
+@@ -7,6 +7,7 @@ import {
+   ProjectId,
+   RunId,
+   ThreadId,
++  ThreadMetadataMcpUpdateResult,
+   TrimmedNonEmptyString,
+   type OrchestratorMcpThreadListItem,
+   type OrchestratorMcpThreadStatus,
+@@ -700,6 +701,58 @@ const threadShowCommand = Command.make("show", {
+   ),
+ );
+ 
++const threadRenameCommand = Command.make("rename", {
++  ...projectLocationFlags,
++  thread: threadArgument,
++  title: Argument.String("title").pipe(Argument.withDescription("The new title.")),
++  json: jsonFlag,
++}).pipe(
++  Command.withDescription("Rename a thread. The title sticks until someone changes it."),
++  Command.withHandler((flags) =>
++    Effect.gen(function* () {
++      const threadId = yield* decodeThreadId(flags.thread);
++      const title = yield* decodeTitle(flags.title).pipe(
++        Effect.mapError(() => new ThreadUsageError({ detail: "The title is empty." })),
++      );
++      yield* withThreadTools(
++        flags,
++        Effect.fn("cli.thread.rename")(function* (tools) {
++          const updated = yield* tools.call(
++            "t3_thread_update",
++            { threadId, action: "rename", title },
++            ThreadMetadataMcpUpdateResult,
++          );
++          yield* flags.json ? printJson(updated) : Console.log(updated.title);
++        }),
++      );
++    }).pipe(reportThreadErrors),
++  ),
++);
++
++const threadRetitleCommand = Command.make("retitle", {
++  ...projectLocationFlags,
++  thread: threadArgument,
++  json: jsonFlag,
++}).pipe(
++  Command.withDescription("Ask T3 to write a new title for a thread from its conversation."),
++  Command.withHandler((flags) =>
++    Effect.gen(function* () {
++      const threadId = yield* decodeThreadId(flags.thread);
++      yield* withThreadTools(
++        flags,
++        Effect.fn("cli.thread.retitle")(function* (tools) {
++          const updated = yield* tools.call(
++            "t3_thread_update",
++            { threadId, action: "regenerate_title" },
++            ThreadMetadataMcpUpdateResult,
++          );
++          yield* flags.json ? printJson(updated) : Console.log(updated.title);
++        }),
++      );
++    }).pipe(reportThreadErrors),
++  ),
++);
++
+ export const threadCommand = Command.make("thread").pipe(
+   Command.withDescription("Start, message, and read threads on the running server."),
+   Command.withSubcommands([
+@@ -707,5 +760,7 @@ export const threadCommand = Command.make("thread").pipe(
+     threadStartCommand,
+     threadSendCommand,
+     threadShowCommand,
++    threadRenameCommand,
++    threadRetitleCommand,
+   ]),
+ );
 diff --git a/apps/web/src/components/chat/TimelineAssistantRows.tsx b/apps/web/src/components/chat/TimelineAssistantRows.tsx
 index 458d84b9e982bd7ff75f220b040e19dc5829898c..172bb5640a2401f54f4afcd81d2d463422789ac2 100644
 --- a/apps/web/src/components/chat/TimelineAssistantRows.tsx
