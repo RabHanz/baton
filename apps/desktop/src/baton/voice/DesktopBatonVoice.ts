@@ -1774,7 +1774,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.learnWords",
         section: "Dictation",
         label: "Learn words from my edits",
-        hint: "When you fix a word Baton wrote, or keep using a name, it joins your vocabulary and says so. Discard takes it out for good.",
+        hint: "When you fix a word Tessaya wrote, or keep using a name, it joins your vocabulary and says so. Discard takes it out for good.",
         kind: "toggle",
         on: settings.learnWords,
       },
@@ -2117,6 +2117,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     } else if (id === "v.pillCentre") pill.moveTo("centre");
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
@@ -2257,7 +2258,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       (clear?.click as (() => void) | undefined)?.();
     },
     ask: () => {
-      const ask = input.extras?.menuItems().find((i) => i.label === "Ask Baton…");
+      const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");
       (ask?.click as (() => void) | undefined)?.();
     },
   };
