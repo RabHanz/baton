@@ -292,6 +292,8 @@ export interface ScreenCompanion {
   readonly voice: () => PocketVoice | "system";
   readonly volume: () => number;
   readonly stop: () => void;
+  /** Dismissed by Esc, a click or "never mind": everything comes down and goes quiet, with nothing said and no turn logged. */
+  readonly dismissQuietly: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
@@ -1791,6 +1793,12 @@ export const startScreenCompanion = (input: {
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
   const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
+  const dismissQuietly = () => {
+    hush();
+    dropOperator();
+    if (run !== null && run.mode !== "look") end();
+    void wipe();
+  };
 
   return {
     said,
@@ -1831,6 +1839,7 @@ export const startScreenCompanion = (input: {
     volume: () => settings.volume,
     ask: windows.ask,
     stop,
+    dismissQuietly,
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },
