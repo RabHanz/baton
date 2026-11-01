@@ -79,7 +79,7 @@ describe("the window's rows", () => {
   it("tells him before it restarts, with Restart now and Later, and says when it is waiting", () => {
     const ready = state({ status: "downloaded", downloadedVersion: "0.1.5" });
     const [counting] = updateControls(ready, false, {
-      restartAt: Date.now() + 30_000,
+      restartAt: 1_800_000_030_000,
       waiting: false,
     });
     expect(counting).toMatchObject({ button: "Restart now", secondary: "Later", lead: true });
