@@ -11,7 +11,17 @@ import * as Electron from "electron";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { defaultPosition, parseSpots, positionOf, spotFrom, type Spot } from "./pillPlacement.ts";
+import {
+  PLACES,
+  defaultPosition,
+  parseSpots,
+  placePosition,
+  positionOf,
+  snapPosition,
+  spotFrom,
+  type PlaceId,
+  type Spot,
+} from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { PILL_PARTIAL, PILL_SOUNDS, type PillSound } from "./pillSounds.ts";
 import { markSvg, type MarkOptions } from "./trayMark.ts";
@@ -103,6 +113,9 @@ grab.addEventListener('mouseleave',()=>{if(dragging){dragging=false;grab.classLi
 grab.addEventListener('mousedown',e=>{if(e.button!==0)return;dragging=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);});
 addEventListener('mouseup',()=>{if(dragging){dragging=false;grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false);}});
 grab.addEventListener('dblclick',()=>ipcRenderer.send('baton-pill:reset'));
+grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
+let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
+addEventListener('mousemove',setBypass);addEventListener('mousedown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
  show(v){$('t').textContent=v.label;$('c').textContent=v.caption||'';const p=$('p'),g=$('g');p.dataset.phase=v.phase;p.className='on';
   if(shown!==v.phase){shown=v.phase;g.innerHTML=GLYPHS[v.phase]||'';g.style.transform='';g.classList.remove('swap');void g.offsetWidth;g.classList.add('swap');}
@@ -114,6 +127,20 @@ window.pill={
  sound(name){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note(n,t);},
 };
 </script></body></html>`;
+
+export const markersDocument = (
+  dots: ReadonlyArray<{ id: string; label: string; x: number; y: number }>,
+): string =>
+  `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;overflow:hidden;background:transparent;font:600 12px "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif}
+.d{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:rgba(31,111,91,.35);border:2px solid #1f6f5b;box-sizing:border-box}
+.d.on{background:#1f6f5b;transform:scale(1.5)}
+.l{position:absolute;transform:translate(-50%,14px);color:#1f6f5b;background:rgba(255,253,249,.92);padding:2px 8px;border-radius:6px;border:1px solid #e6e1d6;white-space:nowrap;opacity:0}
+.l.on{opacity:1}</style><body></body><script>
+const dots=${JSON.stringify(dots)};
+for(const d of dots){const e=document.createElement('div');e.className='d';e.id='d-'+d.id;e.style.left=d.x+'px';e.style.top=d.y+'px';document.body.appendChild(e);
+const l=document.createElement('div');l.className='l';l.id='l-'+d.id;l.textContent=d.label;l.style.left=d.x+'px';l.style.top=d.y+'px';document.body.appendChild(l);}
+window.hi=id=>{for(const d of dots){document.getElementById('d-'+d.id).classList.toggle('on',d.id===id);document.getElementById('l-'+d.id).classList.toggle('on',d.id===id);}};
+</script>`;
 
 export interface VoicePill {
   readonly on: (event: TurnEvent) => void;
@@ -128,6 +155,8 @@ export interface VoicePill {
   /** Why it is not hearing him, so the rest bar can say so: asleep, muted, or off. */
   readonly setReason: (reason: "sleeping" | "muted" | "off") => void;
   readonly setEdge: (edge: "bottom" | "top") => void;
+  /** Puts it on a named place of the display it is on and keeps it there. */
+  readonly moveTo: (place: PlaceId) => void;
   readonly state: () => TurnState;
   readonly dispose: () => void;
 }
@@ -166,6 +195,10 @@ export const createVoicePill = (input: {
   const spotsFile = NodePath.join(input.stateDir, "baton-pill.json");
   let spots = loadSpots(spotsFile);
   let dragTimer: ReturnType<typeof setInterval> | null = null;
+  let bypassSnap = false;
+  let markers: Electron.BrowserWindow | null = null;
+  let markerPlace: PlaceId | null = null;
+  const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
 
   const displayKey = (display: Electron.Display) => String(display.id);
   /** Where it goes on this display: his place if he moved it, else the default. */
@@ -187,10 +220,51 @@ export const createVoicePill = (input: {
     }
   };
 
+  /** The named places and the grid, drawn on the display while it is dragged. */
+  const openMarkers = (display: Electron.Display) => {
+    closeMarkers();
+    const area = display.workArea;
+    const size = { width: WIDTH, height: HEIGHT };
+    const dots = PLACES.map((place) => {
+      const at = placePosition(area, size, place.id, margins());
+      return {
+        id: place.id,
+        label: place.label,
+        x: at.x - area.x + WIDTH / 2,
+        y: at.y - area.y + HEIGHT / 2,
+      };
+    });
+    const win = new Electron.BrowserWindow({
+      ...area,
+      frame: false,
+      transparent: true,
+      focusable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      hasShadow: false,
+      show: false,
+      resizable: false,
+    });
+    win.setIgnoreMouseEvents(true);
+    win.setAlwaysOnTop(true, "screen-saver");
+    markCompanionWindow(win);
+    win.setContentProtection(true);
+    const page = markersDocument(dots);
+    void win.loadURL(`data:text/html,${encodeURIComponent(page)}`).then(() => {
+      if (!win.isDestroyed()) win.showInactive();
+    });
+    markers = win;
+    markerPlace = null;
+  };
+  const closeMarkers = () => {
+    if (markers !== null && !markers.isDestroyed()) markers.destroy();
+    markers = null;
+  };
   const stopDrag = (save: boolean) => {
     if (dragTimer === null) return;
     clearInterval(dragTimer);
     dragTimer = null;
+    closeMarkers();
     if (!save || window === null || window.isDestroyed()) return;
     const bounds = window.getBounds();
     const display = Electron.screen.getDisplayMatching(bounds);
@@ -353,27 +427,59 @@ export const createVoicePill = (input: {
     const start = Electron.screen.getCursorScreenPoint();
     const from = window.getBounds();
     const target = window;
+    openMarkers(Electron.screen.getDisplayMatching(from));
     dragTimer = setInterval(() => {
       if (target.isDestroyed()) return stopDrag(false);
       const cursor = Electron.screen.getCursorScreenPoint();
       const display = Electron.screen.getDisplayNearestPoint(cursor);
       const area = display.workArea;
-      const x = Math.min(
-        Math.max(from.x + cursor.x - start.x, area.x),
-        area.x + area.width - from.width,
+      const snapped = snapPosition(
+        area,
+        { width: from.width, height: from.height },
+        { x: from.x + cursor.x - start.x, y: from.y + cursor.y - start.y },
+        { bypass: bypassSnap, margins: margins() },
       );
-      const y = Math.min(
-        Math.max(from.y + cursor.y - start.y, area.y),
-        area.y + area.height - from.height,
-      );
+      if (snapped.place !== markerPlace && markers !== null && !markers.isDestroyed()) {
+        markerPlace = snapped.place;
+        void markers.webContents
+          .executeJavaScript(`window.hi(${JSON.stringify(snapped.place)})`)
+          .catch(() => undefined);
+      }
       target.setBounds({
-        x: Math.round(x),
-        y: Math.round(y),
+        x: snapped.x,
+        y: snapped.y,
         width: from.width,
         height: from.height,
       });
     }, DRAG_MS);
     dragTimer.unref();
+  });
+  Electron.ipcMain.on("baton-pill:bypass", (event, on: unknown) => {
+    if (mine(event)) bypassSnap = on === true;
+  });
+  const moveTo = (id: PlaceId) => {
+    if (window === null || window.isDestroyed()) {
+      build();
+    }
+    const target = window;
+    if (target === null || target.isDestroyed()) return;
+    const display = Electron.screen.getDisplayMatching(target.getBounds());
+    const size = { width: WIDTH, height: HEIGHT };
+    const at = placePosition(display.workArea, size, id, margins());
+    spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, size, at) };
+    saveSpots();
+    target.setBounds({ ...at, ...size });
+  };
+  Electron.ipcMain.on("baton-pill:menu", (event) => {
+    if (!mine(event) || window === null || window.isDestroyed()) return;
+    Electron.Menu.buildFromTemplate([
+      ...(["centre", "top", "bottom"] as const).map((id) => ({
+        label: `Move to ${PLACES.find((p) => p.id === id)!.label.toLowerCase()}`,
+        click: () => moveTo(id),
+      })),
+      { type: "separator" as const },
+      { label: "Put it back", click: () => Electron.ipcMain.emit("baton-pill:reset", event) },
+    ]).popup({ window });
   });
   Electron.ipcMain.on("baton-pill:reset", (event) => {
     if (!mine(event) || window === null || window.isDestroyed()) return;
@@ -412,10 +518,12 @@ export const createVoicePill = (input: {
         call(`window.pill.rest(${JSON.stringify(why)})`);
       }
     },
+    moveTo,
     state: () => state,
     dispose: () => {
       if (timer !== null) clearTimeout(timer);
       if (silentTimer !== null) clearTimeout(silentTimer);
+      closeMarkers();
       Electron.app.removeListener("browser-window-created", follow);
       setEscape(false);
       stopDrag(false);

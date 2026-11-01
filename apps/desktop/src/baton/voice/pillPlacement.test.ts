@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { defaultPosition, parseSpots, positionOf, spotFrom } from "./pillPlacement.ts";
+import {
+  PLACES,
+  defaultPosition,
+  parseSpots,
+  placePosition,
+  positionOf,
+  snapPosition,
+  spotFrom,
+} from "./pillPlacement.ts";
 
 const size = { width: 420, height: 52 };
 const hd = { x: 0, y: 0, width: 1920, height: 1040 };
@@ -37,5 +45,43 @@ describe("where the pill sits", () => {
       "4": { fx: 0.5, fy: 0.5 },
     });
     expect(parseSpots("nope")).toEqual({});
+  });
+});
+
+describe("snapping a drag", () => {
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  const size = { width: 420, height: 52 };
+  const margins = { top: 10, bottom: 44 };
+  const free = { bypass: false, margins };
+
+  it("pulls onto a named place when near it, and names it", () => {
+    const centre = placePosition(area, size, "centre", margins);
+    expect(snapPosition(area, size, { x: centre.x + 25, y: centre.y - 18 }, free)).toEqual({
+      ...centre,
+      place: "centre",
+    });
+    const bottom = placePosition(area, size, "bottom", margins);
+    expect(snapPosition(area, size, { x: bottom.x - 10, y: bottom.y + 9 }, free)).toMatchObject({
+      y: bottom.y,
+      place: "bottom",
+    });
+    expect(snapPosition(area, size, { x: 3, y: 4 }, free)).toMatchObject({ place: "top-left" });
+  });
+
+  it("steps onto a grid elsewhere, stays inside the work area, and leaves free placement to Alt or Shift", () => {
+    const grid = snapPosition(area, size, { x: 400, y: 300 }, free);
+    expect(grid.place).toBeNull();
+    expect((grid.x / ((area.width - size.width) / 24)) % 1).toBeCloseTo(0, 5);
+    expect(snapPosition(area, size, { x: 5000, y: -200 }, free)).toMatchObject({
+      x: 1500,
+      y: 10,
+      place: "top-right",
+    });
+    expect(snapPosition(area, size, { x: 401, y: 303 }, { ...free, bypass: true })).toEqual({
+      x: 401,
+      y: 303,
+      place: null,
+    });
+    expect(PLACES.map((p) => p.id)).toContain("centre");
   });
 });
