@@ -61,6 +61,10 @@ import {
 } from "./claudeVision.ts";
 import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
+import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
+import { detectBrains } from "./brainDetect.ts";
+import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
+import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
@@ -88,7 +92,13 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
+  /** He has picked what Baton works through, so the first-run card is done. */
+  readonly brainChosen: boolean;
+  /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
+  readonly assistantAccount: string | null;
 }
+
+const UNKNOWN_BRAINS: BrainStatus = { claude: { state: "missing" }, codex: { state: "missing" } };
 
 const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
@@ -100,6 +110,8 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
+  brainChosen: false,
+  assistantAccount: null,
 };
 
 const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): ScreenSettings => ({
@@ -212,6 +224,9 @@ export interface ScreenCompanion {
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
+  readonly needsBrainChoice: () => boolean;
+  /** Asks again whether Claude Code and Codex are installed and signed in. */
+  readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly dispose: () => void;
 }
@@ -276,6 +291,35 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  let brains: BrainStatus | null = null;
+  const checkBrains = async () => {
+    brains = await detectBrains({
+      env: input.env,
+      platform: input.platform,
+      claudeBinary: settings.claudeBinary,
+      codexBinary: settings.codexBinary,
+    });
+    input.onChange?.();
+  };
+  void checkBrains();
+  const accounts = createAssistantAccounts({
+    env: input.env,
+    platform: input.platform,
+    claudeBinary: () => settings.claudeBinary,
+    onChange: () => input.onChange?.(),
+  });
+  void accounts.refresh();
+  let toldAbout: string | null = null;
+  /** The environment for his `claude` children: the chosen login, or his own with a plain note. */
+  const claudeEnv = (): NodeJS.ProcessEnv => {
+    const picked = pickEnv(settings.assistantAccount, accounts.cached(), input.env);
+    if (picked.notice !== null && picked.notice !== toldAbout) {
+      toldAbout = picked.notice;
+      linger("Baton", picked.notice);
+    }
+    return picked.env;
+  };
+
   const overlay = createPointerOverlay(input.platform);
   const speech = queueSpeech(input.speak);
   /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
@@ -310,7 +354,7 @@ export const startScreenCompanion = (input: {
       model,
       systemPrompt,
       workDir: NodePath.join(input.stateDir, "screen"),
-      env: input.env,
+      env: claudeEnv(),
       platform: input.platform,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
     });
@@ -362,7 +406,7 @@ export const startScreenCompanion = (input: {
             ? TEACH_PROMPT
             : DRIVE_PROMPT,
       workDir: NodePath.join(input.stateDir, "screen"),
-      env: input.env,
+      env: claudeEnv(),
       platform: input.platform,
     });
 
@@ -630,7 +674,7 @@ export const startScreenCompanion = (input: {
           systemPrompt: OPERATOR_PROMPT,
           workDir: NodePath.join(input.stateDir, "screen"),
           cwd: home,
-          env: input.env,
+          env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
           gate: toolGate,
@@ -1328,16 +1372,22 @@ export const startScreenCompanion = (input: {
         ],
       },
       {
-        id: "s.operator",
-        section: "Working for you",
+        id: "s.brain",
+        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
         label: "Works through",
-        hint: "The tool Baton uses to carry out what you ask.",
-        kind: "choice",
+        ...(settings.brainChosen ? {} : { hint: "Listening and speaking stay on this computer." }),
+        kind: "brain",
         value: settings.operator,
-        options: [
-          { value: "claude", label: "Claude" },
-          { value: "codex", label: "Codex" },
-        ],
+        options: brainRows(brains ?? UNKNOWN_BRAINS),
+        lead: !settings.brainChosen,
+      },
+      {
+        id: "s.brainCheck",
+        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
+        label: "Installed and signed in?",
+        kind: "action",
+        button: "Check again",
+        more: settings.brainChosen,
       },
       {
         id: "s.act",
@@ -1348,6 +1398,37 @@ export const startScreenCompanion = (input: {
         on: settings.actWithoutAsking,
       },
       {
+        id: "s.account",
+        section: "Working for you",
+        label: "Claude login for Baton",
+        hint: "Which login Baton's assistant runs as. By default it follows the claude login.",
+        kind: "choice",
+        value: settings.assistantAccount ?? "",
+        options: [
+          { value: "", label: "Follow the claude login" },
+          ...(accounts.cached() ?? []).map((a) => ({
+            value: a.key,
+            label: `${accountLabel(a)}${a.loggedIn ? "" : " (signed out)"}`,
+          })),
+        ],
+        more: true,
+      },
+      ...(accounts.cached()?.find((a) => a.key === settings.assistantAccount)?.email == null
+        ? []
+        : [
+            {
+              id: "s.accountEmail",
+              section: "Working for you",
+              label: "Address",
+              kind: "secret" as const,
+              masked: maskEmail(
+                accounts.cached()!.find((a) => a.key === settings.assistantAccount)!.email!,
+              ),
+              revealed: accounts.cached()!.find((a) => a.key === settings.assistantAccount)!.email!,
+              more: true,
+            },
+          ]),
+      {
         id: "s.capture",
         section: "Working for you",
         label: "Always allow screen capture",
@@ -1357,15 +1438,30 @@ export const startScreenCompanion = (input: {
         more: true,
       },
     ],
+    needsBrainChoice: () => !settings.brainChosen,
+    signIn: async () => {
+      await checkBrains();
+      return brains ?? UNKNOWN_BRAINS;
+    },
     applySetting: (id, value) => {
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
         save({ output: value });
       } else if (id === "s.voice" && typeof value === "string") {
         save({ voice: value as PocketVoice });
-      } else if (id === "s.operator" && (value === "claude" || value === "codex")) {
+      } else if (id === "s.brain" && typeof value === "string") {
+        if (brains !== null && canChoose(brains, value)) {
+          dropOperator();
+          save({ operator: value, brainChosen: true });
+        }
+      } else if (id === "s.brainCheck") {
+        void checkBrains();
+      } else if (id === "s.account" && typeof value === "string") {
         dropOperator();
-        save({ operator: value });
+        dropRouter();
+        toldAbout = null;
+        save({ assistantAccount: value === "" ? null : value });
+        void accounts.refresh();
       } else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },

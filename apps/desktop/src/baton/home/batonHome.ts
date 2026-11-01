@@ -23,6 +23,8 @@ interface HomeControlBase {
   /** Behind "More" in its section. */
   readonly more?: boolean;
   readonly disabled?: boolean;
+  /** Its section goes first: what he should do before anything else. */
+  readonly lead?: boolean;
 }
 
 export type HomeControl =
@@ -32,7 +34,31 @@ export type HomeControl =
       readonly value: string;
       readonly options: ReadonlyArray<HomeOption>;
     })
-  | (HomeControlBase & { readonly kind: "action"; readonly button: string });
+  | (HomeControlBase & { readonly kind: "action"; readonly button: string })
+  /** One of several, each with a note; "soon" rows are shown and cannot be picked. */
+  | (HomeControlBase & {
+      readonly kind: "brain";
+      readonly value: string;
+      readonly options: ReadonlyArray<{
+        readonly value: string;
+        readonly label: string;
+        readonly note: string;
+        readonly state: "ready" | "unavailable" | "soon";
+      }>;
+    })
+  /** One line of the Check area: how it is, and what to do. */
+  | (HomeControlBase & {
+      readonly kind: "check";
+      readonly status: "ok" | "warn" | "bad";
+      readonly detail: string;
+      readonly fix?: string;
+    })
+  /** Shown masked until he clicks it. */
+  | (HomeControlBase & {
+      readonly kind: "secret";
+      readonly masked: string;
+      readonly revealed: string;
+    });
 
 export interface HomeState {
   readonly status: {

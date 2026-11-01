@@ -50,10 +50,15 @@ import { makeClipboardInjection } from "./clipboardInjection.ts";
 import {
   desktopVoiceContext,
   makeVoiceIntentClient,
+  missingVoiceAssets,
+  resolveWakeModels,
   type BrainVoiceHook,
+  type VoiceAssets,
   type VoiceIntentRequest,
   type WakeWordSetting,
 } from "./desktopVoiceCore.ts";
+import { runChecks, type CheckInput, type CheckResult } from "./selfChecks.ts";
+import type { BrainStatus } from "../screen/brainChoice.ts";
 import {
   HEALTHY_RUN_MS,
   makeSidecarAudioInput,
@@ -194,6 +199,7 @@ const TYPED_CONFIRM_MS = 30_000;
 const APP_CHECK_MS = 500;
 /** Long enough to read a sentence that did not land where it was meant to. */
 const KEPT_TEXT_MS = 20_000;
+const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
 
@@ -224,6 +230,8 @@ export interface VoiceCoreHooks {
 export interface TrayExtras extends BrainVoiceHook {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
+  readonly needsBrainChoice: () => boolean;
+  readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly setActions: (actions: AssistantActions) => void;
   readonly notice: (text: string) => void;
@@ -252,6 +260,8 @@ export interface DesktopBatonVoiceInput {
   /** A wake word cut across Baton's voice. */
   readonly onBargeIn?: () => void;
   readonly extras?: TrayExtras;
+  /** Where the wake and listening models are, for the Check area. */
+  readonly voiceAssets?: (modelsDir: string | null) => VoiceAssets;
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** What to do when he dismisses a turn: stop Baton's voice, and the same for the assistant. */
   readonly onDismiss?: () => void;
@@ -791,7 +801,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         state = next;
         render();
       },
-      onLevel: (frame) => pill.micLevel(frameLevel(frame)),
+      onLevel: (frame) => {
+        const level = frameLevel(frame);
+        pill.micLevel(level);
+        if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
+      },
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
@@ -808,6 +822,66 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     audio = null;
     state = "sleeping";
     render();
+  };
+
+  /** The Check area (D134). Results are kept until he runs them again; none run on their own. */
+  let checks: ReadonlyArray<CheckResult> | null = null;
+  let micPeak: number | null = null;
+  let levelTest: { peak: number } | null = null;
+
+  const gather = async (): Promise<CheckInput> => {
+    const assets = input.voiceAssets?.(settings.modelsDir);
+    const wakeModels = assets === undefined ? null : resolveWakeModels(assets, settings.wakeWords);
+    const model = speechModel();
+    const present = modelPresent(modelsDir, model);
+    let freeMb: number | null = null;
+    try {
+      const fsStat = NodeFS.statfsSync(NodeFS.existsSync(modelsDir) ? modelsDir : input.stateDir);
+      freeMb = (fsStat.bavail * fsStat.bsize) / 1e6;
+    } catch {
+      freeMb = null;
+    }
+    return {
+      mic: {
+        devices: realDevices(devices).length,
+        using: choice.kind === "pinned" ? choice.device.label : null,
+        listening: loop !== null,
+        trouble: note,
+      },
+      micPeak,
+      wake: {
+        enabled: settings.wakeWords.filter((w) => w.enabled).map((w) => w.word),
+        missing: wakeModels?.missing ?? [],
+        coreLoaded: loop !== null,
+        baseModelsMissing: assets === undefined ? 0 : missingVoiceAssets(assets).length,
+      },
+      speech: {
+        present,
+        label: settings.speechModel === "fast" ? "Parakeet Fast" : "Parakeet v3",
+        sizeMb: Math.round(model.size / 1e6),
+      },
+      signIn: (await input.extras?.signIn().catch(() => null)) ?? null,
+      screenAccess:
+        input.platform === "darwin"
+          ? Electron.systemPreferences.getMediaAccessStatus("screen")
+          : null,
+      disk: { freeMb, neededMb: present ? 0 : model.size / 1e6 },
+    };
+  };
+  const runAllChecks = async () => {
+    checks = runChecks(await gather());
+    home.refresh();
+  };
+  /** Four seconds of the stream that is already open, started by his press and never before. */
+  const testMic = () => {
+    if (loop === null || levelTest !== null) return;
+    levelTest = { peak: 0 };
+    home.refresh();
+    setTimeout(() => {
+      micPeak = levelTest?.peak ?? 0;
+      levelTest = null;
+      void runAllChecks();
+    }, MIC_TEST_MS).unref();
   };
 
   const homeState = (): HomeState => ({
@@ -985,6 +1059,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
+        id: "v.check",
+        section: "Check",
+        label: "Is everything working?",
+        hint: "Looks at the microphone, models, sign-ins, permission and disk.",
+        kind: "action",
+        button: "Run checks",
+        more: true,
+      },
+      {
+        id: "v.micTest",
+        section: "Check",
+        label: "Microphone level",
+        hint: "Listens for four seconds while you speak. Only when you press it.",
+        kind: "action",
+        button: levelTest === null ? "Test microphone" : "Listening…",
+        disabled: loop === null || levelTest !== null,
+        more: true,
+      },
+      ...(checks ?? []).map((c) => ({
+        id: `v.result:${c.id}`,
+        section: "Check",
+        label: c.title,
+        kind: "check" as const,
+        status: c.status,
+        detail: c.detail,
+        ...(c.fix === undefined ? {} : { fix: c.fix }),
+        more: true,
+      })),
+      {
         id: "v.file",
         section: "On screen",
         label: "Voice settings file",
@@ -1040,7 +1143,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.login") {
       save({ openAtLogin: on });
       Electron.app.setLoginItemSettings({ openAtLogin: on });
-    } else if (id === "v.file") {
+    } else if (id === "v.check") void runAllChecks();
+    else if (id === "v.micTest") testMic();
+    else if (id === "v.file") {
       save({});
       void Electron.shell.openPath(settingsPath);
     }
@@ -1159,10 +1264,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(onDeviceChange, MIC_POLL_MS).unref();
 
   render();
-  // First run after install: show him where the settings are, once.
+  // First run after install, and until he has chosen what Baton works through: the window opens on its own.
   const shownPath = NodePath.join(input.stateDir, "baton-home.shown");
-  if (!NodeFS.existsSync(shownPath)) {
-    NodeFS.writeFileSync(shownPath, new Date().toISOString());
+  const firstRun = !NodeFS.existsSync(shownPath);
+  if (firstRun) NodeFS.writeFileSync(shownPath, new Date().toISOString());
+  if (firstRun || input.extras?.needsBrainChoice() === true) {
     setTimeout(() => home.open(), 2_000).unref();
   }
   // Keys and the sidecar only once the model is here: nothing global before he asks for it.
