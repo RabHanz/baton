@@ -26,6 +26,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlError from "effect/sql/SqlError";
 
@@ -36,7 +37,10 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as EventSink from "./EventSink.ts";
+import * as ServerConfig from "../config.ts";
+import { withMentionedMedia } from "../mentionedMedia.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import * as ProjectStore from "./ProjectStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
@@ -341,6 +345,40 @@ export const layer: Layer.Layer<
     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
     const scope = yield* Effect.scope;
     const completedTurnAnalytics = new Set<string>();
+    // Optional so test and tool layers without a server config keep plain text.
+    const serverConfig = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    const projectStore = yield* Effect.serviceOption(ProjectStore.ProjectStoreV2);
+
+    /**
+     * A finished assistant reply that names an image or video file inside the thread's directory
+     * gets the file attached as markdown media, for every provider and every client. The file
+     * read happens here, at the commit boundary; the orchestrator stays pure.
+     */
+    const withNamedMedia = Effect.fn("ProviderEventIngestor.withNamedMedia")(function* (
+      threadId: ThreadId,
+      messageId: string,
+      text: string,
+    ) {
+      if (Option.isNone(serverConfig) || text.length === 0) return text;
+      const thread = yield* projections.getThread(threadId).pipe(Effect.option);
+      if (Option.isNone(thread)) return text;
+      const cwd =
+        thread.value.worktreePath ??
+        (Option.isSome(projectStore)
+          ? yield* projectStore.value.get(thread.value.projectId).pipe(
+              Effect.map((row) => (Option.isSome(row) ? row.value.workspaceRoot : null)),
+              Effect.orElseSucceed(() => null),
+            )
+          : null);
+      if (cwd === null) return text;
+      return withMentionedMedia({
+        attachmentsDir: serverConfig.value.attachmentsDir,
+        threadId,
+        messageId,
+        text,
+        cwd,
+      });
+    });
 
     const makeDomainEvent =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
@@ -643,28 +681,44 @@ export const layer: Layer.Layer<
                   nodeId: input.event.subagent.id,
                 }),
               ];
-            case "message.updated":
+            case "message.updated": {
+              const message = input.event.message;
+              const payload =
+                message.role === "assistant" && !message.streaming
+                  ? {
+                      ...message,
+                      text: yield* withNamedMedia(message.threadId, message.id, message.text),
+                    }
+                  : message;
               return [
                 yield* makeDomainEvent(input, {
                   type: "message.updated",
                   threadId: input.event.message.threadId,
-                  payload: input.event.message,
+                  payload,
                   runId: input.event.message.runId,
                   nodeId: input.event.message.nodeId,
                 }),
               ];
-            case "turn_item.updated":
+            }
+            case "turn_item.updated": {
+              const item = input.event.turnItem;
+              const turnItem =
+                item.type === "assistant_message" && !item.streaming
+                  ? {
+                      ...item,
+                      text: yield* withNamedMedia(item.threadId, item.messageId, item.text),
+                    }
+                  : item;
               return [
                 yield* makeDomainEvent(input, {
                   type: "turn-item.updated",
                   threadId: input.event.turnItem.threadId,
-                  payload: boundFileChangeForStorage(
-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
-                  ),
+                  payload: boundFileChangeForStorage(stripUnservedToolOutputImageBytes(turnItem)),
                   runId: input.event.turnItem.runId,
                   nodeId: input.event.turnItem.nodeId,
                 }),
               ];
+            }
             case "runtime_request.updated":
               return [
                 yield* makeDomainEvent(input, {

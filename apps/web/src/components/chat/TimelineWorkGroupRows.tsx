@@ -2,7 +2,11 @@ import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { type ToolActivityIcon } from "@t3tools/contracts";
-import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
+import {
+  liveThoughtLine,
+  resolveViewedImageAsset,
+} from "@t3tools/client-runtime/work-log/presentation";
+import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
 import { observeResize } from "~/lib/observeResize";
 import { tickTextContent } from "~/lib/tickTextContent";
@@ -585,17 +589,40 @@ export function WorkGroupToggleTimelineRow({
   row: Extract<TimelineRow, { kind: "work-toggle" }>;
 }) {
   const ctx = use(TimelineRowCtx);
+  const { threadRef, workspaceRoot } = ctx;
+  const images = row.expanded || !threadRef ? [] : row.viewedImagePaths;
   return (
-    <WorkGroupHeader
-      label={row.summary}
-      iconName={row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
-      toolIcon={row.toolIcon}
-      failed={row.hasFailure}
-      expanded={row.expanded}
-      createdAt={row.createdAt}
-      timestampFormat={ctx.timestampFormat}
-      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
-    />
+    <>
+      <WorkGroupHeader
+        label={row.summary}
+        iconName={row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
+        toolIcon={row.toolIcon}
+        failed={row.hasFailure}
+        expanded={row.expanded}
+        createdAt={row.createdAt}
+        timestampFormat={ctx.timestampFormat}
+        onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+      />
+      {images.map((path) => {
+        const image = resolveViewedImageAsset(path, {
+          threadId: threadRef!.threadId,
+          workspaceRoot,
+        });
+        return image ? (
+          <div key={path} className="py-1 pl-6">
+            <ChatMarkdownAssetImage
+              environmentId={threadRef!.environmentId}
+              resource={image.resource}
+              alt={image.alt}
+              srcFragment={image.srcFragment}
+              workspaceRoot={workspaceRoot}
+              maxHeightRem={16}
+              onImageExpand={ctx.onImageExpand}
+            />
+          </div>
+        ) : null;
+      })}
+    </>
   );
 }
 
