@@ -1,3 +1,4 @@
+import { absentSessionWindow, NOT_APPLICABLE } from "@t3tools/baton-shared/limitWindows";
 import {
   AuthProvidersManageScope,
   type EnvironmentId,
@@ -204,6 +205,12 @@ export function LimitWindows({
           : "grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1"
       }
     >
+      {absentSessionWindow(windows) ? (
+        <span className="col-span-3 flex items-center justify-between text-xs text-muted-foreground">
+          <span>Session</span>
+          <span>{NOT_APPLICABLE}</span>
+        </span>
+      ) : null}
       {windows.map((window) => {
         const pace = paceOf(window, now);
         const resetsIn = formatResetsIn(window, now);

@@ -2464,6 +2464,7 @@ directory, so it is a handoff rather than a swap, and `Continue with` already of
 generic age line does for every provider).
 
 Not yet run live: a real switch needs a second account with quota, from 2 Nov.
+
 ## D93 — Split chat panes are ChatViews side by side, and the route is the focused pane
 
 **Decided** 2026-10-30 (Baton #40). Upstream has split terminals and no split for chat; the requests
@@ -2746,18 +2747,17 @@ regexes first (the failure he named).
 The ask box moves to Ctrl+Alt+Shift+B. F8 was bound twice, the ask box won, and Airdeck's dictation
 toggle did nothing on 0.1.9 (seen on the laptop: the chord opened the box).
 
-
 ## D110 — The hold is tied to the words, not to a clock
 
 Director, 2026-10-31: pointing and cards "last barely a fraction of a second". Reproduced on his
 Windows desktop with `screen/smoke/overlayLab.ts`: the real companion, a scripted model, 50 ms polling
 of the overlay's own DOM (the overlay is excluded from capture, so a screenshot cannot show this).
 
-| Case | Before | After |
-| --- | --- | --- |
+| Case                        | Before                                                                            | After                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Target on the other display | Answer card up under 50 ms, wiped by `point()`; never shown on the target display | Card moves with the pointer, 14.9 s on screen, 3.06 s past the end of speech |
-| Target on the same display | Cleared by a fixed timer 0.3 s before the last sentence ended | 3.2 s past the end of speech |
-| Teach, busy screen | Any change replaced the step with "Looking…", possibly during speech | Step stays; nothing advances until it is spoken and readable |
+| Target on the same display  | Cleared by a fixed timer 0.3 s before the last sentence ended                     | 3.2 s past the end of speech                                                 |
+| Teach, busy screen          | Any change replaced the step with "Looking…", possibly during speech              | Step stays; nothing advances until it is spoken and readable                 |
 
 Real run on his desktop, his own `claude`, Anna aloud, 2026-10-31: the card was up 30.1 s and left 3.05 s
 after speech ended. In Written only nothing played, and a nine-sentence answer took four pages, the
@@ -2807,17 +2807,17 @@ detection time comes before that event.
 Director, 2026-10-31: the OS voice is old-fashioned and generic; real voices, free and local. Bake-off on
 his i7-8550U, fixed sentences, BelowNormal, one job at a time, warm medians:
 
-| Model | First audible | RTF | Peak RSS | Download | British | Off Windows without Python |
-| --- | --- | --- | --- | --- | --- | --- |
-| Pocket `english` | 334 ms | 0.37 | 737 MB | 227 MB | VCTK voices | Official binaries |
-| Pocket 7m | 138 ms | 0.15 | 217 MB | 74 MB with binary | same | same |
-| Piper jenny | 433 ms, whole sentence | 0.12 | 210 MB | 63 MB | Yes | Repo archived |
-| Piper cori | 2,556 ms | 0.66 | 266 MB | 114 MB | Yes | same |
-| Supertonic 3, 5 steps | 2,080 ms | 0.44 | 381 MB | 129 MB | No | Weights OpenRAIL-M, repo archived |
-| Kokoro v1.0 fp32 bf_emma | 3,982 ms | 1.11 | 774 MB | 350 MB | Yes | Needs a GPL phonemiser for right words |
-| Kitten mini | 5,245 ms, run not clean | 1.51 | 395 MB | 68 MB | No | Espeak |
-| Chatterbox Nano, community ONNX | 8,935 ms | 2.60 | 1,283 MB | 570 MB | Reference clip | No official route |
-| MeloTTS | Blocked: install over 10 min | | | about 1 GB | Yes | Python only |
+| Model                           | First audible                | RTF  | Peak RSS | Download          | British        | Off Windows without Python             |
+| ------------------------------- | ---------------------------- | ---- | -------- | ----------------- | -------------- | -------------------------------------- |
+| Pocket `english`                | 334 ms                       | 0.37 | 737 MB   | 227 MB            | VCTK voices    | Official binaries                      |
+| Pocket 7m                       | 138 ms                       | 0.15 | 217 MB   | 74 MB with binary | same           | same                                   |
+| Piper jenny                     | 433 ms, whole sentence       | 0.12 | 210 MB   | 63 MB             | Yes            | Repo archived                          |
+| Piper cori                      | 2,556 ms                     | 0.66 | 266 MB   | 114 MB            | Yes            | same                                   |
+| Supertonic 3, 5 steps           | 2,080 ms                     | 0.44 | 381 MB   | 129 MB            | No             | Weights OpenRAIL-M, repo archived      |
+| Kokoro v1.0 fp32 bf_emma        | 3,982 ms                     | 1.11 | 774 MB   | 350 MB            | Yes            | Needs a GPL phonemiser for right words |
+| Kitten mini                     | 5,245 ms, run not clean      | 1.51 | 395 MB   | 68 MB             | No             | Espeak                                 |
+| Chatterbox Nano, community ONNX | 8,935 ms                     | 2.60 | 1,283 MB | 570 MB            | Reference clip | No official route                      |
+| MeloTTS                         | Blocked: install over 10 min |      |          | about 1 GB        | Yes            | Python only                            |
 
 Default Pocket `english`, voice Anna: word-perfect in transcription on all five sentences, 1,345 read
 right. Fallback Pocket 7m, offered as Quick: faster and much smaller, but it misread words, including
@@ -2903,15 +2903,15 @@ Status: built and on the laptop, **not yet timed**. See the numbers in VOICE.md.
 
 Measured 2026-10-31 on the laptop, 60 AT2020 clips against Wispr's raw text, before any gain:
 
-| Condition                          | v3    | 110M  |
-| ---------------------------------- | ----- | ----- |
-| As recorded                        | 2.8%  | 5.5%  |
-| Attenuated 20 dB                   | 2.5%  | 6.1%  |
-| Attenuated 30 dB                   | 2.9%  | 8.4%  |
-| Attenuated 40 dB                   | 8.1%  | 20.8% |
-| His clips made whisper, -35 dBFS   | none  | 9.8%  |
-| His clips made whisper, -45 dBFS   | none  | 10.8% |
-| His 30 quietest real clips         | 4.2% (13 clips) | 4.0% |
+| Condition                        | v3              | 110M  |
+| -------------------------------- | --------------- | ----- |
+| As recorded                      | 2.8%            | 5.5%  |
+| Attenuated 20 dB                 | 2.5%            | 6.1%  |
+| Attenuated 30 dB                 | 2.9%            | 8.4%  |
+| Attenuated 40 dB                 | 8.1%            | 20.8% |
+| His clips made whisper, -35 dBFS | none            | 9.8%  |
+| His clips made whisper, -45 dBFS | none            | 10.8% |
+| His 30 quietest real clips       | 4.2% (13 clips) | 4.0%  |
 
 This does not repeat D97's "both 3.0%" on 240 clips, and on quiet audio 110M is far worse. So `speechModel`
 stays `v3` until the same table is re-measured with gain. Each recording or piece is lifted towards
@@ -3066,7 +3066,6 @@ main window still quits, including with the pill up. Rejected: keeping a hidden 
 "Stop" during an answer went to the model, which asked what he meant. With no lesson or drive running the word was
 not treated as a control. While an answer is coming or being read out it now stops at once, with no model.
 
-
 ## D118 — Baton lives in the tray, and only Quit ends it
 
 Director, 2026-11-01, on 0.1.11: the tray icon vanished. Nothing crashed. `closedLast` went true when the main
@@ -3146,10 +3145,10 @@ a real microphone. Rejected: echo cancellation (no reference signal yet, as in D
 
 Measured on the box with Baton's exact flags, three runs each, first text in ms:
 
-| | new process | process started 3 s earlier | warm, second turn |
-| --- | --- | --- | --- |
-| haiku | 1590, 1898, 2297 | 904, 1029, 1289 | 969, 1003, 1007 |
-| sonnet | 1812, 1840, 2220 | 646, 925, 1275 | 1021, 1031, 1094 |
+|        | new process      | process started 3 s earlier | warm, second turn |
+| ------ | ---------------- | --------------------------- | ----------------- |
+| haiku  | 1590, 1898, 2297 | 904, 1029, 1289             | 969, 1003, 1007   |
+| sonnet | 1812, 1840, 2220 | 646, 925, 1275              | 1021, 1031, 1094  |
 
 So nearly a second of a cold turn is the process starting, a pre-started one is as good as a warm one, and starting
 costs no quota. A wake now starts the router, and a spare answer session, if they are missing, are past the turn
@@ -3185,3 +3184,16 @@ are typed first. "Stop dictating the letter" is now text, where before it stoppe
 Capture consent, Run it, the shell check and Carry on? were mouse-only. On a voice turn each is now also asked
 aloud, through the machine's confirmation rules, and whichever he answers first counts. A question that runs out
 leaves the box up. A typed ask stays box-only.
+
+## D126 — Each limit window is optional per account
+
+Director, 2026-11-01: the $200 Max plan is reportedly now Ultra and some accounts no longer have a 5-hour window.
+Not confirmed here: no account on the box was seen without one. Nothing keys on a plan's name. What is shown follows
+the windows an account reports.
+
+`limits-probe.py` required the 5h headers, so an account without them would have been left out whole, weekly figure
+included. The 5h pair is now optional, half a pair is still refused, and 7d is still required. cswap reads
+`fiveHour` only if the key is there, so the probe leaves it out. The server parsers and the pool already read what
+is present and never invented a zero. The tile, the thread details and the pooled page now say "Not applicable" for
+Session when a weekly window is reported with no session one, and the weekly amount shows as before. The 5-hour code
+stays, so a downgraded plan shows its window again with no change.
