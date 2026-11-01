@@ -67,6 +67,8 @@ export type VoiceCoreEvent =
       /** Null for a hotkey, or a provider with one word. */
       readonly word: string | null;
     }
+  /** His speech ended (silence long enough): from here the pill must not say Listening. */
+  | { readonly type: "speech_end"; readonly at: number }
   /** A segment went to speech recognition. */
   /** A wake word over Baton's own voice: he is cutting in. */
   | { readonly type: "barge_in" }
@@ -319,6 +321,7 @@ export const createVoiceCore = (input: {
       return show();
     }
     const pcm = joined(parts);
+    emit({ type: "speech_end", at: now() });
     emit({ type: "thinking" });
     enqueue(async () => {
       const text = await input.stt.transcribe(pcm);
@@ -493,7 +496,8 @@ export const createVoiceCore = (input: {
           silenceSamples += frame.length;
         }
         if (
-          silenceSamples >= msToSamples(seg.endSilenceMs) ||
+          silenceSamples >=
+            msToSamples(machine.mode === "dictation" ? seg.endSilenceMs : seg.endSilenceMs * 0.7) ||
           segmentSamples >= msToSamples(seg.maxUtteranceMs)
         ) {
           finishSegment();

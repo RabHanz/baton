@@ -254,3 +254,13 @@ describe("stop while dictating", () => {
     expect(stopped.effects.some((e) => e.kind === "dictate")).toBe(false);
   });
 });
+
+describe("a spoken cancel", () => {
+  it("closes the window and drops what was waiting, with no wake word", () => {
+    const { state } = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "never mind", at: 100 },
+    ]);
+    expect(state.mode).toBe("sleeping");
+  });
+});

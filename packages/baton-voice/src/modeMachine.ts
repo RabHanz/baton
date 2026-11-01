@@ -23,6 +23,7 @@
  * @module baton-voice/modeMachine
  */
 import { classifyDictation, isBareStop } from "@t3tools/baton-shared/dictation";
+import { isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 export type VoiceMode =
   | "sleeping"
@@ -332,7 +333,7 @@ const utterance = (
   if (d.kind === "stop")
     return step(s, [...carry, { kind: "ignored", text: raw, reason: "not dictating" }]);
 
-  if (SLEEP.test(words) && (awake || startsWithWake)) {
+  if ((SLEEP.test(words) || isCancelPhrase(words)) && (awake || startsWithWake)) {
     return step(base(s), [
       ...carry,
       ...(s.pending === null
