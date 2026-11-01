@@ -1041,17 +1041,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
       ]);
     },
-    locate: async (label, near) => {
+    uiTree: async () => {
+      if (sidecar === null) return null;
+      const tree = await Promise.race([
+        sidecar.uiTree(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS * 2)),
+      ]).catch(() => null);
+      if (tree === null || tree.controls === undefined) return null;
+      return { window: tree.window ?? "", controls: tree.controls };
+    },
+    locate: async (label, near, anywhere) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);
       const found = await Promise.race([
-        sidecar.locate({ label, x: physical.x, y: physical.y }),
+        sidecar.locate({
+          label,
+          x: physical.x,
+          y: physical.y,
+          ...(anywhere === true ? { foreground: true } : {}),
+        }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS)),
       ]).catch(() => null);
       if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
       const real = Electron.screen.screenToDipPoint({ x: found.x, y: found.y });
       // Same name far from where the model saw it is a different thing.
-      if (Math.hypot(real.x - near.x, real.y - near.y) > LOCATE_MAX_DIP) return null;
+      if (anywhere !== true && Math.hypot(real.x - near.x, real.y - near.y) > LOCATE_MAX_DIP) {
+        return null;
+      }
       return { ...real, name: found.name ?? label };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,

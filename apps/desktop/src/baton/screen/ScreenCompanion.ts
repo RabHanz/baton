@@ -194,7 +194,11 @@ export interface AssistantActions {
   readonly locate?: (
     label: string,
     near: { readonly x: number; readonly y: number },
+    /** The whole window with the keyboard, not only what is near the point (the assistant's click by name). */
+    anywhere?: boolean,
   ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
+  /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
+  readonly uiTree?: () => Promise<{ readonly window: string; readonly controls: ReadonlyArray<string> } | null>;
   /** The top-level window under a desktop point, for a drive's click. */
   readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<{
     readonly window: number;
@@ -1421,6 +1425,16 @@ export const startScreenCompanion = (input: {
         images: captured.map((c) => ({ data: c.jpeg.toString("base64"), mimeType: "image/jpeg" })),
       };
     },
+    uiTree: async () => {
+      if (!(await approveCapture("what is on your screen", null))) {
+        throw new Error("He did not allow looking at his screen.");
+      }
+      const tree = await actions?.uiTree?.();
+      if (tree === null || tree === undefined) {
+        throw new Error("The window's controls can't be read here. Take a screenshot instead.");
+      }
+      return `${tree.window}\n${tree.controls.join("\n")}`;
+    },
     click: async (a) => {
       const to = desktopPoint(a);
       await pointerAction(to, () =>
@@ -1429,10 +1443,10 @@ export const startScreenCompanion = (input: {
       return "Clicked.";
     },
     clickElement: async (label, double) => {
-      const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint());
+      const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
       if (found === null || found === undefined) {
         throw new Error(
-          `No control is named "${label}" here. Take a screenshot and click by position.`,
+          `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
       }
       const to = { x: found.x, y: found.y };
@@ -1442,7 +1456,7 @@ export const startScreenCompanion = (input: {
     waitFor: async (label, seconds) => {
       const until = Date.now() + seconds * 1000;
       do {
-        const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint());
+        const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
         if (found !== null && found !== undefined) return `${found.name} is there.`;
         await sleep(400);
       } while (Date.now() < until);
