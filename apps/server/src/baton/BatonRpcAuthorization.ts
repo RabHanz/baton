@@ -50,6 +50,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_LIVE_WS_METHODS.herdrSend]: AuthOrchestrationOperateScope,
   [BATON_LIVE_WS_METHODS.liveAttach]: AuthOrchestrationOperateScope,
   [BATON_LIVE_WS_METHODS.liveAdopt]: AuthOrchestrationOperateScope,
+  [BATON_LIVE_WS_METHODS.liveSetModel]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionSettle]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionUnsettle]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.workSessionArchive]: AuthOrchestrationOperateScope,
