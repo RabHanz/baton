@@ -7,6 +7,8 @@ export interface MarkOptions {
   /** Listening, screen capture, acting without asking. */
   readonly caps: readonly [boolean, boolean, boolean];
   readonly muted: boolean;
+  /** An update is ready: a small dot in the corner, drawn on the tray bitmap. */
+  readonly badge?: boolean;
 }
 
 const BOX = 32;
@@ -17,6 +19,8 @@ const BARS: ReadonlyArray<{ readonly x: number; readonly h: number }> = [
   { x: 16, h: 19 },
   { x: 22.5, h: 14 },
 ];
+/** The update dot: white, top right, with a ring of bare tile around it. */
+const BADGE = { x: 25.5, y: 6.5, r: 3.6, gap: 5.8 };
 const OFF_ALPHA = 0.38;
 const SLASH = { x1: 6.5, y1: 25.5, x2: 25.5, y2: 6.5, w: 3 };
 
@@ -79,9 +83,17 @@ export const markBitmap = (o: MarkOptions, size: number): Buffer => {
               white = Math.max(white, o.caps[i]! && !o.muted ? 1 : OFF_ALPHA);
             }
           });
-          if (o.muted && segDist(x, y, SLASH.x1, SLASH.y1, SLASH.x2, SLASH.y2) <= SLASH.w / 2)
+          if (o.muted && segDist(x, y, SLASH.x1, SLASH.y1, SLASH.x2, SLASH.y2) <= SLASH.w / 2) {
             white = 1;
+          }
           a += 1;
+          const d2 = (x - BADGE.x) ** 2 + (y - BADGE.y) ** 2;
+          if (o.badge === true && d2 <= BADGE.r ** 2) {
+            [rr, gg, bb] = [rr + 255, gg + 255, bb + 255];
+            continue;
+          }
+          // A ring of bare tile around the dot, so it reads on any bar or state colour.
+          if (o.badge === true && d2 <= BADGE.gap ** 2) white = 0;
           rr += r + (255 - r) * white;
           gg += g + (255 - g) * white;
           bb += b + (255 - b) * white;
