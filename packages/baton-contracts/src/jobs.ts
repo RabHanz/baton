@@ -4,7 +4,15 @@
  */
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
+import {
+  IsoDateTime,
+  ModelSelection,
+  ProjectId,
+  RuntimeMode,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "@t3tools/contracts";
 
 import { BatonSessionState } from "./sessionState.ts";
 import { WorkSessionId } from "./workSession.ts";
@@ -105,3 +113,60 @@ export const BatonJob = Schema.Struct({
   terms: BatonJobTerms,
 });
 export type BatonJob = typeof BatonJob.Type;
+
+export const BATON_JOB_WS_METHODS = {
+  jobList: "baton.job.list",
+  jobStart: "baton.job.start",
+  jobAgree: "baton.job.agree",
+  jobRefine: "baton.job.refine",
+  jobGrant: "baton.job.grant",
+  jobRevoke: "baton.job.revoke",
+} as const;
+
+/** His words verbatim become the goal; the worker starts in plan mode (D145). */
+export const BatonJobStartInput = Schema.Struct({
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  goal: TrimmedNonEmptyString,
+  permissions: BatonJobPermissions,
+  limits: Schema.optionalKey(
+    Schema.Struct({
+      wallClockMinutes: Schema.optionalKey(Schema.Number),
+      workerTurns: Schema.optionalKey(Schema.Number),
+      dollars: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+    }),
+  ),
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  /** A retried start is the same job. */
+  id: Schema.optionalKey(WorkSessionId),
+});
+export type BatonJobStartInput = typeof BatonJobStartInput.Type;
+
+export const BatonJobStartResult = Schema.Struct({
+  terms: BatonJobTerms,
+  threadId: ThreadId,
+});
+export type BatonJobStartResult = typeof BatonJobStartResult.Type;
+
+export const BatonJobRefInput = Schema.Struct({ id: WorkSessionId });
+export type BatonJobRefInput = typeof BatonJobRefInput.Type;
+
+export const BatonJobRefineInput = Schema.Struct({
+  id: WorkSessionId,
+  text: TrimmedNonEmptyString,
+  via: Schema.Literals(["voice", "text"]),
+  /** True when the edit adds a folder, project, tool or a longer leash: it asks for his OK again. */
+  widens: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonJobRefineInput = typeof BatonJobRefineInput.Type;
+
+export const BatonJobGrantInput = Schema.Struct({ id: WorkSessionId, channel: BatonGrantKind });
+export type BatonJobGrantInput = typeof BatonJobGrantInput.Type;
+
+/** Null when no such job exists. */
+export const BatonJobTermsResult = Schema.Struct({ terms: Schema.NullOr(BatonJobTerms) });
+export type BatonJobTermsResult = typeof BatonJobTermsResult.Type;
+
+export const BatonJobListResult = Schema.Struct({ jobs: Schema.Array(BatonJob) });
+export type BatonJobListResult = typeof BatonJobListResult.Type;
