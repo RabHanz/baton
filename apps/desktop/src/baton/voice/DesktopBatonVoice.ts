@@ -735,6 +735,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       paste: settings.paste,
       language: settings.language,
       cleanup: true,
+      mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
     });
   };
 
@@ -782,7 +783,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (failed && pasted === true) pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
     } else keepText("Not pasted", fitted);
   };
+  let mouseHookReady = false;
+  /** A mouse binding fired in the sidecar: the same things the keys do. */
+  const onBinding = (id: string) => {
+    const tray = (label: string) =>
+      (
+        input.extras?.menuItems().find((item) => item.label === label)?.click as
+          | (() => void)
+          | undefined
+      )?.();
+    if (id === "wake") loop?.activate("wake");
+    else if (id === "mute") toggleMute();
+    else if (id === "stop") {
+      pill.on({ type: "dismissed" });
+      input.onDismiss?.();
+    } else if (id === "dictation") sidecar?.toggle();
+    else if (id === "ask") tray("Ask Baton…");
+    else if (id === "clear") tray("Clear the screen");
+  };
   const onDictation = (event: DictationEvent) => {
+    if (event.ev === "binding") return onBinding(event.id);
+    if (event.ev === "configured") mouseHookReady = event.mouse === true;
     setRecording(event.ev === "recording");
     if (event.ev === "recording") {
       focusedApp = { exe: event.app ?? "", title: event.title ?? "" };
@@ -870,7 +891,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
-      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot") collecting = true;
+      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot")
+        collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
@@ -1211,7 +1233,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         isDefault: row.isDefault,
         conflictsWith: row.conflictsWith,
       })),
-      mouseReady: false,
+      mouseReady: mouseHookReady,
       usage: input.sessions?.usage() ?? [],
       lifecycle,
       paths: [
