@@ -167,6 +167,7 @@ import {
   noticeLine,
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
+import { loginItemOn, setLoginItem } from "./loginItem.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -490,7 +491,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // Renamed from Baton: drop the old login entry, and write the one he asked for for the new exe.
   if (input.platform === "win32") {
     Electron.app.setLoginItemSettings({ openAtLogin: false, name: "Baton" });
-    if (settings.openAtLogin) Electron.app.setLoginItemSettings({ openAtLogin: true });
+    // The switch follows the real entry (the installer writes it too); an entry from an older exe is rewritten.
+    if (loginItemOn(Electron.app)) setLoginItem(Electron.app, true);
   }
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
@@ -2345,7 +2347,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         section: "On screen",
         label: "Start Tessaya when I sign in",
         kind: "toggle",
-        on: settings.openAtLogin,
+        on: loginItemOn(Electron.app),
         more: true,
       },
       {
@@ -2619,7 +2621,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.setEdge(value);
     } else if (id === "v.login") {
       save({ openAtLogin: on });
-      Electron.app.setLoginItemSettings({ openAtLogin: on });
+      setLoginItem(Electron.app, on);
     } else if (id === "v.check") void runAllChecks();
     else if (id === "v.micTest") testMic();
     else if (id === "v.file") {
