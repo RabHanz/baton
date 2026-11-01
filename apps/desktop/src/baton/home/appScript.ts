@@ -191,6 +191,17 @@ function home(p) {
   const st = $('div', 'stats'); const s2 = x.stats || {};
   for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.dictations || 0, 'dictations today'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
   right.appendChild($('div', 'day first', 'At a glance')); right.appendChild(st);
+  const ins = (S.extra && S.extra.insights) || null;
+  if (ins) {
+    right.appendChild($('div', 'day', 'Your dictation'));
+    const ig = $('div', 'stats');
+    const irow = (l, v) => { const r = $('div', 'stat kvr'); r.append($('span', null, l), $('b', 'sm', v)); return r; };
+    ig.appendChild(irow('Words today', String(ins.wordsToday)));
+    ig.appendChild(irow('Speed', ins.wpm === null ? 'Not enough yet' : ins.wpm + ' words a minute'));
+    ig.appendChild(irow('Day streak', ins.streak + (ins.streak === 1 ? ' day' : ' days')));
+    for (const a of ins.topApps) ig.appendChild(irow(a.app, a.count + (a.count === 1 ? ' dictation' : ' dictations')));
+    right.appendChild(ig);
+  }
   const mic = find('v.mic'), vo = find('s.voice'), ou = find('s.output');
   right.appendChild($('div', 'day', 'Your voice'));
   const vc = $('div', 'stats');
@@ -270,14 +281,14 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set();
+let hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false;
 function loadHistory() {
   const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
 }
 function hact(t, action) {
   if (action === 'delete') { hask = null; }
-  if (!real) { if (action === 'delete') { hrows = hrows.filter(x => x.id !== t.id); render(); } return; }
+  if (!real) { if (action === 'delete') { hrows = hrows.filter(x => x.id !== t.id); render(); } else { hnote = 'Copied.'; render(); } return; }
   if (action === 'retry') { hbusy.add(t.id); render(); }
   ipc.invoke('baton-history:act', t.id, action).then(r => {
     hbusy.delete(t.id);
@@ -288,21 +299,36 @@ function hact(t, action) {
   });
 }
 const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed', none: 'Heard' };
+function recordings(p) {
+  const keep = find('v.keepVoice'), space = find('v.keepSpace');
+  const items = ['v.keepVoice', 'v.keepDays', 'v.keepCap', 'v.keepSpace'].map(find).filter(Boolean);
+  if (!items.length) return;
+  const used = space ? String(space.hint || '').split('.')[0] : '';
+  const wrap = $('div', 'recs');
+  const head = $('button', 'rechead'); head.setAttribute('aria-expanded', String(hrec));
+  head.append($('b', null, 'Recordings'), $('span', 'hint', keep && keep.on ? 'On · ' + used : 'Off · your voice is not saved'), icon('chev', 12));
+  head.onclick = () => { hrec = !hrec; render(); }; wrap.appendChild(head);
+  if (hrec) wrap.appendChild(group('Voice recordings', items));
+  p.appendChild(wrap);
+}
 function historyPage(p) {
   if (hrows === null) loadHistory();
   const f = $('div', 'hsearch'); const q = $('input'); q.type = 'search'; q.id = 'in-hq'; q.placeholder = 'Search what you said'; q.setAttribute('aria-label', 'Search history'); q.value = hq;
-  q.oninput = () => { hq = q.value; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
+  q.oninput = () => { hq = q.value; hlimit = 40; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
   f.appendChild(q); p.appendChild(f);
   if (hnote) { const n = $('p', 'hint', hnote); n.style.margin = '0 0 10px'; p.appendChild(n); }
-  if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); return; }
-  if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Dictate, or talk to Baton, and it shows up here.')); return; }
+  if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); recordings(p); return; }
+  if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Things you say to Baton and dictate show up here.')); recordings(p); return; }
+  const shownRows = hrows.slice(0, hlimit);
+  const perDay = {}; for (const t of shownRows) { const d = dayLabel(t.at); perDay[d] = (perDay[d] || 0) + 1; }
   let day = null, g = null;
-  for (const t of hrows) {
-    const d = dayLabel(t.at); if (d !== day) { day = d; p.appendChild($('div', 'day', d)); g = $('div', 'group'); p.appendChild(g); }
-    const wrap = $('div', 'hrow'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
+  for (const t of shownRows) {
+    const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); p.appendChild(dh); g = $('div', 'group'); p.appendChild(g); }
+    const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
     const text = (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
     head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
-    wrap.appendChild(head);
+    const cp = $('button', 'hcopy', 'Copy'); cp.setAttribute('aria-label', 'Copy this transcript'); cp.onclick = () => hact(t, t.cleaned ? 'copy_cleaned' : 'copy_raw');
+    line.append(head, cp); wrap.appendChild(line);
     if (hopen.has(t.id)) {
       const body = $('div', 'hbody');
       const blk = (l, x) => { const b = $('div', 'hblock'); b.append($('div', 'hint', l), $('div', 'hpre', x)); return b; };
@@ -320,15 +346,17 @@ function historyPage(p) {
     }
     g.appendChild(wrap);
   }
+  if (hrows.length > hlimit) { const more = $('button', 'btn quiet', 'Show older (' + (hrows.length - hlimit) + ')'); more.style.marginTop = '12px'; more.onclick = () => { hlimit += 40; render(); }; p.appendChild(more); }
+  recordings(p);
 }
 function tabPage(p) {
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
   if (cur === 'usage') return usage(p);
+  if (cur === 'history') return historyPage(p);
   const items = tabControls(cur);
   if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet. Start one in Claude Code or T3 and it appears here.'));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
-  if (cur === 'history') historyPage(p);
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);
   if (cur === 'screen') {

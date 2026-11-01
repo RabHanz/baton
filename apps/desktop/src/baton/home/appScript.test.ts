@@ -1,6 +1,6 @@
 import * as NodeVm from "node:vm";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { APP_SCRIPT } from "./appScript.ts";
 
