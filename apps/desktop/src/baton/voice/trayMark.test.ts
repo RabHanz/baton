@@ -26,4 +26,11 @@ describe("mark", () => {
     expect(markSvg({ ...base, muted: true })).toContain("<line");
     expect(markSvg(base)).not.toContain("<line");
   });
+  it("puts a dot in the corner only when an update is ready", () => {
+    const plain = markBitmap(base, 32);
+    const badged = markBitmap({ ...base, badge: true }, 32);
+    expect(px(plain, 32, 25, 6)).toEqual(px(markBitmap(base, 32), 32, 25, 6));
+    expect(px(badged, 32, 25, 6)).toEqual([255, 255, 255, 255]);
+    expect(px(plain, 32, 25, 6)).not.toEqual([255, 255, 255, 255]);
+  });
 });

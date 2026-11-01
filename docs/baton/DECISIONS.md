@@ -3341,3 +3341,50 @@ saved wake-word list keeps Freya on, and one with a list keeps exactly that list
 Sebastian and Alfred (generic), the "Jarvis" speech prompt and the `jarvis|baton` prefix strip (a stock openWakeWord
 name), and everything under `scripts/baton/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
 Facts for launch: `docs/baton/LAUNCH.md`.
+
+## D137 — Baton updates itself from this repository's releases
+
+**What the app did already.** T3's `electron-updater` is in the desktop app (`updates/DesktopUpdates.ts`). In a
+packaged build it checks 15 s after start and every 4 minutes, with auto-download and install-on-quit both off, so
+nothing happened until someone pressed Download and then Install in T3's own web UI, which Baton's window did not show.
+The feed is baked in at build time: `resolveGitHubPublishConfig` reads `GITHUB_REPOSITORY`, which the Baton release
+workflow sets to `RabHanz/baton`, and `app-update.yml` carries that. So the feed was already this repository's, never
+upstream's. electron-updater reads the newest published, non-prerelease release; it takes the version from `latest.yml`,
+so the tag name `baton-v<version>` is fine. The one upstream link left, the startup-recovery message
+(`DesktopStartupRecovery.ts`), is now rewritten at release time by `apply-release-branding.sh`.
+
+**What Baton adds** (`apps/desktop/src/baton/update/`): a downloaded-in-the-background flow on top of that updater,
+with no change to upstream's files. When the updater reports a newer version Baton downloads it at once (install-on-quit
+was dropped in D139: it quits without relaunching). Baton's window shows "Updates" (More options while up to date, up
+front once an update is ready) with "Install and restart"; the tray gets "● Update ready: Install and restart" and a dot
+on the icon. A click while Baton is speaking, listening past a wake word, dictating or driving waits for the quiet
+moment (checked every 5 s) and then installs. A quit by hand installs it too. The 4-minute check is upstream's and is
+left as is (it is a request for a small atom feed, not the API).
+
+**Unsigned.** The Windows NSIS build is not code-signed, so `app-update.yml` has no publisher name and
+electron-updater does not verify a signature on the update: it checks the SHA-512 in `latest.yml`, fetched over HTTPS
+from the same release as the installer. Anyone who can publish to the repository's releases can therefore ship code to
+every install, and a stolen GitHub token is a stolen fleet. Files fetched by the updater do not carry the web's
+mark-of-the-web, so SmartScreen warns on the first manual install only, not on updates. Signing (an Azure Trusted Signing
+or EV certificate, plus `publisherName`) is the fix, and is a Director decision with a cost.
+
+## D139 — An update restarts Baton itself, and says so first
+
+The report: an install at 15:58 left Baton down until 16:09, and it looked like a crash. Upstream installs with
+`quitAndInstall(silent, forceRunAfter)`, which relaunches; an install on quit did not, so Baton no longer installs on
+quit. Now, once an update is downloaded and Baton is quiet (not speaking, not past a wake word, not dictating, no
+assistant run), the window opens with "Baton is updating to X and restarts at HH:MM:SS. It reopens this window." and a
+Windows notification says "Restarting in 30 seconds"; the buttons are Restart now and Later (Later asks again in four
+hours). The notification's click is Restart now; Windows toasts from Electron carry no buttons, so Later is in the window.
+At the end of the 30 seconds it restarts only if still quiet, otherwise it waits for the end of the conversation
+(`update/updatePlan.ts`, tested). The install writes `baton-update-pending.json`; the next start reopens the window with
+"Updated to X." and a "Baton is back" notification, or says the update did not take.
+
+**Why it went down**, in `<logDir>/baton-lifecycle.ndjson` (2 MB, 3 files, written synchronously): `start`,
+`exiting` with the reason (update, quit), `exit`, `update-heads-up`, `restarted-after-update`, `before-quit`,
+`uncaught-exception` and `unhandled-rejection` with the stack, `render-process-gone` and `child-process-gone` with
+reason and exit code. A start that finds the previous run's `baton-running.json` still there writes
+`previous-run-ended-badly`: a crash, a kill or a power loss. Before this, nothing logged uncaught exceptions or a
+child process dying; renderer loss was only handled in the window code.
+
+**Not proven:** the real restart on Windows, the toast, and `forceRunAfter` bringing the app back, all tests-only.
