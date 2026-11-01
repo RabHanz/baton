@@ -90,6 +90,13 @@ describe("distinctInstanceInitials", () => {
     expect(distinctInstanceInitials(["Claude", "Codex"])).toEqual(["CL", "CO"]);
   });
 
+  it("tells apart the two instances both named Rabee in the real picker", () => {
+    // Rendered from the live picker: the default Claude instance and claudeAgent_rabee share a label.
+    expect(
+      distinctInstanceInitials(["Codex", "Rabee", "Optima", "Rabee", "Signzart", "Live session"]),
+    ).toEqual(["CO", "R1", "OP", "R2", "SI", "LS"]);
+  });
+
   it("numbers instances whose labels are identical", () => {
     expect(distinctInstanceInitials(["Rabee", "Rabee"])).toEqual(["R1", "R2"]);
   });
