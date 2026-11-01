@@ -3403,3 +3403,73 @@ and take the same paths as a click there: `onOpenThread`, and `herdrSend` for te
 renderer, the list fills in once T3's window has loaded its sessions view; until then the window says so and offers
 "Open sessions". A work session that is a T3 thread has no pane, so it has Open and no Send; replying there is T3's
 composer.
+
+## D142 — One shared conversation, kept on this computer
+
+`baton-conversation.ndjson` in the state folder: every turn with its time, route, what he said, the full reply (never
+cut), a note on what came of it, and what it was about (`target`, so "show it" and "tell it to" mean something).
+It survives a restart. Retrieval is the latest six turns in full plus a text search over the older ones
+(`packages/baton-shared/src/conversation.ts`, `apps/desktop/src/baton/conversation/conversationLog.ts`). It goes
+nowhere except inside the model calls that need it. Dictated words are not kept (D31): a dictation is a stub with its
+length. This is the memory of the assistant in D143, and until D143 ships it also feeds the router as before.
+
+## D143 — One assistant, not stages (design, before building)
+
+**Why.** "It couldn't type it because it doesn't have the context of all of its tools and memories and everything in
+one file." The router sends each sentence to answer, look, drive, operate or teach, each with its own session and a
+partial context, so no stage can do what another stage just said. Baton becomes one long-lived agent that holds the
+whole conversation and every tool, decides for itself and uses several tools in one turn.
+
+**The agent** is one warm session on the seam that exists: the user's own `claude` (`-p`, stream-json in and out, the
+operator session of D127) or `codex app-server`. It starts when Baton starts and again at a wake word, stays alive between
+turns, and is recycled after about 40 turns, six hours idle, or a failure; a new session is seeded from the
+conversation store (the last six turns in full, the current target, a one-paragraph summary of older days) so a restart or a
+recycle loses nothing. No separate router call. The router stays as the fallback behind the setting below.
+
+**Tools.** Baton's own tools are served by a local MCP server **inside Baton's main process**, streamable HTTP on
+127.0.0.1 with a random port and a per-session bearer token, passed with `--mcp-config` (Claude) or the Codex MCP
+config. Rejected: a stdio MCP server, which needs a second packaged program and a channel back to the main process for the
+screen, the pointer, the fleet and the store; and the harness's built-ins alone, which have no screen, no pointer, no
+sessions. The harness's own tools stay for what they do well: Read, Glob, Grep, Bash, Write, Edit, WebFetch, WebSearch.
+Baton's tools: `screen_capture` (the existing consent), `click`, `double_click`, `type_text`, `press_keys`, `scroll`,
+`drag`, `wait`, `sessions_list`, `session_show`, `session_send` (through the intent run, so the same §24 gates as typing
+it), `fleet_status` (answers from state, §20, never by interrupting a session), `dictation_start`, `dictation_stop`,
+`memory_search`, `remember_target`. The agent is told each turn the context the founding document's §14 ranks: the explicit
+target in the sentence, the current target of the conversation, the focused session, the focused window and field, then the
+most recent session; it asks a short question only when the ambiguity matters.
+
+**The gate does not change shape.** Every tool call, built-in or Baton's, reaches `judgeToolCall` (D127) before it runs,
+because the MCP tools execute in Baton's own process and the harness's go through the permission seam already there.
+Extended for the new tools: reading is allowed (`sessions_list`, `session_show`, `fleet_status`, `memory_search`, `wait`);
+`screen_capture` runs the unchanged capture consent; `click`, `scroll`, `double_click` are routine; `type_text` is
+routine, with no Run it, when it types plain text, which is the rule that makes "type what you said" work on the first
+try; it asks when the text trips the high-risk list or `dangerousCommand`, when the focused window is a shell or its
+class cannot be told (`shellCheck`), or when the turn has read something outside the conversation and the text did not come
+from it (text that is his words or Baton's own earlier reply, found in the store, counts as his); `press_keys` with Enter
+or a send, `drag`, and anything that deletes, sends, pays or publishes asks; `session_send` is allowed and left to the intent
+gates; dictation is local and reversible. High risk is a spoken yes or no, with the box beside it, default no when the
+question runs out; the wake word alone never authorises it (§24); a refusal is said in plain words, aloud and on the pill,
+and logged with its reason. The proof script grows a case for each new tool.
+
+**Before the model.** The wake word and STOP (and "cancel", "quiet") stay in the voice core, exactly as D122: they never wait
+on a model. Mute and the hotkeys too.
+
+**Fast first words.** The agent's reply streams: the first sentence goes to the speaker as soon as it ends, and the prompt
+tells it to say one short line before a tool that will take over a second ("Looking."), and to stay silent about tool churn
+(§20: progress silent; needs input, approval, completion and failure spoken). Speculative thinking at a pause comes later, as
+a follow-up, not in this build.
+_Target:_ from the end of his speech to the first sound of Baton's voice, **p50 1.5 s and p90 3 s for a plain answer**, and a
+spoken first line within 1.5 s p50 for a turn that uses tools. _Measured_ from `voice-turns.ndjson`: each agent turn writes
+`agent_turn {endOfSpeechAt, firstTokenMs, firstAudioMs, tools:[name, ms], totalMs, route:"agent"}`, and
+`scripts/baton/latency-report.mjs` prints p50, p90 and the slowest five for the last 50 turns. I run it on his laptop only
+after he has been told, and report the numbers, not a feeling.
+
+**Shipping.** Behind a setting, **One assistant (new)**, in Assistant, off by default, saved in the screen file as
+`oneAssistant`. Until it has been measured on his laptop and he agrees, the router is the default; then the default flips,
+and the router and its stages are deleted in a later change, not this one. Small pushes, each with `patches.sh verify`:
+(1) the store wired to the existing stages, with every reply and every refusal reason in the turn log; (2) the MCP server,
+the tool table and the gate rules, with tests; (3) the warm session, seeding and recycling; (4) the voice wiring and the
+streaming; (5) the latency fields and the report; (6) the proof script extended.
+
+**Not decided here:** Codex's handling of MCP tool approvals through app-server; the gate runs in Baton's process either way,
+so the design does not depend on it, but the Codex path ships after the Claude one.
