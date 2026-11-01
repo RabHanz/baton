@@ -144,6 +144,14 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:job-grant",
       tag: BATON_JOB_WS_METHODS.jobGrant,
     }),
+    jobStop: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-stop",
+      tag: BATON_JOB_WS_METHODS.jobStop,
+    }),
+    jobSchedule: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-schedule",
+      tag: BATON_JOB_WS_METHODS.jobSchedule,
+    }),
     jobRevoke: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-revoke",
       tag: BATON_JOB_WS_METHODS.jobRevoke,

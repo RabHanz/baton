@@ -20,27 +20,83 @@ const status = (j: BatonJob): string =>
         ? SECTION[j.group]
         : `Stopped at its ${j.limitReached} limit`;
 
+/** Daily is the one schedule the window offers; the assistant can set any other. */
+export const DAILY_MINUTES = 1440;
+
+/**
+ * Per job: Approve (or Open T3) with Stop beside it; for a job that needs him, a line to answer or
+ * refine in; and, behind More, its schedule.
+ */
 export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeControl> =>
   ORDER.flatMap((group) =>
     jobs
       .filter((j) => j.group === group)
-      .map(
-        (j): HomeControl => ({
-          id: `j:${j.workSessionId}`,
-          section: SECTION[group],
-          label: j.title,
-          hint: `${status(j)}. May: ${j.permissionsSummary}`,
-          kind: "action",
-          button: j.phase === "awaiting_agreement" ? "Approve" : "Open T3",
-          ...(group === "needs_you" ? { lead: true } : {}),
-        }),
-      ),
+      .flatMap((j): ReadonlyArray<HomeControl> => {
+        const scheduled = j.terms.scheduleTaskId !== null;
+        return [
+          {
+            id: `j:${j.workSessionId}`,
+            section: SECTION[group],
+            label: j.title,
+            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. May: ${j.permissionsSummary}`,
+            kind: "action",
+            button: j.phase === "awaiting_agreement" ? "Approve" : "Open T3",
+            ...(group === "running" || group === "needs_you" ? { secondary: "Stop" } : {}),
+            ...(group === "needs_you" ? { lead: true } : {}),
+          },
+          ...(group === "needs_you"
+            ? [
+                {
+                  id: `ja:${j.workSessionId}`,
+                  section: SECTION[group],
+                  label: `Answer or refine: ${j.title}`,
+                  kind: "session",
+                  project: "",
+                  box: "",
+                  state: "waiting",
+                  stateLabel: "Needs you",
+                  urgent: true,
+                  canOpen: false,
+                  canSend: true,
+                } as const,
+              ]
+            : []),
+          ...(j.phase === "approved"
+            ? [
+                {
+                  id: `js:${j.workSessionId}`,
+                  section: SECTION[group],
+                  label: `${j.title}: run it every day`,
+                  hint: scheduled
+                    ? "It runs again each day in its own thread and reports there."
+                    : "Off. Each run reports in the job's own thread.",
+                  kind: "action",
+                  button: scheduled ? "Turn off" : "Run daily",
+                  more: true,
+                } as const,
+              ]
+            : []),
+        ];
+      }),
   );
 
-/** The job a row's action is about, and whether the action is approval. */
+/** What a row's action is about: approval, stop, the schedule, or an answer typed in. */
 export const jobAction = (jobs: ReadonlyArray<BatonJob>, id: string) => {
-  const job = jobs.find((j) => id === `j:${j.workSessionId}`);
-  return job === undefined
-    ? null
-    : ({ id: job.workSessionId, approve: job.phase === "awaiting_agreement" } as const);
+  const match = /^(j|ja|js):(.+?)(:later)?$/.exec(id);
+  const job = match === null ? undefined : jobs.find((j) => j.workSessionId === match[2]);
+  if (match === null || job === undefined) return null;
+  const kind = match[1];
+  return {
+    id: job.workSessionId,
+    kind:
+      kind === "ja"
+        ? "answer"
+        : kind === "js"
+          ? "schedule"
+          : match[3] === undefined
+            ? "primary"
+            : "stop",
+    approve: job.phase === "awaiting_agreement",
+    scheduled: job.terms.scheduleTaskId !== null,
+  } as const;
 };
