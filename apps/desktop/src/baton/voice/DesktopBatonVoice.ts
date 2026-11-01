@@ -1384,6 +1384,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             detail?: string;
           };
           const words: Record<string, string> = {
+            "replaced-by-update": "Baton was replaced by an update",
             "previous-run-ended-badly":
               "The last run ended without a clean exit (a crash, a kill or a power loss)",
             "restarted-after-update": "Restarted after an update",

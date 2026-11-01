@@ -36,6 +36,24 @@ const appendRotating = (file: string, line: string): void => {
   }
 };
 
+/**
+ * What a run that left its marker behind means. Installing a new version over a running Baton stops
+ * it by force, so a different version at the next start is an update, not a crash; only the same
+ * version, or one we cannot tell, is called a bad end.
+ */
+export const classifyLeftover = (
+  left: { readonly version?: string } | null,
+  currentVersion: string,
+):
+  | { readonly kind: "none" }
+  | { readonly kind: "replaced-by-update"; readonly from: string; readonly to: string }
+  | { readonly kind: "ended-badly" } =>
+  left === null
+    ? { kind: "none" }
+    : left.version !== undefined && left.version !== currentVersion
+      ? { kind: "replaced-by-update", from: left.version, to: currentVersion }
+      : { kind: "ended-badly" };
+
 export const createLifecycleLog = (input: {
   readonly file: string;
   /** A small file that exists only while a run is alive. */
@@ -55,16 +73,24 @@ export const createLifecycleLog = (input: {
           return JSON.parse(NodeFS.readFileSync(input.runningFile, "utf8")) as {
             at?: string;
             pid?: number;
+            version?: string;
           };
         } catch {
           return {};
         }
       })()
     : null;
-  if (left !== null) {
+  const leftover = classifyLeftover(left, input.version);
+  if (leftover.kind === "replaced-by-update") {
+    write("replaced-by-update", {
+      from: leftover.from,
+      to: leftover.to,
+      startedAt: left?.at ?? null,
+    });
+  } else if (leftover.kind === "ended-badly") {
     write("previous-run-ended-badly", {
-      startedAt: left.at ?? null,
-      previousPid: left.pid ?? null,
+      startedAt: left?.at ?? null,
+      previousPid: left?.pid ?? null,
       meaning: "no clean exit was recorded: a crash, a kill or a power loss",
     });
   }
@@ -105,6 +131,6 @@ export const createLifecycleLog = (input: {
       write("exiting", { reason, ...(detail === undefined ? {} : { detail }) });
     },
     note: write,
-    previousRunEndedBadly: () => left !== null,
+    previousRunEndedBadly: () => leftover.kind === "ended-badly",
   };
 };
