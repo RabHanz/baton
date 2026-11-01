@@ -24,10 +24,10 @@ index d49d2cdebb7019662d8e885034b6473721f4dac2..4f40d3a9c546c98e65dfb911288f8589
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
 diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
-index 93347949e00fa77a8d320074d32ca7b54f572ea5..9cb79996ac4657c2e1e1157b8de93a4a28df89d9 100644
+index 0b5039bd623df3288a5f0ac6a29a4e273661ed24..b866a460a018b73982fab16a5c090dc43438d2fa 100644
 --- a/apps/desktop/src/app/DesktopLifecycle.ts
 +++ b/apps/desktop/src/app/DesktopLifecycle.ts
-@@ -17,6 +17,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
+@@ -20,6 +20,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
  import * as ElectronWindow from "../electron/ElectronWindow.ts";
  import * as DesktopState from "./DesktopState.ts";
  import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -35,7 +35,7 @@ index 93347949e00fa77a8d320074d32ca7b54f572ea5..9cb79996ac4657c2e1e1157b8de93a4a
  
  export class DesktopLifecycleRelaunchError extends Schema.TaggedError<DesktopLifecycleRelaunchError>()(
    "DesktopLifecycleRelaunchError",
-@@ -287,7 +288,11 @@ export const make = DesktopLifecycle.of({
+@@ -293,7 +294,11 @@ export const make = DesktopLifecycle.of({
          Effect.gen(function* () {
            const app = yield* ElectronApp.ElectronApp;
            const state = yield* DesktopState.DesktopState;
@@ -119,7 +119,7 @@ index 950ed972c6453bcfd61c293606cb9fa3913442f5..8541d572d782643e2046f904b165479e
 +
 +exposeBatonDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 8b6ab7c7d8a5ebe184aff870ca8820233a0548ed..720e1029484ce4214c54a0ee264f85ea005ff145 100644
+index 0dcb2b85ac2c544a7f60fed6bfb74949bff96fa5..c8e54bd5f251ec70d3bff512a39a95fbb415bda8 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -17,6 +17,7 @@ import { vi } from "vite-plus/test";
@@ -131,7 +131,7 @@ index 8b6ab7c7d8a5ebe184aff870ca8820233a0548ed..720e1029484ce4214c54a0ee264f85ea
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index c1c0cf5446cd256f604ffff82399e023d12412e6..c720ea6cceaee31ef2afb6fa92028a385f3bfa0d 100644
+index 10801089841d1179eaa3aa70268f21112377cbd4..da5af8d1a13ba36c56742385e6ebb92e64e38c55 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
 @@ -11,6 +11,7 @@ import * as Electron from "electron";
@@ -142,7 +142,7 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..c720ea6cceaee31ef2afb6fa92028a38
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
-@@ -372,6 +373,17 @@ export const make = Effect.gen(function* () {
+@@ -379,6 +380,17 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -160,7 +160,7 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..c720ea6cceaee31ef2afb6fa92028a38
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: 840,
-@@ -383,17 +395,7 @@ export const make = Effect.gen(function* () {
+@@ -390,17 +402,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -179,7 +179,7 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..c720ea6cceaee31ef2afb6fa92028a38
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -496,26 +498,6 @@ export const make = Effect.gen(function* () {
+@@ -503,26 +505,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -206,7 +206,7 @@ index c1c0cf5446cd256f604ffff82399e023d12412e6..c720ea6cceaee31ef2afb6fa92028a38
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -592,33 +574,65 @@ export const make = Effect.gen(function* () {
+@@ -599,33 +581,65 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };
