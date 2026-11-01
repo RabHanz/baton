@@ -1204,6 +1204,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const home = createBatonHome({
+    stateDir: input.stateDir,
     state: homeState,
     apply: applyHome,
     openSessions: input.openMainWindow,
