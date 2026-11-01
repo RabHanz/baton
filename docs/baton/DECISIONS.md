@@ -3442,3 +3442,6 @@ The Director's request: the assistant works efficiently with an executive and sp
 - **Workers report outcomes, not activity:** what changed against each desired outcome, the evidence, what is next, what blocks. The job card shows outcomes first.
 - **Cost by routing (value per unit of spend, not lowest spend):** mechanical and repeatable work goes to cheaper models, judgment and planning to the strong one; subscription jobs are capped by time and turns (D145); every job card shows what it used.
 - **Private by construction.** The user's own pack lives only in their user data folder. A test fails the build if the repository or the installer contains it. The public build ships a neutral default pack written from scratch (outcome first, frame the job, find the leverage, decide build or not, brief specialists, report outcomes) that a user replaces with their own.
+
+**D139, update label.** An install over a running Baton stops it by force, so the next start found its marker and logged a crash. The start now compares the
+marker's version with its own: a different version logs `replaced-by-update {from, to}`; `previous-run-ended-badly` is kept for the same version (or one it cannot tell).
