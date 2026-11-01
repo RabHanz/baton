@@ -89,6 +89,7 @@ const TranscriptRecord = Schema.Struct({
   sessionId: Schema.optional(Schema.String),
   aiTitle: Schema.optional(Schema.String),
   customTitle: Schema.optional(Schema.String),
+  entrypoint: Schema.optional(Schema.String),
   isSidechain: Schema.optional(Schema.Boolean),
   isMeta: Schema.optional(Schema.Boolean),
   isCompactSummary: Schema.optional(Schema.Boolean),
@@ -266,6 +267,8 @@ interface ClaudeFields {
   readonly title: string | undefined;
   readonly customTitle: string | null;
   readonly model: string | undefined;
+  /** Driven by a program (scheduled task, SDK), not typed into: never an importable thread. */
+  readonly automated: boolean;
 }
 
 const emptyClaudeFields: ClaudeFields = {
@@ -273,12 +276,14 @@ const emptyClaudeFields: ClaudeFields = {
   title: undefined,
   customTitle: null,
   model: undefined,
+  automated: false,
 };
 
 function foldClaudeFields(fields: ClaudeFields, record: DecodedTranscriptRecord): ClaudeFields {
   if (isHiddenClaudeRecord(record)) return fields;
   const model = record.message?.model?.trim();
   return {
+    automated: fields.automated || (record.entrypoint?.startsWith("sdk") ?? false),
     sessionId: record.sessionId?.trim() || fields.sessionId,
     title: record.aiTitle?.trim() || fields.title,
     // Claude flushes the AI title after the user's rename; an empty rename clears it.
@@ -1579,7 +1584,7 @@ export const make = Effect.gen(function* () {
             snapshot.records,
             snapshot.claudeFields,
           );
-          if (parsedThread === null) {
+          if (parsedThread === null || snapshot.claudeFields.automated) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
 
