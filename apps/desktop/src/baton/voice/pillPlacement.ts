@@ -65,3 +65,75 @@ export const parseSpots = (raw: unknown): Readonly<Record<string, Spot>> => {
   }
   return out;
 };
+
+export interface PlaceMargins {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/** Named places the pill snaps to. `fx` is across the free width; `y` is "top", "middle" or "bottom". */
+export const PLACES = [
+  { id: "top-left", label: "Top left", fx: 0, row: "top" },
+  { id: "top", label: "Top", fx: 0.5, row: "top" },
+  { id: "top-right", label: "Top right", fx: 1, row: "top" },
+  { id: "centre", label: "Centre", fx: 0.5, row: "middle" },
+  { id: "bottom-left", label: "Bottom left", fx: 0, row: "bottom" },
+  { id: "bottom", label: "Bottom", fx: 0.5, row: "bottom" },
+  { id: "bottom-right", label: "Bottom right", fx: 1, row: "bottom" },
+] as const;
+export type PlaceId = (typeof PLACES)[number]["id"];
+
+export const placePosition = (
+  area: Area,
+  size: { readonly width: number; readonly height: number },
+  id: PlaceId,
+  margins: PlaceMargins,
+): { readonly x: number; readonly y: number } => {
+  const place = PLACES.find((p) => p.id === id)!;
+  const x = Math.round(area.x + place.fx * Math.max(0, area.width - size.width));
+  const y =
+    place.row === "top"
+      ? area.y + margins.top
+      : place.row === "bottom"
+        ? area.y + area.height - size.height - margins.bottom
+        : Math.round(area.y + (area.height - size.height) / 2);
+  return { x, y };
+};
+
+/** Free placement is stepped to this many divisions of the free space, so a dragged pill lines up. */
+export const GRID_STEPS = 24;
+/** Near a named place the pill is pulled onto it. */
+export const MAGNET_PX = 40;
+
+/**
+ * Where a drag lands: onto a named place when near one, else onto the grid. `bypass` (Alt or Shift
+ * held) leaves the position alone, so free placement stays one key away. Always inside the area.
+ */
+export const snapPosition = (
+  area: Area,
+  size: { readonly width: number; readonly height: number },
+  at: { readonly x: number; readonly y: number },
+  options: { readonly bypass: boolean; readonly margins: PlaceMargins },
+): { readonly x: number; readonly y: number; readonly place: PlaceId | null } => {
+  const maxX = area.x + Math.max(0, area.width - size.width);
+  const maxY = area.y + Math.max(0, area.height - size.height);
+  const inside = {
+    x: Math.min(Math.max(at.x, area.x), maxX),
+    y: Math.min(Math.max(at.y, area.y), maxY),
+  };
+  if (options.bypass) return { x: Math.round(inside.x), y: Math.round(inside.y), place: null };
+  let best: { id: PlaceId; x: number; y: number; d: number } | null = null;
+  for (const place of PLACES) {
+    const p = placePosition(area, size, place.id, options.margins);
+    const d = Math.hypot(p.x - inside.x, p.y - inside.y);
+    if (d <= MAGNET_PX && (best === null || d < best.d)) best = { id: place.id, ...p, d };
+  }
+  if (best !== null) return { x: best.x, y: best.y, place: best.id };
+  const stepX = Math.max(1, (area.width - size.width) / GRID_STEPS);
+  const stepY = Math.max(1, (area.height - size.height) / GRID_STEPS);
+  return {
+    x: Math.round(Math.min(maxX, area.x + Math.round((inside.x - area.x) / stepX) * stepX)),
+    y: Math.round(Math.min(maxY, area.y + Math.round((inside.y - area.y) / stepY) * stepY)),
+    place: null,
+  };
+};
