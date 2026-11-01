@@ -276,7 +276,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   language: "en",
-  // Local until the Director rules on D31: "claude" sends flagged dictation to Anthropic (D105).
+  // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
   claudeBinary: "claude",
