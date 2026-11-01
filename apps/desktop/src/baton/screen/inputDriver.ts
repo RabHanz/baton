@@ -204,7 +204,10 @@ export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
         text: previous,
         timer: setTimeout(() => {
           saved = null;
-          void clipboard.writeText(previous);
+          // Only if it is still ours: a copy he or the assistant made since is not undone (Ctrl+C right after typing).
+          void Promise.resolve(clipboard.readText()).then((now) => {
+            if (now === text) return clipboard.writeText(previous);
+          });
         }, restoreMs),
       };
     }
