@@ -1,0 +1,138 @@
+diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
+index 0c63f78b16401661d35bfb99fcbe31a781c51091..91aa8b77ca606bf9881a8de79403cfbc722d0213 100644
+--- a/apps/mobile/src/features/threads/ThreadFeed.tsx
++++ b/apps/mobile/src/features/threads/ThreadFeed.tsx
+@@ -55,6 +55,7 @@ import {
+   type ScheduledTaskId,
+   type ScopedThreadRef,
+ } from "@t3tools/contracts";
++import { appendMentionedMedia } from "@t3tools/shared/mediaMentions";
+ import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
+ import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
+ import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
+@@ -1781,7 +1782,9 @@ function renderFeedEntry(
+     const { message } = entry;
+     const isUser = message.role === "user";
+     const presentation = resolveUserMessagePresentation(message);
+-    const renderedText = renderAssistantCitationsAsText(presentation.text);
++    const citedText = renderAssistantCitationsAsText(presentation.text);
++    const renderedText =
++      isUser || message.streaming ? citedText : appendMentionedMedia(citedText);
+     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
+     const timestampLabel = formatMessageTime(isUser ? message.createdAt : message.updatedAt);
+     const attachments = message.attachments ?? [];
+diff --git a/apps/server/scripts/dev-replay-agent.ts b/apps/server/scripts/dev-replay-agent.ts
+index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40a35d85e9 100644
+--- a/apps/server/scripts/dev-replay-agent.ts
++++ b/apps/server/scripts/dev-replay-agent.ts
+@@ -44,6 +44,7 @@ const FIXTURES = "../src/orchestration-v2/testkit/fixtures";
+ // Use acpRegistry transcripts: vendor transcripts carry state in frames this agent drops.
+ export const SCENARIOS = [
+   { id: "showcase", name: "Showcase", file: "./dev-replay/showcase_transcript.ndjson" },
++  { id: "media", name: "Image and video", file: "./dev-replay/media_transcript.ndjson" },
+   {
+     id: "todo-list",
+     name: "Plan and reads",
+diff --git a/apps/web/src/components/chat/TimelineAssistantRows.tsx b/apps/web/src/components/chat/TimelineAssistantRows.tsx
+index 458d84b9e982bd7ff75f220b040e19dc5829898c..172bb5640a2401f54f4afcd81d2d463422789ac2 100644
+--- a/apps/web/src/components/chat/TimelineAssistantRows.tsx
++++ b/apps/web/src/components/chat/TimelineAssistantRows.tsx
+@@ -1,3 +1,4 @@
++import { appendMentionedMedia } from "@t3tools/shared/mediaMentions";
+ import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
+ import { type RunId } from "@t3tools/contracts";
+ import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
+@@ -32,7 +33,11 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
+     row.projectedItem?.item.id,
+   );
+   const text = liveText ?? row.message.text;
+-  const messageText = text || (row.message.streaming ? "" : "(empty response)");
++  const messageText = row.message.streaming
++    ? text
++    : text
++      ? appendMentionedMedia(text)
++      : "(empty response)";
+ 
+   return (
+     <>
+diff --git a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
+index a440b62a584d24bdc4a4e62e942589ffc0be2789..3d561dc57f6088bd90bfcee9ad2b58f91852e2d5 100644
+--- a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
++++ b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
+@@ -500,7 +500,7 @@ export function LiveWorkEntryTimelineRow({
+   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
+ 
+   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
+-  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "") : "";
++  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
+   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
+ 
+   return (
+@@ -531,7 +531,7 @@ export function LiveWorkEntryTimelineRow({
+             </span>
+           }
+           label={
+-            <span className="line-clamp-4">
++            <span className={row.active ? "line-clamp-8" : "line-clamp-4"}>
+               <ChatMarkdown
+                 inline
+                 text={thoughtLine}
+diff --git a/packages/client-runtime/src/work-log/presentation.test.ts b/packages/client-runtime/src/work-log/presentation.test.ts
+index 28caf074e4fc010c249c9b03e0307e754f8e700e..a67d78bf1a93d02783708c85cb6119918ce0b23f 100644
+--- a/packages/client-runtime/src/work-log/presentation.test.ts
++++ b/packages/client-runtime/src/work-log/presentation.test.ts
+@@ -189,3 +189,12 @@ describe("resolveWorkEntryToolPresentation", () => {
+     ).toBeNull();
+   });
+ });
++
++describe("liveThoughtLine", () => {
++  it("keeps the whole thought only when asked", async () => {
++    const { liveThoughtLine } = await import("./presentation.ts");
++    const thought = "**Plan**\nFirst read it. Then run it.";
++    expect(liveThoughtLine(thought)).toBe("Plan");
++    expect(liveThoughtLine(thought, true)).toBe("Plan First read it. Then run it.");
++  });
++});
+diff --git a/packages/client-runtime/src/work-log/presentation.ts b/packages/client-runtime/src/work-log/presentation.ts
+index 1d884f0b54eb9b33bddd5d8a23ce3af93b05c587..ded798bc82c8d9682bd50566a0fee5b42d22d316 100644
+--- a/packages/client-runtime/src/work-log/presentation.ts
++++ b/packages/client-runtime/src/work-log/presentation.ts
+@@ -630,8 +630,11 @@ export function toolGroupSummaryKind(
+   return fallbackKinds.size === 1 ? fallbackKinds.values().next().value! : "mixed";
+ }
+ 
+-export function liveThoughtLine(markdown: string): string {
+-  const heading = /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
++/** `full` keeps the whole thought (the live one stays open); otherwise only its title or first sentence. */
++export function liveThoughtLine(markdown: string, full = false): string {
++  const heading = full
++    ? undefined
++    : /^\s*\*\*([^*\r\n]+)\*\*[ \t]*\r?(?:\n|$)/.exec(markdown)?.[1];
+   const text = (heading ?? markdown)
+     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+     .replace(/^[ \t]*(?:#{1,6}|[-*+]|\d+\.)[ \t]+/gm, "")
+@@ -639,7 +642,7 @@ export function liveThoughtLine(markdown: string): string {
+     .replace(/(^|[^\w*])[*_]([^*_\n]+)[*_](?![\w*])/g, "$1$2")
+     .replace(/\s+/g, " ")
+     .trim();
+-  if (heading !== undefined) return text;
++  if (full || heading !== undefined) return text;
+   const end = /[.?!]["'”’)]?(?=\s)/.exec(text);
+   return end ? text.slice(0, end.index + end[0].length) : text;
+ }
+diff --git a/packages/shared/package.json b/packages/shared/package.json
+index e3d0b2ce57cf7087590490a50ab4deb302dfe267..04f38a7080d87aed1004d76ed78911457424547d 100644
+--- a/packages/shared/package.json
++++ b/packages/shared/package.json
+@@ -299,6 +299,10 @@
+       "types": "./src/previewViewport.ts",
+       "import": "./src/previewViewport.ts"
+     },
++    "./mediaMentions": {
++      "types": "./src/mediaMentions.ts",
++      "import": "./src/mediaMentions.ts"
++    },
+     "./mediaPreview": {
+       "types": "./src/mediaPreview.ts",
+       "import": "./src/mediaPreview.ts"
