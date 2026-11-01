@@ -85,3 +85,15 @@ His words: "It is like a semi-sentient assistant that can do everything and keep
 Learn from Claude Duet, OpenAI dots, Meta Muse, Grok Bot, OpenClaw and Hermes: see `BATON-ASSISTANT-RESEARCH-2026-11-01.md`. "Every learning that we are doing across these projects and ventures should be kept as learnings in our brain and memory so it only improves from here as a constant feedback loop."
 
 It is our own prototype first, and soon a public release: "Maybe under a bit of a stricter license (which I have not decided yet) or maybe even just open source (MIT), so people can use it and improve upon it as well. I'm talking about Baton not VentureOS." Build so that a stranger can install it: no private defaults, no VentureOS dependency, and keep third-party licences clean.
+
+## Jobs start with a plan in their own thread (2026-11-01)
+
+He gives a job by voice. Baton opens a thread for it, runs planning mode first to understand his intent, and says briefly over voice that it is ready, pointing him to that thread. He refines there. Every change stays in that job's context, and it works from the refined plan.
+
+The pill is black, slim and minimal. His verdict on the white one: "all white and kind of blocky and bigger".
+
+## It thinks like an executive (2026-11-01)
+
+The assistant runs on an operating system the user owns: a pack of plain files, kept on the user's own machine and editable, that tells the top agent how to think. For any job it frames the job as a job to be done and its desired outcomes, finds the highest-leverage point, decides to build or not to build, and briefs specialist workers (for example technical, marketing, research and operations), each carrying the mental model for its role. Workers report outcomes, not activity. Cheap models do cheap work; the strong model is kept for judgment. The planning step of every job goes through this framing.
+
+The pack is private to its owner: Baton ships a neutral default that a user replaces with their own operating system, and nothing personal is in the repository or the installer.
