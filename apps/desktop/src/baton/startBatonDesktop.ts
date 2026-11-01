@@ -264,6 +264,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       onPillState: (phase) =>
         turnLog.note(phase === "idle" ? "pill_hidden" : "pill_state", { phase }),
       onPillDrag: (outcome) => turnLog.note("pill_drag", outcome),
+      onTestAudio: (event) => turnLog.note("test-audio", event),
       onBargeIn: () => {
         speaker.cancel();
         screen?.hush();

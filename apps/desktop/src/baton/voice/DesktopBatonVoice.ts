@@ -166,6 +166,7 @@ import {
   noticeLine,
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
+import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -276,7 +277,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   language: "en",
-  // Local until the Director rules on D31: "claude" sends flagged dictation to Anthropic (D105).
+  // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
   claudeBinary: "claude",
@@ -422,6 +423,8 @@ export interface DesktopBatonVoiceInput {
   /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
   readonly onPillState?: (phase: string) => void;
   /** How a pill drag ended, for the turn log. */
+  /** BATON_TEST_WAV is set: the start of the recording, each file as it begins, and its end, for the turn log. */
+  readonly onTestAudio?: (event: TestAudioEvent) => void;
   readonly onPillDrag?: (outcome: {
     readonly reason: string;
     readonly dx: number;
@@ -1368,6 +1371,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Both the wake capture and the dictation recorder follow the same choice.
   const onDeviceChange = () => {
+    // Recorded files are not a device to follow, and switching would play them from the start.
+    if ((process.env["BATON_TEST_WAV"] ?? "") !== "") return;
     void (async () => {
       const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
       if (source === null) return;
@@ -1600,20 +1605,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
-    audio = makeSidecarAudioInput({
-      binary,
-      listDevices: listSidecarDevices,
-      channelFor,
-      // Back on the same mic if it was a hiccup, on the next one if it left.
-      onLost: (reason, ranMs) => {
-        recordFailures = ranMs >= HEALTHY_RUN_MS ? 1 : recordFailures + 1;
-        const delay = restartDelayMs(recordFailures);
-        note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
-        pill.on({ type: "trouble", message: "Reconnecting your mic" });
-        render();
-        setTimeout(() => void restart(), delay);
-      },
-    });
+    // With BATON_TEST_WAV set, recorded files stand in for the microphone; unset, nothing changes.
+    const testSource = process.env["BATON_TEST_WAV"];
+    audio =
+      testSource !== undefined && testSource !== ""
+        ? makeTestAudioInput({ source: testSource, onEvent: (event) => input.onTestAudio?.(event) })
+        : makeSidecarAudioInput({
+            binary,
+            listDevices: listSidecarDevices,
+            channelFor,
+            // Back on the same mic if it was a hiccup, on the next one if it left.
+            onLost: (reason, ranMs) => {
+              recordFailures = ranMs >= HEALTHY_RUN_MS ? 1 : recordFailures + 1;
+              const delay = restartDelayMs(recordFailures);
+              note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
+              pill.on({ type: "trouble", message: "Reconnecting your mic" });
+              render();
+              setTimeout(() => void restart(), delay);
+            },
+          });
     pill.warm();
     devices = await audio.listDevices();
     choice = selectInputDevice(devices, preference());
