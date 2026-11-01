@@ -307,13 +307,18 @@ await task(
     await t.launch("explorer.exe", [dir]);
     await t.activate("explore");
     await t.waitTree(/explore/i, 15);
-    await t.tool("press_keys", { keys: ["ctrl", "shift", "n"], why: "new folder" });
-    await sleep(1000);
-    await t.tool("type_text", { text: "reports", why: "the folder name" });
-    await t.tool("press_keys", { keys: ["enter"], why: "name it" });
-    await sleep(1000);
-    t.check(NodeFS.existsSync(NodePath.join(dir, "reports")), "the folder reports exists on disk");
-    await t.tool("press_keys", { keys: ["f2"], why: "rename the selected folder" });
+    // The keyboard shortcut needs the file list focused, which a new window does not have; the tree names
+  // a "New folder" button, so the loop uses that.
+  const tree = await t.tool("ui_tree");
+  t.replan(`read the tree; it has ${tree.split("\n").find((l) => /new folder/i.test(l)) ?? "no New folder button"}`);
+  await t.tool("click_element", { label: "New folder", why: "make the folder" });
+  await sleep(1200);
+  await t.tool("type_text", { text: "reports", why: "the folder name" });
+  await t.tool("press_keys", { keys: ["enter"], why: "name it" });
+  await sleep(1000);
+  t.check(NodeFS.existsSync(NodePath.join(dir, "reports")), "the folder reports exists on disk");
+    await t.tool("click_element", { label: "reports", why: "select the folder to rename" });
+  await t.tool("press_keys", { keys: ["f2"], why: "rename the selected folder" });
     await sleep(600);
     await t.tool("type_text", { text: "reports-2026", why: "the new name" });
     await t.tool("press_keys", { keys: ["enter"], why: "rename" });
