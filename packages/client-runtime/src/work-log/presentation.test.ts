@@ -189,3 +189,12 @@ describe("resolveWorkEntryToolPresentation", () => {
     ).toBeNull();
   });
 });
+
+describe("liveThoughtLine", () => {
+  it("keeps the whole thought only when asked", async () => {
+    const { liveThoughtLine } = await import("./presentation.ts");
+    const thought = "**Plan**\nFirst read it. Then run it.";
+    expect(liveThoughtLine(thought)).toBe("Plan");
+    expect(liveThoughtLine(thought, true)).toBe("Plan First read it. Then run it.");
+  });
+});
