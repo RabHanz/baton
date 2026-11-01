@@ -1,0 +1,65 @@
+name: Baton server archive
+
+# Builds the Linux CLI/server archive a box runs (scripts/baton/release-build.sh) on a GitHub runner,
+# so deploys need no local build. Published as a prerelease on tag server-<version>: never "Latest",
+# so it cannot shadow the desktop release feed the updater reads. Fetch with scripts/baton/fetch-server-archive.sh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Server version, e.g. 0.1.5-baton.49 (tag server-<version> is created at the dispatched commit)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: baton-server-archive-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-baton\.[0-9]+$ ]] || { echo "Version must look like 0.1.5-baton.49, got: $VERSION" >&2; exit 1; }
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build resource monitor
+        run: |
+          cargo build --release --manifest-path native/resource-monitor/Cargo.toml
+          mkdir -p "$RUNNER_TEMP/resource-monitor/linux-x64"
+          cp native/resource-monitor/target/release/t3-resource-monitor "$RUNNER_TEMP/resource-monitor/linux-x64/"
+          echo "BATON_RESOURCE_MONITOR_DIR=$RUNNER_TEMP/resource-monitor" >> "$GITHUB_ENV"
+
+      - name: Build and smoke-test the archive
+        run: NODE_ENV=production bash scripts/baton/release-build.sh "$VERSION"
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd release-cli
+          sha256sum "t3-$VERSION-linux-x64.tar.gz" > "t3-$VERSION-linux-x64.tar.gz.sha256"
+          gh release create "server-$VERSION" "t3-$VERSION-linux-x64.tar.gz" "t3-$VERSION-linux-x64.tar.gz.sha256" \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Server $VERSION" --notes "Linux server archive built from $GITHUB_SHA."
