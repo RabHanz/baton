@@ -33,7 +33,7 @@ const ROUTINE = new Set([
 
 /** The parts that say what happens. A file's contents can say "delete everything" and do nothing. */
 const actionText = ({ input }: ToolCall): string =>
-  ["command", "file_path", "path", "notebook_path", "url", "cwd", "query"]
+  ["command", "file_path", "path", "notebook_path", "url", "cwd", "query", "text", "why", "keys", "target"]
     .flatMap((key) => {
       const value = input[key];
       return typeof value === "string" ? [value] : Array.isArray(value) ? value.map(String) : [];
@@ -46,14 +46,133 @@ export const describeToolCall = (call: ToolCall): string => {
   return (what.length > 0 ? what : call.tool).slice(0, 200);
 };
 
-export const judgeToolCall = (
-  call: ToolCall,
-  context: {
-    readonly actWithoutAsking: boolean;
-    /** This turn has read something, so what it does next may be that content's idea. */
-    readonly tainted: boolean;
-  },
-): ToolVerdict => {
+export interface JudgeContext {
+  readonly actWithoutAsking: boolean;
+  /** This turn has read something, so what it does next may be that content's idea. */
+  readonly tainted: boolean;
+  /** The window that has the keyboard is a command line, or cannot be told apart from one. */
+  readonly focusedShell?: boolean;
+  /** The text is his own words or Baton's own earlier reply, found in the conversation. */
+  readonly textIsHis?: boolean;
+}
+
+/** Baton's own tools, served to the one assistant (D143). Claude names them `mcp__baton__<name>`. */
+export const BATON_TOOL_PREFIX = "mcp__baton__";
+export const batonToolName = (tool: string): string =>
+  tool.startsWith(BATON_TOOL_PREFIX) ? tool.slice(BATON_TOOL_PREFIX.length) : tool;
+
+/** Look at state, or reversible and local: nothing leaves, nothing is changed. */
+const BATON_QUIET = new Set([
+  "sessions_list",
+  "session_show",
+  "fleet_status",
+  "memory_search",
+  "remember_target",
+  "wait",
+  "wait_for",
+  "dictation_start",
+  "dictation_stop",
+  "screen_capture",
+]);
+const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
+export const BATON_TOOLS: ReadonlySet<string> = new Set([
+  ...BATON_QUIET,
+  ...BATON_POINTER,
+  "drag",
+  "type_text",
+  "press_keys",
+  "session_send",
+]);
+/** What leaves the machine's own state and, run, taints what follows. */
+export const READS_OUTSIDE = new Set([
+  "Read",
+  "Glob",
+  "Grep",
+  "LS",
+  "Bash",
+  "WebFetch",
+  "WebSearch",
+  "commandExecution",
+  "screen_capture",
+  "session_show",
+]);
+
+const SENDS = /\b(enter|return)\b/i;
+
+const NAV_KEYS = new Set([
+  "up", "down", "left", "right", "arrowup", "arrowdown", "arrowleft", "arrowright",
+  "tab", "home", "end", "pageup", "pagedown", "backspace", "delete", "escape", "esc",
+]);
+const EDIT_LETTERS = new Set(["a", "c", "x", "v", "z", "y", "f"]);
+
+/**
+ * Keys that carry nothing out and open nothing: arrows, Tab, Home, End, page keys, Backspace, Delete,
+ * Escape, and Ctrl+A, C, X, V, Z, Y, F, each with Shift or Ctrl only. Anything with the Windows key
+ * or Alt, Ctrl+W, T, N, Q, R or L, Enter, an F-key, Task Manager, Clear browsing data, and any chord
+ * not sure to be one of these is not: after a read it asks (a Win+R or Alt+F4 is how an injection
+ * would start). Unknown is ask.
+ */
+export const keyIsNavigation = (keys: ReadonlyArray<string>): boolean => {
+  const parts = keys.map((k) => k.toLowerCase().trim());
+  const isMod = (k: string) => k === "ctrl" || k === "control" || k === "shift";
+  const mods = new Set<string>(parts.filter(isMod));
+  const rest = parts.filter((k) => !isMod(k));
+  if (rest.length !== 1) return false;
+  const main = rest[0]!;
+  const ctrl = mods.has("ctrl") || mods.has("control");
+  const shift = mods.has("shift");
+  if (NAV_KEYS.has(main)) {
+    if (main === "escape" || main === "esc") return !(ctrl && shift);
+    if ((main === "delete" || main === "backspace") && ctrl && shift) return false;
+    return true;
+  }
+  return EDIT_LETTERS.has(main) && ctrl;
+};
+
+const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): ToolVerdict => {
+  // Screen capture asks for its own consent where it runs; looking is not the risk.
+  if (BATON_QUIET.has(name)) return { verdict: "allow" };
+  const text = actionText(call);
+  const subject = highRiskSubject(text);
+  if (subject !== null) return { verdict: "ask", why: `This is ${subject}.`, risky: true };
+  if (dangerousCommand(text))
+    return { verdict: "ask", why: "This is a destructive command.", risky: true };
+  if (BATON_POINTER.has(name)) {
+    return sensitiveAction(text)
+      ? { verdict: "ask", why: "It deletes, sends, pays or publishes." }
+      : { verdict: "allow" };
+  }
+  const outgoing = context.tainted && context.textIsHis !== true;
+  switch (name) {
+    case "drag":
+      return { verdict: "ask", why: "It wants to drag something." };
+    case "type_text":
+      // Plain text into a box he named is routine and needs no Run it. A command line, or words
+      // that came from something it read, is not.
+      if (context.focusedShell === true) {
+        return { verdict: "ask", why: "It would type into a command line, where nobody reads it first." };
+      }
+      return outgoing ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };
+    case "press_keys":
+      if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
+        return { verdict: "ask", why: "That may send what is typed." };
+      }
+      if (sensitiveAction(text)) return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
+      // After a read, only navigation and editing keys are free (`keyIsNavigation`); the rest ask.
+      return context.tainted && !keyIsNavigation(Array.isArray(call.input["keys"]) ? call.input["keys"].map(String) : [])
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
+    case "session_send":
+      // The intent layer applies the same gates as typing it; a secret carried out is the risk here.
+      return outgoing ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };
+    default:
+      return { verdict: "ask", why: `It wants to use ${call.tool}.` };
+  }
+};
+
+export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdict => {
+  const baton = batonToolName(call.tool);
+  if (BATON_TOOLS.has(baton)) return judgeBatonTool(baton, call, context);
   if (READING.has(call.tool)) return { verdict: "allow" };
   const text = actionText(call);
   const subject = highRiskSubject(text);
