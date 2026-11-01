@@ -369,7 +369,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   {
     name: "job_split",
     description:
-      "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (engineering, marketing, research, operations) and routine: true for mechanical, repeatable work, which runs on the cheaper model. Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
+      "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (engineering, marketing, research, operations) and routine: true for mechanical, repeatable work, which runs on the cheaper model. after lists the earlier parts (numbered from 1) that must be done first; a part whose earlier part fails is never started. Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
     inputSchema: object(
       {
         id: { type: "string" },
@@ -383,6 +383,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
               goal: { type: "string", maxLength: 4000 },
               role: { type: "string", maxLength: 40 },
               routine: { type: "boolean" },
+              after: { type: "array", items: { type: "integer", minimum: 1 }, maxItems: 7 },
             },
             ["title", "goal"],
           ),
@@ -404,6 +405,9 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
             ? { role: part["role"] }
             : {}),
           ...(part["routine"] === true ? { routine: true } : {}),
+          ...(Array.isArray(part["after"])
+            ? { after: part["after"].filter((n): n is number => Number.isInteger(n) && n >= 1) }
+            : {}),
         };
       });
       return { text: await host.jobs("split", { id: str(a, "id", 200), parts: clean }) };
