@@ -3578,3 +3578,15 @@ It follows the app-v2 design language, with frames at real size.
 J2 contracts, RPC and the MCP tools; J3 the Jobs tab; J4 report-back; J5 permissions and the confirm path; J6 skills and
 notes; J7 scheduling; J8 the browser tools. Not decided here: which provider and model a worker uses by default (Claude on
 the account with most headroom, from the pool), and a per-job spend limit's unit before there is anything that spends.
+
+**D143 push 4.** The setting "One assistant (new)" (Assistant, More options; `oneAssistant` in the screen file, off). On, every
+sentence except stop and its kin (`instantDecision` control, which never waits on a model) goes to the one assistant:
+`ScreenCompanion` starts Baton's tool server and a warm session for it, with the host that does the work (screenshot through the
+existing consent, the pointer and keyboard through the input driver, sessions through the voice side's list and the intent path,
+dictation through the sidecar, memory search over the conversation file). The harness's own tools go through the same gate
+(`harnessGate`); Baton's tools through it inside the tool server, so a call is asked about once, in the tool. The reply streams:
+the first sentence goes to the speaker as it is written. Each turn writes `agent_turn` to `voice-turns.ndjson` with
+`firstTokenMs`, `firstAudioMs`, `totalMs` and the tools it used, measured from the transcript (the voice core does not hand over
+the moment his speech ended, so the time from his last word is these plus recognition; `latency-report.mjs` reads them).
+Stop interrupts the agent's turn (the session is dropped and the next one is re-seeded from the file). The router is unchanged
+and stays the default.

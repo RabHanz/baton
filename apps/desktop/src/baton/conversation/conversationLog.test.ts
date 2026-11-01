@@ -27,6 +27,7 @@ describe("the conversation file", () => {
     expect(block).toContain("earlier, possibly relevant");
     expect(block).toContain("And that is the end.");
     expect(block).not.toContain("dictated 40");
+    expect(second.search("the Focusrite gain")[0]?.said).toBe("explain the Focusrite gain");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

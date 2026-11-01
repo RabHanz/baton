@@ -32,6 +32,8 @@ export interface ConversationLog {
     readonly note?: string;
     readonly target?: ConversationTarget;
   }) => ConversationTurn;
+  /** Older turns that share words with the query, most relevant first (the agent's memory search). */
+  readonly search: (query: string, limit?: number) => ReadonlyArray<ConversationTurn>;
   /** What "it" means now, if the conversation has been about something. */
   readonly target: () => ConversationTarget | null;
   readonly recent: (count?: number) => ReadonlyArray<ConversationTurn>;
@@ -82,6 +84,7 @@ export const createConversationLog = (input: {
       append(entry);
       return entry;
     },
+    search: (query, limit = 5) => searchTurns(turns, query, { exclude: new Set(), limit }),
     target: () => currentTarget(turns),
     recent: (count = RECENT_TURNS) => turns.filter((t) => t.route !== "dictation").slice(-count),
     blockFor: (request) => {
