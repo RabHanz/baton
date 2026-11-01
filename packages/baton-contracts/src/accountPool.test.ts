@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  setClaudeAccountInstances,
   accountForInstance,
   accountRefusal,
   accountReturnsAt,
@@ -21,6 +22,12 @@ const spent = {
     },
   ],
 } as const;
+
+setClaudeAccountInstances({
+  claudeAgent_rabee: "4",
+  claudeAgent_optima: "5",
+  claudeAgent_signzart: "6",
+});
 
 describe("accountRefusal", () => {
   it("names when a spent account returns", () => {
