@@ -71,6 +71,8 @@ import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { brainRows, canChoose, type BrainStatus } from "./brainChoice.ts";
 import { detectBrains } from "./brainDetect.ts";
+import { routerLines, type ConversationRoute } from "@t3tools/baton-shared/conversation";
+import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -142,7 +144,6 @@ const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
 /** It arrives unasked while he may be typing, so a stray key cannot answer it. */
 const PAUSE_ARM_MS = 900;
-const RECENT_LINES = 8;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
 /**
@@ -272,6 +273,10 @@ export const startScreenCompanion = (input: {
   readonly onTimings?: (timings: TurnTimings) => void;
   /** Every action taken or refused, for the turn log. */
   readonly onAction?: (entry: Readonly<Record<string, unknown>>) => void;
+  /** Every reply and every refusal reason, for the turn log: what Baton said and why it would not. */
+  readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
+  /** The one conversation, shared with the voice side. Made here when none is given. */
+  readonly conversation?: ConversationLog;
   /** What each turn was given and did, for the lab's trace table. */
   readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
@@ -350,10 +355,39 @@ export const startScreenCompanion = (input: {
   let showing = 0;
 
   let actions: AssistantActions | null = null;
-  const recent: string[] = [];
-  const remember = (line: string) => {
-    recent.push(line.slice(0, 300));
-    recent.splice(0, Math.max(0, recent.length - RECENT_LINES));
+  /** One conversation for every route, on disk, in full (D142). */
+  const conversation =
+    input.conversation ??
+    createConversationLog({ file: NodePath.join(input.stateDir, "baton-conversation.ndjson") });
+  /** A reply is kept in full and logged in full, whatever route made it. */
+  const converse = (
+    route: ConversationRoute,
+    said: string,
+    reply: string,
+    extra: { readonly note?: string; readonly target?: string } = {},
+  ) => {
+    const label = extra.target ?? (titlesAllowed() ? focus?.label : undefined);
+    conversation.add({
+      route,
+      said,
+      reply,
+      ...(extra.note === undefined ? {} : { note: extra.note }),
+      ...(label === undefined ? {} : { target: { label } }),
+    });
+    input.onNote?.("reply", {
+      route,
+      said,
+      reply,
+      ...(extra.note === undefined ? {} : { note: extra.note }),
+    });
+  };
+  /** A refusal says why, aloud and on the pill, and is logged with its reason: never a silent no. */
+  const refuse = (kind: string, reason: string, said: string, where = "Baton") => {
+    say(reason);
+    linger(where, reason);
+    input.onActivity?.(null);
+    conversation.add({ route: "refusal", said, reply: reason, note: kind });
+    input.onNote?.("refusal", { kind, reason, said });
   };
 
   const session = (model: string, systemPrompt: string, timeoutMs?: number): VisionSession =>
@@ -595,6 +629,7 @@ export const startScreenCompanion = (input: {
     // He stopped it, and that ended the conversation under the question in flight.
     if (error instanceof SessionClosed) return;
     if (run === null && message.startsWith("Claude stopped")) return;
+    input.onNote?.("error", { message });
     say(message);
     linger("Baton", message);
     input.onActivity?.(null);
@@ -726,8 +761,7 @@ export const startScreenCompanion = (input: {
       );
       current.lastAt = Date.now();
       const reply = voice.finish(raw);
-      remember(`He said: ${goal}`);
-      remember(`You answered: ${reply}`);
+      converse("operate", goal, reply);
       input.onActivity?.(null);
       linger("Baton", reply);
     } finally {
@@ -819,8 +853,7 @@ export const startScreenCompanion = (input: {
       point: reply.point,
       reply: reply.spoken,
     });
-    remember(`He said: ${question}`);
-    remember(`You answered: ${reply.spoken}`);
+    converse(turn.shots.length > 0 ? "look" : "answer", question, reply.spoken);
     // A retry after [LOOK] streamed nothing, so the whole answer is spoken here.
     voice.finish(reply.spoken);
     input.onActivity?.(null);
@@ -927,7 +960,13 @@ export const startScreenCompanion = (input: {
   };
 
   const teach = async (goal: string) => {
-    if (!(await approveCapture(goal, "lesson"))) return;
+    if (!(await approveCapture(goal, "lesson"))) {
+      return refuse(
+        "capture_declined",
+        "All right, I won't look at your screen, so I can't teach that.",
+        goal,
+      );
+    }
     end();
     run = {
       mode: "teach",
@@ -944,7 +983,13 @@ export const startScreenCompanion = (input: {
   };
 
   const drive = async (goal: string) => {
-    if (!(await approveCapture(goal, "drive"))) return;
+    if (!(await approveCapture(goal, "drive"))) {
+      return refuse(
+        "capture_declined",
+        "All right, I won't look at your screen, so I can't do that for you.",
+        goal,
+      );
+    }
     end();
     const current: Extract<Run, { mode: "drive" }> = {
       mode: "drive",
@@ -984,10 +1029,17 @@ export const startScreenCompanion = (input: {
       driveReply: reply.spoken,
       plan: "plan" in parsed ? parsed.plan : parsed.error,
     });
+    converse("drive", goal, reply.spoken, {
+      note: "plan" in parsed ? `plan: ${parsed.plan.title}` : "no plan",
+    });
+    input.onNote?.("drive_plan", {
+      goal,
+      ...("plan" in parsed
+        ? { title: parsed.plan.title, steps: parsed.plan.actions.length }
+        : { error: parsed.error }),
+    });
     if ("error" in parsed) {
-      say(parsed.error);
-      input.onActivity?.(null);
-      linger("Baton", parsed.error);
+      refuse("no_plan", parsed.error, goal);
       return finish();
     }
     const plan = parsed.plan;
@@ -1001,9 +1053,7 @@ export const startScreenCompanion = (input: {
       const message = tooLong
         ? "That would paste more than I can show you first, so I won't."
         : "That would paste into a command line, where nobody reads it first. I won't do that.";
-      say(message);
-      input.onActivity?.(null);
-      linger("Baton", message);
+      refuse(tooLong ? "paste_too_long" : "shell_paste", message, goal);
       input.onAction?.({ by: "drive", plan: plan.title, outcome: "refused" });
       return finish();
     }
@@ -1057,6 +1107,7 @@ export const startScreenCompanion = (input: {
     if (response !== 0 || shellYes !== 0 || run !== current) {
       input.onActivity?.(null);
       await wipe();
+      if (run === current) input.onNote?.("drive_outcome", { goal, outcome: "he said no" });
       return finish();
     }
     await sleep(350); // the prompt leaves the screen first
@@ -1065,10 +1116,12 @@ export const startScreenCompanion = (input: {
       staleCheck: screensDifference(before, afterPrompt),
     });
     if (screensDifference(before, afterPrompt) > STALE) {
-      const message = "The screen changed since I made the plan, so I didn't run it. Ask again.";
-      say(message);
-      input.onActivity?.(null);
-      linger("Drive", message);
+      refuse(
+        "screen_changed",
+        "The screen changed since I made the plan, so I didn't run it. Ask again.",
+        goal,
+        "Drive",
+      );
       return finish();
     }
     // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
@@ -1150,6 +1203,11 @@ export const startScreenCompanion = (input: {
     const message = result.kind === "finished" ? "Done. Have a look." : result.reason;
     input.onTrace?.({ driveResult: result });
     input.onAction?.({ by: "drive", plan: plan.title, result: result.kind });
+    input.onNote?.("drive_outcome", {
+      goal,
+      outcome: result.kind,
+      ...(result.kind === "finished" ? {} : { reason: message }),
+    });
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
@@ -1173,7 +1231,7 @@ export const startScreenCompanion = (input: {
         running: runningMode(),
         answering: answering > 0 || speech.busy(),
         direct,
-        recent,
+        recent: routerLines(conversation.recent()),
         focused: titlesAllowed() ? (focus?.label ?? null) : null,
       },
       {
@@ -1208,7 +1266,7 @@ export const startScreenCompanion = (input: {
           return operate(decision.text, () => (firstAt ??= Date.now()));
         case "clarify":
           firstAt = Date.now();
-          remember(`You asked him: ${decision.text}`);
+          converse("clarify", "", decision.text);
           say(decision.text);
           linger("Baton", decision.text);
           return Promise.resolve();
@@ -1259,7 +1317,12 @@ export const startScreenCompanion = (input: {
     askFocus = null;
     const decision = await decideSaid(text, direct);
     const decidedAt = Date.now();
-    input.onTrace?.({ said: text, focused: focus?.label ?? null, decision, recent: recent.length });
+    input.onTrace?.({
+      said: text,
+      focused: focus?.label ?? null,
+      decision,
+      recent: conversation.recent().length,
+    });
     if (decision.route === "act") {
       input.onTimings?.({
         route: "act",
@@ -1275,6 +1338,8 @@ export const startScreenCompanion = (input: {
       };
     }
     if (decision.route === "refused") {
+      conversation.add({ route: "refusal", said: text, reply: decision.text, note: "guard" });
+      input.onNote?.("refusal", { kind: "guard", reason: decision.text, said: text });
       input.onTimings?.({
         route: "refused",
         source: decision.source,

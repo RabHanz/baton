@@ -3473,3 +3473,10 @@ streaming; (5) the latency fields and the report; (6) the proof script extended.
 
 **Not decided here:** Codex's handling of MCP tool approvals through app-server; the gate runs in Baton's process either way,
 so the design does not depend on it, but the Codex path ships after the Claude one.
+
+**D143 push 1.** Every reply (answer, look, teach, drive, operate, clarify, and the sessions side's act replies) goes into
+the one conversation file in full and into `voice-turns.ndjson` as `reply`; every refusal says why aloud and on the pill
+and goes into both as `refusal {kind, reason, said}`: a guard, a declined screen capture, no plan, a paste that is too long,
+a shell, a screen that changed. A drive logs its plan (`drive_plan`) and what came of it (`drive_outcome`), and errors are
+logged. The router reads its recent lines from the store, full replies cut only at 600 characters. A dictation is a stub
+with its length. `scripts/baton/latency-report.mjs <voice-turns.ndjson>` prints p50, p90 and the slowest turns.
