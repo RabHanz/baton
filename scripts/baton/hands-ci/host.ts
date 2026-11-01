@@ -19,7 +19,7 @@ export const ps = (script: string, timeoutMs = 60_000): Promise<string> =>
   new Promise((resolve, reject) => {
     NodeChildProcess.execFile(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script],
+      ["-NoProfile", "-NonInteractive", "-STA", "-Command", script],
       { windowsHide: true, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 },
       (error, stdout, stderr) =>
         error ? reject(new Error(`${error.message}\n${stderr}`)) : resolve(stdout.trim()),
@@ -35,6 +35,12 @@ const clipboard = {
     }
   },
   writeText: async (text: string) => {
+    if (text === "") {
+      await ps(
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()",
+      ).catch(() => undefined);
+      return;
+    }
     await ps(
       `Set-Clipboard -Value ([System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(text, "utf8").toString("base64")}')))`,
     );
