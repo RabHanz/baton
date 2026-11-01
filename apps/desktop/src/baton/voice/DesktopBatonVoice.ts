@@ -18,7 +18,6 @@ import {
   strictestCleanup,
   type CleanupLevel,
   type DictationMode,
-  type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
 import {
   createVoiceRouter,
@@ -75,7 +74,12 @@ import {
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
-import { importWisprDictionary, makeRewriter, readDictionary } from "./dictationRewriter.ts";
+import {
+  importWisprDictionary,
+  makeRewriter,
+  readDictionary,
+  writeDictionary,
+} from "./dictationRewriter.ts";
 import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
@@ -174,6 +178,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
 const REQUEST_TIMEOUT_MS = 20_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
+/** Long enough for him to fix a word in the field before it is read back. */
+const LEARN_READBACK_MS = 8_000;
 /** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
 const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
@@ -224,6 +230,8 @@ export interface VoiceCoreHooks {
   readonly stt: SttProvider;
   /** Everything the core reports, for the cue after a wake word. */
   readonly onEvent: (event: VoiceCoreEvent) => void;
+  /** "Add X to my dictionary": the reply to speak, or null when the words were something else. */
+  readonly vocabulary: (text: string) => Promise<string | null>;
 }
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
@@ -332,7 +340,60 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let releaseRecordingEscape: (() => void) | null = null;
   let lastDictation: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
-  let dictionary: ReadonlyArray<DictionaryEntry> = [];
+  let dictionary: ReadonlyArray<VocabularyEntry> = [];
+  let seenWords: SeenWords = {};
+  const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
+  try {
+    seenWords = JSON.parse(NodeFS.readFileSync(seenPath, "utf8")) as SeenWords;
+  } catch {}
+  const changeVocabulary = async (
+    change: (
+      entries: ReadonlyArray<VocabularyEntry>,
+      now: string,
+    ) => ReadonlyArray<VocabularyEntry>,
+  ) => {
+    dictionary = await writeDictionary(input.stateDir, (entries) =>
+      change(entries, new Date().toISOString()),
+    );
+  };
+  const saveSeen = () => {
+    try {
+      NodeFS.mkdirSync(NodePath.dirname(seenPath), { recursive: true });
+      NodeFS.writeFileSync(seenPath, JSON.stringify(seenWords));
+    } catch {}
+  };
+  /** Names and terms he keeps using join the vocabulary once they repeat. */
+  const learnWording = (text: string) =>
+    void changeVocabulary((entries, now) => {
+      const next = observeWording(
+        seenWords,
+        entries,
+        text,
+        now,
+        settings.wakeWords.map((w) => w.word),
+      );
+      seenWords = next.seen;
+      saveSeen();
+      return next.entries;
+    }).catch(() => undefined);
+  /** A few seconds later, what he changed in the field teaches the words he meant. */
+  const learnFromEdits = (written: string) => {
+    setTimeout(() => {
+      void readCaretContext(input.platform).then((around) => {
+        if (around === null || written.trim().length === 0) return;
+        const tail = around.before.slice(-(written.length + 2)).trim();
+        const fixes = correctionsBetween(written.trim(), tail);
+        if (fixes.length === 0) return;
+        return changeVocabulary((entries, now) =>
+          fixes.reduce((all, fix) => {
+            const next = learnCorrection(seenWords, all, fix, now);
+            seenWords = next.seen;
+            return next.entries;
+          }, entries),
+        ).then(saveSeen);
+      });
+    }, LEARN_READBACK_MS).unref();
+  };
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
   let audio: AudioInputProvider | null = null;
@@ -367,7 +428,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
       const app = await sidecar.foreground().catch(() => focusedApp);
       const { text } = await rewriter.clean({
-        raw: request.text,
+        raw: biasTranscript(request.text, dictionary),
         mode: chooseMode(app, settings.appModes),
         level: await levelNow(app),
       });
@@ -580,7 +641,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
   const deliver = async (raw: string, target: number | null | undefined) => {
     const { text } = await rewriter.clean({
-      raw,
+      raw: biasTranscript(raw, dictionary),
       mode: chooseMode(focusedApp, settings.appModes),
       level: await levelNow(focusedApp),
     });
@@ -781,6 +842,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       settings,
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
+      vocabulary: async (text) => {
+        const word = parseAddToDictionary(text);
+        if (word === null) return null;
+        await changeVocabulary((entries, now) =>
+          upsertEntry(entries, { phrase: word, replacement: null, source: "added" }, now),
+        );
+        return `Added ${word} to your dictionary.`;
+      },
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
