@@ -32,6 +32,10 @@ describe("history", () => {
     expect(history.list({ query: "sam" }).map((t) => t.id)).toEqual([a]);
     expect(history.list({ query: "50%" }).map((t) => t.id)).toEqual([b]);
     expect(history.list({ before: "2026-11-01T11:00:00.000Z" }).map((t) => t.id)).toEqual([a]);
+    const kept = [{ at: "t", raw: "what is fifty percent of eighty", cleaned: null, model: null }];
+    history.update(a, { versions: kept });
+    expect(history.get(a)?.versions).toEqual(kept);
+    expect(history.get(b)?.versions).toEqual([]);
     history.update(b, { cleaned: "What is 50% of 80?", status: "ok", error: null });
     expect(history.get(b)).toMatchObject({
       cleaned: "What is 50% of 80?",
