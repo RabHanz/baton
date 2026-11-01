@@ -16,14 +16,18 @@ describe("the Approvals area", () => {
           ref: "k1",
         },
       ],
-      true,
+      "ready",
     );
     expect(rows[0]).toMatchObject({ id: "a:p:j1", button: "Approve", secondary: "Deny" });
     expect(rows[1]).toMatchObject({ id: "a:s:k1", button: "Open T3" });
     expect(approvalAction("a:p:j1:later")).toEqual({ kind: "plan", ref: "j1", deny: true });
     expect(approvalAction("a:s:k1")).toEqual({ kind: "session", ref: "k1", deny: false });
     expect(approvalAction("a.load")).toBeNull();
-    expect(approvalControls([], true)[0]).toMatchObject({ id: "a.empty" });
-    expect(approvalControls([], false)[0]).toMatchObject({ id: "a.load" });
+    expect(approvalControls([], "ready")[0]).toMatchObject({ id: "a.empty" });
+    expect(approvalControls([], "loading")[0]).toMatchObject({ id: "a.loading" });
+    expect(approvalControls([], { error: "no window" })[0]).toMatchObject({
+      id: "a.load",
+      hint: "no window",
+    });
   });
 });

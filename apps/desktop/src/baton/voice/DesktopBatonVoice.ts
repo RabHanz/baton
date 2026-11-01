@@ -1748,20 +1748,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   let sessionsNote: string | null = null;
-  /** The job cards as the window last read them; null until he loads them once (no window is opened unasked). */
+  /** The job cards as the window last read them; null until the Jobs or Approvals tab has been opened once. */
   let jobsCache: ReadonlyArray<BatonJob> | null = null;
+  let jobsError: string | null = null;
+  let jobsLoading = false;
+  /** Opening the Jobs or Approvals tab asks for them, and they are kept fresh from then on. */
+  let jobsWanted = false;
   const refreshJobs = async () => {
-    const value = (await requestKept({ kind: "job", op: "list", args: {} })) as {
-      jobs?: ReadonlyArray<BatonJob>;
-    } | null;
-    const next = value?.jobs ?? [];
-    if (JSON.stringify(next) !== JSON.stringify(jobsCache)) {
-      jobsCache = next;
+    if (jobsLoading) return;
+    jobsLoading = true;
+    try {
+      const value = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+        jobs?: ReadonlyArray<BatonJob>;
+      } | null;
+      const next = value?.jobs ?? [];
+      jobsError = null;
+      if (JSON.stringify(next) !== JSON.stringify(jobsCache)) jobsCache = next;
+    } catch (error) {
+      jobsError = error instanceof Error ? error.message : String(error);
+    } finally {
+      jobsLoading = false;
       home.refresh();
     }
   };
+  const wantJobs = () => {
+    jobsWanted = true;
+    void refreshJobs();
+  };
   setInterval(() => {
-    if (jobsCache !== null) void refreshJobs().catch(() => undefined);
+    if (jobsWanted) void refreshJobs();
   }, JOBS_REFRESH_MS).unref();
 
   // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
@@ -1946,22 +1961,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     controls: [
       ...approvalControls(
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
-        jobsCache !== null,
+        jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...noteControls(notes.list()),
       ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
-        ? [
-            {
-              id: "j.load",
-              section: "Jobs",
-              label: "Load jobs",
-              hint: "Reads the jobs from your sessions window, which opens if it is not already.",
-              kind: "action" as const,
-              button: "Load",
-            },
-          ]
+        ? jobsError !== null
+          ? [
+              {
+                id: "j.load",
+                section: "Jobs",
+                label: "Could not read your jobs",
+                hint: jobsError,
+                kind: "action" as const,
+                button: "Try again",
+              },
+            ]
+          : [
+              {
+                id: "j.loading",
+                section: "Jobs",
+                label: "Reading your jobs",
+                kind: "check" as const,
+                status: "ok" as const,
+                detail: "Asking the sessions window; it opens if it is not already.",
+              },
+            ]
         : jobsCache.length === 0
           ? [
               {
@@ -2503,7 +2529,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const file = notes.list().find((n) => n.id === act.id)?.file;
         if (file !== undefined) void Electron.shell.openPath(file);
       }
-    } else if (id === "a.load") void refreshJobs().catch(() => undefined);
+    } else if (id === "a.load") wantJobs();
     else if (id.startsWith("a:")) {
       const act = approvalAction(id);
       if (act === null) return;
@@ -2513,7 +2539,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       } else void input.sessions?.act(`n:${act.ref}`, null);
-    } else if (id === "j.load") void refreshJobs().catch(() => undefined);
+    } else if (id === "j.load") wantJobs();
     else if (/^j[as]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);
       const job = (op: BatonJobBridgeRequest["op"], args: Record<string, unknown>) =>
@@ -2636,6 +2662,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     state: homeState,
     apply: applyHome,
     openSessions: input.openMainWindow,
+    onTab: (tab) => {
+      if (tab === "jobs" || tab === "approvals") wantJobs();
+    },
     appearance: () => settings.appearance,
   });
 
