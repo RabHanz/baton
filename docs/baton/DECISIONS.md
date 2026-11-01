@@ -3317,3 +3317,29 @@ it is not fine (`voice/selfChecks.ts`, pure). Microphone present, wake word mode
 screen capture permission (macOS; elsewhere none is needed) and disk free against the models still to fetch. Nothing runs
 on its own. The level is read from the stream the voice loop already has open, for four seconds, only after "Test
 microphone" is pressed, and only while Baton is listening; Baton never opens a microphone for it.
+
+## D137 — Baton updates itself from this repository's releases
+
+**What the app did already.** T3's `electron-updater` is in the desktop app (`updates/DesktopUpdates.ts`). In a
+packaged build it checks 15 s after start and every 4 minutes, with auto-download and install-on-quit both off, so
+nothing happened until someone pressed Download and then Install in T3's own web UI, which Baton's window did not show.
+The feed is baked in at build time: `resolveGitHubPublishConfig` reads `GITHUB_REPOSITORY`, which the Baton release
+workflow sets to `RabHanz/baton`, and `app-update.yml` carries that. So the feed was already this repository's, never
+upstream's. electron-updater reads the newest published, non-prerelease release; it takes the version from `latest.yml`,
+so the tag name `baton-v<version>` is fine. The one upstream link left, the startup-recovery message
+(`DesktopStartupRecovery.ts`), is now rewritten at release time by `apply-release-branding.sh`.
+
+**What Baton adds** (`apps/desktop/src/baton/update/`): a downloaded-in-the-background flow on top of that updater,
+with no change to upstream's files. When the updater reports a newer version Baton downloads it at once, and
+turns on install-on-quit only after the file exists. Baton's window shows "Updates" (More options while up to date, up
+front once an update is ready) with "Install and restart"; the tray gets "● Update ready: Install and restart" and a dot
+on the icon. A click while Baton is speaking, listening past a wake word, dictating or driving waits for the quiet
+moment (checked every 5 s) and then installs. A quit by hand installs it too. The 4-minute check is upstream's and is
+left as is (it is a request for a small atom feed, not the API).
+
+**Unsigned.** The Windows NSIS build is not code-signed, so `app-update.yml` has no publisher name and
+electron-updater does not verify a signature on the update: it checks the SHA-512 in `latest.yml`, fetched over HTTPS
+from the same release as the installer. Anyone who can publish to the repository's releases can therefore ship code to
+every install, and a stolen GitHub token is a stolen fleet. Files fetched by the updater do not carry the web's
+mark-of-the-web, so SmartScreen warns on the first manual install only, not on updates. Signing (an Azure Trusted Signing
+or EV certificate, plus `publisherName`) is the fix, and is a Director decision with a cost.

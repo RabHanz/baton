@@ -48,12 +48,17 @@ sedi 's/{ current: "t3code-v2", legacy: "T3 Code (Alpha)" }/{ current: "baton", 
 sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Baton";/' \
   apps/desktop/src/app/DesktopEnvironment.ts
 
+# The startup-recovery message sends him to a releases page: this repository's, not upstream's (D137).
+sedi 's#^const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";$#const RELEASES_URL = "https://github.com/RabHanz/baton/releases";#' \
+  apps/desktop/src/app/DesktopStartupRecovery.ts
+
 # Baton's mark over upstream's icon files, under the names the build already reads (D131).
 cp assets/baton/* assets/prod/
 
 grep -q 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
 grep -q 'artifactName: "Baton-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
 grep -q '"productName": "Baton"' apps/desktop/package.json
+grep -q 'RELEASES_URL = "https://github.com/RabHanz/baton/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
 grep -q 'APP_BASE_NAME = "Baton"' apps/desktop/src/app/DesktopEnvironment.ts
 grep -q '^    name: "baton",$' scripts/build-desktop-artifact.ts
 grep -q '"dev.rabee.baton",' apps/desktop/src/app/DesktopEnvironment.ts
