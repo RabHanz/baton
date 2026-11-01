@@ -135,6 +135,13 @@ export const startBatonDesktop = Effect.gen(function* () {
         platform: environment.platform,
         env: hostEnvironment,
       }),
+      voiceAssets: (modelsDir) =>
+        resolveVoiceAssets({
+          stateDir: environment.stateDir,
+          resourcesPath,
+          env: { BATON_VOICE_MODELS: hostEnvironment["BATON_VOICE_MODELS"] },
+          modelsDir,
+        }),
       makeCore: async ({ intent, onReply, settings, stt, onEvent }) =>
         (
           await createDesktopVoiceCore({
