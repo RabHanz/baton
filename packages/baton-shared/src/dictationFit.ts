@@ -30,7 +30,8 @@ const startsWithI = (word: string): boolean => /^I(?:['’](?:m|ll|ve|d))?$/.tes
 
 const isAcronym = (word: string): boolean => word.length > 1 && word === word.toUpperCase();
 
-const capitalised = (text: string): string => text.replace(/^(\P{L}*)(\p{L})/u, (_, p, c) => p + c.toUpperCase());
+const capitalised = (text: string): string =>
+  text.replace(/^(\P{L}*)(\p{L})/u, (_, p, c) => p + c.toUpperCase());
 
 const lowered = (text: string): string => {
   const word = firstWord(text);
