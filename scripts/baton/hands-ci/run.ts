@@ -36,6 +36,16 @@ interface Result {
 class Task {
   readonly steps: Step[] = [];
   readonly pids: number[] = [];
+  /** The apps these tests open; the ones that were not running before are closed after, by name from this list only. */
+  static readonly APPS = [
+    "notepad",
+    "CalculatorApp",
+    "Calculator",
+    "calc",
+    "mspaint",
+    "SystemSettings",
+  ];
+  before: number[] = [];
   evidence = "";
   readonly id: string;
   constructor(id: string) {
@@ -98,7 +108,7 @@ class Task {
     );
   }
 
-  async launch(command: string, args: string[] = []): Promise<number> {
+  async launch(command: string, args: string[] = [], title = ""): Promise<number> {
     const list = args.map((a) => `'${a.replaceAll("'", "''")}'`).join(",");
     const pid = Number(
       await ps(
@@ -108,6 +118,7 @@ class Task {
     this.pids.push(pid);
     this.steps.push({ kind: "act", text: `launch ${command} (pid ${pid})`, ms: 0 });
     await sleep(2500);
+    if (title !== "") await this.activate(title);
     return pid;
   }
 
@@ -118,7 +129,18 @@ class Task {
     await sleep(500);
   }
 
+  async snapshot() {
+    const ids = await ps(
+      `@(Get-Process -Name ${Task.APPS.join(",")} -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }) -join ','`,
+    ).catch(() => "");
+    this.before = ids.split(",").filter(Boolean).map(Number);
+  }
+
   async cleanup() {
+    await ps(
+      `Get-Process -Name ${Task.APPS.join(",")} -ErrorAction SilentlyContinue | Where-Object { @(${this.before.join(",") || "0"}) -notcontains $_.Id } | Stop-Process -Force -ErrorAction SilentlyContinue; ` +
+        `(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.LocationName -like 'explore*' } | ForEach-Object { $_.Quit() }`,
+    ).catch(() => undefined);
     for (const pid of this.pids)
       await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(
         () => undefined,
@@ -130,6 +152,7 @@ class Task {
 const results: Result[] = [];
 const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) => {
   const t = new Task(id);
+  await t.snapshot();
   const started = Date.now();
   let result: Result["result"] = "pass";
   let cause = "";
@@ -171,7 +194,7 @@ await task(
   "Type a sentence in Notepad and Save As to a named file, then read the file back",
   async (t) => {
     const file = NodePath.join(WORK, "fox.txt");
-    await t.launch("notepad.exe");
+    await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     await t.tool("type_text", { text: SENTENCE, why: "the sentence" });
     await t.tool("press_keys", { keys: ["ctrl", "s"], why: "save" });
@@ -192,7 +215,7 @@ await task(
   "menu-by-name",
   "Open Help > About Notepad by name and confirm the dialog",
   async (t) => {
-    await t.launch("notepad.exe");
+    await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     await t.tool("click_element", { label: "Help", why: "open the menu" });
     await t.tool("click_element", { label: "About Notepad", why: "the menu item" });
@@ -213,7 +236,7 @@ await task(
     const before = await ps(
       `(Get-ItemProperty -Path '${key}' -Name fWrap -ErrorAction SilentlyContinue).fWrap`,
     );
-    const pid = await t.launch("notepad.exe");
+    const pid = await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     await t.tool("click_element", { label: "Format", why: "open the menu" });
     const tree = await t.tool("ui_tree");
@@ -241,7 +264,7 @@ await task(
   "calculator",
   "Compute 12 x 34 in Calculator by clicking its buttons, and read the result",
   async (t) => {
-    await t.launch("calc.exe");
+    await t.launch("calc.exe", [], "Calculator");
     await t.waitTree(/calculator/i, 15);
     const names: ReadonlyArray<ReadonlyArray<string>> = [
       ["One", "1"],
@@ -304,7 +327,7 @@ await task(
   "paint-draw",
   "Draw a line in Paint and check, from screenshots, that the picture changed",
   async (t) => {
-    await t.launch("mspaint.exe");
+    await t.launch("mspaint.exe", [], "Paint");
     await t.waitTree(/paint/i, 15);
     const before = await host.shot("paint-before");
     await t.tool("drag", { x: 400, y: 380, to_x: 620, to_y: 460, why: "draw a line" });
@@ -320,7 +343,7 @@ await task(
   "replan-after-wrong-name",
   "Click a menu that does not exist, then re-plan from the tree and open Edit",
   async (t) => {
-    await t.launch("notepad.exe");
+    await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     const first = await t.tryTool("click_element", { label: "Modify", why: "guess at the menu" });
     t.check(first === null, "the wrong name was refused rather than clicked");
@@ -340,7 +363,7 @@ await task(
   "stop-after-two-failures",
   "Refuse a third identical failing action, without clicking anything",
   async (t) => {
-    await t.launch("notepad.exe");
+    await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     const outcomes: string[] = [];
     for (let i = 0; i < 4; i += 1) {
@@ -363,7 +386,7 @@ await task(
   "late-dialog",
   "Close Notepad with unsaved text, wait for the save question, and answer Don't Save",
   async (t) => {
-    const pid = await t.launch("notepad.exe");
+    const pid = await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     await t.tool("type_text", { text: "unsaved words", why: "something to lose" });
     await t.tool("press_keys", { keys: ["alt", "f4"], why: "close it" });
@@ -386,7 +409,7 @@ await task(
   "clipboard-readback",
   "Type text, select all and copy in Notepad, and read the clipboard back",
   async (t) => {
-    await t.launch("notepad.exe");
+    await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
     await ps("Set-Clipboard -Value 'SENTINEL'");
@@ -403,7 +426,7 @@ await task(
   "tree-shows-focus",
   "Read the window's controls and find the one with the keyboard",
   async (t) => {
-    await t.launch("notepad.exe");
+    await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     const tree = await t.tool("ui_tree");
     const focused = tree.split("\n").find((l) => /\(focused\)/.test(l)) ?? "";
