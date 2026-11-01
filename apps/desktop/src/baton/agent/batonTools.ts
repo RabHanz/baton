@@ -382,6 +382,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
               title: { type: "string", maxLength: 120 },
               goal: { type: "string", maxLength: 4000 },
               role: { type: "string", maxLength: 40 },
+              routine: { type: "boolean" },
             },
             ["title", "goal"],
           ),
