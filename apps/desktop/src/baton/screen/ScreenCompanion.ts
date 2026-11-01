@@ -1575,7 +1575,9 @@ export const startScreenCompanion = (input: {
     } catch (error) {
       // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
       if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
-      input.onNote?.("agent_fallback", { message: error instanceof Error ? error.message : String(error) });
+      input.onNote?.("agent_fallback", {
+        message: error instanceof Error ? error.message : String(error),
+      });
       const notice = "The one assistant couldn't answer, so the older router is handling this.";
       void show("Tessaya", notice);
       try {
