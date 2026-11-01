@@ -11,6 +11,7 @@
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
+  BATON_JOB_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
@@ -42,6 +43,8 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { BatonJobService } from "./BatonJobService.ts";
+import * as JobFlow from "./BatonJobFlow.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonIntentService } from "./IntentService.ts";
@@ -64,6 +67,7 @@ export type BatonServices =
   | BatonIntentService
   | AdoptedSessionService
   | BatonEngine
+  | BatonJobService
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry;
@@ -302,6 +306,25 @@ export const make = Effect.gen(function* () {
       ),
     [BATON_WS_METHODS.fleetGet]: (input) =>
       run(Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet }))),
+    [BATON_JOB_WS_METHODS.jobList]: () =>
+      run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
+    [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
+    [BATON_JOB_WS_METHODS.jobAgree]: (input) =>
+      run(Effect.map(JobFlow.agreeJob(input.id), (terms) => ({ terms }))),
+    [BATON_JOB_WS_METHODS.jobRefine]: (input) =>
+      run(Effect.map(JobFlow.refineJob(input), (terms) => ({ terms }))),
+    [BATON_JOB_WS_METHODS.jobGrant]: (input) =>
+      run(
+        Effect.flatMap(BatonJobService, (jobs) =>
+          Effect.map(jobs.grant(input.id, input.channel), (terms) => ({ terms })),
+        ),
+      ),
+    [BATON_JOB_WS_METHODS.jobRevoke]: (input) =>
+      run(
+        Effect.flatMap(BatonJobService, (jobs) =>
+          Effect.map(jobs.revoke(input.id, input.channel), (terms) => ({ terms })),
+        ),
+      ),
     [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>
       run(
         Effect.flatMap(OrchestrationRuleService, (rules) =>

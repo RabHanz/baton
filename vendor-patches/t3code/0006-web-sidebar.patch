@@ -161,7 +161,7 @@ index 1207b5017100d7300d7a161e676531d145f45a75..6948dbb89c00d446274b4beaf50de58b
          <ConfirmDialogHost />
          <CustomSnoozeDialogHost />
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
-index 27129f11128b3f4f4a0304b3484b0e9513e461d7..4b31700a7bf2555f156a720e0a4fbe2a79c3341d 100644
+index 27129f11128b3f4f4a0304b3484b0e9513e461d7..f1246c1cb630c2bf39797e2d3799d07f346ac040 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 +++ b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 @@ -2,6 +2,7 @@ import { ProviderDriverKind } from "@t3tools/contracts";
@@ -172,7 +172,7 @@ index 27129f11128b3f4f4a0304b3484b0e9513e461d7..4b31700a7bf2555f156a720e0a4fbe2a
    normalizeProviderAccentColor,
    providerAccentForegroundColor,
    providerInstanceInitials,
-@@ -78,3 +79,18 @@ describe("shouldShowInstanceBadge", () => {
+@@ -78,3 +79,25 @@ describe("shouldShowInstanceBadge", () => {
      expect(shouldShowInstanceBadge(disabled, [disabled])).toBe(false);
    });
  });
@@ -185,6 +185,13 @@ index 27129f11128b3f4f4a0304b3484b0e9513e461d7..4b31700a7bf2555f156a720e0a4fbe2a
 +      "CO",
 +    ]);
 +    expect(distinctInstanceInitials(["Claude", "Codex"])).toEqual(["CL", "CO"]);
++  });
++
++  it("tells apart the two instances both named Rabee in the real picker", () => {
++    // Rendered from the live picker: the default Claude instance and claudeAgent_rabee share a label.
++    expect(
++      distinctInstanceInitials(["Codex", "Rabee", "Optima", "Rabee", "Signzart", "Live session"]),
++    ).toEqual(["CO", "R1", "OP", "R2", "SI", "LS"]);
 +  });
 +
 +  it("numbers instances whose labels are identical", () => {
