@@ -6,7 +6,12 @@ import type {
 } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { batonRowStatusPill, buildBatonProjects, type EnvironmentLive } from "./batonProjects";
+import {
+  batonRowStatusPill,
+  batonSessionSummaries,
+  buildBatonProjects,
+  type EnvironmentLive,
+} from "./batonProjects";
 
 const repo = { key: "github.com/rabhanz/ventureos", label: "VentureOS" };
 
@@ -134,5 +139,59 @@ describe("batonRowStatusPill", () => {
   it("gives a quiet session no pill, as T3 gives a quiet thread none", () => {
     expect(batonRowStatusPill(row("idle"))).toBeNull();
     expect(batonRowStatusPill(row("ready"))).toBeNull();
+  });
+});
+
+describe("the sessions Baton's own window lists", () => {
+  it("reads state, thread and pane off the sidebar's rows, and nothing else", () => {
+    const groups = [
+      {
+        key: "p",
+        label: "VentureOS",
+        boxes: ["onnyx"],
+        accounts: [],
+        urgent: true,
+        rows: [
+          {
+            kind: "pane" as const,
+            key: "pane:e:1",
+            environmentId: "e" as never,
+            box: "onnyx",
+            title: "Scheduler",
+            state: "needs_input",
+            urgent: true,
+            updatedAt: null,
+            pane: "w1-p2",
+            prompt: null,
+          },
+          {
+            kind: "claude" as const,
+            key: "claude:s1",
+            environmentId: "e" as never,
+            box: "onnyx",
+            title: "Planner",
+            state: "running",
+            urgent: false,
+            updatedAt: "2026-11-01T10:00:00Z",
+            account: "alex",
+            where: "terminal",
+            pane: null,
+            sessionId: "s1",
+            prompt: null,
+          },
+        ],
+      },
+    ];
+    const [blocked, running] = batonSessionSummaries(groups, (row) =>
+      row.kind === "claude" ? row.account : null,
+    );
+    expect(blocked).toMatchObject({
+      state: "waiting",
+      urgent: true,
+      thread: null,
+      pane: { environmentId: "e", pane: "w1-p2" },
+      account: null,
+    });
+    expect(running).toMatchObject({ state: "working", pane: null, account: "alex" });
   });
 });
