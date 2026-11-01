@@ -68,6 +68,7 @@ import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import type { AssistantActions } from "../screen/ScreenCompanion.ts";
+import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
@@ -450,6 +451,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return { ...real, name: found.name ?? label };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,
+    folder: (window) => focusedFolder(window, input.platform),
     grammarPlaces: async (said) => {
       if (mainContents === null) return false;
       const resolution = await voiceIntent.resolve({
