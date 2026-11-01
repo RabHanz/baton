@@ -204,6 +204,8 @@ export const createVoicePill = (input: {
     readonly playing: (ms: number) => void;
   };
   readonly rest: () => boolean;
+  /** BATON_TEST_DIR: a PNG of the pill's own page at every state change, taken from inside the app. */
+  readonly captureDir?: string;
   readonly edge: () => "bottom" | "top";
   /** Where `baton-pill.json` is kept: the places he dragged it to. */
   readonly stateDir: string;
@@ -238,6 +240,7 @@ export const createVoicePill = (input: {
   let lastBeat = 0;
   let dragStarted: { readonly at: number; readonly x: number; readonly y: number } | null = null;
   let loadRetries = 0;
+  let shots = 0;
   let markers: Electron.BrowserWindow | null = null;
   let markerPlace: PlaceId | null = null;
   const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
@@ -357,7 +360,9 @@ export const createVoicePill = (input: {
     created.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(created);
     created.setIgnoreMouseEvents(true, { forward: true });
-    created.setContentProtection(true);
+    // Out of screenshots and recordings by design, which also hides it from OS-level capture tools; a test
+    // run (BATON_TEST_DIR) lets them see it.
+    created.setContentProtection(input.captureDir === undefined);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
     ready = loadDocument(created, PILL_DOCUMENT).then((loaded) => {
@@ -477,6 +482,23 @@ export const createVoicePill = (input: {
       }
     }
     if (previous !== state) input.onChange?.(state);
+    if (input.captureDir !== undefined && previous.phase !== state.phase) {
+      const dir = input.captureDir;
+      const phase = state.phase;
+      const n = (shots += 1);
+      // After the page has had a moment to paint what it was just told.
+      setTimeout(() => {
+        const target = window;
+        if (target === null || target.isDestroyed()) return;
+        void target.webContents
+          .capturePage()
+          .then((image) => {
+            NodeFS.mkdirSync(dir, { recursive: true });
+            NodeFS.writeFileSync(NodePath.join(dir, `pill-${phase}-${n}.png`), image.toPNG());
+          })
+          .catch(() => undefined);
+      }, 400).unref();
+    }
   };
 
   const push = (value: number) => {
