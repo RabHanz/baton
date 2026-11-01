@@ -1,7 +1,7 @@
 /**
  * The assistant in his own Chrome (D3). Reading is routine and taints the turn; a submit, send, purchase,
- * delete or settings change asks aloud; money movement is refused. Social sites need the setting, which
- * is off by default, and then every action asks, is rate-limited and is logged.
+ * delete or settings change asks aloud; money movement is refused. Social sites follow a setting (on, with a
+ * plain switch to turn it off), and every action there asks, is rate-limited and is logged.
  */
 import { highRiskSubject } from "./intentParser.ts";
 import { sensitiveAction } from "./screenCompanion.ts";

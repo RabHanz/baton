@@ -121,7 +121,7 @@ interface ScreenSettings {
   readonly oneAssistant: boolean;
   /** Let the assistant drive his own Chrome through Claude in Chrome (D3). Off until tried on his machine. */
   readonly browserChrome: boolean;
-  /** Social accounts count as sites it may act on, with every action asked. Off in the shipped build. */
+  /** Social sites are ones it may act on in Chrome, with every action asked. On; a switch turns it off. */
   readonly socialOn: boolean;
   /** He has picked what Baton works through, so the first-run card is done. */
   readonly brainChosen: boolean;
@@ -144,7 +144,7 @@ const DEFAULTS: ScreenSettings = {
   codexBinary: "codex",
   oneAssistant: true,
   browserChrome: false,
-  socialOn: false,
+  socialOn: true,
   brainChosen: false,
   assistantAccount: null,
 };
@@ -1876,10 +1876,9 @@ export const startScreenCompanion = (input: {
         id: "s.social",
         section: "Working for you",
         label: "Allow social accounts in Chrome",
-        hint: "Off, social sites are refused. On, reading is routine and every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson.",
+        hint: "Applies once Use my Chrome is on. Reading is routine; every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson. Off, social sites are refused.",
         kind: "toggle",
         on: settings.socialOn,
-        disabled: !settings.browserChrome,
         more: true,
       },
       {
@@ -1972,8 +1971,8 @@ export const startScreenCompanion = (input: {
         save({ oneAssistant: value === true });
       } else if (id === "s.chrome") {
         dropOperator();
-        save({ browserChrome: value === true, ...(value === true ? {} : { socialOn: false }) });
-      } else if (id === "s.social") save({ socialOn: value === true && settings.browserChrome });
+        save({ browserChrome: value === true });
+      } else if (id === "s.social") save({ socialOn: value === true });
       else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
