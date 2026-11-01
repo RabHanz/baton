@@ -142,6 +142,10 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(start, read).verdict).toBe("ask");
     expect(judgeToolCall(start, { ...read, textIsHis: true }).verdict).toBe("allow");
     expect(judgeToolCall(agree, { ...read, textIsHis: true }).verdict).toBe("ask");
+    const note = { tool: "mcp__baton__memory_remember", input: { text: "likes tea" } };
+    expect(judgeToolCall(note, off).verdict).toBe("allow");
+    expect(judgeToolCall(note, read).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__memory_forget", input: { id: "a" } }, off).verdict).toBe("ask");
     const grant = judgeToolCall({ tool: "mcp__baton__job_grant", input: { id: "j1", channel: "email" } }, off);
     expect(grant).toMatchObject({ verdict: "ask", risky: true });
   });

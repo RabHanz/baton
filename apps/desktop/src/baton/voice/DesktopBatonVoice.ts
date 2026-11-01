@@ -55,6 +55,8 @@ import {
   type BindingInput,
 } from "../bindings/bindings.ts";
 import { jobAction, jobControls } from "../sessions/jobRows.ts";
+import { createNotesStore } from "../memory/memoryNotes.ts";
+import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -1634,6 +1636,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }, MIC_TEST_MS).unref();
   };
 
+  const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   let sessionsNote: string | null = null;
   /** The job cards as the window last read them; null until he loads them once (no window is opened unasked). */
   let jobsCache: ReadonlyArray<BatonJob> | null = null;
@@ -1794,6 +1797,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     extra: homeExtra(),
     controls: [
+      ...noteControls(notes.list()),
       ...(jobsCache === null
         ? [
             {
@@ -2268,6 +2272,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         rememberNever([value]);
       dictionary = removeEntry(dictionary, value);
       saveDictionary(input.stateDir, dictionary);
+    } else if (id === "m.folder") {
+      NodeFS.mkdirSync(notes.dir, { recursive: true });
+      void Electron.shell.openPath(notes.dir);
+    } else if (noteAction(id) !== null) {
+      const act = noteAction(id)!;
+      if (act.remove) {
+        notes.remove(act.id);
+        home.refresh();
+      } else {
+        const file = notes.list().find((n) => n.id === act.id)?.file;
+        if (file !== undefined) void Electron.shell.openPath(file);
+      }
     } else if (id === "j.load") void refreshJobs().catch(() => undefined);
     else if (id.startsWith("j:")) {
       const act = jobAction(jobsCache ?? [], id);

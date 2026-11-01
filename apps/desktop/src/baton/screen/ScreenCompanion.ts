@@ -85,6 +85,7 @@ import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
+import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -395,6 +396,7 @@ export const startScreenCompanion = (input: {
   const conversation =
     input.conversation ??
     createConversationLog({ file: NodePath.join(input.stateDir, "baton-conversation.ndjson") });
+  const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   /** A reply is kept in full and logged in full, whatever route made it. */
   const converse = (
     route: ConversationRoute,
@@ -1511,15 +1513,18 @@ export const startScreenCompanion = (input: {
     dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
     memory: async (query) => {
       const hits = conversation.search(query);
-      return hits.length === 0
-        ? "Nothing earlier matches."
-        : hits
-            .map(
-              (t) =>
-                `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
-            )
-            .join("\n\n");
+      const kept = notes.search(query);
+      const found = [
+        ...kept.map((n) => `his note [id: ${n.id}]: ${n.text}`),
+        ...hits.map(
+          (t) =>
+            `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
+        ),
+      ];
+      return found.length === 0 ? "Nothing earlier matches." : found.join("\n\n");
     },
+    remember: async (text) => `Kept as a note [id: ${notes.add(text).id}].`,
+    forget: async (id) => (notes.remove(id) ? "Forgotten." : "There is no note by that id."),
     jobs: async (op, args) =>
       actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
     target: async (label, workSessionId) => {
@@ -1554,6 +1559,7 @@ export const startScreenCompanion = (input: {
       start: agentStart,
       conversation,
       clockLine: () => clockLine(new Date()),
+      notes: () => notesBlock(notes.list()),
       beginTurn: () => {
         agentTaint.reset();
         agentTools.length = 0;

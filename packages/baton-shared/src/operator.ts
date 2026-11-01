@@ -90,6 +90,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_refine",
   "job_agree",
   "job_grant",
+  "memory_remember",
+  "memory_forget",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -179,6 +181,13 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return outgoing || (name === "job_agree" && context.tainted)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    case "memory_remember":
+      // A note outlasts the conversation, so words that came from something it read are not kept unasked.
+      return outgoing
+        ? { verdict: "ask", why: "It would keep something it read as a note." }
+        : { verdict: "allow" };
+    case "memory_forget":
+      return { verdict: "ask", why: "It would delete one of your notes." };
     case "job_grant":
       // A standing permission is explicit and his alone: it asks every time.
       return { verdict: "ask", why: "It would give a job a standing permission.", risky: true };

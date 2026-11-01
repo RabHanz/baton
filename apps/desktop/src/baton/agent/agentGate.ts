@@ -99,7 +99,8 @@ export const createAgentGate = (input: {
         (name === "type_text" ||
           name === "session_send" ||
           name === "job_start" ||
-          name === "job_refine") &&
+          name === "job_refine" ||
+          name === "memory_remember") &&
         input.textIsHis(text),
     });
     const action = describeToolCall(call);
