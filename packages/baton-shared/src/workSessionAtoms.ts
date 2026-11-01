@@ -148,6 +148,10 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:job-stop",
       tag: BATON_JOB_WS_METHODS.jobStop,
     }),
+    jobSplit: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:job-split",
+      tag: BATON_JOB_WS_METHODS.jobSplit,
+    }),
     jobSchedule: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-schedule",
       tag: BATON_JOB_WS_METHODS.jobSchedule,
