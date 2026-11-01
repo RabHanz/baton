@@ -3516,3 +3516,51 @@ The Windows task set of the research note (six tasks, three runs each) runs only
 harness is built with a dry run on fixtures that touches no pointer, so the real run is one command.
 Push order from here: 4 the host and the voice wiring behind "One assistant (new)"; 5 the hands tools and the harness;
 6 the proof script for every new tool.
+
+## D145 — Jobs: Baton takes long work like an employee (design; builds after the hands loop)
+
+**A job is a T3 thread with a record.** The worker is an ordinary T3 thread on a server (`BatonEngine` makes it), so it
+survives Baton closing, shows in T3's phone app, and can be opened in T3. A server-side service, `BatonJobService`
+(`apps/server/src/baton`), owns the job index in `baton.sqlite`: id, title, goal, thread, project, environment, account,
+written permissions, standing grants, schedule link, created and last-activity times. Status is not stored: it is read from
+the thread through the §10 ladder (running, needs you, done, failed), so it cannot drift. The same service methods serve the
+desktop tool, the web and Baton windows, the phone and an MCP tool on the server, per AGENTS.md: `create`, `list` (and a
+stream), `get`, `answer`, `stop`, `schedule`, `grant`, `revoke`. A job started on his laptop's own backend ends if Baton is
+quit; started on a box (where the sessions live) it runs on. The default is a box, and a card says where.
+
+**Scheduled and recurring: T3's own service.** `ScheduledTaskService` already persists tasks (`scheduled_tasks` in the
+server's `statev2.sqlite`; interval of a minute or more, fixed time, or webhook; `runNow`, `setEnabled`, `list`/stream).
+A scheduled job is a task whose run starts or resumes the worker thread; the job record keeps the task id and shows its next
+run. No second scheduler. Note: `migrate-dev-db` drops `scheduled_tasks` so a dev server never runs his agents, so a copied
+job whose task is gone says "not scheduled on this machine" and never runs.
+
+**Reports back, asks in conversation.** A worker that needs input or approval raises a job event carrying the question
+text. The desktop agent speaks it or shows it (§20: needs you, completion and failure are spoken; progress is silent) and his
+answer goes back to that thread through the approval and input paths the sessions already have. Nothing is answered for him.
+
+**Written permissions, and nothing public without a yes.** Each job carries a plain-language list, stored with it and on its
+card: which folders and projects, which tools (read, edit, shell, web, sessions), a spend limit, and what it may send. Any
+public post or message (email, social, chat, a PR comment to others) needs his spoken or written yes every time, until he
+grants that job a standing permission: explicit, for that one job, revocable, and logged in the audit view (D44). This build
+makes the model and the confirm path and nothing that posts. His social accounts, phones, warm-up and posting rules belong to
+VentureOS; no integration without that manager's agreement, asked through the coordinator.
+
+**Learned skills and memory (Hermes-style).** A compact local store of skills (name, when to use, steps, learned from which
+job) that the agent writes after a job succeeds and reads before a similar one (the best matches are put in the worker's
+first prompt), plus long-term notes (short facts about him and his work) beside the conversation history and its search
+(D142). All of it is local, listed in the window, editable and deletable, and goes nowhere except inside the model calls
+that need it.
+
+**Hands: the browser as well as the screen.** Per step the agent picks the more reliable: for a web page, the page's DOM and
+accessibility tree first (T3's preview browser, `apps/server/src/preview`, which is already Baton's shared browser, D2; the
+real Chrome through Claude in Chrome stays for flows that need a real fingerprint, D3, laptop only); for a native app, UIA
+first and pixels last (D144). The context line tells the agent which kind of window has focus; the gate is the same.
+
+**The window.** A Jobs tab in the app-v2 design: cards in four groups (running, needs you, done, failed) with last activity,
+worker thread, account, project, the permissions in words, and Open in T3, Answer, Stop, Schedule and Standing permission.
+It follows the app-v2 design language, with frames at real size.
+
+**Order, behind "One assistant (new)", after pushes 4 to 6:** J1 the service, its table and the status read, with tests;
+J2 contracts, RPC and the MCP tools; J3 the Jobs tab; J4 report-back; J5 permissions and the confirm path; J6 skills and
+notes; J7 scheduling; J8 the browser tools. Not decided here: which provider and model a worker uses by default (Claude on
+the account with most headroom, from the pool), and a per-job spend limit's unit before there is anything that spends.
