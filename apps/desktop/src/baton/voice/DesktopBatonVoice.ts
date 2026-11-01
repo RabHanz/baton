@@ -1410,6 +1410,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const pill: VoicePill = createVoicePill({
+    ...((process.env["BATON_TEST_DIR"] ?? "") === ""
+      ? {}
+      : { captureDir: process.env["BATON_TEST_DIR"] as string }),
     cueGain: () => CUE_GAIN[settings.cues],
     cueGate: {
       // Never over his speech: wait up to 300 ms for him to stop, then drop the cue.
