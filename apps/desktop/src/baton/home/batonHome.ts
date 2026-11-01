@@ -270,7 +270,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
           : { x: remembered.x, y: remembered.y }),
         minWidth: 860,
         minHeight: 580,
-        title: "Baton",
+        title: "Tessaya",
         backgroundColor: THEME_GROUND[theme()],
         autoHideMenuBar: true,
         show: false,

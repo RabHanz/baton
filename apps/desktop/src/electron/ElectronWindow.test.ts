@@ -165,7 +165,7 @@ describe("ElectronWindow", () => {
   );
 
   it.effect(
-    "never falls back to a Baton companion window, so a reveal cannot land on the pill",
+    "never falls back to a Tessaya companion window, so a reveal cannot land on the pill",
     () =>
       Effect.gen(function* () {
         const electronWindow = yield* ElectronWindow.ElectronWindow;

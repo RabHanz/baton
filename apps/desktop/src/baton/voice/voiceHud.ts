@@ -37,7 +37,7 @@ export const routeFor = (utterance: VoiceUtterance): VoiceRoute =>
 const ROUTE_LABEL: Record<VoiceRoute, string> = {
   focused_session: "to the focused session",
   focused_field: "typed into the focused field",
-  fabric_intent: "to Baton",
+  fabric_intent: "to Tessaya",
 };
 
 /** The brief line under the dot after each utterance. */

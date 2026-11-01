@@ -87,7 +87,7 @@ export const runChecks = (i: CheckInput): ReadonlyArray<CheckResult> => {
           "level",
           "Microphone level",
           "warn",
-          i.mic.listening ? "Not tested yet." : "Not tested. Baton is not listening.",
+          i.mic.listening ? "Not tested yet." : "Not tested. Tessaya is not listening.",
           i.mic.listening
             ? "Press Test microphone and say a few words."
             : "Turn on Listen for my wake word, then press Test microphone.",
@@ -117,8 +117,8 @@ export const runChecks = (i: CheckInput): ReadonlyArray<CheckResult> => {
             "wake",
             "Wake word",
             "bad",
-            "Baton's listening models are missing.",
-            "Reinstall Baton.",
+            "Tessaya's listening models are missing.",
+            "Reinstall Tessaya.",
           )
         : i.wake.missing.length > 0
           ? not(
@@ -134,7 +134,7 @@ export const runChecks = (i: CheckInput): ReadonlyArray<CheckResult> => {
                 "wake",
                 "Wake word",
                 "warn",
-                "Models are there but Baton is not listening.",
+                "Models are there but Tessaya is not listening.",
                 "Turn on Listen for my wake word.",
               ),
   );
@@ -183,7 +183,7 @@ export const runChecks = (i: CheckInput): ReadonlyArray<CheckResult> => {
           "Screen capture",
           "bad",
           "Not allowed.",
-          "Allow Baton under Screen Recording in system settings.",
+          "Allow Tessaya under Screen Recording in system settings.",
         ),
   );
 
@@ -194,7 +194,7 @@ export const runChecks = (i: CheckInput): ReadonlyArray<CheckResult> => {
           "Disk space",
           "warn",
           "Could not read free space.",
-          "Check the drive Baton is installed on.",
+          "Check the drive Tessaya is installed on.",
         )
       : i.disk.freeMb < i.disk.neededMb + DISK_MARGIN_MB
         ? not(
