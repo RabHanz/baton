@@ -271,7 +271,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       },
       onDismiss: () => {
         speaker.cancel();
-        screen?.stop();
+        screen?.dismissQuietly();
       },
       audition: (name) => {
         const picked = (name ?? screen?.voice() ?? "anna") as PocketVoice | "system";
