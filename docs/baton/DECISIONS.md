@@ -3275,3 +3275,14 @@ reveals the raw ones. Each side owns its settings as data (`HomeControl`): the v
 (`v.` ids), the companion in `ScreenCompanion.ts` (`s.` ids). The tray right-click shrinks to status, listening, mute,
 wake now, Ask, Clear, Stop, Open Baton, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
 assistant's own account setting (queued separately). Copy ran through the uiux-stack copy check.
+
+## D132 — The assistant's own Claude login
+
+Baton's window, Working for you, More options: "Claude login for Baton". Default "Follow the claude login" changes
+nothing. A chosen login is a config directory (`~/.claude`, a `~/.claude-*` home, or a claude-swap session);
+`ScreenCompanion` sets `CLAUDE_CONFIG_DIR` to it, and removes `CLAUDE_CODE_OAUTH_TOKEN`, for the router, look, teach,
+drive and operator `claude` children, always still through `subscriptionEnv`, so the API is never billed. Logins are found
+by asking `claude auth status` of each directory (`assistantAccounts.ts`), at startup, on a choice and when the window
+opens; a turn reads the remembered answer and never waits. A login that is gone or signed out falls back to his own with
+one plain line on the pill. The address is masked until clicked. Not done: per-account limits in this list (the server's
+pool has them; the desktop does not reach it), and Codex has no account choice.

@@ -32,7 +32,13 @@ export type HomeControl =
       readonly value: string;
       readonly options: ReadonlyArray<HomeOption>;
     })
-  | (HomeControlBase & { readonly kind: "action"; readonly button: string });
+  | (HomeControlBase & { readonly kind: "action"; readonly button: string })
+  /** Shown masked until he clicks it. */
+  | (HomeControlBase & {
+      readonly kind: "secret";
+      readonly masked: string;
+      readonly revealed: string;
+    });
 
 export interface HomeState {
   readonly status: { readonly label: string; readonly tone: string; readonly device: string };

@@ -67,6 +67,7 @@ function control(c){
     if(c.options.length<=3&&c.options.reduce((n,o)=>n+o.label.length,0)<=32){const s=$('div','seg');for(const o of c.options){const b=$('button',null,o.label);b.setAttribute('aria-pressed',String(o.value===c.value));b.onclick=()=>set(c.id,o.value);s.appendChild(b);}return s;}
     const s=$('select');s.setAttribute('aria-label',c.label);for(const o of c.options){const p=$('option',null,o.label);p.value=o.value;p.selected=o.value===c.value;s.appendChild(p);}s.onchange=()=>set(c.id,s.value);return s;
   }
+  if(c.kind==='secret'){const b=$('button','btn',c.masked);b.setAttribute('aria-label','Show address');b.onclick=()=>{b.textContent=b.textContent===c.masked?c.revealed:c.masked;};return b;}
   const b=$('button','btn',c.button);b.onclick=()=>set(c.id,null);return b;
 }
 function row(c){
