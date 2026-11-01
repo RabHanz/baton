@@ -20,7 +20,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { batonMigrationManifest } from "./BatonMigrations.ts";
 import { migrationManifest } from "./Migrations.ts";
 
-const MIGRATIONS_DIR = NodePath.join(import.meta.dirname, "Migrations", "Tessaya");
+const MIGRATIONS_DIR = NodePath.join(import.meta.dirname, "Migrations", "Baton");
 
 /** The migrations this fork added. Upstream's are upstream's business. */
 const BATON_MIGRATIONS = batonMigrationManifest;

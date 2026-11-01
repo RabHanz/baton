@@ -239,7 +239,8 @@ export interface AssistantActions {
       | "stop"
       | "schedule"
       | "brief"
-      | "approvals",
+      | "approvals"
+      | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
   /** A session by id or name: what it is called, for the intent path. Null when none matches. */

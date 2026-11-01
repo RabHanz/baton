@@ -10,7 +10,15 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { agreeJob, noticePlan, refineJob, scheduleJob, startJob } from "./BatonJobFlow.ts";
+import {
+  agreeJob,
+  noticePlan,
+  refineJob,
+  scheduleJob,
+  splitJob,
+  startJob,
+  summarizeParts,
+} from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
@@ -19,6 +27,18 @@ import { layer as workSessionLayer } from "./WorkSessionService.ts";
 const launched: BatonThreadLaunch[] = [];
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
+const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
+const BRIEF = [
+  "Job brief",
+  "The job: x",
+  "Desired outcomes",
+  "Leverage point",
+  "Build or do not build",
+  "Steps",
+  "Specialists",
+  "Reversibility",
+  "Permissions",
+].join("\n");
 
 const serverConfig = Layer.succeed(ServerConfig.ServerConfig, {
   dbPath: NodePath.join(NodeOS.tmpdir(), "baton-flow-test", "state.sqlite"),
@@ -44,6 +64,7 @@ const layer = it.layer(
       launch: (launch) => (launched.push(launch), launch.threadId ?? null),
       sent,
       shells,
+      messages,
     }),
   ).pipe(Layer.provideMerge(workSessionLayer), Layer.provideMerge(SqlitePersistenceMemory)),
 );
@@ -112,14 +133,20 @@ layer("BatonJobFlow", (it) => {
           { id: ta, status: "completed" } as OrchestrationV2ThreadShell,
           { id: tb, status: "completed" } as OrchestrationV2ThreadShell,
         );
+        // A plan with no job brief is asked for it once, and is not ready yet.
+        messages.push({ role: "assistant", text: "I will just do it." });
         yield* noticePlan(ta);
-        yield* noticePlan(tb);
+        assert.strictEqual((yield* jobs.terms(a))?.phase, "drafting_plan");
+        assert.include(sent.at(-1)?.text ?? "", "Show the job brief");
+        assert.strictEqual(sent.length, before + 1);
+        // Asked once only: the second time the plan stands as it is.
+        yield* noticePlan(ta);
         assert.strictEqual((yield* jobs.terms(a))?.phase, "awaiting_agreement");
+        messages.length = 0;
+        messages.push({ role: "assistant", text: BRIEF });
+        yield* noticePlan(tb);
         assert.strictEqual((yield* jobs.terms(b))?.phase, "approved");
-        assert.deepEqual(
-          sent.slice(before).map((m) => m.threadId),
-          [tb],
-        );
+        assert.strictEqual(sent.slice(before).filter((m) => m.threadId === tb).length, 1);
       }),
   );
 
@@ -140,5 +167,92 @@ layer("BatonJobFlow", (it) => {
       assert.strictEqual(off?.scheduleTaskId, null);
       assert.strictEqual((yield* jobs.terms(id))?.scheduleTaskId, null);
     }),
+  );
+
+  it.effect(
+    "splits an agreed job into agreed parts, and writes one summary when they are all in",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const parent = WorkSessionId.make("job-flow-4");
+        const { threadId } = yield* startJob({
+          id: parent,
+          projectId: ProjectId.make("project-site"),
+          title: "Site",
+          goal: "do the site",
+          permissions: {
+            folders: ["~/site"],
+            projects: [],
+            tools: ["read" as const, "edit" as const],
+          },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        const shell = (id: ThreadId) =>
+          ({
+            id,
+            status: "completed",
+            modelSelection: { instanceId: "claude", model: "sonnet" },
+          }) as unknown as OrchestrationV2ThreadShell;
+        shells.push(shell(threadId));
+        assert.lengthOf(yield* splitJob({ id: parent, parts: [{ title: "A", goal: "do a" }] }), 0);
+        yield* agreeJob(parent);
+        const before = launched.length;
+        const started = yield* splitJob({
+          id: parent,
+          parts: [
+            { title: "Copy", goal: "write the copy", role: "marketing", routine: true },
+            { title: "Code", goal: "build the page" },
+          ],
+        });
+        assert.lengthOf(started, 2);
+        const mine = launched.slice(before);
+        assert.deepEqual(
+          mine.map((l) => l.interactionMode),
+          ["default", "default"],
+        );
+        assert.include(mine[0]?.text ?? "", "Your role (marketing)");
+        assert.include(mine[0]?.text ?? "", "already agreed");
+        // Routine work runs on the cheap model of the routing table; the rest on the parent's.
+        assert.deepEqual(
+          mine.map((l) => l.modelSelection.model),
+          ["haiku", "sonnet"],
+        );
+        const parts = yield* jobs.parts(parent);
+        assert.deepEqual(
+          parts.map((p) => [p.parentId, p.phase, p.permissions.tools.length]),
+          [
+            [parent, "approved", 2],
+            [parent, "approved", 2],
+          ],
+        );
+        const entry = (id: string, state: string) =>
+          ({
+            workSessionId: id,
+            title: id,
+            lifecycle: "active",
+            state,
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [],
+            synopsis: null,
+          }) as never;
+        const sentBefore = sent.length;
+        const running = [
+          entry(parent, "working"),
+          entry(parts[0]!.workSessionId, "done_unseen"),
+          entry(parts[1]!.workSessionId, "working"),
+        ];
+        assert.isFalse(yield* summarizeParts(parent, running));
+        const done = [
+          entry(parent, "working"),
+          entry(parts[0]!.workSessionId, "done_unseen"),
+          entry(parts[1]!.workSessionId, "failed"),
+        ];
+        assert.isTrue(yield* summarizeParts(parent, done));
+        assert.isFalse(yield* summarizeParts(parent, done));
+        assert.lengthOf(sent.slice(sentBefore), 1);
+        assert.include(sent.at(-1)?.text ?? "", "Summary of the parts:");
+        assert.include(sent.at(-1)?.text ?? "", "1 of 2 failed");
+      }),
   );
 });

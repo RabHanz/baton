@@ -75,6 +75,7 @@ export function BatonSidebarSection(props: {
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
   const jobRefine = useAtomCommand(batonWorkSessions.jobRefine, quiet);
+  const jobSplit = useAtomCommand(batonWorkSessions.jobSplit, quiet);
   const jobStop = useAtomCommand(batonWorkSessions.jobStop, quiet);
   const jobSchedule = useAtomCommand(batonWorkSessions.jobSchedule, quiet);
   const jobGrant = useAtomCommand(batonWorkSessions.jobGrant, quiet);
@@ -171,6 +172,16 @@ export function BatonSidebarSection(props: {
           }),
         );
       }
+      case "split":
+        return done(
+          await jobSplit({
+            ...env,
+            input: {
+              id: text("id") as never,
+              parts: (Array.isArray(args["parts"]) ? args["parts"] : []) as never,
+            },
+          }),
+        );
       case "stop":
         return done(await jobStop({ ...env, input: { id: text("id") as never } }));
       case "schedule":

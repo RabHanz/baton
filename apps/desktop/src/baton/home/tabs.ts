@@ -27,6 +27,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.mic": "voice",
   "v.sounds": "voice",
   "v.cues": "voice",
+  "v.verifyWake": "voice",
   "v.holdKeyCues": "voice",
   "v.pillRest": "voice",
   "v.pillEdge": "voice",
@@ -79,6 +80,7 @@ export const tabOf = (id: string): TabId => {
   if (/^j[a-z]?[:.]/.test(id)) return "jobs";
   if (/^a[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
+  if (/^p[:.]/.test(id)) return "memory";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";

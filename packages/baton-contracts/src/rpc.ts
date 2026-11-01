@@ -101,6 +101,8 @@ import {
   BatonJobStartResult,
   BatonJobStopResult,
   BatonJobScheduleInput,
+  BatonJobSplitInput,
+  BatonJobSplitResult,
   BatonJobTermsResult,
 } from "./jobs.ts";
 import {
@@ -256,6 +258,12 @@ const WsBatonJobStopRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStop, {
 const WsBatonJobScheduleRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSchedule, {
   payload: BatonJobScheduleInput,
   success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonJobSplitRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSplit, {
+  payload: BatonJobSplitInput,
+  success: BatonJobSplitResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
@@ -438,6 +446,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobRevokeRpc,
   WsBatonJobStopRpc,
   WsBatonJobScheduleRpc,
+  WsBatonJobSplitRpc,
   WsBatonWatchGetRpc,
   WsBatonOrchestrationRuleCreateRpc,
   WsBatonOrchestrationRuleListRpc,
