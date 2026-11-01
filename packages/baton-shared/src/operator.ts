@@ -5,6 +5,7 @@
  */
 import { highRiskSubject } from "./intentParser.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
+import { isChromeTool, judgeChrome } from "./webPolicy.ts";
 
 export interface ToolCall {
   /** The harness's own name: "Bash", "Write", "commandExecution". */
@@ -15,7 +16,9 @@ export interface ToolCall {
 export type ToolVerdict =
   | { readonly verdict: "allow" }
   /** `risky`: needs his explicit yes, no timeout counts as one, and no setting covers it. */
-  | { readonly verdict: "ask"; readonly why: string; readonly risky?: true };
+  | { readonly verdict: "ask"; readonly why: string; readonly risky?: true }
+  /** Never done, asked or not: money movement, and a social site while social is off. */
+  | { readonly verdict: "deny"; readonly why: string };
 
 /** Only looks. */
 const READING = new Set(["Read", "Glob", "Grep", "LS"]);
@@ -42,6 +45,9 @@ const actionText = ({ input }: ToolCall): string =>
     "cwd",
     "query",
     "text",
+    "value",
+    "action",
+    "ref",
     "why",
     "keys",
     "target",
@@ -66,6 +72,12 @@ export interface JudgeContext {
   readonly focusedShell?: boolean;
   /** The text is his own words or Baton's own earlier reply, found in the conversation. */
   readonly textIsHis?: boolean;
+  /** His own Chrome (Claude in Chrome): what the gate knows about the page and the accounts. */
+  readonly chrome?: {
+    readonly socialOn: boolean;
+    readonly pageHost: string | null;
+    readonly recentSocial: number;
+  };
 }
 
 /** Baton's own tools, served to the one assistant (D143). Claude names them `mcp__baton__<name>`. */
@@ -244,6 +256,15 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
 
 export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdict => {
   const baton = batonToolName(call.tool);
+  if (isChromeTool(call.tool)) {
+    return judgeChrome(call.tool, call.input, {
+      tainted: context.tainted,
+      textIsHis: context.textIsHis === true,
+      socialOn: context.chrome?.socialOn ?? false,
+      pageHost: context.chrome?.pageHost ?? null,
+      recentSocial: context.chrome?.recentSocial ?? 0,
+    });
+  }
   if (BATON_TOOLS.has(baton)) return judgeBatonTool(baton, call, context);
   if (READING.has(call.tool)) return { verdict: "allow" };
   const text = actionText(call);
