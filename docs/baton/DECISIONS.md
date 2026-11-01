@@ -3418,6 +3418,21 @@ fixed hotkeys read-only, and paths, About and the lifecycle log. Choices show th
 stay switches. Speaking volume is a new setting applied in the player. The default microphone order is now empty (it was
 his own hardware). Quick actions (Wake now, Ask, Clear, Stop) and Quit use the same handlers the tray did.
 
+## D146 — The assistant plan of 2026-11-01: more than a voice, a keeper of everything
+
+The Director's words, in `VISION.md` ("An employee, not a command line", "Semi-sentient, and public"): "It is like a semi-sentient assistant that can do everything and keep track of everything." Research on the comparison products is in `research/assistant-research-2026-11-01.md`. The plan items, all inside the one assistant (D143) and tracked on RabHanz/baton issue #78:
+
+- **Monitoring.** Sessions and projects are watched so none is "left unattended forever": crashed, failed, stalled, and what each did, from state the server already holds (T3 thread state, Herdr, the fleet), never inferred by a model where an event says it.
+- **Skills, plugins and MCPs** come from the Claude and Codex harnesses it drives. Baton does not build a second plugin system.
+- **One memory, learnings across projects.** Every learning from work across ventures goes into the one memory as compact notes plus searchable history, so it only improves (D145 skills; D142 store).
+- **Morning brief**: what finished, what failed, what waits, what it did overnight, spoken or written on his choice.
+- **An approval list as clear as Duet's**: one place listing everything that waits for his yes, with the exact action, the job it belongs to and the permission it would use.
+- **Memory he can open and edit like Muse**: plain files he can read, correct and delete; clearing never means deleting the assistant.
+- **A coordinator over workers**: the assistant plans and hands parts to worker threads (jobs, D145), watches them and reports.
+- **Public release.** Baton ships to strangers: no private defaults, no VentureOS dependency (D135), third-party licences kept clean for either MIT or a stricter licence, which he has not chosen. Known blockers to MIT redistribution are listed in `LAUNCH.md` section 2 (the openWakeWord models and Baton's own wake models) and need his pick; the Anthropic and OpenAI terms questions in section 1 are his to check.
+
+What it does not do: post to his social accounts. VentureOS owns phones, warm-up and posting rules; no integration is built until the two managers agree it.
+
 ## D142 — One shared conversation, kept on this computer
 
 `baton-conversation.ndjson` in the state folder: every turn with its time, route, what he said, the full reply (never

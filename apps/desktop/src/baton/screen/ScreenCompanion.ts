@@ -1309,9 +1309,11 @@ export const startScreenCompanion = (input: {
             if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
             return Promise.resolve();
           }
+          // Nothing running: a silent no-op, so a stray "stop" costs nothing.
+          const wasBusy = runningMode() !== null || answering > 0;
           hush();
           void wipe();
-          say("Stopped.");
+          if (wasBusy) say("Stopped.");
           end();
           return Promise.resolve();
         case "refused":

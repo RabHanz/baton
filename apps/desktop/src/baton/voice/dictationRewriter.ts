@@ -17,10 +17,11 @@ import {
   type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
 
+import { parseVocabulary, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
-export const hardLimitMs = (text: string): number => Math.min(6_000, 2_500 + text.length * 8);
+export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + text.length * 8);
 const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
@@ -69,7 +70,7 @@ export const makeRewriter = (input: {
       workDir: input.workDir,
       env: input.env,
       platform: input.platform,
-      timeoutMs: 18_000,
+      timeoutMs: 60_000,
     });
     return session;
   };
@@ -136,15 +137,29 @@ const isEntry = (value: unknown): value is DictionaryEntry =>
 /** `<state dir>/voice/dictionary.json`, a list he can edit; a bad file is no dictionary, not an error. */
 export const readDictionary = async (
   stateDir: string,
-): Promise<ReadonlyArray<DictionaryEntry> | null> => {
+): Promise<ReadonlyArray<VocabularyEntry> | null> => {
   try {
     const parsed: unknown = JSON.parse(
       await NodeFSP.readFile(NodePath.join(stateDir, "voice", fileName), "utf8"),
     );
-    return Array.isArray(parsed) ? parsed.filter(isEntry) : [];
+    return Array.isArray(parsed) ? parseVocabulary(parsed.filter(isEntry)) : [];
   } catch {
     return null;
   }
+};
+
+/** Saves his vocabulary; the file is re-read and merged first, since the window edits it too. */
+export const writeDictionary = async (
+  stateDir: string,
+  change: (current: ReadonlyArray<VocabularyEntry>) => ReadonlyArray<VocabularyEntry>,
+): Promise<ReadonlyArray<VocabularyEntry>> => {
+  const next = change((await readDictionary(stateDir)) ?? []);
+  await NodeFSP.mkdir(NodePath.join(stateDir, "voice"), { recursive: true });
+  await NodeFSP.writeFile(
+    NodePath.join(stateDir, "voice", fileName),
+    JSON.stringify(next, null, 2),
+  );
+  return next;
 };
 
 /** Wispr's table, read-only, once: what he taught it should not have to be taught twice. */
