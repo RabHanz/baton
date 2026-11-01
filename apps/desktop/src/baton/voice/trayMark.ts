@@ -1,9 +1,6 @@
 /**
- * Baton's mark: a rounded tile holding three bars, one per capability he can switch on (listening,
- * screen capture, acting without asking). The tile carries the state in its colour, as the old dot
- * did; a lit bar is a capability that is on, a dim one is off; a slash across it is muted. One
- * geometry, in a 32 unit box, draws both the tray bitmap and the SVG the app and installer icons
- * are exported from, so they cannot drift apart.
+ * Baton's mark: a tile whose colour is the state, with three bars for the capabilities on (lit) or off
+ * (dim); a slash is muted. One geometry draws the tray bitmap and the SVG the app icons come from.
  */
 export interface MarkOptions {
   readonly color: string;
