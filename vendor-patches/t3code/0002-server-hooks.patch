@@ -68,6 +68,71 @@ index fad06732fb48e949524e2bf5e051b83a1af61e90..75c80c7d67be8ee1bab5f69c055582be
            (legacyInputRunIds.size > 0 &&
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
+diff --git a/apps/server/src/project/AgentSessionScanner.test.ts b/apps/server/src/project/AgentSessionScanner.test.ts
+index 3cbec21d8831dcf12c5ab6f8525ca502ea26c12e..32a2feb7f3312a7178d5486fa34190a52ff3cc5c 100644
+--- a/apps/server/src/project/AgentSessionScanner.test.ts
++++ b/apps/server/src/project/AgentSessionScanner.test.ts
+@@ -1075,6 +1075,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
+           contents: claudeTranscript(workspace, "claude-old"),
+           mtimeMs: nowMs - 31 * 24 * 60 * 60 * 1000,
+         });
++        // A scheduled or SDK run is never someone's conversation.
++        yield* writeTranscript({
++          filePath: path.join(claudeHomePath, "projects", "-selected", "claude-sdk.jsonl"),
++          contents: claudeTranscript(workspace, "claude-sdk").replace(
++            '"type":"user"',
++            '"type":"user","entrypoint":"sdk-cli"',
++          ),
++          mtimeMs: nowMs - 24 * 60 * 60 * 1000,
++        });
+         yield* writeTranscript({
+           filePath: path.join(claudeHomePath, "projects", "-other", "claude-other.jsonl"),
+           contents: claudeTranscript(otherWorkspace, "claude-other"),
+diff --git a/apps/server/src/project/AgentSessionScanner.ts b/apps/server/src/project/AgentSessionScanner.ts
+index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd80dcabe6d 100644
+--- a/apps/server/src/project/AgentSessionScanner.ts
++++ b/apps/server/src/project/AgentSessionScanner.ts
+@@ -89,6 +89,7 @@ const TranscriptRecord = Schema.Struct({
+   sessionId: Schema.optional(Schema.String),
+   aiTitle: Schema.optional(Schema.String),
+   customTitle: Schema.optional(Schema.String),
++  entrypoint: Schema.optional(Schema.String),
+   isSidechain: Schema.optional(Schema.Boolean),
+   isMeta: Schema.optional(Schema.Boolean),
+   isCompactSummary: Schema.optional(Schema.Boolean),
+@@ -266,6 +267,8 @@ interface ClaudeFields {
+   readonly title: string | undefined;
+   readonly customTitle: string | null;
+   readonly model: string | undefined;
++  /** Driven by a program (scheduled task, SDK), not typed into: never an importable thread. */
++  readonly automated: boolean;
+ }
+ 
+ const emptyClaudeFields: ClaudeFields = {
+@@ -273,12 +276,14 @@ const emptyClaudeFields: ClaudeFields = {
+   title: undefined,
+   customTitle: null,
+   model: undefined,
++  automated: false,
+ };
+ 
+ function foldClaudeFields(fields: ClaudeFields, record: DecodedTranscriptRecord): ClaudeFields {
+   if (isHiddenClaudeRecord(record)) return fields;
+   const model = record.message?.model?.trim();
+   return {
++    automated: fields.automated || (record.entrypoint?.startsWith("sdk") ?? false),
+     sessionId: record.sessionId?.trim() || fields.sessionId,
+     title: record.aiTitle?.trim() || fields.title,
+     // Claude flushes the AI title after the user's rename; an empty rename clears it.
+@@ -1579,7 +1584,7 @@ export const make = Effect.gen(function* () {
+             snapshot.records,
+             snapshot.claudeFields,
+           );
+-          if (parsedThread === null) {
++          if (parsedThread === null || snapshot.claudeFields.automated) {
+             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+           }
+ 
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
 index 741fc73103b7d58d22fe7aac978291ecd2bd1819..01dbb1aa13af9104378d5925584fef50d3daa2f4 100644
 --- a/apps/server/src/server.ts

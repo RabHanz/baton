@@ -48,6 +48,8 @@ import {
   DEFAULT_RUNTIME_MODE,
   type OrchestrationProjectShell,
   type OrchestrationV2AppThread,
+  type OrchestrationV2ConversationMessage,
+  type OrchestrationV2ThreadShell,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2Run,
@@ -342,6 +344,109 @@ export const liveThreadTitle = (input: {
     .filter((part): part is string => part !== null && part.length > 0)
     .join(" · ");
 
+/**
+ * The title the mirror wants on a thread, or null to leave it. The mirror only touches titles it
+ * wrote itself (they end with this box); a title someone typed or T3 generated is theirs and wins.
+ */
+export const mirrorTitle = (input: {
+  readonly current: string;
+  readonly regenerating: boolean;
+  readonly sessionName: string | null;
+  readonly nameFromUser: boolean;
+  readonly followName: string | null;
+  readonly account: string | null;
+  readonly box: string;
+}): string | null => {
+  if (input.regenerating || !input.current.endsWith(` · ${input.box}`)) return null;
+  // Claude Code derives a fresh name on every restart (rotation, adoption); a thread keeps the
+  // name it was first given unless someone names the session.
+  const kept = input.current.includes(" · ") ? input.current.split(" · ")[0] : undefined;
+  const name = input.nameFromUser
+    ? (input.sessionName ?? kept)
+    : (kept ?? input.sessionName ?? input.followName ?? undefined);
+  const wanted = liveThreadTitle({
+    name: name ?? "Live session",
+    account: input.account,
+    box: input.box,
+  });
+  return wanted === input.current ? null : wanted;
+};
+
+/** Ended-session threads wait this long before leaving the list, so a failed read cannot empty it. */
+const ENDED_GRACE_MS = 5 * 60_000;
+
+/** Mirrored threads whose session has ended; whether he continued one is a separate check. */
+export const endedMirrorThreads = (
+  shells: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "updatedAt">>,
+  liveSessionIds: ReadonlySet<string>,
+  nowMs: number,
+): ReadonlyArray<ThreadId> =>
+  shells
+    .filter(
+      (t) =>
+        String(t.id).startsWith(`${PREFIX}:`) &&
+        !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)) &&
+        nowMs - DateTime.toEpochMillis(t.updatedAt) > ENDED_GRACE_MS,
+    )
+    .map((t) => t.id);
+
+/** A message he sent from T3: the mirror's own copies of terminal messages carry its prefix. */
+export const sentFromT3 = (
+  messages: ReadonlyArray<Pick<OrchestrationV2ConversationMessage, "id" | "role">>,
+): boolean => messages.some((m) => m.role === "user" && !String(m.id).startsWith(`${PREFIX}:`));
+
+const TEST_PROJECTS = new Set([
+  "baton-prompt-test",
+  "baton-media-test",
+  "native-copy-1",
+  "resume-proof",
+]);
+
+/**
+ * The one-time clean-up of the thread list: each project keeps the thread of its live session,
+ * or its newest thread when nothing is live there; the test projects keep none.
+ */
+export const sweepVictims = (input: {
+  readonly shells: ReadonlyArray<
+    Pick<OrchestrationV2ThreadShell, "id" | "projectId" | "updatedAt" | "archivedAt">
+  >;
+  readonly projects: ReadonlyArray<
+    Pick<OrchestrationProjectShell, "id" | "title" | "workspaceRoot" | "repositoryIdentity">
+  >;
+  readonly liveSessions: ReadonlyArray<Pick<ClaudeLiveSession, "sessionId" | "cwd">>;
+}): ReadonlyArray<ThreadId> => {
+  const liveIds = new Set(input.liveSessions.map((s) => String(liveThreadId(s.sessionId))));
+  const liveProjects = new Set(
+    input.liveSessions.map((s) => projectForDirectory(s.cwd, input.projects, null)),
+  );
+  const testProjects = new Set(
+    input.projects
+      .filter(
+        (p) => TEST_PROJECTS.has(p.title) || TEST_PROJECTS.has(NodePath.basename(p.workspaceRoot)),
+      )
+      .map((p) => p.id),
+  );
+  const open = input.shells.filter((t) => t.archivedAt === null);
+  const newest = new Map<ProjectId, ThreadId>();
+  for (const t of open) {
+    const best = open.find((o) => o.id === newest.get(t.projectId));
+    if (
+      best === undefined ||
+      DateTime.toEpochMillis(t.updatedAt) > DateTime.toEpochMillis(best.updatedAt)
+    ) {
+      newest.set(t.projectId, t.id);
+    }
+  }
+  return open
+    .filter((t) => {
+      if (testProjects.has(t.projectId)) return true;
+      if (liveIds.has(String(t.id))) return false;
+      // A project with a live session keeps only that session's thread (made on the next pass).
+      return liveProjects.has(t.projectId) || newest.get(t.projectId) !== t.id;
+    })
+    .map((t) => t.id);
+};
+
 /** Claude Code keeps a conversation at `<config>/projects/<slug>/<id>.jsonl`. */
 const transcriptPath = (session: ClaudeLiveSession): string | null => {
   const root = NodePath.join(
@@ -408,11 +513,13 @@ interface Follow {
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const settings = yield* ServerSettingsService;
-  const { attachmentsDir } = yield* ServerConfig.ServerConfig;
+  const { attachmentsDir, stateDir } = yield* ServerConfig.ServerConfig;
 
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
   const owned = new Set<string>();
+  /** Ended sessions' threads he has sent a message in: they stay, and are not looked at again. */
+  const continued = new Set<ThreadId>();
 
   const ensureProviderInstance = Effect.gen(function* () {
     const script = agentScript();
@@ -1057,19 +1164,17 @@ const make = Effect.gen(function* () {
   const retitle = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
       const shell = yield* engine.threadShell(follow.threadId);
-      // Claude Code derives a fresh name on every restart (rotation, adoption); a thread keeps the
-      // name it was first given unless someone names the session.
-      const kept = shell?.title.includes(" · ") ? shell.title.split(" · ")[0] : undefined;
-      const name =
-        session.nameSource === "user"
-          ? (session.name ?? kept)
-          : (kept ?? session.name ?? follow.name ?? undefined);
-      const wanted = liveThreadTitle({
-        name: name ?? "Live session",
+      if (shell === null) return;
+      const wanted = mirrorTitle({
+        current: shell.title,
+        regenerating: shell.titleRegeneration != null,
+        sessionName: session.name,
+        nameFromUser: session.nameSource === "user",
+        followName: follow.name,
         account: session.account,
         box: box(),
       });
-      if (shell !== null && shell.title !== wanted && shell.titleRegeneration == null) {
+      if (wanted !== null) {
         yield* engine.renameThread({ tag: "live", threadId: follow.threadId, title: wanted });
       }
     });
@@ -1208,6 +1313,17 @@ const make = Effect.gen(function* () {
         else yield* engine.archiveThread({ tag: "live", threadId: imported.id });
       }
     }
+    // A thread whose session has ended leaves the list (archived, reversible) unless he sent a
+    // message from T3: then it is his conversation now.
+    const liveIds = new Set(live.map((s) => s.sessionId));
+    for (const id of endedMirrorThreads(yield* engine.threadShells, liveIds, Date.now())) {
+      if (continued.has(id)) continue;
+      if (sentFromT3(yield* threadMessages(id))) continued.add(id);
+      else yield* engine.archiveThread({ tag: "live", threadId: id });
+    }
+    for (const [sessionId, follow] of follows) {
+      if (!liveIds.has(sessionId) && !continued.has(follow.threadId)) follows.delete(sessionId);
+    }
     yield* Effect.forEach(
       live.filter((s) => !owned.has(s.sessionId)),
       (session) => {
@@ -1236,8 +1352,29 @@ const make = Effect.gen(function* () {
     );
   });
 
+  /** Once per install (a marker in the state dir), so threads he unarchives later stay. */
+  const sweep = Effect.gen(function* () {
+    const marker = NodePath.join(stateDir, "baton-thread-sweep.done");
+    if (NodeFS.existsSync(marker)) return;
+    const shells = yield* engine.threadShells;
+    const victims = sweepVictims({
+      shells,
+      projects: yield* engine.projects,
+      liveSessions: yield* readAllProfileLiveSessions(),
+    });
+    let archived = 0;
+    for (const threadId of victims) {
+      if (yield* engine.archiveThread({ tag: "sweep", threadId })) archived += 1;
+    }
+    yield* Effect.logInfo(`thread sweep: open ${shells.length} -> ${shells.length - archived}`);
+    if (archived === victims.length) NodeFS.writeFileSync(marker, new Date().toISOString());
+  });
+
   if (!liveThreadsEnabled()) return;
   yield* ensureProviderInstance;
+  yield* sweep.pipe(
+    Effect.catchCause((cause) => Effect.logWarning("Baton thread sweep failed", cause)),
+  );
   yield* retireOld.pipe(
     Effect.catchCause((cause) => Effect.logWarning("Baton live threads: retiring failed", cause)),
   );
