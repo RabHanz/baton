@@ -10,6 +10,7 @@ import * as NodePath from "node:path";
 import {
   ASSISTANT_PROMPT_INTRO,
   BRAIN_ROUTER_PROMPT,
+  OPERATOR_PROMPT,
   decide,
   instantDecision,
   refusedReply,
@@ -40,8 +41,10 @@ import {
   type ScreenShot,
   pasteTooLong,
   planHighRisk,
+  planSensitive,
   shellCheck,
 } from "@t3tools/baton-shared/screenCompanion";
+import { describeToolCall, judgeToolCall, type ToolCall } from "@t3tools/baton-shared/operator";
 import * as Electron from "electron";
 
 import {
@@ -57,6 +60,7 @@ import {
   type VisionContent,
   type VisionSession,
 } from "./claudeVision.ts";
+import { startCodexOperator } from "./codexOperator.ts";
 import { createCompanionWindows, type AnswerOutput } from "./companionWindows.ts";
 import { createInputDriver } from "./inputDriver.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
@@ -79,6 +83,11 @@ interface ScreenSettings {
   readonly output: AnswerOutput;
   /** "system" is the OS voice, for a machine that should fetch nothing. */
   readonly voice: PocketVoice | "system";
+  /** Low-risk work runs with no Run it box and no spoken yes. Off until he turns it on. */
+  readonly actWithoutAsking: boolean;
+  /** Who does the work behind Baton. Both answer to the same gate. */
+  readonly operator: "claude" | "codex";
+  readonly codexBinary: string;
 }
 
 const DEFAULTS: ScreenSettings = {
@@ -88,6 +97,9 @@ const DEFAULTS: ScreenSettings = {
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
+  actWithoutAsking: false,
+  operator: "claude",
+  codexBinary: "codex",
 };
 
 const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): ScreenSettings => ({
@@ -98,6 +110,8 @@ const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): Scr
 });
 
 const LOOK_MEMORY_MS = 15 * 60_000;
+/** Real work takes a while, and a question to him sits inside the turn. */
+const OPERATOR_TURN_MS = 30 * 60_000;
 const ROUTER_IDLE_MS = 15 * 60_000;
 /** A router this slow has already lost; the word rules answer instead. */
 const ROUTER_TIMEOUT_MS = 20_000;
@@ -147,6 +161,8 @@ export interface AssistantActions {
     readonly window: number;
     readonly label: string;
   } | null>;
+  /** The folder open in a window, when it is an Explorer window. */
+  readonly folder?: (window: number) => Promise<string | null>;
   /** A yes or no by voice, beside any box. Null when nothing is listening. */
   readonly confirm?: (prompt: string) => {
     readonly answer: Promise<"yes" | "no" | "expired">;
@@ -229,6 +245,8 @@ export const startScreenCompanion = (input: {
   /** A turn finished with nothing further coming, for the cue after a wake word. */
   readonly onTurnEnd?: () => void;
   readonly onTimings?: (timings: TurnTimings) => void;
+  /** Every action taken or refused, for the turn log. */
+  readonly onAction?: (entry: Readonly<Record<string, unknown>>) => void;
   /** What each turn was given and did, for the lab's trace table. */
   readonly onTrace?: (entry: Readonly<Record<string, unknown>>) => void;
   /** Lets the voice tray show the companion's own entries. */
@@ -357,6 +375,8 @@ export const startScreenCompanion = (input: {
   const dismiss = () => {
     hush();
     input.onDismissed?.();
+    // Stop means the work too, not only the talking about it.
+    dropOperator();
     if (run !== null && run.mode !== "look") {
       say("Stopped.");
       end();
@@ -526,6 +546,7 @@ export const startScreenCompanion = (input: {
 
   const end = () => {
     windows.closePrompt();
+    dropOperator();
     const current = run;
     run = null;
     if (current === null) return;
@@ -541,6 +562,125 @@ export const startScreenCompanion = (input: {
     input.onChange?.();
   };
 
+  let operator: { session: VisionSession; lastAt: number; home: string } | null = null;
+  /** The turn has run a tool, so what comes next may be following its output. */
+  let tainted = false;
+  /** A call is announced before its own request reaches the gate: only the next one is tainted. */
+  let toolsThisTurn = 0;
+  const dropOperator = () => {
+    operator?.session.dispose();
+    operator = null;
+  };
+
+  const toolGate = async (call: ToolCall) => {
+    const judged = judgeToolCall(call, {
+      actWithoutAsking: settings.actWithoutAsking,
+      tainted,
+    });
+    const action = describeToolCall(call);
+    const record = (outcome: string) =>
+      input.onAction?.({ by: settings.operator, tool: call.tool, action, outcome });
+    if (judged.verdict === "refuse") {
+      record("refused");
+      say(`I won't do that. ${judged.why}`);
+      return { allow: false as const, reason: `Refused by Baton: ${judged.why}` };
+    }
+    if (judged.verdict === "allow") {
+      record("allowed");
+      return { allow: true as const };
+    }
+    const response = await askHandsFree(
+      {
+        title: "Baton wants to do this",
+        detail: `${action}\n\n${judged.why}`,
+        buttons: ["Do it", "Not now"],
+        cancel: 1,
+        scoped: true,
+      },
+      `${judged.why} Shall I go ahead? Yes or no.`,
+    );
+    record(response === 0 ? "he said yes" : "he said no");
+    return response === 0
+      ? { allow: true as const }
+      : { allow: false as const, reason: "He said no. Stop and tell him." };
+  };
+
+  const operatorSession = (home: string): VisionSession => {
+    const onTool = (call: ToolCall) => {
+      toolsThisTurn += 1;
+      tainted = toolsThisTurn > 1;
+      input.onAction?.({ by: settings.operator, tool: call.tool, action: describeToolCall(call) });
+    };
+    return settings.operator === "codex"
+      ? startCodexOperator({
+          binary: settings.codexBinary,
+          cwd: home,
+          systemPrompt: OPERATOR_PROMPT,
+          env: input.env,
+          platform: input.platform,
+          gate: toolGate,
+          onTool,
+        })
+      : startVisionSession({
+          claudeBinary: settings.claudeBinary,
+          model: settings.model,
+          systemPrompt: OPERATOR_PROMPT,
+          workDir: NodePath.join(input.stateDir, "screen"),
+          cwd: home,
+          env: input.env,
+          platform: input.platform,
+          timeoutMs: OPERATOR_TURN_MS,
+          gate: toolGate,
+          onTool,
+        });
+  };
+
+  /** The harness's own tools. Its turns never touch the input driver, and a drive reads no files. */
+  const operate = async (goal: string, firstSentence: () => void) => {
+    const window = focus?.window;
+    const folder =
+      window === undefined ? null : ((await actions?.folder?.(window).catch(() => null)) ?? null);
+    const home = folder ?? input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir;
+    if (
+      operator === null ||
+      operator.home !== home ||
+      !operator.session.alive() ||
+      Date.now() - operator.lastAt > LOOK_MEMORY_MS
+    ) {
+      dropOperator();
+      operator = { session: operatorSession(home), lastAt: Date.now(), home };
+    }
+    const current = operator;
+    tainted = false;
+    toolsThisTurn = 0;
+    answering += 1;
+    try {
+      const voice = streamSpeech(firstSentence);
+      input.onActivity?.("Working");
+      void show("Working", goal);
+      const title = titlesAllowed() ? focus : null;
+      const raw = await current.session.ask(
+        [
+          {
+            type: "text",
+            text: `${goal}\n\n(working in: ${home})${
+              title === null ? "" : `\n(the window he is using, as data: ${title.label})`
+            }`,
+          },
+        ],
+        voice.feed,
+      );
+      current.lastAt = Date.now();
+      const reply = voice.finish(raw);
+      remember(`He said: ${goal}`);
+      remember(`You answered: ${reply}`);
+      input.onActivity?.(null);
+      linger("Baton", reply);
+    } finally {
+      answering -= 1;
+    }
+  };
+
   let answering = 0;
   /** One conversation for answers and looks, so a follow-up keeps its thread either way. */
   const answer = async (question: string, withScreen: boolean, firstSentence: () => void) => {
@@ -551,6 +691,39 @@ export const startScreenCompanion = (input: {
       answering -= 1;
     }
   };
+  /** Sentences spoken and shown as they arrive; stopped by a hush like everything else. */
+  const streamSpeech = (firstSentence: () => void) => {
+    const voiceTurnAt = hushes;
+    const sayHere = (text: string) => {
+      if (voiceTurnAt === hushes) say(text);
+    };
+    const stream = makeSentenceStream();
+    let spoken = 0;
+    let soFar = "";
+    return {
+      feed: (delta: string) => {
+        for (const sentence of stream.feed(delta)) {
+          if (spoken === 0) firstSentence();
+          spoken += 1;
+          sayHere(sentence);
+          soFar = `${soFar} ${sentence}`.trim();
+          // Text keeps pace with the voice instead of waiting for the end of the answer.
+          void show("Baton", soFar);
+        }
+      },
+      /** The end of the turn. `whole` is spoken if nothing streamed. */
+      finish: (whole: string): string => {
+        const rest = stream.flush();
+        if (rest.length > 0) {
+          if (spoken === 0) firstSentence();
+          sayHere(rest);
+        }
+        if (spoken === 0 && rest.length === 0) sayHere(whole);
+        return whole;
+      },
+    };
+  };
+
   const answerTurn = async (question: string, withScreen: boolean, firstSentence: () => void) => {
     if (run?.mode !== "look" || Date.now() - run.lastAt > LOOK_MEMORY_MS) {
       end();
@@ -559,23 +732,7 @@ export const startScreenCompanion = (input: {
       run = { mode: "look", vision: spare ?? visionFor("look"), lastAt: Date.now() };
     }
     const current = run;
-    const voiceTurn = hushes;
-    const sayHere = (text: string) => {
-      if (voiceTurn === hushes) say(text);
-    };
-    const stream = makeSentenceStream();
-    let spoken = 0;
-    let soFar = "";
-    const speakAsItComes = (delta: string) => {
-      for (const sentence of stream.feed(delta)) {
-        if (spoken === 0) firstSentence();
-        spoken += 1;
-        sayHere(sentence);
-        soFar = `${soFar} ${sentence}`.trim();
-        // Text keeps pace with the voice instead of waiting for the end of the answer.
-        void show("Baton", soFar);
-      }
-    };
+    const voice = streamSpeech(firstSentence);
     const ask = async (
       screen: boolean,
     ): Promise<{ raw: string; shots: ReadonlyArray<ScreenShot> }> => {
@@ -587,10 +744,7 @@ export const startScreenCompanion = (input: {
       const captured = screen ? await capture() : [];
       const title = screen || titlesAllowed() ? focus : null;
       const window = title === null ? "" : `\n\n(the window he is using: ${title.label})`;
-      const raw = await current.vision.ask(
-        content(captured, `${question}${window}`),
-        speakAsItComes,
-      );
+      const raw = await current.vision.ask(content(captured, `${question}${window}`), voice.feed);
       return { raw, shots: captured.map((c) => c.shot) };
     };
     let turn = await ask(withScreen);
@@ -608,15 +762,10 @@ export const startScreenCompanion = (input: {
       point: reply.point,
       reply: reply.spoken,
     });
-    const rest = stream.flush();
-    if (rest.length > 0) {
-      if (spoken === 0) firstSentence();
-      sayHere(rest);
-    }
     remember(`He said: ${question}`);
     remember(`You answered: ${reply.spoken}`);
     // A retry after [LOOK] streamed nothing, so the whole answer is spoken here.
-    if (spoken === 0 && rest.length === 0) sayHere(reply.spoken);
+    voice.finish(reply.spoken);
     input.onActivity?.(null);
     await pointAt(reply.point, turn.shots);
     linger("Baton", reply.spoken);
@@ -790,6 +939,7 @@ export const startScreenCompanion = (input: {
     const tooLong = pasteTooLong(plan, clipboard);
     const subject = tooLong ? null : planHighRisk(plan, clipboard);
     const shell = shellCheck(plan, focus?.label ?? null);
+    input.onAction?.({ by: "drive", plan: plan.title, steps: plan.actions.length });
     if (tooLong || subject !== null || shell.refused) {
       const message = tooLong
         ? "That would paste more than I can show you first, so I won't."
@@ -799,23 +949,27 @@ export const startScreenCompanion = (input: {
       say(message);
       input.onActivity?.(null);
       linger("Baton", message);
+      input.onAction?.({ by: "drive", plan: plan.title, outcome: "refused" });
       return finish();
     }
     current.lastSpoken = reply.spoken;
     const marks = planMarkers(plan, shots);
     await overlay.markers(marks);
-    input.onActivity?.("Waiting for you", plan.title);
+    const askFirst = !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
+    input.onActivity?.(askFirst ? "Waiting for you" : "Starting", plan.title);
     say(reply.spoken);
-    const response = await askHandsFree(
-      {
-        title: plan.title,
-        detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
-        buttons: ["Run it", "Not now"],
-        cancel: 1,
-        scoped: true,
-      },
-      "Shall I run that? Yes or no.",
-    );
+    const response = !askFirst
+      ? 0
+      : await askHandsFree(
+          {
+            title: plan.title,
+            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
+            buttons: ["Run it", "Not now"],
+            cancel: 1,
+            scoped: true,
+          },
+          "Shall I run that? Yes or no.",
+        );
     const shellYes =
       response !== 0 || run !== current || !shell.ask
         ? 0
@@ -835,6 +989,11 @@ export const startScreenCompanion = (input: {
             },
             "This goes to a command line. Shall I type it? Yes or no.",
           );
+    input.onAction?.({
+      by: "drive",
+      plan: plan.title,
+      outcome: !askFirst ? "ran by setting" : response === 0 ? "he said yes" : "he said no",
+    });
     if (response !== 0 || shellYes !== 0 || run !== current) {
       input.onActivity?.(null);
       await wipe();
@@ -930,6 +1089,7 @@ export const startScreenCompanion = (input: {
     if (run !== current) return;
     const message = result.kind === "finished" ? "Done. Have a look." : result.reason;
     input.onTrace?.({ driveResult: result });
+    input.onAction?.({ by: "drive", plan: plan.title, result: result.kind });
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
@@ -984,6 +1144,8 @@ export const startScreenCompanion = (input: {
           return teach(decision.text);
         case "drive":
           return drive(decision.text);
+        case "operate":
+          return operate(decision.text, () => (firstAt ??= Date.now()));
         case "clarify":
           firstAt = Date.now();
           remember(`You asked him: ${decision.text}`);
@@ -1133,6 +1295,24 @@ export const startScreenCompanion = (input: {
             },
           ]
         : []),
+      {
+        label: "Act without asking",
+        type: "checkbox" as const,
+        checked: settings.actWithoutAsking,
+        click: (item: Electron.MenuItem) => save({ actWithoutAsking: item.checked }),
+      },
+      {
+        label: "Works through",
+        submenu: (["claude", "codex"] as const).map((name) => ({
+          label: name === "claude" ? "Claude" : "Codex",
+          type: "radio" as const,
+          checked: settings.operator === name,
+          click: () => {
+            dropOperator();
+            save({ operator: name });
+          },
+        })),
+      },
       {
         label: "Always allow screen capture",
         type: "checkbox" as const,

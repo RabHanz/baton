@@ -9,6 +9,8 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
+import type { ToolCall } from "@t3tools/baton-shared/operator";
+
 export type VisionContent =
   | { readonly type: "text"; readonly text: string }
   | {
@@ -28,6 +30,11 @@ export interface VisionSession {
   readonly dispose: () => void;
 }
 
+/** Decides a tool call before it runs. Whatever answers, the harness obeys it. */
+export type ToolGate = (
+  call: ToolCall,
+) => Promise<{ readonly allow: true } | { readonly allow: false; readonly reason: string }>;
+
 export interface VisionSessionOptions {
   readonly claudeBinary: string;
   readonly model: string;
@@ -37,9 +44,36 @@ export interface VisionSessionOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly platform: string;
   readonly timeoutMs?: number;
+  /** Runs with his files and shell, every call through this gate. Absent: no tools at all. */
+  readonly gate?: ToolGate;
+  /** Where the tools start; `workDir` otherwise. */
+  readonly cwd?: string;
+  /** Every tool call the model makes, for the log. */
+  readonly onTool?: (call: ToolCall) => void;
 }
 
-export const visionArgs = (systemPromptFile: string, model: string): ReadonlyArray<string> => [
+/** Files, shell and the web. Nothing that outlives the turn, such as schedules or triggers. */
+export const OPERATOR_TOOLS = "Read,Glob,Grep,Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch";
+
+/**
+ * `--setting-sources ""` is what makes the gate real, proven on the CLI: a user default of
+ * bypassPermissions ran every tool with no request, and a folder's own .claude/settings.json is
+ * untrusted content. A CLI read-only Bash still skips the gate; `toolUsesOf` logs it.
+ */
+const OPERATOR_FLAGS: ReadonlyArray<string> = [
+  "--setting-sources",
+  "",
+  "--permission-mode",
+  "default",
+  "--permission-prompt-tool",
+  "stdio",
+];
+
+export const visionArgs = (
+  systemPromptFile: string,
+  model: string,
+  operator = false,
+): ReadonlyArray<string> => [
   "-p",
   "--safe-mode",
   "--input-format",
@@ -51,7 +85,8 @@ export const visionArgs = (systemPromptFile: string, model: string): ReadonlyArr
   "--model",
   model,
   "--tools",
-  "",
+  operator ? OPERATOR_TOOLS : "",
+  ...(operator ? OPERATOR_FLAGS : []),
   "--no-session-persistence",
   "--system-prompt-file",
   systemPromptFile,
@@ -129,6 +164,51 @@ export const deltaOf = (line: string): string | null => {
   }
 };
 
+/** A permission request in one stream-json line, or null when the line is something else. */
+export const toolRequestOf = (
+  line: string,
+): { readonly requestId: string; readonly call: ToolCall } | null => {
+  try {
+    const event = JSON.parse(line) as {
+      type?: unknown;
+      request_id?: unknown;
+      request?: { subtype?: unknown; tool_name?: unknown; input?: unknown };
+    };
+    if (event.type !== "control_request" || event.request?.subtype !== "can_use_tool") return null;
+    if (typeof event.request_id !== "string" || typeof event.request.tool_name !== "string") {
+      return null;
+    }
+    const input = event.request.input;
+    return {
+      requestId: event.request_id,
+      call: {
+        tool: event.request.tool_name,
+        input: typeof input === "object" && input !== null ? (input as ToolCall["input"]) : {},
+      },
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** The tool calls in one stream-json line. */
+export const toolUsesOf = (line: string): ReadonlyArray<ToolCall> => {
+  try {
+    const event = JSON.parse(line) as {
+      type?: unknown;
+      message?: { content?: unknown };
+    };
+    if (event.type !== "assistant" || !Array.isArray(event.message?.content)) return [];
+    return (event.message.content as ReadonlyArray<Record<string, unknown>>).flatMap((block) =>
+      block["type"] === "tool_use" && typeof block["name"] === "string"
+        ? [{ tool: block["name"], input: (block["input"] ?? {}) as ToolCall["input"] }]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+};
+
 /**
  * On Windows a bare "claude" may be the native `claude.exe` or npm's `claude.cmd`; spawn without
  * a shell finds only the first, so look on PATH for both. Elsewhere the name is used as given.
@@ -161,9 +241,11 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
   const viaShell = options.platform === "win32" && /\.cmd$/i.test(binary);
   const child = NodeChildProcess.spawn(
     binary,
-    visionArgs(promptFile, options.model).map((a) => (viaShell ? `"${a}"` : a)),
+    visionArgs(promptFile, options.model, options.gate !== undefined).map((a) =>
+      viaShell ? `"${a}"` : a,
+    ),
     {
-      cwd: options.workDir,
+      cwd: options.cwd ?? options.workDir,
       env: subscriptionEnv(options.env),
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -212,7 +294,32 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       ),
     ),
   );
+  const answerTool = (requestId: string, response: unknown) => {
+    if (dead !== null) return;
+    child.stdin.write(
+      `${JSON.stringify({
+        type: "control_response",
+        response: { subtype: "success", request_id: requestId, response },
+      })}\n`,
+    );
+  };
   NodeReadline.createInterface({ input: child.stdout }).on("line", (line) => {
+    const request = options.gate === undefined ? null : toolRequestOf(line);
+    if (request !== null) {
+      void options.gate!(request.call)
+        // An answer that fails is a no.
+        .catch(() => ({ allow: false as const, reason: "Baton could not check that." }))
+        .then((answer) =>
+          answerTool(
+            request.requestId,
+            answer.allow
+              ? { behavior: "allow", updatedInput: request.call.input }
+              : { behavior: "deny", message: answer.reason },
+          ),
+        );
+      return;
+    }
+    for (const call of toolUsesOf(line)) options.onTool?.(call);
     const delta = deltaOf(line);
     if (delta !== null) return waiting[0]?.onDelta?.(delta);
     const result = resultOf(line);
