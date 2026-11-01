@@ -69,6 +69,8 @@ export type VoiceCoreEvent =
     }
   /** His speech ended (silence long enough): from here the pill must not say Listening. */
   | { readonly type: "speech_end"; readonly at: number }
+  /** The audio of a segment that is going to recognition, for the history's kept clips. */
+  | { readonly type: "audio"; readonly pcm: Int16Array; readonly at: number }
   /** A segment went to speech recognition. */
   /** A wake word over Baton's own voice: he is cutting in. */
   | { readonly type: "barge_in" }
@@ -322,6 +324,7 @@ export const createVoiceCore = (input: {
     }
     const pcm = joined(parts);
     emit({ type: "speech_end", at: now() });
+    emit({ type: "audio", pcm, at: now() });
     emit({ type: "thinking" });
     enqueue(async () => {
       const text = await input.stt.transcribe(pcm);
