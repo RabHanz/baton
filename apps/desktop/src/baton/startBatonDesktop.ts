@@ -256,6 +256,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       setTimeout(() => voice?.openHome(), SECOND_LAUNCH_RAISE_MS).unref();
     });
     voice = startDesktopBatonVoice({
+      loginEntry: environment.appUserModelId,
       stateDir: environment.stateDir,
       conversation,
       onNote: turnLog.note,
