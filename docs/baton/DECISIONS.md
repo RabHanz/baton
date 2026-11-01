@@ -3288,3 +3288,13 @@ T3's window.
 D131 addendum (step 3): the window's header mark is the live one, in the state's colour, made by the main process
 (`HomeState.status.mark`). Motion is one 0.3 s rise on open and short transitions on switches and "More options"; nothing
 repaints continuously, and `prefers-reduced-motion` turns them off.
+## D132 — The assistant's own Claude login
+
+Baton's window, Working for you, More options: "Claude login for Baton". Default "Follow the claude login" changes
+nothing. A chosen login is a config directory (`~/.claude`, a `~/.claude-*` home, or a claude-swap session);
+`ScreenCompanion` sets `CLAUDE_CONFIG_DIR` to it, and removes `CLAUDE_CODE_OAUTH_TOKEN`, for the router, look, teach,
+drive and operator `claude` children, always still through `subscriptionEnv`, so the API is never billed. Logins are found
+by asking `claude auth status` of each directory (`assistantAccounts.ts`), at startup, on a choice and when the window
+opens; a turn reads the remembered answer and never waits. A login that is gone or signed out falls back to his own with
+one plain line on the pill. The address is masked until clicked. Not done: per-account limits in this list (the server's
+pool has them; the desktop does not reach it), and Codex has no account choice.
