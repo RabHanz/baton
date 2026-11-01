@@ -1075,6 +1075,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
           contents: claudeTranscript(workspace, "claude-old"),
           mtimeMs: nowMs - 31 * 24 * 60 * 60 * 1000,
         });
+        // A scheduled or SDK run is never someone's conversation.
+        yield* writeTranscript({
+          filePath: path.join(claudeHomePath, "projects", "-selected", "claude-sdk.jsonl"),
+          contents: claudeTranscript(workspace, "claude-sdk").replace(
+            '"type":"user"',
+            '"type":"user","entrypoint":"sdk-cli"',
+          ),
+          mtimeMs: nowMs - 24 * 60 * 60 * 1000,
+        });
         yield* writeTranscript({
           filePath: path.join(claudeHomePath, "projects", "-other", "claude-other.jsonl"),
           contents: claudeTranscript(otherWorkspace, "claude-other"),

@@ -3245,3 +3245,24 @@ and capture consent, which keeps its own setting. The high-risk list (`highRiskS
 `planHighRisk`) used to refuse outright. It now asks for a spoken yes or no, with the box beside it. A question that runs
 out is a no and the box comes down. No setting covers it, and a tainted turn still asks. Still refused, because a yes
 cannot make them safe: a paste too long to show first, and a paste into a command line.
+
+## D129 — A clean thread list, and titles that stick
+
+Cause of "titles default back": `LiveSessionMirror.retitle` ran every tick and treated any title without ` · `
+as unnamed, so a rename or a regenerated title was overwritten with `name · account · box` within seconds
+(and after every restart). Now the mirror touches only a title ending in ` · <this box>`, which it wrote itself
+(`mirrorTitle`); a title he typed or T3 generated always wins, and nothing is stored to lose.
+
+What stays in the list: a thread he started or created in T3 (never touched), and a mirrored thread of a live
+session. A mirrored thread whose session ended leaves the list (archived through `BatonEngine`, so reversible)
+after 5 minutes, unless he sent a message in it from T3 (`sentFromT3`). The importer skips transcripts whose
+`entrypoint` starts with `sdk`, so scheduled tasks and SDK runs such as `publish-engagement` never become threads.
+Not covered: an archived thread whose session later comes back live is not unarchived by the mirror.
+
+One-time sweep at startup, guarded by `baton-thread-sweep.done` in the state dir: each project keeps its live
+session's thread, or its newest thread if none is live; the projects `baton-prompt-test`, `baton-media-test`,
+`native-copy-1` and `resume-proof` keep none. It logs `thread sweep: open N -> M`. Unarchiving afterwards sticks.
+
+Two live sessions in one project (for example the manager beside `baton-autosync-b2`): both threads stay listed
+for as long as both sessions are live, each titled with its own session name. When one ends, its thread leaves the
+list after about five minutes unless he wrote in it from T3. Nothing is deleted.

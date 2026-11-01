@@ -3,14 +3,19 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { ProjectId } from "@t3tools/contracts";
+import { MessageId, ProjectId, ThreadId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  endedMirrorThreads,
   liveMedia,
   liveThreadId,
   liveThreadTitle,
+  mirrorTitle,
   projectForDirectory,
+  sentFromT3,
+  sweepVictims,
 } from "./LiveSessionMirror.ts";
 
 const project = (id: string, workspaceRoot: string, canonicalKey?: string) => ({
@@ -60,6 +65,83 @@ describe("which T3 project a live session belongs to", () => {
     expect(liveThreadTitle({ name: " ", account: null, box: "signzart-prod" })).toBe(
       "Live session · signzart-prod",
     );
+  });
+});
+
+describe("a title someone set", () => {
+  const base = {
+    regenerating: false,
+    sessionName: "ventureos-6c",
+    nameFromUser: false,
+    followName: null,
+    account: "rabeehanzla",
+    box: "onnyx",
+  };
+
+  it("is never rewritten by the mirror, whatever the session is called", () => {
+    for (const current of ["My plan", "Fix the login bug", "Plan · phase two"]) {
+      expect(mirrorTitle({ ...base, current })).toBeNull();
+    }
+  });
+
+  it("is left alone while a regeneration is running", () => {
+    expect(mirrorTitle({ ...base, current: "old · onnyx", regenerating: true })).toBeNull();
+  });
+
+  it("still lets the mirror update a title it wrote, keeping the name", () => {
+    expect(mirrorTitle({ ...base, current: "ventureos-6c · onnyx" })).toBe(
+      "ventureos-6c · rabeehanzla · onnyx",
+    );
+    expect(mirrorTitle({ ...base, current: "ventureos-6c · rabeehanzla · onnyx" })).toBeNull();
+  });
+});
+
+describe("the thread list stays clean", () => {
+  const at = (iso: string) => ({ updatedAt: DateTime.makeUnsafe(iso) });
+  const t = (id: string, projectId: string, iso: string) => ({
+    id: ThreadId.make(id),
+    projectId: ProjectId.make(projectId),
+    archivedAt: null,
+    ...at(iso),
+  });
+
+  it("archives an ended session's thread only after the grace, and not while live", () => {
+    const shells = [
+      t(String(liveThreadId("ended")), "p", "2026-11-01T10:00:00Z"),
+      t(String(liveThreadId("live")), "p", "2026-11-01T10:00:00Z"),
+      t("import:x:old", "p", "2026-11-01T10:00:00Z"),
+    ];
+    const now = Date.parse("2026-11-01T10:10:00Z");
+    expect(endedMirrorThreads(shells, new Set(["live"]), now)).toEqual([liveThreadId("ended")]);
+    expect(endedMirrorThreads(shells, new Set(), Date.parse("2026-11-01T10:01:00Z"))).toEqual([]);
+  });
+
+  it("keeps a thread he sent a message in", () => {
+    const m = (id: string, role: "user" | "assistant") => ({ id: MessageId.make(id), role });
+    expect(sentFromT3([m("baton-live4:u1", "user"), m("a", "assistant")])).toBe(false);
+    expect(sentFromT3([m("baton-live4:u1", "user"), m("t3-msg", "user")])).toBe(true);
+  });
+
+  it("sweeps to one thread per project and none in the test projects", () => {
+    const projects = [
+      project("rabee", "/home/onnyx/rabee.dev"),
+      project("quiet", "/home/onnyx/htpc"),
+      project("test", "/home/onnyx/baton-prompt-test"),
+    ].map((p, i) => ({ ...p, title: ["rabee.dev", "htpc", "baton-prompt-test"][i]! }));
+    const shells = [
+      t("import:a:1", "rabee", "2026-08-01T00:00:00Z"),
+      t("import:a:2", "rabee", "2026-09-01T00:00:00Z"),
+      t(String(liveThreadId("s1")), "rabee", "2026-10-01T00:00:00Z"),
+      t("old", "quiet", "2026-08-01T00:00:00Z"),
+      t("newest", "quiet", "2026-09-01T00:00:00Z"),
+      t("tp", "test", "2026-10-30T00:00:00Z"),
+    ];
+    const victims = sweepVictims({
+      shells,
+      projects,
+      liveSessions: [{ sessionId: "s1", cwd: "/home/onnyx/rabee.dev" }],
+    }).map(String);
+    expect(victims.toSorted()).toEqual(["import:a:1", "import:a:2", "old", "tp"]);
   });
 });
 
