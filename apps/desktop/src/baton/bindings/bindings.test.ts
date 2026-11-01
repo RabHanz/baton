@@ -44,7 +44,7 @@ describe("bindings", () => {
     expect(mute.conflictsWith).toEqual(["Stop"]);
     expect(mute.conflicts).toEqual([{ input: key("Ctrl+Alt+Shift+F7"), with: ["Stop"] }]);
     const clear = rows.find((r) => r.def.id === "clear")!;
-    expect(clear.conflicts).toEqual([{ input: mouse("middle"), with: ["Ask Baton"] }]);
+    expect(clear.conflicts).toEqual([{ input: mouse("middle"), with: ["Ask Tessaya"] }]);
     expect(rows.find((r) => r.def.id === "wake")!.conflictsWith).toEqual([]);
   });
 

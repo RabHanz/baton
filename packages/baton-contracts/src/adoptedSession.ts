@@ -305,7 +305,7 @@ export class AdoptedStateUnknownError extends Schema.TaggedError<AdoptedStateUnk
   { runtime: AdoptedRuntime, runtimeState: TrimmedString },
 ) {
   override get message(): string {
-    return `${this.runtime} reported a state Baton does not know: '${this.runtimeState}'.`;
+    return `${this.runtime} reported a state Tessaya does not know: '${this.runtimeState}'.`;
   }
 }
 

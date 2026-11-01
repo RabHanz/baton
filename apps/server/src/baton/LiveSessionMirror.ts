@@ -566,7 +566,7 @@ const make = Effect.gen(function* () {
     const script = agentScript();
     const node = findNode();
     if (!NodeFS.existsSync(script) || node === null) {
-      yield* Effect.logWarning("Baton live threads: no agent script or Node, sending is off", {
+      yield* Effect.logWarning("Tessaya live threads: no agent script or Node, sending is off", {
         script,
         node,
       });
@@ -587,7 +587,7 @@ const make = Effect.gen(function* () {
     });
   }).pipe(
     Effect.catchCause((cause) =>
-      Effect.logWarning("Baton live threads: provider setup failed", cause),
+      Effect.logWarning("Tessaya live threads: provider setup failed", cause),
     ),
   );
 
@@ -1404,7 +1404,7 @@ const make = Effect.gen(function* () {
               )
         ).pipe(
           Effect.catchCause((cause) =>
-            Effect.logWarning("Baton live threads: a session could not be mirrored", {
+            Effect.logWarning("Tessaya live threads: a session could not be mirrored", {
               sessionId: session.sessionId,
               cause,
             }).pipe(
@@ -1439,13 +1439,13 @@ const make = Effect.gen(function* () {
   if (!liveThreadsEnabled()) return;
   yield* ensureProviderInstance;
   yield* sweep.pipe(
-    Effect.catchCause((cause) => Effect.logWarning("Baton thread sweep failed", cause)),
+    Effect.catchCause((cause) => Effect.logWarning("Tessaya thread sweep failed", cause)),
   );
   yield* retireOld.pipe(
-    Effect.catchCause((cause) => Effect.logWarning("Baton live threads: retiring failed", cause)),
+    Effect.catchCause((cause) => Effect.logWarning("Tessaya live threads: retiring failed", cause)),
   );
   yield* tick.pipe(
-    Effect.catchCause((cause) => Effect.logWarning("Baton live threads: tick failed", cause)),
+    Effect.catchCause((cause) => Effect.logWarning("Tessaya live threads: tick failed", cause)),
     Effect.repeat(Schedule.spaced(TICK)),
     Effect.forkScoped,
   );

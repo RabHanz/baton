@@ -63,7 +63,7 @@ const main = async () => {
   ) => {
     dialogs.push(`${options.message}\n${options.detail ?? ""}\n[${options.buttons?.join(" | ")}]`);
     log("approval box:", options.message, "→", options.buttons?.[0]);
-    if (options.title === "Baton Drive") await frame("05-drive-plan-awaiting-approval");
+    if (options.title === "Tessaya Drive") await frame("05-drive-plan-awaiting-approval");
     return { response: 0, checkboxChecked: false };
   };
 
@@ -155,7 +155,7 @@ const main = async () => {
 
   if (only.includes("drive")) {
     await reset();
-    void companion.said("drive: fill in the name field with Baton Test and submit the form", {
+    void companion.said("drive: fill in the name field with Tessaya Test and submit the form", {
       direct: false,
     });
     await sleep(40_000);

@@ -23,6 +23,7 @@ import {
   type Spot,
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
+import { loadDocument } from "./loadDocument.ts";
 import { isPillClick } from "./pillGesture.ts";
 import {
   CUE_TAIL_MS,
@@ -225,6 +226,7 @@ export const createVoicePill = (input: {
   let bypassSnap = false;
   let lastBeat = 0;
   let dragStarted: { readonly at: number; readonly x: number; readonly y: number } | null = null;
+  let loadRetries = 0;
   let markers: Electron.BrowserWindow | null = null;
   let markerPlace: PlaceId | null = null;
   const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
@@ -279,8 +281,8 @@ export const createVoicePill = (input: {
     markCompanionWindow(win);
     win.setContentProtection(true);
     const page = markersDocument(dots);
-    void win.loadURL(`data:text/html,${encodeURIComponent(page)}`).then(() => {
-      if (!win.isDestroyed()) win.showInactive();
+    void loadDocument(win, page).then((loaded) => {
+      if (loaded && !win.isDestroyed()) win.showInactive();
     });
     markers = win;
     markerPlace = null;
@@ -347,9 +349,16 @@ export const createVoicePill = (input: {
     created.setContentProtection(true);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
-    ready = created
-      .loadURL(`data:text/html,${encodeURIComponent(PILL_DOCUMENT)}`)
-      .then(() => undefined);
+    ready = loadDocument(created, PILL_DOCUMENT).then((loaded) => {
+      // A pill that failed to load would stay blank: build it again, and show what it should.
+      if (loaded || window !== created) return;
+      if (!created.isDestroyed()) created.destroy();
+      window = null;
+      if (loadRetries >= 2) return;
+      loadRetries += 1;
+      build();
+      if (turnView(state) !== null) on({ type: "window_open" });
+    });
   };
 
   const raise = () => {

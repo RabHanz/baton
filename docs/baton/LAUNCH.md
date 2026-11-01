@@ -1,21 +1,21 @@
 # Launch readiness: facts
 
 Facts from this repository and the named sources, as of 2026-11-01. Nothing here is legal advice, and
-nothing here claims Baton complies with anyone's terms. Items marked **Director** need his decision.
+nothing here claims Tessaya complies with anyone's terms. Items marked **Director** need his decision.
 
 ## 1. Driving a user's own Claude or Codex subscription
 
-**What Baton does** (code: `apps/desktop/src/baton/screen/claudeVision.ts`, `codexOperator.ts`;
+**What Tessaya does** (code: `apps/desktop/src/baton/screen/claudeVision.ts`, `codexOperator.ts`;
 `apps/server/src/provider/Layers/ClaudeAdapter.ts`; decision D1 in `DECISIONS.md`):
 
 - Starts the user's own installed `claude` command as a child process (`-p` with stream-json in and out,
   one conversation per session) and, for the Codex choice, the user's own `codex app-server`.
-- Runs it as the user's own login. Baton ships no key and no token of its own. `subscriptionEnv`
+- Runs it as the user's own login. Tessaya ships no key and no token of its own. `subscriptionEnv`
   removes API-key and cloud-provider variables from the child's environment so the plan is used and no API
   key is billed by accident.
 - Sends the assistant what the user says, screen captures the user allowed, and tool results, through that
-  command. Every tool call goes through Baton's approval gate.
-- The "Claude login for Baton" setting points the child at another login directory on the same machine
+  command. Every tool call goes through Tessaya's approval gate.
+- The "Claude login for Tessaya" setting points the child at another login directory on the same machine
   (`CLAUDE_CONFIG_DIR`). Account rotation (`apps/server/src/baton/AccountPoolService.ts`) swaps the
   credential in a config directory using the third-party `cswap` tool, between turns, when one login is near
   its limit. Token instances (`scripts/baton/provider-token-instances.py`, not shipped) run extra logins
@@ -42,11 +42,11 @@ Sources: the project's README "License" section and the GitHub licence API (code
 
 - openWakeWord **code** is Apache-2.0. Its **pre-trained models are CC BY-NC-SA 4.0** (non-commercial,
   share-alike), "due to the inclusion of datasets with unknown or restrictive licensing".
-- Baton ships `melspectrogram.onnx` and `embedding_model.onnx` from openWakeWord v0.5.1. These are the
+- Tessaya ships `melspectrogram.onnx` and `embedding_model.onnx` from openWakeWord v0.5.1. These are the
   shared feature models of the same release; the README groups them with the pre-trained models. Treat them as
   non-commercial until the project says otherwise. (The embedding model originates from Google's speech
   embedding on TFHub, Apache-2.0, per the README, re-implemented by the author.)
-- Baton's four wake models (`sebastian`, `alfred`, `freya`, `onyx`) were trained here with openWakeWord's
+- Tessaya's four wake models (`sebastian`, `alfred`, `freya`, `onyx`) were trained here with openWakeWord's
   trainer (`scripts/baton/wake-train/`, `.github/workflows/baton-wake-train.yml`) on Piper LibriTTS and
   en_GB voices plus openWakeWord's published negative features. `THIRD_PARTY_NOTICES.md` records that those
   sets carry their own terms, "some non-commercial".
@@ -62,10 +62,10 @@ Correction to the working assumption: the repo's own record (D37, corrected 2026
 (`SuperCodeAgents/herdr-terminal`). The GitHub licence API confirms Apache-2.0 for `herdrdev/herdr` today.
 **Director:** confirm which Herdr he means.
 
-How Baton uses it either way (`apps/server/src/baton/HerdrAdapterLive.ts`, `HerdrTerminal.ts`): runs the
+How Tessaya uses it either way (`apps/server/src/baton/HerdrAdapterLive.ts`, `HerdrTerminal.ts`): runs the
 installed `herdr` program as a separate process with `execFile` and parses its output. No Herdr source is
-copied, no library is linked, nothing is installed by Baton, and Baton works without it (it says "herdr is
-not installed"). That keeps a copyleft licence, if one applied, from reaching Baton's code.
+copied, no library is linked, nothing is installed by Tessaya, and Tessaya works without it (it says "herdr is
+not installed"). That keeps a copyleft licence, if one applied, from reaching Tessaya's code.
 
 ## 4. Voice is local by default
 

@@ -80,7 +80,7 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   {
     id: "wake",
     label: "Start listening",
-    hint: "Wake Baton without saying the wake word.",
+    hint: "Wake Tessaya without saying the wake word.",
     fallback: key("Ctrl+Alt+Shift+F5"),
   },
   { id: "stop", label: "Stop", hint: "End an answer, a lesson or a drive.", fallback: null },
@@ -111,12 +111,12 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
   {
     id: "dictation",
     label: "Dictation on or off",
-    hint: "Turn Baton's dictation key on or off.",
+    hint: "Turn Tessaya's dictation key on or off.",
     fallback: key("Ctrl+Alt+Shift+F8"),
   },
   {
     id: "ask",
-    label: "Ask Baton",
+    label: "Ask Tessaya",
     hint: "Open the box to type a question.",
     fallback: key("Ctrl+Alt+Shift+B"),
   },

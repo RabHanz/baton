@@ -412,6 +412,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       muted: false,
     }),
   );
+  // Renamed from Baton: drop the old login entry, and write the one he asked for for the new exe.
+  if (input.platform === "win32") {
+    Electron.app.setLoginItemSettings({ openAtLogin: false, name: "Baton" });
+    if (settings.openAtLogin) Electron.app.setLoginItemSettings({ openAtLogin: true });
+  }
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
   // A left click is what an icon invites, and without this it did nothing on Windows.
@@ -791,7 +796,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const render = () => {
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     tray.setImage(trayIcon(markOptions()));
-    tray.setToolTip(`Baton: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`);
+    tray.setToolTip(
+      `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`,
+    );
     rebuildMenu();
   };
   /** A reply to something said: on the pill, and in full when nothing will read it out. */
@@ -815,7 +822,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error("Baton did not answer."));
+        reject(new Error("Tessaya did not answer."));
       }, REQUEST_TIMEOUT_MS);
       pending.set(id, { resolve, reject, timer });
       window.webContents.send(BATON_VOICE_REQUEST_CHANNEL, { id, request: body });
@@ -1030,7 +1037,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.on({ type: "dismissed" });
       input.onDismiss?.();
     } else if (id === "dictation") sidecar?.toggle();
-    else if (id === "ask") tray("Ask Baton…");
+    else if (id === "ask") tray("Ask Tessaya…");
     else if (id === "clear") tray("Clear the screen");
   };
   const onDictation = (event: DictationEvent) => {
@@ -1443,12 +1450,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             detail?: string;
           };
           const words: Record<string, string> = {
-            "replaced-by-update": "Baton was replaced by an update",
+            "replaced-by-update": "Tessaya was replaced by an update",
             "previous-run-ended-badly":
               "The last run ended without a clean exit (a crash, a kill or a power loss)",
             "restarted-after-update": "Restarted after an update",
             exiting: `Going down: ${e.reason ?? "quit"}${e.detail ? ` ${e.detail}` : ""}`,
-            "uncaught-exception": "An unexpected error stopped Baton",
+            "uncaught-exception": "An unexpected error stopped Tessaya",
             "render-process-gone": "A window closed unexpectedly",
             "child-process-gone": "A helper program stopped unexpectedly",
           };
@@ -1579,7 +1586,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         hint:
           binary === null
             ? "Not available in this build."
-            : "Say the wake word and Baton starts listening.",
+            : "Say the wake word and Tessaya starts listening.",
         kind: "toggle",
         on: settings.enabled,
         disabled: binary === null,
@@ -1636,7 +1643,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         kind: "choice",
         value: settings.dictation,
         options: [
-          { value: "baton", label: "Baton" },
+          { value: "baton", label: "Tessaya" },
           { value: "wispr", label: "Wispr Flow" },
         ],
         disabled: binary === null,
@@ -1727,7 +1734,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.keepVoice",
         section: "Voice recordings",
         label: "Keep my voice recordings",
-        hint: "Saves the audio of your dictations and of what you say to Baton, on this computer only. It keeps your voice. Never records anything else, and never listens in the background.",
+        hint: "Saves the audio of your dictations and of what you say to Tessaya, on this computer only. It keeps your voice. Never records anything else, and never listens in the background.",
         kind: "toggle",
         on: settings.keepVoice,
       },
@@ -1750,7 +1757,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.keepCap",
         section: "Voice recordings",
         label: "Keep corrected clips up to",
-        hint: "They teach Baton the most. The oldest go first when over.",
+        hint: "They teach Tessaya the most. The oldest go first when over.",
         kind: "choice",
         value: String(settings.keepCapGb),
         options: [
@@ -1831,8 +1838,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.pillRest",
         section: "On screen",
-        label: "Show a small bar when Baton isn't listening",
-        hint: "Off, nothing shows until Baton is doing something. Drag the pill to move it, double-click to put it back.",
+        label: "Show a small bar when Tessaya isn't listening",
+        hint: "Off, nothing shows until Tessaya is doing something. Drag the pill to move it, double-click to put it back.",
         kind: "toggle",
         on: settings.pillAtRest,
       },
@@ -1851,7 +1858,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       {
         id: "v.login",
         section: "On screen",
-        label: "Start Baton when I sign in",
+        label: "Start Tessaya when I sign in",
         kind: "toggle",
         on: settings.openAtLogin,
         more: true,
@@ -1903,7 +1910,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "q.ask" || id === "q.clear") {
       const entry = input.extras
         ?.menuItems()
-        .find((i) => i.label === (id === "q.ask" ? "Ask Baton…" : "Clear the screen"));
+        .find((i) => i.label === (id === "q.ask" ? "Ask Tessaya…" : "Clear the screen"));
       (entry?.click as (() => void) | undefined)?.();
     } else if (id === "q.stop") {
       input.onDismiss?.();
@@ -2072,7 +2079,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     home.refresh();
     tray.setContextMenu(
       Electron.Menu.buildFromTemplate([
-        { label: `Baton: ${hudView(state).label}`, enabled: false },
+        { label: `Tessaya: ${hudView(state).label}`, enabled: false },
         ...(note ? [{ label: note, enabled: false }] : []),
         { type: "separator" },
         {
@@ -2108,7 +2115,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ...(input.updates?.ready() === true
           ? [{ label: "● Update ready: Install and restart", click: input.updates.install }]
           : []),
-        { label: "Open Baton", click: () => home.open() },
+        { label: "Open Tessaya", click: () => home.open() },
         { label: "Quit", click: () => Electron.app.quit() },
       ]),
     );

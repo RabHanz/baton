@@ -1,6 +1,6 @@
 # Screen companion
 
-Baton can see your screen when you ask, answer out loud, point at things, teach you an app step by
+Tessaya can see your screen when you ask, answer out loud, point at things, teach you an app step by
 step, and do a task for you after you approve its plan. Design and the rejected options: D84.
 
 ## Using it
@@ -9,14 +9,14 @@ Three ways in, all the same feature:
 
 - **Voice** (when Always listening is on): say a wake word, then "what's this error?"
 - **Ctrl+Alt+Shift+B** opens the ask box. Type and press Enter; Esc closes it.
-- **Tray**: "Ask Baton…".
+- **Tray**: "Ask Tessaya…".
 
 What you say picks the mode:
 
 | Say or type                                                                                            | Mode      | What happens                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | "what's this error?", "look at my screen…", "where is the export button?", "look: …"                   | **Look**  | One screenshot of every display goes to Claude with your question. The answer is spoken and shown on a card, and the blue pointer flies to what it means. Follow-ups in the next five minutes remember the conversation.                                                              |
-| "teach me how to …", "show me how to …", "walk me through …", "guide me", "… step by step", "teach: …" | **Teach** | One step at a time, each pointed at, with a word on why. Do the step and Baton notices (the screen changes and settles), checks it worked, and gives the next. Say "next" to move on yourself, "repeat" to hear it again, "stop" to end.                                              |
+| "teach me how to …", "show me how to …", "walk me through …", "guide me", "… step by step", "teach: …" | **Teach** | One step at a time, each pointed at, with a word on why. Do the step and Tessaya notices (the screen changes and settles), checks it worked, and gives the next. Say "next" to move on yourself, "repeat" to hear it again, "stop" to end.                                              |
 | "drive: …", "take over …", "do it for me", "open the downloads folder for me"                          | **Drive** | Claude proposes a plan. Numbered dots show where it will click and a box lists every step. Nothing happens until you press **Run it**. It then performs the plan, checks the screen after steps that should change something, and stops on **Esc**, "stop", or if you move the mouse. |
 
 The table is what people say. One brain decides, on voice and in the ask box alike (D100); `INTENT_TABLE.md` has 48 real sentences through it.
@@ -35,14 +35,14 @@ drive plan always needs its own Run it, whatever that setting says. Screenshots 
 the request and are not saved.
 
 **Your subscription, not the API.** Answers come from your own Claude Code (`claude`) signed in
-to your plan. Baton strips `ANTHROPIC_API_KEY` from what it starts, so it can never bill the API.
+to your plan. Tessaya strips `ANTHROPIC_API_KEY` from what it starts, so it can never bill the API.
 
 ## Against what HeyClicky claims
 
 Their claims, verbatim and with frames: `research/clicky-videos-2026-10-27/`. These are the
 vendor's own words; none of it was installed or measured.
 
-| They claim                                                                                                                                               | Baton now                                                                                                                                    |
+| They claim                                                                                                                                               | Tessaya now                                                                                                                                    |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | Asks about anything on screen, by hotkey or voice, any app                                                                                               | **Has it** (Look; voice, ask box, tray)                                                                                                      |
 | A triangle pointer flies to the target; the real cursor never moves while guiding                                                                        | **Has it** (farzaa's pointer and flight; the cursor only moves in Drive)                                                                     |
@@ -50,16 +50,16 @@ vendor's own words; none of it was installed or measured.
 | Drive: one consent card, "Esc takes it back", narrates the current step, stops on Esc, a Stop button or speech; the mouse stays his, checks its own work | **Has it**, with the full plan listed and its clicks drawn before consent; Esc, "stop" or the mouse stop it; steps with `expect` are checked |
 | Drawing arrows, circles, explanation cards, 3D models                                                                                                    | Partly: caption card and numbered dots; no free drawing or 3D                                                                                |
 | "Spatial context": you paint on screen to show what you mean                                                                                             | Not built                                                                                                                                    |
-| Agents in your own Chrome, routines by voice                                                                                                             | Not here: Baton's sessions and rules (Phases 4, 9) do this through Claude Code instead                                                       |
+| Agents in your own Chrome, routines by voice                                                                                                             | Not here: Tessaya's sessions and rules (Phases 4, 9) do this through Claude Code instead                                                       |
 | Memory files (profile, recent screens hours back)                                                                                                        | Partly: a look conversation lasts five minutes, a lesson or drive its whole run; nothing kept across them                                    |
 | Skill files per program                                                                                                                                  | Not built                                                                                                                                    |
 | Dictation, screen-aware                                                                                                                                  | **Partly.** Mode comes from the focused app (D105); the screen is not read                                                                   |
 | Mac and Windows                                                                                                                                          | Windows and Linux; macOS capture and pointing should work, Drive refuses there                                                               |
-| Free / $20 / $100 plans with message caps                                                                                                                | His own Claude subscription; no caps of Baton's                                                                                              |
+| Free / $20 / $100 plans with message caps                                                                                                                | His own Claude subscription; no caps of Tessaya's                                                                                              |
 
 ## Settings
 
-`baton-screen.json` in Baton's state directory (next to `fabric-voice.json`):
+`baton-screen.json` in Tessaya's state directory (next to `fabric-voice.json`):
 
 ```json
 { "captureApproval": "ask", "claudeBinary": "claude", "model": "sonnet", "output": "spoken" }

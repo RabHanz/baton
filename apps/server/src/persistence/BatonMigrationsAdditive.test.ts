@@ -20,7 +20,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { batonMigrationManifest } from "./BatonMigrations.ts";
 import { migrationManifest } from "./Migrations.ts";
 
-const MIGRATIONS_DIR = NodePath.join(import.meta.dirname, "Migrations", "Baton");
+const MIGRATIONS_DIR = NodePath.join(import.meta.dirname, "Migrations", "Tessaya");
 
 /** The migrations this fork added. Upstream's are upstream's business. */
 const BATON_MIGRATIONS = batonMigrationManifest;
@@ -41,7 +41,7 @@ const FORBIDDEN: ReadonlyArray<{ readonly pattern: RegExp; readonly what: string
   { pattern: /\bUPDATE\s+\w+\s+SET\b/i, what: "rewrites rows" },
 ];
 
-describe("every Baton migration is additive", () => {
+describe("every Tessaya migration is additive", () => {
   it("has migrations to check", () => {
     // A test that silently checks nothing is worse than no test.
     expect(BATON_MIGRATIONS.length).toBeGreaterThan(0);
@@ -59,7 +59,7 @@ describe("every Baton migration is additive", () => {
     }
   });
 
-  it("only touches tables Baton owns", () => {
+  it("only touches tables Tessaya owns", () => {
     // An `ALTER TABLE` on an upstream table would change a shape a stock T3
     // build reads, which is the one thing D11 and D7 exist to prevent.
     for (const [id, name] of BATON_MIGRATIONS) {
@@ -70,7 +70,7 @@ describe("every Baton migration is additive", () => {
         const table = match[1] ?? "";
         expect(
           table.startsWith("fabric_"),
-          `${String(id)}_${name} touches '${table}', which Baton does not own`,
+          `${String(id)}_${name} touches '${table}', which Tessaya does not own`,
         ).toBe(true);
       }
     }

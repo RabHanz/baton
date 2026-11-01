@@ -15,7 +15,7 @@ const bar = NodeFS.readFileSync(
 );
 const title = NodeFS.readFileSync(NodePath.join(web, "index.html"), "utf8");
 
-describe("the input spots Baton publishes for Airdeck (D64)", () => {
+describe("the input spots Tessaya publishes for Airdeck (D64)", () => {
   it("serves the same file at the legacy /fabric/ path spots were imported from (D71)", () => {
     expect(read("public/fabric/airdeck-spots.json")).toBe(read("public/baton/airdeck-spots.json"));
   });

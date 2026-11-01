@@ -311,7 +311,7 @@ export function interpretIntentModelReply(input: {
     return refuse(
       "high_risk",
       sentence,
-      `That asks for ${risky}. Baton never does that from a sentence — do it yourself, with the change in front of you.`,
+      `That asks for ${risky}. Tessaya never does that from a sentence — do it yourself, with the change in front of you.`,
     );
   }
 

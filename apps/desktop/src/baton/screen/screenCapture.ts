@@ -71,7 +71,7 @@ export const captureScreens = async (
   });
   if (out.length === 0) {
     throw new Error(
-      "Baton could not capture the screen. On macOS allow Screen Recording; on Linux Wayland, X11 is needed.",
+      "Tessaya could not capture the screen. On macOS allow Screen Recording; on Linux Wayland, X11 is needed.",
     );
   }
   return out;

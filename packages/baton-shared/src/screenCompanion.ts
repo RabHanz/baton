@@ -390,7 +390,7 @@ export const validateDrivePlan = (value: unknown, shots: ReadonlyArray<ScreenSho
         forbiddenChord(keys.map((k: string) => k.toLowerCase()))
       )
         throw new Error(
-          `${where} presses a key Baton does not press (the Windows key and security chords are excluded).`,
+          `${where} presses a key Tessaya does not press (the Windows key and security chords are excluded).`,
         );
     }
     if (kind === "scroll" && (!isNumber(action["amount"]) || Math.abs(action["amount"]) > 10))

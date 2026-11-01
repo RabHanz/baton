@@ -140,7 +140,7 @@ export function planProviderAccount(input: {
   if (existing !== undefined) {
     notes.push(
       `claude-swap already manages this account (${existing.email}), so its directory is reused rather than a second one created for the same login.`,
-      "Baton adds the links claude-swap does not: settings.json, skills/ and the projects/ memory tree, so this account sees the same configuration as the primary.",
+      "Tessaya adds the links claude-swap does not: settings.json, skills/ and the projects/ memory tree, so this account sees the same configuration as the primary.",
     );
     return {
       driver: "claudeAgent",

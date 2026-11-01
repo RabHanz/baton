@@ -2,7 +2,7 @@
 
 `scripts/baton/cleanup-eval.mjs` degrades real messages the way a recogniser's raw text reads (no
 capitals or punctuation, fillers, a false start, a "scratch that" self-correction), cleans them with
-Baton's local pass and with local-then-Claude (haiku), and scores 0..1 per criterion against the
+Tessaya's local pass and with local-then-Claude (haiku), and scores 0..1 per criterion against the
 original. The corpus is his own messages from the history index and is **not** in the repo; pass its
 path. Run: `node scripts/baton/cleanup-eval.mjs <corpus.json> --claude --limit 30 --out results.json`.
 
