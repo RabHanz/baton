@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   conversationBlock,
+  textIsFromConversation,
   currentTarget,
   followUpSession,
   parseTurn,
@@ -76,5 +77,12 @@ describe("the shared conversation", () => {
     expect(conversationBlock({ recent: turns, earlier: [] })).toContain("Claude on Scheduler");
     expect(routerLines(turns).at(-1)).toContain("Claude on Scheduler");
     expect(parseTurn(JSON.stringify(turns[0]))?.target?.workSessionId).toBe("ws-1");
+  });
+  it("knows text that came from the conversation, whole or in part", () => {
+    const turns = [turn(1, "say hello", "Hello there.  How can I help today?")];
+    expect(textIsFromConversation("hello there. how can i help today?", turns)).toBe(true);
+    expect(textIsFromConversation("How can I help", turns)).toBe(true);
+    expect(textIsFromConversation("transfer the money", turns)).toBe(false);
+    expect(textIsFromConversation("hi", turns)).toBe(false);
   });
 });

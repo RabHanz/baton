@@ -188,3 +188,19 @@ export const routerLines = (recent: ReadonlyArray<ConversationTurn>): ReadonlyAr
 /** The request with the conversation in front of it. */
 export const withConversation = (request: string, block: string): string =>
   block === "" ? request : `${block}\n\nhis request now:\n${request}`;
+
+const squash = (text: string): string => text.replace(/\s+/g, " ").trim().toLowerCase();
+
+/**
+ * Is this text his own words, or Baton's own earlier reply, as found in the conversation? Typing it
+ * carries nothing out that was not already said between them (the gate's `textIsHis`). Whole turns
+ * or any run of them; a fragment shorter than three characters never counts.
+ */
+export const textIsFromConversation = (
+  text: string,
+  turns: ReadonlyArray<ConversationTurn>,
+): boolean => {
+  const wanted = squash(text);
+  if (wanted.length < 3) return false;
+  return turns.some((t) => squash(t.reply).includes(wanted) || squash(t.said).includes(wanted));
+};
