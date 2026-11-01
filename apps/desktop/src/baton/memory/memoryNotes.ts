@@ -54,10 +54,14 @@ export const createNotesStore = (dir: string, now: () => number = Date.now) => {
     add: (text: string): MemoryNote => {
       const clean = text.trim();
       if (clean === "") throw new Error("There is nothing to remember in that.");
-      if (clean.length > NOTE_MAX_CHARS) throw new Error(`A note is at most ${NOTE_MAX_CHARS} characters.`);
-      if (list().length >= NOTES_MAX) throw new Error("There are too many notes; forget some first.");
+      if (clean.length > NOTE_MAX_CHARS)
+        throw new Error(`A note is at most ${NOTE_MAX_CHARS} characters.`);
+      if (list().length >= NOTES_MAX)
+        throw new Error("There are too many notes; forget some first.");
       NodeFS.mkdirSync(dir, { recursive: true });
-      const stamp = DateTime.formatIso(DateTime.makeUnsafe(now())).replace(/[-:T]/g, "").slice(0, 14);
+      const stamp = DateTime.formatIso(DateTime.makeUnsafe(now()))
+        .replace(/[-:T]/g, "")
+        .slice(0, 14);
       const id = `${stamp}-${slug(clean)}`;
       const file = NodePath.join(dir, `${id}.md`);
       NodeFS.writeFileSync(file, `${clean}\n`, { flag: "wx" });

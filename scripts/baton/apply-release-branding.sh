@@ -56,6 +56,11 @@ sedi 's#^const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";$#c
 # install stays as it was, so an upgrade replaces it: appId (NSIS derives the uninstall key from it
 # alone, UUID v5 of the appId), the staged package name (install folder Programs\baton), the AUMI
 # and the userData folder. Only names people read change; installer.nsh retires the old shortcuts.
+# The installer and uninstaller wear the Tessaya icon too (the staged resources hold it as icon.ico).
+# perl, not sed: a newline in a replacement is not portable to macOS's sed.
+perl -0pi -e 's#(      include: "apps/desktop/resources/installer\.nsh",\n)#$1      installerIcon: "icon.ico",\n      uninstallerIcon: "icon.ico",\n#' \
+  scripts/build-desktop-artifact.ts
+
 # Baton's mark over upstream's icon files, under the names the build already reads (D131).
 cp assets/baton/* assets/prod/
 
@@ -65,6 +70,7 @@ must 'artifactName: "Tessaya-${version}-${arch}.${ext}"' scripts/build-desktop-a
 must '"productName": "Tessaya"' apps/desktop/package.json
 must 'RELEASES_URL = "https://github.com/RabHanz/baton/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
 must 'APP_BASE_NAME = "Tessaya"' apps/desktop/src/app/DesktopEnvironment.ts
+must 'installerIcon: "icon.ico"' scripts/build-desktop-artifact.ts
 must '^    name: "baton",$' scripts/build-desktop-artifact.ts
 must '"dev.rabee.baton",' apps/desktop/src/app/DesktopEnvironment.ts
 must 'current: "baton"' apps/desktop/src/app/DesktopUserData.ts
