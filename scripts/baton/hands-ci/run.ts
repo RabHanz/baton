@@ -33,7 +33,10 @@ class Task {
   readonly steps: Step[] = [];
   readonly pids: number[] = [];
   evidence = "";
-  constructor(readonly id: string) {}
+  readonly id: string;
+  constructor(id: string) {
+    this.id = id;
+  }
 
   private log(kind: Step["kind"], text: string, started: number) {
     this.steps.push({ kind, text: text.slice(0, 240), ms: Date.now() - started });
