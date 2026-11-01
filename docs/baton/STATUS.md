@@ -1105,3 +1105,12 @@ checksummed. `baton-dictation-build.yml` now also runs on `main`.
 
 See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages/baton-shared`
 (`companionPacing`, `voiceTurn`), so those platforms need wiring, not a rewrite.
+
+## Proof that the operator asks first (2026-11-01)
+
+`bash scripts/baton/operator-proof.sh` (needs `vp`; no microphone, pointer, model or network) feeds Claude's
+`control_request` lines and Codex's approval requests through the real gate and prints PASS or FAIL for: a fetch after a
+read asks even with Act without asking on; a high-risk call asks, and a spoken question that runs out is a no (only a
+spoken yes lets it through); a Codex file change asks whatever the setting; a web search after a read asks. Cases:
+`apps/desktop/src/baton/screen/operatorProof.test.ts`. Exits 1 if any fail (checked by breaking the taint rule: 2 of 4
+failed). Why the gate's pieces moved: D136.
