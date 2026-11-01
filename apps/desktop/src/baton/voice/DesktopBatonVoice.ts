@@ -59,6 +59,7 @@ import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
+import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
@@ -275,7 +276,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   language: "en",
-  // Local until the Director rules on D31: "claude" sends flagged dictation to Anthropic (D105).
+  // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
   claudeBinary: "claude",
@@ -1919,6 +1920,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null,
       ),
       ...noteControls(notes.list()),
+      ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
         ? [
@@ -2446,6 +2448,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (result === "refused")
         note = "Could not change that plugin; its settings file was left alone.";
       home.refresh();
+    } else if (id === "p.folder") {
+      NodeFS.mkdirSync(NodePath.join(input.stateDir, PACK_FOLDER), { recursive: true });
+      void Electron.shell.openPath(NodePath.join(input.stateDir, PACK_FOLDER));
+    } else if (packAction(id) !== null) {
+      const act = packAction(id)!;
+      const dir = NodePath.join(input.stateDir, PACK_FOLDER);
+      if (act.reset) {
+        useDefault(dir, act.id);
+        home.refresh();
+      } else {
+        const file = fileToEdit(dir, act.id);
+        if (file !== null) void Electron.shell.openPath(file);
+        home.refresh();
+      }
     } else if (id === "m.folder") {
       NodeFS.mkdirSync(notes.dir, { recursive: true });
       void Electron.shell.openPath(notes.dir);

@@ -53,6 +53,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "s.brainCheck": "assistant",
   "s.act": "assistant",
   "s.oneAssistant": "assistant",
+  "s.chrome": "assistant",
+  "s.social": "assistant",
   "s.account": "assistant",
   "v.notice": "assistant",
   "v.quiet": "assistant",
@@ -78,6 +80,7 @@ export const tabOf = (id: string): TabId => {
   if (/^j[a-z]?[:.]/.test(id)) return "jobs";
   if (/^a[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
+  if (/^p[:.]/.test(id)) return "memory";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";
