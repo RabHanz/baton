@@ -1,9 +1,7 @@
 /**
- * Each account's limits in the shape Baton's own window shows them (D140): one row per account, with
- * the machines it is on. An account is the same login whichever machine reports it, found the way
- * T3's pooled tile finds it (`accountKeyResolver`: driver and email, or the credential fingerprint).
- * The numbers are T3's own `usageLimits`; nothing is read twice or guessed. Readings that differ
- * take the freshest check, and the higher used percent when none says when it was read.
+ * Each account's limits for Baton's window (D140): one row per account, with the machines it is on,
+ * found the way T3's pooled tile finds it. Differing readings take the freshest check, else the
+ * higher used percent.
  */
 import type { BatonUsageSummary } from "@t3tools/baton-contracts";
 import { accountKeyResolver, type AccountReport } from "@t3tools/shared/usageLimits";
