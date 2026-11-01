@@ -2036,6 +2036,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       render();
     } else if (id === "v.pillCentre") pill.moveTo("centre");
+    else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
