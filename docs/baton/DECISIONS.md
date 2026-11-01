@@ -3629,3 +3629,20 @@ Alt: arrows, Tab, Shift+Tab, Home, End, the page keys, Backspace, Delete, Escape
 the F-keys, Ctrl+Shift+Delete and anything not sure to be one of these ask; unknown is ask. Before a read they are as he asked. (2) One yes to
 typing after a read covers more typing only into the same window and the same box (the control last clicked, by name or by a coarse place); it is
 asked again when the window with the keyboard or the box changes, after Enter or a send, and it ends with the turn. Proof cases 10 and 11.
+
+**D145 J1, and the job's flow from his words to work.** `BatonJobService` (`apps/server/src/baton/BatonJobService.ts`, migration 9, table
+`fabric_job_terms`) keeps the terms of a job beside its work session: the goal as he said it, permissions, caps (2 hours and 40 worker
+turns by default, dollars only for a metered key), standing permissions as a log, a phase, and a list of revisions (who said what, when, by
+voice, text or in the thread). The job's status is read from the fleet's state, never stored; `jobGroupFor` puts a job waiting for his OK in
+the group that needs him.
+_The flow:_ he gives a task by voice; Baton creates the worker thread through the engine (`launchThread` takes an `interactionMode`, here
+plan mode) with a first message that carries his words verbatim, then the written permissions, then "plan first, do not start"
+(`workerFirstMessage`). The plan and its questions are written in that thread. Baton says one short line ("The plan for X is ready in its
+thread.") and the Jobs page shows "Waiting for your OK" with Open thread and Approve. His refinements, by text or voice in the thread or
+through "tell it to", are appended to the job's revisions and the plan is made again. Work starts only on his explicit agreement (spoken "go
+ahead", the Approve button, or a reply in the thread), or at once when that job holds a standing permission to start (explicit, revocable,
+logged). An edit after the start that widens what the job may do (a new folder, project or tool, or a longer leash) sends it back to
+waiting, with or without that standing permission. The phases are drafting-plan, awaiting-his-agreement and approved; running, needs-you,
+done and failed after that are read from the thread. `reduceJob` is the whole of it, pure and tested: no work turn before agreement, a
+refinement is stored as context, a standing permission skips the wait only for the job that has it, a widening edit asks again.
+Next: J2 (the wire and the MCP tools, which also create the thread and run the reducer's events from the thread's state), J3 the Jobs tab.
