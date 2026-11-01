@@ -20,10 +20,32 @@ describe("a tool call", () => {
     expect(judgeToolCall(bash("npm test"), off).verdict).toBe("ask");
   });
 
-  it("stays refused where a sentence is refused, whatever the setting", () => {
+  it("asks for a spoken yes where a sentence is refused, whatever the setting", () => {
     for (const command of ["rm -rf /", "git push --force origin main", "git reset --hard"]) {
-      expect(judgeToolCall(bash(command), on).verdict).toBe("refuse");
+      for (const context of [on, off, { ...on, tainted: true }]) {
+        expect(judgeToolCall(bash(command), context)).toMatchObject({
+          verdict: "ask",
+          risky: true,
+        });
+      }
     }
+  });
+
+  it("never lets a Codex file change or a blank command through on its own", () => {
+    const change = { tool: "fileChange", input: { path: "a.ts" } };
+    expect(judgeToolCall(change, on).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "commandExecution", input: { cwd: "C:/x" } }, on).verdict).toBe(
+      "ask",
+    );
+    expect(judgeToolCall({ tool: "commandExecution", input: { command: "ls" } }, on).verdict).toBe(
+      "allow",
+    );
+  });
+
+  it("asks before a search on a tainted turn, since the query can carry a secret", () => {
+    const search = { tool: "WebSearch", input: { query: "site:x.io token" } };
+    expect(judgeToolCall(search, off).verdict).toBe("allow");
+    expect(judgeToolCall(search, { ...on, tainted: true }).verdict).toBe("ask");
   });
 
   it("gets a yes for deleting, sending, paying or publishing, even with the setting on", () => {

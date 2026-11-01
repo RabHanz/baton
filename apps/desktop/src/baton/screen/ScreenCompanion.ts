@@ -13,7 +13,6 @@ import {
   OPERATOR_PROMPT,
   decide,
   instantDecision,
-  refusedReply,
   makeSentenceStream,
   type BrainDecision,
 } from "@t3tools/baton-shared/brain";
@@ -447,6 +446,8 @@ export const startScreenCompanion = (input: {
     box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
     spoken: string,
     yes = 0,
+    /** A question that runs out is a no, and the box comes down. */
+    noOnExpiry = false,
   ): Promise<number> => {
     const aloud = voiceTurn ? (actions?.confirm?.(spoken) ?? null) : null;
     const boxed = windows.ask(box);
@@ -459,7 +460,7 @@ export const startScreenCompanion = (input: {
       aloud.cancel();
       return first.index;
     }
-    if (first.said === "expired") return boxed;
+    if (first.said === "expired" && !noOnExpiry) return boxed;
     windows.closePrompt();
     await boxed;
     return first.said === "yes" ? yes : box.cancel;
@@ -580,24 +581,23 @@ export const startScreenCompanion = (input: {
     const action = describeToolCall(call);
     const record = (outcome: string) =>
       input.onAction?.({ by: settings.operator, tool: call.tool, action, outcome });
-    if (judged.verdict === "refuse") {
-      record("refused");
-      say(`I won't do that. ${judged.why}`);
-      return { allow: false as const, reason: `Refused by Baton: ${judged.why}` };
-    }
     if (judged.verdict === "allow") {
       record("allowed");
       return { allow: true as const };
     }
     const response = await askHandsFree(
       {
-        title: "Baton wants to do this",
+        title: judged.risky ? "This one is risky" : "Baton wants to do this",
         detail: `${action}\n\n${judged.why}`,
         buttons: ["Do it", "Not now"],
         cancel: 1,
         scoped: true,
       },
-      `${judged.why} Shall I go ahead? Yes or no.`,
+      judged.risky
+        ? `${judged.why} Do you want me to do it? Say yes or no.`
+        : `${judged.why} Shall I go ahead? Yes or no.`,
+      0,
+      judged.risky === true,
     );
     record(response === 0 ? "he said yes" : "he said no");
     return response === 0
@@ -940,12 +940,10 @@ export const startScreenCompanion = (input: {
     const subject = tooLong ? null : planHighRisk(plan, clipboard);
     const shell = shellCheck(plan, focus?.label ?? null);
     input.onAction?.({ by: "drive", plan: plan.title, steps: plan.actions.length });
-    if (tooLong || subject !== null || shell.refused) {
+    if (tooLong || shell.refused) {
       const message = tooLong
         ? "That would paste more than I can show you first, so I won't."
-        : subject === null
-          ? "That would paste into a command line, where nobody reads it first. I won't do that."
-          : refusedReply(subject);
+        : "That would paste into a command line, where nobody reads it first. I won't do that.";
       say(message);
       input.onActivity?.(null);
       linger("Baton", message);
@@ -955,7 +953,8 @@ export const startScreenCompanion = (input: {
     current.lastSpoken = reply.spoken;
     const marks = planMarkers(plan, shots);
     await overlay.markers(marks);
-    const askFirst = !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
+    const askFirst =
+      subject !== null || !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
     input.onActivity?.(askFirst ? "Waiting for you" : "Starting", plan.title);
     say(reply.spoken);
     const response = !askFirst
@@ -968,7 +967,11 @@ export const startScreenCompanion = (input: {
             cancel: 1,
             scoped: true,
           },
-          "Shall I run that? Yes or no.",
+          subject === null
+            ? "Shall I run that? Yes or no."
+            : `This plan involves ${subject}. Do you want me to run it? Say yes or no.`,
+          0,
+          subject !== null,
         );
     const shellYes =
       response !== 0 || run !== current || !shell.ask
