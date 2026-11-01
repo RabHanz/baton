@@ -595,6 +595,7 @@ export const layerStatic = (input: {
   readonly projects?: ReadonlyArray<OrchestrationProjectShell>;
   readonly launch?: (launch: BatonThreadLaunch) => ThreadId | null;
   readonly sent?: Array<{ readonly threadId: ThreadId; readonly text: string }>;
+  readonly messages?: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
 }) =>
   Layer.succeed(BatonEngine, {
     threadShells: Effect.succeed(input.shells ?? []),
@@ -605,7 +606,7 @@ export const layerStatic = (input: {
     projects: Effect.succeed(input.projects ?? []),
     changedThreads: Stream.empty,
     domainEvents: Stream.empty,
-    recentMessages: () => Effect.succeed([]),
+    recentMessages: () => Effect.succeed(input.messages ?? []),
     launchThread: (launch) => Effect.succeed(input.launch?.(launch) ?? null),
     sendMessage: ({ threadId, text }) =>
       Effect.sync(() => {
