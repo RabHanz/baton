@@ -129,7 +129,7 @@ const UNKNOWN_BRAINS: BrainStatus = { claude: { state: "missing" }, codex: { sta
 const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
-  model: "sonnet",
+  model: "claude-opus-5-5",
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",

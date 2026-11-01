@@ -57,6 +57,66 @@ index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc316671516700
    status,
    compact = false,
  }: {
+diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
+index 1c792cf4cec5aa2cec100f6f1900fa7d7effddcc..443eef68240bd08d107085c33360bdeb6d4b0f23 100644
+--- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
++++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
+@@ -1,5 +1,6 @@
+ import { Toolbar } from "@base-ui/react/toolbar";
+ import { type ProviderInstanceId } from "@t3tools/contracts";
++import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
+ import { memo, useLayoutEffect, useRef, useState } from "react";
+ import { StarIcon } from "lucide-react";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+@@ -38,6 +39,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
+   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
+ }) {
++  const badgeLetters = distinctInstanceInitials(props.instanceEntries.map((e) => e.displayName));
+   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
+     props.onSelectInstance(instanceId);
+   };
+@@ -122,7 +124,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+             </>
+           ) : null}
+ 
+-          {props.instanceEntries.map((entry) => {
++          {props.instanceEntries.map((entry, entryIndex) => {
+             const isUnavailable = !isProviderInstancePickerReady(entry);
+             const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
+             const unavailableSelectionIsReachable =
+@@ -168,6 +170,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+                   acpRegistryAgentId={entry.acpRegistryAgentId}
+                   acpRegistryIconUrl={entry.acpRegistryIconUrl}
+                   showBadge={showInstanceBadge}
++                  badgeText={badgeLetters[entryIndex]}
+                   className="size-6 z-30"
+                   iconClassName="size-5"
+                   indicatorBackground={
+diff --git a/apps/web/src/components/chat/ProviderInstanceIcon.tsx b/apps/web/src/components/chat/ProviderInstanceIcon.tsx
+index c75bddca941bf3413778c29e3fd0b30ac9056fe7..cc4db530abb3c01767328c1c09cf078167b235e1 100644
+--- a/apps/web/src/components/chat/ProviderInstanceIcon.tsx
++++ b/apps/web/src/components/chat/ProviderInstanceIcon.tsx
+@@ -65,6 +65,8 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
+   acpRegistryIconUrl?: string | undefined;
+   showBadge?: boolean;
+   badgeContent?: "initials" | "none";
++  /** Overrides the badge letters, so two accounts of one provider can be told apart. */
++  badgeText?: string | undefined;
+   size?: "default" | "compact";
+   className?: string;
+   iconClassName?: string;
+@@ -132,7 +134,9 @@ export const ProviderInstanceIcon = memo(function ProviderInstanceIcon(props: {
+           style={{ borderColor: indicatorBackground }}
+           aria-hidden
+         >
+-          {badgeContent === "initials" ? providerInstanceInitials(props.displayName) : null}
++          {badgeContent === "initials"
++            ? (props.badgeText ?? providerInstanceInitials(props.displayName))
++            : null}
+         </span>
+       ) : null}
+     </span>
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
 index 1207b5017100d7300d7a161e676531d145f45a75..6948dbb89c00d446274b4beaf50de58b6c02ec03 100644
 --- a/apps/web/src/routes/__root.tsx
@@ -78,3 +138,67 @@ index 1207b5017100d7300d7a161e676531d145f45a75..6948dbb89c00d446274b4beaf50de58b
          <ReopenClosedViewShortcut />
          <ConfirmDialogHost />
          <CustomSnoozeDialogHost />
+diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
+index 27129f11128b3f4f4a0304b3484b0e9513e461d7..4b31700a7bf2555f156a720e0a4fbe2a79c3341d 100644
+--- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
++++ b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
+@@ -2,6 +2,7 @@ import { ProviderDriverKind } from "@t3tools/contracts";
+ import { describe, expect, it } from "vite-plus/test";
+ 
+ import {
++  distinctInstanceInitials,
+   normalizeProviderAccentColor,
+   providerAccentForegroundColor,
+   providerInstanceInitials,
+@@ -78,3 +79,18 @@ describe("shouldShowInstanceBadge", () => {
+     expect(shouldShowInstanceBadge(disabled, [disabled])).toBe(false);
+   });
+ });
++
++describe("distinctInstanceInitials", () => {
++  it("gives two accounts that read alike different badges, and leaves distinct ones alone", () => {
++    expect(distinctInstanceInitials(["Rabee Work", "Rabee Wife", "Codex"])).toEqual([
++      "RO",
++      "RI",
++      "CO",
++    ]);
++    expect(distinctInstanceInitials(["Claude", "Codex"])).toEqual(["CL", "CO"]);
++  });
++
++  it("numbers instances whose labels are identical", () => {
++    expect(distinctInstanceInitials(["Rabee", "Rabee"])).toEqual(["R1", "R2"]);
++  });
++});
+diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.ts b/packages/client-runtime/src/state/providerInstanceDisplay.ts
+index 62f65445e82171f79eaa56be8d16655b95a4942d..221e0c2dbcb857a6c6b94a9398e6873769460835 100644
+--- a/packages/client-runtime/src/state/providerInstanceDisplay.ts
++++ b/packages/client-runtime/src/state/providerInstanceDisplay.ts
+@@ -43,6 +43,28 @@ export function providerInstanceInitials(label: string): string {
+     .join("");
+ }
+ 
++/**
++ * Initials for a set of instances shown side by side. Two accounts of one provider often read the
++ * same ("Rabee work", "Rabee personal" are both RW-ish names with one shape), so a repeated pair
++ * takes its second letter from where the labels first differ, and falls back to a number.
++ */
++export function distinctInstanceInitials(labels: ReadonlyArray<string>): ReadonlyArray<string> {
++  const base = labels.map(providerInstanceInitials);
++  return base.map((initials, index) => {
++    const same = base.flatMap((other, i) => (other === initials ? [i] : []));
++    if (same.length < 2) return initials;
++    const mine = Array.from(labels[index]!.toLowerCase());
++    const others = same.filter((i) => i !== index).map((i) => Array.from(labels[i]!.toLowerCase()));
++    let at = 0;
++    while (at < mine.length && others.some((o) => o[at] === mine[at])) at += 1;
++    const letter = mine[at];
++    if (letter !== undefined && /[\p{L}\p{N}]/u.test(letter)) {
++      return `${Array.from(initials)[0] ?? ""}${letter.toUpperCase()}`;
++    }
++    return `${Array.from(initials)[0] ?? ""}${same.indexOf(index) + 1}`;
++  });
++}
++
+ export function normalizeProviderAccentColor(value: string | undefined): string | undefined {
+   const trimmed = value?.trim();
+   if (!trimmed) return undefined;
