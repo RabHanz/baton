@@ -30,12 +30,14 @@ import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopB
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
 import { createVoicePlayer } from "./voice/voicePlayer.ts";
-import { createPocketEngine } from "./voice/pocketVoice.ts";
-import { createSpeaker } from "./voice/voiceSpeaker.ts";
+import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
+import { createSpeaker, type VoiceChoice } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 
+/** The one line a voice speaks when he plays or picks it. */
+const AUDITION_LINE = "Hello, this is how I sound.";
 const VOICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const VOICE_LOG_MAX_FILES = 5;
 
@@ -189,12 +191,17 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     Electron.app.on("will-quit", pocket.dispose);
     const spokenThisTurn: string[] = [];
+    /** Tessaya's own voice, waited for while it loads. The OS voice only when he chose it. */
+    const chooseVoice = (name: PocketVoice | "system"): VoiceChoice => {
+      if (name === "system") return { kind: "system" };
+      const synth = pocket.synthesise(name);
+      return synth === null
+        ? { kind: "wait", ready: pocket.ensure(name) }
+        : { kind: "synth", synth };
+    };
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
-      voice: () => {
-        const voice = screen?.voice() ?? "anna";
-        return voice === "system" ? null : pocket.synthesise(voice);
-      },
+      voice: () => chooseVoice(screen?.voice() ?? "anna"),
       player: createVoicePlayer(
         (level) => voice?.onSpeechLevel(level),
         () => screen?.volume() ?? 1,
@@ -202,6 +209,9 @@ export const startBatonDesktop = Effect.gen(function* () {
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
+      onWaiting: (waiting) => voice?.onNote(waiting ? "Loading the voice…" : null),
+      onUnavailable: () =>
+        voice?.onNote("The voice is not ready, so replies show as text. Voice tab: Voice."),
     });
     try {
       screen = startScreenCompanion({
@@ -253,6 +263,14 @@ export const startBatonDesktop = Effect.gen(function* () {
       onDismiss: () => {
         speaker.cancel();
         screen?.stop();
+      },
+      audition: (name) => {
+        const picked = (name ?? screen?.voice() ?? "anna") as PocketVoice | "system";
+        if (picked === "system") {
+          voice?.onNote("System voice has no sample. Pick one of Tessaya's voices to hear it.");
+          return;
+        }
+        void speaker.sample(chooseVoice(picked), AUDITION_LINE);
       },
       onSpokenStop: () => {
         speaker.cancel();

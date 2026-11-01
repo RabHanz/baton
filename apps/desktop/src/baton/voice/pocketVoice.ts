@@ -143,6 +143,11 @@ const THREADS = "2";
 export interface PocketEngine {
   /** The chosen voice, or null while its files are not here, which starts fetching them. */
   readonly synthesise: (voice: PocketVoice) => Synthesise | null;
+  /**
+   * Resolves true once the voice's files are here (fetching them if need be), false when they
+   * cannot be: an unsupported machine, or a download that failed.
+   */
+  readonly ensure: (voice: PocketVoice) => Promise<boolean>;
   readonly dispose: () => void;
 }
 
@@ -167,6 +172,7 @@ export const createPocketEngine = (input: {
     up: Promise<void>;
   } | null = null;
   let fetching = false;
+  let fetchJob: Promise<void> = Promise.resolve();
   const ready = new Set<PocketVoice>();
   let idle: ReturnType<typeof setTimeout> | null = null;
 
@@ -301,11 +307,23 @@ export const createPocketEngine = (input: {
     return entry;
   };
 
+  const ensure = async (voice: PocketVoice): Promise<boolean> => {
+    if (build === undefined) return false;
+    // One download at a time: a different voice's waits its turn, then looks again.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (present(voice)) return true;
+      fetchJob = fetching ? fetchJob : fetchFiles(voice);
+      await fetchJob;
+    }
+    return present(voice);
+  };
+
   return {
+    ensure,
     synthesise: (voice) => {
       if (build === undefined) return null;
       if (!present(voice)) {
-        void fetchFiles(voice);
+        void ensure(voice);
         return null;
       }
       return (text) => {
