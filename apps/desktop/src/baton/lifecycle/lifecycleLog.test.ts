@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { createLifecycleLog } from "./lifecycleLog.ts";
+import { classifyLeftover, createLifecycleLog } from "./lifecycleLog.ts";
 
 const lines = (file: string) =>
   NodeFS.readFileSync(file, "utf8")
@@ -28,5 +28,18 @@ describe("the lifecycle log", () => {
     expect(second.previousRunEndedBadly()).toBe(true);
     expect(lines(file).some((l) => l["event"] === "previous-run-ended-badly")).toBe(true);
     NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("what a leftover marker means", () => {
+  it("is an update when the version has changed, and a bad end only when it has not", () => {
+    expect(classifyLeftover(null, "0.1.18")).toEqual({ kind: "none" });
+    expect(classifyLeftover({ version: "0.1.15" }, "0.1.18")).toEqual({
+      kind: "replaced-by-update",
+      from: "0.1.15",
+      to: "0.1.18",
+    });
+    expect(classifyLeftover({ version: "0.1.18" }, "0.1.18")).toEqual({ kind: "ended-badly" });
+    expect(classifyLeftover({}, "0.1.18")).toEqual({ kind: "ended-badly" });
   });
 });
