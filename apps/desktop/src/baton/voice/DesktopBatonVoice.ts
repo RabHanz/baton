@@ -18,7 +18,6 @@ import {
   strictestCleanup,
   type CleanupLevel,
   type DictationMode,
-  type DictionaryEntry,
 } from "@t3tools/baton-shared/dictationCleanup";
 import {
   createVoiceRouter,
@@ -93,14 +92,32 @@ import {
   type PasteMethod,
   type SidecarDevice,
 } from "./dictationSidecar.ts";
-import { importWisprDictionary, makeRewriter, readDictionary } from "./dictationRewriter.ts";
+import {
+  importWisprDictionary,
+  makeRewriter,
+  readDictionary,
+  writeDictionary,
+} from "./dictationRewriter.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
 import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
-import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import { frameLevel, isCancelPhrase, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
+import {
+  biasTranscript,
+  correctionsBetween,
+  learnCorrection,
+  observeWording,
+  parseAddToDictionary,
+  upsertEntry,
+  type SeenWords,
+  type VocabularyEntry,
+} from "@t3tools/baton-shared/vocabulary";
+import { CLEANUP_FAILED_LINE, settleOneShot } from "@t3tools/baton-shared/dictationOneShot";
+import { readCaretContext } from "./caretContext.ts";
+import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -190,6 +207,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
 const REQUEST_TIMEOUT_MS = 20_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
+/** Long enough for him to fix a word in the field before it is read back. */
+const LEARN_READBACK_MS = 8_000;
 /** How soon a plugged or unplugged mic is noticed; listing devices costs a few milliseconds. */
 const MIC_POLL_MS = 5_000;
 /** The pointer does not wait on a slow accessibility tree. */
@@ -243,6 +262,8 @@ export interface VoiceCoreHooks {
   readonly stt: SttProvider;
   /** Everything the core reports, for the cue after a wake word. */
   readonly onEvent: (event: VoiceCoreEvent) => void;
+  /** "Add X to my dictionary": the reply to speak, or null when the words were something else. */
+  readonly vocabulary: (text: string) => Promise<string | null>;
 }
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
@@ -298,6 +319,8 @@ export interface DesktopBatonVoiceInput {
   readonly openMainWindow: () => void;
   /** Wake-to-pill, for the record. */
   readonly onWakeShown?: (ms: number) => void;
+  /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
+  readonly onPillState?: (phase: string) => void;
 }
 
 export interface DesktopBatonVoice {
@@ -355,7 +378,60 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let releaseRecordingEscape: (() => void) | null = null;
   let lastDictation: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
-  let dictionary: ReadonlyArray<DictionaryEntry> = [];
+  let dictionary: ReadonlyArray<VocabularyEntry> = [];
+  let seenWords: SeenWords = {};
+  const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
+  try {
+    seenWords = JSON.parse(NodeFS.readFileSync(seenPath, "utf8")) as SeenWords;
+  } catch {}
+  const changeVocabulary = async (
+    change: (
+      entries: ReadonlyArray<VocabularyEntry>,
+      now: string,
+    ) => ReadonlyArray<VocabularyEntry>,
+  ) => {
+    dictionary = await writeDictionary(input.stateDir, (entries) =>
+      change(entries, new Date().toISOString()),
+    );
+  };
+  const saveSeen = () => {
+    try {
+      NodeFS.mkdirSync(NodePath.dirname(seenPath), { recursive: true });
+      NodeFS.writeFileSync(seenPath, JSON.stringify(seenWords));
+    } catch {}
+  };
+  /** Names and terms he keeps using join the vocabulary once they repeat. */
+  const learnWording = (text: string) =>
+    void changeVocabulary((entries, now) => {
+      const next = observeWording(
+        seenWords,
+        entries,
+        text,
+        now,
+        settings.wakeWords.map((w) => w.word),
+      );
+      seenWords = next.seen;
+      saveSeen();
+      return next.entries;
+    }).catch(() => undefined);
+  /** A few seconds later, what he changed in the field teaches the words he meant. */
+  const learnFromEdits = (written: string) => {
+    setTimeout(() => {
+      void readCaretContext(input.platform).then((around) => {
+        if (around === null || written.trim().length === 0) return;
+        const tail = around.before.slice(-(written.length + 2)).trim();
+        const fixes = correctionsBetween(written.trim(), tail);
+        if (fixes.length === 0) return;
+        return changeVocabulary((entries, now) =>
+          fixes.reduce((all, fix) => {
+            const next = learnCorrection(seenWords, all, fix, now);
+            seenWords = next.seen;
+            return next.entries;
+          }, entries),
+        ).then(saveSeen);
+      });
+    }, LEARN_READBACK_MS).unref();
+  };
   let keptTimer: ReturnType<typeof setTimeout> | null = null;
   let recordFailures = 0;
   let audio: AudioInputProvider | null = null;
@@ -380,6 +456,82 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ]);
     return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
   };
+  /** What Baton last put in a field, where an app will not say what is around the caret. */
+  let lastInsert: { text: string; at: number; key: string } | null = null;
+  const windowKey = (app: { readonly exe: string; readonly title: string }) =>
+    `${app.exe}\n${app.title}`;
+  /** The text made to fit the words already there: spacing, capitals, punctuation. */
+  const fitToCaret = async (
+    text: string,
+    app: { readonly exe: string; readonly title: string },
+  ): Promise<string> => {
+    const key = windowKey(app);
+    const around =
+      (await readCaretContext(input.platform)) ??
+      contextFromLastInsert(
+        lastInsert === null ? null : { ...lastInsert, sameWindow: lastInsert.key === key },
+        Date.now(),
+      );
+    const fitted = around === null ? text : fitInsertion(around, text);
+    lastInsert = { text: fitted, at: Date.now(), key };
+    return fitted;
+  };
+  // Spoken dictation, all at once: the chunks wait here, on disk too, until one clean paste.
+  const pendingFile = NodePath.join(input.stateDir, "voice", "dictation-pending.json");
+  let collected: Array<string> = [];
+  let collecting = false;
+  const savePending = () => {
+    try {
+      NodeFS.mkdirSync(NodePath.dirname(pendingFile), { recursive: true });
+      if (collected.length === 0) NodeFS.rmSync(pendingFile, { force: true });
+      else NodeFS.writeFileSync(pendingFile, JSON.stringify(collected));
+    } catch {}
+  };
+  try {
+    const left = JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
+    if (left.length > 0) {
+      lastDictation = left.join(" ");
+      setTimeout(() => {
+        note = "A dictation was not inserted. Tray: Copy last dictation.";
+        render();
+      }, 0);
+    }
+  } catch {}
+  const flushDictation = async () => {
+    collecting = false;
+    const raw = collected.join(" ").trim();
+    if (raw.length === 0 || sidecar === null) {
+      collected = [];
+      return savePending();
+    }
+    pill.on({ type: "thinking" });
+    const app = await sidecar.foreground().catch(() => focusedApp);
+    const cleaned = await rewriter
+      .clean({
+        raw,
+        mode: chooseMode(app, settings.appModes),
+        level: await levelNow(app),
+      })
+      .catch(() => null);
+    const { text: whole, failed } = settleOneShot(raw, cleaned);
+    const fitted = await fitToCaret(whole, app);
+    lastDictation = fitted;
+    const pasted = await sidecar.paste(fitted).then(
+      () => true,
+      () => false,
+    );
+    if (pasted) {
+      collected = [];
+      savePending();
+      pill.on(
+        failed
+          ? { type: "trouble", message: CLEANUP_FAILED_LINE }
+          : { type: "done", label: "Pasted" },
+      );
+    } else {
+      keepText("Not pasted", fitted);
+    }
+  };
   const injection: typeof clipboardInjection = {
     ...clipboardInjection,
     // The sidecar pastes on every platform, where Electron alone cannot.
@@ -387,14 +539,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // Handy's paste keeps his clipboard; PowerShell's stays for when the sidecar is not there.
     insertText: async (request) => {
       if (sidecar === null) return clipboardInjection.insertText(request);
+      if (collecting) {
+        collected.push(request.text);
+        savePending();
+        return;
+      }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
       const app = await sidecar.foreground().catch(() => focusedApp);
       const { text } = await rewriter.clean({
-        raw: request.text,
+        raw: biasTranscript(request.text, dictionary),
         mode: chooseMode(app, settings.appModes),
         level: await levelNow(app),
       });
-      return sidecar.paste(text);
+      return sidecar.paste(await fitToCaret(text, app));
     },
   };
   // Only where this desktop can paste is the focused field a dictation target.
@@ -603,21 +760,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
   const deliver = async (raw: string, target: number | null | undefined) => {
-    const { text } = await rewriter.clean({
-      raw,
-      mode: chooseMode(focusedApp, settings.appModes),
-      level: await levelNow(focusedApp),
-    });
-    lastDictation = text;
+    const cleaned = await rewriter
+      .clean({
+        raw: biasTranscript(raw, dictionary),
+        mode: chooseMode(focusedApp, settings.appModes),
+        level: await levelNow(focusedApp),
+      })
+      .catch(() => null);
+    const { text, failed } = settleOneShot(raw, cleaned);
+    const fitted = text.length === 0 ? text : await fitToCaret(text, focusedApp);
+    lastDictation = fitted;
     const pasted =
       target === null || target === undefined || text.length === 0
         ? false
-        : await sidecar?.pasteInto(text, target).catch((error: Error) => {
+        : await sidecar?.pasteInto(fitted, target).catch((error: Error) => {
             note = error.message;
             return false;
           });
-    if (pasted === true || text.length === 0) showDictation(null);
-    else keepText("Not pasted", text);
+    if (pasted === true || text.length === 0) {
+      showDictation(null);
+      if (failed && pasted === true) pill.on({ type: "trouble", message: CLEANUP_FAILED_LINE });
+    } else keepText("Not pasted", fitted);
   };
   const onDictation = (event: DictationEvent) => {
     setRecording(event.ev === "recording");
@@ -699,6 +862,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       input.onDismiss?.();
     },
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
+    onChange: (turn) => input.onPillState?.(turn.phase),
   });
   if (settings.pillAtRest) pill.setRest(true);
   let dictatingByVoice = false;
@@ -706,10 +870,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
+      if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot") collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
-    if (wasDictating) pill.on({ type: "dictating", caption: null });
+    if (wasDictating) {
+      pill.on({ type: "dictating", caption: null });
+      // The last chunk is still on its way through the core: flush once everything has landed.
+      if (collecting) void core?.idle().then(flushDictation);
+    }
     if (next === "sleeping" || next === "direct_session") return { type: "window_closed" };
     if (next !== "command_window" && next !== "conversation") return null;
     pill.on({ type: "window_open" });
@@ -720,6 +889,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       switch (event.type) {
         case "wake":
           return { type: "wake", word: wordName(event.word) };
+        case "speech_end":
+          return null;
         case "thinking":
           return { type: "thinking" };
         case "nothing":
@@ -730,6 +901,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           input.onSpokenStop?.();
           return null;
         case "transcript":
+          // A spoken cancel takes the pill down at once, the way Esc does.
+          if (!dictatingByVoice && isCancelPhrase(event.text)) {
+            pill.on({ type: "dismissed" });
+            input.onDismiss?.();
+            return null;
+          }
           return { type: "heard", text: event.text };
         case "error":
           return { type: "failed", message: event.message };
@@ -806,6 +983,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       settings,
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
+      vocabulary: async (text) => {
+        const word = parseAddToDictionary(text);
+        if (word === null) return null;
+        await changeVocabulary((entries, now) =>
+          upsertEntry(entries, { phrase: word, replacement: null, source: "added" }, now),
+        );
+        return `Added ${word} to your dictionary.`;
+      },
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);

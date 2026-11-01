@@ -75,6 +75,7 @@ export const TURN_BRIEF_MS = 1_600;
 export const TURN_LIMIT_MS = 90_000;
 export const SILENT_AFTER_MS = 4_000;
 
+const FINISHING = "Finishing";
 const NOTHING_HEARD = "Didn't catch that";
 const ENDED_LABEL = "Not listening";
 const WAKE_AGAIN = "Say the wake word";
@@ -84,9 +85,11 @@ const CAPTION_CHARS = 90;
 const short = (text: string): string =>
   text.length > CAPTION_CHARS ? `${text.slice(0, CAPTION_CHARS)}…` : text;
 
-/** Something finished. An open window goes back to Listening; a closed one shows its end once. */
+/**
+ * Something finished. The pill leaves at once, even with the window still open for a follow-up:
+ * Listening is only for before he speaks. A window that closed under it shows its end once.
+ */
 const settle = (state: TurnState): TurnState => {
-  if (state.open) return { ...IDLE_TURN, phase: "listening", heard: true, open: true };
   return state.closing ? { ...IDLE_TURN, phase: "ended", caption: WAKE_AGAIN } : IDLE_TURN;
 };
 
@@ -106,9 +109,12 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
     case "heard":
       return state.phase === "idle" || state.phase === "dictating"
         ? state
-        : { ...state, phase: "thinking", caption: short(event.text), heard: true };
+        : { ...state, phase: "thinking", label: null, caption: short(event.text), heard: true };
+    // His speech ended and recognition is running: never Listening from here.
     case "thinking":
-      return state.phase === "listening" ? { ...state, phase: "thinking" } : state;
+      return state.phase === "listening" || state.phase === "idle"
+        ? { ...state, phase: "thinking", label: FINISHING }
+        : state;
     case "speaking":
       if (event.active) return { ...state, phase: "speaking", label: null };
       return state.phase === "speaking" ? settle(state) : state;
@@ -241,3 +247,9 @@ export const frameLevel = (frame: Int16Array): number => {
   for (let i = 0; i < frame.length; i += 8) peak = Math.max(peak, Math.abs(frame[i]!));
   return Math.min(1, Math.sqrt(peak / 32768) * 1.4);
 };
+
+/** A spoken cancel: it dismisses the pill at once, before anything else is worked out. */
+export const isCancelPhrase = (text: string): boolean =>
+  /^(?:(?:hey |ok |okay )?(?:jarvis|baton|alfred)[,:]?\s+)?(?:cancel(?: that)?|never ?mind|scratch that|forget it)[.!]?$/i.test(
+    text.trim(),
+  );

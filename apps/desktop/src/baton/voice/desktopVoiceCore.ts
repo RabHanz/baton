@@ -224,6 +224,20 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
   },
 });
 
+/** A spoken command Baton answers itself (adding a word to his dictionary) before the brain sees it. */
+export const withPreempt = (
+  inner: VoiceRouter,
+  preempt: (text: string) => Promise<string | null>,
+): VoiceRouter => ({
+  route: async (effect, context) => {
+    if (effect.kind === "command") {
+      const reply = await preempt(effect.text);
+      if (reply !== null) return { kind: "ran", reply, workSessionId: null, source: "intent" };
+    }
+    return inner.route(effect, context);
+  },
+});
+
 export const createDesktopVoiceCore = async (input: {
   readonly assets: VoiceAssets;
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
@@ -235,6 +249,7 @@ export const createDesktopVoiceCore = async (input: {
   readonly onReply?: (text: string) => void;
   readonly origin?: number;
   readonly brain?: BrainVoiceHook;
+  readonly vocabulary?: (text: string) => Promise<string | null>;
   /** Baton's one voice; off in tests. */
   readonly tts?: TtsProvider | null;
   /** Everything the core reports, for the cue after a wake word. */
@@ -267,10 +282,12 @@ export const createDesktopVoiceCore = async (input: {
     stt: input.stt,
     timings: { ...DEFAULT_TIMINGS, wakeWords: models.map((model) => model.word) },
     tts: input.tts === undefined ? createOsTts(input.platform) : input.tts,
-    router:
+    router: ((router) =>
+      input.vocabulary === undefined ? router : withPreempt(router, input.vocabulary))(
       input.brain === undefined
         ? createVoiceRouter(input.intent)
         : withBrainRoutes(createVoiceRouter(input.intent), input.brain),
+    ),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
   });
   if (input.onEvent !== undefined) core.subscribe(input.onEvent);

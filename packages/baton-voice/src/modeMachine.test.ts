@@ -158,15 +158,14 @@ describe("voice mode machine (§12.3)", () => {
     expect(state.mode).toBe("conversation");
   });
 
-  it("types a plain stop or done while dictating, and a wake-word stop leaves", () => {
+  it("types a plain done while dictating, and a wake-word stop leaves", () => {
     const words = play([
       { type: "wake", at: 0 },
       { type: "utterance", text: "dictate", at: 10 },
-      { type: "utterance", text: "stop", at: 20 },
       { type: "utterance", text: "I'm done.", at: 30 },
     ]);
     expect(words.state.mode).toBe("dictation");
-    expect(words.effects.map((e) => e.kind)).toEqual(["dictate", "dictate"]);
+    expect(words.effects.map((e) => e.kind)).toEqual(["dictate"]);
     const named = play(
       [{ type: "utterance", text: "Jarvis, stop dictating.", at: 40 }],
       words.state,
@@ -238,5 +237,30 @@ describe("voice mode machine (§12.3)", () => {
       { type: "utterance", text: "what needs me", at: 10 },
     ]);
     expect(superseded.effects.map((e) => e.kind)).toEqual(["speak", "cancelled", "command"]);
+  });
+});
+
+describe("stop while dictating", () => {
+  it("is a command, not text, and 'stop the tests' stays text", () => {
+    const start = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "dictator", at: 10 },
+    ]);
+    expect(start.state.mode).toBe("dictation");
+    const typed = play([{ type: "utterance", text: "stop the tests", at: 20 }], start.state);
+    expect(typed.effects).toContainEqual({ kind: "dictate", text: "stop the tests" });
+    const stopped = play([{ type: "utterance", text: "Stop.", at: 30 }], start.state);
+    expect(stopped.state.mode).toBe("conversation");
+    expect(stopped.effects.some((e) => e.kind === "dictate")).toBe(false);
+  });
+});
+
+describe("a spoken cancel", () => {
+  it("closes the window and drops what was waiting, with no wake word", () => {
+    const { state } = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "never mind", at: 100 },
+    ]);
+    expect(state.mode).toBe("sleeping");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { classifyDictation, staysLocal } from "./dictation.ts";
+import { classifyDictation, isBareStop, staysLocal } from "./dictation.ts";
 
 const idle = { dictating: false };
 const on = { dictating: true };
@@ -81,5 +81,45 @@ describe("classifyDictation", () => {
   it("is case-insensitive and tolerates curly apostrophes", () => {
     const command = classifyDictation("DICTATE — I’ll be late", idle);
     expect(command.kind).toBe("start");
+  });
+});
+
+describe("how he actually says it (voice-turns, 1 Nov)", () => {
+  it("starts on mis-hearings and stated intent, only as the whole utterance", () => {
+    for (const said of [
+      "Dictator.",
+      "I meant to dictate.",
+      "I want to dictate",
+      "dick tate",
+      "dictation mode",
+      "start dictation",
+      "take dictation",
+      "let's dictate",
+      "can you dictate",
+      "dictate this",
+      "go into dictation",
+      "switch to dictation",
+      "Hey Baton, dictated",
+      "Dictates.",
+    ]) {
+      expect(classifyDictation(said, idle)).toEqual({ kind: "start", text: null });
+    }
+    for (const said of ["the dictator of Rome", "I read about a dictator yesterday"]) {
+      expect(classifyDictation(said, idle).kind).toBe("not_dictation");
+    }
+  });
+
+  it("knows a bare stop, and never takes a longer phrase for one", () => {
+    for (const said of ["Stop", "stop.", "Baton, stop", "please stop", "never mind", "Be quiet."]) {
+      expect(isBareStop(said)).toBe(true);
+    }
+    for (const said of [
+      "stop dictating",
+      "stop the tests",
+      "stop the build please",
+      "don't stop",
+    ]) {
+      expect(isBareStop(said)).toBe(false);
+    }
   });
 });

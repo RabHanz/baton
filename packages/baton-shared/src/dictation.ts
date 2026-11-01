@@ -51,6 +51,61 @@ const START =
 const STOP =
   /^(.*?)[\s,;:-]*\b(?:i'm |i am )?(?:stop|end|finish|finished|quit|done)\s+(?:with\s+)?dictat(?:e|ing|ion)(?:\s+(?:please|now|thanks))?[\s.!?]*$/;
 
+/** A bare stop and nothing else: "stop", "cancel", "never mind", "be quiet", with a wake word or please. */
+export const isBareStop = (utterance: string): boolean =>
+  /^(?:(?:hey |ok |okay )?(?:jarvis|baton|alfred|freya)[,:]?\s+)?(?:please\s+)?(?:stop|cancel|never ?mind|be quiet|quiet|that'?s enough)(?:\s+please)?[\s.!?]*$/i.test(
+    utterance.trim(),
+  );
+
+const INTENT_PREFIX =
+  /^(?:(?:i meant to|i mean to|i want to|i'd like to|i would like to|i need to|let me|let's|lets|can you|could you|would you|please|start|take|go into|go to|switch to|enter|begin|time to)\s+)+/;
+const DICTATE_FORMS = new Set([
+  "dictate",
+  "dictates",
+  "dictated",
+  "dictator",
+  "dictating",
+  "dictation",
+]);
+const TAIL = new Set(["this", "now", "please", "mode", "thanks", "for", "me"]);
+
+const withinOne = (a: string, b: string): boolean => {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i += 1;
+      j += 1;
+    } else {
+      edits += 1;
+      if (edits > 1) return false;
+      if (a.length > b.length) i += 1;
+      else if (b.length > a.length) j += 1;
+      else {
+        i += 1;
+        j += 1;
+      }
+    }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+};
+
+/**
+ * The whole utterance is a wish to dictate, however it was heard: "dictator", "I meant to dictate",
+ * "start dictation", "dick tate". Never inside a longer sentence, so "the dictator of Rome" is not.
+ */
+const wantsToDictate = (text: string): boolean => {
+  const intent = text.replace(/[.!?,]+$/g, "").replace(/\bdick tate\b/g, "dictate");
+  const rest = intent.replace(INTENT_PREFIX, "");
+  const words = rest.split(" ").filter((word) => word.length > 0);
+  const [head, ...tail] = words;
+  if (head === undefined) return false;
+  if (!(DICTATE_FORMS.has(head) || withinOne(head, "dictate"))) return false;
+  return tail.every((word) => TAIL.has(word));
+};
+
 /**
  * Classify one utterance.
  *
@@ -82,9 +137,12 @@ export const classifyDictation = (
     const tail = (start[1] ?? "").trim();
     // Give the tail its original characters back: this text is going into
     // somebody's email, and lower-casing it would be rude.
-    const spoken = tail.length === 0 ? null : restoreCase(raw, tail);
+    const onlyFiller = tail.split(/\s+/).every((word) => TAIL.has(word.replace(/[.!?,]+$/g, "")));
+    const spoken = tail.length === 0 || onlyFiller ? null : restoreCase(raw, tail);
     return { kind: "start", text: spoken };
   }
+
+  if (!input.dictating && wantsToDictate(text)) return { kind: "start", text: null };
 
   return input.dictating ? { kind: "text", text: raw } : { kind: "not_dictation" };
 };

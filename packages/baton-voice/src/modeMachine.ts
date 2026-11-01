@@ -22,7 +22,8 @@
  *
  * @module baton-voice/modeMachine
  */
-import { classifyDictation } from "@t3tools/baton-shared/dictation";
+import { classifyDictation, isBareStop } from "@t3tools/baton-shared/dictation";
+import { isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 export type VoiceMode =
   | "sleeping"
@@ -287,10 +288,11 @@ const utterance = (
   if (s.mode === "dictation") {
     const d = classifyDictation(words, { dictating: true });
     // Back in the conversation, not asleep: he carries on with no wake word.
-    if (d.kind === "stop")
+    // A segment that is only "stop" is a command, not a word he is dictating.
+    if (d.kind === "stop" || isBareStop(words))
       return step({ ...s, mode: "conversation", deadline: at + timings.conversationMs }, [
         ...carry,
-        ...(d.text ? [{ kind: "dictate", text: d.text } as const] : []),
+        ...(d.kind === "stop" && d.text ? [{ kind: "dictate", text: d.text } as const] : []),
         { kind: "speak", text: "Stopped dictating." },
       ]);
     if (d.kind === "text" && words.length > 0)
@@ -331,7 +333,7 @@ const utterance = (
   if (d.kind === "stop")
     return step(s, [...carry, { kind: "ignored", text: raw, reason: "not dictating" }]);
 
-  if (SLEEP.test(words) && (awake || startsWithWake)) {
+  if ((SLEEP.test(words) || isCancelPhrase(words)) && (awake || startsWithWake)) {
     return step(base(s), [
       ...carry,
       ...(s.pending === null

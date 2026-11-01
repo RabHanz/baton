@@ -67,8 +67,10 @@ export const makeVoiceTurnLog = (
           if (event.state !== "sleeping") return;
           if (wake !== null && transcript === null) note("wake_only", { wake });
           return clear();
+        case "speech_end":
+          return note("speech_end", {});
         case "thinking":
-          return;
+          return note("processing_start", {});
       }
     },
     timings: (timings) => {
