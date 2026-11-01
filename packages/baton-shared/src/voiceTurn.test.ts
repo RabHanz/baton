@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   frameLevel,
   IDLE_TURN,
+  isCancelPhrase,
   reduceTurn,
   turnHoldsEscape,
   turnLimitMs,
@@ -23,8 +24,7 @@ describe("the cue after a wake word", () => {
     const speaking = reduceTurn(heard, { type: "speaking", active: true });
     expect(speaking.phase).toBe("speaking");
     const after = reduceTurn(speaking, { type: "speaking", active: false });
-    expect(after.phase).toBe("listening");
-    expect(play([{ type: "window_closed" }, { type: "dismissed" }], after).phase).toBe("idle");
+    expect(after.phase).toBe("idle");
   });
 
   it("says plainly that the wake word is needed when nothing was heard", () => {
@@ -65,7 +65,7 @@ describe("the cue after a wake word", () => {
       { type: "heard", text: "stop" },
       { type: "finished" },
     ]);
-    expect(state.phase).toBe("listening");
+    expect(state.phase).toBe("idle");
   });
 
   it("keeps speech on screen until it finishes", () => {
@@ -84,19 +84,44 @@ describe("the pill while a window is open", () => {
     { type: "heard", text: "what's this" },
   ];
 
-  it("goes back to Listening after each thing, and only then to the end", () => {
+  it("leaves after each thing, never going back to Listening once he has spoken", () => {
     let state = play([...open, { type: "speaking", active: true }]);
     expect(turnView(state)?.label).toBe("Speaking");
     state = reduceTurn(state, { type: "speaking", active: false });
-    expect(turnView(state)?.label).toBe("Listening");
+    expect(state.phase).toBe("idle");
     state = play([{ type: "activity", label: "Looking" }], state);
     expect(turnView(state)?.label).toBe("Looking");
     state = reduceTurn(state, { type: "activity", label: null });
-    expect(turnView(state)?.label).toBe("Listening");
+    expect(state.phase).toBe("idle");
+  });
+
+  it("shows Finishing from the end of his speech, then the words, and a closed window's end once", () => {
+    let state = play([{ type: "wake", word: "Alfred" }, { type: "thinking" }]);
+    expect(turnView(state)).toMatchObject({ label: "Finishing" });
+    state = reduceTurn(state, { type: "heard", text: "what needs me" });
+    expect(turnView(state)).toMatchObject({ label: "Thinking", caption: "what needs me" });
     state = reduceTurn(state, { type: "window_closed" });
+    state = reduceTurn(state, { type: "finished" });
     expect(turnView(state)).toMatchObject({ label: "Not listening", caption: "Say the wake word" });
     expect(turnLimitMs(state.phase)).toBeLessThan(turnLimitMs("listening"));
     expect(reduceTurn(state, { type: "dismissed" }).phase).toBe("idle");
+    // A follow-up in a window that stayed open shows Finishing too, with no wake word.
+    expect(play([{ type: "thinking" }]).phase).toBe("thinking");
+  });
+
+  it("recognises a spoken cancel, with or without the wake word", () => {
+    for (const said of [
+      "cancel",
+      "Never mind.",
+      "scratch that",
+      "Baton, forget it",
+      "cancel that!",
+    ]) {
+      expect(isCancelPhrase(said)).toBe(true);
+    }
+    for (const said of ["cancel the build", "what's the weather", "don't cancel it"]) {
+      expect(isCancelPhrase(said)).toBe(false);
+    }
   });
 
   it("shows the end after speech when the window closed under it", () => {
@@ -109,11 +134,11 @@ describe("the pill while a window is open", () => {
     expect(state.phase).toBe("ended");
   });
 
-  it("returns to Listening when words were set aside", () => {
-    expect(play([...open, { type: "resume" }]).phase).toBe("listening");
+  it("leaves when words were set aside", () => {
+    expect(play([...open, { type: "resume" }]).phase).toBe("idle");
   });
 
-  it("holds Dictating through each chunk, and returns to Listening after", () => {
+  it("holds Dictating through each chunk, and leaves after", () => {
     let state = play([...open, { type: "dictating", caption: "Say stop dictating" }]);
     state = play(
       [
@@ -127,12 +152,12 @@ describe("the pill while a window is open", () => {
     expect(turnView(state)).toMatchObject({ label: "Dictating", caption: "typed" });
     expect(reduceTurn(state, { type: "wake", word: "Alfred" }).phase).toBe("dictating");
     state = reduceTurn(state, { type: "dictating", caption: null });
-    expect(state.phase).toBe("listening");
+    expect(state.phase).toBe("idle");
   });
 
-  it("reads Listening again when a stop leaves the window open", () => {
+  it("leaves when a dismissal ends a spoken turn", () => {
     const state = play([...open, { type: "speaking", active: true }, { type: "dismissed" }]);
-    expect(state.phase).toBe("listening");
+    expect(state.phase).toBe("idle");
   });
 });
 

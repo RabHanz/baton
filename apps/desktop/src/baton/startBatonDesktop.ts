@@ -233,6 +233,8 @@ export const startBatonDesktop = Effect.gen(function* () {
       sessions,
       updates: batonUpdates,
       holdEscape,
+      onPillState: (phase) =>
+        turnLog.note(phase === "idle" ? "pill_hidden" : "pill_state", { phase }),
       onBargeIn: () => {
         speaker.cancel();
         screen?.hush();
