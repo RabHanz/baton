@@ -17,6 +17,8 @@ import { tabOf, type TabId } from "./tabs.ts";
 export interface HomeOption {
   readonly value: string;
   readonly label: string;
+  /** One line saying what choosing it does. */
+  readonly note?: string;
 }
 
 interface HomeControlBase {
@@ -122,6 +124,19 @@ export interface HomeExtra {
       readonly resetsAt: string | null;
     }>;
   }>;
+  readonly bindings: ReadonlyArray<{
+    readonly action: string;
+    readonly label: string;
+    readonly hint: string;
+    readonly input:
+      | { readonly type: "key"; readonly accelerator: string }
+      | { readonly type: "mouse"; readonly button: string }
+      | null;
+    readonly isDefault: boolean;
+    readonly conflictsWith: ReadonlyArray<string>;
+  }>;
+  /** Whether Baton can act on a mouse button yet; until then they are saved and say so. */
+  readonly mouseReady: boolean;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;
   readonly paths: ReadonlyArray<{
     readonly id: string;

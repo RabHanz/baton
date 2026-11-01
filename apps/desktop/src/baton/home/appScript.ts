@@ -47,6 +47,11 @@ function control(c) {
     if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
       const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
     }
+    if (c.options.some(o => o.note)) {
+      const list = $('div', 'brain');
+      for (const o of c.options) { const r = $('button', 'pick' + (o.value === c.value ? ' on' : '')); r.setAttribute('role', 'radio'); r.setAttribute('aria-checked', String(o.value === c.value)); const t = $('div', 'text'); t.append($('div', 'label', o.label), $('div', 'hint', o.note || '')); r.append($('span', 'radio'), t); r.onclick = () => set(c.id, o.value); list.appendChild(r); }
+      return list;
+    }
     const s = $('select'); s.setAttribute('aria-label', c.label);
     for (const o of c.options) { const p = $('option', null, o.label); p.value = o.value; p.selected = o.value === c.value; s.appendChild(p); }
     s.onchange = () => set(c.id, s.value); return s;
@@ -247,7 +252,7 @@ function keys(p, which) {
   p.appendChild($('h2', null, 'Keyboard shortcuts'));
   const g = $('div', 'group');
   for (const k of list) { const r = $('div', 'kv'); const t = $('div'); t.appendChild($('div', 'label', k.label)); if (k.hint) t.appendChild($('div', 'hint', k.hint)); const w = $('div'); k.keys.split('+').forEach(x => w.appendChild($('kbd', null, x))); r.append(t, w); g.appendChild(r); }
-  const note = $('p', 'hint', 'Fixed for now.'); note.style.marginTop = '8px'; p.appendChild(g); p.appendChild(note); return;
+  const note = $('p', 'hint'); note.style.marginTop = '8px'; note.append(document.createTextNode('Change these in '), (() => { const a = $('button', 'reveal', 'Settings, Keyboard'); a.onclick = () => { modal = 'keys'; render(); }; return a; })(), document.createTextNode('.')); p.appendChild(g); p.appendChild(note); return;
   p.appendChild(g);
 }
 function resetsIn(iso) { const ms = Date.parse(iso) - Date.now(); if (!(ms > 0)) return 'now'; const h = ms / 3600000; return h < 1 ? 'in under an hour' : h < 48 ? 'in ' + Math.round(h) + ' h' : 'in ' + Math.round(h / 24) + ' d'; }
@@ -286,13 +291,57 @@ function tabPage(p) {
   if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Baton last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
 }
 
-const MODAL = [['General', 'general'], ['System', 'system'], ['Keyboard', 'keys'], ['Account', 'account'], ['Updates', 'updates'], ['About', 'about']];
+const MODAL = [['General', 'general'], ['System', 'system'], ['Keyboard and mouse', 'keys'], ['Account', 'account'], ['Updates', 'updates'], ['About', 'about']];
+let capturing = null, capNote = '';
+function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
+function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
+function chips(input) { const w = $('div', 'chips'); if (!input) { w.appendChild($('span', 'hint', 'Off')); return w; } if (input.type === 'key') input.accelerator.split('+').forEach(x => w.appendChild($('kbd', null, x))); else w.appendChild($('span', 'chip plain', ({ middle: 'Middle button', back: 'Back button', forward: 'Forward button', 'left+right': 'Left and right together' })[input.button] || input.button)); return w; }
+function bindingsPage(b) {
+  const x = S.extra || {}; const rows = x.bindings || [];
+  b.appendChild($('h1', null, 'Keyboard and mouse'));
+  const lead = $('p', 'lede', 'Choose how to start, stop and steer Baton by hand. Voice always works with no button at all.'); b.appendChild(lead);
+  const g = $('div', 'group');
+  for (const r of rows) {
+    const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
+    if (r.input && r.input.type === 'mouse' && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Baton\u2019s input helper.'));
+    if (r.conflictsWith.length) { const c = $('div', 'fix', 'Same as ' + r.conflictsWith.join(' and ') + '. Only one of them will work.'); c.style.color = 'var(--warn)'; t.appendChild(c); }
+    const side = $('div'); side.style.cssText = 'display:flex;align-items:center;gap:10px;flex:none';
+    const on = capturing === r.action;
+    side.appendChild(chips(r.input));
+    const ch = $('button', 'btn quiet', on ? 'Cancel' : 'Change'); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch);
+    if (r.input && !on) { const cl = $('button', 'btn quiet', 'Clear'); cl.onclick = () => set('b.clear:' + r.action, null); side.appendChild(cl); }
+    if (!r.isDefault && !on) { const rs = $('button', 'btn quiet', 'Reset'); rs.onclick = () => set('b.reset:' + r.action, null); side.appendChild(rs); }
+    row.append(t, side); wrap.appendChild(row);
+    if (on) { const cap = $('div', 'inline capture'); cap.appendChild($('div', 'label', 'Press a key or a chord, or click a mouse button. Escape cancels.')); if (capNote) cap.appendChild($('div', 'hint', capNote)); wrap.appendChild(cap); }
+    g.appendChild(wrap);
+  }
+  const f = $('div', 'row'); const ft = $('div', 'text'); ft.append($('div', 'label', 'Cancel a recording, a card or a drive'), $('div', 'hint', 'Always Escape.')); f.append(ft, chips({ type: 'key', accelerator: 'Escape' })); g.appendChild(f);
+  b.appendChild(g);
+  const reset = $('button', 'btn quiet', 'Reset all to defaults'); reset.style.marginTop = '14px'; reset.onclick = () => set('b.resetAll:all', null); b.appendChild(reset);
+  const n = $('p', 'hint', 'A button you do not set here passes through to your apps unchanged. Keys that another app already uses may not register.'); n.style.marginTop = '12px'; b.appendChild(n);
+}
+addEventListener('keydown', e => {
+  if (!capturing) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) { capturing = null; capNote = ''; render(); return; }
+  const a = accel(e); if (!a) return;
+  const bare = !/\+/.test(a);
+  if (bare && !/^F\d+$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
+  const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'key', accelerator: a }));
+}, true);
+addEventListener('mousedown', e => {
+  if (!capturing) return;
+  let button = null;
+  if (e.buttons === 3) button = 'left+right'; else if (e.button === 1) button = 'middle'; else if (e.button === 3) button = 'back'; else if (e.button === 4) button = 'forward';
+  if (!button) return;
+  e.preventDefault(); const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'mouse', button }));
+}, true);
 function modalPage(b) {
   const x = S.extra || {};
   const rows = ids => S.controls.filter(c => ids.includes(c.id));
   if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Baton'), $('div', 'hint', 'Closing the window keeps Baton in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
-  else if (modal === 'keys') { b.appendChild($('h1', null, 'Keyboard')); keys(b, null); const n = $('p', 'hint', 'These shortcuts are fixed for now.'); n.style.marginTop = '10px'; b.appendChild(n); }
+  else if (modal === 'keys') bindingsPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Baton uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Baton downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
   else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
