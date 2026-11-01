@@ -1114,3 +1114,24 @@ read asks even with Act without asking on; a high-risk call asks, and a spoken q
 spoken yes lets it through); a Codex file change asks whatever the setting; a web search after a read asks. Cases:
 `apps/desktop/src/baton/screen/operatorProof.test.ts`. Exits 1 if any fail (checked by breaking the taint rule: 2 of 4
 failed). Why the gate's pieces moved: D136.
+
+## The Director's asks of 2026-11-01, where they stand (tracked on issue #78)
+
+Written 2026-11-01. Proven means seen working on his laptop; "tests" means unit or browser renders only.
+
+| Ask | State |
+| --- | --- |
+| Baton's own window, sidebar and tabs, every setting | Merged (PR #73, #76 fixed a script error). Mock-data renders; 0.1.18 is the first build to carry the fix. Not yet seen on his laptop |
+| Real Wispr Flow audit | First pass from public sources merged (`research/wispr-audit-2026-11-01/`); the live-app capture waits for his yes |
+| Open sessions opens T3 | Merged (PR #74); not run in Electron |
+| Clean thread list, renames stick | Deployed to both boxes (0.1.5-baton.47); sweep ran, 7 to 3 and 134 to 7 |
+| Updates warn and relaunch | Merged (#69); the install script warns 30 s first, proven on 0.1.15 |
+| Dictation pack (voice-only dictate, quick pill, caret context, learned vocabulary, one-shot default, cleanup eval) | Merged (#77); tests only |
+| History, optional Opus recordings, hour-long dictation | PR #79; tests and renders only |
+| Mouse bindings (middle click, left+right chord) | Reducer and schema merged; the Windows hook is not written |
+| One assistant (no router) | Pushes 1 to 4 on `baton/conversation-memory`, behind a setting, never run live |
+| Full computer use as its hands (#52) | Designed (D144); not built |
+| Jobs, schedules, reports back, phone | Designed (D145); not built |
+| Monitoring, skills/plugins/MCPs, shared learnings memory, morning brief, approval list, editable memory, coordinator | Planned (D146); not built |
+| Conversation feel, realtime bake-off | Queued; no spend without his yes |
+| Public release readiness | `LAUNCH.md`; blockers and decisions listed there |
