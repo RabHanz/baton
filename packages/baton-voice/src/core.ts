@@ -108,6 +108,15 @@ export interface BatonVoiceCore extends VoiceCore {
    * after, the mic hears Baton: only a wake word gets through.
    */
   readonly setSpeaking: (active: boolean) => void;
+  /**
+   * A cue (a short sound of Baton's own) will play for this long: for that long the wake detector and
+   * the segmenter are given silence instead of the microphone, so the cue can neither wake it nor
+   * be written into a dictation. Gating, not subtracting: the cue's exact place in the capture
+   * depends on the output device's latency, which is not known.
+   */
+  readonly playingCue: (ms: number) => void;
+  /** He is in the middle of an utterance right now. */
+  readonly hearingSpeech: () => boolean;
   /** A sentence Baton is saying, so a stop phrase in it is not taken for his. */
   readonly noteSpoken: (text: string) => void;
   readonly setContext: (bus: ContextBusState) => void;
@@ -445,12 +454,15 @@ export const createVoiceCore = (input: {
     enqueue(() => dispatch({ type: "keep_open", at: now() }));
   };
   const hearingItself = () => speaking || samples < echoUntil;
+  let cueUntil = 0;
 
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
-  const pushAudio = (frame: Int16Array) => {
+  const pushAudio = (heard: Int16Array) => {
     if (disposed) return;
+    // Inside a cue's window the microphone is replaced by silence for everything downstream.
+    const frame = samples < cueUntil ? new Int16Array(heard.length) : heard;
     samples += frame.length;
 
     const score = input.wake.process(frame);
@@ -554,6 +566,10 @@ export const createVoiceCore = (input: {
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
     setSpeaking,
+    playingCue: (ms) => {
+      cueUntil = Math.max(cueUntil, samples + msToSamples(ms));
+    },
+    hearingSpeech: () => segment !== null,
     noteSpoken,
     confirm,
     subscribe: (l) => {
