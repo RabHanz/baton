@@ -18,6 +18,7 @@ import {
   MAX_PARTS,
   SUMMARY_MARK,
 } from "@t3tools/baton-shared/coordinator";
+import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/baton-shared/jobBrief";
 import { permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ThreadId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
@@ -32,7 +33,8 @@ import * as NodePath from "node:path";
 
 import * as ServerConfig from "../config.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { planningFrame, readPack } from "./OperatingSystemPack.ts";
+import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
+import { modelFor } from "@t3tools/baton-shared/costRouting";
 import { BatonJobService } from "./BatonJobService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -85,7 +87,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   });
   // A retried start finds the thread it already made.
   const existing = yield* threadOf(id);
-  if (existing !== null) return { terms, threadId: existing };
+  if (existing !== null) return { terms, threadId: existing, model: input.modelSelection.model };
   const workSession = yield* workSessions.get(id);
   const threadId = ThreadIdSchema.make(`job-thread-${yield* uuid}`);
   const launched = yield* engine.launchThread({
@@ -117,9 +119,13 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   });
   if (options.agreed === true) {
     yield* jobs.planReady(id);
-    return { terms: (yield* jobs.agree(id)) ?? terms, threadId: launched };
+    return {
+      terms: (yield* jobs.agree(id)) ?? terms,
+      threadId: launched,
+      model: input.modelSelection.model,
+    };
   }
-  return { terms, threadId: launched };
+  return { terms, threadId: launched, model: input.modelSelection.model };
 });
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
@@ -189,8 +195,27 @@ export const noticePlan = Effect.fn("BatonJobFlow.noticePlan")(function* (thread
   if (id === null) return;
   const terms = yield* jobs.terms(id);
   if (terms === null || terms.phase !== "drafting_plan") return;
-  const shell = yield* (yield* BatonEngine).threadShell(threadId);
+  const engine = yield* BatonEngine;
+  const shell = yield* engine.threadShell(threadId);
   if (shell?.status !== "completed") return;
+  // A plan without the job brief is not ready: ask once, and accept it on the second try so a
+  // worker that will not comply cannot hold the job forever.
+  const last = (yield* engine.recentMessages(threadId, 1)).findLast((m) => m.role === "assistant");
+  const brief = parseJobBrief(last?.text ?? "");
+  if (!brief.ok) {
+    const asked = terms.revisions.some((r) => r.text.startsWith(NUDGE_MARK));
+    if (!asked) {
+      const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+      yield* jobs.refine(id, {
+        by: "baton",
+        at,
+        via: "thread",
+        text: `${NUDGE_MARK} ${brief.missing.join(", ")}`,
+      });
+      yield* engine.sendMessage({ tag: "job", threadId, text: briefNudge(brief.missing) });
+      return;
+    }
+  }
   const next = yield* jobs.planReady(id);
   if (next?.phase === "approved") yield* beginWork(threadId);
 });
@@ -260,6 +285,7 @@ export const splitJob = Effect.fn("BatonJobFlow.split")(function* (input: BatonJ
   const parent = yield* jobs.terms(input.id);
   if (parent === null || parent.phase !== "approved") return [];
   const workSession = yield* (yield* WorkSessionService).get(input.id);
+  const dbPath = (yield* ServerConfig.ServerConfig).dbPath;
   const parentThread = yield* threadOf(input.id);
   const shell =
     parentThread === null ? null : yield* (yield* BatonEngine).threadShell(parentThread);
@@ -275,11 +301,25 @@ export const splitJob = Effect.fn("BatonJobFlow.split")(function* (input: BatonJ
         goal: part.goal,
         // A part never has more than its parent: the same folders, projects and tools.
         permissions: parent.permissions,
-        modelSelection: shell.modelSelection,
+        // Routine work on the cheap model of his routing table; the rest stays on the parent's.
+        modelSelection:
+          part.routine === true
+            ? {
+                ...shell.modelSelection,
+                model: modelFor("routine", readRouting(NodePath.dirname(dbPath))),
+              }
+            : shell.modelSelection,
         runtimeMode: "approval-required",
       },
       { parentId: input.id, agreed: true, ...(part.role === undefined ? {} : { role: part.role }) },
     );
+    // The card shows which model a step used (D148).
+    yield* jobs.refine(id, {
+      by: "baton",
+      at: DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis)),
+      via: "thread",
+      text: `Model: ${result.model}${part.routine === true ? " (routine step, cheap model)" : ""}`,
+    });
     started.push({ id, threadId: result.threadId });
   }
   return started;

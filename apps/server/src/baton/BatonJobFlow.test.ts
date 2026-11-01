@@ -27,6 +27,18 @@ import { layer as workSessionLayer } from "./WorkSessionService.ts";
 const launched: BatonThreadLaunch[] = [];
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
+const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
+const BRIEF = [
+  "Job brief",
+  "The job: x",
+  "Desired outcomes",
+  "Leverage point",
+  "Build or do not build",
+  "Steps",
+  "Specialists",
+  "Reversibility",
+  "Permissions",
+].join("\n");
 
 const serverConfig = Layer.succeed(ServerConfig.ServerConfig, {
   dbPath: NodePath.join(NodeOS.tmpdir(), "baton-flow-test", "state.sqlite"),
@@ -52,6 +64,7 @@ const layer = it.layer(
       launch: (launch) => (launched.push(launch), launch.threadId ?? null),
       sent,
       shells,
+      messages,
     }),
   ).pipe(Layer.provideMerge(workSessionLayer), Layer.provideMerge(SqlitePersistenceMemory)),
 );
@@ -120,14 +133,20 @@ layer("BatonJobFlow", (it) => {
           { id: ta, status: "completed" } as OrchestrationV2ThreadShell,
           { id: tb, status: "completed" } as OrchestrationV2ThreadShell,
         );
+        // A plan with no job brief is asked for it once, and is not ready yet.
+        messages.push({ role: "assistant", text: "I will just do it." });
         yield* noticePlan(ta);
-        yield* noticePlan(tb);
+        assert.strictEqual((yield* jobs.terms(a))?.phase, "drafting_plan");
+        assert.include(sent.at(-1)?.text ?? "", "Show the job brief");
+        assert.strictEqual(sent.length, before + 1);
+        // Asked once only: the second time the plan stands as it is.
+        yield* noticePlan(ta);
         assert.strictEqual((yield* jobs.terms(a))?.phase, "awaiting_agreement");
+        messages.length = 0;
+        messages.push({ role: "assistant", text: BRIEF });
+        yield* noticePlan(tb);
         assert.strictEqual((yield* jobs.terms(b))?.phase, "approved");
-        assert.deepEqual(
-          sent.slice(before).map((m) => m.threadId),
-          [tb],
-        );
+        assert.strictEqual(sent.slice(before).filter((m) => m.threadId === tb).length, 1);
       }),
   );
 
@@ -182,7 +201,7 @@ layer("BatonJobFlow", (it) => {
         const started = yield* splitJob({
           id: parent,
           parts: [
-            { title: "Copy", goal: "write the copy", role: "marketing" },
+            { title: "Copy", goal: "write the copy", role: "marketing", routine: true },
             { title: "Code", goal: "build the page" },
           ],
         });
@@ -194,6 +213,11 @@ layer("BatonJobFlow", (it) => {
         );
         assert.include(mine[0]?.text ?? "", "Your role (marketing)");
         assert.include(mine[0]?.text ?? "", "already agreed");
+        // Routine work runs on the cheap model of the routing table; the rest on the parent's.
+        assert.deepEqual(
+          mine.map((l) => l.modelSelection.model),
+          ["haiku", "sonnet"],
+        );
         const parts = yield* jobs.parts(parent);
         assert.deepEqual(
           parts.map((p) => [p.parentId, p.phase, p.permissions.tools.length]),

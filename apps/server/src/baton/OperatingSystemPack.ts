@@ -7,6 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { parseRouting, type Routing } from "@t3tools/baton-shared/costRouting";
 import { mergePack, packPrompt, type OsPack } from "@t3tools/baton-shared/osPack";
 
 export const PACK_DIR_NAME = "operating-system";
@@ -42,3 +43,7 @@ export const readPack = (userdata: string): OsPack => {
 
 /** The planning frame for a job, read fresh so an edit counts at the next job. */
 export const planningFrame = (userdata: string): string => packPrompt(readPack(userdata));
+
+/** The cost routing table, `routing.json` in the pack folder, over the default. */
+export const readRouting = (userdata: string): Routing =>
+  parseRouting(readText(NodePath.join(userdata, PACK_DIR_NAME, "routing.json")));
