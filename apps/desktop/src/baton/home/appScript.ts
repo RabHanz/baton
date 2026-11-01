@@ -305,7 +305,7 @@ function bindingsPage(b) {
     const wrap = $('div', 'rowwrap'); const row = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', r.label), $('div', 'hint', r.hint));
     if (r.input && r.input.type === 'mouse' && !x.mouseReady) t.appendChild($('div', 'hint', 'Saved. Mouse buttons start working with Baton\u2019s input helper.'));
     if (r.conflictsWith.length) { const c = $('div', 'fix', 'Same as ' + r.conflictsWith.join(' and ') + '. Only one of them will work.'); c.style.color = 'var(--warn)'; t.appendChild(c); }
-    const side = $('div'); side.style.cssText = 'display:flex;align-items:center;gap:10px;flex:none';
+    t.style.cssText = 'flex:1;min-width:0'; const side = $('div'); side.style.cssText = 'display:flex;align-items:center;gap:8px;flex:none';
     const on = capturing === r.action;
     side.appendChild(chips(r.input));
     const ch = $('button', 'btn quiet', on ? 'Cancel' : 'Change'); ch.onclick = () => { capturing = on ? null : r.action; capNote = ''; render(); }; side.appendChild(ch);
