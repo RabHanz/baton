@@ -168,6 +168,7 @@ import {
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { loginItemOn, setLoginItem } from "./loginItem.ts";
+import { warmUpVoice } from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
