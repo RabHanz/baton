@@ -273,7 +273,8 @@ export interface BatonDesktopBridge {
             readonly kind: "run";
             readonly text: string;
             readonly focusedWorkSessionId: string | null;
-          },
+          }
+        | BatonJobBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
   /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
@@ -293,3 +294,10 @@ export interface BatonDesktopBridge {
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
 export const batonDesktopBridge = (): BatonDesktopBridge | undefined =>
   (globalThis as { batonDesktopBridge?: BatonDesktopBridge }).batonDesktopBridge;
+
+/** The desktop's job tools (D145), answered by the window with the job RPCs; arguments are checked server-side. */
+export interface BatonJobBridgeRequest {
+  readonly kind: "job";
+  readonly op: "list" | "start" | "agree" | "refine" | "grant" | "revoke";
+  readonly args: Readonly<Record<string, unknown>>;
+}

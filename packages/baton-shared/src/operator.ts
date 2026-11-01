@@ -74,6 +74,8 @@ const BATON_QUIET = new Set([
   "dictation_stop",
   "screen_capture",
   "ui_tree",
+  "jobs_list",
+  "job_revoke",
 ]);
 const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
 export const BATON_TOOLS: ReadonlySet<string> = new Set([
@@ -83,6 +85,10 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "type_text",
   "press_keys",
   "session_send",
+  "job_start",
+  "job_refine",
+  "job_agree",
+  "job_grant",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -164,6 +170,17 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return context.tainted && !keyIsNavigation(Array.isArray(call.input["keys"]) ? call.input["keys"].map(String) : [])
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    case "job_start":
+    case "job_refine":
+    case "job_agree":
+      // A job's words are his own or they came from something it read; only the second asks.
+      // Starting work is his agreement, not the model's: after a read it always asks.
+      return outgoing || (name === "job_agree" && context.tainted)
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
+    case "job_grant":
+      // A standing permission is explicit and his alone: it asks every time.
+      return { verdict: "ask", why: "It would give a job a standing permission.", risky: true };
     case "session_send":
       // The intent layer applies the same gates as typing it; a secret carried out is the risk here.
       return outgoing ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };

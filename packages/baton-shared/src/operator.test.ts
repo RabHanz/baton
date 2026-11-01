@@ -133,8 +133,20 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(typed("buy this now"), read).verdict).toBe("ask");
     expect(judgeToolCall(typed("what I just told you"), { ...read, textIsHis: true }).verdict).toBe("allow");
   });
+  it("lets a job start and be agreed to with his words, asks after a read, and always asks for a standing permission", () => {
+    const start = { tool: "mcp__baton__job_start", input: { title: "Site", goal: "rebuild the site", project: "Site" } };
+    const agree = { tool: "mcp__baton__job_agree", input: { id: "j1" } };
+    expect(judgeToolCall(start, off).verdict).toBe("allow");
+    expect(judgeToolCall(agree, off).verdict).toBe("allow");
+    const read = { ...off, tainted: true };
+    expect(judgeToolCall(start, read).verdict).toBe("ask");
+    expect(judgeToolCall(start, { ...read, textIsHis: true }).verdict).toBe("allow");
+    expect(judgeToolCall(agree, { ...read, textIsHis: true }).verdict).toBe("ask");
+    const grant = judgeToolCall({ tool: "mcp__baton__job_grant", input: { id: "j1", channel: "email" } }, off);
+    expect(grant).toMatchObject({ verdict: "ask", risky: true });
+  });
   it("lets it look and click, but not send, drag or press Enter on its own", () => {
-    for (const tool of ["screen_capture", "ui_tree", "sessions_list", "fleet_status", "memory_search", "dictation_start"]) {
+    for (const tool of ["screen_capture", "ui_tree", "sessions_list", "fleet_status", "memory_search", "dictation_start", "jobs_list", "job_revoke"]) {
       expect(judgeToolCall({ tool: `mcp__baton__${tool}`, input: {} }, off).verdict).toBe("allow");
     }
     expect(judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the text box" } }, off).verdict).toBe("allow");

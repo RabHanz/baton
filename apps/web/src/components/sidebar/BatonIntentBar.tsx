@@ -23,6 +23,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   batonDesktopBridge,
   type BatonIntentResolution,
+  type BatonJobBridgeRequest,
   type EnvironmentId,
 } from "@t3tools/baton-contracts";
 import { classifyDictation } from "@t3tools/baton-shared/dictation";
@@ -56,6 +57,8 @@ export interface BatonIntentBarProps {
   readonly focusedWorkSessionId: string | null;
   /** Called after a sentence runs, so the log and the fleet re-read. */
   readonly onRan: () => void;
+  /** The desktop assistant's job tools (D145), answered with the job RPCs. */
+  readonly onJob?: (request: BatonJobBridgeRequest) => Promise<unknown>;
 }
 
 let voiceListenerClaimed = false;
@@ -112,7 +115,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     return () => clearTimeout(timer);
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
-  const { environmentId, focusedWorkSessionId, onRan } = props;
+  const { environmentId, focusedWorkSessionId, onRan, onJob } = props;
   const ownsVoice = useRef(false);
   // The desktop voice core's intent calls, answered with this bar's own RPCs:
   // spoken sentences meet the same grammar and gates as typed ones. Dictation
@@ -124,6 +127,10 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     voiceListenerClaimed = true;
     ownsVoice.current = true;
     const unsubscribe = subscribe(async (request) => {
+      if (request.kind === "job") {
+        if (onJob === undefined) throw new Error("Jobs are not available here.");
+        return onJob(request);
+      }
       const input = {
         text: request.text,
         focusedWorkSessionId: request.focusedWorkSessionId as never,
@@ -147,7 +154,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       voiceListenerClaimed = false;
       ownsVoice.current = false;
     };
-  }, [environmentId, onRan, resolveIntent, runIntent]);
+  }, [environmentId, onRan, onJob, resolveIntent, runIntent]);
   useEffect(() => {
     if (ownsVoice.current) batonDesktopBridge()?.setBatonVoiceFocus?.(focusedWorkSessionId);
   }, [focusedWorkSessionId]);
