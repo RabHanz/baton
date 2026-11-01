@@ -1,4 +1,8 @@
-import { accountForInstance, type BatonAccount } from "@t3tools/baton-contracts";
+import {
+  accountForInstance,
+  setClaudeAccountInstances,
+  type BatonAccount,
+} from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { accountDisplayName, limitsFromAccount, withAccount } from "./ClaudeProbeLimits.ts";
@@ -19,6 +23,12 @@ const account = (overrides: Partial<BatonAccount>): BatonAccount => ({
   ],
   usageCheckedAt: "2026-10-30T17:42:49.000Z",
   ...overrides,
+});
+
+setClaudeAccountInstances({
+  claudeAgent_rabee: "4",
+  claudeAgent_optima: "5",
+  claudeAgent_signzart: "6",
 });
 
 describe("accountForInstance", () => {

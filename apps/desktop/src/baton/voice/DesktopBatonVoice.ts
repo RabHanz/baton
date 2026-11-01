@@ -29,6 +29,7 @@ import {
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
+import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
 import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -164,14 +165,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cleanupModel: "haiku",
   claudeBinary: "claude",
   appModes: {},
-  wakeWords: [
-    // Thresholds measured on 6.6 hours of real speech and held-out en-GB voices (D98).
-    { word: "Sebastian", enabled: true, threshold: 0.97 },
-    { word: "Alfred", enabled: true, threshold: 0.9 },
-    { word: "Freya", enabled: true, threshold: 0.95 },
-    // Off: as an ordinary word in speech it wakes too easily (D98).
-    { word: "Onyx", enabled: false, threshold: 0.9 },
-  ],
+  wakeWords: FRESH_WAKE_WORDS,
 };
 
 /** The renderer has this long to answer an intent call before the core is told it failed. */
@@ -186,9 +180,11 @@ const LOCATE_MAX_DIP = 160;
 
 const readSettings = (path: string): VoiceSettings => {
   try {
+    const saved: Record<string, unknown> = JSON.parse(NodeFS.readFileSync(path, "utf8"));
     return {
       ...DEFAULT_SETTINGS,
-      ...cleanupFromSaved(JSON.parse(NodeFS.readFileSync(path, "utf8"))),
+      wakeWords: wakeWordsFor(saved),
+      ...cleanupFromSaved(saved),
     };
   } catch {
     return DEFAULT_SETTINGS;
