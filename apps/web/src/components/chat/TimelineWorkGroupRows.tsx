@@ -15,7 +15,7 @@ import { memo, use, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
-import { Minimize2Icon, XIcon } from "lucide-react";
+import { ChevronRightIcon, Minimize2Icon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import {
@@ -361,6 +361,41 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
   );
 }
 
+/** A thinking summary: open while it is the latest turn's, closed only by him or by the next turn. */
+export function ThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thought" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <section aria-label="Thinking" className="py-0.5">
+      <button
+        type="button"
+        aria-expanded={row.open}
+        className="flex min-h-6 w-full cursor-pointer items-center gap-2 rounded-md text-left text-muted-foreground/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        onClick={() => ctx.onToggleThought(row.id)}
+      >
+        <ToolActivityIconView
+          icon={undefined}
+          fallbackName="brain"
+          className="block size-4 shrink-0 stroke-2"
+          muted
+        />
+        <span className="text-sm">Thought</span>
+        <ChevronRightIcon
+          aria-hidden
+          className={cn(
+            "size-3 shrink-0 opacity-70 transition-transform duration-200",
+            row.open && "rotate-90",
+          )}
+        />
+      </button>
+      {row.open ? (
+        <div className="max-h-72 overflow-y-auto pl-6 pr-2 text-sm text-muted-foreground">
+          <ChatMarkdown text={row.text} cwd={ctx.markdownCwd} parseRawHtml={false} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
@@ -504,7 +539,8 @@ export function LiveWorkEntryTimelineRow({
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
-  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
+  const thoughtLine =
+    row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "", row.active) : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
   return (
