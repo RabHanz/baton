@@ -75,8 +75,15 @@ export const judgeToolCall = (
     : { verdict: "ask", why: "Act without asking is off." };
 };
 
-/** A call is announced before its own request reaches the gate: only the one after the first is tainted. */
-export const taintedAfter = (toolsThisTurn: number): boolean => toolsThisTurn > 1;
+/**
+ * A call is announced before its own request reaches the gate. It follows something this turn read
+ * or ran when any earlier call was not a web search; a search reads nothing private, so searching
+ * again (a follow-up fact) stays untainted.
+ */
+export const announceTool = (ran: number, tool: string) => ({
+  tainted: ran > 0,
+  ran: tool === "WebSearch" ? ran : ran + 1,
+});
 
 /** What the gate says out loud and shows. A risky call's question that runs out is a no. */
 export const gatePrompt = (judged: Extract<ToolVerdict, { verdict: "ask" }>, action: string) => ({
