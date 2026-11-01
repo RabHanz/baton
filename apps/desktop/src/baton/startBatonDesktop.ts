@@ -22,6 +22,7 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import { createConversationLog } from "./conversation/conversationLog.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -61,6 +62,9 @@ export const startBatonDesktop = Effect.gen(function* () {
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
     let screen: ScreenCompanion | null = null;
+    const conversation = createConversationLog({
+      file: NodePath.join(environment.stateDir, "baton-conversation.ndjson"),
+    });
     const run = <A>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
     // The release feed is this repository's (D137); the install waits for a quiet moment.
     const lifecycle = createLifecycleLog({
@@ -216,6 +220,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     try {
       screen = startScreenCompanion({
         stateDir: environment.stateDir,
+        conversation,
+        onNote: turnLog.note,
         platform: environment.platform,
         env: hostEnvironment,
         speak: (text) => {
@@ -244,6 +250,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     voice = startDesktopBatonVoice({
       stateDir: environment.stateDir,
+      conversation,
+      onNote: turnLog.note,
       logDir: environment.logDir,
       appVersion: environment.appVersion,
       platform: environment.platform,

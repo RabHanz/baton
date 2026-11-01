@@ -21,6 +21,7 @@ import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as BatonDatabase from "./BatonDatabase.ts";
 import * as BatonEngine from "./BatonEngine.ts";
+import * as BatonJobService from "./BatonJobService.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
@@ -58,6 +59,7 @@ const servicesInner = IntentService.layer.pipe(
       // One work-session service for the whole server, so a mutation arriving on one client's
       // socket reaches every other client's subscription.
       WorkSessionService.layer,
+      BatonJobService.layer.pipe(Layer.provide(WorkSessionService.layer)),
       readClaudeAccountInstances,
       AccountPoolService.layer,
       ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
