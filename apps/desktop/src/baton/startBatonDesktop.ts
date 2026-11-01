@@ -7,7 +7,7 @@
  */
 import * as Electron from "electron";
 
-import { trackAppWindows } from "./lastAppWindow.ts";
+import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodePath from "node:path";
 
 import { createOsTts } from "@t3tools/baton-voice";
@@ -26,6 +26,11 @@ import { createVoicePlayer } from "./voice/voicePlayer.ts";
 import { createPocketEngine } from "./voice/pocketVoice.ts";
 import { createSpeaker } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
+import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
+import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
+
+const VOICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
+const VOICE_LOG_MAX_FILES = 5;
 
 export const startBatonDesktop = Effect.gen(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
@@ -36,9 +41,37 @@ export const startBatonDesktop = Effect.gen(function* () {
   const hostArchitecture = yield* HostProcess.Architecture;
   const context = yield* Effect.context<never>();
   const { resourcesPath } = environment;
+  // Same rotation as the desktop's own traces, smaller: a line a turn is a lot of turns.
+  const voiceLogFile = yield* makeRotatingLogFileWriter({
+    filePath: NodePath.join(environment.logDir, "voice-turns.ndjson"),
+    maxBytes: VOICE_LOG_MAX_BYTES,
+    maxFiles: VOICE_LOG_MAX_FILES,
+  }).pipe(Effect.option);
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
-    trackAppWindows(Electron.app);
+    const turnLog = makeVoiceTurnLog((line) => {
+      if (voiceLogFile._tag === "Some") {
+        Effect.runForkWith(context)(voiceLogFile.value.writeText(line));
+      }
+    });
+    // Windows limits who may take the foreground, so this takes upstream's strong reveal.
+    const openMainWindow = () =>
+      void Effect.runPromiseWith(context)(
+        desktopWindow.prepareCaptureReveal.pipe(
+          Effect.andThen(desktopWindow.revealOrCreateMain),
+          Effect.tap((window) =>
+            Effect.sync(() => {
+              rescueMainWindow(window, Electron.screen);
+              turnLog.note("open_main", {
+                visible: window.isVisible(),
+                minimised: window.isMinimized(),
+                bounds: window.getBounds(),
+              });
+            }),
+          ),
+        ),
+      ).catch((cause: unknown) => turnLog.note("open_main_failed", { cause: String(cause) }));
+    Electron.app.on("second-instance", openMainWindow);
     const holdEscape = createEscapeKey(Electron.globalShortcut);
     const pocket = createPocketEngine({
       root: NodePath.join(environment.stateDir, "voice", "pocket"),
@@ -56,6 +89,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       player: createVoicePlayer((level) => voice?.onSpeechLevel(level)),
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
+      onText: (text) => voice?.onSpoken(text),
     });
     let screen: ScreenCompanion | null = null;
     try {
@@ -66,6 +100,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         speak: speaker.speak,
         onChange: () => voice?.refresh(),
         onTurnEnd: () => voice?.onTurnEnd(),
+        onTimings: turnLog.timings,
         stopSpeech: speaker.cancel,
         holdEscape,
         onActivity: (label, caption) => voice?.onActivity(label, caption),
@@ -89,6 +124,11 @@ export const startBatonDesktop = Effect.gen(function* () {
         speaker.cancel();
         screen?.stop();
       },
+      onSpokenStop: () => {
+        speaker.cancel();
+        screen?.dismiss();
+      },
+      openMainWindow,
       dictationBinary: resolveDictationBinary({
         resourcesPath,
         platform: environment.platform,
@@ -109,7 +149,12 @@ export const startBatonDesktop = Effect.gen(function* () {
             intent,
             onReply,
             tts: speaker,
-            onEvent,
+            onEvent: (event) => {
+              turnLog.event(event);
+              // He is about to say something: have the sessions up before he finishes.
+              if (event.type === "wake") screen?.warm();
+              onEvent(event);
+            },
             ...(screen === null ? {} : { brain: screen }),
           })
         ).core,

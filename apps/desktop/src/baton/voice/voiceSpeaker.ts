@@ -101,6 +101,8 @@ export const createSpeaker = (input: {
   /** Written only: nothing is synthesised and nothing plays. */
   readonly silent?: () => boolean;
   readonly onActive?: (active: boolean) => void;
+  /** Each sentence as it is taken, before anything plays. */
+  readonly onText?: (text: string) => void;
 }): Speaker => {
   const running = new Set<() => void>();
   let generation = 0;
@@ -112,6 +114,7 @@ export const createSpeaker = (input: {
     if (input.silent?.() === true) return Promise.resolve();
     const text = speakableText(raw);
     if (text.length === 0) return Promise.resolve();
+    input.onText?.(text);
     const mine = generation;
     const voice = input.voice();
     const previous = generating;

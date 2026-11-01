@@ -56,6 +56,7 @@ vi.mock("electron", () => ({
 }));
 
 import * as ElectronWindow from "./ElectronWindow.ts";
+import { markCompanionWindow } from "../baton/lastAppWindow.ts";
 
 const layerTestFor = (platform: NodeJS.Platform) =>
   ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));
@@ -161,6 +162,18 @@ describe("ElectronWindow", () => {
       }
       assert.equal(vi.mocked(laterWindow.destroy).mock.calls.length, 1);
     }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect(
+    "never falls back to a Baton companion window, so a reveal cannot land on the pill",
+    () =>
+      Effect.gen(function* () {
+        const electronWindow = yield* ElectronWindow.ElectronWindow;
+        const pill = { isDestroyed: () => false };
+        markCompanionWindow(pill);
+        getAllWindowsMock.mockReturnValue([pill]);
+        assert.isTrue((yield* electronWindow.currentMainOrFirst)._tag === "None");
+      }).pipe(Effect.provide(layerTest)),
   );
 
   it.effect("never falls back to an auxiliary window as the main window", () =>

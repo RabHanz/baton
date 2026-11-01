@@ -1,41 +1,29 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { markCompanionWindow, shouldQuitOnAllClosed, trackAppWindows } from "./lastAppWindow.ts";
+import {
+  isCompanionWindow,
+  keepRunningForTray,
+  markCompanionWindow,
+  shouldQuitOnAllClosed,
+} from "./lastAppWindow.ts";
 
-const rig = () => {
-  let created: ((event: unknown, window: never) => void) | null = null;
-  trackAppWindows({ on: (_e, listener) => (created = listener as never) });
-  const open = (companion = false) => {
-    let closed: () => void = () => {};
-    const window = { once: (_e: string, listener: () => void) => (closed = listener) };
-    created!(null, window as never);
-    if (companion) markCompanionWindow(window);
-    return () => closed();
-  };
-  return open;
-};
-
-describe("quitting when the last window closes", () => {
-  it("stays up when only a companion window was ever open", () => {
-    const open = rig();
-    open(true)();
-    expect(shouldQuitOnAllClosed()).toBe(false);
-  });
-
-  it("quits when he closes the main window, even with the pill still up", () => {
-    const open = rig();
-    const closeMain = open();
-    const closePill = open(true);
-    closeMain();
-    closePill();
+describe("what ends the app", () => {
+  // In this order: the tray cannot be taken away again, in a test or in the app.
+  it("quits on the last window while nothing is in the tray", () => {
     expect(shouldQuitOnAllClosed()).toBe(true);
   });
 
-  it("does not quit while a detached window remains", () => {
-    const open = rig();
-    const closeMain = open();
-    open();
-    closeMain();
+  it("keeps running with no windows at all once the tray is up", () => {
+    keepRunningForTray();
     expect(shouldQuitOnAllClosed()).toBe(false);
+  });
+});
+
+describe("companion windows", () => {
+  it("are told apart from windows he opened", () => {
+    const pill = {};
+    markCompanionWindow(pill);
+    expect(isCompanionWindow(pill)).toBe(true);
+    expect(isCompanionWindow({})).toBe(false);
   });
 });
