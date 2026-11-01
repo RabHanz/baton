@@ -6,12 +6,12 @@ The Director asked whether Clicky could help Baton. Restated as one question: **
 
 ## Sources (all fetched 2026-10-27, pinned to a commit)
 
-| Repo | Commit read | Stars / open issues | Last push | Language | Licence |
-| --- | --- | --- | --- | --- | --- |
-| [farzaa/clicky](https://github.com/farzaa/clicky) | `a80fa80721a8` (2026-04-27) | 7,790 / 91 | 2026-04-28 | Swift | MIT, © 2026 Farza |
-| [jasonkneen/openclicky](https://github.com/jasonkneen/openclicky) | `e9eb06a29ff5` (2026-09-02) | 570 / 17 | 2026-09-05 | Swift | MIT, © 2026 Jason Kneen |
-| [Bitshank-2338/clicky-windows](https://github.com/Bitshank-2338/clicky-windows) | `6c6216b7f80a` (2026-10-26) | 283 / 2 | 2026-10-26 | Python | MIT, © 2026 Shashank Singh |
-| [tekram/clicky-windows](https://github.com/tekram/clicky-windows) (found in farzaa/clicky#26) | HEAD README only | 60 | 2026-04-23 | TypeScript (Electron) | MIT |
+| Repo                                                                                          | Commit read                 | Stars / open issues | Last push  | Language              | Licence                    |
+| --------------------------------------------------------------------------------------------- | --------------------------- | ------------------- | ---------- | --------------------- | -------------------------- |
+| [farzaa/clicky](https://github.com/farzaa/clicky)                                             | `a80fa80721a8` (2026-04-27) | 7,790 / 91          | 2026-04-28 | Swift                 | MIT, © 2026 Farza          |
+| [jasonkneen/openclicky](https://github.com/jasonkneen/openclicky)                             | `e9eb06a29ff5` (2026-09-02) | 570 / 17            | 2026-09-05 | Swift                 | MIT, © 2026 Jason Kneen    |
+| [Bitshank-2338/clicky-windows](https://github.com/Bitshank-2338/clicky-windows)               | `6c6216b7f80a` (2026-10-26) | 283 / 2             | 2026-10-26 | Python                | MIT, © 2026 Shashank Singh |
+| [tekram/clicky-windows](https://github.com/tekram/clicky-windows) (found in farzaa/clicky#26) | HEAD README only            | 60                  | 2026-04-23 | TypeScript (Electron) | MIT                        |
 
 Verbatim copies of each README, LICENSE and notice file are in `snapshots/`, each headed with its raw URL at the pinned commit. Repo metadata came from `api.github.com/repos/<repo>` the same day. Frames from the two demo GIFs are in `frames/`: I looked at them, I did not take a description's word for them. Other sources: `https://www.heyclicky.com/` (fetched through a page reader, so treat its wording as close but not raw) and `https://pypi.org/pypi/PyQt6/json`.
 
@@ -82,20 +82,20 @@ Baton today (`docs/baton/VOICE.md`, `STATUS.md`, D24/D66, read at origin/main 20
 - Context bus and injection adapters built.
 - Desktop is Electron 44.
 
-| Spec item | Clicky family | Baton | Verdict |
-| --- | --- | --- | --- |
-| §12.1 mic choice, pinning, fallback | clicky-windows saves the mic by name and driver, falls back to the default with a notice, and has a 3-second level test | `listDevices` / `selectDevice`, unknown id falls back to the default | Baton has it. Borrow the level test and save-by-name idea for the DJI receiver |
-| §12.2 wake / VAD / STT | farzaa: push-to-talk only. clicky-windows: Whisper-transcript wake word | openWakeWord + Silero + whisper.cpp | **Baton is ahead. Do not swap** |
-| §12.2 spoken reply | ElevenLabs / Edge / SAPI. clicky-windows starts speaking each finished sentence while the answer is still streaming | OS text-to-speech after the outcome | Borrow sentence-by-sentence speech for long replies |
-| §12.3 modes, §13 intents, §24 risk gates | None. Regex or tag routing, no conversation window, no direct-session mode | Built (pure reducer, confirm-later for medium risk) | **Baton is ahead. They conflict with Clicky's "the model decides" routing** |
-| §14 destination awareness | Per-app memory keyed on window title; "Code Mode" from IDE titles | Context bus + §14 ladder | Overlap. Baton's is the deterministic one |
-| **Screen awareness ("what's this error?")** | **The core feature**: a screenshot on the hotkey, sent with the question | **Missing.** §15/§17 ask for focus *metadata*, and §17 says "Do not stream arbitrary page content into Fabric by default" | **A real gap, and Clicky's main lesson** |
-| **Pointing / "show it"** | `[POINT:x,y:label:screenN]` → transparent overlay flies along a bezier arc; grid locator for any model | §21 "show" focuses a *session*; nothing points at the screen | **A real gap; the tag protocol is a cheap technique to borrow** |
-| **Acting on the desktop** | clicky-windows Drive (bounded, previewed, Esc, refuses password fields); openclicky computer use (warps the cursor, per its own review) | §18 text injection only; high-risk voice is refused | Borrow Drive's *gate shape* only if acting is ever wanted; it would be R3 |
-| Phase 6 dictation | clicky-windows: hold-to-dictate into a verified, non-password field, otherwise show the text with Copy | Built (context bus, injection report) | Same idea. Borrow the "unverifiable focus → show and Copy" fallback |
-| Airdeck (D64) | None | Baton side built | No overlap |
-| "Hands-free, can be prompted" | Push-to-talk first everywhere; the hands-free wake word is optional and weak | Always listening is the design | Clicky does not move this goal forward |
-| D1 subscription, not API | farzaa and openclicky need metered keys (Anthropic, AssemblyAI, ElevenLabs). clicky-windows can run on Ollama or Copilot | Uses the Director's Claude Code login | **Conflict. Baton must route screen questions through a subscription session, not Clicky's API calls** |
+| Spec item                                   | Clicky family                                                                                                                           | Baton                                                                                                                     | Verdict                                                                                                |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| §12.1 mic choice, pinning, fallback         | clicky-windows saves the mic by name and driver, falls back to the default with a notice, and has a 3-second level test                 | `listDevices` / `selectDevice`, unknown id falls back to the default                                                      | Baton has it. Borrow the level test and save-by-name idea for the DJI receiver                         |
+| §12.2 wake / VAD / STT                      | farzaa: push-to-talk only. clicky-windows: Whisper-transcript wake word                                                                 | openWakeWord + Silero + whisper.cpp                                                                                       | **Baton is ahead. Do not swap**                                                                        |
+| §12.2 spoken reply                          | ElevenLabs / Edge / SAPI. clicky-windows starts speaking each finished sentence while the answer is still streaming                     | OS text-to-speech after the outcome                                                                                       | Borrow sentence-by-sentence speech for long replies                                                    |
+| §12.3 modes, §13 intents, §24 risk gates    | None. Regex or tag routing, no conversation window, no direct-session mode                                                              | Built (pure reducer, confirm-later for medium risk)                                                                       | **Baton is ahead. They conflict with Clicky's "the model decides" routing**                            |
+| §14 destination awareness                   | Per-app memory keyed on window title; "Code Mode" from IDE titles                                                                       | Context bus + §14 ladder                                                                                                  | Overlap. Baton's is the deterministic one                                                              |
+| **Screen awareness ("what's this error?")** | **The core feature**: a screenshot on the hotkey, sent with the question                                                                | **Missing.** §15/§17 ask for focus _metadata_, and §17 says "Do not stream arbitrary page content into Fabric by default" | **A real gap, and Clicky's main lesson**                                                               |
+| **Pointing / "show it"**                    | `[POINT:x,y:label:screenN]` → transparent overlay flies along a bezier arc; grid locator for any model                                  | §21 "show" focuses a _session_; nothing points at the screen                                                              | **A real gap; the tag protocol is a cheap technique to borrow**                                        |
+| **Acting on the desktop**                   | clicky-windows Drive (bounded, previewed, Esc, refuses password fields); openclicky computer use (warps the cursor, per its own review) | §18 text injection only; high-risk voice is refused                                                                       | Borrow Drive's _gate shape_ only if acting is ever wanted; it would be R3                              |
+| Phase 6 dictation                           | clicky-windows: hold-to-dictate into a verified, non-password field, otherwise show the text with Copy                                  | Built (context bus, injection report)                                                                                     | Same idea. Borrow the "unverifiable focus → show and Copy" fallback                                    |
+| Airdeck (D64)                               | None                                                                                                                                    | Baton side built                                                                                                          | No overlap                                                                                             |
+| "Hands-free, can be prompted"               | Push-to-talk first everywhere; the hands-free wake word is optional and weak                                                            | Always listening is the design                                                                                            | Clicky does not move this goal forward                                                                 |
+| D1 subscription, not API                    | farzaa and openclicky need metered keys (Anthropic, AssemblyAI, ElevenLabs). clicky-windows can run on Ollama or Copilot                | Uses the Director's Claude Code login                                                                                     | **Conflict. Baton must route screen questions through a subscription session, not Clicky's API calls** |
 
 ## 4. Recommendation: borrow two techniques, skip the components
 
@@ -114,20 +114,20 @@ What to take:
 
 ## Claims
 
-| # | Claim | Status | Confidence | Evidence (captured 2026-10-27) | Origin |
-| --- | --- | --- | --- | --- | --- |
-| C1 | All three repos are MIT | observed | high | `snapshots/*-LICENSE.txt`; GitHub API `license.spdx_id` | architecture |
-| C2 | farzaa/clicky's public code is frozen; new work is private (heyclicky.com) | observed | high | `snapshots/farzaa-clicky-README.md` line 1–6; last push 2026-04-28 | architecture |
-| C3 | farzaa/openclicky are macOS 14.2+ only | observed | high | both READMEs, "Requirements"/"Prerequisites" | architecture |
-| C4 | clicky-windows depends on GPL-3.0 PyQt6 | observed | high | `snapshots/clicky-windows-requirements.txt`; pypi.org/pypi/PyQt6/json | architecture |
-| C5 | clicky-windows' wake word is Whisper transcript string-matching | observed | high | `audio/ambient_listener.py` lines 37, 265–282 at `6c6216b` | architecture |
-| C6 | clicky-windows has no inbound control API for other apps | observed | medium | grep for loopback servers found only `browser_bridge.py` and `collab.py` | architecture |
-| C7 | openclicky clicks warp the real cursor whatever backend is selected; its routing discards the model's tool choice | reported | medium | `OPENCLICKY_ARCHITECTURE_REVIEW.md` §1 items 1, 3 (the repo's own review, not re-verified) | architecture |
-| C8 | openclicky bundles `BackgroundComputerUse.app` with no licence file | observed | medium | `AppResources/OpenClicky/BackgroundComputerUseRuntime/` listing | architecture |
-| C9 | HeyClicky (closed) supports Windows 10+, has $0/$20/$100 plans, and screenshots only on the hotkey | reported | medium | heyclicky.com via page reader | market-research |
-| C10 | Baton has no screen capture for voice and no screen pointing | observed | high | origin/main `docs/baton/VOICE.md`, `STATUS.md`; spec §15/§17/§21 | architecture |
-| C11 | Claude 5.x needs `computer_toolset_20260801` and rejects `computer_20251124` | reported | low | comment in clicky-windows `ai/element_locator.py` lines 36–39; not checked against Anthropic docs | architecture |
-| C12 | Screen questions answered through a D73 file send on the subscription will be fast enough to use by voice | unknown | — | needs the first step above | model (hypothesis) |
+| #   | Claim                                                                                                             | Status   | Confidence | Evidence (captured 2026-10-27)                                                                    | Origin             |
+| --- | ----------------------------------------------------------------------------------------------------------------- | -------- | ---------- | ------------------------------------------------------------------------------------------------- | ------------------ |
+| C1  | All three repos are MIT                                                                                           | observed | high       | `snapshots/*-LICENSE.txt`; GitHub API `license.spdx_id`                                           | architecture       |
+| C2  | farzaa/clicky's public code is frozen; new work is private (heyclicky.com)                                        | observed | high       | `snapshots/farzaa-clicky-README.md` line 1–6; last push 2026-04-28                                | architecture       |
+| C3  | farzaa/openclicky are macOS 14.2+ only                                                                            | observed | high       | both READMEs, "Requirements"/"Prerequisites"                                                      | architecture       |
+| C4  | clicky-windows depends on GPL-3.0 PyQt6                                                                           | observed | high       | `snapshots/clicky-windows-requirements.txt`; pypi.org/pypi/PyQt6/json                             | architecture       |
+| C5  | clicky-windows' wake word is Whisper transcript string-matching                                                   | observed | high       | `audio/ambient_listener.py` lines 37, 265–282 at `6c6216b`                                        | architecture       |
+| C6  | clicky-windows has no inbound control API for other apps                                                          | observed | medium     | grep for loopback servers found only `browser_bridge.py` and `collab.py`                          | architecture       |
+| C7  | openclicky clicks warp the real cursor whatever backend is selected; its routing discards the model's tool choice | reported | medium     | `OPENCLICKY_ARCHITECTURE_REVIEW.md` §1 items 1, 3 (the repo's own review, not re-verified)        | architecture       |
+| C8  | openclicky bundles `BackgroundComputerUse.app` with no licence file                                               | observed | medium     | `AppResources/OpenClicky/BackgroundComputerUseRuntime/` listing                                   | architecture       |
+| C9  | HeyClicky (closed) supports Windows 10+, has $0/$20/$100 plans, and screenshots only on the hotkey                | reported | medium     | heyclicky.com via page reader                                                                     | market-research    |
+| C10 | Baton has no screen capture for voice and no screen pointing                                                      | observed | high       | origin/main `docs/baton/VOICE.md`, `STATUS.md`; spec §15/§17/§21                                  | architecture       |
+| C11 | Claude 5.x needs `computer_toolset_20260801` and rejects `computer_20251124`                                      | reported | low        | comment in clicky-windows `ai/element_locator.py` lines 36–39; not checked against Anthropic docs | architecture       |
+| C12 | Screen questions answered through a D73 file send on the subscription will be fast enough to use by voice         | unknown  | —          | needs the first step above                                                                        | model (hypothesis) |
 
 ## Contradictions
 

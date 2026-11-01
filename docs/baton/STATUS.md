@@ -24,6 +24,7 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 Usage panel on setup tokens from the probe, with age and stale state; account label and one-click
 switch in the thread header; the sentence "switch account to <name>". Unit-tested. A real switch
 waits for a second account with quota (2 Nov).
+
 ## Split chat panes, 2026-10-30 (D93, Baton #40)
 
 | Piece                                                                          | State                                        | Evidence                                                                                      |
@@ -149,21 +150,21 @@ Written down because the Director's standing instruction is that work is queued 
 remembered, never dismissed. Everything here is real work this lane holds and did not do; it
 is ordered, and nothing in it is blocked on a decision he owes.
 
-| #   | Work                                                                                                             | State                                                                          | What it needs                                                                                        |
-| --- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| #   | Work                                                                                                                                                                                                                                   | State                                                                          | What it needs                                                                                        |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | V1  | **Time dictation on an idle laptop** (D103, D104): chunk sweep, gain pass, then `replay_lab.py`, then decide `speechModel` and set the chunk constants. Clean-up delay too. Every speed figure so far was taken under load and is void |
-| V2  | **macOS voice** (D106): compile `desktop_unix.rs`, `stageBatonVoice`, payload check, CI runner. Needs Microphone, Accessibility and Input Monitoring, plus signing and notarisation |
-| V3  | **Linux voice** (D106): compile `desktop_unix.rs`, packaging, CI runner, `/dev/input` for the keys, each Wayland compositor's limit on focus and paste |
-| V4  | **Phone dictation**: `dictationCleanup.ts` is shared; a phone needs its own model session and focus source |
-| 1   | **Deploy the fork carrying presence and the Herdr adapter** to signzart and the local box                        | code committed, gate green, not yet built                                      | a Node ≥ 25.7 toolchain for `build-exe`; the box has 24.13 only, so the SEA step cannot run here yet |
-| 2   | **A pane adopted into a WorkSession, visible in the fleet**                                                      | adapter proven live; the service path unproven end to end                      | item 1 — it runs in the server, not in a script                                                      |
-| 3   | **T3's terminal backed by a Herdr pane** so it survives a T3 restart, not only a client reconnect                | not started; D58 names the three gaps                                          | item 1, then a `TerminalOpenInput` that can name a runtime                                           |
-| 4   | **Herdr on the local box**                                                                                       | installed on signzart by the install lane; absent on onnyx                     | that lane, or the same install run there                                                             |
-| 5   | **The rotation reactor wired to a real limit event**                                                             | rotation proven by hand (D56); nothing triggers it automatically               | a limit to fire against, or a synthetic one recorded as such                                         |
-| 6   | **The three surfaces** — fleet, work sessions, intent bar — walked in a real browser                             | built and typechecked; never walked since the presence block landed above them | item 1 and a browser session                                                                         |
-| 7   | **Wispr as a provider**                                                                                          | not started                                                                    | the §5 grammar is done; this is the dictation source behind it                                       |
-| 8   | **The eight-item reconciliation** between STATUS's phase table and the live boxes                                | half done in this file                                                         | item 1, so the table describes what is deployed rather than what is committed                        |
-| 9   | **Projects that exist on disk but not in T3** — `meliura-engine` has 67 sessions and no project on the local box | presence now lists them last and one click creates the project                 | nothing; it is his call which directories become projects                                            |
+| V2  | **macOS voice** (D106): compile `desktop_unix.rs`, `stageBatonVoice`, payload check, CI runner. Needs Microphone, Accessibility and Input Monitoring, plus signing and notarisation                                                    |
+| V3  | **Linux voice** (D106): compile `desktop_unix.rs`, packaging, CI runner, `/dev/input` for the keys, each Wayland compositor's limit on focus and paste                                                                                 |
+| V4  | **Phone dictation**: `dictationCleanup.ts` is shared; a phone needs its own model session and focus source                                                                                                                             |
+| 1   | **Deploy the fork carrying presence and the Herdr adapter** to signzart and the local box                                                                                                                                              | code committed, gate green, not yet built                                      | a Node ≥ 25.7 toolchain for `build-exe`; the box has 24.13 only, so the SEA step cannot run here yet |
+| 2   | **A pane adopted into a WorkSession, visible in the fleet**                                                                                                                                                                            | adapter proven live; the service path unproven end to end                      | item 1 — it runs in the server, not in a script                                                      |
+| 3   | **T3's terminal backed by a Herdr pane** so it survives a T3 restart, not only a client reconnect                                                                                                                                      | not started; D58 names the three gaps                                          | item 1, then a `TerminalOpenInput` that can name a runtime                                           |
+| 4   | **Herdr on the local box**                                                                                                                                                                                                             | installed on signzart by the install lane; absent on onnyx                     | that lane, or the same install run there                                                             |
+| 5   | **The rotation reactor wired to a real limit event**                                                                                                                                                                                   | rotation proven by hand (D56); nothing triggers it automatically               | a limit to fire against, or a synthetic one recorded as such                                         |
+| 6   | **The three surfaces** — fleet, work sessions, intent bar — walked in a real browser                                                                                                                                                   | built and typechecked; never walked since the presence block landed above them | item 1 and a browser session                                                                         |
+| 7   | **Wispr as a provider**                                                                                                                                                                                                                | not started                                                                    | the §5 grammar is done; this is the dictation source behind it                                       |
+| 8   | **The eight-item reconciliation** between STATUS's phase table and the live boxes                                                                                                                                                      | half done in this file                                                         | item 1, so the table describes what is deployed rather than what is committed                        |
+| 9   | **Projects that exist on disk but not in T3** — `meliura-engine` has 67 sessions and no project on the local box                                                                                                                       | presence now lists them last and one click creates the project                 | nothing; it is his call which directories become projects                                            |
 
 ## On the boxes — what is actually running
 
@@ -1076,14 +1077,14 @@ which Baton inherits unchanged and did not test.
 
 Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven checks.
 
-| Piece | State | Evidence |
-| --- | --- | --- |
-| One brain for voice and typed asks | built, in `baton-shared`, reachable by `fabric.brain.decide` | `INTENT_TABLE.md`, 48 of 48, model median 1.5 s |
-| Screen context | built | scored set 22 of 24 before, 24 of 24 after, all 5 must-say-not-found cases right; 24 real traces |
-| Echo gate | built | 0 transcripts from its own voice, barge-in fired, from audio (D102) |
-| Dictation paste, real window | passed for the right window and clipboard restore; wrong window by a stale handle | `scripts/baton/voice-lab/dictation-window.mjs`. A live window switch and a window that never reads the clipboard need him there, as Windows will not give a lab window the foreground |
-| Dictation cancel, five-minute limit | passed | real exe with a fake mic: stopped at 300.8 s, 4,869 characters kept, nothing pasted |
-| Live microphone | **not run** | V1 below |
+| Piece                               | State                                                                             | Evidence                                                                                                                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One brain for voice and typed asks  | built, in `baton-shared`, reachable by `fabric.brain.decide`                      | `INTENT_TABLE.md`, 48 of 48, model median 1.5 s                                                                                                                                       |
+| Screen context                      | built                                                                             | scored set 22 of 24 before, 24 of 24 after, all 5 must-say-not-found cases right; 24 real traces                                                                                      |
+| Echo gate                           | built                                                                             | 0 transcripts from its own voice, barge-in fired, from audio (D102)                                                                                                                   |
+| Dictation paste, real window        | passed for the right window and clipboard restore; wrong window by a stale handle | `scripts/baton/voice-lab/dictation-window.mjs`. A live window switch and a window that never reads the clipboard need him there, as Windows will not give a lab window the foreground |
+| Dictation cancel, five-minute limit | passed                                                                            | real exe with a fake mic: stopped at 300.8 s, 4,869 characters kept, nothing pasted                                                                                                   |
+| Live microphone                     | **not run**                                                                       | V1 below                                                                                                                                                                              |
 
 Queued: live mic, his speakers and whispered speech through chunks on Windows, then V2 macOS, V3 Linux and V4 phone over
 the environment, in the V table above and in `TEST_MATRIX.md`.
@@ -1104,3 +1105,12 @@ checksummed. `baton-dictation-build.yml` now also runs on `main`.
 
 See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages/baton-shared`
 (`companionPacing`, `voiceTurn`), so those platforms need wiring, not a rewrite.
+
+## Proof that the operator asks first (2026-11-01)
+
+`bash scripts/baton/operator-proof.sh` (needs `vp`; no microphone, pointer, model or network) feeds Claude's
+`control_request` lines and Codex's approval requests through the real gate and prints PASS or FAIL for: a fetch after a
+read asks even with Act without asking on; a high-risk call asks, and a spoken question that runs out is a no (only a
+spoken yes lets it through); a Codex file change asks whatever the setting; a web search after a read asks. Cases:
+`apps/desktop/src/baton/screen/operatorProof.test.ts`. Exits 1 if any fail (checked by breaking the taint rule: 2 of 4
+failed). Why the gate's pieces moved: D136.

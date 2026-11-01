@@ -1,4 +1,5 @@
 <!-- retrieved_at: 2026-10-27; source: https://raw.githubusercontent.com/jasonkneen/openclicky/e9eb06a29ff5cd82033d032238f51a936168b05a/THIRD_PARTY_NOTICES.md ; verbatim, unmodified below this line -->
+
 # Third-Party Notices
 
 ## CUA Driver Swift patterns
