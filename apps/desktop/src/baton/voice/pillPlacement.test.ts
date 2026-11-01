@@ -85,3 +85,24 @@ describe("snapping a drag", () => {
     expect(PLACES.map((p) => p.id)).toContain("centre");
   });
 });
+
+describe("dragging is free on both axes", () => {
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  const size = { width: 420, height: 52 };
+  const margins = { top: 10, bottom: 44 };
+  const free = { bypass: false, margins };
+
+  it("from bottom centre, a cursor 200 px up lands 200 px up, and one 400 px up goes on past the middle", () => {
+    const bottom = placePosition(area, size, "bottom", margins);
+    const up200 = snapPosition(area, size, { x: bottom.x, y: bottom.y - 200 }, free);
+    expect(up200.place).toBeNull();
+    expect(up200.y).toBeLessThan(bottom.y - 150);
+    expect(up200.y).toBeGreaterThan(bottom.y - 250);
+    const up500 = snapPosition(area, size, { x: bottom.x + 90, y: bottom.y - 500 }, free);
+    expect(up500.y).toBeLessThan(bottom.y - 450);
+    // Sideways moves too, with the row kept.
+    const across = snapPosition(area, size, { x: bottom.x + 300, y: bottom.y }, free);
+    expect(across.x).toBeGreaterThan(bottom.x + 250);
+    expect(Math.abs(across.y - bottom.y)).toBeLessThan(25);
+  });
+});
