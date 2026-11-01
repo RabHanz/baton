@@ -5,6 +5,8 @@ on:
   push:
     branches: [main, baton/one-brain]
     paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
+  pull_request:
+    paths: ["native/baton-dictation/**", ".github/workflows/baton-dictation-build.yml"]
 
 permissions:
   contents: read
