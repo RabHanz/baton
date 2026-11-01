@@ -135,13 +135,21 @@ export interface HomeExtra {
     readonly action: string;
     readonly label: string;
     readonly hint: string;
-    readonly input:
+    /** Up to four ways to do it; empty is off on purpose. */
+    readonly inputs: ReadonlyArray<
       | { readonly type: "key"; readonly accelerator: string }
       | { readonly type: "mouse"; readonly button: string }
-      | null;
+    >;
     readonly isDefault: boolean;
     readonly conflictsWith: ReadonlyArray<string>;
+    /** Per input who else has it, to say so beside the chip. */
+    readonly conflicts: ReadonlyArray<{
+      readonly index: number;
+      readonly with: ReadonlyArray<string>;
+    }>;
   }>;
+  /** Why the last change to a binding was refused, in plain words; null when it was not. */
+  readonly bindingsNote: string | null;
   /** Whether Baton can act on a mouse button yet; until then they are saved and say so. */
   readonly mouseReady: boolean;
   readonly lifecycle: ReadonlyArray<{ readonly at: string; readonly text: string }>;

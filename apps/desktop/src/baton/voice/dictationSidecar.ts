@@ -22,8 +22,8 @@ export type PasteMethod = "ctrl_v" | "shift_insert" | "ctrl_shift_v";
 export interface DictationConfig {
   readonly model: string | null;
   /** null while Wispr is the chosen engine: Baton then holds no global key at all. */
-  readonly hold: string | null;
-  readonly toggle: string | null;
+  readonly hold: ReadonlyArray<string> | null;
+  readonly toggle: ReadonlyArray<string> | null;
   readonly device: string | null;
   readonly channel: number | null;
   readonly paste: PasteMethod;

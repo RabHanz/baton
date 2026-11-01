@@ -38,13 +38,15 @@ const trigger = (input: BindingInput): Trigger | null => {
 export const mouseHookConfig = (
   rows: ReadonlyArray<{
     readonly def: { readonly id: string };
-    readonly input: BindingInput | null;
+    readonly inputs: ReadonlyArray<BindingInput>;
   }>,
 ): InputBindingsConfig => ({
   ...EMPTY_BINDINGS,
-  bindings: rows.flatMap((row) => {
-    const action = ACTION[row.def.id];
-    const t = row.input !== null && row.input.type === "mouse" ? trigger(row.input) : null;
-    return action !== undefined && t !== null ? [{ id: row.def.id, action, trigger: t }] : [];
-  }),
+  bindings: rows.flatMap((row) =>
+    row.inputs.flatMap((input) => {
+      const action = ACTION[row.def.id];
+      const t = input.type === "mouse" ? trigger(input) : null;
+      return action !== undefined && t !== null ? [{ id: row.def.id, action, trigger: t }] : [];
+    }),
+  ),
 });

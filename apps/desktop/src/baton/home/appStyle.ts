@@ -210,4 +210,5 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 .rechead .hint{flex:1}
 .rechead[aria-expanded=true] svg{transform:rotate(180deg)}
 .insight{display:flex;justify-content:space-between;gap:12px;padding:6px 0;color:var(--soft)}
+.chipx{display:inline-flex;align-items:center;gap:4px}
 `;
