@@ -36,6 +36,8 @@ const PRIVATE = [
 // Where a private name stays for now, and why. Each is an operator step for the maintainer's own
 // machines, not a default for anyone else; the list only shrinks.
 const ALLOWED = {
+  "apps/desktop/src/baton/voice/loginItem.ts":
+    "the installed app's identity (its Run entry name), which stays so an update finds its own install; rename it with the app id at the public release",
   "apps/server/src/baton/ClaudeAccountInstances.ts":
     "compat table for the maintainer's two boxes until BATON_CLAUDE_ACCOUNT_INSTANCES is set on them (D135)",
 };

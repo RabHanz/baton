@@ -40,6 +40,9 @@ short list. Nothing here decides the licence or any legal question: those are th
 7. **The maintainer's account table.** `ClaudeAccountInstances.ts` still carries a compatibility table for the
    maintainer's two boxes (the guard's one allow-list entry). Set `BATON_CLAUDE_ACCOUNT_INSTANCES` on both boxes,
    then delete the table.
-8. **Privacy and support pages**, a plain statement of what leaves the machine, and a way to report a problem.
-9. **A clean-machine install proof** on Windows with no maintainer files present, run by someone who is not the
-   maintainer. Not done; it needs a machine and a person.
+8. **The app's install identity.** The app id and the sign-in entry name (`dev.rabee.baton`, `loginItem.ts`) carry
+   the maintainer's first name. They are the install's identity, unchanged on purpose so an update finds its own
+   install; changing them is a migration for existing installs and belongs at the first public release.
+9. **Privacy and support pages**, a plain statement of what leaves the machine, and a way to report a problem.
+10. **A clean-machine install proof** on Windows with no maintainer files present, run by someone who is not the
+    maintainer. Not done; it needs a machine and a person.
