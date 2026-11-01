@@ -11,6 +11,7 @@ import * as Stream from "effect/Stream";
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { noticePart, noticePlan } from "./BatonJobFlow.ts";
+import type * as ServerConfig from "../config.ts";
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import type * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import type { BatonJobService } from "./BatonJobService.ts";
@@ -31,6 +32,7 @@ export const layer = Layer.effect(
       | BatonEngine
       | ProviderRegistry.ProviderRegistry
       | AdoptedSessionService
+      | ServerConfig.ServerConfig
     >();
     return {
       start: Effect.fn("BatonJobReactor.start")(function* () {
