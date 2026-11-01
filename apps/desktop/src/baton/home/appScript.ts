@@ -18,6 +18,7 @@ const ICON = {
   voice: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
   screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
+  history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   side: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>',
@@ -28,10 +29,11 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['sessions','Sessions'],['dictation','Dictation'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['sessions','Sessions'],['dictation','Dictation'],['history','History'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
+  history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Baton works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Baton hears you and how it sounds back.'],
   screen: ['Screen', 'When Baton may look at your screen, and how to stop it.'],
@@ -268,6 +270,57 @@ function usage(p) {
   }
   p.appendChild(g);
 }
+let hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set();
+function loadHistory() {
+  const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
+  run.then(r => { hrows = r; render(); });
+}
+function hact(t, action) {
+  if (action === 'delete') { hask = null; }
+  if (!real) { if (action === 'delete') { hrows = hrows.filter(x => x.id !== t.id); render(); } return; }
+  if (action === 'retry') { hbusy.add(t.id); render(); }
+  ipc.invoke('baton-history:act', t.id, action).then(r => {
+    hbusy.delete(t.id);
+    if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id);
+    else if (action === 'retry' && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'; }
+    else if (action.indexOf('copy') === 0) { hnote = 'Copied.'; }
+    render();
+  });
+}
+const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed', none: 'Heard' };
+function historyPage(p) {
+  if (hrows === null) loadHistory();
+  const f = $('div', 'hsearch'); const q = $('input'); q.type = 'search'; q.id = 'in-hq'; q.placeholder = 'Search what you said'; q.setAttribute('aria-label', 'Search history'); q.value = hq;
+  q.oninput = () => { hq = q.value; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
+  f.appendChild(q); p.appendChild(f);
+  if (hnote) { const n = $('p', 'hint', hnote); n.style.margin = '0 0 10px'; p.appendChild(n); }
+  if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); return; }
+  if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Dictate, or talk to Baton, and it shows up here.')); return; }
+  let day = null, g = null;
+  for (const t of hrows) {
+    const d = dayLabel(t.at); if (d !== day) { day = d; p.appendChild($('div', 'day', d)); g = $('div', 'group'); p.appendChild(g); }
+    const wrap = $('div', 'hrow'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
+    const text = (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
+    head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
+    wrap.appendChild(head);
+    if (hopen.has(t.id)) {
+      const body = $('div', 'hbody');
+      const blk = (l, x) => { const b = $('div', 'hblock'); b.append($('div', 'hint', l), $('div', 'hpre', x)); return b; };
+      body.appendChild(blk('As heard', t.raw)); if (t.cleaned) body.appendChild(blk('Written', t.cleaned));
+      const meta = [t.app && ('in ' + t.app), t.delivery && ('delivered: ' + t.delivery), t.model && ('tidied by ' + t.model), t.audio ? 'recording kept' : null, t.corrected ? 'you corrected it' : null, t.error].filter(Boolean).join(' · ');
+      if (meta) body.appendChild($('div', 'hint', meta));
+      const acts = $('div', 'hacts');
+      const mk = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
+      acts.appendChild(mk('Copy as heard', () => hact(t, 'copy_raw')));
+      if (t.cleaned) acts.appendChild(mk('Copy written', () => hact(t, 'copy_cleaned')));
+      if (t.kind === 'dictation' && (t.status === 'raw' || t.status === 'failed')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
+      if (hask === t.id) { acts.append($('span', 'hint', 'Delete this for good?'), mk('Delete', () => hact(t, 'delete'), 'primary'), mk('Keep', () => { hask = null; render(); })); }
+      else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
+      body.appendChild(acts); wrap.appendChild(body);
+    }
+    g.appendChild(wrap);
+  }
+}
 function tabPage(p) {
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
@@ -275,6 +328,7 @@ function tabPage(p) {
   const items = tabControls(cur);
   if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet. Start one in Claude Code or T3 and it appears here.'));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
+  if (cur === 'history') historyPage(p);
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);
   if (cur === 'screen') {
@@ -325,7 +379,7 @@ addEventListener('keydown', e => {
   e.preventDefault(); e.stopPropagation();
   if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) { capturing = null; capNote = ''; render(); return; }
   const a = accel(e); if (!a) return;
-  const bare = !/\+/.test(a);
+  const bare = !/\\+/.test(a);
   if (bare && !/^F\d+$/.test(a)) { capNote = 'Add Ctrl, Alt or Shift so it does not get in the way of typing.'; render(); return; }
   const id = capturing; capturing = null; capNote = ''; set('b.set:' + id, JSON.stringify({ type: 'key', accelerator: a }));
 }, true);
