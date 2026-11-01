@@ -1,4 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
+import { isBareStop } from "./dictation.ts";
 import { highRiskSubject } from "./intentParser.ts";
 /**
  * Screen companion (D84), the pure half: prompts, the [POINT] tag, coordinates, drive plans.
@@ -838,6 +839,8 @@ const PREFIX_RE = /^\s*(look|screen|teach|guide|drive)\s*[:,]\s*(.+)$/i;
 /** The sentences with one possible meaning: lesson controls, and his own "drive:" prefixes. */
 export const screenControl = (text: string, active: boolean): ScreenIntent | null => {
   const t = text.trim();
+  // A bare stop is always a stop, never a thing for the grammar or a model to ponder.
+  if (isBareStop(t)) return { kind: "stop" };
   if (active) {
     if (NEXT_RE.test(t)) return { kind: "next" };
     if (STOP_RE.test(t)) return { kind: "stop" };
