@@ -2550,6 +2550,32 @@ describe("deriveMessagesTimelineRows", () => {
       }
     },
   );
+  it("lists the images a collapsed group's tool calls returned", () => {
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    const tool = (id: string, viewedImagePath?: string) => ({
+      id,
+      kind: "work" as const,
+      createdAt,
+      entry: {
+        id,
+        createdAt,
+        label: "Read file",
+        tone: "tool" as const,
+        toolLifecycleStatus: "completed" as const,
+        ...(viewedImagePath ? { viewedImagePath } : {}),
+      },
+    });
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [tool("a", "shot.png"), tool("b"), tool("c", "clip.png")],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+    });
+    expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
+      viewedImagePaths: ["shot.png", "clip.png"],
+    });
+  });
 });
 
 describe("v2 run and attempt history", () => {

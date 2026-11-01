@@ -10,9 +10,12 @@
  *
  * Later entries provide to earlier ones, so the order below is the dependency order.
  */
+import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
@@ -31,6 +34,16 @@ import * as SynopsisReactor from "./SynopsisReactor.ts";
 import * as ThreadAccountMoves from "./ThreadAccountMoves.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
 
+const readClaudeAccountInstances = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const settings = yield* ServerSettingsService;
+    const existing = Object.keys((yield* settings.getSettings).providerInstances);
+    setClaudeAccountInstances(
+      claudeAccountInstances(process.env.BATON_CLAUDE_ACCOUNT_INSTANCES, existing),
+    );
+  }),
+);
+
 const servicesInner = IntentService.layer.pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
@@ -45,6 +58,7 @@ const servicesInner = IntentService.layer.pipe(
       // One work-session service for the whole server, so a mutation arriving on one client's
       // socket reaches every other client's subscription.
       WorkSessionService.layer,
+      readClaudeAccountInstances,
       AccountPoolService.layer,
       ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
       // The adapter is provided here so the one place that talks to another program stays

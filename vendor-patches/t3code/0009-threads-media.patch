@@ -33,6 +33,199 @@ index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40
    {
      id: "todo-list",
      name: "Plan and reads",
+diff --git a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
+index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..10a68b1720dd5ff1974585c3f9327a1c273e33a7 100644
+--- a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
++++ b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
+@@ -26,6 +26,7 @@ import * as Context from "effect/Context";
+ import * as DateTime from "effect/DateTime";
+ import * as Effect from "effect/Effect";
+ import * as Layer from "effect/Layer";
++import * as Option from "effect/Option";
+ import * as Schema from "effect/Schema";
+ import * as SqlError from "effect/sql/SqlError";
+ 
+@@ -36,7 +37,10 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
+ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+ import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+ import * as EventSink from "./EventSink.ts";
++import * as ServerConfig from "../config.ts";
++import { withMentionedMedia } from "../mentionedMedia.ts";
+ import * as ProjectionStore from "./ProjectionStore.ts";
++import * as ProjectStore from "./ProjectStore.ts";
+ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+ import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
+@@ -341,6 +345,40 @@ export const layer: Layer.Layer<
+     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+     const scope = yield* Effect.scope;
+     const completedTurnAnalytics = new Set<string>();
++    // Optional so test and tool layers without a server config keep plain text.
++    const serverConfig = yield* Effect.serviceOption(ServerConfig.ServerConfig);
++    const projectStore = yield* Effect.serviceOption(ProjectStore.ProjectStoreV2);
++
++    /**
++     * A finished assistant reply that names an image or video file inside the thread's directory
++     * gets the file attached as markdown media, for every provider and every client. The file
++     * read happens here, at the commit boundary; the orchestrator stays pure.
++     */
++    const withNamedMedia = Effect.fn("ProviderEventIngestor.withNamedMedia")(function* (
++      threadId: ThreadId,
++      messageId: string,
++      text: string,
++    ) {
++      if (Option.isNone(serverConfig) || text.length === 0) return text;
++      const thread = yield* projections.getThread(threadId).pipe(Effect.option);
++      if (Option.isNone(thread)) return text;
++      const cwd =
++        thread.value.worktreePath ??
++        (Option.isSome(projectStore)
++          ? yield* projectStore.value.get(thread.value.projectId).pipe(
++              Effect.map((row) => (Option.isSome(row) ? row.value.workspaceRoot : null)),
++              Effect.orElseSucceed(() => null),
++            )
++          : null);
++      if (cwd === null) return text;
++      return withMentionedMedia({
++        attachmentsDir: serverConfig.value.attachmentsDir,
++        threadId,
++        messageId,
++        text,
++        cwd,
++      });
++    });
+ 
+     const makeDomainEvent =
+       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
+@@ -643,28 +681,44 @@ export const layer: Layer.Layer<
+                   nodeId: input.event.subagent.id,
+                 }),
+               ];
+-            case "message.updated":
++            case "message.updated": {
++              const message = input.event.message;
++              const payload =
++                message.role === "assistant" && !message.streaming
++                  ? {
++                      ...message,
++                      text: yield* withNamedMedia(message.threadId, message.id, message.text),
++                    }
++                  : message;
+               return [
+                 yield* makeDomainEvent(input, {
+                   type: "message.updated",
+                   threadId: input.event.message.threadId,
+-                  payload: input.event.message,
++                  payload,
+                   runId: input.event.message.runId,
+                   nodeId: input.event.message.nodeId,
+                 }),
+               ];
+-            case "turn_item.updated":
++            }
++            case "turn_item.updated": {
++              const item = input.event.turnItem;
++              const turnItem =
++                item.type === "assistant_message" && !item.streaming
++                  ? {
++                      ...item,
++                      text: yield* withNamedMedia(item.threadId, item.messageId, item.text),
++                    }
++                  : item;
+               return [
+                 yield* makeDomainEvent(input, {
+                   type: "turn-item.updated",
+                   threadId: input.event.turnItem.threadId,
+-                  payload: boundFileChangeForStorage(
+-                    stripUnservedToolOutputImageBytes(input.event.turnItem),
+-                  ),
++                  payload: boundFileChangeForStorage(stripUnservedToolOutputImageBytes(turnItem)),
+                   runId: input.event.turnItem.runId,
+                   nodeId: input.event.turnItem.nodeId,
+                 }),
+               ];
++            }
+             case "runtime_request.updated":
+               return [
+                 yield* makeDomainEvent(input, {
+diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
+index c9aec993bcd869941e08e49b24b923c12c2d7bed..bc037671c8d6180b52668a5f3ad84d2485186d00 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
++++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
+@@ -2550,6 +2550,32 @@ describe("deriveMessagesTimelineRows", () => {
+       }
+     },
+   );
++  it("lists the images a collapsed group's tool calls returned", () => {
++    const createdAt = "2026-01-01T00:00:00.000Z";
++    const tool = (id: string, viewedImagePath?: string) => ({
++      id,
++      kind: "work" as const,
++      createdAt,
++      entry: {
++        id,
++        createdAt,
++        label: "Read file",
++        tone: "tool" as const,
++        toolLifecycleStatus: "completed" as const,
++        ...(viewedImagePath ? { viewedImagePath } : {}),
++      },
++    });
++    const rows = deriveMessagesTimelineRows({
++      timelineEntries: [tool("a", "shot.png"), tool("b"), tool("c", "clip.png")],
++      isWorking: false,
++      activeTurnStartedAt: null,
++      turnDiffSummaries: [],
++      supportsConversationRollback: false,
++    });
++    expect(rows.find((row) => row.kind === "work-toggle")).toMatchObject({
++      viewedImagePaths: ["shot.png", "clip.png"],
++    });
++  });
+ });
+ 
+ describe("v2 run and attempt history", () => {
+diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
+index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..1538b54d441c9df8e742206c398d722430b8e34a 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
++++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
+@@ -27,6 +27,7 @@ import {
+   toolGroupAction,
+   toolGroupSummaryKind,
+   contextCompactionTokenCounts,
++  workEntryViewedImagePath,
+   type ToolGroupSummaryKind,
+ } from "@t3tools/client-runtime/work-log/presentation";
+ import {
+@@ -551,6 +552,8 @@ type MessagesTimelineRowContent =
+       toolSurface?: WorkLogEntry["toolSurface"];
+       toolIcon?: WorkLogEntry["toolIcon"];
+       hasFailure: boolean;
++      /** Images the group's tool calls returned, shown under the header while it is collapsed. */
++      viewedImagePaths: ReadonlyArray<string>;
+     }
+   | {
+       kind: "turn-fold";
+@@ -1925,6 +1928,9 @@ export function deriveMessagesTimelineRows(input: {
+             hasFailure:
+               latestToolEntry !== undefined &&
+               workEntryDisplayIndicatesToolFailure(latestToolEntry),
++            viewedImagePaths: visibleGroupedEntries
++              .flatMap((entry) => workEntryViewedImagePath(entry) ?? [])
++              .slice(0, 4),
+           });
+           if (expanded) {
+             nextRows.push(
+@@ -2493,7 +2499,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+         a.summaryKind === bw.summaryKind &&
+         a.toolSurface === bw.toolSurface &&
+         Equal.equals(a.toolIcon, bw.toolIcon) &&
+-        a.hasFailure === bw.hasFailure
++        a.hasFailure === bw.hasFailure &&
++        a.viewedImagePaths.join("\n") === bw.viewedImagePaths.join("\n")
+       );
+     }
+ 
 diff --git a/apps/web/src/components/chat/TimelineAssistantRows.tsx b/apps/web/src/components/chat/TimelineAssistantRows.tsx
 index 458d84b9e982bd7ff75f220b040e19dc5829898c..172bb5640a2401f54f4afcd81d2d463422789ac2 100644
 --- a/apps/web/src/components/chat/TimelineAssistantRows.tsx
@@ -56,10 +249,23 @@ index 458d84b9e982bd7ff75f220b040e19dc5829898c..172bb5640a2401f54f4afcd81d2d4634
    return (
      <>
 diff --git a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-index a440b62a584d24bdc4a4e62e942589ffc0be2789..3d561dc57f6088bd90bfcee9ad2b58f91852e2d5 100644
+index a440b62a584d24bdc4a4e62e942589ffc0be2789..4e8df5db8192bad18fa000a97926175b9fa493ff 100644
 --- a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 +++ b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-@@ -500,7 +500,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -2,7 +2,11 @@ import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
+ import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
+ import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
+ import { type ToolActivityIcon } from "@t3tools/contracts";
+-import { liveThoughtLine } from "@t3tools/client-runtime/work-log/presentation";
++import {
++  liveThoughtLine,
++  resolveViewedImageAsset,
++} from "@t3tools/client-runtime/work-log/presentation";
++import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
+ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/scroll-anchor";
+ import { observeResize } from "~/lib/observeResize";
+ import { tickTextContent } from "~/lib/tickTextContent";
+@@ -500,7 +504,7 @@ export function LiveWorkEntryTimelineRow({
    if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
  
    const failed = workEntryDisplayIndicatesToolFailure(row.entry);
@@ -68,7 +274,7 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..3d561dc57f6088bd90bfcee9ad2b58f9
    const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
  
    return (
-@@ -531,7 +531,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -531,7 +535,7 @@ export function LiveWorkEntryTimelineRow({
              </span>
            }
            label={
@@ -77,6 +283,57 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..3d561dc57f6088bd90bfcee9ad2b58f9
                <ChatMarkdown
                  inline
                  text={thoughtLine}
+@@ -585,17 +589,40 @@ export function WorkGroupToggleTimelineRow({
+   row: Extract<TimelineRow, { kind: "work-toggle" }>;
+ }) {
+   const ctx = use(TimelineRowCtx);
++  const { threadRef, workspaceRoot } = ctx;
++  const images = row.expanded || !threadRef ? [] : row.viewedImagePaths;
+   return (
+-    <WorkGroupHeader
+-      label={row.summary}
+-      iconName={row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
+-      toolIcon={row.toolIcon}
+-      failed={row.hasFailure}
+-      expanded={row.expanded}
+-      createdAt={row.createdAt}
+-      timestampFormat={ctx.timestampFormat}
+-      onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
+-    />
++    <>
++      <WorkGroupHeader
++        label={row.summary}
++        iconName={row.toolSurface ?? toolGroupSummaryIconName(row.summaryKind)}
++        toolIcon={row.toolIcon}
++        failed={row.hasFailure}
++        expanded={row.expanded}
++        createdAt={row.createdAt}
++        timestampFormat={ctx.timestampFormat}
++        onToggle={() => ctx.onToggleWorkGroup(row.groupId, row.id)}
++      />
++      {images.map((path) => {
++        const image = resolveViewedImageAsset(path, {
++          threadId: threadRef!.threadId,
++          workspaceRoot,
++        });
++        return image ? (
++          <div key={path} className="py-1 pl-6">
++            <ChatMarkdownAssetImage
++              environmentId={threadRef!.environmentId}
++              resource={image.resource}
++              alt={image.alt}
++              srcFragment={image.srcFragment}
++              workspaceRoot={workspaceRoot}
++              maxHeightRem={16}
++              onImageExpand={ctx.onImageExpand}
++            />
++          </div>
++        ) : null;
++      })}
++    </>
+   );
+ }
+ 
 diff --git a/packages/client-runtime/src/work-log/presentation.test.ts b/packages/client-runtime/src/work-log/presentation.test.ts
 index 28caf074e4fc010c249c9b03e0307e754f8e700e..a67d78bf1a93d02783708c85cb6119918ce0b23f 100644
 --- a/packages/client-runtime/src/work-log/presentation.test.ts
