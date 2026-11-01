@@ -13,11 +13,15 @@ import * as NodePath from "node:path";
 import { createOsTts } from "@t3tools/baton-voice";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { resolveDictationBinary } from "./voice/dictationSidecar.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
+import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
+import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
@@ -47,8 +51,29 @@ export const startBatonDesktop = Effect.gen(function* () {
     maxBytes: VOICE_LOG_MAX_BYTES,
     maxFiles: VOICE_LOG_MAX_FILES,
   }).pipe(Effect.option);
+  const updates = yield* DesktopUpdates.DesktopUpdates;
+  const electronUpdater = yield* ElectronUpdater.ElectronUpdater;
+  const { latest: initialUpdateState, changes: updateChanges } = yield* updates.subscribe;
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
+    let screen: ScreenCompanion | null = null;
+    const run = <A>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
+    // The release feed is this repository's (D137); the install waits for a quiet moment.
+    const batonUpdates = createBatonUpdater({
+      initial: initialUpdateState,
+      check: () => run(updates.check("baton-window")),
+      download: () => run(updates.download),
+      install: () => run(updates.install),
+      installOnQuit: () => void run(electronUpdater.setAutoInstallOnAppQuit(true)),
+      busy: () => ({
+        voiceBusy: voice?.busy() ?? false,
+        assistantBusy: screen?.active() ?? false,
+      }),
+      onChange: () => voice?.refresh(),
+    });
+    Effect.runForkWith(context)(
+      Stream.runForEach(updateChanges, (state) => Effect.sync(() => batonUpdates.onState(state))),
+    );
     const turnLog = makeVoiceTurnLog((line) => {
       if (voiceLogFile._tag === "Some") {
         Effect.runForkWith(context)(voiceLogFile.value.writeText(line));
@@ -91,7 +116,6 @@ export const startBatonDesktop = Effect.gen(function* () {
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
     });
-    let screen: ScreenCompanion | null = null;
     try {
       screen = startScreenCompanion({
         stateDir: environment.stateDir,
@@ -116,6 +140,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
+      updates: batonUpdates,
       holdEscape,
       onBargeIn: () => {
         speaker.cancel();
