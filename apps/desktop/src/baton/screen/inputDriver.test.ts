@@ -35,7 +35,9 @@ describe("typing by the clipboard", () => {
       { readText: () => clip, writeText: (text) => void (clip = text) },
       40,
     );
-    await paste("typed words", async () => undefined);
+    const pasted = paste("typed words", async () => undefined);
+    await vi.advanceTimersByTimeAsync(160);
+    await pasted;
     // Ctrl+C in the app lands before the restore.
     clip = "copied from the app";
     await vi.advanceTimersByTimeAsync(200);
