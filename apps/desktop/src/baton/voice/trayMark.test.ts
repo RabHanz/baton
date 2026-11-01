@@ -18,6 +18,7 @@ describe("the tray mark's art", () => {
     }
   });
   it("draws the sidebar mark from the hinted cut in the page's ink", () => {
+    expect(MARK_SMALL_PATH).toMatch(/^M[\d.]+[ ,][\d.]+L/);
     expect(brandMarkSvg()).toContain(MARK_SMALL_PATH);
     expect(brandMarkSvg()).toContain("currentColor");
   });
