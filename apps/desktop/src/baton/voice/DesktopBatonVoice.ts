@@ -28,6 +28,7 @@ import {
   type VoiceIntentClient,
 } from "@t3tools/baton-voice";
 import type { EscapeRank } from "../screen/escapeKey.ts";
+import type { ConversationLog } from "../conversation/conversationLog.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -247,6 +248,10 @@ export interface TrayExtras extends BrainVoiceHook {
 
 export interface DesktopBatonVoiceInput {
   readonly stateDir: string;
+  /** The one conversation (D142), shared with the screen side. */
+  readonly conversation?: ConversationLog;
+  /** Every reply and refusal worth the turn log. */
+  readonly onNote?: (kind: string, fields: Readonly<Record<string, unknown>>) => void;
   readonly env: NodeJS.ProcessEnv;
   /** `HostProcessPlatform`, injected rather than read here. */
   readonly platform: string;
@@ -443,7 +448,40 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (ok === true) entry.resolve(value);
     else entry.reject(new Error(typeof error === "string" ? error : "That could not be done."));
   });
-  const voiceIntent = makeVoiceIntentClient({ request, injection, field: FOCUSED_FIELD });
+  /** What the sessions side answered joins the one conversation, with what it was about. */
+  const requestKept = async (body: VoiceIntentRequest): Promise<unknown> => {
+    const value = await request(body);
+    if (body.kind === "run" && input.conversation !== undefined) {
+      const run = value as {
+        reply?: string;
+        resolution?: { outcome?: string; description?: string; workSessionId?: string | null };
+      };
+      const target =
+        run.resolution?.outcome === "resolved" && run.resolution.description !== undefined
+          ? {
+              label: run.resolution.description,
+              ...(typeof run.resolution.workSessionId === "string"
+                ? { workSessionId: run.resolution.workSessionId }
+                : {}),
+            }
+          : undefined;
+      if (typeof run.reply === "string" && run.reply.length > 0) {
+        input.conversation.add({
+          route: "act",
+          said: body.text,
+          reply: run.reply,
+          ...(target === undefined ? {} : { target }),
+        });
+        input.onNote?.("reply", { route: "act", said: body.text, reply: run.reply });
+      }
+    }
+    return value;
+  };
+  const voiceIntent = makeVoiceIntentClient({
+    request: requestKept,
+    injection,
+    field: FOCUSED_FIELD,
+  });
   const typedRouter = createVoiceRouter(voiceIntent);
   const routeContext = () => ({
     bus: desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }),
@@ -620,7 +658,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (event.pasted === false && text.length > 0) keepText("Not pasted", text);
       else {
         showDictation(null);
-        if (text.length > 0) pill.on({ type: "done", label: "Pasted" });
+        if (text.length > 0) {
+          pill.on({ type: "done", label: "Pasted" });
+          // Only the length is kept: dictated words are his, not the conversation's (D31).
+          input.conversation?.add({
+            route: "dictation",
+            said: `(dictated ${text.length} characters)`,
+            reply: "",
+          });
+        }
       }
     }
   };
