@@ -174,10 +174,12 @@ function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numer
 
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
-  const h = $('h1'); h.append(document.createTextNode(greeting() + '. '));
-  if (words.length) { h.appendChild($('em', null, 'Say ')); words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); }
-  else h.appendChild($('em', null, 'The wake word is off. Say Wake now, or hold your dictation key.'));
-  p.appendChild(h);
+  p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
+  const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
+  const sub = $('p', 'lede');
+  if (words.length) { sub.append(document.createTextNode('Say ')); words.slice(0, 2).forEach((w, i) => { if (i) sub.append(document.createTextNode(' or ')); sub.appendChild($('em', null, w)); }); sub.append(document.createTextNode(' to talk.')); }
+  else sub.textContent = 'The wake word is off. Say Wake now, or hold your dictation key.';
+  p.appendChild(sub);
   const q = $('div', 'quick');
   const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
   const en = find('v.enabled'), mu = find('v.muted');
@@ -530,7 +532,7 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Tessaya'), $('span', 'plan', 'Local')); side.appendChild(brand);
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); side.appendChild(brand);
   const nav = $('nav'); 
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
