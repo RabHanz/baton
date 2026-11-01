@@ -51,6 +51,15 @@ select{appearance:none;border:1px solid var(--line-strong);background:var(--card
 .btn{border:1px solid var(--line-strong);background:var(--card);border-radius:9px;padding:6px 13px;font-weight:600;font-size:13px;cursor:pointer;flex:none}
 .btn:hover{border-color:var(--ink)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+h2.lead{color:var(--accent)}
+.brainRow{padding:8px}.brainRow>.hint{padding:6px 10px 8px}
+.pick{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:10px;padding:11px 10px;cursor:pointer}
+.pick:hover:not(:disabled){background:#fbf8f2}
+.pick.on{background:var(--accent-wash);border-color:var(--accent)}
+.pick:disabled{cursor:default;opacity:.62}
+.radio{flex:none;width:18px;height:18px;margin-top:2px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card)}
+.pick.on .radio{border-color:var(--accent);background:radial-gradient(var(--accent) 0 4px,var(--card) 5px)}
+.tag{margin-left:8px;font:600 11px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line-strong);border-radius:6px;padding:1px 6px}
 footer{margin-top:30px;display:flex;justify-content:space-between;align-items:center;color:var(--faint);font-size:13px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 `;
@@ -72,7 +81,22 @@ function control(c){
   if(c.kind==='secret'){const b=$('button','btn',c.masked);b.setAttribute('aria-label','Show address');b.onclick=()=>{b.textContent=b.textContent===c.masked?c.revealed:c.masked;};return b;}
   const b=$('button','btn',c.button);b.onclick=()=>set(c.id,null);return b;
 }
+function brain(c){
+  const list=$('div','brain');
+  for(const o of c.options){
+    const r=$('button','pick'+(o.value===c.value?' on':''));
+    r.disabled=o.state!=='ready';
+    r.setAttribute('role','radio');r.setAttribute('aria-checked',String(o.value===c.value));
+    const t=$('div','text');const l=$('div','label',o.label);if(o.state==='soon')l.appendChild($('span','tag','Coming soon'));
+    t.append(l,$('div','hint',o.note));
+    r.append($('span','radio'),t);
+    if(o.state==='ready')r.onclick=()=>set(c.id,o.value);
+    list.appendChild(r);
+  }
+  return list;
+}
 function row(c){
+  if(c.kind==='brain'){const r=$('div','brainRow');r.append($('div','hint',c.hint||''),brain(c));if(!c.hint)r.firstChild.remove();return r;}
   const r=$('div','row');if(c.disabled)r.setAttribute('data-disabled','');
   const t=$('div','text');t.appendChild($('div','label',c.label));if(c.hint)t.appendChild($('div','hint',c.hint));
   r.append(t,control(c));return r;
@@ -83,9 +107,10 @@ function render(state){
   const m=document.getElementById('app');m.replaceChildren();
   const st=document.getElementById('status');st.replaceChildren();
   const d=$('span','dot');d.setAttribute('data-tone',state.status.tone);st.append(d,$('span',null,state.status.label+(state.status.device?' · '+state.status.device:'')));
-  const sections=[];for(const c of state.controls){let s=sections.find(x=>x.name===c.section);if(!s){s={name:c.section,items:[]};sections.push(s);}s.items.push(c);}
+  const sections=[];for(const c of state.controls){let s=sections.find(x=>x.name===c.section);if(!s){s={name:c.section,items:[],lead:false};sections.push(s);}if(c.lead)s.lead=true;s.items.push(c);}
+  sections.sort((a,b)=>Number(b.lead)-Number(a.lead));
   for(const s of sections){
-    m.appendChild($('h2',null,s.name));
+    m.appendChild($('h2',s.lead?'lead':null,s.name));
     const card=$('div','card'+(open.has(s.name)?' open':''));
     for(const c of s.items.filter(x=>!x.more))card.appendChild(row(c));
     const more=s.items.filter(x=>x.more);
