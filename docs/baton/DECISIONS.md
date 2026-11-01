@@ -3239,8 +3239,9 @@ Nothing here has run on Windows. Explorer's folder comes from a PowerShell call 
 ## D128 — Act without asking
 
 A tray checkbox, off by default, saved in `baton-screen.json`. On: a plain drive plan runs with no Run it box, and
-routine operator work with no yes. Off: everything asks as before. What it can never cover: anything refused today,
-`shellCheck`'s prompts, a plan or call that deletes, sends, pays or publishes, and capture consent, which keeps its own
-setting. A read of the brief and the coordinator's later wording differ on `planHighRisk`: it asked for a spoken yes,
-and also that what is refused stays refused. Everything `planHighRisk` flags is refused today, so it stays refused and
-gets no yes. Nothing was loosened.
+routine operator work with no yes. Off: everything asks as before. What it can never cover: `shellCheck`'s prompts, a
+plan or call that deletes, sends, pays or publishes, a Codex file change, a tool call on a turn that has read something,
+and capture consent, which keeps its own setting. The high-risk list (`highRiskSubject`, `dangerousCommand`,
+`planHighRisk`) used to refuse outright. It now asks for a spoken yes or no, with the box beside it. A question that runs
+out is a no and the box comes down. No setting covers it, and a tainted turn still asks. Still refused, because a yes
+cannot make them safe: a paste too long to show first, and a paste into a command line.

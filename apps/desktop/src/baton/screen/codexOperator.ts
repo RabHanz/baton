@@ -44,7 +44,12 @@ export const makeCodexClient = (input: CodexClientInput) => {
       : method.includes("fileChange")
         ? "fileChange"
         : method;
-    const answer = await input.gate({ tool, input: params });
+    // Only the fields the gate reads; a grant root is the nearest thing to a path a file change has.
+    const { command, cwd, grantRoot } = params;
+    const answer = await input.gate({
+      tool,
+      input: { command, cwd, ...(typeof grantRoot === "string" ? { path: grantRoot } : {}) },
+    });
     return { decision: answer.allow ? "accept" : "decline" };
   };
 

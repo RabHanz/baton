@@ -5,14 +5,16 @@ import { makeCodexClient } from "./codexOperator.ts";
 const rig = (allow: boolean) => {
   const sent: Array<Record<string, unknown>> = [];
   const asked: string[] = [];
+  const seen: Array<Record<string, unknown>> = [];
   const client = makeCodexClient({
     write: (line) => sent.push(JSON.parse(line)),
     gate: async (call) => {
       asked.push(call.tool);
+      seen.push(call.input);
       return allow ? { allow: true } : { allow: false, reason: "no" };
     },
   });
-  return { client, sent, asked };
+  return { client, sent, asked, seen };
 };
 const settle = async () => {
   for (let i = 0; i < 6; i += 1) await Promise.resolve();
@@ -39,6 +41,26 @@ describe("Codex as the operator", () => {
     await settle();
     expect(r.asked).toEqual(["fileChange"]);
     expect(r.sent[0]).toEqual({ id: 8, result: { decision: "accept" } });
+  });
+
+  it("hands the gate the command and the grant root it can judge", async () => {
+    const r = rig(true);
+    r.client.onLine(
+      JSON.stringify({
+        id: 1,
+        method: "item/commandExecution/requestApproval",
+        params: { command: "git push --force", cwd: "C:/x", itemId: "i" },
+      }),
+    );
+    r.client.onLine(
+      JSON.stringify({
+        id: 2,
+        method: "item/fileChange/requestApproval",
+        params: { grantRoot: "C:/x", itemId: "j" },
+      }),
+    );
+    await settle();
+    expect(r.seen).toEqual([{ command: "git push --force", cwd: "C:/x" }, { path: "C:/x" }]);
   });
 
   it("refuses a request it does not know, rather than ignoring it", () => {
