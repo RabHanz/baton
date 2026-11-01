@@ -59,12 +59,13 @@ sedi 's#^const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";$#c
 # Baton's mark over upstream's icon files, under the names the build already reads (D131).
 cp assets/baton/* assets/prod/
 
-grep -q 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
-grep -q 'artifactName: "Tessaya-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
-grep -q '"productName": "Baton"' apps/desktop/package.json
-grep -q 'RELEASES_URL = "https://github.com/RabHanz/baton/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
-grep -q 'APP_BASE_NAME = "Tessaya"' apps/desktop/src/app/DesktopEnvironment.ts
-grep -q '^    name: "baton",$' scripts/build-desktop-artifact.ts
-grep -q '"dev.rabee.baton",' apps/desktop/src/app/DesktopEnvironment.ts
-grep -q 'current: "baton"' apps/desktop/src/app/DesktopUserData.ts
+must() { grep -q -- "$1" "$2" || { echo "branding check failed: $1 not in $2" >&2; exit 1; }; }
+must 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
+must 'artifactName: "Tessaya-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
+must '"productName": "Tessaya"' apps/desktop/package.json
+must 'RELEASES_URL = "https://github.com/RabHanz/baton/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
+must 'APP_BASE_NAME = "Tessaya"' apps/desktop/src/app/DesktopEnvironment.ts
+must '^    name: "baton",$' scripts/build-desktop-artifact.ts
+must '"dev.rabee.baton",' apps/desktop/src/app/DesktopEnvironment.ts
+must 'current: "baton"' apps/desktop/src/app/DesktopUserData.ts
 echo "Tessaya release branding applied (appId dev.rabee.baton, productName Tessaya, artifact Tessaya-<ver>-<arch>.<ext>, app name Tessaya, install dir Programs\\baton, AUMI dev.rabee.baton, userData %APPDATA%\\baton)."
