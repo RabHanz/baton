@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off
 /**
  * Everything Baton adds to the desktop main process, started by one call in `DesktopApp.ts`
  * (`vendor-patches/t3code/0007-desktop.patch`): the injection-report IPC handler and the voice
@@ -8,6 +8,7 @@
 import * as Electron from "electron";
 
 import { rescueMainWindow } from "./mainWindowRescue.ts";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { createOsTts } from "@t3tools/baton-voice";
@@ -19,8 +20,8 @@ import { resolveDictationBinary } from "./voice/dictationSidecar.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
-import * as ElectronUpdater from "../electron/ElectronUpdater.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
@@ -52,25 +53,103 @@ export const startBatonDesktop = Effect.gen(function* () {
     maxFiles: VOICE_LOG_MAX_FILES,
   }).pipe(Effect.option);
   const updates = yield* DesktopUpdates.DesktopUpdates;
-  const electronUpdater = yield* ElectronUpdater.ElectronUpdater;
   const { latest: initialUpdateState, changes: updateChanges } = yield* updates.subscribe;
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
     let screen: ScreenCompanion | null = null;
     const run = <A>(effect: Effect.Effect<A>) => Effect.runPromiseWith(context)(effect);
     // The release feed is this repository's (D137); the install waits for a quiet moment.
+    const lifecycle = createLifecycleLog({
+      file: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),
+      runningFile: NodePath.join(environment.stateDir, "baton-running.json"),
+      version: environment.appVersion,
+    });
+    Electron.app.on("render-process-gone", (_event, contents, details) =>
+      lifecycle.note("render-process-gone", {
+        reason: details.reason,
+        exitCode: details.exitCode,
+        window: contents.getTitle(),
+      }),
+    );
+    Electron.app.on("child-process-gone", (_event, details) =>
+      lifecycle.note("child-process-gone", {
+        type: details.type,
+        reason: details.reason,
+        exitCode: details.exitCode,
+        name: details.name ?? null,
+      }),
+    );
+    Electron.app.on("before-quit", () => lifecycle.note("before-quit"));
+    // After an update install, tell him it worked; the marker says what ran.
+    const pendingPath = NodePath.join(environment.stateDir, "baton-update-pending.json");
+    const afterUpdate = (() => {
+      try {
+        const marker = JSON.parse(NodeFS.readFileSync(pendingPath, "utf8")) as {
+          to?: string;
+          at?: string;
+        };
+        NodeFS.rmSync(pendingPath, { force: true });
+        if (marker.to === undefined) return null;
+        lifecycle.note("restarted-after-update", { to: marker.to, startedAt: marker.at ?? null });
+        return marker.to === environment.appVersion
+          ? `Updated to ${marker.to}.`
+          : `The update to ${marker.to} did not take: still on ${environment.appVersion}.`;
+      } catch {
+        return null;
+      }
+    })();
+    const notify = (title: string, body: string, onClick?: () => void) => {
+      if (!Electron.Notification.isSupported()) return;
+      const toast = new Electron.Notification({ title, body, silent: true });
+      if (onClick !== undefined) toast.on("click", onClick);
+      toast.show();
+    };
+    // The release feed is this repository's (D137); the restart is announced, then waits for quiet.
     const batonUpdates = createBatonUpdater({
       initial: initialUpdateState,
       check: () => run(updates.check("baton-window")),
       download: () => run(updates.download),
-      install: () => run(updates.install),
-      installOnQuit: () => void run(electronUpdater.setAutoInstallOnAppQuit(true)),
+      backAfter: afterUpdate,
+      install: (version) => {
+        lifecycle.willExitFor("update", `to ${version}`);
+        try {
+          NodeFS.writeFileSync(
+            pendingPath,
+            JSON.stringify({
+              from: environment.appVersion,
+              to: version,
+              at: new Date().toISOString(),
+            }),
+          );
+        } catch {
+          // Without the marker the window just does not say it is back.
+        }
+        return run(updates.install);
+      },
       busy: () => ({
         voiceBusy: voice?.busy() ?? false,
         assistantBusy: screen?.active() ?? false,
       }),
+      headsUp: (version, restartAt) => {
+        voice?.openHome();
+        lifecycle.note("update-heads-up", {
+          to: version,
+          restartAt: new Date(restartAt).toISOString(),
+        });
+        notify(
+          "Baton is updating",
+          `Restarting in 30 seconds to install ${version}. Click to restart now, or choose Later in Baton.`,
+          () => batonUpdates.install(),
+        );
+      },
       onChange: () => voice?.refresh(),
     });
+    if (afterUpdate !== null) {
+      setTimeout(() => {
+        voice?.openHome();
+        notify("Baton is back", afterUpdate);
+      }, 3_000).unref();
+    }
     Effect.runForkWith(context)(
       Stream.runForEach(updateChanges, (state) => Effect.sync(() => batonUpdates.onState(state))),
     );
