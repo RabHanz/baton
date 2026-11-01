@@ -207,6 +207,12 @@ export function createBatonWorkSessionAtoms<R, E>(
       scheduler,
       concurrency,
     }),
+    liveSetModel: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:live-set-model",
+      tag: BATON_LIVE_WS_METHODS.liveSetModel,
+      scheduler,
+      concurrency,
+    }),
     herdrSend: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:herdr-send",
       tag: BATON_LIVE_WS_METHODS.herdrSend,
