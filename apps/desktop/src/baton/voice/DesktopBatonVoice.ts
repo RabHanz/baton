@@ -355,6 +355,8 @@ export interface DesktopBatonVoiceInput {
   readonly onDismiss?: () => void;
   /** He said stop over Baton's voice. The tray's dismiss; the window stays open. */
   readonly onSpokenStop?: () => void;
+  /** Plays one fixed line in a voice (null: the chosen one), for the Voice page's Play. */
+  readonly audition?: (voice: string | null) => void;
   /** Bring the main window up, however it was left. */
   readonly openMainWindow: () => void;
   /** Wake-to-pill, for the record. */
@@ -1794,6 +1796,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
 
       {
+        id: "v.audition",
+        section: "Answers",
+        label: "Hear the voice",
+        hint: "Plays one line in the voice chosen above. Play beside a voice plays that one. Tessaya's own voices only.",
+        kind: "action",
+        button: "Play",
+      },
+      {
         id: "v.cues",
         section: "On screen",
         label: "Sounds",
@@ -1992,8 +2002,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         home.refresh();
       });
     } else if (id.startsWith("u.")) input.updates?.apply(id);
-    else if (id.startsWith("s.")) input.extras?.applySetting(id, value);
-    else if (id === "v.enabled") {
+    else if (id.startsWith("s.")) {
+      input.extras?.applySetting(id, value);
+      // Picking a voice plays a short sample of it, so choosing is not guessing.
+      if (id === "s.voice" && typeof value === "string" && value !== "system")
+        input.audition?.(value);
+    } else if (id === "v.enabled") {
       save({ enabled: on });
       void (on ? start().catch(failed) : stop());
     } else if (id === "v.muted") {
@@ -2044,6 +2058,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     } else if (id === "v.pillCentre") pill.moveTo("centre");
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
