@@ -11,7 +11,7 @@
 import * as NodePath from "node:path";
 
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
-import { createWhisperCppStt } from "@t3tools/baton-voice";
+import { createVoiceCore, createVoiceRouter, createWhisperCppStt } from "@t3tools/baton-voice";
 import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -107,6 +107,43 @@ describe("the intent bridge", () => {
         resolved.command.kind === "message_work_session" &&
         resolved.command.text,
     ).toBe("run the migration tests");
+  });
+
+  it("starts and stops dictation by voice alone and pastes each sentence, with no key", async () => {
+    const pasted: string[] = [];
+    const client = makeVoiceIntentClient({
+      request: async () => null,
+      field,
+      injection: {
+        method: "clipboard",
+        canInject: () => true,
+        insertText: async ({ text }) => void pasted.push(text),
+      },
+    });
+    const none = {} as never;
+    const core = createVoiceCore({
+      wake: none,
+      vad: none,
+      stt: none,
+      router: createVoiceRouter(client),
+    });
+    core.setContext(
+      desktopVoiceContext({ focusedWorkSessionId: null, field, observedAt: new Date() }),
+    );
+    const states: string[] = [];
+    core.subscribe((e) => e.type === "state" && states.push(e.state));
+    await core.hear("Baton");
+    await core.hear("dictate");
+    await core.hear("Thanks, I'll send the contract tomorrow.");
+    await core.hear("Colour is spelt with a u.");
+    await core.hear("stop dictating");
+    await core.idle();
+    expect(pasted).toEqual([
+      "Thanks, I'll send the contract tomorrow.",
+      "Colour is spelt with a u.",
+    ]);
+    expect(states).toContain("dictation");
+    expect(core.snapshot().machine.mode).not.toBe("dictation");
   });
 
   it("reports a refused paste as not inserted rather than throwing", async () => {
