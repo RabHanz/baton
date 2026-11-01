@@ -217,10 +217,12 @@ The set did not pass first time. Eight runs to get here, each a real fix:
 3. **File Explorer: the keyboard shortcut for New folder did nothing** because a fresh window has no focused file
    list. Re-planned from the tree, which names a `New folder` button: `click_element` found it and the task passed.
    This is the loop working as designed (read the tree, take the route it names).
-4. **A copy shortcut that did not copy.** `press_keys ["ctrl","c"]` returned "Pressed" but the clipboard was
-   unchanged in Notepad (Ctrl+A and Ctrl+V through the same driver work). The scripted loop read the clipboard back,
-   saw the mismatch, and copied from the Edit menu by name, which worked. Cause not found; observed in every run that reached it. Worth testing on the laptop: a copy by keystroke should never be trusted without
-   reading the result back, which is what the prompt already asks the assistant to do.
+4. **A copy shortcut that did not copy: found, and a product bug.** `press_keys ["ctrl","c"]` returned "Pressed" but the
+   clipboard was unchanged. A diagnostic run polled the clipboard after each way of copying: Ctrl+C worked after a 2.5
+   s pause and failed straight after `type_text`. Typing goes by the clipboard, and 400 ms after a paste Tessaya put
+   his old clipboard back; a copy made inside that window was overwritten by the restore. The restore now happens only
+   if the clipboard still holds what was pasted (`createPaster`, with a test that fails on the old code). The harness
+   keeps its read-back and its menu fallback, so a regression shows as a re-plan in the step log.
 5. **The stop rule was only in the prompt.** Task 8 needed the third identical failing action to be refused; that
    was a model's good behaviour, not code. `failureGuard.ts` now enforces it in the tool server (two failures in a
    row with the same arguments, the third call is refused without running), with a unit test, and the task checks
