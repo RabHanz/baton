@@ -3646,3 +3646,34 @@ waiting, with or without that standing permission. The phases are drafting-plan,
 done and failed after that are read from the thread. `reduceJob` is the whole of it, pure and tested: no work turn before agreement, a
 refinement is stored as context, a standing permission skips the wait only for the job that has it, a widening edit asks again.
 Next: J2 (the wire and the MCP tools, which also create the thread and run the reducer's events from the thread's state), J3 the Jobs tab.
+
+## D148 — The operating-system pack: an executive way of thinking, owned by the user (design; builds after J3)
+
+The planning step of every job, and the coordinator over workers, think like an executive and brief specialists, from a pack the
+user owns (D147). The pack is data, never code, and a user can replace it with their own.
+
+**The pack** lives in `<userdata>/operating-system/`: `executive.md`, `roles/*.md` and `reference/` (any file dropped in).
+`OperatingSystemService` (server, `apps/server/src/baton`) reads it; the Memory tab of the window lists, opens, edits and deletes
+those files (the same files, not a copy). A user file wins over the default of the same name. **The default pack ships in the repo,
+written from scratch:** outcome-first; the job stated without a solution, with its functional, emotional and social side; desired
+outcomes as direction, measure, object and circumstance; the job-map steps as the plan's skeleton (define, locate, prepare,
+confirm, execute, monitor, modify, conclude); find the leverage point before choosing the work; build or do not build, with the
+reason and whether it can be undone; brief specialists as persona, tools, memory, constraints and triggers; ask only a question
+that changes the decision; workers report outcomes, not activity. Roles in the default: engineering, marketing, research, operations.
+
+**Planning.** The prompt of the planning turn is his words verbatim, then `executive.md`, then the briefs of the specialists the plan
+picks. Before any work the plan thread shows a **Job brief**: job statement, desired outcomes, leverage point, build or do not build
+with its reason, the plan skeleton, the specialists, reversibility and the written permissions. `parseJobBrief` checks the sections
+are there; a plan without them is not "ready" (D145's reducer waits).
+
+**Workers.** A worker's brief carries persona, tools, memory, constraints and triggers and the role's mental model. Its report is
+outcome-first: what changed for each outcome, the evidence, what is next, what blocks it. The job card shows outcomes first.
+
+**Cost.** Mechanical worker steps run on a cheap model; planning and judgment on the strong one, by a routing table he can edit.
+The card shows which model each step used.
+
+**Private stays private.** His own pack is made on his machine, by `scripts/baton/import-operating-system.mjs <file>`: it reads his
+document and distils the executive file and the role briefs with his own Claude login, into userdata. It is never committed and
+nothing leaves the machine except that one model call. The repo and the installer carry no part of it: a guard test hashes a
+list of private markers (never written in clear in the repo) and fails if any word run in a tracked file or the installer's file
+list matches. The public build starts with the neutral default.
