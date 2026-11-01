@@ -14,7 +14,7 @@ package is the core it plugs in through `makeCore`.
 | `router.ts`           | Effects → `fabric.intent.resolve` / `fabric.intent.run` with high-risk checks before and after, §14 destinations, dictation kept local                 |
 | `core.ts`             | Frames → wake/VAD segmentation → STT → machine → router → TTS; implements `VoiceCore` plus snapshot and an event stream                                |
 | `service.ts`          | The local API below                                                                                                                                    |
-| `providers/onnx.ts`   | openWakeWord (any number of words at once) and Silero VAD on onnxruntime-node                                                                                         |
+| `providers/onnx.ts`   | openWakeWord (any number of words at once) and Silero VAD on onnxruntime-node                                                                          |
 | `providers/speech.ts` | whisper.cpp (`whisper-cli`), optional cloud STT (OpenAI-compatible `/audio/transcriptions`), OS TTS, WAV encode/decode                                 |
 
 Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
@@ -25,14 +25,18 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
 - **command_window** (8 s): opened by a wake word or the tray/hotkey `wake`. The wake
   phrase and the command can be said together.
 - **conversation** (30 s, extended by every command): follow-ups need no wake and
-  inherit the target the last command touched. "That's all" or the timeout ends it.
+  inherit the target the last command touched. "That's all", "thanks" or the timeout
+  ends it. The window does not run out while Baton is talking (D124).
 - **direct_session**: the resting mode when the toggle is on. Plain speech is a user
   message to the **focused** session (only a focused one; "most recent" is not enough).
   A wake still opens a command window.
-- **dictation**: "dictate" (optionally with text in the same breath) enters it, and only
-  "stop dictating" leaves it. While it is on, everything said is text for the
-  focused field, including words that sound like commands. Dictated text never
-  reaches the environment.
+- **dictation**: "dictate" or "I want to dictate" (optionally with text in the same breath)
+  enters it, and only "stop dictating" or a near form leaves it, back into the conversation
+  with no wake word (D125). While it is on, everything said is text for the focused field,
+  including words that sound like commands. Dictated text never reaches the environment.
+
+While Baton speaks, a short stop phrase (stop, quiet, enough, that's enough, cancel, shut up)
+is heard with no wake word (D122). Nothing else said over its voice is acted on.
 
 ## Safety
 
@@ -58,7 +62,11 @@ import {
 } from "@t3tools/baton-voice";
 
 const core = createVoiceCore({
-  wake: await createOpenWakeWordProvider({ melspectrogram, embedding, wakes: [{ word: "Alfred", path: alfred, threshold: 0.9 }] }),
+  wake: await createOpenWakeWordProvider({
+    melspectrogram,
+    embedding,
+    wakes: [{ word: "Alfred", path: alfred, threshold: 0.9 }],
+  }),
   vad: await createSileroVad(sileroPath),
   stt: createWhisperCppStt({
     binary: whisperCli,
@@ -94,21 +102,21 @@ tray says so and no microphone opens. Everything audio goes through
 `baton-dictation.exe` (`native/baton-dictation`, D97): `serve` over JSON lines for the keys, recording,
 Parakeet and paste; `record` piped in as the wake path's microphone.
 
-| Setting in `<state dir>/fabric-voice.json` | Default                                | Also in the tray |
-| ------------------------------------------ | -------------------------------------- | ---------------- |
-| `dictation`                                | `baton`; `wispr` holds no key          | Dictation        |
-| `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space` |                |
-| `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v` |                |
-| `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words |
-| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker | Dictation |
-| `dictationCleanup`                         | `claude`; `local`, `off`               | Dictation, Clean-up |
-| `cleanupModel`, `claudeBinary`             | `haiku`, `claude`                      |                  |
-| `appModes`                                 | `{}`; his writing mode per app, by exe | Dictation, Writing mode |
-| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)              | Microphone       |
-| `enabled`                                  | `false`: listening is opt-in           | Always listening |
-| `sounds`                                   | `true`                                 | Sounds           |
-| `pillAtRest`                               | `false`                                | Pill             |
-| `pillEdge`                                 | `bottom`; `top`                        | Pill             |
+| Setting in `<state dir>/fabric-voice.json` | Default                                                      | Also in the tray        |
+| ------------------------------------------ | ------------------------------------------------------------ | ----------------------- |
+| `dictation`                                | `baton`; `wispr` holds no key                                | Dictation               |
+| `holdKey`, `toggleKey`                     | `Ctrl+Alt+Space`, `Ctrl+Alt+Shift+Space`                     |                         |
+| `paste`                                    | `ctrl_v`; `shift_insert`, `ctrl_shift_v`                     |                         |
+| `wakeWords`                                | Sebastian, Alfred, Freya on; Onyx off; each with a threshold | Wake words              |
+| `speechModel`                              | `v3`; `fast` is English only, 3.4x quicker                   | Dictation               |
+| `dictationCleanup`                         | `claude`; `local`, `off`                                     | Dictation, Clean-up     |
+| `cleanupModel`, `claudeBinary`             | `haiku`, `claude`                                            |                         |
+| `appModes`                                 | `{}`; his writing mode per app, by exe                       | Dictation, Writing mode |
+| `micOrder`, `pinnedLabel`                  | AT2020, DJI, system (D99)                                    | Microphone              |
+| `enabled`                                  | `false`: listening is opt-in                                 | Always listening        |
+| `sounds`                                   | `true`                                                       | Sounds                  |
+| `pillAtRest`                               | `false`                                                      | Pill                    |
+| `pillEdge`                                 | `bottom`; `top`                                              | Pill                    |
 
 Tray → Edit voice settings opens the file; saved edits apply within two seconds. Dictation works with
 "Always listening" off. The wake, VAD and feature models ship with the app. Parakeet (740 MB,
@@ -169,5 +177,7 @@ room noise or the Director's own voice.
 ## The pill and speech
 
 The HUD is gone: at rest nothing is on screen. The pill (D112) shows the state, the wake word, the
-routing target and what was heard. Speech plays from a hidden page (`voicePlayer.ts`), one path for
+routing target and what was heard. It stays while a window is open and says so when the wake word
+is needed again (D124). Every turn is logged to `voice-turns.ndjson` in the app's log folder (D120).
+Speech plays from a hidden page (`voicePlayer.ts`), one path for
 every platform, and the pill follows the voice's real level.

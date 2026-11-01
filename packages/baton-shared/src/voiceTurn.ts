@@ -93,6 +93,8 @@ const settle = (state: TurnState): TurnState => {
 export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
   switch (event.type) {
     case "wake":
+      // A wake word changes nothing in spoken dictation, so "Alfred, stop dictating" stays Dictating.
+      if (state.phase === "dictating" && state.open) return state;
       return { ...IDLE_TURN, phase: "listening", detail: event.word, open: true };
     case "window_open":
       if (state.open) return state;
