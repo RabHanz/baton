@@ -49,6 +49,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.check": "checks",
   "v.micTest": "checks",
   "v.login": "settings",
+  "v.appearance": "settings",
   "v.file": "settings",
   "u.act": "settings",
   "n.empty": "sessions",
