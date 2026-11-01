@@ -64,7 +64,7 @@ const rowAccount = (props: BatonProjectsBlockProps, row: BatonSessionRow): strin
       ? props.resolveWorkAccount(row.environmentId, row.entry)
       : null;
 
-/** "VentureOS · Ventureos" says one thing twice; a session named like its project is the project. */
+/** "Storefront · Storefront" says one thing twice; a session named like its project is the project. */
 const projectRowLabel = (project: string, session: string): string =>
   project.toLowerCase() === session.toLowerCase() ? project : `${project} · ${session}`;
 
