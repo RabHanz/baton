@@ -27,6 +27,7 @@ import {
   toolGroupAction,
   toolGroupSummaryKind,
   contextCompactionTokenCounts,
+  workEntryViewedImagePath,
   type ToolGroupSummaryKind,
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
@@ -551,6 +552,8 @@ type MessagesTimelineRowContent =
       toolSurface?: WorkLogEntry["toolSurface"];
       toolIcon?: WorkLogEntry["toolIcon"];
       hasFailure: boolean;
+      /** Images the group's tool calls returned, shown under the header while it is collapsed. */
+      viewedImagePaths: ReadonlyArray<string>;
     }
   | {
       kind: "turn-fold";
@@ -1925,6 +1928,9 @@ export function deriveMessagesTimelineRows(input: {
             hasFailure:
               latestToolEntry !== undefined &&
               workEntryDisplayIndicatesToolFailure(latestToolEntry),
+            viewedImagePaths: visibleGroupedEntries
+              .flatMap((entry) => workEntryViewedImagePath(entry) ?? [])
+              .slice(0, 4),
           });
           if (expanded) {
             nextRows.push(
@@ -2493,7 +2499,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.summaryKind === bw.summaryKind &&
         a.toolSurface === bw.toolSurface &&
         Equal.equals(a.toolIcon, bw.toolIcon) &&
-        a.hasFailure === bw.hasFailure
+        a.hasFailure === bw.hasFailure &&
+        a.viewedImagePaths.join("\n") === bw.viewedImagePaths.join("\n")
       );
     }
 
