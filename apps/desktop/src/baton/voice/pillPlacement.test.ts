@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { defaultPosition, parseSpots, positionOf, spotFrom } from "./pillPlacement.ts";
+import {
+  PLACES,
+  defaultPosition,
+  parseSpots,
+  placePosition,
+  positionOf,
+  snapPosition,
+  spotFrom,
+} from "./pillPlacement.ts";
 
 const size = { width: 420, height: 52 };
 const hd = { x: 0, y: 0, width: 1920, height: 1040 };
@@ -37,5 +45,64 @@ describe("where the pill sits", () => {
       "4": { fx: 0.5, fy: 0.5 },
     });
     expect(parseSpots("nope")).toEqual({});
+  });
+});
+
+describe("snapping a drag", () => {
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  const size = { width: 420, height: 52 };
+  const margins = { top: 10, bottom: 44 };
+  const free = { bypass: false, margins };
+
+  it("pulls onto a named place when near it, and names it", () => {
+    const centre = placePosition(area, size, "centre", margins);
+    expect(snapPosition(area, size, { x: centre.x + 25, y: centre.y - 18 }, free)).toEqual({
+      ...centre,
+      place: "centre",
+    });
+    const bottom = placePosition(area, size, "bottom", margins);
+    expect(snapPosition(area, size, { x: bottom.x - 10, y: bottom.y + 9 }, free)).toMatchObject({
+      y: bottom.y,
+      place: "bottom",
+    });
+    expect(snapPosition(area, size, { x: 3, y: 4 }, free)).toMatchObject({ place: "top-left" });
+  });
+
+  it("steps onto a grid elsewhere, stays inside the work area, and leaves free placement to Alt or Shift", () => {
+    const grid = snapPosition(area, size, { x: 400, y: 300 }, free);
+    expect(grid.place).toBeNull();
+    expect((grid.x / ((area.width - size.width) / 24)) % 1).toBeCloseTo(0, 5);
+    expect(snapPosition(area, size, { x: 5000, y: -200 }, free)).toMatchObject({
+      x: 1500,
+      y: 10,
+      place: "top-right",
+    });
+    expect(snapPosition(area, size, { x: 401, y: 303 }, { ...free, bypass: true })).toEqual({
+      x: 401,
+      y: 303,
+      place: null,
+    });
+    expect(PLACES.map((p) => p.id)).toContain("centre");
+  });
+});
+
+describe("dragging is free on both axes", () => {
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  const size = { width: 420, height: 52 };
+  const margins = { top: 10, bottom: 44 };
+  const free = { bypass: false, margins };
+
+  it("from bottom centre, a cursor 200 px up lands 200 px up, and one 400 px up goes on past the middle", () => {
+    const bottom = placePosition(area, size, "bottom", margins);
+    const up200 = snapPosition(area, size, { x: bottom.x, y: bottom.y - 200 }, free);
+    expect(up200.place).toBeNull();
+    expect(up200.y).toBeLessThan(bottom.y - 150);
+    expect(up200.y).toBeGreaterThan(bottom.y - 250);
+    const up500 = snapPosition(area, size, { x: bottom.x + 90, y: bottom.y - 500 }, free);
+    expect(up500.y).toBeLessThan(bottom.y - 450);
+    // Sideways moves too, with the row kept.
+    const across = snapPosition(area, size, { x: bottom.x + 300, y: bottom.y }, free);
+    expect(across.x).toBeGreaterThan(bottom.x + 250);
+    expect(Math.abs(across.y - bottom.y)).toBeLessThan(25);
   });
 });

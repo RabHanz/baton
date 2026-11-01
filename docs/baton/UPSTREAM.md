@@ -77,15 +77,26 @@ committed, so these three files stay byte-identical to upstream everywhere else 
 daily sync, `main`):
 
 - `scripts/build-desktop-artifact.ts`: `DESKTOP_APP_ID` (`com.t3tools.t3code` ->
-  `dev.rabee.baton`) and the `artifactName` template (`T3-Code-...` -> `Baton-...`).
-- `apps/desktop/package.json`: `productName` (`"T3 Code (Beta)"` -> `"Baton"`).
-- `apps/desktop/src/app/DesktopEnvironment.ts`: `APP_BASE_NAME` (`"T3 Code"` -> `"Baton"`), which
-  drives the packaged app's runtime name (`Electron.app.setName`) and therefore its userData
-  folder.
+  `dev.rabee.baton`) and the `artifactName` template (`T3-Code-...` -> `Tessaya-...`).
+- `apps/desktop/package.json`: `productName` (`"T3 Code (Beta)"` -> `"Tessaya"`).
+- `apps/desktop/src/app/DesktopEnvironment.ts`: `APP_BASE_NAME` (`"T3 Code"` -> `"Tessaya"`), which
+  drives the packaged app's runtime name (`Electron.app.setName`); the userData folder is the
+  explicit `baton` one, so a rename of the product never moves it.
 
-Without this, a Baton installer would carry T3 Code's own identity end to end — the same
-electron-builder `appId`+`productName` NSIS uses for its uninstall registry key, so installing
-Baton on a machine with the official T3 Code app would be read as upgrading it, not adding a
+The product was renamed from Baton to Tessaya; what identifies an install did not change, so the
+new installer replaces the old one. electron-builder's NSIS derives the uninstall key from the
+`appId` alone (UUID v5), the install folder from the staged package name (`Programs\baton`), the
+taskbar identity from the AUMI and the userData folder from `DesktopUserData`: all four stay. Only
+`productName`, the artifact name and the shortcut change; `apps/desktop/resources/installer.nsh`
+removes the old `Baton.lnk` shortcuts and moves a `Run` login entry to the new exe, and
+`.github/workflows/baton-upgrade-proof.yml` installs the last release and then the new build to
+check it. electron-updater reads the file name from `latest.yml`, so old clients find
+`Tessaya-<ver>-x64.exe` on the same release; only the differential download falls back to a full
+one, because the old blockmap name no longer exists.
+
+Without this, an installer would carry T3 Code's own identity end to end — the same
+electron-builder `appId` NSIS uses for its uninstall registry key, so installing
+Tessaya on a machine with the official T3 Code app would be read as upgrading it, not adding a
 second app, and the two would also share one userData folder. This keeps the two installs and
 their data fully separate while leaving nothing for the daily sync to conflict on.
 

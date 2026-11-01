@@ -4,6 +4,10 @@
 #[cfg(unix)]
 mod desktop_unix;
 mod keys;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod mouse;
+#[cfg(windows)]
+mod mouse_windows;
 #[cfg(windows)]
 mod uia;
 mod live;
@@ -46,17 +50,38 @@ fn emit(event: Value) {
     let _ = out.flush();
 }
 
+/// A hotkey setting as a list: null, one string, or an array of strings.
+fn keys_list<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Keys {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match Option::<Keys>::deserialize(deserializer)? {
+        None => Vec::new(),
+        Some(Keys::One(key)) => vec![key],
+        Some(Keys::Many(keys)) => keys,
+    })
+}
+
 #[derive(Deserialize, Default, Clone)]
 struct Config {
     model: Option<PathBuf>,
-    hold: Option<String>,
-    toggle: Option<String>,
+    /// One key or several: any of them holds. The desktop sends a list; an older one sent a string.
+    #[serde(default, deserialize_with = "keys_list")]
+    hold: Vec<String>,
+    #[serde(default, deserialize_with = "keys_list")]
+    toggle: Vec<String>,
     device: Option<String>,
     /// One input of a multi-input interface: the AT2020 is input 1 of the Scarlett.
     channel: Option<u16>,
     #[serde(default)]
     paste: PasteMethod,
     language: Option<String>,
+    /// `input-bindings.json`: the mouse buttons Baton listens for. Absent or empty: no hook at all.
+    #[serde(default)]
+    mouse: Option<PathBuf>,
     /// The desktop cleans the text up first, then pastes it with `target`.
     #[serde(default)]
     cleanup: bool,
@@ -330,19 +355,19 @@ impl Drop for Keys {
 }
 
 fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String> {
-    if config.hold.is_none() && config.toggle.is_none() {
+    if config.hold.is_empty() && config.toggle.is_empty() {
         return Ok(None);
     }
     // `new_with_blocking`: the chord must not also reach the focused app.
     let manager = HotkeyManager::new_with_blocking().map_err(|e| e.to_string())?;
-    let register = |text: &Option<String>| -> Result<_, String> {
-        match text {
-            Some(text) => {
+    let register = |texts: &Vec<String>| -> Result<Vec<_>, String> {
+        texts
+            .iter()
+            .map(|text| {
                 let hotkey: Hotkey = text.parse().map_err(|e| format!("{text}: {e}"))?;
-                manager.register(hotkey).map(Some).map_err(|e| format!("{text}: {e}"))
-            }
-            None => Ok(None),
-        }
+                manager.register(hotkey).map_err(|e| format!("{text}: {e}"))
+            })
+            .collect()
     };
     let hold = register(&config.hold)?;
     register(&config.toggle)?;
@@ -354,7 +379,7 @@ fn start_keys(config: &Config, tx: &Sender<Msg>) -> Result<Option<Keys>, String>
             match manager.try_recv() {
                 Some(event) => {
                     let pressed = event.state == HotkeyState::Pressed;
-                    let _ = tx.send(Msg::Key { hold: Some(event.id) == hold, pressed });
+                    let _ = tx.send(Msg::Key { hold: hold.contains(&event.id), pressed });
                 }
                 None => thread::sleep(Duration::from_millis(5)),
             }
@@ -650,6 +675,8 @@ fn serve() {
                             Ok(next) => {
                                 let rebind = next.hold != config.hold || next.toggle != config.toggle;
                                 config = next;
+                                #[cfg(windows)]
+                                mouse_windows::configure(config.mouse.as_deref());
                                 if rebind {
                                     // Nothing can stop a recording once its keys are gone.
                                     if recording.take().is_some() {
@@ -664,7 +691,7 @@ fn serve() {
                                         Err(message) => emit(json!({"ev": "error", "message": message})),
                                     }
                                 }
-                                emit(json!({"ev": "configured"}));
+                                emit(json!({"ev": "configured", "mouse": cfg!(windows)}));
                             }
                             Err(e) => emit(json!({"ev": "error", "message": e.to_string()})),
                         }
@@ -945,6 +972,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hotkeys_come_as_nothing_one_key_or_a_list() {
+        let none: Config = serde_json::from_value(json!({"model": null, "hold": null})).unwrap();
+        assert!(none.hold.is_empty() && none.toggle.is_empty());
+        let old: Config = serde_json::from_value(json!({"hold": "Ctrl+Alt+Space"})).unwrap();
+        assert_eq!(old.hold, vec!["Ctrl+Alt+Space".to_string()]);
+        let many: Config = serde_json::from_value(json!({"toggle": ["F9", "Ctrl+Alt+D"]})).unwrap();
+        assert_eq!(many.toggle, vec!["F9".to_string(), "Ctrl+Alt+D".to_string()]);
+    }
 
     #[test]
     fn pastes_only_into_the_window_it_was_spoken_for() {

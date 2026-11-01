@@ -107,6 +107,7 @@ import {
   WorkGroupSection,
   WorkingTimelineRow,
   ThinkingTimelineRow,
+  ThoughtTimelineRow,
   LiveWorkEntryTimelineRow,
   WorkGroupToggleTimelineRow,
 } from "./TimelineWorkGroupRows";
@@ -511,6 +512,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
       return next;
     });
   };
+  const [closedThoughtIds, setClosedThoughtIds] = useState<ReadonlySet<string>>(() => new Set());
+  const onToggleThought = (rowId: string) =>
+    setClosedThoughtIds((existing) => {
+      const next = new Set(existing);
+      if (!next.delete(rowId)) next.add(rowId);
+      return next;
+    });
   const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
     suspendEndScrollMaintenanceForDisclosure(anchorKey);
     setExpandedWorkGroupIds((existing) => {
@@ -672,6 +680,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     expandedRunIds: visibleExpandedRunIds,
     expandedAttemptIds: visibleExpandedAttemptIds,
     expandedWorkGroupIds,
+    closedThoughtIds,
     isWorking,
     runlessWorkActive,
     activeTurnStartedAt,
@@ -1044,6 +1053,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onToggleTurnFold,
     onToggleAttemptFold,
     onToggleWorkGroup,
+    onToggleThought,
     onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
     onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
     retryableWorkspacePreparationRunIds,
@@ -1489,6 +1499,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
         </WorkLogBlock>
       ) : null}
+      {row.kind === "thought" ? <ThoughtTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow key={row.id} row={row} /> : null}
       {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}

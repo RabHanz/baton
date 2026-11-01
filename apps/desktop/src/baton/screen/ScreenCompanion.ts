@@ -355,7 +355,7 @@ export const startScreenCompanion = (input: {
     const picked = pickEnv(settings.assistantAccount, accounts.cached(), input.env);
     if (picked.notice !== null && picked.notice !== toldAbout) {
       toldAbout = picked.notice;
-      linger("Baton", picked.notice);
+      linger("Tessaya", picked.notice);
     }
     return picked.env;
   };
@@ -409,7 +409,7 @@ export const startScreenCompanion = (input: {
     });
   };
   /** A refusal says why, aloud and on the pill, and is logged with its reason: never a silent no. */
-  const refuse = (kind: string, reason: string, said: string, where = "Baton") => {
+  const refuse = (kind: string, reason: string, said: string, where = "Tessaya") => {
     say(reason);
     linger(where, reason);
     input.onActivity?.(null);
@@ -596,7 +596,7 @@ export const startScreenCompanion = (input: {
       return true;
     const response = await askHandsFree(
       {
-        title: "Let Baton see your screen?",
+        title: "Let Tessaya see your screen?",
         detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
         buttons: [
           forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
@@ -658,7 +658,7 @@ export const startScreenCompanion = (input: {
     if (run === null && message.startsWith("Claude stopped")) return;
     input.onNote?.("error", { message });
     say(message);
-    linger("Baton", message);
+    linger("Tessaya", message);
     input.onActivity?.(null);
     end();
   };
@@ -794,7 +794,7 @@ export const startScreenCompanion = (input: {
       const reply = voice.finish(raw);
       converse("operate", goal, reply);
       input.onActivity?.(null);
-      linger("Baton", reply);
+      linger("Tessaya", reply);
     } finally {
       answering -= 1;
     }
@@ -827,7 +827,7 @@ export const startScreenCompanion = (input: {
           sayHere(sentence);
           soFar = `${soFar} ${sentence}`.trim();
           // Text keeps pace with the voice instead of waiting for the end of the answer.
-          void show("Baton", soFar);
+          void show("Tessaya", soFar);
         }
       },
       /** The end of the turn. `whole` is spoken if nothing streamed. */
@@ -889,7 +889,7 @@ export const startScreenCompanion = (input: {
     voice.finish(reply.spoken);
     input.onActivity?.(null);
     await pointAt(reply.point, turn.shots);
-    linger("Baton", reply.spoken);
+    linger("Tessaya", reply.spoken);
   };
 
   const teachStep = async (note?: string) => {
@@ -1122,7 +1122,7 @@ export const startScreenCompanion = (input: {
               detail: `A command line runs what it is given. ${
                 shell.typed.length === 0
                   ? "This plan types nothing itself."
-                  : `Baton would type:\n\n${shell.typed.join("\n")}`
+                  : `Tessaya would type:\n\n${shell.typed.join("\n")}`
               }`,
               buttons: ["Type it", "Not now"],
               cancel: 1,
@@ -1299,7 +1299,7 @@ export const startScreenCompanion = (input: {
           firstAt = Date.now();
           converse("clarify", "", decision.text);
           say(decision.text);
-          linger("Baton", decision.text);
+          linger("Tessaya", decision.text);
           return Promise.resolve();
         case "control":
           if (decision.control === "next") {
@@ -1641,10 +1641,10 @@ export const startScreenCompanion = (input: {
       result.kind === "refused"
         ? result.reply
         : actions === null
-          ? "Baton's sessions aren't reachable from here yet."
+          ? "Tessaya's sessions aren't reachable from here yet."
           : await actions.act(result.text, result.restated === true);
     say(reply);
-    linger("Baton", reply);
+    linger("Tessaya", reply);
   };
 
   const windows = createCompanionWindows({
@@ -1685,7 +1685,7 @@ export const startScreenCompanion = (input: {
     },
     openAskBox,
     notice: (text) => {
-      if (text.trim().length > 0) linger("Baton", text);
+      if (text.trim().length > 0) linger("Tessaya", text);
     },
     writtenOnly: () => settings.output === "written",
     voice: () => settings.voice,
@@ -1693,7 +1693,7 @@ export const startScreenCompanion = (input: {
     ask: windows.ask,
     stop,
     menuItems: () => [
-      { label: "Ask Baton…", accelerator: ASK_HOTKEY, click: openAskBox },
+      { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },
       ...(run !== null && run.mode !== "look"
         ? [
@@ -1708,7 +1708,7 @@ export const startScreenCompanion = (input: {
       {
         id: "s.output",
         section: "Answers",
-        label: "How Baton answers",
+        label: "How Tessaya answers",
         kind: "choice",
         value: settings.output,
         options: [
@@ -1720,7 +1720,7 @@ export const startScreenCompanion = (input: {
         id: "s.volume",
         section: "Answers",
         label: "Speaking volume",
-        hint: "How loud Baton speaks, apart from your system volume.",
+        hint: "How loud Tessaya speaks, apart from your system volume.",
         kind: "choice",
         value: String(settings.volume),
         options: [
@@ -1744,7 +1744,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.brain",
-        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
+        section: settings.brainChosen ? "Working for you" : "Choose what Tessaya works through",
         label: "Works through",
         ...(settings.brainChosen ? {} : { hint: "Listening and speaking stay on this computer." }),
         kind: "brain",
@@ -1754,7 +1754,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.brainCheck",
-        section: settings.brainChosen ? "Working for you" : "Choose what Baton works through",
+        section: settings.brainChosen ? "Working for you" : "Choose what Tessaya works through",
         label: "Installed and signed in?",
         kind: "action",
         button: "Check again",
@@ -1780,8 +1780,8 @@ export const startScreenCompanion = (input: {
       {
         id: "s.account",
         section: "Working for you",
-        label: "Claude login for Baton",
-        hint: "Which login Baton's assistant runs as. By default it follows the claude login.",
+        label: "Claude login for Tessaya",
+        hint: "Which login Tessaya's assistant runs as. By default it follows the claude login.",
         kind: "choice",
         value: settings.assistantAccount ?? "",
         options: [
@@ -1812,7 +1812,7 @@ export const startScreenCompanion = (input: {
         id: "s.capture",
         section: "Working for you",
         label: "Always allow screen capture",
-        hint: "Off, Baton asks before it looks at your screen.",
+        hint: "Off, Tessaya asks before it looks at your screen.",
         kind: "toggle",
         on: settings.captureApproval === "always",
         more: true,

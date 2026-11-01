@@ -1,10 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
  * The words around the caret in the focused field, through Windows UI Automation, so dictated text
- * can fit them (dictationFit.ts). Which apps answer: Notepad, Word, WordPad and other native Win32 or
- * WPF edit controls expose TextPattern; Chrome, Edge and Electron apps (Slack, VS Code, Discord)
- * expose nothing until accessibility is on in that app, and many web editors never do; terminals
- * and games do not. When the field does not answer, the caller falls back to what it last inserted.
+ * can fit them. Native editors answer; Chrome, Electron apps and terminals mostly do not, and the
+ * caller then falls back to what it last inserted.
  */
 import * as NodeChildProcess from "node:child_process";
 

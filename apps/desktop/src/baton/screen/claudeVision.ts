@@ -301,7 +301,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     fail(
       new Error(
         (error as NodeJS.ErrnoException).code === "ENOENT"
-          ? `Claude Code was not found at "${options.claudeBinary}". Install it and sign in, or set its path in Baton's screen settings.`
+          ? `Claude Code was not found at "${options.claudeBinary}". Install it and sign in, or set its path in Tessaya's screen settings.`
           : error.message,
       ),
     ),
@@ -339,7 +339,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     if (request !== null) {
       void options.gate!(request.call)
         // An answer that fails is a no.
-        .catch(() => ({ allow: false as const, reason: "Baton could not check that." }))
+        .catch(() => ({ allow: false as const, reason: "Tessaya could not check that." }))
         .then((answer) => answerTool(request.requestId, toolAnswerOf(answer, request.call)));
       return;
     }

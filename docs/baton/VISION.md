@@ -1,4 +1,4 @@
-# Baton: the vision and how it got here (2026-11-01)
+# Tessaya: the vision and how it got here (2026-11-01)
 
 Read this before the manager brief. It is an index with the Director's direction, not the record:
 the sources below hold the detail, so read them rather than trusting this summary.
@@ -34,7 +34,7 @@ to orchestrate. Later, maybe a product or open source. That later is now being d
   capability plane built in a day; both boxes on the fork. He then ruled that the intent layer must
   be model-backed, not a grammar: "what the hell even is the point of this if it isn't smart".
   Account rotation inside a thread was proven live after he corrected a wrong claim.
-- 10-26: renamed Baton and made a standalone repo. Binding order: P1, extremely easy hopping between
+- 10-26: renamed Tessaya and made a standalone repo. Binding order: P1, extremely easy hopping between
   sessions and control from any device across all sessions and agents, instantly sending anything to
   any session. P2, always-listening voice plus Airdeck. Then upstream catch-up, then automatic
   upgrades as its own project.
@@ -51,8 +51,8 @@ to orchestrate. Later, maybe a product or open source. That later is now being d
 One brain that hears him anywhere and does the work, hands-free, across every device, session,
 account and agent, on his machine as a full operator. It explains what is on his computer several
 layers deep, not the surface. It confirms risky work in conversation and simply does simple work.
-Baton's own app is beautiful, separate from T3 Code, with progressive disclosure, like Wispr Flow.
-Baton is also how he will orchestrate the wider portfolio: Stage 5 of VentureOS's operating plan.
+Tessaya's own app is beautiful, separate from T3 Code, with progressive disclosure, like Wispr Flow.
+Tessaya is also how he will orchestrate the wider portfolio: Stage 5 of VentureOS's operating plan.
 
 ## The bar he set on 2026-11-01, from using it
 
@@ -66,13 +66,13 @@ The app must be beautiful and complete: "way too simple" is his verdict on anyth
 
 His standing complaints are the test. He should not have to repeat himself, find things hidden, press a button he said he did not want, or discover a fault before we report it. He judges the real thing on his own machine, so look at it yourself, in frames and in his turn log, before saying it is done. Report what is true, including what was not checked.
 
-How to find his exact words: `bash /home/onnyx/VentureOS/scripts/ops/history-search.sh <words>`, and his messages about Baton are in the VentureOS orchestrator session, `cc828d1b`, through the same index. When he speaks to you directly in T3, that outranks anything relayed.
+How to find his exact words: `bash /home/onnyx/VentureOS/scripts/ops/history-search.sh <words>`, and his messages about Tessaya are in the VentureOS orchestrator session, `cc828d1b`, through the same index. When he speaks to you directly in T3, that outranks anything relayed.
 
 ## One assistant, not stages (2026-11-01)
 
 His words: "It needs to actually behave like an actual assistant who has access to all of these tools rather than separating them into scripts and stages." And: "It couldn't type it because it doesn't have the context of all of its tools and memories and everything in one file."
 
-So Baton is one continuous agent that holds the whole conversation, its memory and every tool at once: see the screen, type, click, search the web, read files, run commands, reach sessions, start or stop dictation. It decides for itself, and uses several tools in one turn. Router routes such as answer, look, drive and operate, each with its own session and partial context, are the design being replaced. Only what must not wait on a model stays outside it: stop, and the wake word.
+So Tessaya is one continuous agent that holds the whole conversation, its memory and every tool at once: see the screen, type, click, search the web, read files, run commands, reach sessions, start or stop dictation. It decides for itself, and uses several tools in one turn. Router routes such as answer, look, drive and operate, each with its own session and partial context, are the design being replaced. Only what must not wait on a model stays outside it: stop, and the wake word.
 
 ## An employee, not a command line (2026-11-01)
 
@@ -84,4 +84,16 @@ His words: "It is like a semi-sentient assistant that can do everything and keep
 
 Learn from Claude Duet, OpenAI dots, Meta Muse, Grok Bot, OpenClaw and Hermes: see `BATON-ASSISTANT-RESEARCH-2026-11-01.md`. "Every learning that we are doing across these projects and ventures should be kept as learnings in our brain and memory so it only improves from here as a constant feedback loop."
 
-It is our own prototype first, and soon a public release: "Maybe under a bit of a stricter license (which I have not decided yet) or maybe even just open source (MIT), so people can use it and improve upon it as well. I'm talking about Baton not VentureOS." Build so that a stranger can install it: no private defaults, no VentureOS dependency, and keep third-party licences clean.
+It is our own prototype first, and soon a public release: "Maybe under a bit of a stricter license (which I have not decided yet) or maybe even just open source (MIT), so people can use it and improve upon it as well. I'm talking about Tessaya not VentureOS." Build so that a stranger can install it: no private defaults, no VentureOS dependency, and keep third-party licences clean.
+
+## Jobs start with a plan in their own thread (2026-11-01)
+
+He gives a job by voice. Tessaya opens a thread for it, runs planning mode first to understand his intent, and says briefly over voice that it is ready, pointing him to that thread. He refines there. Every change stays in that job's context, and it works from the refined plan.
+
+The pill is black, slim and minimal. His verdict on the white one: "all white and kind of blocky and bigger".
+
+## It thinks like an executive (2026-11-01)
+
+The assistant runs on an operating system the user owns: a pack of plain files, kept on the user's own machine and editable, that tells the top agent how to think. For any job it frames the job as a job to be done and its desired outcomes, finds the highest-leverage point, decides to build or not to build, and briefs specialist workers (for example technical, marketing, research and operations), each carrying the mental model for its role. Workers report outcomes, not activity. Cheap models do cheap work; the strong model is kept for judgment. The planning step of every job goes through this framing.
+
+The pack is private to its owner: Tessaya ships a neutral default that a user replaces with their own operating system, and nothing personal is in the repository or the installer.

@@ -77,7 +77,7 @@ export const BatonRuntime = Context.Reference<Context.Context<BatonServices> | n
 /** Captures Baton's services for the routes; part of `BatonServerLayer.services`. */
 export const runtimeLayer = Layer.effect(BatonRuntime, Effect.context<BatonServices>());
 
-const unavailable = () => new Error("Baton's services are not running on this server.");
+const unavailable = () => new Error("Tessaya's services are not running on this server.");
 
 /** One thread's account (D95): refused here, so no client's menu is the only check. */
 const threadAccountUse = Effect.fn("fabric.account.useForThread")(function* (
