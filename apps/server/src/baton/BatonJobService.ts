@@ -61,6 +61,7 @@ interface TermsRow {
   readonly revisions_json: string;
   readonly schedule_task_id: string | null;
   readonly worker_instance_id: string | null;
+  readonly parent_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -76,6 +77,7 @@ const fromRow = (row: TermsRow): BatonJobTerms =>
     revisions: decodeRevisions(row.revisions_json),
     scheduleTaskId: row.schedule_task_id,
     workerInstanceId: row.worker_instance_id,
+    parentId: row.parent_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }) as BatonJobTerms;
@@ -88,6 +90,7 @@ export interface JobCreateInput {
   readonly permissions: BatonJobPermissions;
   readonly limits?: Partial<BatonJobLimits>;
   readonly workerInstanceId?: string | null;
+  readonly parentId?: WorkSessionId | null;
 }
 
 export class BatonJobService extends Context.Service<
@@ -97,6 +100,8 @@ export class BatonJobService extends Context.Service<
     readonly create: (input: JobCreateInput) => Effect.Effect<BatonJobTerms, WorkSessionError>;
     readonly terms: (id: WorkSessionId) => Effect.Effect<BatonJobTerms | null>;
     readonly allTerms: () => Effect.Effect<ReadonlyArray<BatonJobTerms>>;
+    /** The parts of a job with several parts, oldest first. */
+    readonly parts: (parentId: WorkSessionId) => Effect.Effect<ReadonlyArray<BatonJobTerms>>;
     /** A standing permission for this job and this channel: explicit, per job, and logged. */
     readonly grant: (
       id: WorkSessionId,
@@ -180,11 +185,11 @@ export const make = Effect.gen(function* () {
     yield* sql`
       INSERT INTO fabric_job_terms (
         work_session_id, goal, permissions_json, limits_json, grants_json, phase, revisions_json,
-        schedule_task_id, worker_instance_id, created_at, updated_at
+        schedule_task_id, worker_instance_id, parent_id, created_at, updated_at
       ) VALUES (
         ${input.id}, ${input.goal}, ${encodePermissions(input.permissions)},
         ${encodeLimits(jobLimits(input.limits))}, ${encodeGrants([])}, 'drafting_plan', '[]',
-        NULL, ${input.workerInstanceId ?? null}, ${at}, ${at}
+        NULL, ${input.workerInstanceId ?? null}, ${input.parentId ?? null}, ${at}, ${at}
       )
     `.pipe(Effect.orDie);
     return (yield* read(input.id))!;
@@ -193,6 +198,12 @@ export const make = Effect.gen(function* () {
     const rows = yield* sql<TermsRow>`SELECT * FROM fabric_job_terms ORDER BY updated_at DESC`.pipe(
       Effect.orDie,
     );
+    return rows.map(fromRow);
+  });
+  const parts = Effect.fn("BatonJobService.parts")(function* (parentId: WorkSessionId) {
+    const rows = yield* sql<TermsRow>`
+      SELECT * FROM fabric_job_terms WHERE parent_id = ${parentId} ORDER BY created_at, work_session_id
+    `.pipe(Effect.orDie);
     return rows.map(fromRow);
   });
   const view = Effect.fn("BatonJobService.view")(function* (input: {
@@ -271,6 +282,7 @@ export const make = Effect.gen(function* () {
     create,
     terms: read,
     allTerms,
+    parts,
     grant,
     revoke,
     setSchedule,

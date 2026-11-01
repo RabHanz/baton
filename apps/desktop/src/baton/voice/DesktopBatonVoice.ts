@@ -1075,6 +1075,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "start") {
         return `Started. The worker is writing its plan in its own thread; nothing happens until he agrees. The job id is ${value?.terms?.workSessionId ?? "unknown"}.`;
       }
+      if (op === "split") {
+        const started = (value as { started?: ReadonlyArray<unknown> } | null)?.started ?? [];
+        return started.length === 0
+          ? "Nothing was split: the job is not agreed yet, or it has no thread."
+          : `Started ${started.length} workers, one per part. One summary will go to the job's thread when they are all in.`;
+      }
       if (op === "stop")
         return value?.stopped === true ? "Stopped." : "Nothing was running to stop.";
       if (value?.terms === null || value?.terms === undefined) return "There is no job by that id.";
