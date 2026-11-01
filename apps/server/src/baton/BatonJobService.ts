@@ -62,9 +62,18 @@ interface TermsRow {
   readonly schedule_task_id: string | null;
   readonly worker_instance_id: string | null;
   readonly parent_id: string | null;
+  readonly part_spec_json: string | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
+
+const PartSpecSchema = Schema.Struct({
+  after: Schema.Array(Schema.String),
+  role: Schema.optionalKey(Schema.String),
+  routine: Schema.optionalKey(Schema.Boolean),
+});
+const decodePartSpec = Schema.decodeUnknownSync(Schema.fromJsonString(PartSpecSchema));
+const encodePartSpec = Schema.encodeSync(Schema.fromJsonString(PartSpecSchema));
 
 const fromRow = (row: TermsRow): BatonJobTerms =>
   ({
@@ -78,6 +87,7 @@ const fromRow = (row: TermsRow): BatonJobTerms =>
     scheduleTaskId: row.schedule_task_id,
     workerInstanceId: row.worker_instance_id,
     parentId: row.parent_id,
+    partSpec: row.part_spec_json === null ? null : decodePartSpec(row.part_spec_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }) as BatonJobTerms;
@@ -91,6 +101,12 @@ export interface JobCreateInput {
   readonly limits?: Partial<BatonJobLimits>;
   readonly workerInstanceId?: string | null;
   readonly parentId?: WorkSessionId | null;
+  /** A part that waits on others; cleared by `clearPartSpec` once it has started. */
+  readonly partSpec?: {
+    readonly after: ReadonlyArray<string>;
+    readonly role?: string;
+    readonly routine?: boolean;
+  };
 }
 
 export class BatonJobService extends Context.Service<
@@ -100,6 +116,8 @@ export class BatonJobService extends Context.Service<
     readonly create: (input: JobCreateInput) => Effect.Effect<BatonJobTerms, WorkSessionError>;
     readonly terms: (id: WorkSessionId) => Effect.Effect<BatonJobTerms | null>;
     readonly allTerms: () => Effect.Effect<ReadonlyArray<BatonJobTerms>>;
+    /** The part has started: nothing is pending for it any more. */
+    readonly clearPartSpec: (id: WorkSessionId) => Effect.Effect<void>;
     /** The parts of a job with several parts, oldest first. */
     readonly parts: (parentId: WorkSessionId) => Effect.Effect<ReadonlyArray<BatonJobTerms>>;
     /** A standing permission for this job and this channel: explicit, per job, and logged. */
@@ -185,11 +203,11 @@ export const make = Effect.gen(function* () {
     yield* sql`
       INSERT INTO fabric_job_terms (
         work_session_id, goal, permissions_json, limits_json, grants_json, phase, revisions_json,
-        schedule_task_id, worker_instance_id, parent_id, created_at, updated_at
+        schedule_task_id, worker_instance_id, parent_id, part_spec_json, created_at, updated_at
       ) VALUES (
         ${input.id}, ${input.goal}, ${encodePermissions(input.permissions)},
         ${encodeLimits(jobLimits(input.limits))}, ${encodeGrants([])}, 'drafting_plan', '[]',
-        NULL, ${input.workerInstanceId ?? null}, ${input.parentId ?? null}, ${at}, ${at}
+        NULL, ${input.workerInstanceId ?? null}, ${input.parentId ?? null}, ${input.partSpec === undefined ? null : encodePartSpec(input.partSpec)}, ${at}, ${at}
       )
     `.pipe(Effect.orDie);
     return (yield* read(input.id))!;
@@ -199,6 +217,11 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
     return rows.map(fromRow);
+  });
+  const clearPartSpec = Effect.fn("BatonJobService.clearPartSpec")(function* (id: WorkSessionId) {
+    yield* sql`UPDATE fabric_job_terms SET part_spec_json = NULL WHERE work_session_id = ${id}`.pipe(
+      Effect.orDie,
+    );
   });
   const parts = Effect.fn("BatonJobService.parts")(function* (parentId: WorkSessionId) {
     const rows = yield* sql<TermsRow>`
@@ -283,6 +306,7 @@ export const make = Effect.gen(function* () {
     terms: read,
     allTerms,
     parts,
+    clearPartSpec,
     grant,
     revoke,
     setSchedule,

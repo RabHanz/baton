@@ -14,6 +14,7 @@ import {
   agreeJob,
   noticePlan,
   refineJob,
+  releaseWaiting,
   scheduleJob,
   splitJob,
   startJob,
@@ -252,7 +253,76 @@ layer("BatonJobFlow", (it) => {
         assert.isFalse(yield* summarizeParts(parent, done));
         assert.lengthOf(sent.slice(sentBefore), 1);
         assert.include(sent.at(-1)?.text ?? "", "Summary of the parts:");
-        assert.include(sent.at(-1)?.text ?? "", "1 of 2 failed");
+        assert.include(sent.at(-1)?.text ?? "", "1 of 2 failed or did not start");
+      }),
+  );
+
+  it.effect(
+    "starts a part only when the parts it waits on are done, and blocks it when one fails",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const parent = WorkSessionId.make("job-flow-5");
+        const { threadId } = yield* startJob({
+          id: parent,
+          projectId: ProjectId.make("project-site"),
+          title: "Pipeline",
+          goal: "do the pipeline",
+          permissions: { folders: [], projects: [], tools: ["read" as const] },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        shells.push({
+          id: threadId,
+          status: "completed",
+          modelSelection: { instanceId: "claude", model: "sonnet" },
+        } as unknown as OrchestrationV2ThreadShell);
+        yield* agreeJob(parent);
+        const before = launched.length;
+        const started = yield* splitJob({
+          id: parent,
+          parts: [
+            { title: "Fetch", goal: "fetch it" },
+            { title: "Clean", goal: "clean it", after: [1] },
+            { title: "Report", goal: "report on it", after: [1, 2, 7] },
+          ],
+        });
+        assert.lengthOf(started, 1);
+        assert.lengthOf(launched.slice(before), 1);
+        const [p1, p2, p3] = (yield* jobs.parts(parent)).map((p) => p.workSessionId);
+        assert.deepEqual((yield* jobs.terms(p3!))?.partSpec?.after, [p1, p2]);
+        const entry = (id: string, state: string) =>
+          ({
+            workSessionId: id,
+            title: id,
+            lifecycle: "active",
+            state,
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [],
+            synopsis: null,
+          }) as never;
+
+        // The first is still running: nothing else starts.
+        assert.isFalse(
+          yield* releaseWaiting(parent, [entry(parent, "working"), entry(p1!, "working")]),
+        );
+        // The first is done: the second starts, the third still waits on it.
+        assert.isTrue(
+          yield* releaseWaiting(parent, [entry(parent, "working"), entry(p1!, "done_unseen")]),
+        );
+        assert.lengthOf(launched.slice(before), 2);
+        assert.isNull((yield* jobs.terms(p2!))?.partSpec);
+        assert.isNotNull((yield* jobs.terms(p3!))?.partSpec);
+        // The second fails: the third is never started, says why, and the summary counts it.
+        const sentBefore = sent.length;
+        const e = [entry(parent, "working"), entry(p1!, "done_unseen"), entry(p2!, "failed")];
+        assert.isTrue(yield* releaseWaiting(parent, e));
+        assert.lengthOf(launched.slice(before), 2);
+        assert.isNull((yield* jobs.terms(p3!))?.partSpec);
+        assert.isTrue(yield* summarizeParts(parent, e));
+        const text = sent.slice(sentBefore).at(-1)?.text ?? "";
+        assert.include(text, "- Report: not started.");
+        assert.include(text, "2 of 3 failed or did not start");
       }),
   );
 });

@@ -104,6 +104,14 @@ export const BatonJobTerms = Schema.Struct({
   workerInstanceId: Schema.NullOr(TrimmedNonEmptyString),
   /** The job this is a part of (the coordinator, D148); null for a job of its own. */
   parentId: Schema.NullOr(WorkSessionId),
+  /** For a part that waits on others: the parts it needs finished first, and how it is to run. Null once nothing is pending. */
+  partSpec: Schema.NullOr(
+    Schema.Struct({
+      after: Schema.Array(WorkSessionId),
+      role: Schema.optionalKey(Schema.String),
+      routine: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -203,6 +211,10 @@ export const BatonJobPart = Schema.Struct({
   role: Schema.optionalKey(TrimmedNonEmptyString),
   /** Mechanical, repeatable work: runs on the cheap model of the routing table. */
   routine: Schema.optionalKey(Schema.Boolean),
+  /** The parts (numbered from 1, earlier ones only) that must be done before this one starts. */
+  after: Schema.optionalKey(
+    Schema.Array(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
+  ),
 });
 
 export const BatonJobSplitInput = Schema.Struct({

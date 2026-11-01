@@ -18,6 +18,7 @@ import {
   MAX_PARTS,
   SUMMARY_MARK,
 } from "@t3tools/baton-shared/coordinator";
+import { BLOCKED_MARK } from "@t3tools/baton-shared/coordinator";
 import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/baton-shared/jobBrief";
 import { permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
@@ -280,49 +281,138 @@ export const scheduleJob = Effect.fn("BatonJobFlow.schedule")(function* (
  * Splits an agreed job into parts, each its own worker started already agreed (the parent's plan
  * named them), inside the parent's own permissions. Refused for a plan not yet agreed.
  */
+/** Starts one part of an agreed job, already agreed, with its role and model. */
+const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
+  readonly parentId: WorkSessionId;
+  readonly id: WorkSessionId;
+  readonly title: string;
+  readonly goal: string;
+  readonly role?: string | undefined;
+  readonly routine?: boolean | undefined;
+}) {
+  const jobs = yield* BatonJobService;
+  const parent = yield* jobs.terms(input.parentId);
+  const workSession = yield* (yield* WorkSessionService).get(input.parentId);
+  const dbPath = (yield* ServerConfig.ServerConfig).dbPath;
+  const parentThread = yield* threadOf(input.parentId);
+  const shell =
+    parentThread === null ? null : yield* (yield* BatonEngine).threadShell(parentThread);
+  if (parent === null || shell === null) return null;
+  const result = yield* startJob(
+    {
+      id: input.id,
+      projectId: workSession.projectId,
+      title: input.title,
+      goal: input.goal,
+      // A part never has more than its parent: the same folders, projects and tools.
+      permissions: parent.permissions,
+      // Routine work on the cheap model of his routing table; the rest stays on the parent's.
+      modelSelection:
+        input.routine === true
+          ? {
+              ...shell.modelSelection,
+              model: modelFor("routine", readRouting(NodePath.dirname(dbPath))),
+            }
+          : shell.modelSelection,
+      runtimeMode: "approval-required",
+    },
+    {
+      parentId: input.parentId,
+      agreed: true,
+      ...(input.role === undefined ? {} : { role: input.role }),
+    },
+  );
+  yield* jobs.clearPartSpec(input.id);
+  // The card shows which model a step used (D148).
+  yield* jobs.refine(input.id, {
+    by: "baton",
+    at: DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis)),
+    via: "thread",
+    text: `Model: ${result.model}${input.routine === true ? " (routine step, cheap model)" : ""}`,
+  });
+  return { id: input.id, threadId: result.threadId };
+});
+
+/**
+ * Splits an agreed job into parts, each its own worker started already agreed (the parent's plan
+ * named them), inside the parent's own permissions. A part that waits on earlier ones is recorded
+ * and started when they are done. Refused for a plan not yet agreed.
+ */
 export const splitJob = Effect.fn("BatonJobFlow.split")(function* (input: BatonJobSplitInput) {
   const jobs = yield* BatonJobService;
   const parent = yield* jobs.terms(input.id);
   if (parent === null || parent.phase !== "approved") return [];
   const workSession = yield* (yield* WorkSessionService).get(input.id);
-  const dbPath = (yield* ServerConfig.ServerConfig).dbPath;
-  const parentThread = yield* threadOf(input.id);
-  const shell =
-    parentThread === null ? null : yield* (yield* BatonEngine).threadShell(parentThread);
-  if (shell === null) return [];
   const started: Array<{ readonly id: WorkSessionId; readonly threadId: ThreadId }> = [];
+  const partId = (n: number) => WorkSessionId.make(`${input.id}-part-${n}`);
   for (const [i, part] of input.parts.slice(0, MAX_PARTS).entries()) {
-    const id = WorkSessionId.make(`${input.id}-part-${i + 1}`);
-    const result = yield* startJob(
-      {
-        id,
-        projectId: workSession.projectId,
-        title: part.title,
-        goal: part.goal,
-        // A part never has more than its parent: the same folders, projects and tools.
-        permissions: parent.permissions,
-        // Routine work on the cheap model of his routing table; the rest stays on the parent's.
-        modelSelection:
-          part.routine === true
-            ? {
-                ...shell.modelSelection,
-                model: modelFor("routine", readRouting(NodePath.dirname(dbPath))),
-              }
-            : shell.modelSelection,
-        runtimeMode: "approval-required",
+    const id = partId(i + 1);
+    // Only earlier parts can be waited on, so there is no cycle to find.
+    const after = [...new Set(part.after ?? [])].filter((n) => n >= 1 && n <= i).map(partId);
+    if (after.length === 0) {
+      const one = yield* launchPart({ parentId: input.id, id, ...part });
+      if (one !== null) started.push(one);
+      continue;
+    }
+    yield* jobs.create({
+      id,
+      projectId: workSession.projectId,
+      title: part.title,
+      goal: part.goal,
+      permissions: parent.permissions,
+      parentId: input.id,
+      partSpec: {
+        after,
+        ...(part.role === undefined ? {} : { role: part.role }),
+        ...(part.routine === true ? { routine: true } : {}),
       },
-      { parentId: input.id, agreed: true, ...(part.role === undefined ? {} : { role: part.role }) },
-    );
-    // The card shows which model a step used (D148).
-    yield* jobs.refine(id, {
-      by: "baton",
-      at: DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis)),
-      via: "thread",
-      text: `Model: ${result.model}${part.routine === true ? " (routine step, cheap model)" : ""}`,
     });
-    started.push({ id, threadId: result.threadId });
   }
   return started;
+});
+
+/**
+ * Starts the parts whose earlier parts are all done, and marks a part that can never start because one
+ * it waits on failed. True when something started or was blocked, so the caller waits for the next change.
+ */
+export const releaseWaiting = Effect.fn("BatonJobFlow.releaseWaiting")(function* (
+  parentId: WorkSessionId,
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const jobs = yield* BatonJobService;
+  const all = yield* jobs.parts(parentId);
+  const cards = yield* jobs.view({ entries });
+  const group = new Map(cards.map((c) => [c.workSessionId as string, c.group]));
+  let changed = false;
+  for (const part of all) {
+    if (part.partSpec === null) continue;
+    const states = part.partSpec.after.map((id) => group.get(id));
+    const failed = part.partSpec.after.filter((_, i) => states[i] === "failed");
+    if (failed.length > 0) {
+      const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+      yield* jobs.refine(part.workSessionId, {
+        by: "baton",
+        at,
+        via: "thread",
+        text: `${BLOCKED_MARK} ${failed.join(", ")} failed`,
+      });
+      yield* jobs.clearPartSpec(part.workSessionId);
+      changed = true;
+    } else if (states.every((g) => g === "done")) {
+      const title = entries.find((e) => e.workSessionId === part.workSessionId)?.title;
+      const ws = yield* (yield* WorkSessionService).get(part.workSessionId);
+      yield* launchPart({
+        parentId,
+        id: part.workSessionId,
+        title: title ?? ws.title,
+        goal: part.goal,
+        role: part.partSpec.role,
+        routine: part.partSpec.routine,
+      });
+      changed = true;
+    }
+  }
+  return changed;
 });
 
 /**
@@ -338,11 +428,29 @@ export const summarizeParts = Effect.fn("BatonJobFlow.summarizeParts")(function*
   if (parent === null || parent.revisions.some((r) => r.text.startsWith(SUMMARY_MARK)))
     return false;
   const parts = (yield* jobs.view({ entries })).filter((j) => j.terms.parentId === parentId);
+  // A part still waiting to start, or never started because one it needed failed, has no thread yet.
+  const rest = (yield* jobs.parts(parentId)).filter(
+    (t) => !parts.some((p) => p.workSessionId === t.workSessionId),
+  );
+  if (rest.some((t) => t.partSpec !== null)) return false;
   if (!partsSettled(parts)) return false;
   const threadId = yield* threadOf(parentId);
   if (threadId === null) return false;
   const now = yield* Clock.currentTimeMillis;
+  const workSessions = yield* WorkSessionService;
+  const blocked = yield* Effect.forEach(
+    rest.filter((t) => t.revisions.some((r) => r.text.startsWith(BLOCKED_MARK))),
+    (t) =>
+      Effect.map(workSessions.get(t.workSessionId), (ws) => ({
+        title: ws.title,
+        why: t.revisions
+          .find((r) => r.text.startsWith(BLOCKED_MARK))!
+          .text.slice(BLOCKED_MARK.length)
+          .trim(),
+      })),
+  );
   const text = partsSummary({
+    blocked,
     parentTitle: entries.find((e) => e.workSessionId === parentId)?.title ?? parentId,
     parts,
     findings: watchFleet(entries, now),
@@ -358,5 +466,8 @@ export const noticePart = Effect.fn("BatonJobFlow.noticePart")(function* (thread
   if (id === null) return;
   const terms = yield* (yield* BatonJobService).terms(id);
   if (terms?.parentId == null) return;
-  yield* summarizeParts(terms.parentId, (yield* FleetQuery.getFleet({})).entries);
+  const entries = (yield* FleetQuery.getFleet({})).entries;
+  // Starting a waiting part changes the fleet; the summary waits for the next change.
+  if (yield* releaseWaiting(terms.parentId, entries)) return;
+  yield* summarizeParts(terms.parentId, entries);
 });
