@@ -182,6 +182,8 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 #veil{position:fixed;inset:0;background:var(--veil);display:none;place-items:center;z-index:5}
 #veil.on{display:grid;animation:fade .18s ease both}
 @keyframes fade{from{opacity:0}to{opacity:1}}
+#veil.on.out{animation:fadeout .16s ease both}
+@keyframes fadeout{from{opacity:1}to{opacity:0}}
 #modal{width:min(820px,calc(100vw - 48px));height:min(540px,calc(100vh - 48px));background:var(--panel);border-radius:16px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden;animation:rise .22s var(--ease) both}
 #mnav{background:var(--sunk);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
 #mnav h4{font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}

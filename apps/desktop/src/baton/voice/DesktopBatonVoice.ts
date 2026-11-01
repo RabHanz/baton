@@ -127,6 +127,7 @@ import {
   spaceUsed,
   type KeepSettings,
 } from "./audioKeep.ts";
+import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
@@ -161,10 +162,12 @@ interface VoiceSettings {
   /** Tried in order when nothing is pinned, and when the pin is unplugged. */
   readonly micOrder: ReadonlyArray<MicSetting>;
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
-  /** The soft sounds on wake and at the end of a turn. */
-  readonly sounds: boolean;
   /** Baton's window: System follows Windows. */
   readonly appearance: Appearance;
+  /** The soft cues when listening starts, when a turn ends, after a long wait and on an error. */
+  readonly cues: CueLevel;
+  /** Hold-key dictation plays no cue unless he asks. */
+  readonly holdKeyCues: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -205,8 +208,9 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   modelsDir: null,
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
-  sounds: true,
   appearance: "system",
+  cues: "normal",
+  holdKeyCues: false,
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -347,6 +351,13 @@ export interface DesktopBatonVoiceInput {
   readonly onWakeShown?: (ms: number) => void;
   /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
   readonly onPillState?: (phase: string) => void;
+  /** How a pill drag ended, for the turn log. */
+  readonly onPillDrag?: (outcome: {
+    readonly reason: string;
+    readonly dx: number;
+    readonly dy: number;
+    readonly ms: number;
+  }) => void;
 }
 
 export interface DesktopBatonVoice {
@@ -928,7 +939,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const showDictation = (caption: string | null) => {
-    pill.on({ type: "dictating", caption });
+    pill.on({ type: "dictating", caption }, { silent: !settings.holdKeyCues });
     render();
   };
   // Esc is taken only while the microphone is open, so it stays his the rest of the time.
@@ -1074,7 +1085,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const pill: VoicePill = createVoicePill({
-    sounds: () => settings.sounds,
+    cueGain: () => CUE_GAIN[settings.cues],
+    cueGate: {
+      // Never over his speech: wait up to 300 ms for him to stop, then drop the cue.
+      quiet: async () => {
+        for (let waited = 0; core?.hearingSpeech() === true; waited += 25) {
+          if (waited >= CUE_WAIT_MS) return false;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        return true;
+      },
+      playing: (ms) => core?.playingCue(ms),
+    },
     rest: () => settings.pillAtRest,
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
@@ -1086,6 +1108,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     ...(input.onWakeShown === undefined ? {} : { onShown: input.onWakeShown }),
     onChange: (turn) => input.onPillState?.(turn.phase),
+    ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
   });
   if (settings.pillAtRest) pill.setRest(true);
   let dictatingByVoice = false;
@@ -1724,13 +1747,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "dark", label: "Dark" },
         ],
       },
+
       {
-        id: "v.sounds",
+        id: "v.cues",
         section: "On screen",
         label: "Sounds",
-        hint: "A soft tone when Baton wakes and when it finishes.",
+        hint: "Short cues when listening starts and ends, after a long wait, and on an error. Never over your voice.",
+        kind: "choice",
+        value: settings.cues,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "quiet", label: "Quiet" },
+          { value: "normal", label: "Normal" },
+        ],
+      },
+      {
+        id: "v.holdKeyCues",
+        section: "On screen",
+        label: "Sounds for the dictation key",
+        hint: "Play the start and end cue when you dictate with the hold key. Off by default.",
         kind: "toggle",
-        on: settings.sounds,
+        on: settings.holdKeyCues,
+        more: true,
       },
       {
         id: "v.pillCentre",
@@ -1942,7 +1980,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       render();
     } else if (id === "v.pillCentre") pill.moveTo("centre");
-    else if (id === "v.sounds") save({ sounds: on });
+    else if (id === "v.cues") save({ cues: parseCueLevel(value) });
+    else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);

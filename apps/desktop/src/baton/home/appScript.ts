@@ -276,7 +276,7 @@ function usage(p) {
   const g = $('div', 'group');
   for (const u of rows) {
     const r = $('div', 'row'); r.style.alignItems = 'flex-start'; const t = $('div', 'text'); t.style.flex = '1';
-    t.appendChild($('div', 'label', u.account)); t.appendChild($('div', 'hint', u.box));
+    t.appendChild($('div', 'label', u.account)); t.appendChild($('div', 'hint', 'on ' + u.box));
     for (const w of u.windows) { const l = $('div', 'bar'); l.style.cssText = 'margin-top:10px'; const top = $('div', 'hint', w.label + ' \\u00b7 ' + (w.usedPercent === null ? 'Not applicable' : (100 - Math.round(w.usedPercent)) + '% left') + (w.resetsAt ? ' \\u00b7 resets ' + resetsIn(w.resetsAt) : '')); const tr = $('div'); tr.style.cssText = 'height:6px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden'; const f = $('div'); f.style.cssText = 'height:100%;border-radius:3px;background:' + (w.usedPercent >= 90 ? 'var(--bad)' : w.usedPercent >= 70 ? 'var(--warn)' : 'var(--accent)') + ';width:' + Math.max(2, 100 - Math.round(w.usedPercent || 0)) + '%'; tr.appendChild(f); l.append(top); if (w.usedPercent !== null) l.append(tr); t.appendChild(l); }
     r.appendChild(t); g.appendChild(r);
   }
@@ -429,40 +429,64 @@ function modalPage(b) {
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Baton downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
   else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
 }
-function modalEl() {
-  const veil = $('div', null); veil.id = 'veil'; veil.className = modal ? 'on' : ''; veil.onclick = e => { if (e.target === veil) closeModal(); };
-  if (!modal) return veil;
+/** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
+function setRegion(el, build) {
+  const next = document.createElement('div'); build(next);
+  if (next.innerHTML === el.innerHTML) return false;
+  el.replaceChildren(...next.childNodes); return true;
+}
+let shownModal = null, lastSig = '';
+function ensureVeil() {
+  let v = document.getElementById('veil'); if (v) return v;
+  v = $('div'); v.id = 'veil'; v.onclick = e => { if (e.target === v) closeModal(); };
   const m = $('div'); m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Settings');
-  const nav = $('div'); nav.id = 'mnav'; nav.appendChild($('h4', null, 'Settings'));
-  for (const [l, id] of MODAL) { if (id === 'account') nav.appendChild($('h4', null, 'Account')); const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
-  nav.appendChild($('div', 'ver', 'Baton ' + (((S.extra || {}).about || {}).version || '')));
-  const body = $('div'); body.id = 'mbody'; const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body);
-  m.append(nav, body); veil.appendChild(m); return veil;
+  const nav = $('div'); nav.id = 'mnav'; const body = $('div'); body.id = 'mbody';
+  m.append(nav, body); v.appendChild(m); document.body.appendChild(v); return v;
+}
+/** The dialog is built once and kept: a tab switch changes the nav mark and the content, nothing else. */
+function syncModal() {
+  const v = ensureVeil();
+  if (!modal) {
+    shownModal = null;
+    if (v.classList.contains('on') && !v.classList.contains('out')) { v.classList.add('out'); setTimeout(() => { if (!modal) v.className = ''; }, 170); }
+    return;
+  }
+  v.classList.remove('out'); v.classList.add('on');
+  setRegion(document.getElementById('mnav'), nav => {
+    nav.appendChild($('h4', null, 'Settings'));
+    for (const [l, id] of MODAL) { if (id === 'account') nav.appendChild($('h4', null, 'Account')); const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
+    nav.appendChild($('div', 'ver', 'Baton ' + (((S.extra || {}).about || {}).version || '')));
+  });
+  const mbody = document.getElementById('mbody');
+  setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
+  if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { modal = null; render(); }
 function go(t) { cur = t; render(); document.getElementById('panel').scrollTop = 0; }
 
 function render(state) {
-  if (state) S = state;
+  if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
   const keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
-  const side = document.getElementById('side'); side.replaceChildren();
+  const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
+  setRegion(document.getElementById('side'), side => {
   const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Baton'), $('span', 'plan', 'Local')); side.appendChild(brand);
-  const nav = $('nav'); const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0;
+  const nav = $('nav'); 
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
-  const up = find('u.act');
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Baton restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
   const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
   const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
   foot.append(t3, st); side.appendChild(foot);
-  const top = document.getElementById('top'); top.replaceChildren();
+  });
+  setRegion(document.getElementById('top'), top => {
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(ac);
-  const page = document.getElementById('page'); page.replaceChildren(); page.className = cur === 'home' ? 'wide' : ''; tabPage(page);
-  const old = document.getElementById('veil'); if (old) old.remove(); document.body.appendChild(modalEl());
+  });
+  const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
+  syncModal();
   if (keep && keep.indexOf('in-') === 0) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
