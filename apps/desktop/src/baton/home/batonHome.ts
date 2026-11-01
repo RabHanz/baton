@@ -46,6 +46,13 @@ export type HomeControl =
         readonly state: "ready" | "unavailable" | "soon";
       }>;
     })
+  /** One line of the Check area: how it is, and what to do. */
+  | (HomeControlBase & {
+      readonly kind: "check";
+      readonly status: "ok" | "warn" | "bad";
+      readonly detail: string;
+      readonly fix?: string;
+    })
   /** Shown masked until he clicks it. */
   | (HomeControlBase & {
       readonly kind: "secret";

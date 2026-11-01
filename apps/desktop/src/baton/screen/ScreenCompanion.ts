@@ -225,6 +225,8 @@ export interface ScreenCompanion {
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
+  /** Asks again whether Claude Code and Codex are installed and signed in. */
+  readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly dispose: () => void;
 }
@@ -1437,6 +1439,10 @@ export const startScreenCompanion = (input: {
       },
     ],
     needsBrainChoice: () => !settings.brainChosen,
+    signIn: async () => {
+      await checkBrains();
+      return brains ?? UNKNOWN_BRAINS;
+    },
     applySetting: (id, value) => {
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
