@@ -3602,3 +3602,8 @@ time. Text that is his own words or Baton's reply still types with no question. 
 dry` replays recorded traces through the real tool server and gate, no pointer; `real <out>` runs the six tasks three times on the
 Windows desktop and refuses unless `LAB_AWAY` names a time within four hours and `BATON_LAB=1`. Finished is automatic for task one
 only; the rest is read from the frames, and misclicks are counted in review. Not yet measured: any of it on his laptop.
+
+**D143 push 6.** `operator-proof.sh` now has ten cases: the five for the harness's tools (D127, D128) and five for the assistant's own:
+his own words type with no question after a screenshot; text from the screen asks and is not typed without a yes; high risk and a
+command line ask and a question that runs out is a no; Enter, a drag and a send always ask; nothing reaches a tool without the
+token or from a browser. `STATUS.md` says what is proven and what is not.

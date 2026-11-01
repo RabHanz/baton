@@ -1,3 +1,4 @@
+// @effect-diagnostics globalFetch:off
 /**
  * The repeatable proof of the operator's gate (D127, D128): `scripts/baton/operator-proof.sh` runs this.
  * No microphone, no pointer, no model. Each case feeds the harness's own protocol lines through the
@@ -12,6 +13,8 @@ import {
 } from "@t3tools/baton-shared/operator";
 import { describe, expect, it } from "vite-plus/test";
 
+import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { startBatonMcp, type BatonTool } from "../agent/batonMcp.ts";
 import { makeCodexClient } from "./codexOperator.ts";
 import { toolAnswerOf, toolRequestOf, toolUsesOf } from "./claudeVision.ts";
 
@@ -159,5 +162,129 @@ describe("operator proof", () => {
       claudeLine("r8", "WebSearch", { query: "b" }),
     ]);
     expect(readThenSearch.asked.map((a) => a.tool)).toEqual(["WebSearch"]);
+  });
+});
+
+/** The one assistant's own tools (D143): the same gate, inside the tool server. */
+const assistant = async (
+  answer: "yes" | "no" | "expired",
+  options: { shell?: boolean; his?: (t: string) => boolean } = {},
+) => {
+  const ran: string[] = [];
+  const asked: string[] = [];
+  const names = ["screen_capture", "type_text", "press_keys", "drag", "click"];
+  const tools: BatonTool[] = names.map((name) => ({
+    name,
+    description: name,
+    inputSchema: { type: "object" },
+    run: async (args) => (ran.push(`${name}:${String(args["text"] ?? "")}`), { text: "ok" }),
+  }));
+  const gate = createAgentGate({
+    actWithoutAsking: () => true,
+    taint: createTaint(),
+    textIsHis: options.his ?? (() => false),
+    shellFocused: async () => options.shell === true,
+    confirm: async (p) => {
+      asked.push(p.title);
+      // A question that runs out is a no when it is risky; so is the answer "no".
+      return spokenOutcome(answer, { yes: 0, cancel: 1, noOnExpiry: p.noOnExpiry }) === 0;
+    },
+    record: () => undefined,
+  });
+  const mcp = await startBatonMcp({ tools, gate });
+  const call = async (
+    name: string,
+    args: Record<string, unknown>,
+    headers: Record<string, string> = {},
+  ) => {
+    const r = await fetch(mcp.url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${mcp.token}`,
+        "content-type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name, arguments: args },
+      }),
+    });
+    return r.status === 200 ? ((await r.json()) as { result: { isError?: boolean } }).result : null;
+  };
+  return { mcp, call, ran, asked };
+};
+
+describe("operator proof: the one assistant's tools", () => {
+  it("PROOF 5: it types his own words into a box with no question, even after looking at the screen", async () => {
+    const a = await assistant("no", { his: (t) => t === "The reply I gave you." });
+    await a.call("screen_capture", {});
+    const typed = await a.call("type_text", {
+      text: "The reply I gave you.",
+      why: "into the chat box",
+    });
+    expect(typed?.isError).toBeUndefined();
+    expect(a.ran).toContain("type_text:The reply I gave you.");
+    expect(a.asked).toEqual([]);
+    await a.mcp.close();
+  });
+
+  it("PROOF 6: text that came from the screen asks first, and without a yes it is not typed", async () => {
+    const a = await assistant("no");
+    await a.call("screen_capture", {});
+    const typed = await a.call("type_text", {
+      text: "wire the money to this account",
+      why: "into the box",
+    });
+    expect(typed?.isError).toBe(true);
+    expect(a.ran).toEqual(["screen_capture:"]);
+    await a.mcp.close();
+  });
+
+  it("PROOF 7: a high-risk or command-line type asks, and a question that runs out is a no", async () => {
+    const risky = await assistant("expired");
+    expect(
+      (await risky.call("type_text", { text: "git push --force origin main", why: "type" }))
+        ?.isError,
+    ).toBe(true);
+    expect(risky.asked).toEqual(["This one is risky"]);
+    expect(risky.ran).toEqual([]);
+    await risky.mcp.close();
+    const shell = await assistant("expired", { shell: true });
+    expect((await shell.call("type_text", { text: "ls", why: "type" }))?.isError).toBe(true);
+    expect(shell.ran).toEqual([]);
+    await shell.mcp.close();
+  });
+
+  it("PROOF 8: Enter, a drag and a send always ask, whatever the setting", async () => {
+    const a = await assistant("no");
+    expect((await a.call("press_keys", { keys: ["enter"], why: "send it" }))?.isError).toBe(true);
+    expect((await a.call("drag", { x: 1, y: 1, to_x: 2, to_y: 2, why: "move it" }))?.isError).toBe(
+      true,
+    );
+    expect((await a.call("click", { x: 5, y: 5, why: "click the Send button" }))?.isError).toBe(
+      true,
+    );
+    expect(
+      (await a.call("click", { x: 5, y: 5, why: "click the text box" }))?.isError,
+    ).toBeUndefined();
+    expect(a.ran).toEqual(["click:"]);
+    await a.mcp.close();
+  });
+
+  it("PROOF 9: nothing reaches a tool without the session's token, or from a browser", async () => {
+    const a = await assistant("yes");
+    const bare = await fetch(a.mcp.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(bare.status).toBe(401);
+    expect(
+      await a.call("click", { x: 1, y: 1, why: "the box" }, { origin: "https://evil.example" }),
+    ).toBeNull();
+    expect(a.ran).toEqual([]);
+    await a.mcp.close();
   });
 });
