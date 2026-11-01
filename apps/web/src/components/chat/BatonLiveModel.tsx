@@ -103,6 +103,9 @@ export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThread
             </MenuItem>
           ))}
         </MenuGroup>
+        <span className="block px-2 pb-1 text-2xs text-muted-foreground">
+          Claude Code also keeps the model as your default for new sessions.
+        </span>
         <MenuGroup>
           <MenuGroupLabel>Effort</MenuGroupLabel>
           {LIVE_EFFORT_CHOICES.map((effort) => (
