@@ -30,9 +30,9 @@ kbd{font:600 11.5px var(--sans);color:var(--text);padding:1px 6px;border-radius:
 .seg button{all:unset;padding:3px 10px;border-radius:6px;color:var(--soft);font-size:12.5px;cursor:default}
 .seg button[aria-pressed=true]{background:rgba(255,255,255,.17);color:var(--text)}
 .seg button:focus-visible{outline:2px solid var(--blue-soft)}
-</style></head><body><form id="f" class="glass"><input id="q" autofocus placeholder="Ask Baton anything" aria-label="Ask Baton anything" spellcheck="false">
+</style></head><body><form id="f" class="glass"><input id="q" autofocus placeholder="Ask Tessaya anything" aria-label="Ask Tessaya anything" spellcheck="false">
 <footer><span><kbd>Enter</kbd> ask</span><span><kbd>Esc</kbd> close</span>
-<div class="seg" role="group" aria-label="How Baton answers"><button type="button" data-v="spoken">Spoken and written</button><button type="button" data-v="written">Written only</button></div></footer></form>
+<div class="seg" role="group" aria-label="How Tessaya answers"><button type="button" data-v="spoken">Spoken and written</button><button type="button" data-v="written">Written only</button></div></footer></form>
 <script>const {ipcRenderer}=require('electron');const q=document.getElementById('q');
 const marks=(v)=>document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===v)));
 marks(${JSON.stringify(output)});

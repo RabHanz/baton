@@ -614,7 +614,7 @@ export function resolveBatonIntent(
       return refuse(
         "high_risk",
         source,
-        `That asks for ${entry.subject}. Baton never does that from a sentence — do it yourself, with the change in front of you.`,
+        `That asks for ${entry.subject}. Tessaya never does that from a sentence — do it yourself, with the change in front of you.`,
       );
     }
   }

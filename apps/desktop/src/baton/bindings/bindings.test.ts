@@ -31,7 +31,7 @@ describe("bindings", () => {
       { action: "ask", input: { type: "mouse", button: "middle" } },
     ]);
     expect(rows.find((r) => r.def.id === "mute")!.conflictsWith).toEqual(["Stop"]);
-    expect(rows.find((r) => r.def.id === "clear")!.conflictsWith).toEqual(["Ask Baton"]);
+    expect(rows.find((r) => r.def.id === "clear")!.conflictsWith).toEqual(["Ask Tessaya"]);
     expect(rows.find((r) => r.def.id === "wake")!.conflictsWith).toEqual([]);
   });
   it("reads a saved list without trusting it, and resets one action", () => {

@@ -39,7 +39,7 @@ describe("self checks", () => {
       byId({ ...good, wake: { ...good.wake, missing: ["jarvis"] } })["wake"]!.detail,
     ).toContain("jarvis");
     expect(byId({ ...good, wake: { ...good.wake, baseModelsMissing: 2 } })["wake"]!.fix).toBe(
-      "Reinstall Baton.",
+      "Reinstall Tessaya.",
     );
   });
   it("flags a denied screen permission and a full disk", () => {

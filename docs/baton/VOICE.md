@@ -1,4 +1,4 @@
-# Baton Voice Service (`packages/baton-voice`)
+# Tessaya Voice Service (`packages/baton-voice`)
 
 The §12.2 pipeline: **audio → wake → VAD → STT → mode machine → router → the
 existing intent path → destination → spoken reply**. The desktop owns the
@@ -26,7 +26,7 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
   phrase and the command can be said together.
 - **conversation** (30 s, extended by every command): follow-ups need no wake and
   inherit the target the last command touched. "That's all", "thanks" or the timeout
-  ends it. The window does not run out while Baton is talking (D124).
+  ends it. The window does not run out while Tessaya is talking (D124).
 - **direct_session**: the resting mode when the toggle is on. Plain speech is a user
   message to the **focused** session (only a focused one; "most recent" is not enough).
   A wake still opens a command window.
@@ -35,7 +35,7 @@ Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
   with no wake word (D125). While it is on, everything said is text for the focused field,
   including words that sound like commands. Dictated text never reaches the environment.
 
-While Baton speaks, a short stop phrase (stop, quiet, enough, that's enough, cancel, shut up)
+While Tessaya speaks, a short stop phrase (stop, quiet, enough, that's enough, cancel, shut up)
 is heard with no wake word (D122). Nothing else said over its voice is acted on.
 
 ## Safety

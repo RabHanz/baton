@@ -29,10 +29,10 @@ fi
 
 sedi 's/^const DESKTOP_APP_ID = "com\.t3tools\.t3code";$/const DESKTOP_APP_ID = "dev.rabee.baton";/' \
   scripts/build-desktop-artifact.ts
-sedi 's/artifactName: "T3-Code-\${version}-\${arch}\.\${ext}",/artifactName: "Baton-${version}-${arch}.${ext}",/' \
+sedi 's/artifactName: "T3-Code-\${version}-\${arch}\.\${ext}",/artifactName: "Tessaya-${version}-${arch}.${ext}",/' \
   scripts/build-desktop-artifact.ts
 
-sedi 's/"productName": "T3 Code (Beta)"/"productName": "Baton"/' \
+sedi 's/"productName": "T3 Code (Beta)"/"productName": "Tessaya"/' \
   apps/desktop/package.json
 
 # The staged package name picks the per-user NSIS folder (%LOCALAPPDATA%\Programs\<name>).
@@ -45,22 +45,26 @@ sedi 's/isDevelopment ? "com\.t3tools\.t3code\.dev" : "com\.t3tools\.t3code",/is
 sedi 's/{ current: "t3code-v2", legacy: "T3 Code (Alpha)" }/{ current: "baton", legacy: "T3 Code (Alpha)" }/' \
   apps/desktop/src/app/DesktopUserData.ts
 
-sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Baton";/' \
+sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Tessaya";/' \
   apps/desktop/src/app/DesktopEnvironment.ts
 
 # The startup-recovery message sends him to a releases page: this repository's, not upstream's (D137).
 sedi 's#^const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";$#const RELEASES_URL = "https://github.com/RabHanz/baton/releases";#' \
   apps/desktop/src/app/DesktopStartupRecovery.ts
 
+# The product is named Tessaya (renamed from Baton). Everything that identifies an existing
+# install stays as it was, so an upgrade replaces it: appId (NSIS derives the uninstall key from it
+# alone, UUID v5 of the appId), the staged package name (install folder Programs\baton), the AUMI
+# and the userData folder. Only names people read change; installer.nsh retires the old shortcuts.
 # Baton's mark over upstream's icon files, under the names the build already reads (D131).
 cp assets/baton/* assets/prod/
 
 grep -q 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
-grep -q 'artifactName: "Baton-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
+grep -q 'artifactName: "Tessaya-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
 grep -q '"productName": "Baton"' apps/desktop/package.json
 grep -q 'RELEASES_URL = "https://github.com/RabHanz/baton/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
-grep -q 'APP_BASE_NAME = "Baton"' apps/desktop/src/app/DesktopEnvironment.ts
+grep -q 'APP_BASE_NAME = "Tessaya"' apps/desktop/src/app/DesktopEnvironment.ts
 grep -q '^    name: "baton",$' scripts/build-desktop-artifact.ts
 grep -q '"dev.rabee.baton",' apps/desktop/src/app/DesktopEnvironment.ts
 grep -q 'current: "baton"' apps/desktop/src/app/DesktopUserData.ts
-echo "Baton release branding applied (appId dev.rabee.baton, productName Baton, artifact Baton-<ver>-<arch>.<ext>, app name Baton, install dir Programs\\baton, AUMI dev.rabee.baton, userData %APPDATA%\\baton)."
+echo "Tessaya release branding applied (appId dev.rabee.baton, productName Tessaya, artifact Tessaya-<ver>-<arch>.<ext>, app name Tessaya, install dir Programs\\baton, AUMI dev.rabee.baton, userData %APPDATA%\\baton)."

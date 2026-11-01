@@ -138,7 +138,7 @@ export const resolveContextWorkSession = (
     return {
       workSessionId: baton.activeWorkSessionId,
       rung: "fabric_focus",
-      evidence: "what is open in Baton",
+      evidence: "what is open in Tessaya",
     };
   }
 

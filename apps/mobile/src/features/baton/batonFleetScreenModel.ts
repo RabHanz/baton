@@ -129,5 +129,5 @@ export const batonAvailability = (input: {
     ? { available: true }
     : {
         available: false,
-        reason: "This environment is running a version without Baton work sessions.",
+        reason: "This environment is running a version without Tessaya work sessions.",
       };

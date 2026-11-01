@@ -76,12 +76,15 @@ export const pickEnv = (
   if (choice === null) return { env: base, notice: null };
   const account = accounts?.find((a) => a.key === choice);
   if (accounts !== null && account === undefined) {
-    return { env: base, notice: "The account you chose is gone. Baton is using the claude login." };
+    return {
+      env: base,
+      notice: "The account you chose is gone. Tessaya is using the claude login.",
+    };
   }
   if (account !== undefined && !account.loggedIn) {
     return {
       env: base,
-      notice: `${accountLabel(account)} has signed out. Baton is using the claude login. Sign in again with claude auth login.`,
+      notice: `${accountLabel(account)} has signed out. Tessaya is using the claude login. Sign in again with claude auth login.`,
     };
   }
   // A token in his environment would override the directory's own login.
