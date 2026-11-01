@@ -24,7 +24,7 @@ import {
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { loadDocument } from "./loadDocument.ts";
-import { LISTENING_WEBP, MARK_STILL_PNG, MOTION_GROUND, STING_WEBP } from "./pillMotionArt.ts";
+import { LISTENING_WEBP, MARK_STILL_PNG, STING_WEBP } from "./pillMotionArt.ts";
 import { isPillClick } from "./pillGesture.ts";
 import {
   CUE_TAIL_MS,
@@ -69,7 +69,7 @@ const WAVE_PHASES = ["listening", "speaking", "dictating"];
  * icon, no button, no shadow beyond a hairline. The bars move when a level arrives, not on a timer.
  */
 export const PILL_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>
-:root{--ink:${MOTION_GROUND};--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
+:root{--ink:#0d0d11;--line:rgba(255,255,255,.14);--text:#f6f6f8;--soft:#9d9da8;--blue:#9dc1ff;--green:#3fce8e;--amber:#ffb454;--red:#ff7b7b;
 --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}
 html,body{height:100%;margin:0;overflow:hidden;background:transparent;font:600 12px/1 var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
 body{display:flex;align-items:center;justify-content:center}
