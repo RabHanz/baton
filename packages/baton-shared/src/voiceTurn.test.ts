@@ -125,6 +125,7 @@ describe("the pill while a window is open", () => {
       state,
     );
     expect(turnView(state)).toMatchObject({ label: "Dictating", caption: "typed" });
+    expect(reduceTurn(state, { type: "wake", word: "Alfred" }).phase).toBe("dictating");
     state = reduceTurn(state, { type: "dictating", caption: null });
     expect(state.phase).toBe("listening");
   });
