@@ -7,6 +7,7 @@
  */
 import * as Electron from "electron";
 
+import { isCompanionWindow } from "./lastAppWindow.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -168,6 +169,8 @@ export const startBatonDesktop = Effect.gen(function* () {
             Effect.sync(() => {
               rescueMainWindow(window, Electron.screen);
               turnLog.note("open_main", {
+                // "baton" here means the reveal landed on Baton's own window and T3 did not open.
+                target: isCompanionWindow(window) ? "baton" : "t3",
                 visible: window.isVisible(),
                 minimised: window.isMinimized(),
                 bounds: window.getBounds(),

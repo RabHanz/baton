@@ -11,6 +11,7 @@ import * as Electron from "electron";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { markCompanionWindow } from "../lastAppWindow.ts";
 import { HOME_DOCUMENT } from "./homeDocument.ts";
 import { tabOf, type TabId } from "./tabs.ts";
 
@@ -253,6 +254,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         show: false,
         webPreferences: { nodeIntegration: true, contextIsolation: false },
       });
+      // Baton's own window is not T3's: without this "Open sessions" reveals this window and T3 never opens.
+      markCompanionWindow(created);
       let saveTimer: ReturnType<typeof setTimeout> | null = null;
       const saveBounds = () => {
         if (saveTimer !== null) clearTimeout(saveTimer);
