@@ -5,7 +5,7 @@
  * fallback; nothing repaints continuously.
  */
 /** The dark theme: a warm near-black ground, panels one step lighter, hairline rules, edge light instead of shadow. */
-const DARK_TOKENS = `[data-theme=dark]{
+export const DARK_TOKENS = `[data-theme=dark]{
   --ground:#121110;--side:#161513;--panel:#1b1a17;--sunk:#211f1c;--ink:#ece8df;--soft:#aaa59a;--faint:#8f8a7f;
   --line:#2c2a26;--line-strong:#403d37;--accent:#2f8f72;--accent-deep:#14352c;--accent-wash:#17342b;--accent-ink:#fff;
   --warn:#e3a553;--warn-wash:#35280f;--bad:#f08a80;--bad-wash:#3b1f1c;
@@ -57,6 +57,7 @@ nav{display:flex;flex-direction:column;gap:2px}
 .sidecard p{margin:2px 0 10px;color:var(--soft);font-size:13px}
 .sidecard.go{background:var(--accent-deep);border-color:var(--accent-deep);color:var(--on-deep)}
 .sidecard.go p{color:var(--on-deep-soft)}
+.sidecard.go .btn{background:var(--btn-deep-bg);color:var(--btn-deep-fg);border-color:var(--btn-deep-bg)}
 .foot .nav{color:var(--soft)}
 
 #main{display:flex;flex-direction:column;min-width:0;padding:0 12px 12px 0}
