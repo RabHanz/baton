@@ -67,6 +67,10 @@ export type VoiceEvent =
   | { readonly type: "wake"; readonly at: number }
   | { readonly type: "utterance"; readonly text: string; readonly at: number }
   | { readonly type: "tick"; readonly at: number }
+  /** Baton is still talking: an open window does not run out under its own voice. */
+  | { readonly type: "keep_open"; readonly at: number }
+  /** The question was answered elsewhere, so a later "yes" means nothing. */
+  | { readonly type: "clear_pending"; readonly token: string; readonly at: number }
   /** He dismissed the turn: back to resting, and nothing parked stays parked. */
   | { readonly type: "dismiss"; readonly at: number }
   | { readonly type: "set_direct_session"; readonly enabled: boolean; readonly at: number }
@@ -124,7 +128,35 @@ const AFFIRM =
 export const isAffirmative = (text: string): boolean => AFFIRM.test(text);
 const DECLINE = /^(?:no|cancel|stop|don't|do not|never mind|nevermind|abort)\b/i;
 const SLEEP =
-  /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|goodbye)[.!]?$/i;
+  /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|thanks|thank you|cheers|goodbye)[.!]?$/i;
+
+const plainWords = (text: string): string =>
+  text
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\p{L}\p{N}' ]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * What recognition invents from a wake word's tail or a room, and nobody means as a request.
+ * Not "yes" or "no": a clarifying question can be waiting on one.
+ */
+const FILLER =
+  /^(?:yeah|yep|yup|yeah yeah|um+|uh+|er+|erm+|hm+|mm+|mhm+|ah+|oh+|ok|okay|right|so|well|you|the|and|i)$/;
+export const isFiller = (text: string): boolean => FILLER.test(plainWords(text));
+
+const STOP_PHRASE =
+  /^(?:(?:ok|okay|no|hey|please) )?(?:stop(?: it| that| talking)?|quiet|be quiet|enough|that's enough|cancel|shut up)(?: please| now)?$/;
+/** A short command said over Baton's voice. Nothing else is acted on there. */
+export const isStopPhrase = (text: string): boolean =>
+  STOP_PHRASE.test(plainWords(text).replace(/\b(\w+)(?: \1\b)+/g, "$1"));
+
+/** The words are in what Baton has just been saying, so the mic may only have heard the speakers. */
+export const echoesSpeech = (text: string, spoken: ReadonlyArray<string>): boolean => {
+  const words = ` ${plainWords(text)} `;
+  return spoken.some((sentence) => ` ${plainWords(sentence)} `.includes(words));
+};
 
 /** The words with any wake phrase removed. Exported for the router's checks. */
 export const stripWake = (text: string, words: ReadonlyArray<string> = ["jarvis"]): string =>
@@ -166,6 +198,13 @@ export const reduceVoice = (
   event: VoiceEvent,
   timings: VoiceTimings = DEFAULT_TIMINGS,
 ): VoiceStep => {
+  if (event.type === "keep_open") {
+    const kept =
+      state.deadline === null
+        ? state
+        : { ...state, deadline: Math.max(state.deadline, event.at + timings.conversationMs) };
+    return expire(kept, event.at);
+  }
   const expired = expire(state, event.at);
   const s = expired.state;
   const carry = expired.effects;
@@ -180,6 +219,8 @@ export const reduceVoice = (
       );
     case "tick":
       return expired;
+    case "clear_pending":
+      return step(s.pending?.token === event.token ? { ...s, pending: null } : s, carry);
 
     case "set_direct_session": {
       const next = { ...s, directSession: event.enabled };
@@ -221,7 +262,8 @@ export const reduceVoice = (
         {
           ...s,
           mode: "command_window",
-          deadline: event.at + timings.commandWindowMs,
+          // A wake mid-conversation never shortens the window he already had.
+          deadline: Math.max(s.deadline ?? 0, event.at + timings.commandWindowMs),
         },
         carry,
       );
@@ -243,9 +285,14 @@ const utterance = (
   const words = stripWake(raw, timings.wakeWords);
 
   if (s.mode === "dictation") {
-    const d = classifyDictation(raw, { dictating: true });
+    const d = classifyDictation(words, { dictating: true });
+    // Back in the conversation, not asleep: he carries on with no wake word.
     if (d.kind === "stop")
-      return step(base(s), [...carry, { kind: "speak", text: "Stopped dictating." }]);
+      return step({ ...s, mode: "conversation", deadline: at + timings.conversationMs }, [
+        ...carry,
+        ...(d.text ? [{ kind: "dictate", text: d.text } as const] : []),
+        { kind: "speak", text: "Stopped dictating." },
+      ]);
     if (d.kind === "text" && words.length > 0)
       return step(s, [...carry, { kind: "dictate", text: raw }]);
     return step(s, carry);

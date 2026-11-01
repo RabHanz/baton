@@ -183,7 +183,7 @@ export interface BrainVoiceHook {
    */
   readonly said: (
     text: string,
-    input: { readonly direct: boolean },
+    input: { readonly direct: boolean; readonly typed?: boolean },
   ) => Promise<
     | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
     | { readonly kind: "handled" }

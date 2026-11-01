@@ -32,6 +32,27 @@ describe("classifyDictation", () => {
   it("stops on the specification's phrase, in either mode", () => {
     expect(classifyDictation("stop dictating", on).kind).toBe("stop");
     expect(classifyDictation("Stop dictating.", idle).kind).toBe("stop");
+    expect(classifyDictation("I'm done dictating", on).kind).toBe("stop");
+    expect(classifyDictation("end dictation please", on).kind).toBe("stop");
+  });
+
+  it("keeps a stop phrase unmistakable", () => {
+    for (const words of ["stop", "I'm done", "finish the report", "stop dictating the letter"]) {
+      expect(classifyDictation(words, on)).toEqual({ kind: "text", text: words });
+    }
+  });
+
+  it("types what came before the stop phrase in the same breath", () => {
+    expect(classifyDictation("See you Friday. Stop dictating.", on)).toEqual({
+      kind: "stop",
+      text: "See you Friday.",
+    });
+  });
+
+  it("starts on the ways he says it", () => {
+    for (const words of ["I want to dictate", "let me dictate", "start dictation"]) {
+      expect(classifyDictation(words, idle)).toEqual({ kind: "start", text: null });
+    }
   });
 
   it("treats ordinary speech as text while the mode is on, and as an instruction when it is off", () => {

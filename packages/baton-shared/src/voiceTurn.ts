@@ -11,6 +11,8 @@ export type TurnPhase =
   | "dictating"
   | "muted"
   | "done"
+  /** The window has closed: from here he needs the wake word again. */
+  | "ended"
   | "error";
 
 export interface TurnState {
@@ -23,6 +25,10 @@ export interface TurnState {
   readonly label: string | null;
   /** The wake word that fired, or where the words are going. */
   readonly detail: string | null;
+  /** A voice window is open, so the pill stays and reads Listening between turns. */
+  readonly open: boolean;
+  /** The window closed under something else: the end shows when that finishes. */
+  readonly closing: boolean;
 }
 
 export type TurnEvent =
@@ -40,6 +46,10 @@ export type TurnEvent =
   | { readonly type: "done"; readonly label: string }
   /** Four seconds of a dead level while listening. */
   | { readonly type: "silent" }
+  /** A wake or conversation window is open. */
+  | { readonly type: "window_open" }
+  /** Words were heard and set aside, so nothing is being worked out. */
+  | { readonly type: "resume" }
   /** The wake or conversation window closed. */
   | { readonly type: "window_closed" }
   /** The turn's words have been dealt with and nothing more is coming. */
@@ -55,6 +65,8 @@ export const IDLE_TURN: TurnState = {
   heard: false,
   label: null,
   detail: null,
+  open: false,
+  closing: false,
 };
 /** Long enough to read, short enough not to linger. */
 export const TURN_ERROR_MS = 3_500;
@@ -64,16 +76,31 @@ export const TURN_LIMIT_MS = 90_000;
 export const SILENT_AFTER_MS = 4_000;
 
 const NOTHING_HEARD = "Didn't catch that";
+const ENDED_LABEL = "Not listening";
+const WAKE_AGAIN = "Say the wake word";
 const NOT_HEARING = "Not hearing your mic";
 const CAPTION_CHARS = 90;
 
 const short = (text: string): string =>
   text.length > CAPTION_CHARS ? `${text.slice(0, CAPTION_CHARS)}…` : text;
 
+/** Something finished. An open window goes back to Listening; a closed one shows its end once. */
+const settle = (state: TurnState): TurnState => {
+  if (state.open) return { ...IDLE_TURN, phase: "listening", heard: true, open: true };
+  return state.closing ? { ...IDLE_TURN, phase: "ended", caption: WAKE_AGAIN } : IDLE_TURN;
+};
+
 export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
   switch (event.type) {
     case "wake":
-      return { ...IDLE_TURN, phase: "listening", detail: event.word };
+      return { ...IDLE_TURN, phase: "listening", detail: event.word, open: true };
+    case "window_open":
+      if (state.open) return state;
+      return state.phase === "idle" || state.phase === "ended"
+        ? { ...IDLE_TURN, phase: "listening", heard: true, open: true }
+        : { ...state, open: true, closing: false };
+    case "resume":
+      return state.phase === "thinking" ? settle(state) : state;
     case "heard":
       return state.phase === "idle" || state.phase === "dictating"
         ? state
@@ -82,11 +109,11 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
       return state.phase === "listening" ? { ...state, phase: "thinking" } : state;
     case "speaking":
       if (event.active) return { ...state, phase: "speaking", label: null };
-      return state.phase === "speaking" ? IDLE_TURN : state;
+      return state.phase === "speaking" ? settle(state) : state;
     case "target":
       return state.phase === "idle" ? state : { ...state, detail: event.name };
     case "activity":
-      if (event.label === null) return state.phase === "working" ? IDLE_TURN : state;
+      if (event.label === null) return state.phase === "working" ? settle(state) : state;
       return {
         ...state,
         phase: state.phase === "speaking" ? "speaking" : "working",
@@ -94,37 +121,60 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
         caption: event.caption ?? null,
       };
     case "dictating":
-      if (event.caption === null) return state.phase === "dictating" ? IDLE_TURN : state;
-      return { ...IDLE_TURN, phase: "dictating", caption: event.caption };
+      if (event.caption === null) return state.phase === "dictating" ? settle(state) : state;
+      return {
+        ...IDLE_TURN,
+        phase: "dictating",
+        caption: event.caption,
+        open: state.open,
+        closing: state.closing,
+      };
     case "muted":
       if (event.on) return { ...IDLE_TURN, phase: "muted" };
-      return state.phase === "muted" ? IDLE_TURN : state;
+      return state.phase === "muted" ? settle(state) : state;
     case "done":
+      // Spoken dictation carries on after each chunk lands, so Dictating stays up.
+      if (state.phase === "dictating" && state.open) {
+        return { ...state, caption: short(event.label) };
+      }
       return state.phase === "idle" || state.phase === "dictating"
-        ? { ...IDLE_TURN, phase: "done", label: event.label }
+        ? { ...IDLE_TURN, phase: "done", label: event.label, open: state.open }
         : state;
     case "silent":
       return state.phase === "listening" && !state.heard
         ? { ...state, caption: NOT_HEARING }
         : state;
     case "window_closed":
-      if (state.phase === "listening" && !state.heard) {
-        return { ...IDLE_TURN, phase: "error", caption: NOTHING_HEARD };
+      if (state.phase === "listening") {
+        return {
+          ...IDLE_TURN,
+          phase: "ended",
+          label: state.heard ? null : NOTHING_HEARD,
+          caption: WAKE_AGAIN,
+        };
       }
-      return state.phase === "listening" ? IDLE_TURN : state;
+      if (state.phase === "idle" || state.phase === "ended") return state;
+      return { ...state, open: false, closing: state.open || state.closing };
     case "finished":
       return state.phase === "speaking" ||
         state.phase === "error" ||
         state.phase === "dictating" ||
         state.phase === "muted"
         ? state
-        : IDLE_TURN;
+        : settle(state);
     case "dismissed":
-      return IDLE_TURN;
+      return state.phase === "ended" ? IDLE_TURN : settle(state);
     case "failed":
       return state.phase === "idle"
         ? state
-        : { ...IDLE_TURN, phase: "error", caption: short(event.message), heard: state.heard };
+        : {
+            ...IDLE_TURN,
+            phase: "error",
+            caption: short(event.message),
+            heard: state.heard,
+            open: state.open,
+            closing: state.closing,
+          };
     case "trouble":
       return { ...IDLE_TURN, phase: "error", caption: short(event.message) };
   }
@@ -148,6 +198,7 @@ const views: Record<Exclude<TurnPhase, "idle">, Omit<TurnView, "caption">> = {
   dictating: { label: "Dictating", tone: "write", wave: "live" },
   muted: { label: "Muted", tone: "off", wave: "flat" },
   done: { label: "Done", tone: "good", wave: "flat" },
+  ended: { label: ENDED_LABEL, tone: "off", wave: "flat" },
   error: { label: "Didn't work", tone: "warn", wave: "flat" },
 };
 
@@ -168,7 +219,7 @@ export const turnView = (state: TurnState): TurnView | null => {
 
 /** How long a phase may stay up with nothing further happening. */
 export const turnLimitMs = (phase: TurnPhase): number =>
-  phase === "error"
+  phase === "error" || phase === "ended"
     ? TURN_ERROR_MS
     : phase === "done" || phase === "muted"
       ? TURN_BRIEF_MS
@@ -178,7 +229,9 @@ export const turnLimitMs = (phase: TurnPhase): number =>
  * Esc belongs to his apps unless the microphone is live. Dictation holds it itself, a drive as its
  * safety stop, and the ask box and prompts hear it through their own focus.
  */
-export const turnHoldsEscape = (phase: TurnPhase): boolean => phase === "listening";
+export const turnHoldsEscape = (state: TurnState): boolean =>
+  // Past the first words a window stays open for a while, and Esc goes back to his apps.
+  state.phase === "listening" && !state.heard;
 
 /** Peak of a frame on a rough 0..1 scale for the waveform. */
 export const frameLevel = (frame: Int16Array): number => {
