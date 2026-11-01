@@ -21,7 +21,7 @@ import { parseVocabulary, type VocabularyEntry } from "@t3tools/baton-shared/voc
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
 
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
-export const hardLimitMs = (text: string): number => Math.min(6_000, 2_500 + text.length * 8);
+export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + text.length * 8);
 const IDLE_MS = 10 * 60_000;
 /** Each dictation stays in the session's context, so it starts over before that matters. */
 const TURNS_PER_SESSION = 20;
@@ -70,7 +70,7 @@ export const makeRewriter = (input: {
       workDir: input.workDir,
       env: input.env,
       platform: input.platform,
-      timeoutMs: 18_000,
+      timeoutMs: 60_000,
     });
     return session;
   };
