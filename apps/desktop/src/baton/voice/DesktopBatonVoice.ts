@@ -94,10 +94,10 @@ import {
   type SidecarDevice,
 } from "./dictationSidecar.ts";
 import { importWisprDictionary, makeRewriter, readDictionary } from "./dictationRewriter.ts";
-import { DICTATION_TOGGLE_HOTKEY, VOICE_HOTKEYS } from "./voiceActivation.ts";
+import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
-import { ASK_HOTKEY, type AssistantActions } from "../screen/ScreenCompanion.ts";
+import type { AssistantActions } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
@@ -946,7 +946,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       hold: key(settings.holdKey),
       toggle: key(settings.toggleKey),
     });
-  const shortKey = (accelerator: string) => accelerator.replace("Control", "Ctrl");
 
   const homeExtra = (): HomeExtra => {
     const activity = parseActivity(tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")));
