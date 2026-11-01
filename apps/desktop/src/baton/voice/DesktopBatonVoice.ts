@@ -59,6 +59,7 @@ import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
+import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { noteAction, noteControls } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
@@ -149,6 +150,7 @@ import {
 } from "./audioKeep.ts";
 import { createVocabToast } from "./vocabToast.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
+import { wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import { NO_RECORDING, retryPlan, rowMenu, useVersion, withRetry } from "./historyRetry.ts";
@@ -201,6 +203,8 @@ interface VoiceSettings {
   readonly holdKeyCues: boolean;
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
+  /** Recognise the audio before a wake and wake only when the wake word is in it. */
+  readonly verifyWake: boolean;
   /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
   readonly learnWords: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -254,6 +258,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
+  verifyWake: true,
   learnWords: true,
   keepVoice: false,
   keepDays: 30,
@@ -349,6 +354,8 @@ export interface VoiceCoreHooks {
   readonly vocabulary: (text: string) => Promise<string | null>;
   /** How long he must be quiet for a turn to be over, read each turn. */
   readonly waitMs: () => number;
+  /** The second check before a wake from sleep: was the wake word really said. */
+  readonly verifyWake: (pcm: Int16Array, word: string | null) => Promise<boolean>;
 }
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
@@ -1075,6 +1082,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "start") {
         return `Started. The worker is writing its plan in its own thread; nothing happens until he agrees. The job id is ${value?.terms?.workSessionId ?? "unknown"}.`;
       }
+      if (op === "split") {
+        const started = (value as { started?: ReadonlyArray<unknown> } | null)?.started ?? [];
+        return started.length === 0
+          ? "Nothing was split: the job is not agreed yet, or it has no thread."
+          : `Started ${started.length} workers, one per part. One summary will go to the job's thread when they are all in.`;
+      }
       if (op === "stop")
         return value?.stopped === true ? "Stopped." : "Nothing was running to stop.";
       if (value?.terms === null || value?.terms === undefined) return "There is no job by that id.";
@@ -1567,6 +1580,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
+      verifyWake: async (pcm, word) => {
+        // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
+        if (!settings.verifyWake || word === null || sidecar === null) return true;
+        try {
+          return wakeWordHeard(await makeSidecarStt(sidecar).transcribe(pcm), word);
+        } catch {
+          return true;
+        }
+      },
       vocabulary: async (text) => {
         const word = parseAddToDictionary(text);
         if (word === null) return null;
@@ -1898,6 +1920,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null,
       ),
       ...noteControls(notes.list()),
+      ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
         ? [
@@ -2207,6 +2230,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         })),
       },
       {
+        id: "v.verifyWake",
+        section: "Listening",
+        label: "Check the wake word before waking",
+        hint: "Tessaya listens to what it just heard and wakes only if the name is in it. Fewer false wakes from TV and music; the pill appears a moment later.",
+        kind: "toggle",
+        on: settings.verifyWake,
+      },
+      {
         id: "v.holdKeyCues",
         section: "On screen",
         label: "Sounds for the dictation key",
@@ -2417,6 +2448,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (result === "refused")
         note = "Could not change that plugin; its settings file was left alone.";
       home.refresh();
+    } else if (id === "p.folder") {
+      NodeFS.mkdirSync(NodePath.join(input.stateDir, PACK_FOLDER), { recursive: true });
+      void Electron.shell.openPath(NodePath.join(input.stateDir, PACK_FOLDER));
+    } else if (packAction(id) !== null) {
+      const act = packAction(id)!;
+      const dir = NodePath.join(input.stateDir, PACK_FOLDER);
+      if (act.reset) {
+        useDefault(dir, act.id);
+        home.refresh();
+      } else {
+        const file = fileToEdit(dir, act.id);
+        if (file !== null) void Electron.shell.openPath(file);
+        home.refresh();
+      }
     } else if (id === "m.folder") {
       NodeFS.mkdirSync(notes.dir, { recursive: true });
       void Electron.shell.openPath(notes.dir);
@@ -2527,6 +2572,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
+    else if (id === "v.verifyWake") save({ verifyWake: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
     else if (id === "v.notice" && (value === "off" || value === "written" || value === "spoken")) {
       save({ noticeMode: value });

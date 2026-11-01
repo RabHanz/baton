@@ -11,11 +11,15 @@ const ALFRED = { word: "Alfred", enabled: true, threshold: 0.9 };
 // Off: as an ordinary word in speech it wakes too easily (D98).
 const ONYX = { word: "Onyx", enabled: false, threshold: 0.9 };
 
+// The fewer words are listened for, the fewer false wakes: a fresh install wakes to Tessaya and one
+// spare, with a stricter threshold than before. A word with no model yet is skipped at start, so
+// Sebastian carries it until Tessaya's model ships. Measured by scripts/baton/wake-train/false_wakes.py.
 export const FRESH_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
+  { word: "Tessaya", enabled: true, threshold: 0.95 },
   SEBASTIAN,
-  ALFRED,
+  { word: "Alfred", enabled: false, threshold: 0.97 },
   { word: "Freya", enabled: false, threshold: 0.95 },
-  ONYX,
+  { word: "Onyx", enabled: false, threshold: 0.95 },
 ];
 
 const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [

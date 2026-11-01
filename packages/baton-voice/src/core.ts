@@ -137,6 +137,8 @@ export interface BatonVoiceCore extends VoiceCore {
 
 /** Speech ends a little after the player says so, and a room rings on. */
 const ECHO_TAIL_MS = 500;
+/** How far back a wake check listens: the name and what came just before it. */
+const WAKE_LOOKBACK_MS = 1_600;
 /** The wake word's own tail reads as speech: it opens no turn by itself. */
 const WAKE_TAIL_MS = 200;
 const STOP_MIN_SPEECH_MS = 120;
@@ -161,6 +163,11 @@ export const createVoiceCore = (input: {
   readonly origin?: number;
   /** How long he must be quiet for a turn to be over: his setting, read each turn. */
   readonly waitMs?: () => number;
+  /**
+   * The second check before a wake from sleep: the audio just before the model fired. False drops the
+   * wake as if it never happened. Absent, the model alone decides.
+   */
+  readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
 }): BatonVoiceCore => {
   const timings = input.timings ?? DEFAULT_TIMINGS;
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
@@ -183,6 +190,9 @@ export const createVoiceCore = (input: {
   const msToSamples = (ms: number) => Math.round((ms * VOICE_SAMPLE_RATE) / 1000);
   const preRoll: Int16Array[] = [];
   let preRollSamples = 0;
+  /** The last few seconds, by where each frame ends, for the audio a wake check looks back over. */
+  const recent: Array<{ readonly frame: Int16Array; readonly end: number }> = [];
+  let verifying = false;
   let segment: Int16Array[] | null = null;
   let speechSamples = 0;
   let silenceSamples = 0;
@@ -569,6 +579,35 @@ export const createVoiceCore = (input: {
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
+  const acceptWake = (score: number, firedAt: number, word: string | null, late: boolean) => {
+    if (hearingItself()) {
+      speaking = false;
+      echoUntil = 0;
+      barged = true;
+      clearStop();
+      emit({ type: "barge_in" });
+    }
+    emit({ type: "wake", score, at: now(), word });
+    // Start the utterance at the wake: "hey jarvis, what's…" is one breath. A wake confirmed late keeps
+    // everything said since it fired, so the first words after the name are not lost to the check.
+    if (segment === null) {
+      const from = firedAt - msToSamples(seg.preRollMs);
+      const kept = late ? recent.filter((r) => r.end > from).map((r) => r.frame) : [...preRoll];
+      segment = kept;
+      segmentSamples = late ? kept.reduce((n, f) => n + f.length, 0) : preRollSamples;
+      // The detector did not run while asleep, so what came after the name counts as speech until it says
+      // otherwise; recognition decides whether it was words.
+      speechSamples = late
+        ? recent
+            .filter((r) => r.end > firedAt + msToSamples(WAKE_TAIL_MS))
+            .reduce((n, r) => n + r.frame.length, 0)
+        : 0;
+    }
+    creditFrom = firedAt + msToSamples(WAKE_TAIL_MS);
+    silenceSamples = 0;
+    enqueue(() => dispatch({ type: "wake", at: now() }));
+  };
+
   const pushAudio = (heard: Int16Array) => {
     if (disposed) return;
     // Inside a cue's window the microphone is replaced by silence for everything downstream.
@@ -577,26 +616,28 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     if (score !== null) {
-      if (hearingItself()) {
-        speaking = false;
-        echoUntil = 0;
-        barged = true;
-        clearStop();
-        emit({ type: "barge_in" });
-      }
-      emit({ type: "wake", score, at: now(), word: input.wake.lastWord?.() ?? null });
-      // Start the utterance at the wake: "hey jarvis, what's…" is one breath.
-      if (segment === null) {
-        // Kept over its own voice too: the detector fires late, and dropping this cost his first
-        // words ("what needs me" came out "hate me"). The audio only: speech must still be heard
-        // after the wake, or silence goes to recognition, which invents words from it.
-        segment = [...preRoll];
-        segmentSamples = preRollSamples;
-        speechSamples = 0;
-      }
-      creditFrom = samples + msToSamples(WAKE_TAIL_MS);
-      silenceSamples = 0;
-      enqueue(() => dispatch({ type: "wake", at: now() }));
+      if (input.verifyWake !== undefined && machine.mode === "sleeping" && !hearingItself()) {
+        // From sleep the model alone is not enough: recognise what was just said first.
+        if (!verifying) {
+          verifying = true;
+          const firedAt = samples;
+          const word = input.wake.lastWord?.() ?? null;
+          const heard = joined(
+            recent
+              .filter((r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS))
+              .map((r) => r.frame),
+          );
+          void input
+            .verifyWake(heard, word)
+            .catch(() => true)
+            .then((ok) => {
+              verifying = false;
+              if (disposed) return;
+              if (ok) acceptWake(score, firedAt, word, true);
+              else emit({ type: "dropped", text: "", reason: "wake not confirmed" });
+            });
+        }
+      } else acceptWake(score, samples, input.wake.lastWord?.() ?? null, false);
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();
       enqueue(() => dispatch({ type: speaking ? "keep_open" : "tick", at }));
@@ -637,6 +678,8 @@ export const createVoiceCore = (input: {
       }
     }
 
+    recent.push({ frame, end: samples });
+    while (recent.length > 0 && recent[0]!.end < samples - msToSamples(3_000)) recent.shift();
     preRoll.push(frame);
     preRollSamples += frame.length;
     while (preRollSamples - (preRoll[0]?.length ?? 0) >= msToSamples(seg.preRollMs)) {

@@ -130,6 +130,7 @@ export const createAgentGate = (input: {
         (name === "type_text" ||
           name === "session_send" ||
           name === "job_start" ||
+          name === "job_split" ||
           name === "job_refine" ||
           name === "memory_remember" ||
           chromeCall) &&

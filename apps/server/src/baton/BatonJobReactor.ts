@@ -10,7 +10,9 @@ import * as Stream from "effect/Stream";
 
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { noticePlan } from "./BatonJobFlow.ts";
+import { noticePart, noticePlan } from "./BatonJobFlow.ts";
+import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
+import type * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import type { BatonJobService } from "./BatonJobService.ts";
 import type { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -23,12 +25,19 @@ export const layer = Layer.effect(
   BatonJobReactor,
   Effect.gen(function* () {
     const engine = yield* BatonEngine;
-    const context = yield* Effect.context<BatonJobService | WorkSessionService | BatonEngine>();
+    const context = yield* Effect.context<
+      | BatonJobService
+      | WorkSessionService
+      | BatonEngine
+      | ProviderRegistry.ProviderRegistry
+      | AdoptedSessionService
+    >();
     return {
       start: Effect.fn("BatonJobReactor.start")(function* () {
         yield* forkParked(
           Stream.runForEach(engine.changedThreads, (threadId) =>
             noticePlan(threadId).pipe(
+              Effect.andThen(noticePart(threadId)),
               Effect.provideContext(context),
               Effect.ignoreCause({ log: true }),
             ),
