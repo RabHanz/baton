@@ -127,6 +127,7 @@ import {
   spaceUsed,
   type KeepSettings,
 } from "./audioKeep.ts";
+import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import { makeOpusEncoder } from "./opusEncoder.ts";
@@ -168,6 +169,8 @@ interface VoiceSettings {
   readonly cues: CueLevel;
   /** Hold-key dictation plays no cue unless he asks. */
   readonly holdKeyCues: boolean;
+  /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
+  readonly waitMs: number;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -211,6 +214,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   appearance: "system",
   cues: "normal",
   holdKeyCues: false,
+  waitMs: WAIT_DEFAULT_MS,
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -294,6 +298,8 @@ export interface VoiceCoreHooks {
   readonly onEvent: (event: VoiceCoreEvent) => void;
   /** "Add X to my dictionary": the reply to speak, or null when the words were something else. */
   readonly vocabulary: (text: string) => Promise<string | null>;
+  /** How long he must be quiet for a turn to be over, read each turn. */
+  readonly waitMs: () => number;
 }
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
@@ -414,6 +420,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let sidecarDevices: ReadonlyArray<SidecarDevice> = [];
   let releaseRecordingEscape: (() => void) | null = null;
   let lastDictation: string | null = null;
+  /** What Baton last answered, so Copy last transcript can take it; cleared by his next words. */
+  let lastReply: string | null = null;
+  let spokenTurnId: string | null = null;
   let focusedApp: FocusedApp = { exe: "", title: "" };
   let dictionary: ReadonlyArray<VocabularyEntry> = [];
   let seenWords: SeenWords = {};
@@ -1150,6 +1159,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "stop_heard":
           input.onSpokenStop?.();
           return null;
+        case "dismissed":
+          // Said on its own, so no model was asked: the window is already closed.
+          input.onDismiss?.();
+          return { type: "dismissed" };
         case "transcript":
           // A spoken cancel takes the pill down at once, the way Esc does.
           if (!dictatingByVoice && isCancelPhrase(event.text)) {
@@ -1159,8 +1172,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           }
           if (!dictatingByVoice) {
             lastDictation = event.text;
+            lastReply = null;
             keepAudio(
-              record({
+              (spokenTurnId = record({
                 kind: "spoken",
                 app: "",
                 raw: event.text,
@@ -1168,7 +1182,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                 status: "none",
                 delivery: null,
                 seconds: lastPcm === null ? null : lastPcm.length / 16_000,
-              }),
+              })),
               lastPcm,
             );
           }
@@ -1177,11 +1191,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return { type: "failed", message: event.message };
         case "state":
           return stateTurn(event.state, event.target);
-        case "outcome":
+        case "outcome": {
+          const said = "reply" in event.outcome ? event.outcome.reply : "";
+          if (said.length > 0 && !dictatingByVoice) {
+            lastReply = said;
+            if (spokenTurnId !== null) history?.update(spokenTurnId, { cleaned: said });
+          }
           // The assistant reports its own end; everything else ends here, or with its speech.
           return "source" in event.outcome && event.outcome.source === "screen"
             ? null
             : { type: "finished" };
+        }
         case "barge_in":
           input.onBargeIn?.();
           return null;
@@ -1248,6 +1268,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       settings,
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
+      waitMs: () => clampWait(settings.waitMs),
       vocabulary: async (text) => {
         const word = parseAddToDictionary(text);
         if (word === null) return null;
@@ -1682,7 +1703,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: "Last transcript",
         kind: "action",
         button: "Copy",
-        disabled: lastDictation === null,
+        disabled: (lastReply ?? lastDictation) === null,
         more: true,
       },
       {
@@ -1760,6 +1781,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "quiet", label: "Quiet" },
           { value: "normal", label: "Normal" },
         ],
+      },
+      {
+        id: "v.waitMs",
+        section: "Listening",
+        label: "How long I wait for you to finish",
+        hint: "A pause this long ends your turn. Unfinished sentences get longer, and speech that resumes soon after joins the same turn.",
+        kind: "choice",
+        value: String(clampWait(settings.waitMs)),
+        options: [800, 1200, 1500, 2000, 3000].map((ms) => ({
+          value: String(ms),
+          label: `${ms / 1000} s`,
+        })),
       },
       {
         id: "v.holdKeyCues",
@@ -1964,7 +1997,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         appModes: value === "" ? others : { ...others, [exe]: value as DictationMode },
       });
     } else if (id === "v.copyLast") {
-      if (lastDictation !== null) void Electron.clipboard.writeText(lastDictation);
+      const last = lastReply ?? lastDictation;
+      if (last !== null) void Electron.clipboard.writeText(last);
     } else if (id === "v.keepVoice") save({ keepVoice: on });
     else if (id === "v.keepDays" && typeof value === "string") {
       save({ keepDays: Math.max(1, Number(value) || 30) });
@@ -1982,6 +2016,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.pillCentre") pill.moveTo("centre");
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
+    else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
     else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);
@@ -2037,10 +2072,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         },
         { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
         {
-          label: "Copy last transcript",
-          enabled: lastDictation !== null,
+          label: "Copy last transcript or reply",
+          enabled: (lastReply ?? lastDictation) !== null,
           click: () => {
-            if (lastDictation !== null) Electron.clipboard.writeText(lastDictation);
+            const last = lastReply ?? lastDictation;
+            if (last !== null) Electron.clipboard.writeText(last);
           },
         },
         { type: "separator" },

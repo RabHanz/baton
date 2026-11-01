@@ -23,6 +23,7 @@ import {
   type Spot,
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
+import { isPillClick } from "./pillGesture.ts";
 import {
   CUE_TAIL_MS,
   PILL_PARTIAL,
@@ -81,6 +82,14 @@ body{display:flex;align-items:center;justify-content:center}
 #w{display:none;align-items:center;gap:2px;height:14px;flex:none}
 #w i{display:block;width:2px;height:2px;border-radius:1px;background:var(--bar,#fff);transition:height .09s linear}
 #p[data-wave=on] #w{display:flex}
+#d{display:none;align-items:center;gap:4px;height:14px;flex:none}
+#d b{display:block;width:4px;height:4px;border-radius:50%;background:#fff;opacity:.25;animation:step 1350ms steps(1,end) infinite}
+#d b:nth-child(2){animation-delay:450ms}
+#d b:nth-child(3){animation-delay:900ms}
+@keyframes step{0%{opacity:1}33.33%{opacity:.25}100%{opacity:.25}}
+#p[data-dots=on] #d{display:flex}
+#p[data-phase=speaking] #w{gap:3px}
+#p[data-phase=speaking] #w i{width:3px;border-radius:2px}
 #t{white-space:nowrap}
 #t:empty,#c:empty{display:none}
 #c{color:var(--soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -89,8 +98,8 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-tone=good] #t{color:var(--green)}
 #p[data-tone=off] #t{color:var(--red)}
 #p[data-tone=warn]{border-color:var(--amber)}
-@media (prefers-reduced-motion:reduce){#p,#w i{transition:none}}
-</style></head><body><div id="p" role="status" aria-live="polite"><span id="w"></span><span id="t"></span><span id="c"></span></div>
+@media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
+</style></head><body><div id="p" role="status" aria-live="polite"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -100,28 +109,32 @@ let ctx=null,live=false,tick=0;
 const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=calm?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.height=(2+10*shape[i]*n*wobble).toFixed(1)+'px';});};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
-let drag=false,beat=0;
+const isClick=${isPillClick.toString()};
+let drag=false,beat=0,down=null;
 const grab=$('p');
 // Only the capsule takes the mouse; everything around it in this window stays click-through.
 grab.addEventListener('mouseenter',()=>ipcRenderer.send('baton-pill:hover',true));
 grab.addEventListener('mouseleave',()=>{if(!drag)ipcRenderer.send('baton-pill:hover',false);});
 // A drag is a captured pointer: it ends when the pointer is released, cancelled or lost, never because the cursor left the capsule.
 const endDrag=why=>{if(!drag)return;drag=false;clearInterval(beat);grab.classList.remove('drag');ipcRenderer.send('baton-pill:drag',false,why);};
-grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;drag=true;try{grab.setPointerCapture(e.pointerId);}catch(_){}grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);beat=setInterval(()=>ipcRenderer.send('baton-pill:beat'),120);});
-grab.addEventListener('pointerup',()=>endDrag('up'));
-grab.addEventListener('pointercancel',()=>endDrag('cancel'));
-grab.addEventListener('lostpointercapture',()=>endDrag('lost'));
-grab.addEventListener('dblclick',()=>ipcRenderer.send('baton-pill:reset'));
+// A press only becomes a drag after 4 px of movement; released sooner it is a click, which dismisses.
+grab.addEventListener('pointerdown',e=>{if(e.button!==0||drag)return;down={x:e.screenX,y:e.screenY,t:performance.now()};try{grab.setPointerCapture(e.pointerId);}catch(_){}});
+grab.addEventListener('pointermove',e=>{if(down===null||drag)return;if(isClick(e.screenX-down.x,e.screenY-down.y,0))return;drag=true;grab.classList.add('drag');ipcRenderer.send('baton-pill:drag',true);beat=setInterval(()=>ipcRenderer.send('baton-pill:beat'),120);});
+grab.addEventListener('pointerup',e=>{const d=down;down=null;if(drag)return endDrag('up');if(d===null||grab.classList.contains('rest'))return;
+ const dx=e.screenX-d.x,dy=e.screenY-d.y,ms=performance.now()-d.t;if(isClick(dx,dy,ms))ipcRenderer.send('baton-pill:click',dx,dy,ms);});
+grab.addEventListener('pointercancel',()=>{down=null;endDrag('cancel');});
+grab.addEventListener('lostpointercapture',()=>{down=null;endDrag('lost');});
+grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRenderer.send('baton-pill:reset');});
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
- show(v){const p=$('p'),wave=WAVE.includes(v.phase);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';
+ show(v){const p=$('p'),wave=WAVE.includes(v.phase);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);
   live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
-  $('t').textContent=wave?'':v.phase==='ended'?'':v.label;
+  $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   $('c').textContent=v.phase==='ended'?'Say the wake word':(v.caption&&/^to /.test(v.caption)?v.caption:'');},
- rest(why){const p=$('p');p.className='on rest';delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.rest=why||'sleeping';live=false;},
+ rest(why){const p=$('p');p.className='on rest';delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
  level(n){if(live&&!calm)draw(Math.min(1,n));},
  hide(){$('p').className='';live=false;},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
@@ -513,6 +526,16 @@ export const createVoicePill = (input: {
       });
     }, DRAG_MS);
     dragTimer.unref();
+  });
+  Electron.ipcMain.on("baton-pill:click", (event, dx: unknown, dy: unknown, ms: unknown) => {
+    if (!mine(event)) return;
+    input.onDrag?.({
+      reason: "click",
+      dx: Number(dx) || 0,
+      dy: Number(dy) || 0,
+      ms: Number(ms) || 0,
+    });
+    input.onDismiss();
   });
   Electron.ipcMain.on("baton-pill:bypass", (event, on: unknown) => {
     if (mine(event)) bypassSnap = on === true;

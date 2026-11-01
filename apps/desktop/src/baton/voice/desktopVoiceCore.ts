@@ -250,6 +250,7 @@ export const createDesktopVoiceCore = async (input: {
   readonly origin?: number;
   readonly brain?: BrainVoiceHook;
   readonly vocabulary?: (text: string) => Promise<string | null>;
+  readonly waitMs?: () => number;
   /** Baton's one voice; off in tests. */
   readonly tts?: TtsProvider | null;
   /** Everything the core reports, for the cue after a wake word. */
@@ -289,6 +290,7 @@ export const createDesktopVoiceCore = async (input: {
         : withBrainRoutes(createVoiceRouter(input.intent), input.brain),
     ),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
+    ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
   });
   if (input.onEvent !== undefined) core.subscribe(input.onEvent);
   if (input.onReply !== undefined) {
