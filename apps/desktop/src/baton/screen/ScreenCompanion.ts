@@ -216,6 +216,11 @@ export interface AssistantActions {
   readonly grammarPlaces: (said: string) => Promise<boolean>;
   /** His live sessions, one per line, with the id each is named by. */
   readonly sessionsList?: () => string;
+  /** The job operations (D145), answered in a sentence for the assistant. */
+  readonly jobs?: (
+    op: "list" | "start" | "agree" | "refine" | "grant" | "revoke",
+    args: Readonly<Record<string, unknown>>,
+  ) => Promise<string>;
   /** A session by id or name: what it is called, for the intent path. Null when none matches. */
   readonly sessionName?: (idOrName: string) => string | null;
   /** Start or stop dictation into the focused field. */
@@ -1515,6 +1520,8 @@ export const startScreenCompanion = (input: {
             )
             .join("\n\n");
     },
+    jobs: async (op, args) =>
+      actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
     target: async (label, workSessionId) => {
       conversation.add({
         route: "act",
