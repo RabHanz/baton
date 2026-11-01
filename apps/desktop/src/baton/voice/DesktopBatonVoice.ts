@@ -9,7 +9,12 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import type { BatonFocusTarget, BatonJob, BatonJobBridgeRequest } from "@t3tools/baton-contracts";
+import type {
+  BatonFocusTarget,
+  BatonJob,
+  BatonJobBridgeRequest,
+  WatchFinding,
+} from "@t3tools/baton-contracts";
 import {
   chooseMode,
   cleanupFromSaved,
@@ -145,6 +150,7 @@ import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
+import { describeWatch } from "@t3tools/baton-shared/watch";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -1014,10 +1020,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     jobs: async (op, args) => {
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
+        findings?: ReadonlyArray<WatchFinding>;
         terms?: { phase?: string; workSessionId?: string } | null;
         threadId?: string;
       } | null;
       if (op === "list") return describeJobs(value?.jobs ?? []);
+      if (op === "watch") return describeWatch(value?.findings ?? []);
       if (op === "start") {
         return `Started. The worker is writing its plan in its own thread; nothing happens until he agrees. The job id is ${value?.terms?.workSessionId ?? "unknown"}.`;
       }

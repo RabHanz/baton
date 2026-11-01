@@ -16,6 +16,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
+  BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcGroup,
   isProviderAvailable,
@@ -32,6 +33,8 @@ import {
   type WorkSessionHandoffInput,
 } from "@t3tools/baton-contracts";
 import { ProviderInstanceId } from "@t3tools/contracts";
+import { watchFleet } from "@t3tools/baton-shared/watch";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -306,6 +309,13 @@ export const make = Effect.gen(function* () {
       ),
     [BATON_WS_METHODS.fleetGet]: (input) =>
       run(Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet }))),
+    [BATON_WATCH_WS_METHODS.watchGet]: () =>
+      run(
+        Effect.gen(function* () {
+          const fleet = yield* FleetQuery.getFleet({});
+          return { findings: watchFleet(fleet.entries, yield* Clock.currentTimeMillis) };
+        }),
+      ),
     [BATON_JOB_WS_METHODS.jobList]: () =>
       run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
     [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
