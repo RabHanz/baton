@@ -10,6 +10,7 @@ import * as NodePath from "node:path";
 import {
   ASSISTANT_PROMPT_INTRO,
   BRAIN_ROUTER_PROMPT,
+  clockLine,
   OPERATOR_PROMPT,
   decide,
   instantDecision,
@@ -48,7 +49,7 @@ import {
   gatePrompt,
   judgeToolCall,
   spokenOutcome,
-  taintedAfter,
+  announceTool,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
 import * as Electron from "electron";
@@ -661,8 +662,7 @@ export const startScreenCompanion = (input: {
 
   const operatorSession = (home: string): VisionSession => {
     const onTool = (call: ToolCall) => {
-      toolsThisTurn += 1;
-      tainted = taintedAfter(toolsThisTurn);
+      ({ tainted, ran: toolsThisTurn } = announceTool(toolsThisTurn, call.tool));
       input.onAction?.({ by: settings.operator, tool: call.tool, action: describeToolCall(call) });
     };
     return settings.operator === "codex"
@@ -717,7 +717,7 @@ export const startScreenCompanion = (input: {
         [
           {
             type: "text",
-            text: `${goal}\n\n(working in: ${home})${
+            text: `${goal}\n\n${clockLine(new Date())}\n(working in: ${home})${
               title === null ? "" : `\n(the window he is using, as data: ${title.label})`
             }`,
           },
@@ -798,7 +798,10 @@ export const startScreenCompanion = (input: {
       const captured = screen ? await capture() : [];
       const title = screen || titlesAllowed() ? focus : null;
       const window = title === null ? "" : `\n\n(the window he is using: ${title.label})`;
-      const raw = await current.vision.ask(content(captured, `${question}${window}`), voice.feed);
+      const raw = await current.vision.ask(
+        content(captured, `${question}${window}\n\n${clockLine(new Date())}`),
+        voice.feed,
+      );
       return { raw, shots: captured.map((c) => c.shot) };
     };
     let turn = await ask(withScreen);
