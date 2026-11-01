@@ -195,10 +195,7 @@ Electron.app.whenReady().then(async () => {
   for (const name of scenarios) {
     if (name === "written") {
       writtenNow = true;
-      // The tray's own entry, so this tests what he would press.
-      const answers = companion.menuItems().find((item) => item.label === "Answers");
-      const items = answers?.submenu as ReadonlyArray<Electron.MenuItemConstructorOptions>;
-      (items.find((item) => item.label === "Written only")!.click as () => void)();
+      companion.applySetting("s.output", "written");
       continue;
     }
     if (name === "pill") {
