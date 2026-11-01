@@ -97,6 +97,8 @@ interface ScreenSettings {
   readonly output: AnswerOutput;
   /** "system" is the OS voice, for a machine that should fetch nothing. */
   readonly voice: PocketVoice | "system";
+  /** How loud Baton speaks, 0.1 to 1, applied in the player. */
+  readonly volume: number;
   /** Low-risk work runs with no Run it box and no spoken yes. Off until he turns it on. */
   readonly actWithoutAsking: boolean;
   /** Who does the work behind Baton. Both answer to the same gate. */
@@ -117,6 +119,7 @@ const DEFAULTS: ScreenSettings = {
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
+  volume: 1,
   actWithoutAsking: false,
   operator: "claude",
   codexBinary: "codex",
@@ -228,12 +231,15 @@ export interface ScreenCompanion {
   /** Spoken answers are off. */
   readonly writtenOnly: () => boolean;
   readonly voice: () => PocketVoice | "system";
+  readonly volume: () => number;
   readonly stop: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
+  /** Move the Ask Baton key, or switch it off with null. */
+  readonly setAskHotkey: (accelerator: string | null) => void;
   /** Asks again whether Claude Code and Codex are installed and signed in. */
   readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
@@ -1382,6 +1388,7 @@ export const startScreenCompanion = (input: {
     });
   };
 
+  let askKey: string | null = ASK_HOTKEY;
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
   const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
@@ -1407,6 +1414,7 @@ export const startScreenCompanion = (input: {
     },
     writtenOnly: () => settings.output === "written",
     voice: () => settings.voice,
+    volume: () => settings.volume,
     ask: windows.ask,
     stop,
     menuItems: () => [
@@ -1431,6 +1439,19 @@ export const startScreenCompanion = (input: {
         options: [
           { value: "spoken", label: "Spoken and written" },
           { value: "written", label: "Written only" },
+        ],
+      },
+      {
+        id: "s.volume",
+        section: "Answers",
+        label: "Speaking volume",
+        hint: "How loud Baton speaks, apart from your system volume.",
+        kind: "choice",
+        value: String(settings.volume),
+        options: [
+          { value: "0.4", label: "Quiet" },
+          { value: "0.7", label: "Medium" },
+          { value: "1", label: "Full" },
         ],
       },
       {
@@ -1514,6 +1535,15 @@ export const startScreenCompanion = (input: {
       },
     ],
     needsBrainChoice: () => !settings.brainChosen,
+    setAskHotkey: (accelerator) => {
+      if (accelerator === askKey) return;
+      if (askKey !== null) Electron.globalShortcut.unregister(askKey);
+      askKey = null;
+      // A chord another app already owns is skipped, not fatal.
+      if (accelerator !== null && Electron.globalShortcut.register(accelerator, openAskBox)) {
+        askKey = accelerator;
+      }
+    },
     signIn: async () => {
       await checkBrains();
       return brains ?? UNKNOWN_BRAINS;
@@ -1522,6 +1552,9 @@ export const startScreenCompanion = (input: {
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
         save({ output: value });
+      } else if (id === "s.volume" && typeof value === "string") {
+        const volume = Number.parseFloat(value);
+        if (Number.isFinite(volume)) save({ volume: Math.min(1, Math.max(0.1, volume)) });
       } else if (id === "s.voice" && typeof value === "string") {
         save({ voice: value as PocketVoice });
       } else if (id === "s.brain" && typeof value === "string") {
@@ -1544,7 +1577,7 @@ export const startScreenCompanion = (input: {
       end();
       dropRouter();
       if (routerIdle !== null) clearTimeout(routerIdle);
-      Electron.globalShortcut.unregister(ASK_HOTKEY);
+      if (askKey !== null) Electron.globalShortcut.unregister(askKey);
       windows.dispose();
       driver?.dispose();
       overlay.dispose();

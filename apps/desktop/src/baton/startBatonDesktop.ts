@@ -7,6 +7,7 @@
  */
 import * as Electron from "electron";
 
+import { isCompanionWindow } from "./lastAppWindow.ts";
 import { rescueMainWindow } from "./mainWindowRescue.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -172,6 +173,8 @@ export const startBatonDesktop = Effect.gen(function* () {
             Effect.sync(() => {
               rescueMainWindow(window, Electron.screen);
               turnLog.note("open_main", {
+                // "baton" here means the reveal landed on Baton's own window and T3 did not open.
+                target: isCompanionWindow(window) ? "baton" : "t3",
                 visible: window.isVisible(),
                 minimised: window.isMinimized(),
                 bounds: window.getBounds(),
@@ -195,7 +198,10 @@ export const startBatonDesktop = Effect.gen(function* () {
         const voice = screen?.voice() ?? "anna";
         return voice === "system" ? null : pocket.synthesise(voice);
       },
-      player: createVoicePlayer((level) => voice?.onSpeechLevel(level)),
+      player: createVoicePlayer(
+        (level) => voice?.onSpeechLevel(level),
+        () => screen?.volume() ?? 1,
+      ),
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
@@ -229,6 +235,8 @@ export const startBatonDesktop = Effect.gen(function* () {
       stateDir: environment.stateDir,
       conversation,
       onNote: turnLog.note,
+      logDir: environment.logDir,
+      appVersion: environment.appVersion,
       platform: environment.platform,
       env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),

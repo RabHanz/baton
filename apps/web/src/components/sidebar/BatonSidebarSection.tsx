@@ -5,16 +5,18 @@
  * the route has open, and how to open one.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type {
-  BatonFleetEntry,
-  EnvironmentId,
-  ProjectId,
-  ScopedThreadRef,
+import {
+  batonDesktopBridge,
+  type BatonFleetEntry,
+  type EnvironmentId,
+  type ProjectId,
+  type ScopedThreadRef,
 } from "@t3tools/baton-contracts";
 import type { ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { batonUsageSummaries } from "../../batonUsage";
 
 import { focusedWorkSessionFromThreads } from "../../batonContextView";
 import { useBatonFleet } from "../../batonFleetResolvers";
@@ -51,6 +53,19 @@ export function BatonSidebarSection(props: {
   const projects = useProjects();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const primary = fleet.environmentIds[0];
+  const usage = JSON.stringify(
+    batonUsageSummaries(
+      [...serverConfigs].map(([environmentId, config]) => ({
+        box: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
+        providers: config.providers,
+      })),
+    ),
+  );
+  // Baton's own window draws these; the push is by change, not on a timer.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the desktop shell outside React
+  useEffect(() => {
+    batonDesktopBridge()?.setBatonUsage?.(JSON.parse(usage));
+  }, [usage]);
   if (primary === undefined) return null;
 
   const projectByEnvironmentId = new Map(
