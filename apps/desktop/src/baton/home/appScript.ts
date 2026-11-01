@@ -163,8 +163,9 @@ function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numer
 
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
-  const h = $('h1'); h.append(document.createTextNode(greeting() + '. ')); h.appendChild($('em', null, 'Say '));
-  if (words.length) { words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); } else h.append(document.createTextNode('the wake word is off.'));
+  const h = $('h1'); h.append(document.createTextNode(greeting() + '. '));
+  if (words.length) { h.appendChild($('em', null, 'Say ')); words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); }
+  else h.appendChild($('em', null, 'The wake word is off. Say Wake now, or hold your dictation key.'));
   p.appendChild(h);
   const q = $('div', 'quick');
   const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
@@ -206,7 +207,7 @@ function home(p) {
   right.appendChild($('div', 'day', 'Your voice'));
   const vc = $('div', 'stats');
   const kv = (l, v) => { const r = $('div', 'stat kvr'); r.append($('span', null, l), $('b', 'sm', v)); return r; };
-  vc.appendChild(kv('Wake words', words.length ? words.join(', ') : 'none on'));
+  vc.appendChild(kv('Wake words', words.length ? words.join(', ') : 'Off'));
   if (mic) vc.appendChild(kv('Microphone', valueOf(mic)));
   if (vo) vc.appendChild(kv('Speaks as', valueOf(vo)));
   if (ou) vc.appendChild(kv('Answers', valueOf(ou)));
