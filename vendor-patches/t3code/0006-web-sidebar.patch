@@ -57,6 +57,28 @@ index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc316671516700
    status,
    compact = false,
  }: {
+diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
+index 144402d1dfe9fc52caa766d69ba099d0f24df626..fef80daf39b4252025e4f41cfed2cbb7f46305e4 100644
+--- a/apps/web/src/components/chat/ChatHeader.tsx
++++ b/apps/web/src/components/chat/ChatHeader.tsx
+@@ -20,6 +20,8 @@ import {
+   type MouseEvent as ReactMouseEvent,
+ } from "react";
+ import { isTrailingDoubleClick } from "../Sidebar.logic";
++import { BatonLiveModel } from "./BatonLiveModel";
++import { BatonThreadAccount } from "./BatonThreadAccount";
+ import { Badge } from "../ui/badge";
+ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { toastManager } from "../ui/toast";
+@@ -427,6 +429,8 @@ export const ChatHeader = memo(function ChatHeader({
+           ) : null}
+         </WorkspaceBreadcrumbItem>
+       </WorkspaceBreadcrumb>
++      {isServerThread ? <BatonLiveModel threadRef={activeThreadRef} /> : null}
++      {isServerThread ? <BatonThreadAccount threadRef={activeThreadRef} /> : null}
+       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
+     </div>
+   );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
 index 1c792cf4cec5aa2cec100f6f1900fa7d7effddcc..443eef68240bd08d107085c33360bdeb6d4b0f23 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
