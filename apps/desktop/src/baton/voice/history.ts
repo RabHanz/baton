@@ -6,7 +6,7 @@
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import * as NodeSqlite from "node:sqlite";
 
 export type TurnKind = "dictation" | "spoken";
 /** ok: tidied. raw: inserted as heard (tidy-up off or failed). none: spoken turn, nothing tidied. */
@@ -96,7 +96,7 @@ export const openHistory = (
   newId: () => string = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
 ): History => {
   if (file !== ":memory:") NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
+  const db = new NodeSqlite.DatabaseSync(file);
   db.exec(`create table if not exists turns (
     id text primary key, at text not null, kind text not null, app text not null default '',
     raw text not null, cleaned text, status text not null, model text, delivery text,
