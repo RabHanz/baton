@@ -80,6 +80,21 @@ describe("decide", () => {
     expect(h.asked).toHaveLength(1);
   });
 
+  it("treats a bare stop as an instant control even with nothing running", async () => {
+    const h = host("{}");
+    for (const said of ["Stop.", "Baton, stop", "never mind"]) {
+      await expect(decide(said, context, h)).resolves.toMatchObject({
+        route: "control",
+        control: "stop",
+        source: "instant",
+      });
+    }
+    expect(h.asked).toHaveLength(0);
+    await expect(
+      decide("stop the tests", context, host('{"route":"act","text":"stop the tests"}')),
+    ).resolves.toMatchObject({ route: "act" });
+  });
+
   it("spends no model on lesson controls or explicit prefixes", async () => {
     const h = host("{}");
     await expect(decide("next", { ...context, running: "teach" }, h)).resolves.toMatchObject({
