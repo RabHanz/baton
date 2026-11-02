@@ -35,7 +35,7 @@ describe("warming the voice models before the microphone opens", () => {
         },
         settled: async () => {},
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 
   it("finishes at its limit when the recogniser never answers for silence (0.1.30 hung here)", async () => {
@@ -47,11 +47,11 @@ describe("warming the voice models before the microphone opens", () => {
       transcribe: () => new Promise<string>(() => {}),
       settled: () => new Promise<void>(() => {}),
       limit: () => limit,
-    }).then(() => order.push("over"));
+    }).then((finished) => order.push(finished ? "over" : "gave up"));
     await Promise.resolve();
     expect(order).toEqual([]);
     giveUp();
     await warm;
-    expect(order).toEqual(["over"]);
+    expect(order).toEqual(["gave up"]);
   });
 });

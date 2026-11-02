@@ -31,7 +31,7 @@ export const warmUpVoice = async (input: {
   readonly settled: () => Promise<void>;
   /** Resolves after the limit. Real time by default; a test passes its own. */
   readonly limit?: () => Promise<void>;
-}): Promise<void> => {
+}): Promise<boolean> => {
   const limit =
     input.limit ??
     (() => new Promise<void>((resolve) => setTimeout(resolve, WARM_LIMIT_MS).unref()));
@@ -39,8 +39,12 @@ export const warmUpVoice = async (input: {
     for (let i = 0; i < WARM_FRAMES; i += 1) input.pushFrame(new Int16Array(FRAME_SAMPLES));
     // Never wait on it for good: the recogniser may not answer for silence at all, and a start that waits
     // for that never opens the microphone (0.1.30).
-    await Promise.race([Promise.all([input.settled(), input.transcribe(warmClip())]), limit()]);
+    return await Promise.race([
+      Promise.all([input.settled(), input.transcribe(warmClip())]).then(() => true),
+      limit().then(() => false),
+    ]);
   } catch {
     // Not fatal: see above.
+    return false;
   }
 };
