@@ -17,8 +17,6 @@ describe("answering what needs me", () => {
         throw new Error("offline");
       },
     });
-    expect(text).toBe(
-      "1. Deploy: failed (20 min) [id: w1]\nI could not read: the ledger o/r.",
-    );
+    expect(text).toBe("1. Deploy: failed (20 min) [id: w1]\nI could not read: the ledger o/r.");
   });
 });
