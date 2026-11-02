@@ -7,7 +7,7 @@ Tessaya is the one assistant of D143. This note says what it adds to be present 
 ## The five parts
 
 1. **Awareness.** A small "now" it always carries: the active app and window title, how long he has been idle, which project and session he has focused, the jobs running, and what Tessaya itself is doing or waiting on. Data for the assistant, never instructions.
-2. **Commitments.** Things he asked it to keep track of ("check back on the deploy", "remind me", "keep an eye on X"), each with an owner, a due time, a status and where it came from. Durable. Surfaced on the Now page and in the morning brief.
+2. **Commitments.** Things he asked it to keep track of ("check back on the deploy", "remind me", "keep an eye on X"), each with an owner, a due time, a status and where it came from. Durable: the server keeps the list so his devices share it, and each device keeps a file as its working copy, so nothing breaks offline (an older file is sent up on the first sync; a closed commitment is never reopened by a stale copy). Surfaced on the Now page and in the morning brief.
 3. **Initiative.** It decides when to speak up. Inputs: session and job events, CI failures on his repositories (read-only), approvals nobody answered, commitments due, anomalies. A score (importance x urgency x cost of interrupting) with quiet hours, an hourly budget, de-duplication, snooze and "stop telling me about X". The output is an offer card: Yes, Later, Never. Yes starts a job through the normal plan-first path.
 4. **Self-state.** It can say plainly what it is doing, what it waits on, what it learned today, and what it declined and why.
 5. **What needs me.** The first deliverable and Stage 5's single test: one short ranked list across sessions, jobs, approvals, the ledger and deadlines, by voice and text. Finished-but-unseen work (a worker that ended and nobody noticed) is on it.
@@ -31,3 +31,7 @@ Tessaya is the one assistant of D143. This note says what it adds to be present 
 ## Order of building
 
 needs_me, then awareness, commitments, initiative, the Now page, and the Presence group in settings, each its own PR with unit tests. Memory is owned by another lane: presence calls its interface when it lands and uses a local stub until then.
+
+## Weaving (session to session)
+
+`weave_send(session, text, job?)` messages another session by name through the server's Herdr path. The server reads the target's pane first and types only into an empty input; a busy target or a draft in the box means the message waits in a durable queue and goes later, in order, never merged with a draft. Every message is a row (who, when, text, delivered, replied) and replies are read from the pane after the message and kept as data. The first message to a session in a job asks with the exact text; later ones in that job are routine; after reading anything, or if the text looks like a secret, the gate asks or refuses. Limits: only the server's own Herdr panes (another box is reached through its own environment), and no T3 live-thread path yet.

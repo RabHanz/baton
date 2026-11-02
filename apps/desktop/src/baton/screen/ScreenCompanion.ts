@@ -90,6 +90,8 @@ import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
+import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
@@ -266,6 +268,8 @@ export interface AssistantActions {
       | "commit_list"
       | "notices_stop"
       | "notices_resume"
+      | "weave_send"
+      | "weave_list"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
@@ -356,6 +360,8 @@ const LOOK_REPLY = "[LOOK]";
 
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
+  /** Bring Tessaya's window forward, on a tab when it can (the vault asks to be unlocked there). */
+  readonly onOpenTab?: (tab: string) => void;
   readonly platform: string;
   readonly env: NodeJS.ProcessEnv;
   /** Baton's one voice, injected so this module never loads the voice models. */
@@ -480,7 +486,10 @@ export const startScreenCompanion = (input: {
   };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   // The server's store answers when the window does (`actions` arrives late); his notes folder otherwise.
+  // The vault host needs the confirm path, built further down; the offer waits for it.
+  let vaultHost: VaultHost | null = null;
   const memory = createDesktopMemory({
+    onSecret: (text, what) => vaultHost?.offer(text, what) ?? null,
     call: (op, args) =>
       actions?.memory === undefined
         ? Promise.reject(new Error("Memory is not reachable yet."))
@@ -1590,7 +1599,29 @@ export const startScreenCompanion = (input: {
     await act();
     leftPointer = to;
   };
+  const vaultState = vaultFor(input.stateDir);
+  vaultHost = createVaultHost({
+    vault: vaultState.vault,
+    confirm: async (title, detail) =>
+      (await askHandsFree({ title, detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true }, title, 0, true)) === 0,
+    type: async (text) => {
+      await driverFor().type(text);
+    },
+    clipboard: {
+      read: () => Electron.clipboard.readText(),
+      write: (text) => Electron.clipboard.writeText(text),
+      clear: () => Electron.clipboard.clear(),
+    },
+    tainted: () => agentTaint.on(),
+    audit: vaultState.audit,
+    askToUnlock: () => input.onOpenTab?.("vault"),
+  });
   const toolHost: ToolHost = {
+    vault: {
+      list: () => vaultHost!.list(),
+      use: (a) => vaultHost!.use(a),
+      savePending: (name, category) => vaultHost!.savePending(name, category),
+    },
     capture: async () => {
       if (!(await approveCapture("what is on your screen", null))) {
         throw new Error("He did not allow looking at his screen.");
@@ -1723,6 +1754,7 @@ export const startScreenCompanion = (input: {
     agentMcp = await startBatonMcp({
       tools: withFailureGuard(buildBatonTools(toolHost)),
       gate: agentGate,
+      scrub: (text) => vaultHost?.scrub(text) ?? text,
     });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,

@@ -4,6 +4,7 @@
  * made it, and code decides. A model's reply can never widen this.
  */
 import { highRiskSubject } from "./intentParser.ts";
+import { detectSecret } from "./memory.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
 import { isChromeTool, judgeChrome } from "./webPolicy.ts";
 
@@ -51,6 +52,7 @@ const actionText = ({ input }: ToolCall): string =>
     "why",
     "keys",
     "target",
+    "session",
   ]
     .flatMap((key) => {
       const value = input[key];
@@ -68,6 +70,8 @@ export interface JudgeContext {
   readonly actWithoutAsking: boolean;
   /** This turn has read something, so what it does next may be that content's idea. */
   readonly tainted: boolean;
+  /** An earlier weave to this session in this job was approved: later ones are routine (D149). */
+  readonly weaveStanding?: boolean;
   /** The window that has the keyboard is a command line, or cannot be told apart from one. */
   readonly focusedShell?: boolean;
   /** The text is his own words or Baton's own earlier reply, found in the conversation. */
@@ -92,6 +96,7 @@ const BATON_QUIET = new Set([
   "fleet_status",
   "memory_search",
   "memory_used",
+  "vault_list",
   "memory_pin",
   "remember_target",
   "wait",
@@ -106,6 +111,7 @@ const BATON_QUIET = new Set([
   "needs_me",
   "commit_list",
   "notices_resume",
+  "weave_list",
   "approvals_list",
   "job_revoke",
   "job_stop",
@@ -126,9 +132,12 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_schedule",
   "memory_remember",
   "memory_forget",
+  "vault_use",
+  "vault_save_pending",
   "commit_add",
   "commit_done",
   "notices_stop",
+  "weave_send",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -143,6 +152,8 @@ export const READS_OUTSIDE = new Set([
   "screen_capture",
   "ui_tree",
   "session_show",
+  // Another session's reply is data from outside, whatever it says.
+  "weave_list",
 ]);
 
 const SENDS = /\b(enter|return)\b/i;
@@ -239,6 +250,16 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return outgoing || (name === "job_agree" && context.tainted)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    case "weave_send": {
+      // A message to another session never carries a secret, whoever asked for it.
+      if (detectSecret(text) !== null) {
+        return { verdict: "deny", why: "A message to another session never carries a secret." };
+      }
+      if (outgoing) return { verdict: "ask", why: "It follows something it read." };
+      return context.weaveStanding === true
+        ? { verdict: "allow" }
+        : { verdict: "ask", why: "It would message another session; the first one in a job needs your yes." };
+    }
     case "notices_stop":
     case "commit_add":
     case "commit_done":
@@ -247,6 +268,12 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return outgoing
         ? { verdict: "ask", why: "It would keep something it read as a note or a commitment." }
         : { verdict: "allow" };
+    case "vault_use":
+      // The vault asks for itself, by the secret's policy and with the name, purpose and target (never the value);
+      // a turn that read something is always asked there.
+      return { verdict: "allow" };
+    case "vault_save_pending":
+      return { verdict: "ask", why: "It would keep the secret you just told it in your vault." };
     case "memory_forget":
       return { verdict: "ask", why: "It would delete one of your notes." };
     case "job_schedule":

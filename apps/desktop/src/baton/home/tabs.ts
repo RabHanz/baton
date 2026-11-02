@@ -11,6 +11,7 @@ export const TABS = [
   { id: "dictation", label: "Dictation" },
   { id: "history", label: "History" },
   { id: "memory", label: "Memory" },
+  { id: "vault", label: "Vault" },
   { id: "tools", label: "Skills" },
   { id: "assistant", label: "Assistant" },
   { id: "voice", label: "Voice" },
@@ -87,6 +88,7 @@ export const tabOf = (id: string): TabId => {
   if (/^a[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
   if (/^p[:.]/.test(id)) return "memory";
+  if (id.startsWith("vt:") || id.startsWith("vt.")) return "vault";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";
