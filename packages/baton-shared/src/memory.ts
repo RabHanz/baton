@@ -56,6 +56,8 @@ export interface MemoryDraft {
   readonly pinned?: boolean;
   readonly expiresAt?: string | null;
   readonly tainted?: boolean;
+  /** The id this one replaces; the old item stays as history. */
+  readonly supersedes?: string;
 }
 
 export interface MemoryQuery {
@@ -224,7 +226,7 @@ const STOP = new Set(["the", "a", "an", "to", "of", "and", "is", "are", "in", "o
 export const tokens = (text: string): ReadonlyArray<string> =>
   text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
     .split(/\s+/)
     .filter((w) => w !== "" && !STOP.has(w));
 
