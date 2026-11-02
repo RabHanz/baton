@@ -95,7 +95,7 @@ describe("vault_use", () => {
     const t = setup({ run: async (_c, env) => `token=${env["SECRET"]} ok` });
     await t.host.use({ ...use, how: "paste" });
     expect(t.clip()).toBe(FAKE);
-    vi.advanceTimersByTime(10_001);
+    await vi.advanceTimersByTimeAsync(10_001);
     expect(t.clip()).toBe("");
     const said = await t.host.use({ ...use, how: "env", command: "echo" });
     expect(said).toContain("[vault:github]");
