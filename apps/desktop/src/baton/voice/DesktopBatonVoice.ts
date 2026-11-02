@@ -1592,7 +1592,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const requestDictation = () => void loadSpeechModel().catch(() => {});
 
+  /** Each step of the voice start, in the turn log, so a start that stops says where. */
+  const step = (name: string, fields: Readonly<Record<string, unknown>> = {}) =>
+    input.onNote?.("voice_start", { step: name, ...fields });
   const start = async () => {
+    step("begin", {
+      binary: binary !== null,
+      enabled: settings.enabled,
+      core: input.makeCore !== null,
+      running: loop !== null,
+    });
     if (binary === null) {
       note = "Voice is Windows only for now.";
       return render();
@@ -1600,6 +1609,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     if (loop !== null || input.makeCore === null || !settings.enabled) return render();
     // The models first: if they are missing, no microphone is opened.
     await loadSpeechModel();
+    step("speech-model-loaded", { sidecar: sidecar !== null });
     if (sidecar === null) throw new Error("Speech recognition is not installed.");
     core = await input.makeCore({
       intent: voiceIntent,
@@ -1628,6 +1638,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
+    step("core-made");
+    // Models load on first use: do it now, before the microphone opens, so the first phrase is not lost.
+    note = "Starting: loading the speech models.";
+    render();
+    const warming = core;
+    const warmSidecar = sidecar;
+    const warmed = await warmUpVoice({
+      pushFrame: (frame) => warming.pushAudio(frame),
+      transcribe: (pcm) => makeSidecarStt(warmSidecar).transcribe(pcm),
+      settled: () => warming.idle(),
+    });
+    note = null;
+    step(warmed ? "warm-done" : "warm-timeout");
     // With BATON_TEST_WAV set, recorded files stand in for the microphone; unset, nothing changes.
     const testSource = process.env["BATON_TEST_WAV"];
     audio =
@@ -1647,8 +1670,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               setTimeout(() => void restart(), delay);
             },
           });
+    step("audio-created", { test: testSource !== undefined && testSource !== "" });
     pill.warm();
     devices = await audio.listDevices();
+    step("devices-listed", { devices: devices.length });
     choice = selectInputDevice(devices, preference());
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
@@ -1667,6 +1692,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // The core's router has already sent the words on; this is the HUD's line.
       onUtterance: (utterance) => flash(utteranceCaption(utterance)),
     });
+    step("loop-started");
   };
 
   const stop = async () => {
@@ -2721,6 +2747,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const failed = (error: unknown) => {
+    step("error", { message: error instanceof Error ? error.message : String(error) });
     note = error instanceof Error ? error.message : "The microphone could not be opened.";
     void stop();
   };
