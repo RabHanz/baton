@@ -205,7 +205,7 @@ void Electron.app.whenReady().then(async () => {
   );
   // A folder that already holds stopped sessions says so, and offers Resume latest beside Start new.
   await click("#in-c-folder");
-  await driver.type("C:\\work\\notes");
+  await driver.type("/srv/digest-bot");
   await sleep(600);
   check(
     "a folder with earlier sessions offers Resume latest",
