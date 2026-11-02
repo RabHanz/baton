@@ -23,6 +23,9 @@ export type TabId = (typeof TABS)[number]["id"] | "settings";
 const EXACT: Readonly<Record<string, TabId>> = {
   "v.enabled": "voice",
   "v.muted": "voice",
+  "v.listenAfterWake": "voice",
+  "v.conversation": "voice",
+  "v.waitMs": "voice",
   "v.direct": "voice",
   "v.mic": "voice",
   "v.sounds": "voice",
