@@ -327,6 +327,8 @@ export interface BatonMemoryBridgeRequest {
     | "recall"
     | "used"
     | "export"
-    | "learn";
+    | "learn"
+    | "import"
+    | "sync";
   readonly args: Readonly<Record<string, unknown>>;
 }

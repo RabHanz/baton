@@ -291,19 +291,23 @@ export interface MemoryTombstone {
 export interface MemoryChange {
   readonly item: MemoryItem | null;
   readonly tombstone: MemoryTombstone | null;
-  readonly origin: string;
+  /** The server that wrote this version of the item (the tie-break), not the one sending it. */
+  readonly writer: string;
 }
 
 /**
- * What to do with a change from a peer, given what is here. Last writer wins on (updatedAt, origin);
- * a tombstone beats an item that was not updated after it.
+ * What to do with a change from a peer, given what is here. Last writer wins on (updatedAt, writer);
+ * a tombstone beats an item that was not updated after it. Re-sending a version already held is
+ * ignored, so a sync can echo without looping.
  */
 export const applyDecision = (
-  local: { readonly item: MemoryItem | null; readonly tombstone: MemoryTombstone | null },
+  local: {
+    readonly item: MemoryItem | null;
+    readonly tombstone: MemoryTombstone | null;
+    readonly writer: string | null;
+  },
   change: MemoryChange,
-  localOrigin: string,
 ): "apply" | "ignore" => {
-  const stamp = (at: string, origin: string) => `${at}|${origin}`;
   if (change.tombstone !== null) {
     if (local.tombstone !== null && local.tombstone.deletedAt >= change.tombstone.deletedAt) return "ignore";
     if (local.item !== null && local.item.updatedAt > change.tombstone.deletedAt) return "ignore";
@@ -313,7 +317,8 @@ export const applyDecision = (
   if (incoming === null) return "ignore";
   if (local.tombstone !== null && local.tombstone.deletedAt >= incoming.updatedAt) return "ignore";
   if (local.item === null) return "apply";
-  return stamp(incoming.updatedAt, change.origin) > stamp(local.item.updatedAt, localOrigin)
+  const stamp = (at: string, writer: string | null) => `${at}|${writer ?? ""}`;
+  return stamp(incoming.updatedAt, change.writer) > stamp(local.item.updatedAt, local.writer)
     ? "apply"
     : "ignore";
 };
@@ -341,7 +346,17 @@ export const parseLearningFile = (markdown: string): ReadonlyArray<ParsedLearnin
       if (kv !== null) meta[kv[1]!.toLowerCase()] = kv[2]!.trim().replace(/^["']|["']$/g, "");
     }
   }
-  const kind = (KIND_SET.has(meta.kind ?? "") ? meta.kind : "learning") as MemoryKind;
+  // Claude-style memory files say what they are in `type`; map that when `kind` is absent.
+  const byType: Record<string, MemoryKind> = {
+    user: "preference",
+    feedback: "correction",
+    project: "fact",
+    reference: "fact",
+  };
+  const metaType = (/^\s+type\s*:\s*(\S+)/m.exec(match?.[1] ?? "") ?? [])[1] ?? meta.type ?? "";
+  const kind = (
+    KIND_SET.has(meta.kind ?? "") ? meta.kind : (byType[metaType] ?? "learning")
+  ) as MemoryKind;
   const project = meta.project ?? "";
   const scope = (SCOPE_SET.has(meta.scope ?? "")
     ? meta.scope

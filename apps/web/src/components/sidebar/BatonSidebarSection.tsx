@@ -84,6 +84,10 @@ export function BatonSidebarSection(props: {
   const memoryUsed = useAtomCommand(batonWorkSessions.memoryUsed, quiet);
   const memoryExport = useAtomCommand(batonWorkSessions.memoryExport, quiet);
   const memoryLearn = useAtomCommand(batonWorkSessions.memoryLearn, quiet);
+  const memoryImport = useAtomCommand(batonWorkSessions.memoryImport, quiet);
+  const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
+  const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
+  const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
@@ -232,8 +236,55 @@ export function BatonSidebarSection(props: {
     }
   };
   /** The desktop assistant's memory calls: the memory RPCs, with a refusal's reason kept in plain words. */
+  /**
+   * Memory between the servers this window is connected to (MEMORY.md section 6): for each pair, ask
+   * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
+   */
+  const syncMemory = async (): Promise<unknown> => {
+    type Reply<V> =
+      | { readonly _tag: "Success"; readonly value: V }
+      | { readonly _tag: "Failure" };
+    const call = async <V,>(run: unknown, environmentId: EnvironmentId, input: unknown) =>
+      (await (
+        run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
+      )({ environmentId, input: input as never }));
+    const hellos = (
+      await Promise.all(
+        fleet.environmentIds.map(async (environmentId) => {
+          const reply = await call<{ origin: string; cursors: Record<string, string> }>(
+            memorySyncHello,
+            environmentId,
+            {},
+          );
+          return reply._tag === "Success" ? [{ environmentId, ...reply.value }] : [];
+        }),
+      )
+    ).flat();
+    // Two connections to the same server count once.
+    const servers = hellos.filter((h, i) => hellos.findIndex((o) => o.origin === h.origin) === i);
+    let applied = 0;
+    for (const to of servers) {
+      for (const from of servers) {
+        if (to.origin === from.origin) continue;
+        const pulled = await call<{ origin: string; changes: ReadonlyArray<unknown>; upTo: string }>(
+          memorySyncPull,
+          from.environmentId,
+          { since: to.cursors[from.origin] ?? null },
+        );
+        if (pulled._tag !== "Success") continue;
+        const pushed = await call<{ applied: number }>(memorySyncPush, to.environmentId, {
+          from: pulled.value.origin,
+          changes: pulled.value.changes,
+          upTo: pulled.value.upTo,
+        });
+        if (pushed._tag === "Success") applied += pushed.value.applied;
+      }
+    }
+    return { servers: servers.length, applied };
+  };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
-    const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn };
+    if (request.op === "sync") return syncMemory();
+    const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn, import: memoryImport };
     type Settled =
       | { readonly _tag: "Success"; readonly value: unknown }
       | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0]);
