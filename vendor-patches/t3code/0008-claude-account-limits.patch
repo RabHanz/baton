@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/provider/Drivers/ClaudeDriver.ts b/apps/server/src/provider/Drivers/ClaudeDriver.ts
-index e1fbcd30080fdfdebdca36b17c5e0e482615e430..e5ce733a1fd2bf90d16b64d0c59a93d90fb28e1f 100644
+index d4a16a22204657e31181d93a670260807ce7bda4..d49fe02dfab0aeba1c1a604530fc1d5b16f85d7e 100644
 --- a/apps/server/src/provider/Drivers/ClaudeDriver.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeDriver.ts
 @@ -41,6 +41,7 @@ import {
@@ -8,8 +8,8 @@ index e1fbcd30080fdfdebdca36b17c5e0e482615e430..e5ce733a1fd2bf90d16b64d0c59a93d9
  } from "@t3tools/provider-core/server/driver";
 +import { withProbeLimits } from "../../baton/ClaudeProbeLimits.ts";
  import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
- import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
  import {
+   enrichProviderSnapshotWithVersionAdvisory,
 @@ -279,6 +280,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
                ? Cache.invalidateAll(capabilitiesProbeCache)
                : Effect.void,
