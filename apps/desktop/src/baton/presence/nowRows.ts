@@ -12,6 +12,8 @@ export interface NowData {
   readonly loaded: boolean;
   /** Today's brief, when the morning-brief playbook is on and has run. */
   readonly brief?: string | null;
+  /** Jobs a restart cut off; each has a Continue button. */
+  readonly interrupted?: ReadonlyArray<{ readonly id: string; readonly title: string }>;
   readonly needs: ReadonlyArray<NeedItem>;
   readonly unreadable: ReadonlyArray<string>;
   readonly commitments: ReadonlyArray<Commitment>;
@@ -45,6 +47,7 @@ const WHY: Record<string, string> = {
 
 const NEEDS = "Needs you";
 const BRIEF = "This morning";
+const CUT = "Interrupted by a restart";
 const KEEP = "Keeping track of";
 const DOING = "What I am doing";
 const LEARNED = "Learned today";
@@ -69,6 +72,17 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
         ? "Due now"
         : `Due ${new Date(c.due).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
   return [
+    ...(data.interrupted ?? []).map(
+      (j): HomeControl => ({
+        id: `now.int:${j.id}`,
+        section: CUT,
+        label: j.title,
+        hint: "Tessaya restarted while this was running. It has not been continued.",
+        kind: "action",
+        button: "Continue",
+        lead: true,
+      }),
+    ),
     ...(data.brief == null ? [] : [note("now.brief", BRIEF, "Your morning brief", data.brief)]),
     ...(!data.loaded
       ? [note("now.loading", NEEDS, "Reading everything", "This takes a moment.")]
@@ -191,6 +205,8 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
 export const nowAction = (id: string) => {
   const c = /^now\.c:(.+?)(:later)?$/.exec(id);
   if (c !== null) return { kind: "commitment", id: c[1]!, drop: c[2] !== undefined } as const;
+  const i = /^now\.int:(.+)$/.exec(id);
+  if (i !== null) return { kind: "continue", id: i[1]! } as const;
   const a = /^now\.allow:(.+)$/.exec(id);
   return a === null ? null : ({ kind: "allow", topic: a[1]! } as const);
 };

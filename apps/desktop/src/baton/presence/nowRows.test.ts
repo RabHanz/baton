@@ -71,4 +71,9 @@ describe("the Now area", () => {
       detail: "Tessaya never sends push notifications; everything arrives here or is said aloud.",
     });
   });
+  it("offers Continue for a job a restart cut off", () => {
+    const rows = nowControls({ ...EMPTY_NOW, loaded: true, interrupted: [{ id: "j1", title: "Site" }] }, 0);
+    expect(rows.find((r) => r.id === "now.int:j1")).toMatchObject({ button: "Continue", label: "Site" });
+    expect(nowAction("now.int:j1")).toEqual({ kind: "continue", id: "j1" });
+  });
 });
