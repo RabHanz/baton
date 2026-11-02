@@ -320,7 +320,6 @@ function sayWords(words) { return words.length ? 'Say ' + words.slice(0, 2).join
 function wakeLine(words) { return words.length ? words.join(', ') : 'Off'; }
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
-  const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
   p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
   const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
   const sub = $('p', 'lede');
