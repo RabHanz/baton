@@ -451,7 +451,7 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false;
+let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false, hday = null;
 function loadHistory() {
   const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
@@ -497,7 +497,13 @@ function historyPage(p) {
   const perDay = {}; for (const t of shownRows) { const d = dayLabel(t.at); perDay[d] = (perDay[d] || 0) + 1; }
   let day = null, g = null;
   for (const t of shownRows) {
-    const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); p.appendChild(dh); g = $('div', 'group'); p.appendChild(g); }
+    const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); p.appendChild(dh);
+      const ids = hrows.filter(x => dayLabel(x.at) === d).map(x => x.id), dayName = d;
+      const da = $('div', 'hacts'); da.style.margin = '-4px 0 8px';
+      const db = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
+      if (hday === dayName) da.append($('span', 'hint', 'Delete ' + ids.length + ' ' + (ids.length === 1 ? 'entry' : 'entries') + ' and their recordings for good?'), db('Delete', () => { hday = null; const done = () => { hrows = hrows.filter(x => !ids.includes(x.id)); hnote = 'Deleted.'; render(); }; if (real) ipc.invoke('baton-history:delete-many', ids).then(done); else done(); }, 'primary'), db('Keep', () => { hday = null; render(); }));
+      else da.appendChild(db('Delete all from ' + dayName.toLowerCase(), () => { hday = dayName; render(); }));
+      p.appendChild(da); g = $('div', 'group'); p.appendChild(g); }
     const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
     const text = t.kind === 'spoken' ? t.raw : (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
     head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
