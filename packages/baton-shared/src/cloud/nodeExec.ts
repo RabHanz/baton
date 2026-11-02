@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- the real process boundary; tests inject the platform */
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
  * The real process runner and the small files the local transport keeps. An argument list, never a
