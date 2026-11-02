@@ -304,8 +304,10 @@ void Electron.app.whenReady().then(async () => {
     const mine = all.filter((x) => x.app === process.env["PROOF_APP"]);
     const PRELUDE = `Add-Type @'
 using System;using System.Runtime.InteropServices;
-public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);}
+public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);[DllImport("user32.dll")]public static extern void keybd_event(byte b,byte s,uint f,UIntPtr e);}
 '@
+# Windows only lets the foreground process hand the focus on; a tapped Alt key lets this script do it.
+function Focus($title){[W]::keybd_event(0x12,0,0,[UIntPtr]::Zero);[W]::keybd_event(0x12,0,2,[UIntPtr]::Zero);(New-Object -ComObject WScript.Shell).AppActivate($title)|Out-Null;Start-Sleep -Milliseconds 700}
 function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandle -ne 0}|Select-Object -First 1;if($p){[W]::MoveWindow($p.MainWindowHandle,100,60,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null;(New-Object -ComObject WScript.Shell).AppActivate($p.Id)|Out-Null}}
 `;
     // Files, not pipes: an app started by the script (Explorer, Edge) would hold a pipe open and the call would never end.
@@ -367,9 +369,12 @@ function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandl
           detail: hit ? "found in the window's controls" : `not in: ${tree.slice(0, 160)}`,
         };
       }
-      if (c.type === "title") {
-        const fg = await side("foreground");
-        return { pass: new RegExp(c.contains ?? "$^").test(fg), detail: fg.slice(0, 160) };
+      if (c.type === "windows") {
+        // Every window title there is, not only the one with the focus, which a runner's own agent may hold.
+        const r = await run(
+          `$t=@(Get-Process|Where-Object{$_.MainWindowTitle}|ForEach-Object{$_.MainWindowTitle});$t+=@((New-Object -ComObject Shell.Application).Windows()|ForEach-Object{$_.LocationName});$j=$t -join '|';Write-Output $j;if($j -match '${(c.contains ?? "$^").replaceAll("'", "''")}'){exit 0}else{exit 1}`,
+        );
+        return { pass: r.code === 0, detail: r.out.slice(0, 160) };
       }
       const after = await shot("after");
       const r = await run(
