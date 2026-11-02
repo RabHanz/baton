@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily check of the Claude cloud logins
+
+[Timer]
+OnCalendar=*-*-* 06:40:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
