@@ -7,6 +7,7 @@
  * is built ahead and hidden so a wake shows at once, and goes as soon as it would be the last one
  * open, because a window left open stops "last window closed" quitting the app.
  */
+import { protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -293,7 +294,7 @@ export const createVoicePill = (input: {
     win.setIgnoreMouseEvents(true);
     win.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(win);
-    win.setContentProtection(true);
+    protectFromCapture(win);
     const page = markersDocument(dots);
     void loadDocument(win, page).then((loaded) => {
       if (loaded && !win.isDestroyed()) win.showInactive();
@@ -362,7 +363,7 @@ export const createVoicePill = (input: {
     created.setIgnoreMouseEvents(true, { forward: true });
     // Out of screenshots and recordings by design, which also hides it from OS-level capture tools; a test
     // run (BATON_TEST_DIR) lets them see it.
-    created.setContentProtection(input.captureDir === undefined);
+    protectFromCapture(created);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
     ready = loadDocument(created, PILL_DOCUMENT).then((loaded) => {
