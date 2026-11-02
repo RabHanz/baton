@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * The learning loop (D150, docs/baton/MEMORY.md section 4): after a turn and at the end of a job a
  * cheap model proposes memory items; the pure rules decide which become drafts and the store's door
@@ -73,7 +74,7 @@ export const make = Effect.gen(function* () {
         outputSchema: Proposals,
         model: modelFor("routine", readRouting(NodePath.dirname(config.dbPath))),
       })
-      .pipe(Effect.catch(() => Effect.succeed({ items: [] })));
+      .pipe(Effect.orElseSucceed(() => ({ items: [] })));
     const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis);
     let stored = 0;
     let held = 0;
@@ -86,7 +87,7 @@ export const make = Effect.gen(function* () {
             );
       const item = yield* memory
         .add({ ...draft, ...(older === undefined ? {} : { supersedes: older.item.id }) })
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        .pipe(Effect.orElseSucceed(() => null));
       if (item === null) continue;
       if (item.proposed) held++;
       else stored++;

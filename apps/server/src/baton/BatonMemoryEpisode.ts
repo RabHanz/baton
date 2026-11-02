@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off globalDateInEffect:off
 /** The day's episode (D150): what he talked about and which jobs moved, as one short memory that decays like any episode. */
 import * as Effect from "effect/Effect";
 
@@ -21,5 +22,5 @@ export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(functio
   ].filter((x): x is string => x !== null);
   return yield* memory
     .add({ kind: "episode", text: `${day}. ${parts.join(" ")}`.slice(0, 500), source: "job", sourceRef: `day:${day}` })
-    .pipe(Effect.catch(() => Effect.succeed(null)));
+    .pipe(Effect.orElseSucceed(() => null));
 });
