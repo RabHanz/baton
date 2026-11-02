@@ -24,6 +24,8 @@ export interface SshSettings {
   readonly machineKey: string;
   readonly approverKey: string;
   readonly ssh?: string;
+  /** A key kept somewhere other than a file (the Vault): gives a path for the one call and removes it after. */
+  readonly keyFor?: (role: "machine" | "approver") => Promise<{ readonly path: string; readonly done: () => void } | { readonly error: string } | null>;
 }
 
 export const SSH_PROVIDERS: ReadonlyArray<{ readonly id: ProviderId; readonly label: string; readonly driver: string }> = [
@@ -54,14 +56,16 @@ export const sshProblem = (r: ExecResult, key: "machine" | "approver"): string =
 
 /** One connection, and a provider for each name the shell can offer. */
 export const sshProviders = (s: SshSettings, exec: Exec): ReadonlyArray<CloudProvider> => {
-  const configured = s.host !== "" && s.user !== "" && s.machineKey !== "";
+  const configured = s.host !== "" && s.user !== "" && (s.machineKey !== "" || s.keyFor !== undefined);
   let usage: ReadonlyArray<Usage> = [];
   let ready = new Map<string, { ready: boolean; needs: string | null }>();
 
   const call = async (key: "machine" | "approver", sub: ReadonlyArray<string>, stdin?: string): Promise<Outcome<ExecResult>> => {
-    const keyFile = key === "machine" ? s.machineKey : s.approverKey;
     if (!configured) return fail("The shared computer is not set up on this computer.");
-    if (keyFile === "") return fail("The approval key is not set. Add it under Cloud, Advanced.");
+    const kept = s.keyFor === undefined ? null : await s.keyFor(key);
+    if (kept !== null && "error" in kept) return fail(kept.error);
+    const keyFile = kept?.path ?? (key === "machine" ? s.machineKey : s.approverKey);
+    if (keyFile === "") return fail(key === "machine" ? "The sending key is not set. Add it under Cloud, Advanced." : "The approval key is not set. Add it under Cloud, Advanced.");
     let args: string[];
     try {
       args = [
@@ -74,7 +78,12 @@ export const sshProviders = (s: SshSettings, exec: Exec): ReadonlyArray<CloudPro
     } catch (error) {
       return fail(error instanceof Error ? error.message : "That cannot be sent safely.");
     }
-    const r = await exec(s.ssh ?? "ssh", args, { ...(stdin === undefined ? {} : { stdin }), timeoutMs: TIMEOUT_MS });
+    let r: ExecResult;
+    try {
+      r = await exec(s.ssh ?? "ssh", args, { ...(stdin === undefined ? {} : { stdin }), timeoutMs: TIMEOUT_MS });
+    } finally {
+      kept?.done();
+    }
     return r.code === 0 ? { ok: true, value: r } : fail(sshProblem(r, key));
   };
   const one = (r: ExecResult, provider: ProviderId): Outcome<CloudRequest> => {

@@ -117,6 +117,20 @@ describe("transport 3: the shared computer's dispatch shell", () => {
     expect(noApprover.error).toContain("approval key is not set");
   });
 
+  it("takes a key kept in the vault for one call and removes it after, even when the call fails", async () => {
+    const log: string[] = [];
+    const keyFor = async (role: "machine" | "approver") => (log.push(`use ${role}`), { path: `/tmp/${role}-key`, done: () => void log.push(`done ${role}`) });
+    const { exec, calls } = fakeExec(() => ({ code: 255, stderr: "Connection refused" }));
+    const p = sshProviders({ host: "box", user: "dev", machineKey: "", approverKey: "", keyFor }, exec).find((x) => x.id === "claude")!;
+    const r = await p.approve("1", "a", "r");
+    expect(r.ok).toBe(false);
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-i") + 1]).toBe("/tmp/approver-key");
+    expect(log).toEqual(["use approver", "done approver"]);
+    const denied = sshProviders({ host: "box", user: "dev", machineKey: "", approverKey: "", keyFor: async () => ({ error: "The key was not used: it was not confirmed." }) }, exec).find((x) => x.id === "claude")!;
+    expect(await denied.status("1")).toEqual({ ok: false, error: "The key was not used: it was not confirmed." });
+    expect(calls).toHaveLength(1);
+  });
+
   it("reads a list in the shell's shape, with string ids, and a state it names failed-to-start", async () => {
     const list = JSON.stringify({ requests: [
       { account: null, branch: "b", caller: "orchestrator", id: "20261102-1308-e85d", label: "t3code-ab", points_used: null, provider: "claude", repo: "o/r", state: "awaiting-director" },

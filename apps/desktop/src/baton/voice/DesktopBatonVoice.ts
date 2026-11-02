@@ -216,6 +216,7 @@ import {
 } from "../presence/playbooks.ts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
 import { terminalPlan } from "../cloud/terminal.ts";
+import { useVaultKey } from "../cloud/vaultKey.ts";
 import type { ProviderId } from "@t3tools/baton-shared/cloud/types";
 import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudService.ts";
 import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
@@ -3191,6 +3192,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     exec: nodeExec,
     dir: NodePath.join(input.stateDir, "cloud"),
     hub: null,
+    vaultKey: (name, why) =>
+      useVaultKey(name, why, {
+        unlocked: () => vaultState.vault.isUnlocked(),
+        read: (n) => (vaultState.vault.isUnlocked() ? (vaultState.vault.valueOf(n)?.value ?? null) : null),
+        hello: (message) => windowsHello(message, input.platform),
+      }),
     ask: async (q) =>
       (await input.extras?.ask({ title: q.title, detail: q.detail, buttons: q.buttons, cancel: q.cancel, armMs: q.armMs, expiresMs: 120_000 })) ?? q.cancel,
     changed: () => pushHome(),
@@ -4209,8 +4216,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "cl.set.ask") saveCloud({ askPopup: on });
     else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh")) saveCloud({ transport: value });
     else if (id === "cl.set.cap") saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
-    else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey)(:save|:reset)$/.test(id)) {
-      const field = /^cl\.set\.(\w+):/.exec(id)![1] as "codexEnv" | "sshHost" | "sshUser" | "machineKey" | "approverKey";
+    else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey|machineKeyVault|approverKeyVault)(:save|:reset)$/.test(id)) {
+      const field = /^cl\.set\.(\w+):/.exec(id)![1] as "codexEnv" | "sshHost" | "sshUser" | "machineKey" | "approverKey" | "machineKeyVault" | "approverKeyVault";
       saveCloud({ [field]: id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "" });
     } else if (id === "v.dnd") save({ doNotDisturb: on });
     else if (id === "v.snooze") toggleSnooze();

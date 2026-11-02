@@ -81,6 +81,8 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       field("cl.set.sshUser", "cloud.ssh.user", s.sshUser),
       field("cl.set.machineKey", "cloud.ssh.machineKey", s.machineKey),
       field("cl.set.approverKey", "cloud.ssh.approverKey", s.approverKey),
+      field("cl.set.machineKeyVault", "cloud.ssh.machineKeyVault", s.machineKeyVault),
+      field("cl.set.approverKeyVault", "cloud.ssh.approverKeyVault", s.approverKeyVault),
     );
   }
   const assistants = text("cloud.section.assistants");
