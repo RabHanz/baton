@@ -25,6 +25,7 @@ import {
   type BatonIntentResolution,
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
+  type BatonPhoneBridgeRequest,
   type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
@@ -67,6 +68,7 @@ export interface BatonIntentBarProps {
   /** The desktop assistant's commitments ledger (D149), answered with the commitments RPCs. */
   /** The desktop assistant's weave calls (D149), answered with the weave RPCs. */
   readonly onWeave?: (request: BatonWeaveBridgeRequest) => Promise<unknown>;
+  readonly onPhone?: (request: BatonPhoneBridgeRequest) => Promise<unknown>;
   readonly onCommitments?: (request: BatonCommitmentBridgeRequest) => Promise<unknown>;
 }
 
@@ -124,7 +126,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     return () => clearTimeout(timer);
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
-  const { environmentId, focusedWorkSessionId, onRan, onJob, onMemory, onCommitments, onWeave } =
+  const { environmentId, focusedWorkSessionId, onRan, onJob, onMemory, onCommitments, onWeave, onPhone } =
     props;
   const ownsVoice = useRef(false);
   // The desktop voice core's intent calls, answered with this bar's own RPCs:
@@ -140,6 +142,10 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       if (request.kind === "memory") {
         if (onMemory === undefined) throw new Error("Memory is not available here.");
         return onMemory(request);
+      }
+      if (request.kind === "phone") {
+        if (onPhone === undefined) throw new Error("The phone relay is not available here.");
+        return onPhone(request);
       }
       if (request.kind === "weave") {
         if (onWeave === undefined) throw new Error("Weaving is not available here.");
@@ -176,7 +182,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       voiceListenerClaimed = false;
       ownsVoice.current = false;
     };
-  }, [environmentId, onRan, onJob, onMemory, onCommitments, onWeave, resolveIntent, runIntent]);
+  }, [environmentId, onRan, onJob, onMemory, onCommitments, onWeave, onPhone, resolveIntent, runIntent]);
   useEffect(() => {
     if (ownsVoice.current) batonDesktopBridge()?.setBatonVoiceFocus?.(focusedWorkSessionId);
   }, [focusedWorkSessionId]);

@@ -17,7 +17,7 @@ import * as JobFlow from "./BatonJobFlow.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import * as FleetQuery from "./FleetQuery.ts";
-import { BatonIntentService } from "./IntentService.ts";
+import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { handlePhone, type PhoneDeps } from "./BatonTessayaApi.ts";
 import { transcribeWav } from "./BatonPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
@@ -44,6 +44,7 @@ export const routes = HttpRouter.use((router) =>
       state: () =>
         run(
           Effect.gen(function* () {
+            const inbox = yield* BatonPhoneInbox;
             const now = yield* Clock.currentTimeMillis;
             const fleet = yield* FleetQuery.getFleet({});
             return buildPhoneState({
@@ -51,19 +52,23 @@ export const routes = HttpRouter.use((router) =>
               findings: watchFleet(fleet.entries, now),
               weaves: (yield* (yield* BatonWeaveService).list(30)) as never,
               now,
+              prompts: yield* inbox.pending,
+              asks: yield* inbox.recent(8),
+              desktopConnected: yield* inbox.connected,
             });
           }),
         ),
       agree: (id) => run(Effect.asVoid(JobFlow.agreeJob(id as never))),
       stop: (id) => run(JobFlow.stopJob(id as never)),
       retry: (id) => run(JobFlow.retryJob(id as never)),
-      say: (text) =>
+      ask: (id, text) => run(Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.post({ id, text }))),
+      askGet: (id) =>
         run(
-          Effect.flatMap(BatonIntentService, (intents) => intents.run({ text, focusedWorkSessionId: null })).pipe(
-            Effect.map((result) => result.reply),
-            Effect.orElseSucceed(() => "I could not do that just now."),
+          Effect.flatMap(BatonPhoneInbox, (inbox) =>
+            Effect.all({ ask: inbox.get(id), connected: inbox.connected }),
           ),
         ),
+      answerPrompt: (id, index) => run(Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.answerPrompt(id, index))),
       transcribe: (wav) =>
         transcribeWav({ wav, env: process.env, userdataDir: NodePath.dirname(config.dbPath) }),
     };
@@ -87,6 +92,7 @@ export const routes = HttpRouter.use((router) =>
           scopes: new Set(session.value.scopes),
           ...(json === undefined ? {} : { json }),
           ...(bytes === undefined ? {} : { bytes }),
+          ...(request.headers["x-client-id"] === undefined ? {} : { clientId: request.headers["x-client-id"] }),
         }),
       );
       return HttpServerResponse.jsonUnsafe(answer.json, { status: answer.status, headers: PAGE_HEADERS });

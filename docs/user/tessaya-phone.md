@@ -10,7 +10,9 @@ A page on your own server that works in the phone's browser and installs to the 
 ## What it does
 
 - **Needs me**, **Approvals** (Approve or Deny shows the exact action), **Now**, **Jobs** (Stop, Retry), **Weave**.
-- A text box and a **Talk** button: hold, speak, release. Tessaya shows what it heard and answers. Talk needs a speech model on the server; if there is none it says so and you can type.
+- A text box and a **Talk** button: hold, speak, release. What you say goes to the assistant on your computer, which answers as if you had typed it there; the reply appears on the phone (Asked tab). Talk needs a speech model on the server; if there is none it says so and you can type.
+- If your computer is off or Tessaya is not open on it, the phone says so and your ask waits (up to a day) for it to come back.
+- When your computer asks you something (a plan to run, a screen capture), it also shows up under Approvals on the phone with the same words. Answer on either; the first answer counts.
 - A count on the tab and the home-screen icon, refreshed every 20 seconds while the page is open. There are no push notifications.
 
 ## Good to know

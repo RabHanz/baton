@@ -16,6 +16,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_PHONE_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
@@ -55,6 +56,7 @@ import { importFolder } from "./BatonMemoryImport.ts";
 import { pullAction } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
+import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -84,6 +86,7 @@ export type BatonServices =
   | BatonJobService
   | BatonMemoryService
   | BatonCommitmentService
+  | BatonPhoneInbox
   | BatonWeaveService
   | BatonMemoryLearning
   | ServerConfig.ServerConfig
@@ -370,6 +373,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     [BATON_WEAVE_WS_METHODS.tick]: () => run(Effect.flatMap(BatonWeaveService, (weave) => weave.tick)),
+    [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(
         Effect.flatMap(BatonCommitmentService, (commitments) =>
