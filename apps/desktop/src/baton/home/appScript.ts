@@ -40,7 +40,7 @@ const INTRO = {
   jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
   tools: ['Skills and tools', 'The plugins, skills and servers that Claude Code and Codex already have. Tessaya adds none of its own. A plugin switch changes Claude Code\u2019s own setting and applies to its next session.'],
-  memory: ['Memory', 'What Tessaya has been asked to remember, as plain notes. Open one to correct it, or delete it. Clearing a note never touches Tessaya itself.'],
+  memory: ['Memory', 'What Tessaya remembers about you and your work, and what it learned. Search it, correct it, pin what must never fade, or forget it. Forgetting a memory never touches Tessaya itself.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
@@ -48,7 +48,8 @@ const INTRO = {
   usage: ['Usage', 'How much of each account is left.'],
   checks: ['Checks', 'See what is wrong without reading a log.']
 };
-let cur = 'home', collapsed = false, modal = null, S = null;
+let cur = 'home', collapsed = false, modal = null, S = null, query = '';
+let aboutSeen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
 function control(c) {
@@ -65,7 +66,7 @@ function control(c) {
       }
       return list;
     }
-    if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
+    if (c.options.length <= 4 && c.options.reduce((n, o) => n + o.label.length, 0) <= 40) {
       const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
     }
     if (c.options.some(o => o.note)) {
@@ -129,15 +130,52 @@ function choiceRow(c) {
 }
 function wakeRow(items) {
   const wrap = $('div', 'rowwrap'); const r = $('div', 'row'); const t = $('div', 'text'); t.appendChild($('div', 'label', 'Wake words'));
-  const on = items.filter(x => x.on).map(x => x.label.replace(/^Wake word: /, ''));
-  t.appendChild($('div', 'hint', on.length ? on.join(', ') : 'None on'));
-  const b = $('button', 'btn quiet', changing.has('wake') ? 'Done' : 'Change'); b.onclick = () => { if (changing.has('wake')) changing.delete('wake'); else changing.add('wake'); render(); };
-  r.append(t, b); wrap.appendChild(r);
-  if (changing.has('wake')) { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
+  t.appendChild($('div', 'hint', 'Say any of these to wake Tessaya. Turn off the ones you do not want.'));
+  r.append(t); wrap.appendChild(r);
+  { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
   return wrap;
 }
+const memEditing = new Set();
+function memoryRow(c) {
+  const id = c.id.slice(2), wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text');
+  if (memEditing.has(c.id)) {
+    const a = $('textarea', 'memedit'); a.id = 'in-e-' + c.id; a.maxLength = 500; a.setAttribute('aria-label', 'Edit this memory'); a.value = drafts.has('e-' + c.id) ? drafts.get('e-' + c.id) : c.label; a.oninput = () => drafts.set('e-' + c.id, a.value);
+    const done = () => { memEditing.delete(c.id); drafts.delete('e-' + c.id); };
+    const save = $('button', 'btn primary', 'Save'); save.onclick = () => { const v = a.value.trim(); done(); if (v) set('m.edit:' + id, v); else render(); };
+    const cancel = $('button', 'btn quiet', 'Cancel'); cancel.onclick = () => { done(); render(); };
+    const acts = $('div', 'memacts'); acts.append(save, cancel); t.append(a, acts); r.appendChild(t); wrap.appendChild(r); return wrap;
+  }
+  t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint)); r.appendChild(t);
+  const acts = $('div', 'memacts');
+  if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set('m.accept:' + id, null); acts.appendChild(keep); }
+  else if (c.section !== 'Replaced') {
+    const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
+    const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { memEditing.add(c.id); render(); }; acts.append(pin, ed);
+  }
+  const fg = $('button', 'btn quiet', c.held ? 'Dismiss' : 'Forget'); fg.onclick = () => set('m.forget:' + id, null); acts.appendChild(fg);
+  r.appendChild(acts); wrap.appendChild(r); return wrap;
+}
+function memoryBar(c) {
+  const w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'); q.type = 'text'; q.id = 'in-m-q'; q.placeholder = 'Search what Tessaya remembers'; q.setAttribute('aria-label', 'Search memory'); q.value = drafts.has('m-q') ? drafts.get('m-q') : c.query;
+  let tm = null; q.oninput = () => { drafts.set('m-q', q.value); clearTimeout(tm); tm = setTimeout(() => set('m.query', q.value), 250); };
+  f.onsubmit = e => { e.preventDefault(); clearTimeout(tm); set('m.query', q.value); }; f.appendChild(q); w.appendChild(f);
+  const seg = $('div', 'seg memseg'); for (const k of c.kinds) { const b = $('button', null, k.label + ' ' + k.count); b.setAttribute('aria-pressed', String(k.value === c.filter)); b.onclick = () => set('m.kind', k.value); seg.appendChild(b); } w.appendChild(seg);
+  const tools = $('div', 'memtools');
+  if (c.usedCount) { const u = $('button', 'btn quiet', 'Used in the last answer (' + c.usedCount + ')'); u.setAttribute('aria-pressed', String(c.usedOnly)); u.onclick = () => set('m.used', !c.usedOnly); tools.appendChild(u); }
+  const ex = $('button', 'btn quiet', 'Export'); ex.onclick = () => set('m.export', null); tools.appendChild(ex); w.appendChild(tools);
+  const imp = $('form', 'vocab'), fi = $('input'); fi.type = 'text'; fi.id = 'in-m-imp'; fi.placeholder = 'Import a folder of .md learnings: its full path'; fi.setAttribute('aria-label', 'Folder to import'); fi.value = drafts.get('m-imp') || ''; fi.oninput = () => drafts.set('m-imp', fi.value);
+  const ib = $('button', 'btn quiet', 'Import'); ib.type = 'submit'; imp.append(fi, ib); imp.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('m-imp'); set('m.import', v); }; w.appendChild(imp);
+  const sy = $('div', 'row'), st = $('div', 'text'); st.append($('div', 'label', 'Keep servers in step'), $('div', 'hint', 'Memory is carried between the servers this window is connected to. The last change wins, and a forgotten memory stays forgotten.'));
+  const sw = $('button', 'sw'); sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', String(c.syncOn)); sw.setAttribute('aria-label', 'Keep servers in step'); sw.onclick = () => set('m.syncOn', !c.syncOn); sy.append(st, sw);
+  if (c.syncOn) { const nb = $('button', 'btn quiet', 'Sync now'); nb.onclick = () => set('m.sync', null); sy.appendChild(nb); } w.appendChild(sy);
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  return w;
+}
 function row(c) {
-  if (c.kind === 'choice' && (c.options.length > 2 || c.options.reduce((n, o) => n + o.label.length, 0) > 26)) return choiceRow(c);
+  if (c.kind === 'memory') return memoryRow(c);
+  if (c.kind === 'memoryBar') return memoryBar(c);
+  // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.
+  if (c.kind === 'choice' && (c.id === 's.voice' || c.options.some(o => o.note))) { const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.append(t, control(c)); return w; }
   if (c.kind === 'session') return session(c);
   if (c.kind === 'check') return check(c);
   if (c.kind === 'brain') { const r = $('div', 'brainRow'); if (c.hint) r.appendChild($('div', 'hint', c.hint)); r.appendChild(brain(c)); return r; }
@@ -155,7 +193,8 @@ function group(name, items) {
   const more = items.filter(x => x.more);
   if (more.length) {
     const w = $('div', 'more'), i = $('div'); rowsOf(more, i); w.appendChild(i); g.appendChild(w);
-    const ml = (more.find(x => x.moreLabel) || {}).moreLabel || 'More options', fl = ml === 'Show all' ? 'Show fewer' : 'Fewer options';
+    const names = more.filter(x => x.kind !== 'check' || more.length < 3).map(x => x.label.replace(/^Wake word: /, '').toLowerCase()), held = names.slice(0, 3).join(', ') + (names.length > 3 ? ' and more' : '');
+    const ml = (more.find(x => x.moreLabel) || {}).moreLabel || ('Advanced: ' + held), fl = ml === 'Show all' ? 'Show fewer' : 'Hide advanced';
     const b = $('button', 'moreBtn'); b.setAttribute('aria-expanded', String(open.has(name))); const sp = $('span', null, open.has(name) ? fl : ml); b.append(sp, icon('chev', 10));
     b.onclick = () => { if (open.has(name)) open.delete(name); else open.add(name); g.classList.toggle('open'); b.setAttribute('aria-expanded', String(open.has(name))); sp.textContent = open.has(name) ? fl : ml; };
     g.appendChild(b);
@@ -180,12 +219,25 @@ function banner(kind, em, title, text, btn, onclick) {
 function dayLabel(iso) { const d = new Date(iso), t = new Date(); const same = (a, b) => a.toDateString() === b.toDateString(); const y = new Date(t); y.setDate(t.getDate() - 1); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString([], { month: 'long', day: 'numeric' }); }
 function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 
+// The wake sting plays once when the window opens and when About opens, on every mark that is up, then each rests on its still.
+let stingUntil = 0;
+function startSting() {
+  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  stingUntil = Date.now() + 2100; render(); setTimeout(render, 2150);
+}
+function markHtml() {
+  if (Date.now() < stingUntil && window.TESSAYA_STING) { const dark = document.documentElement.dataset.theme === 'dark'; return '<img alt="" style="width:100%;height:100%;display:block" src="data:image/webp;base64,' + (dark ? TESSAYA_STING.dark : TESSAYA_STING.light) + '">'; }
+  return S.status.brandMark || S.status.mark;
+}
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
-  const h = $('h1'); h.append(document.createTextNode(greeting() + '. '));
-  if (words.length) { h.appendChild($('em', null, 'Say ')); words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); }
-  else h.appendChild($('em', null, 'The wake word is off. Say Wake now, or hold your dictation key.'));
-  p.appendChild(h);
+  const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
+  p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
+  const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
+  const sub = $('p', 'lede');
+  if (words.length) { sub.append(document.createTextNode('Say ')); words.slice(0, 2).forEach((w, i) => { if (i) sub.append(document.createTextNode(' or ')); sub.appendChild($('em', null, w)); }); sub.append(document.createTextNode(' to talk.')); }
+  else sub.textContent = 'The wake word is off. Say Wake now, or hold your dictation key.';
+  p.appendChild(sub);
   const q = $('div', 'quick');
   const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
   const en = find('v.enabled'), mu = find('v.muted');
@@ -410,13 +462,24 @@ function historyPage(p) {
   if (hrows.length > hlimit) { const more = $('button', 'btn quiet', 'Show older (' + (hrows.length - hlimit) + ')'); more.style.marginTop = '12px'; more.onclick = () => { hlimit += 40; render(); }; p.appendChild(more); }
   recordings(p);
 }
+const tabName = id => (TABS.find(t => t[0] === id) || [id, 'Settings'])[1];
+/** Every setting whose words contain every word typed, shown as the real rows, with the page each one lives on. */
+function searchPage(p) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = S.controls.filter(c => c.kind !== 'session' && words.every(w => (c.label + ' ' + (c.hint || '') + ' ' + (c.section || '')).toLowerCase().includes(w)));
+  p.appendChild(pageHead('Search', hits.length ? hits.length + (hits.length === 1 ? ' setting' : ' settings') + ' for \u201c' + query + '\u201d' : 'Nothing matches \u201c' + query + '\u201d. Try a shorter word.'));
+  const by = new Map(); for (const c of hits) { const t = c.tab || 'settings'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
+  for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
+}
 function tabPage(p) {
+  if (query.trim() && !modal) return searchPage(p);
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   const items = tabControls(cur);
-  if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet. Start one in Claude Code or T3 and it appears here.'));
+  const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
+  if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);
@@ -495,7 +558,7 @@ function modalPage(b) {
   else if (modal === 'keys') bindingsPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
+  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
 function setRegion(el, build) {
@@ -529,7 +592,7 @@ function syncModal() {
   setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
-function closeModal() { modal = null; render(); }
+function closeModal() { modal = null; aboutSeen = false; render(); }
 function go(t) { cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 function render(state) {
@@ -538,7 +601,7 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Tessaya'), $('span', 'plan', 'Local')); side.appendChild(brand);
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); 
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
@@ -548,17 +611,18 @@ function render(state) {
   foot.append(t3, st); side.appendChild(foot);
   });
   setRegion(document.getElementById('top'), top => {
+  const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
-  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(ac);
+  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal();
-  if (keep && keep.indexOf('in-') === 0) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
+  if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
-get().then(s => render(s));
+get().then(s => { render(s); startSting(); });
 `;

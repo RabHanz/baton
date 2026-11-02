@@ -24,6 +24,7 @@ import {
   batonDesktopBridge,
   type BatonIntentResolution,
   type BatonJobBridgeRequest,
+  type BatonMemoryBridgeRequest,
   type EnvironmentId,
 } from "@t3tools/baton-contracts";
 import { classifyDictation } from "@t3tools/baton-shared/dictation";
@@ -59,6 +60,8 @@ export interface BatonIntentBarProps {
   readonly onRan: () => void;
   /** The desktop assistant's job tools (D145), answered with the job RPCs. */
   readonly onJob?: (request: BatonJobBridgeRequest) => Promise<unknown>;
+  /** The desktop assistant's memory calls (D150), answered with the memory RPCs. */
+  readonly onMemory?: (request: BatonMemoryBridgeRequest) => Promise<unknown>;
 }
 
 let voiceListenerClaimed = false;
@@ -115,7 +118,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     return () => clearTimeout(timer);
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
-  const { environmentId, focusedWorkSessionId, onRan, onJob } = props;
+  const { environmentId, focusedWorkSessionId, onRan, onJob, onMemory } = props;
   const ownsVoice = useRef(false);
   // The desktop voice core's intent calls, answered with this bar's own RPCs:
   // spoken sentences meet the same grammar and gates as typed ones. Dictation
@@ -127,6 +130,10 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     voiceListenerClaimed = true;
     ownsVoice.current = true;
     const unsubscribe = subscribe(async (request) => {
+      if (request.kind === "memory") {
+        if (onMemory === undefined) throw new Error("Memory is not available here.");
+        return onMemory(request);
+      }
       if (request.kind === "job") {
         if (onJob === undefined) throw new Error("Jobs are not available here.");
         return onJob(request);
@@ -154,7 +161,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       voiceListenerClaimed = false;
       ownsVoice.current = false;
     };
-  }, [environmentId, onRan, onJob, resolveIntent, runIntent]);
+  }, [environmentId, onRan, onJob, onMemory, resolveIntent, runIntent]);
   useEffect(() => {
     if (ownsVoice.current) batonDesktopBridge()?.setBatonVoiceFocus?.(focusedWorkSessionId);
   }, [focusedWorkSessionId]);

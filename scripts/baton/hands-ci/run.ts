@@ -16,6 +16,7 @@ import {
   sleep,
   type Host,
 } from "./host.ts";
+import { startClip } from "./record.ts";
 
 process.on("unhandledRejection", (error) =>
   console.log(`unhandled: ${(error as Error).message.split("\n")[0]}`),
@@ -167,6 +168,8 @@ const results: Result[] = [];
 const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) => {
   const t = new Task(id);
   await t.snapshot();
+  const clip = startClip(OUT, id);
+  await sleep(clip === null ? 0 : 1500);
   const started = Date.now();
   let result: Result["result"] = "pass";
   let cause = "";
@@ -183,6 +186,8 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
       // the dump is a courtesy
     }
   }
+  await sleep(clip === null ? 0 : 800);
+  await clip?.stop((Date.now() - started) / 1000 + 2);
   await t.cleanup();
   const r: Result = {
     id,

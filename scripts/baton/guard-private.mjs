@@ -83,6 +83,14 @@ export const run = () => {
     for (const [what, pattern] of PRIVATE)
       if (pattern.test(text)) problems.push(`${file}: ${what}`);
   }
+  // A merge left unfinished must never reach main: this is what broke a release once.
+  for (const file of files.filter(
+    (f) => /\.(ts|tsx|mjs|js|json|md|yml|yaml)$/.test(f) && !f.startsWith(".repos/"),
+  )) {
+    const text = read(file);
+    if (text !== null && /^(<<<<<<< |>>>>>>> )/m.test(text))
+      problems.push(`${file}: an unfinished merge (conflict marker)`);
+  }
   for (const file of Object.keys(ALLOWED)) {
     const text = read(file);
     if (text === null || !PRIVATE.some(([, p]) => p.test(text)))

@@ -36,8 +36,12 @@ export const createAssistantAgent = (input: {
   readonly conversation: ConversationLog;
   readonly now?: () => number;
   readonly clockLine: () => string;
-  /** His notes as a prompt block, read fresh when a session starts. */
-  readonly notes?: () => string;
+  /** His notes and standing memory as a prompt block, read fresh when a session starts. */
+  readonly notes?: () => string | Promise<string>;
+  /** Memory that matches this sentence (D150): a block for the turn, empty when none. Bounded by the caller. */
+  readonly recall?: (text: string) => Promise<string>;
+  /** After a turn: what he said and what came back, for the learning loop. Never awaited. */
+  readonly learn?: (said: string, reply: string) => void;
   /** Called at the start of a turn: a new sentence has not read anything yet. */
   readonly beginTurn: () => void;
   /** His state right now (awareness), empty when he has turned it all off. */
@@ -61,9 +65,12 @@ export const createAssistantAgent = (input: {
       session = null;
     }
     turns = 0;
-    session = input.start(
-      agentSystemPrompt({ recent: input.conversation.recent(), notes: input.notes?.() ?? "" }),
-    );
+    // Assigned before any await, so a second caller finds this session instead of starting another.
+    session = Promise.resolve(input.notes?.() ?? "")
+      .catch(() => "")
+      .then((notes) =>
+        input.start(agentSystemPrompt({ recent: input.conversation.recent(), notes })),
+      );
     return session;
   };
 
@@ -80,12 +87,14 @@ export const createAssistantAgent = (input: {
         target: target?.label ?? null,
         presence: (await input.presence?.().catch(() => "")) ?? "",
       });
+      const remembered = (await input.recall?.(text).catch(() => "")) ?? "";
       const reply = await agent.ask(
-        [{ type: "text", text: `${header}\n\nhe says: ${text}` }],
+        [{ type: "text", text: `${header}${remembered === "" ? "" : `\n\n${remembered}`}\n\nhe says: ${text}` }],
         onDelta,
       );
       turns += 1;
       lastAt = now();
+      input.learn?.(text, reply);
       input.conversation.add({
         route: "answer",
         said: text,

@@ -16,6 +16,7 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
+  BATON_MEMORY_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
@@ -123,6 +124,67 @@ export function createBatonWorkSessionAtoms<R, E>(
     watchGet: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:watch-get",
       tag: BATON_WATCH_WS_METHODS.watchGet,
+    }),
+    /** Memory (D150): the desktop assistant's remember, recall and forget. */
+    memoryList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-list",
+      tag: BATON_MEMORY_WS_METHODS.list,
+    }),
+    memorySearch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-search",
+      tag: BATON_MEMORY_WS_METHODS.search,
+    }),
+    memoryAdd: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-add",
+      tag: BATON_MEMORY_WS_METHODS.add,
+    }),
+    memoryEdit: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-edit",
+      tag: BATON_MEMORY_WS_METHODS.edit,
+    }),
+    memoryPin: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-pin",
+      tag: BATON_MEMORY_WS_METHODS.pin,
+    }),
+    memoryForget: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-forget",
+      tag: BATON_MEMORY_WS_METHODS.forget,
+    }),
+    memoryAccept: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-accept",
+      tag: BATON_MEMORY_WS_METHODS.accept,
+    }),
+    memoryRecall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-recall",
+      tag: BATON_MEMORY_WS_METHODS.recall,
+    }),
+    memoryUsed: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-used",
+      tag: BATON_MEMORY_WS_METHODS.used,
+    }),
+    memoryExport: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-export",
+      tag: BATON_MEMORY_WS_METHODS.export,
+    }),
+    memoryLearn: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-learn",
+      tag: BATON_MEMORY_WS_METHODS.learn,
+    }),
+    memoryImport: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-import",
+      tag: BATON_MEMORY_WS_METHODS.import,
+    }),
+    memorySyncHello: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-syncHello",
+      tag: BATON_MEMORY_WS_METHODS.syncHello,
+    }),
+    memorySyncPull: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-syncPull",
+      tag: BATON_MEMORY_WS_METHODS.syncPull,
+    }),
+    memorySyncPush: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-syncPush",
+      tag: BATON_MEMORY_WS_METHODS.syncPush,
     }),
     jobList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-list",

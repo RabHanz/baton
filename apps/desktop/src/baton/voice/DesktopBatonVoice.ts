@@ -13,6 +13,7 @@ import type {
   BatonFocusTarget,
   BatonJob,
   BatonJobBridgeRequest,
+  BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
 import {
@@ -63,7 +64,9 @@ import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
-import { noteAction, noteControls } from "../memory/noteRows.ts";
+import { createMemorySync } from "../memory/memorySync.ts";
+import { createMemoryTab } from "../memory/memoryTab.ts";
+import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -349,6 +352,26 @@ const SESSIONS_NOTE_MS = 8_000;
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
 const AWARENESS_SAMPLE_MS = 30_000;
+/** Changes this close together make one tray and window update. */
+const RENDER_COALESCE_MS = 40;
+
+/**
+ * A value that costs file reads, kept for a few seconds: the window asks for its rows on every update, and
+ * the folders do not change that fast. `reset` after anything that does change them.
+ */
+const cachedFor = <T>(ms: number, make: () => T) => {
+  let at = -Infinity;
+  let value: T;
+  const get = (): T => {
+    const now = Date.now();
+    if (now - at > ms) {
+      value = make();
+      at = now;
+    }
+    return value;
+  };
+  return Object.assign(get, { reset: () => void (at = -Infinity) });
+};
 /** The choices for how long it listens. Eight seconds and 30 s are the defaults; the wait covers only the start of speech. */
 export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [4_000, 6_000, 8_000, 12_000];
 export const CONVERSATION_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000, 120_000];
@@ -361,8 +384,13 @@ const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
  * The tray mark: the logo's hinted cut for the taskbar's own theme (white on dark, black on light), at
  * every size Windows may ask for (100, 125, 150, 200, 250 and 300 %), with the state as a dot.
  */
+const trayIconCache = new Map<string, Electron.NativeImage>();
 const trayIcon = (options: MarkOptions): Electron.NativeImage => {
   const dark = Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+  // Six PNGs decoded and drawn on per call: the same few states come round again and again.
+  const key = `${dark}|${JSON.stringify(options)}`;
+  const known = trayIconCache.get(key);
+  if (known !== undefined) return known;
   const image = Electron.nativeImage.createEmpty();
   for (const size of TRAY_SIZES) {
     const source = Electron.nativeImage.createFromBuffer(
@@ -375,6 +403,8 @@ const trayIcon = (options: MarkOptions): Electron.NativeImage => {
       buffer: withTrayState(source.toBitmap(), size, options, dark),
     });
   }
+  if (trayIconCache.size > 32) trayIconCache.clear();
+  trayIconCache.set(key, image);
   return image;
 };
 
@@ -492,6 +522,8 @@ export interface DesktopBatonVoice {
   readonly onTurnEnd: () => void;
   /** The assistant is looking, planning or driving; null when it stops. */
   readonly onActivity: (label: string | null, caption?: string) => void;
+  /** A lesson or drive sound, through the pill's own cue path. */
+  readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
   readonly onSpeechLevel: (level: number) => void;
   /** He dismissed the assistant's output. */
@@ -998,13 +1030,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // The taskbar's theme changes the tray mark's colour (white on dark, black on light).
   Electron.nativeTheme.on("updated", () => render());
-  const render = () => {
+  const renderNow = () => {
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     tray.setImage(trayIcon(markOptions()));
     tray.setToolTip(
       `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`,
     );
     rebuildMenu();
+  };
+  // Several changes in a burst (a state, a note, a reply) repaint the tray, rebuild its menu and push the whole
+  // window state once, not once each.
+  let renderTimer: ReturnType<typeof setTimeout> | null = null;
+  const render = () => {
+    if (renderTimer !== null) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = null;
+      renderNow();
+    }, RENDER_COALESCE_MS);
   };
   /** A reply to something said: on the pill, and in full when nothing will read it out. */
   const flash = (caption: string) => {
@@ -1020,7 +1062,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
   >();
   let mainContents: Electron.WebContents | null = null;
-  const request = async (body: VoiceIntentRequest | BatonJobBridgeRequest): Promise<unknown> => {
+  const request = async (
+    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
+  ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
     const id = ++nextRequest;
@@ -1050,7 +1094,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   /** What the sessions side answered joins the one conversation, with what it was about. */
   const requestKept = async (
-    body: VoiceIntentRequest | BatonJobBridgeRequest,
+    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -1127,6 +1171,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             )
             .join("\n");
     },
+    memory: (op, args) =>
+      requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
     jobs: async (op, args) => {
       if (op === "approvals") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
@@ -1254,7 +1300,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (anywhere !== true && Math.hypot(real.x - near.x, real.y - near.y) > LOCATE_MAX_DIP) {
         return null;
       }
-      return { ...real, name: found.name ?? label };
+      // The size comes in physical pixels; the overlay draws in desktop points.
+      const scale = Electron.screen.getDisplayNearestPoint(real).scaleFactor || 1;
+      return {
+        ...real,
+        name: found.name ?? label,
+        ...(found.width === undefined || found.height === undefined
+          ? {}
+          : { width: found.width / scale, height: found.height / scale }),
+      };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,
     folder: (window) => focusedFolder(window, input.platform),
@@ -1843,13 +1897,34 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const claudeDir = () =>
     process.env["CLAUDE_CONFIG_DIR"] ?? NodePath.join(Electron.app.getPath("home"), ".claude");
-  const harnessItems = () =>
+  const harnessItems = cachedFor(3_000, () =>
     readInventory({
       claudeDir: claudeDir(),
       claudeJson: NodePath.join(Electron.app.getPath("home"), ".claude.json"),
       codexDir: NodePath.join(Electron.app.getPath("home"), ".codex"),
-    });
+    }),
+  );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
+  const memoryTab = createMemoryTab({
+    call: (op, args) => requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    sync: createMemorySync({
+      file: NodePath.join(input.stateDir, "baton-memory.json"),
+      call: (op, args) =>
+        requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    }),
+    notes,
+    stateDir: input.stateDir,
+    refresh: () => home.refresh(),
+    reveal: (file) => Electron.shell.showItemInFolder(file),
+  });
+  const cachedPack = cachedFor(3_000, () =>
+    packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
+  );
+  /** Files he edits by hand or through a row here: forget what was read, so the next draw is true. */
+  const forgetFiles = () => {
+    harnessItems.reset();
+    cachedPack.reset();
+  };
   let sessionsNote: string | null = null;
   /** The job cards as the window last read them; null until the Jobs or Approvals tab has been opened once. */
   let jobsCache: ReadonlyArray<BatonJob> | null = null;
@@ -2066,8 +2141,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
-      ...noteControls(notes.list()),
-      ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
+      ...memoryTab.controls(),
+      ...cachedPack(),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
         ? jobsError !== null
@@ -2134,7 +2209,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             ]),
       {
         id: "v.enabled",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Listen for my wake word",
         hint:
           binary === null
@@ -2146,7 +2221,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.muted",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Mute",
         hint: `Shortcut ${VOICE_HOTKEYS[2]!.accelerator}`,
         kind: "toggle",
@@ -2157,7 +2232,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...(input.updates?.controls() ?? []),
       {
         id: "v.mic",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Microphone",
         kind: "choice",
         value: settings.pinnedLabel ?? "",
@@ -2172,21 +2247,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       ...settings.wakeWords.map((wake) => ({
         id: `v.wake:${wake.word}`,
-        section: "Listening",
+        section: "Wake and listening",
         label: `Wake word: ${wake.word}`,
         kind: "toggle" as const,
         on: wake.enabled,
-        more: true,
       })),
       {
         id: "v.direct",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Send words to the focused session",
         hint: "What you say goes straight to the session you are working in.",
         kind: "toggle",
         on: state === "direct_session",
         disabled: loop === null,
-        more: true,
       },
       {
         id: "v.dictation",
@@ -2356,7 +2429,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
       {
         id: "v.audition",
-        section: "Answers",
+        section: "Answers and voice",
         label: "Hear the voice",
         hint: "Plays one line in the voice chosen above. Play beside a voice plays that one. Tessaya's own voices only.",
         kind: "action",
@@ -2377,7 +2450,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.listenAfterWake",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Listen after waking",
         hint: "How long Tessaya waits for you to START speaking after the wake word. Once you have started, it listens until you stop, however long that is.",
         kind: "choice",
@@ -2386,7 +2459,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.conversation",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Keep the conversation open",
         hint: "After a reply you can answer without the wake word for this long.",
         kind: "choice",
@@ -2398,7 +2471,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.waitMs",
-        section: "Listening",
+        section: "Wake and listening",
         label: "How long I wait for you to finish",
         hint: "A pause this long ends your turn. Unfinished sentences get longer, and speech that resumes soon after joins the same turn.",
         kind: "choice",
@@ -2410,7 +2483,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.verifyWake",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Check the wake word before waking",
         hint: "Tessaya listens to what it just heard and wakes only if the name is in it. Fewer false wakes from TV and music; the pill appears a moment later.",
         kind: "toggle",
@@ -2426,12 +2499,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
-        id: "v.pillCentre",
+        id: "v.pillPlace",
         section: "On screen",
-        label: "Put the pill in the centre",
+        label: "Pill position",
         hint: "Or drag it: it lines up on a grid and snaps to centre, top and bottom. Hold Alt or Shift to place it freely. Right-click it for the same places.",
+        kind: "choice",
+        value: pill.place(),
+        options: [
+          { value: "centre", label: "Centre" },
+          { value: "top", label: "Top" },
+          { value: "bottom", label: "Bottom" },
+        ],
+      },
+      {
+        id: "v.pillMove",
+        section: "On screen",
+        label: "Move the pill",
+        hint: "Shows the pill for ten seconds so you can drag it where you want it.",
         kind: "action",
-        button: "Centre",
+        button: "Move",
       },
       {
         id: "v.pillRest",
@@ -2490,7 +2576,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "bottom", label: "Above the taskbar" },
           { value: "top", label: "At the top" },
         ],
-        more: true,
       },
       {
         id: "v.login",
@@ -2543,6 +2628,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
+    if (memoryTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
     else if (id === "q.ask" || id === "q.clear") {
       const entry = input.extras
@@ -2624,6 +2710,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       saveDictionary(input.stateDir, dictionary);
     } else if (pluginOfControl(id) !== null) {
       const result = setPluginEnabled(claudeDir(), pluginOfControl(id)!, on);
+      forgetFiles();
       if (result === "refused")
         note = "Could not change that plugin; its settings file was left alone.";
       home.refresh();
@@ -2635,9 +2722,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const dir = NodePath.join(input.stateDir, PACK_FOLDER);
       if (act.reset) {
         useDefault(dir, act.id);
+        forgetFiles();
         home.refresh();
       } else {
         const file = fileToEdit(dir, act.id);
+        forgetFiles();
         if (file !== null) void Electron.shell.openPath(file);
         home.refresh();
       }
@@ -2648,6 +2737,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const act = noteAction(id)!;
       if (act.remove) {
         notes.remove(act.id);
+        forgetFiles();
         home.refresh();
       } else {
         const file = notes.list().find((n) => n.id === act.id)?.file;
@@ -2745,7 +2835,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         history?.update(turn.id, { audio: null });
       }
       render();
-    } else if (id === "v.pillCentre") pill.moveTo("centre");
+    } else if (
+      id === "v.pillPlace" &&
+      (value === "centre" || value === "top" || value === "bottom")
+    ) {
+      pill.moveTo(value);
+    } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
@@ -2795,6 +2890,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     openSessions: input.openMainWindow,
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
+      if (tab === "memory") void memoryTab.load();
     },
     appearance: () => settings.appearance,
   });
@@ -2994,6 +3090,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     onSpoken: (text) => core?.noteSpoken(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
+    cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
     onSpeechLevel: pill.speechLevel,

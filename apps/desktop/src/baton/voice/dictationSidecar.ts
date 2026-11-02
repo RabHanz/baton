@@ -53,6 +53,9 @@ export interface LocatedElement {
   readonly name?: string;
   readonly x?: number;
   readonly y?: number;
+  /** The control's size in physical pixels. */
+  readonly width?: number;
+  readonly height?: number;
   readonly error?: string;
 }
 
