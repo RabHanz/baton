@@ -4,7 +4,7 @@
     "app": "notepad",
     "mode": "teach",
     "goal": "show me how to change the Notepad font size to 16",
-    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'",
+    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
     "steps": [
       {
         "say": "Open the Format menu.",
@@ -38,7 +38,7 @@
     "app": "notepad",
     "mode": "teach",
     "goal": "show me how to turn on word wrap in Notepad",
-    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'",
+    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
     "steps": [
       {
         "say": "Open the Format menu.",
@@ -63,7 +63,7 @@
     "app": "notepad",
     "mode": "teach",
     "goal": "show me how to type a sentence in Notepad and save it as fox.txt",
-    "launch": "Remove-Item \"$env:TEMP\\proof\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof\" | Out-Null; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'",
+    "launch": "Remove-Item \"$env:TEMP\\proof\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof\" | Out-Null; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
     "steps": [
       {
         "say": "Type the sentence in the text area.",
@@ -96,7 +96,7 @@
     "app": "notepad",
     "mode": "drive",
     "goal": "set the Notepad font size to 20",
-    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'",
+    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
     "plan": {
       "title": "Set the font size to 20",
       "spoken": "I can see Notepad's Format menu. I'll set the font size to 20.",
@@ -146,7 +146,7 @@
     "app": "notepad",
     "mode": "drive",
     "goal": "type a sentence in Notepad and save it as fox2.txt",
-    "launch": "Remove-Item \"$env:TEMP\\proof\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof\" | Out-Null; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'",
+    "launch": "Remove-Item \"$env:TEMP\\proof\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof\" | Out-Null; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
     "plan": {
       "title": "Type and save",
       "spoken": "I can see Notepad's text area. I'll type the sentence and save it.",
@@ -193,7 +193,7 @@
     "app": "calculator",
     "mode": "teach",
     "goal": "show me how to work out 12 times 34 in Calculator",
-    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5",
+    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5; Start-Sleep 1; Focus 'Calculator'",
     "steps": [
       {
         "say": "Click 1.",
@@ -237,7 +237,7 @@
     "app": "calculator",
     "mode": "drive",
     "goal": "work out 12 times 34 in Calculator",
-    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5",
+    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5; Start-Sleep 1; Focus 'Calculator'",
     "plan": {
       "title": "Work out 12 times 34",
       "spoken": "I can see Calculator. I'll press the keys for 12 times 34.",
@@ -284,7 +284,7 @@
     "app": "calculator",
     "mode": "drive",
     "goal": "add 7 and 8 in Calculator",
-    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5",
+    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5; Start-Sleep 1; Focus 'Calculator'",
     "plan": {
       "title": "Add 7 and 8",
       "spoken": "I can see Calculator. I'll press 7 plus 8.",
@@ -321,7 +321,7 @@
     "app": "paint",
     "mode": "teach",
     "goal": "show me how to draw a line in Paint",
-    "launch": "Get-Process mspaint -EA 0 | Stop-Process -Force; Start-Process mspaint.exe; Start-Sleep 4; Place 'mspaint'",
+    "launch": "Get-Process mspaint -EA 0 | Stop-Process -Force; Start-Process mspaint.exe; Start-Sleep 4; Place 'mspaint'; Start-Sleep 1; Focus 'Paint'",
     "steps": [
       {
         "say": "Drag across the canvas to draw.",
@@ -340,7 +340,7 @@
     "app": "paint",
     "mode": "drive",
     "goal": "draw a line in Paint",
-    "launch": "Get-Process mspaint -EA 0 | Stop-Process -Force; Start-Process mspaint.exe; Start-Sleep 4; Place 'mspaint'",
+    "launch": "Get-Process mspaint -EA 0 | Stop-Process -Force; Start-Process mspaint.exe; Start-Sleep 4; Place 'mspaint'; Start-Sleep 1; Focus 'Paint'",
     "plan": {
       "title": "Draw a line",
       "spoken": "I can see Paint's canvas. I'll draw a line.",
@@ -365,7 +365,7 @@
     "app": "explorer",
     "mode": "teach",
     "goal": "show me how to make a new folder in File Explorer",
-    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4",
+    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4; Start-Sleep 1; Focus 'proof-exp'",
     "steps": [
       {
         "say": "Press Ctrl+Shift+N for a new folder.",
@@ -392,7 +392,7 @@
     "app": "explorer",
     "mode": "drive",
     "goal": "make a new folder called archive in File Explorer",
-    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4",
+    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4; Start-Sleep 1; Focus 'proof-exp'",
     "plan": {
       "title": "Make a folder",
       "spoken": "I can see the folder window. I'll make a new folder.",
@@ -428,7 +428,7 @@
     "app": "explorer",
     "mode": "drive",
     "goal": "open the Windows folder in File Explorer",
-    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4",
+    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4; Start-Sleep 1; Focus 'proof-exp'",
     "plan": {
       "title": "Open the Windows folder",
       "spoken": "I can see the address bar. I'll type the folder in.",
@@ -451,7 +451,7 @@
       ]
     },
     "check": {
-      "type": "title",
+      "type": "windows",
       "contains": "Windows"
     }
   },
@@ -460,7 +460,7 @@
     "app": "settings",
     "mode": "teach",
     "goal": "show me how to find the Windows edition in Settings",
-    "launch": "Start-Process 'ms-settings:'; Start-Sleep 6",
+    "launch": "Start-Process 'ms-settings:'; Start-Sleep 6; Start-Sleep 1; Focus 'Settings'",
     "steps": [
       {
         "say": "Open System.",
@@ -476,7 +476,7 @@
     "done": "Here is the edition.",
     "check": {
       "type": "tree",
-      "contains": "Windows Server|Edition"
+      "contains": "Device specifications|Device name"
     }
   },
   {
@@ -484,7 +484,7 @@
     "app": "settings",
     "mode": "drive",
     "goal": "open the About page in Settings",
-    "launch": "Start-Process 'ms-settings:'; Start-Sleep 6",
+    "launch": "Start-Process 'ms-settings:'; Start-Sleep 6; Start-Sleep 1; Focus 'Settings'",
     "plan": {
       "title": "Open About",
       "spoken": "I can see Settings. I'll open System, then About.",
@@ -507,7 +507,7 @@
     },
     "check": {
       "type": "tree",
-      "contains": "Windows Server|Edition"
+      "contains": "Device specifications|Device name"
     }
   },
   {
@@ -515,7 +515,7 @@
     "app": "edge",
     "mode": "teach",
     "goal": "show me how to open a web page in Edge",
-    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; ",
+    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; Start-Sleep 1; Focus 'Edge'",
     "steps": [
       {
         "say": "Press Ctrl+L to select the address bar.",
@@ -533,7 +533,7 @@
     ],
     "done": "The page is open.",
     "check": {
-      "type": "title",
+      "type": "windows",
       "contains": "page.html|Tessaya Test Page"
     },
     "close": "Get-Process msedge -EA 0|Stop-Process -Force"
@@ -543,7 +543,7 @@
     "app": "edge",
     "mode": "drive",
     "goal": "open the test page in Edge",
-    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; ",
+    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; Start-Sleep 1; Focus 'Edge'",
     "plan": {
       "title": "Open the test page",
       "spoken": "I can see Edge's address bar. I'll type the address.",
@@ -566,7 +566,7 @@
       ]
     },
     "check": {
-      "type": "title",
+      "type": "windows",
       "contains": "page.html|Tessaya Test Page"
     },
     "close": "Get-Process msedge -EA 0|Stop-Process -Force"
@@ -576,7 +576,7 @@
     "app": "explorer",
     "mode": "teach",
     "goal": "show me how to open the Windows folder in File Explorer",
-    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4",
+    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4; Start-Sleep 1; Focus 'proof-exp'",
     "steps": [
       {
         "say": "Press Ctrl+L for the address bar.",
@@ -594,7 +594,7 @@
     ],
     "done": "You are in the Windows folder.",
     "check": {
-      "type": "title",
+      "type": "windows",
       "contains": "Windows"
     }
   },
@@ -603,7 +603,7 @@
     "app": "calculator",
     "mode": "teach",
     "goal": "show me how to add 7 and 8 in Calculator",
-    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5",
+    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5; Start-Sleep 1; Focus 'Calculator'",
     "steps": [
       {
         "say": "Click 7.",
@@ -637,7 +637,7 @@
     "app": "notepad",
     "mode": "drive",
     "goal": "turn on word wrap in Notepad",
-    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'",
+    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
     "plan": {
       "title": "Turn on word wrap",
       "spoken": "I can see Notepad's Format menu. I'll turn on word wrap.",
