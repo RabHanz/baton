@@ -101,7 +101,23 @@ describe("transport 3: the shared computer's dispatch shell", () => {
     expect(codex.setup()).toMatchObject({ state: "not-set-up", needs: "a codex-cloud wrapper running `codex cloud exec`" });
     expect((await codex.detect()).signedIn).toBe(false);
     expect(pickable({ weeklyPercent: null, rejected: false, available: true }).enabled).toBe(true);
+    // The shell's own login state: sign-in needed closes the account, a login about to lapse only says so.
+    expect(pickable({ weeklyPercent: 5, rejected: false, available: true, login: "not-logged-in" })).toEqual({ enabled: false, why: "sign in needed" });
+    expect(pickable({ weeklyPercent: 5, rejected: false, login: "expired" })).toEqual({ enabled: false, why: "sign in needed" });
+    expect(pickable({ weeklyPercent: 5, rejected: false, login: "renew-soon" })).toEqual({ enabled: true, why: "login renews soon" });
+    expect(pickable({ weeklyPercent: null, rejected: false, login: "renew-soon" }).why).toBe("usage unknown; login renews soon");
+    expect(pickable({ weeklyPercent: 5, rejected: false, login: "ok" })).toEqual({ enabled: true, why: null });
     expect(pickable({ weeklyPercent: 5, rejected: false, available: false })).toEqual({ enabled: false, why: "not available" });
+  });
+
+  it("reads each account's login from the shell's usage", async () => {
+    const usage = JSON.stringify({ providers: { claude: { ready: true, needs: null, accounts: {
+      a: { available: true, pct: 3.0, rejected: false, resets_pkt: "Mon 12:00", login: "ok" },
+      b: { available: false, pct: null, rejected: false, resets_pkt: null, login: "not-logged-in" },
+      c: { available: true, pct: 9.0, rejected: false, resets_pkt: "Mon 14:00", login: "renew-soon" },
+    } } } });
+    const u = await claude(fakeExec(() => ({ stdout: usage })).exec).usage();
+    expect(u.ok && u.value.map((x) => [x.account, x.login])).toEqual([["a", "ok"], ["b", "not-logged-in"], ["c", "renew-soon"]]);
   });
 
   it("says in plain words what went wrong, shows a refusal as the shell worded it, and never prints a key", async () => {
