@@ -254,6 +254,10 @@ export const make = Effect.gen(function* () {
             minutes,
             turns: input.turns?.get(terms.workSessionId) ?? 0,
           }),
+          usage: {
+            minutes: Math.floor(minutes),
+            turns: input.turns?.get(terms.workSessionId) ?? 0,
+          },
           terms,
         } as BatonJob,
       ];

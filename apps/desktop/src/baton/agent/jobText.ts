@@ -20,6 +20,10 @@ export const describeJobs = (jobs: ReadonlyArray<BatonJob>): string =>
                 ? "plan ready, waiting for his OK"
                 : GROUP[j.group];
           const cap = j.limitReached === null ? "" : `, ${j.limitReached} limit reached`;
-          return `${j.title} [id: ${j.workSessionId}]: ${waiting}${cap}. May: ${j.permissionsSummary}`;
+          const used =
+            j.usage === undefined || j.phase !== "approved"
+              ? ""
+              : ` Used ${j.usage.minutes} of ${j.terms.limits.wallClockMinutes} min and ${j.usage.turns} of ${j.terms.limits.workerTurns} turns.`;
+          return `${j.title} [id: ${j.workSessionId}]: ${waiting}${cap}.${used} May: ${j.permissionsSummary}`;
         })
         .join("\n");

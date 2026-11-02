@@ -20,6 +20,14 @@ const status = (j: BatonJob): string =>
         ? SECTION[j.group]
         : `Stopped at its ${j.limitReached} limit`;
 
+/** "42 of 120 minutes, 11 of 40 turns": what it has used against its caps, once the plan is agreed. */
+export const usageLine = (j: BatonJob): string => {
+  if (j.usage === undefined || j.phase !== "approved") return "";
+  const mins = j.terms.limits.wallClockMinutes;
+  const turns = j.terms.limits.workerTurns;
+  return `Used ${j.usage.minutes} of ${mins} min and ${j.usage.turns} of ${turns} turns.`;
+};
+
 /** Daily is the one schedule the window offers; the assistant can set any other. */
 export const DAILY_MINUTES = 1440;
 
@@ -38,7 +46,10 @@ export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeCo
             id: `j:${j.workSessionId}`,
             section: SECTION[group],
             label: j.title,
-            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. May: ${j.permissionsSummary}`,
+            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. ${usageLine(j)} May: ${j.permissionsSummary}`.replace(
+              "  ",
+              " ",
+            ),
             kind: "action",
             button: j.phase === "awaiting_agreement" ? "Approve" : "Open T3",
             ...(group === "running" || group === "needs_you" ? { secondary: "Stop" } : {}),
