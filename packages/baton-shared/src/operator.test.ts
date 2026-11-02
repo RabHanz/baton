@@ -168,6 +168,12 @@ describe("Baton's own tools (D143)", () => {
     const note = { tool: "mcp__baton__memory_remember", input: { text: "likes tea" } };
     expect(judgeToolCall(note, off).verdict).toBe("allow");
     expect(judgeToolCall(note, read).verdict).toBe("ask");
+    const commit = { tool: "mcp__baton__commit_add", input: { text: "check the deploy" } };
+    expect(judgeToolCall(commit, off).verdict).toBe("allow");
+    expect(judgeToolCall(commit, read).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__commit_list", input: {} }, read).verdict).toBe(
+      "allow",
+    );
     expect(
       judgeToolCall({ tool: "mcp__baton__memory_forget", input: { id: "a" } }, off).verdict,
     ).toBe("ask");

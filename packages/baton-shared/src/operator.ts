@@ -104,6 +104,7 @@ const BATON_QUIET = new Set([
   "watch_report",
   "morning_brief",
   "needs_me",
+  "commit_list",
   "approvals_list",
   "job_revoke",
   "job_stop",
@@ -124,6 +125,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_schedule",
   "memory_remember",
   "memory_forget",
+  "commit_add",
+  "commit_done",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -234,10 +237,12 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return outgoing || (name === "job_agree" && context.tainted)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    case "commit_add":
+    case "commit_done":
     case "memory_remember":
       // A note outlasts the conversation, so words that came from something it read are not kept unasked.
       return outgoing
-        ? { verdict: "ask", why: "It would keep something it read as a note." }
+        ? { verdict: "ask", why: "It would keep something it read as a note or a commitment." }
         : { verdict: "allow" };
     case "memory_forget":
       return { verdict: "ask", why: "It would delete one of your notes." };

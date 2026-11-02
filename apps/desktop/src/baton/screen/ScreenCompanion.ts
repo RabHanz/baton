@@ -258,6 +258,9 @@ export interface AssistantActions {
       | "brief"
       | "approvals"
       | "needs"
+      | "commit_add"
+      | "commit_done"
+      | "commit_list"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
