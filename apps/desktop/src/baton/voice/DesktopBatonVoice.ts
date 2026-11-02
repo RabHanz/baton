@@ -2152,7 +2152,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             ]),
       {
         id: "v.enabled",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Listen for my wake word",
         hint:
           binary === null
@@ -2164,7 +2164,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.muted",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Mute",
         hint: `Shortcut ${VOICE_HOTKEYS[2]!.accelerator}`,
         kind: "toggle",
@@ -2175,7 +2175,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...(input.updates?.controls() ?? []),
       {
         id: "v.mic",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Microphone",
         kind: "choice",
         value: settings.pinnedLabel ?? "",
@@ -2190,21 +2190,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       ...settings.wakeWords.map((wake) => ({
         id: `v.wake:${wake.word}`,
-        section: "Listening",
+        section: "Wake and listening",
         label: `Wake word: ${wake.word}`,
         kind: "toggle" as const,
         on: wake.enabled,
-        more: true,
       })),
       {
         id: "v.direct",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Send words to the focused session",
         hint: "What you say goes straight to the session you are working in.",
         kind: "toggle",
         on: state === "direct_session",
         disabled: loop === null,
-        more: true,
       },
       {
         id: "v.dictation",
@@ -2374,7 +2372,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
       {
         id: "v.audition",
-        section: "Answers",
+        section: "Answers and voice",
         label: "Hear the voice",
         hint: "Plays one line in the voice chosen above. Play beside a voice plays that one. Tessaya's own voices only.",
         kind: "action",
@@ -2395,7 +2393,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.listenAfterWake",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Listen after waking",
         hint: "How long Tessaya waits for you to START speaking after the wake word. Once you have started, it listens until you stop, however long that is.",
         kind: "choice",
@@ -2404,7 +2402,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.conversation",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Keep the conversation open",
         hint: "After a reply you can answer without the wake word for this long.",
         kind: "choice",
@@ -2416,7 +2414,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.waitMs",
-        section: "Listening",
+        section: "Wake and listening",
         label: "How long I wait for you to finish",
         hint: "A pause this long ends your turn. Unfinished sentences get longer, and speech that resumes soon after joins the same turn.",
         kind: "choice",
@@ -2428,7 +2426,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         id: "v.verifyWake",
-        section: "Listening",
+        section: "Wake and listening",
         label: "Check the wake word before waking",
         hint: "Tessaya listens to what it just heard and wakes only if the name is in it. Fewer false wakes from TV and music; the pill appears a moment later.",
         kind: "toggle",
@@ -2508,7 +2506,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "bottom", label: "Above the taskbar" },
           { value: "top", label: "At the top" },
         ],
-        more: true,
       },
       {
         id: "v.login",
