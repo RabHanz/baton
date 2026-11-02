@@ -3776,3 +3776,5 @@ Memory is one table of short items (kind, scope, source, confidence, pinned, exp
 ## D151 — The vault: secrets are kept encrypted and used without being seen (design in `VAULT.md`)
 
 The memory door's refusal of secrets becomes an offer. Secrets live in one AES-256-GCM file on the owning machine; the key is wrapped by a scrypt passphrase, a recovery key and Windows DPAPI, with a Windows Hello consent gate (a WebAuthn passkey is not relied on in Electron). The assistant lists names and asks to use a secret; Tessaya injects it, scrubs outputs, and logs every use without the value. Financial items are never injected.
+
+**Home no longer asks for a provider that is already working.** The first-run "Choose what Tessaya works through" card shows only while nothing is chosen and the selected default (Claude Code or Codex) is not installed and signed in. A ready default hides it; the Assistant page is the one place to change it.
