@@ -75,6 +75,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "s.accountEmail": "assistant",
   "s.capture": "screen",
   "v.check": "checks",
+  "v.diag": "checks",
   "v.micTest": "checks",
   "v.login": "settings",
   "v.appearance": "settings",
