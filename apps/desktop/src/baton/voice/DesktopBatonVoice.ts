@@ -2527,6 +2527,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     stateDir: input.stateDir,
     refresh: () => home.refresh(),
+    saveRecovery: async (key) => {
+      const r = await Electron.dialog.showSaveDialog({
+        title: "Save the Tessaya recovery key",
+        defaultPath: "tessaya-recovery-key.txt",
+      });
+      if (r.canceled || r.filePath === undefined) return null;
+      NodeFS.writeFileSync(r.filePath, `Tessaya vault recovery key\n\n${key}\n\nIt is the only way in if the passphrase is forgotten. Keep it off this computer.\n`, { mode: 0o600 });
+      return r.filePath;
+    },
+    printRecovery: async (key) => {
+      const win = new Electron.BrowserWindow({ show: false });
+      try {
+        const page = `<body style="font:16px sans-serif"><h2>Tessaya vault recovery key</h2><p style="font:20px monospace">${key}</p><p>It is the only way in if the passphrase is forgotten.</p>`;
+        await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`);
+        return await new Promise<boolean>((resolve) =>
+          win.webContents.print({}, (ok) => resolve(ok)),
+        );
+      } finally {
+        win.destroy();
+      }
+    },
     reveal: (file) => Electron.shell.showItemInFolder(file),
   });
   const memoryTab = createMemoryTab({
@@ -3650,6 +3671,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
     ],
   });
+
+  // Idle, sleep and screen-lock all end here: the window must show locked at once.
+  vaultState.onLock(() => vaultTab.onLock());
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
