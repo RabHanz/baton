@@ -62,6 +62,9 @@ import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
+import { expandSnippets, exportSnippets } from "@t3tools/baton-shared/snippets";
+import { createSnippetStore } from "../writing/snippetStore.ts";
+import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { createCommitmentSync } from "../presence/commitmentSync.ts";
@@ -733,6 +736,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ]);
     return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
   };
+  const snippets = createSnippetStore(input.stateDir);
+  /** Clean-up, then the spoken cues he saved expand (Snippets). */
+  const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
+    const out = await rewriter.clean({
+      raw: biasTranscript(raw, dictionary),
+      mode: chooseMode(app, settings.appModes),
+      level: await levelNow(app),
+    });
+    return { ...out, text: expandSnippets(out.text, snippets.list(), app.exe) };
+  };
+  let snippetNote = "";
   /** What Baton last put in a field, where an app will not say what is around the caret. */
   let lastInsert: { text: string; at: number; key: string } | null = null;
   const windowKey = (app: { readonly exe: string; readonly title: string }) =>
@@ -965,12 +979,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           else NodeFS.writeFileSync(pendingFile, JSON.stringify(chunks));
         } catch {}
       },
-      clean: async (raw) =>
-        rewriter.clean({
-          raw: biasTranscript(raw, dictionary),
-          mode: chooseMode(flushApp, settings.appModes),
-          level: await levelNow(flushApp),
-        }),
+      clean: (raw) => writeClean(raw, flushApp),
       fit: (text) => fitToCaret(text, flushApp),
       paste: (text) =>
         sidecar === null
@@ -1048,11 +1057,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
       const app = await sidecar.foreground().catch(() => focusedApp);
-      const { text } = await rewriter.clean({
-        raw: biasTranscript(request.text, dictionary),
-        mode: chooseMode(app, settings.appModes),
-        level: await levelNow(app),
-      });
+      const { text } = await writeClean(request.text, app);
       return sidecar.paste(await fitToCaret(text, app));
     },
   };
@@ -1540,13 +1545,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** The sidecar held this back for clean-up; it goes only into the window it was spoken for. */
   const deliver = async (raw: string, target: number | null | undefined) => {
-    const cleaned = await rewriter
-      .clean({
-        raw: biasTranscript(raw, dictionary),
-        mode: chooseMode(focusedApp, settings.appModes),
-        level: await levelNow(focusedApp),
-      })
-      .catch(() => null);
+    const cleaned = await writeClean(raw, focusedApp).catch(() => null);
     const { text, failed } = settleOneShot(raw, cleaned);
     const fitted = text.length === 0 ? text : await fitToCaret(text, focusedApp);
     lastDictation = fitted;
@@ -2043,7 +2042,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     audit: vaultState.audit,
     readAudit: () => {
       try {
-        return NodeFS.readFileSync(vaultState.auditFile, "utf8").split("\n").filter((l) => l !== "");
+        return NodeFS.readFileSync(vaultState.auditFile, "utf8")
+          .split("\n")
+          .filter((l) => l !== "");
       } catch {
         return [];
       }
@@ -2429,6 +2430,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...nowControls(nowData, Date.now()),
+      ...snippetControls(snippets.list(), snippetNote),
       ...presenceControls(settings),
       ...memoryTab.controls(),
       ...vaultTab.controls(),
@@ -3047,6 +3049,41 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id.startsWith("pr.")) {
       const patch = presencePatch(id, value, settings);
       if (patch !== null) save(patch);
+    } else if (id.startsWith("sn.")) {
+      const act = snippetAction(id, value);
+      if (act?.kind === "put") {
+        snippetNote = snippets.put(act.snippet) ? "" : "The list is full (500).";
+      } else if (act?.kind === "bad") {
+        snippetNote = "That is not a snippet. Write it as cue = the text it expands to.";
+      } else if (act?.kind === "remove") snippets.remove(act.cue);
+      else if (act?.kind === "import") {
+        void Electron.dialog
+          .showOpenDialog({
+            properties: ["openFile"],
+            filters: [{ name: "Snippets", extensions: ["json", "csv", "txt"] }],
+          })
+          .then((picked) => {
+            const file = picked.filePaths[0];
+            if (picked.canceled || file === undefined) return;
+            const done = snippets.importText(NodeFS.readFileSync(file, "utf8"));
+            snippetNote = `Imported ${done.added}${done.skipped > 0 ? `; ${done.skipped} lines were not snippets` : ""}.`;
+            render();
+          })
+          .catch(() => undefined);
+      } else if (act?.kind === "export") {
+        void Electron.dialog
+          .showSaveDialog({
+            defaultPath: "snippets.json",
+            filters: [{ name: "Snippets", extensions: ["json"] }],
+          })
+          .then((picked) => {
+            if (picked.canceled || picked.filePath === undefined) return;
+            NodeFS.writeFileSync(picked.filePath, exportSnippets(snippets.list()));
+            snippetNote = "Exported.";
+            render();
+          })
+          .catch(() => undefined);
+      }
     } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
     else if (id.startsWith("now.")) {
       const act = nowAction(id);
