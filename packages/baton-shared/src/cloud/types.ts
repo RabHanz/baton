@@ -1,9 +1,6 @@
 /**
- * Cloud dispatch, whatever the harness: one small interface that Claude (over the central SSH shell),
- * Codex Cloud and any later provider implement, so the approval card, the Cloud panel and the assistant's
- * tools never name a provider. Pure: a provider is given an `Exec` port and does no I/O of its own.
- * Provider ids and account names follow T3's vocabulary (`driver` is the T3 driver kind; an account is
- * what T3 calls a provider instance, here the name of its login folder).
+ * Cloud dispatch for any harness: one interface that every provider implements, so the card, the
+ * Cloud page and the assistant's tools never name one. Pure: a process runner is injected.
  */
 
 export type ProviderId = "claude" | "codex" | "gemini" | "cursor" | "opencode" | "grok";
