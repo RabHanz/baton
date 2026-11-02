@@ -12,19 +12,19 @@ Quota: 41 images in the two rounds (six in round one, 35 here), about 22 seconds
 
 ## The twelve
 
-| Concept | Idea | Note |
-| --- | --- | --- |
-| Wave B (his pick) | Horizontal waveform bars shaped into a B | Reads as a B at 64 px; blurs at 16 px |
-| Block wave B | A solid B with sound lines cut through it | A B at every size; bolder, plainer |
-| Downbeat (his pick) | An open ring with a dot in the gap | Cleanest at 16 px; a spinner to some eyes |
-| Listening ripples | Open arcs spreading from a dot | Always listening; reads at 64 px; recommended |
-| Attentive arc | A dot under an arch | Presence; could read as a sleeping eye |
-| Crescent and dot | A disc holding a dot | Simple; moon-like |
-| Echo B (his pick) | A B of nested outlines | A B at 64 px and up |
-| Striped echo B | A B with a block spine and stripes | Reads as a B; busier |
-| Speaker B | A solid B with two ring cut-outs | A B at every size; a speaker to some eyes |
-| Many into one | Five lines converging into one | One assistant across sessions; the clearest idea; weak at 16 px |
-| Companion frame | A dot working inside a frame | Calm; generic at small sizes |
-| Open iris | A ring split by a slit | Plain; holds well |
+| Concept             | Idea                                      | Note                                                            |
+| ------------------- | ----------------------------------------- | --------------------------------------------------------------- |
+| Wave B (his pick)   | Horizontal waveform bars shaped into a B  | Reads as a B at 64 px; blurs at 16 px                           |
+| Block wave B        | A solid B with sound lines cut through it | A B at every size; bolder, plainer                              |
+| Downbeat (his pick) | An open ring with a dot in the gap        | Cleanest at 16 px; a spinner to some eyes                       |
+| Listening ripples   | Open arcs spreading from a dot            | Always listening; reads at 64 px; recommended                   |
+| Attentive arc       | A dot under an arch                       | Presence; could read as a sleeping eye                          |
+| Crescent and dot    | A disc holding a dot                      | Simple; moon-like                                               |
+| Echo B (his pick)   | A B of nested outlines                    | A B at 64 px and up                                             |
+| Striped echo B      | A B with a block spine and stripes        | Reads as a B; busier                                            |
+| Speaker B           | A solid B with two ring cut-outs          | A B at every size; a speaker to some eyes                       |
+| Many into one       | Five lines converging into one            | One assistant across sessions; the clearest idea; weak at 16 px |
+| Companion frame     | A dot working inside a frame              | Calm; generic at small sizes                                    |
+| Open iris           | A ring split by a slit                    | Plain; holds well                                               |
 
 Recommendation: Listening ripples for the idea (always listening, and not a letter), with Wave B as the B route and Speaker B as the safe B. The icon is not replaced and no kit is built until he picks.

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
  * Optional input bindings, any state to any key or mouse button (his go-to: the middle button to
  * start listening, or left and right together). Voice alone always works; none of this is on by

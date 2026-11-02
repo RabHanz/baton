@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-wall-clock-in-tests -- Baton file predating the rule (D82) */
 import { describe, expect, it } from "vite-plus/test";
 
 import { APP_SCRIPT } from "./appScript.ts";

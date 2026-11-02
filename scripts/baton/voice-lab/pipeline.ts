@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 /**
  * The whole voice path on real parts, from a WAV instead of the mic: openWakeWord, Silero, Parakeet
  * in the sidecar, the one brain on his claude, the real router and grammar. Nothing here opens a

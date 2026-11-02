@@ -271,16 +271,16 @@ cannot change a run in flight).
 
 **Automatic**
 
-| Step | What happens |
-| --- | --- |
-| Look | fetch; if the pin is upstream's tip, publish `nothing` and stop; if the pin is more than 3 days behind, open or comment on an issue |
-| Disk | stop with `disk` if the volume is below its floor |
-| Apply | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, a two-parent commit so upstream's history stays reachable |
-| Gates | `gates.sh --install --build`: patch series, typecheck, lint, tests, build |
-| Merge | green: PR opened and merged; older `baton/auto-sync-*` PRs are closed with a comment saying they are superseded |
-| Tag | `apps/desktop` changed: the `baton-v<version>` tag, which builds the release |
+| Step   | What happens                                                                                                                                                                                                                                                          |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Look   | fetch; if the pin is upstream's tip, publish `nothing` and stop; if the pin is more than 3 days behind, open or comment on an issue                                                                                                                                   |
+| Disk   | stop with `disk` if the volume is below its floor                                                                                                                                                                                                                     |
+| Apply  | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, a two-parent commit so upstream's history stays reachable                                                                               |
+| Gates  | `gates.sh --install --build`: patch series, typecheck, lint, tests, build                                                                                                                                                                                             |
+| Merge  | green: PR opened and merged; older `baton/auto-sync-*` PRs are closed with a comment saying they are superseded                                                                                                                                                       |
+| Tag    | `apps/desktop` changed: the `baton-v<version>` tag, which builds the release                                                                                                                                                                                          |
 | Deploy | build `<upstream version>-baton.<N+1>`, rehearse it on a snapshot of live userdata, deploy beside on signzart then onnyx; a box that does not stay healthy for a minute is rolled back with the `rollback.sh` the deploy wrote, an issue is opened, and the run stops |
-| Status | every ending writes `upstream-sync.json` (to `~/.t3/baton-autosync/last-status.json` and the `baton/status` branch): `result` is `merged`, `nothing`, `conflict`, `gates`, `deploy` or `disk`; for a conflict it names the patches and the files |
+| Status | every ending writes `upstream-sync.json` (to `~/.t3/baton-autosync/last-status.json` and the `baton/status` branch): `result` is `merged`, `nothing`, `conflict`, `gates`, `deploy` or `disk`; for a conflict it names the patches and the files                      |
 
 **Manual (today)**
 

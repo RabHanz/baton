@@ -4,7 +4,12 @@ import * as NodeTest from "node:test";
 import { syncStatus } from "./sync-status.mjs";
 
 NodeTest.test("a conflict names the patches and files; a merge is ok", () => {
-  const stopped = syncStatus({ result: "conflict", patches: ["0008-web-panes.patch"], files: ["apps/web/src/components/ChatView.tsx"], behind: 692 });
+  const stopped = syncStatus({
+    result: "conflict",
+    patches: ["0008-web-panes.patch"],
+    files: ["apps/web/src/components/ChatView.tsx"],
+    behind: 692,
+  });
   NodeAssert.equal(stopped.ok, false);
   NodeAssert.deepEqual(stopped.conflictingFiles, ["apps/web/src/components/ChatView.tsx"]);
   NodeAssert.match(stopped.hint, /no longer applies/);

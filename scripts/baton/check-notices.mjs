@@ -16,7 +16,11 @@ const read = (root, file) => {
 };
 
 /** The npm packages Tessaya's own workspaces add (not workspace links, not upstream's). */
-const BATON_PACKAGES = ["packages/baton-voice", "packages/baton-shared", "packages/baton-contracts"];
+const BATON_PACKAGES = [
+  "packages/baton-voice",
+  "packages/baton-shared",
+  "packages/baton-contracts",
+];
 /** apps/desktop mixes upstream's dependencies with ours; only these are ours to account for. */
 const DESKTOP_OURS = ["electron"];
 
@@ -25,7 +29,12 @@ export const wanted = (root) => {
   for (const dir of BATON_PACKAGES) {
     const pkg = JSON.parse(read(root, `${dir}/package.json`) ?? "{}");
     for (const [name, version] of Object.entries(pkg.dependencies ?? {})) {
-      if (String(version).startsWith("workspace:") || name.startsWith("@t3tools/") || name === "effect") continue;
+      if (
+        String(version).startsWith("workspace:") ||
+        name.startsWith("@t3tools/") ||
+        name === "effect"
+      )
+        continue;
       keys.add(`npm:${name}`);
     }
   }
@@ -59,17 +68,27 @@ export const check = (root = ROOT) => {
   for (const key of [...wanted(root)].toSorted()) {
     const e = entries[key];
     if (e === undefined) {
-      problems.push(`${key}: no entry in docs/baton/notices.json (add its licence, holder and a mention)`);
+      problems.push(
+        `${key}: no entry in docs/baton/notices.json (add its licence, holder and a mention)`,
+      );
       continue;
     }
-    if (!text.includes(e.mention)) problems.push(`${key}: THIRD_PARTY_NOTICES.md never mentions "${e.mention}"`);
-    const file = e.file ?? notices.licenceFiles?.[e.licence] ?? (e.licence.includes(" OR ") ? notices.licenceFiles?.[e.licence.split(" OR ")[0]] : undefined);
-    if (file === undefined || read(root, file) === null) problems.push(`${key}: the licence text for ${e.licence} is missing`);
+    if (!text.includes(e.mention))
+      problems.push(`${key}: THIRD_PARTY_NOTICES.md never mentions "${e.mention}"`);
+    const file =
+      e.file ??
+      notices.licenceFiles?.[e.licence] ??
+      (e.licence.includes(" OR ") ? notices.licenceFiles?.[e.licence.split(" OR ")[0]] : undefined);
+    if (file === undefined || read(root, file) === null)
+      problems.push(`${key}: the licence text for ${e.licence} is missing`);
   }
   return problems;
 };
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("check-notices.mjs")) {
+if (
+  import.meta.url === `file://${process.argv[1]}` ||
+  process.argv[1]?.endsWith("check-notices.mjs")
+) {
   const problems = check();
   if (problems.length > 0) {
     console.error(`check-notices: ${problems.length} problem(s)\n- ${problems.join("\n- ")}`);

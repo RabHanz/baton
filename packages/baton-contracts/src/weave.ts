@@ -35,7 +35,10 @@ export const BatonWeaveSendResult = Schema.Struct({ weave: BatonWeave });
 export const BatonWeaveListInput = Schema.Struct({ limit: Schema.optionalKey(Schema.Number) });
 export const BatonWeaveListResult = Schema.Struct({ items: Schema.Array(BatonWeave) });
 export const BatonWeaveTickInput = Schema.Struct({});
-export const BatonWeaveTickResult = Schema.Struct({ delivered: Schema.Number, replied: Schema.Number });
+export const BatonWeaveTickResult = Schema.Struct({
+  delivered: Schema.Number,
+  replied: Schema.Number,
+});
 
 /** Said in plain words: no such session, a secret, a name that fits two. */
 export class BatonWeaveError extends Schema.TaggedError<BatonWeaveError>()("BatonWeaveError", {

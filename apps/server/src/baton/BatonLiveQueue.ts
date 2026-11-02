@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalDateInEffect:off
 /**
  * Writes into the live-thread message queue that `scripts/baton/live/baton-live-acp.mjs` drains:

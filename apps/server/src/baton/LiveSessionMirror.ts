@@ -575,9 +575,10 @@ const MEDIA_TOOL_PATH: Record<string, string> = {
  */
 export const mediaPathsOf = (tool: string, input: unknown): ReadonlyArray<string> => {
   const key = MEDIA_TOOL_PATH[tool];
-  const path = key !== undefined && typeof input === "object" && input !== null
-    ? (input as Record<string, unknown>)[key]
-    : undefined;
+  const path =
+    key !== undefined && typeof input === "object" && input !== null
+      ? (input as Record<string, unknown>)[key]
+      : undefined;
   if (typeof path !== "string") return [];
   const kind = mediaKindFromPath(path);
   return kind === "image" || kind === "video" ? [path] : [];

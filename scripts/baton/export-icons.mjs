@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/namespace-node-imports -- Baton file predating the rule (D82) */
 // Renders Baton's mark (apps/desktop/src/baton/voice/trayMark.ts) to the app and installer icons into assets/baton/
 // and a sheet of every tray state. Run: node scripts/baton/export-icons.mjs [frames-dir]
 // Needs playwright's chromium and ImageMagick `convert`. macOS .icns is still made by the build.

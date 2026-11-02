@@ -126,10 +126,15 @@ export const createVaultHost = (ports: VaultHostPorts) => {
           `Use ${item.name}?`,
           `Purpose: ${args.purpose}\nWhere: ${args.target}\nHow: ${args.how === "type" ? "type it into the focused field" : args.how === "paste" ? "put it on the clipboard for 10 seconds" : "give it to one command"}${ports.tainted() ? "\n\nThis follows something I read, so I am asking." : ""}\n\nYou will not see it and neither will I.`,
         );
-        const verified = yes ? ((await ports.hello?.(`Let Tessaya use ${item.name} for ${args.target}`)) ?? "unavailable") : "declined";
+        const verified = yes
+          ? ((await ports.hello?.(`Let Tessaya use ${item.name} for ${args.target}`)) ??
+            "unavailable")
+          : "declined";
         if (!yes || verified === "declined") {
           note({ ...entry, outcome: "declined" });
-          return yes ? "Windows Hello did not confirm it is him. Nothing was used." : "He said no. Nothing was used.";
+          return yes
+            ? "Windows Hello did not confirm it is him. Nothing was used."
+            : "He said no. Nothing was used.";
         }
         if (item.policy.mode === "domain")
           grants.set(grantKey(item.name, args.target), now() + item.policy.minutes * 60_000);

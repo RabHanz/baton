@@ -95,4 +95,4 @@ obviously fake values).
 ## 8. Order of work
 
 1. This note. 2. Crypto, store and service (desktop). 3. Tools, gate, scrubbing, the offer and the History redaction.
-4. The Vault tab and the lock button.
+2. The Vault tab and the lock button.
