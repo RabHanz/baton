@@ -41,11 +41,17 @@ jobs:
           TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
           RUSTFLAGS: -C target-feature=+crt-static
         run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
+      - name: Install ffmpeg for the recordings
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y > /dev/null || echo "ffmpeg did not install: no clips this run"
+          ffmpeg -version | head -1 || true
       - name: Run the task set
         shell: bash
         env:
           SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
           HANDS_OUT: ${{ github.workspace }}/hands-out
+          HANDS_RECORD: "1"
         run: |
           mkdir -p hands-out
           node scripts/baton/hands-ci/run.ts 2>&1 | tee hands-out/run.log
