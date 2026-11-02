@@ -236,4 +236,4 @@ The set did not pass first time. Eight runs to get here, each a real fix:
 Dialogs that need a mouse drag to resolve, apps that expose no names to UI Automation (the screenshot check covers
 Paint only as "something changed"), Windows with a different language (the labels are English), and High DPI scaling
 (the runner is 100%). The model-planned variants and the laptop's own apps are the next measure, per the comparison
-note in `hands-comparison-2026-11-03.md`.
+note in `computer-use-sota-2026-11-03.md`.

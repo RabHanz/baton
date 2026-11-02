@@ -1,6 +1,6 @@
 # Computer use: the state of the art, read from source, and what Tessaya's hands took from it (2026-11-03)
 
-Replaces `hands-comparison-2026-11-03.md`, which read front pages only. This one cloned the repositories at the commits
+Replaces the earlier `hands-comparison-2026-11-03.md` (deleted), which read front pages only. This one cloned the repositories at the commits
 below, read the code paths named in each section, and ran a measured bake-off on the CI Windows desktop. Paths are
 inside each clone at that commit; line numbers are the ones read. Vendor claims are marked as claims.
 
@@ -51,4 +51,78 @@ read from their public docs only; no source exists to read.
 
 ## Bake-off on the CI Windows desktop
 
-RESULTS_PLACEHOLDER
+Workflow `Baton hands bake-off` (`.github/workflows/baton-hands-bakeoff.yml`), `windows-2022`, 1024x768, the 13 tasks of
+`run.ts` (the 12 of `hands-loop-tasks.md` plus `big-tree`: a folder of 400 files), **three runs of each variant, each on its own runner**.
+The code under test is the product's tool table, input driver and UI Automation sidecar. Counting rules, so the numbers can be read honestly:
+
+- **Planner is scripted** (no model login on a runner; no paid service allowed). "Model turns" is what a planner would spend: one per tool call, an
+  `act_batch` counting once. It is a proxy, not a measured model call.
+- **Success** is judged outside the UI (file bytes, registry value, folder on disk, clipboard, pixel diff), as in `hands-loop-tasks.md`.
+- **Call ms** is the harness's wall time per tool call, including one sidecar process start per call (about 60 ms); in the product the sidecar is
+  already running, so the absolute numbers are higher than a product call, the differences are the UI Automation work.
+- **Misclicks**: in run A the sidecar reported when the topmost thing at a found control's centre is not that control (a click would land
+  elsewhere). It reported 0 in every run of every variant (the check was removed afterwards, unproven): **none of the 13 tasks contains an occluded control, so this measures nothing yet.**
+- Not measured: whether a model plans well; the gate (harness presses Enter directly); other languages and DPI.
+
+### Variants
+
+| Variant | What it is                                                                                                                                           |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| base    | the hands as on main: `FindAll`, then five cross-process property reads per element; coordinate clicks; one step per turn                            |
+| cache   | UFO's idea: `FindAllBuildCache` with a cache request, properties read from the cache (`uia.rs`)                                                      |
+| invoke  | cache, plus acting through the control's own UI Automation pattern with no pointer (cua's accessibility route, UFO's `set_edit_text`)                |
+| batch   | cache, plus `act_batch`: up to 6 steps per turn, stops at a failure or when the keyboard's window changes (UFO speculative, Browser Use `multi_act`) |
+
+### Results
+
+Run A (run 41546097396, all four variants; "invoke" and "batch" also acted by pattern):
+
+| Variant             | Runs | Tasks passed | Tool calls/task | Model turns/task | p50 call ms | p90 call ms | Seconds/task |
+| ------------------- | ---- | ------------ | --------------- | ---------------- | ----------- | ----------- | ------------ |
+| base                | 3    | 39/39        | 4.8             | 5.0              | 147         | 364         | 7.1          |
+| cache               | 3    | 39/39        | 4.8             | 5.0              | 99          | 265         | 6.9          |
+| invoke              | 3    | 39/39        | 4.8             | 5.0              | 95          | 266         | 6.8          |
+| batch (with invoke) | 3    | 39/39        | 3.4             | 3.6              | 129         | 368         | 6.8          |
+
+Run B (run 41547153837, the code that ships: cache and batch with coordinate clicks, no pattern actions):
+
+| Variant | Runs | Tasks passed | Tool calls/task | Model turns/task | p50 call ms | p90 call ms | Seconds/task |
+| ------- | ---- | ------------ | --------------- | ---------------- | ----------- | ----------- | ------------ |
+| base    | 3    | 39/39        | 4.8             | 5.0              | 137         | 336         | 7.2          |
+| cache   | 3    | 39/39        | 4.9             | 5.0              | 113         | 257         | 7.2          |
+| batch   | 3    | 39/39        | 3.4             | 3.6              | 130         | 380         | 7.0          |
+
+`big-tree` (`ui_tree` on a 400-file folder), median of 12 calls: base 366 / 374 ms (A / B), cache 271 / 259 ms. On the small windows of
+the other tasks `ui_tree` is 77 ms base vs 68 ms cache (B). Per task, batching cut turns for notepad-save-as 6 to 3, menu-by-name 4 to 3,
+word-wrap 5 to 3, calculator 13 to 4, late-dialog 5 to 2; the rest are unchanged.
+
+### Verdicts, by the rule "success rises without more misclicks, or latency falls at equal success"
+
+- **cache: counts.** Success equal (39/39), p50 call 147 to 99 (A) and 137 to 113 (B), p90 364 to 265 and 336 to 257, and 28% off the big-window
+  tree read. Shipped (`native/baton-dictation/src/uia.rs`).
+- **batch: counts, on turns not on call time.** Success equal, misclicks equal (0), model turns 5.0 to 3.6 (28% fewer), calculator 13 to 4. A batch
+  call takes 250-2200 ms by itself, so p50 per call does not fall (130 vs 113); what falls is the number of model round trips, which in a real run is
+  where seconds go (not measured here). Shipped as `act_batch`. Each step is judged by the existing `judgeToolCall` as if it were alone (strictest
+  verdict wins), a batch stops when `windowKey` changes (a `wait_for` step re-anchors on purpose), and the failure guard still wraps the batch.
+- **invoke: does not count, not shipped.** Equal success, p50 99 to 95 ms (inside the run-to-run spread). Its first attempt also **failed 18 of 36
+  tasks**: Invoke on a File Explorer list item opens the folder (a double-click), so "select to rename" navigated into it, and the open window then
+  failed every later task. Fixed by selecting list, tree and tab items instead (run A is the fixed version), but no gain was shown, so the code is out
+  of the product. It might still pay where a mouse click is unreliable (occlusion, user moving the pointer); no task here exercises that.
+- **Tree diff, hybrid detection, per-app memory: not built.** Hybrid UIA plus vision needs a detector (OmniParser weights, a GPU, a per-version
+  licence check) and a model to read it. Per-app memory needs a model-planned second run. Neither can be measured with a scripted planner. A tree diff
+  would save tokens and the scripted planner cannot show that either (tree bytes per task are 1.7 KB).
+
+## What is still lacking
+
+1. **No model-planned measurement.** The biggest unknown is how the subscription model does with `act_batch` and with the full tool set on real apps.
+   A runner with a model login, or an overnight run on a machine that has one, is the next step; the harness takes a planner swap.
+2. **No occlusion, DPI, multi-monitor or non-English task** in the set, so misclick counts are all zero for want of cases.
+3. **No effect classes.** cua returns `confirmed / suspected_noop / refused` with a readback per action; Tessaya still says "Clicked" and "Pressed"
+   (the Ctrl+C no-op in #52 is this gap). This is the most valuable next port.
+4. **No pixel route when the tree is empty** other than the model's own pointing. The Anthropic `zoom` action and Gemini/OpenAI coordinate
+   models show where the closed systems put effort; OmniParser is the open option and costs a GPU.
+5. **`click_element` does not look at what covers a control.** `ClickableElementDetector` and paint-order filtering in Browser Use do.
+6. **The gate does not read `click_element`'s `label`** (only `why`): `actionText` in `packages/baton-shared/src/operator.ts` has no `label` key, so a
+   click on a button called "Delete" with a harmless `why` is allowed. Found while writing the batch gate test; left as is because the brief said keep
+   the gate intact. One word added to that list fixes it.
+7. **p50 step time in a real run** (model plus tools) is still not measured; the table above is tool time only.
