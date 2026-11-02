@@ -16,6 +16,9 @@ export type RetryPlan =
 type Row = Pick<HistoryTurn, "kind" | "status" | "audio" | "delivery"> &
   Partial<Pick<HistoryTurn, "raw" | "cleaned">>;
 
+export const hasRecording = (turn: Pick<HistoryTurn, "audio">): boolean =>
+  turn.audio !== null && turn.audio.trim() !== "";
+
 /** Recognition again when a recording exists; otherwise only the clean-up retry, and only where it applies. */
 export const retryPlan = (turn: Row): RetryPlan => {
   if (turn.audio !== null && turn.audio.trim() !== "") return { kind: "transcript" };
@@ -26,7 +29,15 @@ export const retryPlan = (turn: Row): RetryPlan => {
 };
 
 export interface MenuItem {
-  readonly id: "copy" | "copy_raw" | "undo_ai" | "retry_transcript" | "retry" | "delete";
+  readonly id:
+    | "copy"
+    | "copy_raw"
+    | "undo_ai"
+    | "play"
+    | "retry_transcript"
+    | "retry"
+    | "report"
+    | "delete";
   readonly label: string;
   readonly enabled: boolean;
   /** Said plainly when the item cannot run. */
@@ -39,6 +50,10 @@ export const rowMenu = (turn: Row, busy: boolean): ReadonlyArray<MenuItem> => {
   const items: MenuItem[] = [
     { id: "copy", label: "Copy", enabled: true },
     { id: "copy_raw", label: "Copy as heard", enabled: true },
+    // Hearing it again is how he judges whether the words are wrong or the recording was.
+    hasRecording(turn)
+      ? { id: "play", label: "Play the recording", enabled: true }
+      : { id: "play", label: "Play the recording", enabled: false, note: NO_RECORDING },
     plan.kind === "transcript"
       ? { id: "retry_transcript", label: "Retry transcript", enabled: !busy }
       : { id: "retry_transcript", label: "Retry transcript", enabled: false, note: plan.why },
@@ -53,6 +68,7 @@ export const rowMenu = (turn: Row, busy: boolean): ReadonlyArray<MenuItem> => {
     items.splice(2, 0, { id: "undo_ai", label: "Undo AI edit", enabled: true });
   }
   if (plan.kind === "cleanup") items.push({ id: "retry", label: "Retry clean-up", enabled: !busy });
+  items.push({ id: "report", label: "Report this transcript", enabled: true });
   items.push({ id: "delete", label: "Delete", enabled: true });
   return items;
 };

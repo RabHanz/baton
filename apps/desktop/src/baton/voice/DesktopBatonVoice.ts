@@ -31,6 +31,7 @@ import {
 } from "@t3tools/baton-shared/dictationCleanup";
 import {
   createVoiceRouter,
+  encodeWav,
   type BatonVoiceCore,
   type SttProvider,
   type VoiceCoreEvent,
@@ -336,7 +337,15 @@ import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
-import { NO_RECORDING, retryPlan, rowMenu, useVersion, withRetry } from "./historyRetry.ts";
+import {
+  hasRecording,
+  NO_RECORDING,
+  retryPlan,
+  rowMenu,
+  useVersion,
+  withRetry,
+} from "./historyRetry.ts";
+import { buildTranscriptReport } from "./transcriptReport.ts";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -1196,6 +1205,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       history.remove(id);
       for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
       return { deleted: true };
+    } else if (action === "play") {
+      // The kept clips, joined, as a WAV the page plays itself: nothing leaves this computer.
+      if (!hasRecording(turn)) return { failed: NO_RECORDING };
+      try {
+        const parts: Int16Array[] = [];
+        for (const path of clipPaths(turn.audio ?? "")) {
+          parts.push(await encoder.decode(NodeFS.readFileSync(path)));
+        }
+        const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+        let at = 0;
+        for (const p of parts) {
+          pcm.set(p, at);
+          at += p.length;
+        }
+        return {
+          playback: `data:audio/wav;base64,${Buffer.from(encodeWav(pcm)).toString("base64")}`,
+        };
+      } catch {
+        return { failed: "That recording could not be played" };
+      }
+    } else if (action === "report") {
+      const file = NodePath.join(input.stateDir, "reports", `transcript-${id}.md`);
+      NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+      NodeFS.writeFileSync(
+        file,
+        buildTranscriptReport(turn, { version: input.appVersion, platform: input.platform }),
+        { mode: 0o600 },
+      );
+      Electron.shell.showItemInFolder(file);
+      return { reported: file };
     } else if (action === "retry_transcript") {
       // Not while he is dictating, and one at a time. The original stays as it was if this fails.
       if (retrying !== null || dictatingByVoice || releaseRecordingEscape !== null) {
@@ -1667,7 +1706,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs: jobsCache ?? [],
         sessions: input.sessions?.rows() ?? [],
         findings: await watchFindings(),
-        extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now()), ...cloudLoginsNeeds(cloudNow(), Date.now())],
+        extra: [
+          ...needsFromCommitments(commitments.list(), Date.now()),
+          ...syncNeeds(syncNow, Date.now()),
+          ...cloudLoginsNeeds(cloudNow(), Date.now()),
+        ],
         config: needsConfig(),
         external: externalNeeds,
         now: Date.now(),
@@ -1728,11 +1771,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           fromWeb: args["from_web_or_file"] === true,
         });
       }
-      if (op === "cloud_status") return cloud.tool.status(String(args["id"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
-      if (op === "cloud_list") return cloud.tool.list(args["mine"] === true, typeof args["label"] === "string" ? args["label"] : undefined);
-      if (op === "cloud_cancel") return cloud.tool.cancel(String(args["id"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
+      if (op === "cloud_status")
+        return cloud.tool.status(
+          String(args["id"] ?? ""),
+          typeof args["provider"] === "string" ? args["provider"] : undefined,
+        );
+      if (op === "cloud_list")
+        return cloud.tool.list(
+          args["mine"] === true,
+          typeof args["label"] === "string" ? args["label"] : undefined,
+        );
+      if (op === "cloud_cancel")
+        return cloud.tool.cancel(
+          String(args["id"] ?? ""),
+          typeof args["provider"] === "string" ? args["provider"] : undefined,
+        );
       if (op === "cloud_usage") return cloud.tool.usage();
-      if (op === "cloud_approve") return cloud.tool.approve(String(args["id"] ?? ""), String(args["account"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
+      if (op === "cloud_approve")
+        return cloud.tool.approve(
+          String(args["id"] ?? ""),
+          String(args["account"] ?? ""),
+          typeof args["provider"] === "string" ? args["provider"] : undefined,
+        );
       if (op === "trust_show") return describeTrust(trustData(), Date.now());
       if (op === "activity_today") return describeToday(trustData().entries, new Date());
       if (op === "permission_off") {
@@ -1752,7 +1812,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
-          extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now()), ...cloudLoginsNeeds(cloudNow(), Date.now())],
+          extra: [
+            ...needsFromCommitments(commitments.list(), Date.now()),
+            ...syncNeeds(syncNow, Date.now()),
+            ...cloudLoginsNeeds(cloudNow(), Date.now()),
+          ],
           config: needsConfig(),
           external: externalNeeds,
           now: Date.now(),
@@ -2425,7 +2489,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     let modelsReady = 0;
     const showWarm = () => {
       const total = Math.round((Date.now() - warmStarted) / 1000);
-      const reading = speechLoadMs > 0 ? `, reading the speech model for ${Math.round(speechLoadMs / 1000)} s` : "";
+      const reading =
+        speechLoadMs > 0
+          ? `, reading the speech model for ${Math.round(speechLoadMs / 1000)} s`
+          : "";
       note = `Starting: loading the speech models (${modelsReady} of 2 ready${reading}, ${total} s).${total > 30 ? " This computer is busy; it is still working." : ""}`;
       render();
     };
@@ -3203,7 +3270,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     dir: NodePath.join(input.stateDir, "cloud"),
     hub: null,
     ask: async (q) =>
-      (await input.extras?.ask({ title: q.title, detail: q.detail, buttons: q.buttons, cancel: q.cancel, armMs: q.armMs, expiresMs: 120_000 })) ?? q.cancel,
+      (await input.extras?.ask({
+        title: q.title,
+        detail: q.detail,
+        buttons: q.buttons,
+        cancel: q.cancel,
+        armMs: q.armMs,
+        expiresMs: 120_000,
+      })) ?? q.cancel,
     changed: () => pushHome(),
     now: () => Date.now(),
   });
@@ -4217,11 +4291,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       void cloud.click(id).catch(() => undefined);
     } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
     else if (id === "cl.set.on") saveCloud({ on });
-    else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh")) saveCloud({ transport: value });
-    else if (id === "cl.set.cap") saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
-    else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey)(:save|:reset)$/.test(id)) {
-      const field = /^cl\.set\.(\w+):/.exec(id)![1] as "codexEnv" | "sshHost" | "sshUser" | "machineKey" | "approverKey";
-      saveCloud({ [field]: id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "" });
+    else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh"))
+      saveCloud({ transport: value });
+    else if (id === "cl.set.cap")
+      saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
+    else if (
+      /^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey)(:save|:reset)$/.test(id)
+    ) {
+      const field = /^cl\.set\.(\w+):/.exec(id)![1] as
+        | "codexEnv"
+        | "sshHost"
+        | "sshUser"
+        | "machineKey"
+        | "approverKey";
+      saveCloud({
+        [field]:
+          id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "",
+      });
     } else if (id === "v.dnd") save({ doNotDisturb: on });
     else if (id === "v.snooze") toggleSnooze();
     else if (id === "q.setupDone") {

@@ -454,6 +454,8 @@ function hact(t, action) {
   ipc.invoke('baton-history:act', t.id, action).then(r => {
     hbusy.delete(t.id);
     if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id);
+    else if (r && r.playback) { hplay(r.playback); }
+    else if (r && r.reported) { hnote = 'Saved a report you can read and attach to an issue. Nothing was sent. It is in the folder that just opened.'; }
     else if (r && r.failed) { hnote = r.failed; }
     else if (retry && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
     else if (action.indexOf('use_version') === 0 && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hnote = 'Now using that version.'; }
@@ -461,6 +463,8 @@ function hact(t, action) {
     render();
   });
 }
+let haudio = null;
+function hplay(url) { if (haudio) { haudio.pause(); haudio = null; } haudio = new Audio(url); haudio.onended = () => { haudio = null; hnote = ''; render(); }; hnote = 'Playing the recording.'; haudio.play().catch(() => { hnote = 'The recording could not be played.'; render(); }); render(); }
 const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed', none: 'Heard' };
 function recordings(p) {
   const keep = find('v.keepVoice'), space = find('v.keepSpace');
@@ -543,10 +547,13 @@ function historyPage(p) {
       if (meta) body.appendChild($('div', 'hint', meta));
       const acts = $('div', 'hacts');
       const mk = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
+      const pl = (t.menu || []).find(i => i.id === 'play');
+      if (pl && pl.enabled) acts.appendChild(mk(haudio ? 'Stop playing' : 'Play recording', () => { if (haudio) { haudio.pause(); haudio = null; hnote = ''; render(); } else hact(t, 'play'); }));
       acts.appendChild(mk('Copy as heard', () => hact(t, 'copy_raw')));
       if (t.cleaned) acts.appendChild(mk(t.kind === 'spoken' ? 'Copy reply' : 'Copy written', () => hact(t, 'copy_cleaned')));
       if (rt && rt.enabled) acts.appendChild(mk(hbusy.has(t.id) ? 'Retrying' : 'Retry transcript', () => hact(t, 'retry_transcript')));
       if ((t.menu || []).some(i => i.id === 'retry')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
+      acts.appendChild(mk('Report this transcript', () => hact(t, 'report')));
       if (hask === t.id) { acts.append($('span', 'hint', 'Delete this for good?'), mk('Delete', () => hact(t, 'delete'), 'primary'), mk('Keep', () => { hask = null; render(); })); }
       else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
       body.appendChild(acts); wrap.appendChild(body);
