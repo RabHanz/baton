@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-11-02T11:06:50.059Z",
+  "runUrl": "https://github.com/RabHanz/baton/actions/runs/41432536944",
+  "versions": {
+    "main": "34850ef370",
+    "release": "baton-v0.1.39"
+  },
+  "checks": [
+    {
+      "name": "memory evals",
+      "ref": "main",
+      "result": "pass"
+    },
+    {
+      "name": "employee spine",
+      "ref": "main",
+      "result": "pass"
+    },
+    {
+      "name": "intent harness",
+      "ref": "main",
+      "result": "fail"
+    },
+    {
+      "name": "memory evals",
+      "ref": "release",
+      "result": "skipped"
+    },
+    {
+      "name": "employee spine",
+      "ref": "release",
+      "result": "skipped"
+    },
+    {
+      "name": "intent harness",
+      "ref": "release",
+      "result": "fail"
+    },
+    {
+      "name": "voice proof and stranger install",
+      "ref": "main",
+      "result": "fail"
+    },
+    {
+      "name": "voice proof and stranger install",
+      "ref": "release",
+      "result": "fail"
+    },
+    {
+      "name": "hands loop",
+      "ref": "main",
+      "result": "pass"
+    }
+  ]
+}
