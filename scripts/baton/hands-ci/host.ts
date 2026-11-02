@@ -136,9 +136,8 @@ public static class Diff { public static int Count(string a, string b) {
 export const clipboardText = () => clipboard.readText();
 export const setClipboardText = (text: string) => clipboard.writeText(text);
 
-/** What the bake-off counts: element clicks, those a pattern did with no pointer, coordinate clicks that landed on something else. */
-export const stats = { clicks: 0, invoked: 0, covered: 0, treeBytes: 0 };
-const INVOKE = process.env["HANDS_INVOKE"] === "1";
+/** What the bake-off counts besides time: the size of what the tree calls returned. */
+export const stats = { treeBytes: 0 };
 
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
@@ -151,7 +150,7 @@ export const makeHost = (outDir: string): Host => {
   NodeFS.mkdirSync(outDir, { recursive: true });
   let shots = 0;
   const here = { x: 512, y: 384 };
-  const located = async (label: string, invoke = false) => {
+  const located = async (label: string) => {
     const found = await side([
       "locate",
       "--label",
@@ -161,16 +160,9 @@ export const makeHost = (outDir: string): Host => {
       "--y",
       String(here.y),
       "--foreground",
-      ...(invoke ? ["--invoke"] : []),
     ]);
     return found["found"] === true
-      ? {
-          x: Number(found["x"]),
-          y: Number(found["y"]),
-          name: String(found["name"] ?? label),
-          covered: found["covered"] === true,
-          invoked: typeof found["invoked"] === "string" ? found["invoked"] : null,
-        }
+      ? { x: Number(found["x"]), y: Number(found["y"]), name: String(found["name"] ?? label) }
       : null;
   };
   const shot = async (name: string) => {
@@ -196,17 +188,11 @@ export const makeHost = (outDir: string): Host => {
       return text;
     },
     clickElement: async (label, double) => {
-      const found = await located(label, INVOKE && !double);
+      const found = await located(label);
       if (found === null)
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
-      stats.clicks += 1;
-      if (found.invoked !== null) {
-        stats.invoked += 1;
-        return `Pressed ${found.name} (${found.invoked}, no pointer).`;
-      }
-      if (found.covered) stats.covered += 1;
       await driver.clickAt(found, "left", double ? 2 : 1);
       return `Clicked ${found.name}.`;
     },

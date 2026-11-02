@@ -366,7 +366,10 @@ export interface ScreenCompanion {
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   /** The same question, also put to a paired phone: the first answer counts. */
-  readonly askMirrored: (box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0], needs?: "cloud-approve") => Promise<number>;
+  readonly askMirrored: (
+    box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
+    needs?: "cloud-approve",
+  ) => Promise<number>;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
@@ -1943,6 +1946,12 @@ export const startScreenCompanion = (input: {
         driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
       );
       return "Clicked.";
+    },
+    windowKey: async () => {
+      const seen = await focusSoon();
+      if (seen?.window === undefined)
+        throw new Error("The window with the keyboard can't be told apart, so a batch cannot run.");
+      return String(seen.window);
     },
     clickElement: async (label, double) => {
       const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
