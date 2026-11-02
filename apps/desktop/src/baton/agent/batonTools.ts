@@ -82,6 +82,8 @@ type JobOp =
   | "notices_resume"
   | "weave_send"
   | "weave_list"
+  | "text_transform"
+  | "text_undo"
   | "split";
 
 type Args = Readonly<Record<string, unknown>>;
@@ -508,6 +510,19 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     run: async (a) => ({
       text: await host.jobs("notices_resume", { about: str(a, "about", 200) }),
     }),
+  },
+  {
+    name: "text_transform",
+    description:
+      "Rewrite the text he has selected in the focused app with a named transform (Polish, Prompt engineer, Shorten, Translate to English, or one he made). The selection is replaced and he can say 'undo that'. Use it for 'polish this', 'make this a better prompt'. The selected text is read by Tessaya, not by you.",
+    inputSchema: object({ name: { type: "string", maxLength: 80 } }, ["name"]),
+    run: async (a) => ({ text: await host.jobs("text_transform", { name: str(a, "name", 80) }) }),
+  },
+  {
+    name: "text_undo",
+    description: "Take back the last rewrite of his selected text (a transform), if it was a few minutes ago.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("text_undo", {}) }),
   },
   {
     name: "weave_send",
