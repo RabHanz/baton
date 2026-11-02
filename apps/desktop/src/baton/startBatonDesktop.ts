@@ -23,6 +23,13 @@ import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
 import { createConversationLog } from "./conversation/conversationLog.ts";
+import {
+  beginStart,
+  failedStartMessage,
+  isBad,
+  markHealthy,
+} from "@t3tools/baton-shared/startGuard";
+import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
@@ -74,6 +81,37 @@ export const startBatonDesktop = Effect.gen(function* () {
       runningFile: NodePath.join(environment.stateDir, "baton-running.json"),
       version: environment.appVersion,
     });
+    // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
+    const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");
+    const started = beginStart(
+      readGuard(guardPath),
+      environment.appVersion,
+      lifecycle.previousRunEndedBadly(),
+    );
+    let guard = started.file;
+    writeGuard(guardPath, guard);
+    setTimeout(() => {
+      guard = markHealthy(guard);
+      writeGuard(guardPath, guard);
+    }, 45_000).unref();
+    if (started.failing) {
+      lifecycle.note("version-failed-twice", {
+        version: environment.appVersion,
+        goBackTo: started.goBackTo,
+      });
+      void Electron.app.whenReady().then(async () => {
+        const answer = await Electron.dialog.showMessageBox({
+          type: "warning",
+          title: "Tessaya",
+          message: failedStartMessage(environment.appVersion, started.goBackTo),
+          buttons: ["Open the releases page", "Not now"],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        if (answer.response === 0)
+          void Electron.shell.openExternal("https://github.com/RabHanz/baton/releases");
+      });
+    }
     Electron.app.on("render-process-gone", (_event, contents, details) =>
       lifecycle.note("render-process-gone", {
         reason: details.reason,
@@ -116,6 +154,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     };
     // The release feed is this repository's (D137); the restart is announced, then waits for quiet.
     const batonUpdates = createBatonUpdater({
+      skip: (version) => isBad(guard, version),
       initial: initialUpdateState,
       check: () => run(updates.check("baton-window")),
       download: () => run(updates.download),
