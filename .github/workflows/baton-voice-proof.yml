@@ -117,10 +117,10 @@ jobs:
           path: ${{ runner.temp }}/voice-proof
 
   # macOS and Linux: launch a RELEASED build headless with the same test hooks and report how far it got
-  # (docs/baton/PLATFORMS.md). Needs `tag`; the build itself is baton-desktop-release.yml.
+  # (docs/baton/PLATFORMS.md). With `tag` it installs the released build; without, it builds this ref the way
+  # baton-desktop-release.yml does (no release is made).
   smoke:
     name: smoke ${{ matrix.platform }}
-    if: inputs.tag != ''
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -139,12 +139,37 @@ jobs:
         if: matrix.platform == 'linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb espeak-ng ffmpeg libfuse2 libgtk-3-0 libnss3 libasound2t64 libgbm1
       - name: Download the released build
+        if: inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir release
           gh release download "${{ inputs.tag }}" -R "$GITHUB_REPOSITORY" --dir release --pattern '${{ matrix.pattern }}'
           ls release
+      - name: Apply Tessaya branding (build only, not committed)
+        if: inputs.tag == ''
+        run: bash scripts/baton/apply-release-branding.sh
+      - uses: actions/setup-node@v4
+        if: inputs.tag == ''
+        with:
+          node-version-file: package.json
+      - name: Build tools (Linux)
+        if: inputs.tag == '' && matrix.platform == 'linux'
+        run: sudo apt-get install -y libsecret-1-dev pkg-config imagemagick build-essential cmake libasound2-dev libx11-dev libxi-dev libxtst-dev libxdo-dev libxkbcommon-dev libevdev-dev libclang-dev
+      - uses: dtolnay/rust-toolchain@stable
+        if: inputs.tag == ''
+      - name: Build this ref
+        if: inputs.tag == ''
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          if [ "${{ matrix.platform }}" = linux ]; then target="--platform linux --target AppImage"; else target="--platform mac --target dmg"; fi
+          node scripts/build-desktop-artifact.ts $target --arch ${{ matrix.platform == 'linux' && 'x64' || 'arm64' }} \
+            --build-version 99.0.0 --output-dir release --verbose
       - name: Launch with the test hooks
         env:
           REQUIRE_WAKE: ${{ inputs.require_wake && '1' || '0' }}
