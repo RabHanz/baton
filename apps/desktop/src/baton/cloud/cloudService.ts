@@ -4,7 +4,7 @@
  * the approval card's clicks. The rules are in `@t3tools/baton-shared/cloud`; this holds state and I/O.
  */
 import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
-import { CARD_START, fromSpoken, reduceCard, type CardEvent, type CardState } from "@t3tools/baton-shared/cloud/card";
+import { CARD_START, fromSpoken, offerQuestion, reduceCard, type CardEvent, type CardState } from "@t3tools/baton-shared/cloud/card";
 import { sshProviders } from "@t3tools/baton-shared/cloud/sshShell";
 import { hubProvider, type CloudOp, type Described } from "@t3tools/baton-shared/cloud/hub";
 import { providerChoices, type ProviderChoice } from "@t3tools/baton-shared/cloud/registry";
@@ -21,6 +21,7 @@ import {
   type Usage,
 } from "@t3tools/baton-shared/cloud/types";
 import { fileStores } from "@t3tools/baton-shared/cloud/nodeExec";
+import { text } from "../home/strings.ts";
 
 export interface CloudSettings {
   readonly on: boolean;
@@ -34,6 +35,8 @@ export interface CloudSettings {
   readonly approverKey: string;
   /** A run that uses more than this many points of its own provider's weekly figure is flagged. */
   readonly capPoints: number;
+  /** Also ask with a pop-up (mirrored to a paired phone) for each waiting task. */
+  readonly askPopup: boolean;
 }
 
 export const DEFAULT_CLOUD: CloudSettings = {
@@ -45,6 +48,7 @@ export const DEFAULT_CLOUD: CloudSettings = {
   machineKey: "",
   approverKey: "",
   capPoints: 2,
+  askPopup: false,
 };
 
 export type HubCall = (op: CloudOp, provider: ProviderId | "", args: Readonly<Record<string, unknown>>) => Promise<Outcome<unknown>>;
@@ -159,6 +163,7 @@ export const createCloud = (deps: CloudDeps) => {
     requests = reqs;
     usage = uses;
     loadedAt = deps.now();
+    offerNew();
     // A card whose request is gone or answered forgets its state.
     for (const k of [...cards.keys()]) if (!reqs.some((r) => requestKey(r) === k && r.state === "awaiting-director")) cards.delete(k);
     deps.changed();
@@ -186,11 +191,70 @@ export const createCloud = (deps: CloudDeps) => {
     return done.ok ? { ok: true, value: null } : { ok: false, error: done.error };
   };
 
+  /** The ones already put to him as a question, so each is asked once. */
+  const offered = new Set<string>();
+  /**
+   * One question with a button for each open assistant and account; choosing one asks to confirm; only
+   * then does anything start. The question is also mirrored to a paired phone, which never holds a key.
+   */
+  const offer = async (r: CloudRequest): Promise<void> => {
+    const key = requestKey(r);
+    for (let round = 0; round < 5; round += 1) {
+      const q = offerQuestion(view().choices, {
+        pick: (label, account, usage) => text("cloud.offer.pick", { label, account, usage }),
+        deny: text("cloud.offer.deny"),
+        later: text("cloud.offer.later"),
+      });
+      if (q.picks.length === 2) return;
+      const pressed = await deps.ask({
+        title: text("cloud.offer.title", { task: r.task ?? r.id }),
+        detail: describeRequest(r) + (r.fromWeb ? `\n\n${text("cloud.fromweb")}` : ""),
+        buttons: q.buttons,
+        cancel: q.cancel,
+        armMs: 1_500,
+      });
+      const pick = q.picks[pressed] ?? { kind: "later" as const };
+      if (pick.kind === "later") return;
+      if (pick.kind === "deny") {
+        const p = find(r.provider);
+        if ((await p?.deny(r.id, "denied by the Director"))?.ok === true) cardEvent(key, { type: "deny" });
+        await refresh();
+        return;
+      }
+      cardEvent(key, { type: "provider", provider: pick.provider });
+      cardEvent(key, { type: "account", account: pick.account });
+      const yes = await deps.ask({
+        title: text("cloud.offer.confirmTitle", { account: pick.account }),
+        detail: describeRequest(r),
+        buttons: [text("cloud.offer.approve"), text("cloud.offer.back")],
+        cancel: 1,
+        armMs: 1_500,
+      });
+      if (yes === 0) {
+        await runApprove(key);
+        return;
+      }
+      cards.delete(key);
+    }
+  };
+  const inflight: Promise<void>[] = [];
+  const offerNew = (): void => {
+    if (!deps.settings().askPopup) return;
+    for (const r of requests) {
+      const key = requestKey(r);
+      if (r.state !== "awaiting-director" || offered.has(key)) continue;
+      offered.add(key);
+      inflight.push(offer(r).catch(() => undefined));
+    }
+  };
+
   const guard = (): string | null => (deps.settings().on ? null : NOT_SET_UP);
 
   return {
     view,
     refresh,
+    /** Resolves when every question put to him has been answered or left. */
+    settled: async (): Promise<void> => void (await Promise.all(inflight.splice(0))),
     /** A click on the card: ids are `cl.p|a|ok|deny:<provider>:<id>[:<provider or account>]`. */
     click: async (cardId: string): Promise<void> => {
       const m = /^cl\.(p|a|ok|deny)\.([a-z]+):([^:]+)(?::(.+))?$/.exec(cardId);
