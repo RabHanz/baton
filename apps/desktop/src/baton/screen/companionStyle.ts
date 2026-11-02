@@ -9,3 +9,6 @@ export const COMPANION_CSS = `
 html,body{margin:0;background:transparent;font-family:var(--sans);-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none;cursor:default}
 .glass{background:var(--ink);border:1px solid var(--line);box-shadow:var(--edge);color:var(--text)}
 `;
+
+/** Cards and prompts sit this far above the work area's bottom edge: clear of the pill and its strip, in one stack. */
+export const CARD_ABOVE_WORK_AREA = 120;
