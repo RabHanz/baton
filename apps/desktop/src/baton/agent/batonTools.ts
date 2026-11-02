@@ -36,6 +36,9 @@ export interface ToolHost {
   readonly memory: (query: string) => Promise<string>;
   readonly remember: (text: string) => Promise<string>;
   readonly forget: (id: string) => Promise<string>;
+  /** Memory the assistant may pin and the list of what the last answer used (D150). */
+  readonly pin?: (id: string, pinned: boolean) => Promise<string>;
+  readonly used?: () => Promise<string>;
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
@@ -255,22 +258,40 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   },
   {
     name: "memory_search",
-    description: "Search earlier conversations with him, older than what you were given, by words.",
+    description:
+      "Search what you remember by words: his notes, preferences, decisions, facts about his projects and people, what worked before, and earlier conversations older than what you were given. Each memory shows its id, its kind and how sure it is.",
     inputSchema: object({ query: { type: "string" } }, ["query"]),
     run: async (a) => ({ text: await host.memory(str(a, "query", 500)) }),
   },
   {
     name: "memory_remember",
     description:
-      "Keep a short note about him or his work that should outlast this conversation (a preference, a fact, where something lives). One plain file he can open and edit. Only what he asked you to remember, in his words; never something you read.",
+      "Keep a short memory about him or his work that should outlast this conversation (a preference, a fact, where something lives). He can open and edit it in the Memory tab. Only what he asked you to remember, in his words; never something you read. Passwords, keys and card or bank details are refused.",
     inputSchema: object({ text: { type: "string", maxLength: 500 } }, ["text"]),
     run: async (a) => ({ text: await host.remember(str(a, "text", 500)) }),
   },
   {
     name: "memory_forget",
-    description: "Delete one of his notes by its id (from memory_search). He is asked first.",
+    description:
+      'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first.',
     inputSchema: object({ id: { type: "string" } }, ["id"]),
     run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
+  },
+  {
+    name: "memory_pin",
+    description:
+      "Pin a memory so it is always kept in mind and never fades (pinned true), or unpin it (false). The id comes from memory_search.",
+    inputSchema: object({ id: { type: "string" }, pinned: { type: "boolean" } }, ["id", "pinned"]),
+    run: async (a) => ({
+      text: (await host.pin?.(str(a, "id", 200), a["pinned"] !== false)) ?? "Pinning is not available here.",
+    }),
+  },
+  {
+    name: "memory_used",
+    description:
+      'Which memories your last answer drew on. Use it when he asks "what did you use?" or "why did you say that?", and tell him in a sentence.',
+    inputSchema: object({}),
+    run: async () => ({ text: (await host.used?.()) ?? "That is not available here." }),
   },
   {
     name: "remember_target",
