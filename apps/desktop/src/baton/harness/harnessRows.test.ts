@@ -31,3 +31,39 @@ describe("the Skills and tools area", () => {
     expect(pluginOfControl("k.claude-skill-x")).toBeNull();
   });
 });
+
+describe("the connectors rows", () => {
+  it("says what is connected for calendar, mail and chat, and offers a reviewed box for each", async () => {
+    const { connectorControls } = await import("./harnessRows.ts");
+    const rows = connectorControls([
+      {
+        id: "claude-mcp-gcal",
+        name: "google-calendar",
+        harness: "Claude",
+        kind: "mcp",
+        enabled: null,
+        detail: "",
+      },
+      {
+        id: "claude-mcp-fs",
+        name: "filesystem",
+        harness: "Claude",
+        kind: "mcp",
+        enabled: null,
+        detail: "",
+      },
+    ]);
+    const check = (id: string) =>
+      rows.find((r) => r.id === id) as { status?: string; detail?: string } | undefined;
+    expect(check("k.connected.calendar")).toMatchObject({
+      status: "ok",
+      detail: "Connected: google-calendar.",
+    });
+    expect(check("k.connected.mail")).toMatchObject({ status: "warn", detail: "Not connected." });
+    expect(rows.filter((r) => r.kind === "list").map((r) => r.id)).toEqual([
+      "k.conn.calendar",
+      "k.conn.mail",
+      "k.conn.chat",
+    ]);
+  });
+});
