@@ -45,12 +45,18 @@ const POLL_MS = 500;
 
 const basename = (path: string): string => path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
 
-const ready = (s: ClaudeLiveSession | undefined): s is ClaudeLiveSession =>
+const ready = (s: ClaudeLiveSession | undefined): boolean =>
   s !== undefined && s.herdrPane !== null && s.status !== "busy";
+
+export interface ResumeResult {
+  readonly state: BatonCatalogState;
+  readonly pane: string | null;
+  readonly detail: string | null;
+}
 
 export const createSessionCatalog = (ports: CatalogPorts) => {
   /** Resumes in flight and messages waiting on them: kept so nothing is dropped and a second tap changes nothing. */
-  const resuming = new Map<string, Promise<{ state: BatonCatalogState; pane: string | null; detail: string | null }>>();
+  const resuming = new Map<string, Promise<ResumeResult>>();
   const waiting = new Map<string, string[]>();
   const failed = new Map<string, string>();
 
@@ -145,7 +151,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     const started = ports.now();
     for (;;) {
       const found = (await ports.live()).find((s) => s.sessionId === sessionId);
-      if (ready(found)) return found;
+      if (found !== undefined && ready(found)) return found;
       if (ports.now() - started >= timeoutMs) return null;
       await ports.sleep(POLL_MS);
     }
@@ -154,10 +160,10 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   const cwdOf = async (sessionId: string, given?: string): Promise<string | null> =>
     given ?? (await ports.transcripts(600)).find((t) => t.sessionId === sessionId)?.cwd ?? null;
 
-  const doResume = async (sessionId: string, given?: string) => {
+  const doResume = async (sessionId: string, given?: string): Promise<ResumeResult> => {
     const live = (await ports.live()).find((s) => s.sessionId === sessionId);
     if (live !== undefined) {
-      return ready(live) || live.herdrPane !== null
+      return live.herdrPane !== null
         ? { state: "running" as const, pane: live.herdrPane, detail: null }
         : { state: "failed" as const, pane: null, detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here." };
     }
@@ -175,9 +181,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   };
 
   /** Idempotent: a resume already running is the one the caller waits on. */
-  const resume = (input: { sessionId: string; cwd?: string }) => {
+  const resume = (input: { sessionId: string; cwd?: string }): Promise<ResumeResult> => {
     const existing = resuming.get(input.sessionId);
-    if (existing !== undefined) return Promise.resolve({ state: "resuming" as const, pane: null as string | null, detail: null as string | null });
+    if (existing !== undefined) return Promise.resolve({ state: "resuming" as const, pane: null, detail: null });
     const job = doResume(input.sessionId, input.cwd).then(async (r) => {
       resuming.delete(input.sessionId);
       if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
