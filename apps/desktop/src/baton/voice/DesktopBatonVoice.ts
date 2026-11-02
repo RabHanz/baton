@@ -987,6 +987,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
   })();
   const audioDir = NodePath.join(input.stateDir, "voice", "recordings");
+  // A proof run's recorded files are not his words: they leave nothing in History or in the recordings.
+  const testRun = (process.env["BATON_TEST_WAV"] ?? "") !== "";
   const keepSettings = (): KeepSettings => ({
     enabled: settings.keepVoice,
     days: settings.keepDays,
@@ -997,7 +999,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let keepNote: string | null = null;
   /** Saves a clip for a turn, in the background, if he asked for it and the drive has room. */
   const keepAudio = (turnId: string | null, pcm: Int16Array | null) => {
-    if (history === null || turnId === null || pcm === null || pcm.length === 0) return;
+    if (history === null || testRun || turnId === null || pcm === null || pcm.length === 0) return;
     const gate = saveGate(keepSettings(), freeBytesOf(input.stateDir));
     keepNote = gate.ok ? null : settings.keepVoice ? gate.reason : null;
     if (!gate.ok) return;
@@ -1037,7 +1039,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly error?: string | null;
     readonly seconds?: number | null;
   }): string | null => {
-    if (history === null || turn.raw.trim().length === 0) return null;
+    if (history === null || testRun || turn.raw.trim().length === 0) return null;
     // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
     const safe = redactForHistory(turn.raw, turn.cleaned);
     if (safe.secret !== null) {
@@ -1077,6 +1079,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ? []
       : listHistory(typeof query === "string" ? query : ""),
   );
+  Electron.ipcMain.handle("baton-history:delete-many", (event, ids: unknown) => {
+    if (Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null) return 0;
+    if (!Array.isArray(ids)) return 0;
+    let removed = 0;
+    for (const id of ids) {
+      const turn = typeof id === "string" ? history.remove(id) : null;
+      if (turn === null) continue;
+      for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
+      removed += 1;
+    }
+    return removed;
+  });
   Electron.ipcMain.handle("baton-history:act", async (event, id: unknown, action: unknown) => {
     if (Electron.BrowserWindow.fromWebContents(event.sender) === null || history === null)
       return null;
