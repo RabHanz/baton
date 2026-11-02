@@ -1,6 +1,11 @@
 """Packs the logo kit's transparent animations into pillMotionArt.ts for the pill page.
 
-  python scripts/baton/pack-pill-motion.py <kit>/app/animation/transparent dark apps/desktop/src/baton/voice/pillMotionArt.ts
+  python scripts/baton/pack-pill-motion.py <kit>/app/animation/transparent dark apps/desktop/src/baton/voice/pillMotionArt.ts \
+      [--from "#BC96CE" --to "#5FB3B3"]
+
+The kit ships these animations in one palette's dye (Damson, #BC96CE on dark). With --from and --to every
+pixel is moved along the line from the mark's paper white to the old dye, onto the line from the same white to
+the new dye, so a palette that has no animation files of its own (Woad) gets its own, anti-aliasing intact.
 
 The kit's APNGs (360 px, alpha) are shrunk to the pill's size and packed as lossless animated WebP: the wake
 sting (plays once, 2 s), the listening loop (2.4 s) and one still of the closed mark. `dark` picks the
@@ -12,13 +17,41 @@ import sys
 
 from PIL import Image, ImageSequence
 
-folder, ground, out = sys.argv[1], sys.argv[2], sys.argv[3]
+args = sys.argv[1:]
+options = {}
+while "--from" in args or "--to" in args:
+    for flag in ("--from", "--to"):
+        if flag in args:
+            at = args.index(flag)
+            options[flag] = args[at + 1]
+            del args[at : at + 2]
+folder, ground, out = args[0], args[1], args[2]
+PAPER = (243, 239, 235)
+
+
+def rgb(hex_):
+    return tuple(int(hex_[i : i + 2], 16) for i in (1, 3, 5))
+
+
+def recolour(image):
+    if "--from" not in options:
+        return image
+    old, new = rgb(options["--from"]), rgb(options["--to"])
+    axis = [o - p for o, p in zip(old, PAPER)]
+    length = sum(a * a for a in axis)
+    pixels = []
+    for r, g, b, a in image.getdata():
+        t = max(0.0, min(1.0, sum((c - p) * x for c, p, x in zip((r, g, b), PAPER, axis)) / length))
+        pixels.append(tuple(round(p + t * (n - p)) for p, n in zip(PAPER, new)) + (a,))
+    out_image = Image.new("RGBA", image.size)
+    out_image.putdata(pixels)
+    return out_image
 SIZE = 64
 
 
 def frames(name, keep):
     image = Image.open(f"{folder}/{name}-alpha-{ground}.apng")
-    all_frames = [f.convert("RGBA").resize((SIZE, SIZE), Image.LANCZOS) for f in ImageSequence.Iterator(image)]
+    all_frames = [recolour(f.convert("RGBA").resize((SIZE, SIZE), Image.LANCZOS)) for f in ImageSequence.Iterator(image)]
     step = len(all_frames) / keep
     return [all_frames[min(len(all_frames) - 1, int(i * step))] for i in range(keep)]
 
