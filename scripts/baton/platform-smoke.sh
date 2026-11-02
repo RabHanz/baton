@@ -29,6 +29,17 @@ case "$platform" in
   *) echo "unknown platform $platform"; exit 2 ;;
 esac
 printf 'wake.wav 4000\n30000\n' > "$out/wav/list.txt"; cp "$wav" "$out/wav/wake.wav" 2>/dev/null || true
+# The sidecar on its own first, so a crash in it is told apart from a crash in the app.
+sidecar=""
+case "$platform" in
+  macos) sidecar="$HOME/Tessaya.app/Contents/Resources/baton-voice/baton-dictation" ;;
+  linux) sidecar="$(find "$HOME" -name baton-dictation -type f 2>/dev/null | head -1)" ;;
+esac
+if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
+  echo "--- sidecar alone: $sidecar ---"
+  "$sidecar" devices 2>&1 | head -5; echo "devices exit=${PIPESTATUS[0]}"
+  printf '{"cmd":"devices"}\n' | timeout 15 "$sidecar" serve 2>&1 | head -8; echo "serve exit=${PIPESTATUS[1]}"
+fi
 export BATON_TEST_WAV="$out/wav/list.txt" BATON_TEST_DIR="$out/shots"
 "${run[@]}" > "$out/app.log" 2>&1 &
 pid=$!
