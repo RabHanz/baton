@@ -54,6 +54,10 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 - **Cue settings, accessibility.** One cue setting; Esc is Stop everywhere (`holdEscape`); reduced motion in the overlay page; the same words on card and voice.
 - **Woad tokens.** `--tz-dye`, `--tz-glow`, `--tz-ink` in the overlay page; companion windows use `companionStyle.ts`. Builder B's palette lands in those two places.
 
+8. **Update prompt and vocabulary toast: decided, not folded.** The "this version failed to start twice" prompt (`startBatonDesktop.ts`) is a system dialog on purpose: it runs when the app is crash-looping, before the companion's windows exist, and must not depend on them. It is the one allowed exception (the matrix scans `screen/` and `agent/` only). The vocabulary toast is a non-focus, six-second notice with Keep or Discard; as a `windows.ask` it would take focus and hold the prompt queue for a minute, so it stays a toast and shares the pill's look.
+9. **One stack at the bottom.** Cards and prompts clear the pill by one shared constant (`CARD_ABOVE_WORK_AREA`); the Planning card is cleared while the plan box is up.
+10. **An approved plan covers its own keys.** `shellCheck` no longer asks again for keys that follow the plan's own click; keys with no click before them, and shell-looking text, still ask.
+
 ## 5. Regression matrix
 
 `spine.test.ts` asserts: (a) each entry sentence (voice, typed, hotkey and tray all arrive as a sentence) reaches the same mode with the assistant on and off; (b) the older router still reaches every mode as the fallback; (c) every tool is in the gate's table and seeing, pointing and the two guided modes are allowed only because each asks where it runs, while acting is judged; (d) only two window-making files exist in `screen/`; no system dialog in `screen/` or `agent/`; Go ahead / Not now is the question family; no second audio path. Replay fixtures: the existing `screen/*.test.ts` (operator proof, screen parts, escape, pointer overlay) keep running beside it.
@@ -62,5 +66,5 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 
 1. This PR: the reachability fix, the three tools, `entryRoute`, the matrix, this page.
 2. The update prompt and the vocab toast onto `windows.ask` and the card.
-3. The Windows proof run (teach and drive recorded, `baton-teach-proof.yml`) through the tools path instead of only the prefixes.
+3. Done: the Windows proof run (`baton-teach-proof.yml`, with the UI Automation sidecar, cue playback logged). Still to do: drive it through the tools path instead of only the prefixes.
 4. Delete the router on the date above if the fallback has not fired.
