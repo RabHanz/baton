@@ -314,6 +314,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         onEvent,
         vocabulary,
         waitMs,
+        listening,
         verifyWake,
       }) =>
         (
@@ -338,6 +339,7 @@ export const startBatonDesktop = Effect.gen(function* () {
             },
             vocabulary,
             waitMs,
+            listening,
             verifyWake,
             ...(screen === null ? {} : { brain: screen }),
           })

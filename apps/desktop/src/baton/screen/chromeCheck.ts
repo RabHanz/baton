@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
  * Is Claude in Chrome set up on this computer? One question, one plain line (D3). Two facts are read:
  * the extension is installed in a Chrome profile, and its native host is listening (a named pipe on
