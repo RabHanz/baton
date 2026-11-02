@@ -91,14 +91,21 @@ const startClip = (id: string) => {
 };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const ps = (script: string) =>
-  new Promise<string>((resolve) =>
+  new Promise<string>((resolve) => {
+    // A file, not -Command: the here-string in it must reach PowerShell exactly as written.
+    const file = NodePath.join(out, `step-${Date.now()}.ps1`);
+    NodeFS.writeFileSync(file, script);
     NodeChildProcess.execFile(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script],
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file],
       { windowsHide: true, timeout: 30_000 },
-      (_e, stdout) => resolve(String(stdout).trim()),
-    ),
-  );
+      (error, stdout, stderr) => {
+        if (error !== null)
+          note("ps.failed", { message: error.message, stderr: String(stderr).slice(0, 400) });
+        resolve(String(stdout).trim());
+      },
+    );
+  });
 const locate = (name: string) =>
   new Promise<{ x: number; y: number } | null>((resolve) =>
     NodeChildProcess.execFile(
@@ -139,7 +146,7 @@ const until = async (test: (kicker: string) => boolean, ms: number): Promise<str
   return last;
 };
 
-const NOTEPAD = `$p=Start-Process notepad -PassThru;Start-Sleep 2;
+const NOTEPAD = `$ErrorActionPreference='Stop';$p=Start-Process "$env:windir\\notepad.exe" -PassThru;Start-Sleep 2;
 Add-Type @'
 using System;using System.Runtime.InteropServices;
 public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);}
