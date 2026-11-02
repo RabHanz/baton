@@ -134,6 +134,7 @@ const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
 export const BATON_TOOLS: ReadonlySet<string> = new Set([
   ...BATON_QUIET,
   ...BATON_POINTER,
+  "act_batch",
   "drag",
   "type_text",
   "press_keys",
@@ -356,8 +357,63 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
   }
 };
 
+/** The steps `act_batch` may carry: named controls and keys inside one window, never a raw point or a drag. */
+export const BATCH_STEP_TOOLS: ReadonlySet<string> = new Set([
+  "click_element",
+  "type_text",
+  "press_keys",
+  "wait_for",
+]);
+export const MAX_BATCH_STEPS = 6;
+
+export interface BatchStep {
+  readonly tool: string;
+  readonly input: Readonly<Record<string, unknown>>;
+}
+
+/** The steps of an `act_batch` call, or null when the call is not a well-formed batch. */
+export const batchSteps = (
+  input: Readonly<Record<string, unknown>>,
+): ReadonlyArray<BatchStep> | null => {
+  const raw = input["steps"];
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_BATCH_STEPS) return null;
+  const steps: BatchStep[] = [];
+  for (const item of raw) {
+    const step = item as { tool?: unknown; args?: unknown } | null;
+    if (typeof step?.tool !== "string" || !BATCH_STEP_TOOLS.has(step.tool)) return null;
+    const args = step.args ?? {};
+    if (typeof args !== "object" || args === null || Array.isArray(args)) return null;
+    steps.push({ tool: step.tool, input: args as Record<string, unknown> });
+  }
+  return steps;
+};
+
+/** A batch is judged step by step as if each were made alone; the strictest verdict stands. */
+const judgeBatch = (call: ToolCall, context: JudgeContext): ToolVerdict => {
+  const steps = batchSteps(call.input);
+  if (steps === null) {
+    return {
+      verdict: "deny",
+      why: "A batch is one to six steps of click_element, type_text, press_keys or wait_for.",
+    };
+  }
+  let worst: ToolVerdict = { verdict: "allow" };
+  const rank = (v: ToolVerdict) =>
+    v.verdict === "deny" ? 3 : v.verdict === "ask" ? (v.risky === true ? 2 : 1) : 0;
+  for (const step of steps) {
+    const one = judgeToolCall(
+      { tool: `${BATON_TOOL_PREFIX}${step.tool}`, input: step.input },
+      context,
+    );
+    if (rank(one) > rank(worst)) worst = one;
+  }
+  return worst;
+};
+
 export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdict => {
   const baton = batonToolName(call.tool);
+  if (baton === "act_batch" && call.tool.startsWith(BATON_TOOL_PREFIX))
+    return judgeBatch(call, context);
   if (isChromeTool(call.tool)) {
     return judgeChrome(call.tool, call.input, {
       tainted: context.tainted,
