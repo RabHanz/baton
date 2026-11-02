@@ -121,6 +121,12 @@ export const ACTIONS: ReadonlyArray<ActionDef> = [
     fallback: key("Ctrl+Alt+Shift+B"),
   },
   {
+    id: "pasteLast",
+    label: "Paste the last transcript",
+    hint: "Puts your last dictation in again, for a window that would not take it (a terminal, a remote desktop). Not bound until you choose a key.",
+    fallback: null,
+  },
+  {
     id: "clear",
     label: "Clear the screen",
     hint: "Remove the pointer and any card.",
