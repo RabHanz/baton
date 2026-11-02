@@ -11,7 +11,12 @@
 import * as NodePath from "node:path";
 
 import type { BatonFocusTarget } from "@t3tools/baton-contracts";
-import { createVoiceCore, createVoiceRouter, createWhisperCppStt } from "@t3tools/baton-voice";
+import {
+  createVoiceCore,
+  createVoiceRouter,
+  createWhisperCppStt,
+  DEFAULT_TIMINGS,
+} from "@t3tools/baton-voice";
 import { resolveBatonIntent, type IntentVocabulary } from "@t3tools/baton-shared/intentParser";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -24,6 +29,7 @@ import {
   resolveWakeModels,
   sessionMessageSentence,
   type VoiceIntentRequest,
+  liveTimings,
 } from "./desktopVoiceCore.ts";
 import { makeWavFileAudioInput, wavDeviceId } from "./WavFileAudioInput.ts";
 import { utteranceCaption } from "./voiceHud.ts";
@@ -281,5 +287,20 @@ describe.skipIf(!ready)("WAV as the mic, through the real core", () => {
     expect(replies.length).toBeGreaterThan(0);
     console.log(["captions:", ...captions, "replies:", ...replies].join("\n  "));
     await loop.stop();
+  });
+});
+
+describe("how long the voice listens", () => {
+  it("reads the choices each time, and keeps the defaults when none are given", () => {
+    let open = { commandWindowMs: 15_000, conversationMs: 60_000 };
+    const live = liveTimings({ ...DEFAULT_TIMINGS, wakeWords: ["tessaya"] }, () => open);
+    expect(live.commandWindowMs).toBe(15_000);
+    expect(live.conversationMs).toBe(60_000);
+    expect(live.confirmationMs).toBe(DEFAULT_TIMINGS.confirmationMs);
+    expect(live.wakeWords).toEqual(["tessaya"]);
+    open = { commandWindowMs: 8_000, conversationMs: 120_000 };
+    expect(live.commandWindowMs).toBe(8_000);
+    expect(live.conversationMs).toBe(120_000);
+    expect(liveTimings(DEFAULT_TIMINGS).commandWindowMs).toBe(DEFAULT_TIMINGS.commandWindowMs);
   });
 });
