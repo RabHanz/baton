@@ -19,7 +19,7 @@ index e1fbcd30080fdfdebdca36b17c5e0e482615e430..e5ce733a1fd2bf90d16b64d0c59a93d9
          ),
        ),
 diff --git a/apps/web/src/components/chat/ComposerUsageLimits.tsx b/apps/web/src/components/chat/ComposerUsageLimits.tsx
-index 12c11d213cdf706c0c50a0300b4722bb358e8e69..96af369f5f4be503b999b46908f0c78b18c3b907 100644
+index b46614a8b418d6adcf03846f6aa336519934e834..b4568bba2a8e1d336a60ed7a11b9fe35289593ef 100644
 --- a/apps/web/src/components/chat/ComposerUsageLimits.tsx
 +++ b/apps/web/src/components/chat/ComposerUsageLimits.tsx
 @@ -1,6 +1,7 @@
@@ -30,7 +30,7 @@ index 12c11d213cdf706c0c50a0300b4722bb358e8e69..96af369f5f4be503b999b46908f0c78b
  import { GaugeIcon } from "lucide-react";
  
  import { ensureLocalApi } from "../../localApi";
-@@ -136,6 +137,7 @@ function UsageLimitsBannerBody({
+@@ -137,6 +138,7 @@ function UsageLimitsBannerBody({
                    now={now}
                  />
                )}
@@ -39,7 +39,7 @@ index 12c11d213cdf706c0c50a0300b4722bb358e8e69..96af369f5f4be503b999b46908f0c78b
                  <Button
                    size="sm"
 diff --git a/apps/web/src/components/chat/ThreadDetailsUsage.tsx b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
-index e0f5c3afbe845741023fd98e08aec6e019d2a777..29d38e481b66d175f583649edda9caa6782d873a 100644
+index 05211d6ace44e7bbe4a6df44b3ce41de865af423..207ae3b20961bd00f169c9b2864328c853f9eab7 100644
 --- a/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 +++ b/apps/web/src/components/chat/ThreadDetailsUsage.tsx
 @@ -1,3 +1,4 @@
@@ -55,30 +55,34 @@ index e0f5c3afbe845741023fd98e08aec6e019d2a777..29d38e481b66d175f583649edda9caa6
  import type { ReactNode } from "react";
  
  import { usePrimarySettings } from "../../hooks/useSettings";
-@@ -74,9 +76,21 @@ export function ThreadDetailsUsage({
+@@ -74,7 +76,24 @@ export function ThreadDetailsUsage({
              tooltip={<span className="text-foreground">{notice}</span>}
            />
-         ) : null}
-+        {limits && !notice && absentSessionWindow(limits.windows) ? (
-+          <UsageRow
-+            label="Session"
-+            left={null}
-+            value={NOT_APPLICABLE}
-+            muted
-+            tooltip={<span className="text-foreground">This account has no session limit.</span>}
-+          />
-+        ) : null}
-         {limits && !notice
-           ? limits.windows.map((window) => <LimitRow key={window.id} window={window} now={now} />)
-           : null}
-+        {limits && !notice ? (
-+          <BatonLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
-+        ) : null}
-         {contextWindow ? <ContextRow usage={contextWindow} spaced={limits !== undefined} /> : null}
+         ) : (
+-          limits.windows.map((window) => <LimitRow key={window.id} window={window} now={now} />)
++          <>
++            {absentSessionWindow(limits.windows) ? (
++              <UsageRow
++                label="Session"
++                fill={null}
++                tone={null}
++                value={NOT_APPLICABLE}
++                muted
++                tooltip={
++                  <span className="text-foreground">This account has no session limit.</span>
++                }
++              />
++            ) : null}
++            {limits.windows.map((window) => (
++              <LimitRow key={window.id} window={window} now={now} />
++            ))}
++            <BatonLimitsAge checkedAt={limits.checkedAt} now={now} className="col-span-3" />
++          </>
+         )}
        </div>
      </ThreadDetailsSection>
 diff --git a/apps/web/src/components/usage/UsageLimits.tsx b/apps/web/src/components/usage/UsageLimits.tsx
-index e34965632b0300dbb8a6bdf6a526f51497c33dd9..5da0067be2e9c4b18a1ef3b49236a68803ab746c 100644
+index 1153b9cc74bc06ca2abc43b44beba7cba36c0157..326de815c0c2af9321a1ca6ac119d75783219778 100644
 --- a/apps/web/src/components/usage/UsageLimits.tsx
 +++ b/apps/web/src/components/usage/UsageLimits.tsx
 @@ -1,3 +1,4 @@
@@ -86,7 +90,7 @@ index e34965632b0300dbb8a6bdf6a526f51497c33dd9..5da0067be2e9c4b18a1ef3b49236a688
  import {
    AuthProvidersManageScope,
    type EnvironmentId,
-@@ -204,6 +205,12 @@ export function LimitWindows({
+@@ -207,6 +208,12 @@ export function LimitWindows({
            : "grid grid-cols-[11rem_minmax(0,1fr)_7rem] gap-x-4 gap-y-1"
        }
      >
@@ -100,7 +104,7 @@ index e34965632b0300dbb8a6bdf6a526f51497c33dd9..5da0067be2e9c4b18a1ef3b49236a688
          const pace = paceOf(window, now);
          const resetsIn = formatResetsIn(window, now);
 diff --git a/apps/web/src/components/usage/UsageLimitsPooled.tsx b/apps/web/src/components/usage/UsageLimitsPooled.tsx
-index 7157607dabafc9cd033fd6e9da55b2c719c30bf7..ddcc33042cde049ac822ff4b6879d7a642c0c7ba 100644
+index bc69ca4e3403a4059cd7c5f6557a1f3336db44d6..7434c7218d817bc38b9cf30d1114144a4c37cc9b 100644
 --- a/apps/web/src/components/usage/UsageLimitsPooled.tsx
 +++ b/apps/web/src/components/usage/UsageLimitsPooled.tsx
 @@ -1,3 +1,4 @@
@@ -108,7 +112,7 @@ index 7157607dabafc9cd033fd6e9da55b2c719c30bf7..ddcc33042cde049ac822ff4b6879d7a6
  import {
    CHATGPT_USAGE_URL,
    collectLimitAccounts,
-@@ -31,6 +32,7 @@ import { ensureLocalApi } from "../../localApi";
+@@ -32,6 +33,7 @@ import { ensureLocalApi } from "../../localApi";
  import { usePrimarySettings } from "../../hooks/useSettings";
  import { cn } from "../../lib/utils";
  import { formatUpcomingTimestamp } from "../../timestampFormat";
@@ -116,7 +120,7 @@ index 7157607dabafc9cd033fd6e9da55b2c719c30bf7..ddcc33042cde049ac822ff4b6879d7a6
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { providerClients } from "../settings/providerDriverMeta";
  import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
-@@ -211,6 +213,7 @@ function SegmentPopover({
+@@ -212,6 +214,7 @@ function SegmentPopover({
            </span>
          </div>
        ) : null}
@@ -124,7 +128,7 @@ index 7157607dabafc9cd033fd6e9da55b2c719c30bf7..ddcc33042cde049ac822ff4b6879d7a6
      </div>
    );
  }
-@@ -584,6 +587,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
+@@ -585,6 +588,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
          />
          {label}
        </h2>
@@ -171,7 +175,7 @@ index 1e4bcd0090854f7856140516420843c648bdc690..2301b0e95e66445363e0b4c6f166c49d
    };
  }
 diff --git a/packages/shared/src/usageLimits.ts b/packages/shared/src/usageLimits.ts
-index 3dca207a2efb728db3bbd6afa7b1da002fa722d6..869ed6baed2079f301b64910e415fbc8cb728384 100644
+index bf7dfea4e04bf55ea2eb0188620d9834134393f9..a62a2a9534b083d70d311f7b87cd93b6bb2fb48c 100644
 --- a/packages/shared/src/usageLimits.ts
 +++ b/packages/shared/src/usageLimits.ts
 @@ -199,7 +199,7 @@ function accountKey(
