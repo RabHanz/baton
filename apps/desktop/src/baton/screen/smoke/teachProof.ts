@@ -179,7 +179,8 @@ void Electron.app.whenReady().then(async () => {
     }
   };
   const pill = createVoicePill({
-    cueGain: () => 0,
+    cueGain: () => 1,
+    onCuePlayed: (name, result) => note("cue.played", { name, result }),
     rest: () => false,
     edge: () => "bottom",
     stateDir,
@@ -203,7 +204,10 @@ void Electron.app.whenReady().then(async () => {
     },
     onNote: (kind, fields) => note(`note.${kind}`, fields),
     onTrace: (fields) => note("trace", fields),
-    onCue: (cue) => note("cue", { cue }),
+    onCue: (cue) => {
+      note("cue", { cue });
+      pill.cue(cue);
+    },
   });
 
   // The real UI Automation sidecar (built in the workflow) gives the ring its control and the drive its window checks.
@@ -257,6 +261,11 @@ void Electron.app.whenReady().then(async () => {
   }
 
   const results: Record<string, unknown> = {};
+  // Each of the five cues once, through the pill, and what its page said; a runner may have no sound device.
+  for (const cue of ["start", "stepDone", "waiting", "error", "finished"] as const) {
+    pill.cue(cue);
+    await sleep(700);
+  }
   const pid = await ps(NOTEPAD);
   note("notepad", { pid });
   await sleep(1500);

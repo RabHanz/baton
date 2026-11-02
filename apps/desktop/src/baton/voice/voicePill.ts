@@ -159,7 +159,7 @@ window.pill={
  sting(){if(calm)return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
  move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
- sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);},
+ sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);return ctx.state+':'+SOUNDS[name].length;},
 };
 </script></body></html>`;
 
@@ -219,6 +219,8 @@ const loadSpots = (file: string): Readonly<Record<string, Spot>> => {
 export const createVoicePill = (input: {
   /** 0 off, 0.5 quiet, 1 normal. */
   readonly cueGain: () => number;
+  /** What the page said when a cue was played: its audio state and how many notes it scheduled (the proof logs it). */
+  readonly onCuePlayed?: (name: string, result: string) => void;
   /** Holds a cue until he is quiet (true), or says to drop it (false); then tells the mic path it will sound. */
   readonly cueGate?: {
     readonly quiet: () => Promise<boolean>;
@@ -408,11 +410,14 @@ export const createVoicePill = (input: {
     return { ...placeFor(display), width: WIDTH, height: HEIGHT };
   };
 
-  const call = (code: string) => {
+  const call = (code: string, done?: (result: unknown) => void) => {
     const target = window;
     void ready.then(() => {
       if (target !== null && !target.isDestroyed()) {
-        void target.webContents.executeJavaScript(code).catch(() => undefined);
+        void target.webContents
+          .executeJavaScript(code)
+          .then((result: unknown) => done?.(result))
+          .catch(() => undefined);
       }
     });
   };
@@ -506,7 +511,9 @@ export const createVoicePill = (input: {
     if (gain <= 0) return;
     const play = () => {
       input.cueGate?.playing(soundMs(name) + CUE_TAIL_MS);
-      call(`window.pill.sound(${JSON.stringify(name)},${gain})`);
+      call(`window.pill.sound(${JSON.stringify(name)},${gain})`, (result) =>
+        input.onCuePlayed?.(name, String(result)),
+      );
     };
     if (input.cueGate === undefined) return play();
     void input.cueGate.quiet().then((ok) => {
@@ -705,7 +712,9 @@ export const createVoicePill = (input: {
       })),
       { type: "separator" as const },
       { label: "Put it back", click: () => Electron.ipcMain.emit("baton-pill:reset", event) },
-      ...(input.menuItems === undefined ? [] : [{ type: "separator" as const }, ...input.menuItems()]),
+      ...(input.menuItems === undefined
+        ? []
+        : [{ type: "separator" as const }, ...input.menuItems()]),
     ]).popup({ window });
   });
   Electron.ipcMain.on("baton-pill:reset", (event) => {
