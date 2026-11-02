@@ -80,3 +80,17 @@ describe("trust page", () => {
     expect(trustAction("trust.filter", "nope")).toBeNull();
   });
 });
+
+describe("trust by voice", () => {
+  it("describes the permissions and today's activity in plain words", async () => {
+    const { describeToday, describeTrust, permissionFromWords } = await import("./trustRows.ts");
+    const said = describeTrust(data(), NOW);
+    expect(said).toContain("Your Chrome: off.");
+    expect(said).toContain("Looking at your screen without asking: on (last used");
+    expect(said).toContain("nothing, all playbooks are off");
+    expect(describeToday([], new Date(NOW))).toContain("Nothing yet today");
+    expect(describeToday(data().entries, new Date("2026-11-03T12:00:00Z"))).toContain("Today:");
+    expect(permissionFromWords("turn off Chrome")).toBe("chrome");
+    expect(permissionFromWords("the weather")).toBeNull();
+  });
+});
