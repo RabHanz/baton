@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   PLACES,
+  cursorOverCapsule,
   defaultPosition,
   parseSpots,
   placePosition,
@@ -104,5 +105,17 @@ describe("dragging is free on both axes", () => {
     const across = snapPosition(area, size, { x: bottom.x + 300, y: bottom.y }, free);
     expect(across.x).toBeGreaterThan(bottom.x + 250);
     expect(Math.abs(across.y - bottom.y)).toBeLessThan(25);
+  });
+});
+
+describe("grabbing the pill", () => {
+  // The laptop's 735x91 window at 1554,82 with the capsule drawn at x 302..434, y 26..67.
+  const window = { x: 1554, y: 82, width: 735, height: 91 };
+  const capsule = { x: 302, y: 26, width: 132, height: 41 };
+  it("takes the mouse over the whole capsule and lets it through elsewhere", () => {
+    expect(cursorOverCapsule({ x: 1922, y: 128 }, window, capsule)).toBe(true);
+    expect(cursorOverCapsule({ x: 1860, y: 110 }, window, capsule)).toBe(true);
+    expect(cursorOverCapsule({ x: 1554 + 100, y: 128 }, window, capsule)).toBe(false);
+    expect(cursorOverCapsule({ x: 1922, y: 82 + 5 }, window, capsule)).toBe(false);
   });
 });
