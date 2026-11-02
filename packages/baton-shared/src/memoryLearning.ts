@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 /**
  * The learning loop's pure half (D150, docs/baton/MEMORY.md section 4): what the cheap model is
  * asked after a turn or a job, how its proposals become memory drafts, and which items the daily
