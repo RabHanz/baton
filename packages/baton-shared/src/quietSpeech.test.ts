@@ -16,7 +16,7 @@ describe("quiet-speech mode", () => {
   it("lifts a whisper towards a speaking level, by at most 18 dB", () => {
     const boost = createQuietBoost();
     const whisper = tone(300);
-    let out = whisper;
+    let out: Int16Array = whisper;
     for (let i = 0; i < 20; i += 1) out = boost(whisper);
     expect(rmsOf(out) / rmsOf(whisper)).toBeGreaterThan(3);
     expect(rmsOf(out) / rmsOf(whisper)).toBeLessThanOrEqual(8.05);
