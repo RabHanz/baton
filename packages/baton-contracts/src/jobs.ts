@@ -49,6 +49,10 @@ export const BatonJobLimits = Schema.Struct({
   wallClockMinutes: Schema.Number,
   workerTurns: Schema.Number,
   dollars: Schema.NullOr(Schema.Number),
+  /** A progress report every this many minutes while it runs; 0 is off. Default 60. */
+  reportEveryMinutes: Schema.optionalKey(Schema.Number),
+  /** How many times a failed worker may be retried. Default 2. */
+  retries: Schema.optionalKey(Schema.Number),
 });
 export type BatonJobLimits = typeof BatonJobLimits.Type;
 
@@ -170,6 +174,8 @@ export const BatonJobStartInput = Schema.Struct({
       wallClockMinutes: Schema.optionalKey(Schema.Number),
       workerTurns: Schema.optionalKey(Schema.Number),
       dollars: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+      reportEveryMinutes: Schema.optionalKey(Schema.Number),
+      retries: Schema.optionalKey(Schema.Number),
     }),
   ),
   modelSelection: ModelSelection,

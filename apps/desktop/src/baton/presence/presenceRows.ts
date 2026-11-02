@@ -11,6 +11,8 @@ export interface PresenceSettings {
   readonly needsRepos: ReadonlyArray<string>;
   readonly ciRepos: ReadonlyArray<string>;
   readonly needsDeadlinesFile: string | null;
+  readonly needsFeeds: ReadonlyArray<string>;
+  readonly needsExpect: ReadonlyArray<string>;
 }
 
 const AWARE = "Presence: what I may know right now";
@@ -90,6 +92,24 @@ export const presenceControls = (s: PresenceSettings): ReadonlyArray<HomeControl
     placeholder: "owner/repository",
   },
   {
+    id: "pr.feeds",
+    section: WATCH,
+    label: "Status files other systems write",
+    hint: 'A JSON file { "source", "asOf", "items": [{ "id", "title", "why", "weight", "due" }] } read for "what needs me": approvals from a dashboard, a peer project\'s status. Read-only; a file older than a day is not trusted.',
+    kind: "list",
+    items: s.needsFeeds,
+    placeholder: "Full path to a status file",
+  },
+  {
+    id: "pr.expect",
+    section: WATCH,
+    label: "Sources I expect an answer from",
+    hint: "Name a source (for example Cockpit approvals). If no readable status file carries that name, the answer says it is not connected rather than leaving it out.",
+    kind: "list",
+    items: s.needsExpect,
+    placeholder: "Name of a source",
+  },
+  {
     id: "pr.deadlines",
     section: WATCH,
     label: "Deadlines file",
@@ -132,6 +152,15 @@ export const presencePatch = (
   current: PresenceSettings,
 ): Partial<PresenceSettings> | null => {
   const on = value === true;
+  const free = /^pr\.(feeds|expect):(add|rm)$/.exec(id);
+  if (free !== null) {
+    if (typeof value !== "string" || value.trim() === "" || value.length > 500) return null;
+    const key = free[1] === "feeds" ? "needsFeeds" : "needsExpect";
+    const clean = value.trim();
+    const now = current[key];
+    if (free[2] === "rm") return { [key]: now.filter((x) => x !== clean) };
+    return now.includes(clean) || now.length >= 20 ? null : { [key]: [...now, clean] };
+  }
   const list = /^pr\.(needsRepos|ciRepos|deadlines):(add|rm)$/.exec(id);
   if (list !== null) {
     if (typeof value !== "string" || value === "" || value.length > 500) return null;

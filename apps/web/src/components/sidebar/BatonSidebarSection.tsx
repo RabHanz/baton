@@ -78,6 +78,7 @@ export function BatonSidebarSection(props: {
   const weaveSend = useAtomCommand(batonWorkSessions.weaveSend, quiet);
   const weaveList = useAtomCommand(batonWorkSessions.weaveList, quiet);
   const weaveTick = useAtomCommand(batonWorkSessions.weaveTick, quiet);
+  const handoffJob = useAtomCommand(batonWorkSessions.handoff, quiet);
   const commitmentsList = useAtomCommand(batonWorkSessions.commitmentsList, quiet);
   const commitmentsUpsert = useAtomCommand(batonWorkSessions.commitmentsUpsert, quiet);
   const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
@@ -189,6 +190,9 @@ export function BatonSidebarSection(props: {
                 projects: [batonProjectKey(project).label],
                 tools: tools.length === 0 ? ["read"] : tools,
               },
+              ...(typeof args["reportEveryMinutes"] === "number"
+                ? { limits: { reportEveryMinutes: args["reportEveryMinutes"] } }
+                : {}),
               modelSelection: { instanceId: worker.instanceId, model: model.slug },
               // Anything the worker would ask permission for becomes a card that needs him.
               runtimeMode: "approval-required",
@@ -206,6 +210,28 @@ export function BatonSidebarSection(props: {
             },
           }),
         );
+      case "handoff": {
+        const wanted = text("instance").trim().toLowerCase();
+        const targets = listHandoffTargets(primary);
+        const target = targets.find(
+          (t) => t.instanceId.toLowerCase() === wanted || t.label.toLowerCase() === wanted,
+        );
+        if (target === undefined) {
+          throw new Error(
+            `No worker is called "${text("instance")}". Ready: ${targets.map((t) => t.label).join(", ") || "none"}.`,
+          );
+        }
+        return done(
+          await handoffJob({
+            ...env,
+            input: {
+              id: text("id") as never,
+              modelSelection: { instanceId: target.instanceId, model: target.model },
+              ...(text("note") === "" ? {} : { note: text("note") }),
+            } as never,
+          }),
+        );
+      }
       case "stop":
         return done(await jobStop({ ...env, input: { id: text("id") as never } }));
       case "schedule":
