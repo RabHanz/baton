@@ -244,6 +244,8 @@ export const similarity = (a: string, b: string): number => {
   return both / (x.size + y.size - both);
 };
 export const SAME_ITEM_OVERLAP = 0.8;
+/** Below "the same item" but plainly about the same thing: the weekly pass folds these into one. */
+export const NEAR_ITEM_OVERLAP = 0.5;
 
 /** Which of two items that contradict wins: his words, then the newer, then the more certain. */
 export const winner = (a: MemoryItem, b: MemoryItem): MemoryItem => {
@@ -394,3 +396,30 @@ export const exportMarkdown = (items: ReadonlyArray<MemoryItem>): string =>
       ),
     "",
   ].join("\n");
+
+// ---------- why it is remembered ----------
+
+const WHERE: Record<MemorySource, string> = {
+  user: "You told me this",
+  thread: "I picked this up from a conversation",
+  job: "I learned this from a finished job",
+  import: "This was imported from a file",
+  sync: "This came from another of your computers",
+};
+
+/** The plain answer to "why do you remember this", from what the item itself records. */
+export const whyRemembered = (item: MemoryItem): string => {
+  const day = (iso: string) => iso.slice(0, 10);
+  return [
+    `${WHERE[item.source]} on ${day(item.createdAt)}.`,
+    item.source === "user"
+      ? "It is in your words."
+      : `I am ${Math.round(item.confidence * 100)}% sure of it; hearing it again raises that and time lowers it.`,
+    item.proposed ? "It came from something I read, so it waits for your yes." : null,
+    item.pinned ? "You pinned it, so it stays." : null,
+    item.lastUsedAt === null ? "I have not used it in an answer yet." : `I last used it in an answer on ${day(item.lastUsedAt)}.`,
+    item.expiresAt === null ? null : `It is forgotten after ${day(item.expiresAt)}.`,
+  ]
+    .filter((x): x is string => x !== null)
+    .join(" ");
+};
