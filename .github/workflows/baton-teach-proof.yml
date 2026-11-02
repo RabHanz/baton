@@ -63,6 +63,21 @@ jobs:
           mkdir -p "$PROOF_OUT"
           timeout 600 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/teachProof.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
           cat "$PROOF_OUT/results.json" || echo "no results"
+          echo "PROOF_OUT=$PROOF_OUT" >> "$GITHUB_ENV"
+      # The run is red when the proof is: every teach step found its control, the drive finished, and the font changed.
+      - name: Assert the proof
+        shell: bash
+        run: |
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.env.PROOF_OUT + "/results.json", "utf8"));
+            const bad = [];
+            if (!/^Finished/.test(r.teach?.end ?? "")) bad.push("teach did not finish: " + r.teach?.end);
+            if ((r.teach?.pointedAt ?? 0) < 3) bad.push("teach found only " + r.teach?.pointedAt + " of 3 controls");
+            if (!/^Finished/.test(r.drive?.end ?? "")) bad.push("drive did not finish: " + r.drive?.end);
+            if (r.drive?.fontPoints !== 200) bad.push("the font is " + r.drive?.fontPoints + ", not 200");
+            if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+            console.log("proof holds");
+          '
       - uses: actions/upload-artifact@v4
         if: always()
         with:
