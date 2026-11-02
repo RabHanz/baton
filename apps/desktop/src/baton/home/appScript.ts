@@ -48,7 +48,7 @@ const INTRO = {
   usage: ['Usage', 'How much of each account is left.'],
   checks: ['Checks', 'See what is wrong without reading a log.']
 };
-let cur = 'home', collapsed = false, modal = null, S = null;
+let cur = 'home', collapsed = false, modal = null, S = null, query = '';
 let aboutSeen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
@@ -66,7 +66,7 @@ function control(c) {
       }
       return list;
     }
-    if (c.options.length <= 3 && c.options.reduce((n, o) => n + o.label.length, 0) <= 32) {
+    if (c.options.length <= 4 && c.options.reduce((n, o) => n + o.label.length, 0) <= 40) {
       const s = $('div', 'seg'); for (const o of c.options) { const b = $('button', null, o.label); b.setAttribute('aria-pressed', String(o.value === c.value)); b.onclick = () => set(c.id, o.value); s.appendChild(b); } return s;
     }
     if (c.options.some(o => o.note)) {
@@ -130,15 +130,14 @@ function choiceRow(c) {
 }
 function wakeRow(items) {
   const wrap = $('div', 'rowwrap'); const r = $('div', 'row'); const t = $('div', 'text'); t.appendChild($('div', 'label', 'Wake words'));
-  const on = items.filter(x => x.on).map(x => x.label.replace(/^Wake word: /, ''));
-  t.appendChild($('div', 'hint', on.length ? on.join(', ') : 'None on'));
-  const b = $('button', 'btn quiet', changing.has('wake') ? 'Done' : 'Change'); b.onclick = () => { if (changing.has('wake')) changing.delete('wake'); else changing.add('wake'); render(); };
-  r.append(t, b); wrap.appendChild(r);
-  if (changing.has('wake')) { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
+  t.appendChild($('div', 'hint', 'Say any of these to wake Tessaya. Turn off the ones you do not want.'));
+  r.append(t); wrap.appendChild(r);
+  { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
   return wrap;
 }
 function row(c) {
-  if (c.kind === 'choice' && (c.options.length > 2 || c.options.reduce((n, o) => n + o.label.length, 0) > 26)) return choiceRow(c);
+  // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.
+  if (c.kind === 'choice' && (c.id === 's.voice' || c.options.some(o => o.note))) { const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.append(t, control(c)); return w; }
   if (c.kind === 'session') return session(c);
   if (c.kind === 'check') return check(c);
   if (c.kind === 'brain') { const r = $('div', 'brainRow'); if (c.hint) r.appendChild($('div', 'hint', c.hint)); r.appendChild(brain(c)); return r; }
@@ -156,7 +155,8 @@ function group(name, items) {
   const more = items.filter(x => x.more);
   if (more.length) {
     const w = $('div', 'more'), i = $('div'); rowsOf(more, i); w.appendChild(i); g.appendChild(w);
-    const ml = (more.find(x => x.moreLabel) || {}).moreLabel || 'More options', fl = ml === 'Show all' ? 'Show fewer' : 'Fewer options';
+    const names = more.filter(x => x.kind !== 'check' || more.length < 3).map(x => x.label.replace(/^Wake word: /, '').toLowerCase()), held = names.slice(0, 3).join(', ') + (names.length > 3 ? ' and more' : '');
+    const ml = (more.find(x => x.moreLabel) || {}).moreLabel || ('Advanced: ' + held), fl = ml === 'Show all' ? 'Show fewer' : 'Hide advanced';
     const b = $('button', 'moreBtn'); b.setAttribute('aria-expanded', String(open.has(name))); const sp = $('span', null, open.has(name) ? fl : ml); b.append(sp, icon('chev', 10));
     b.onclick = () => { if (open.has(name)) open.delete(name); else open.add(name); g.classList.toggle('open'); b.setAttribute('aria-expanded', String(open.has(name))); sp.textContent = open.has(name) ? fl : ml; };
     g.appendChild(b);
@@ -422,7 +422,17 @@ function historyPage(p) {
   if (hrows.length > hlimit) { const more = $('button', 'btn quiet', 'Show older (' + (hrows.length - hlimit) + ')'); more.style.marginTop = '12px'; more.onclick = () => { hlimit += 40; render(); }; p.appendChild(more); }
   recordings(p);
 }
+const tabName = id => (TABS.find(t => t[0] === id) || [id, 'Settings'])[1];
+/** Every setting whose words contain every word typed, shown as the real rows, with the page each one lives on. */
+function searchPage(p) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = S.controls.filter(c => c.kind !== 'session' && words.every(w => (c.label + ' ' + (c.hint || '') + ' ' + (c.section || '')).toLowerCase().includes(w)));
+  p.appendChild(pageHead('Search', hits.length ? hits.length + (hits.length === 1 ? ' setting' : ' settings') + ' for \u201c' + query + '\u201d' : 'Nothing matches \u201c' + query + '\u201d. Try a shorter word.'));
+  const by = new Map(); for (const c of hits) { const t = c.tab || 'settings'; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
+  for (const [t, list] of by) { const h = $('h2', null, tabName(t)); const go2 = $('button', 'moreBtn', 'Open ' + tabName(t)); go2.onclick = () => { query = ''; go(t); }; h.appendChild(go2); p.appendChild(h); const g = $('div', 'group'); rowsOf(list, g); p.appendChild(g); }
+}
 function tabPage(p) {
+  if (query.trim() && !modal) return searchPage(p);
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
   if (cur === 'usage') return usage(p);
@@ -560,14 +570,15 @@ function render(state) {
   foot.append(t3, st); side.appendChild(foot);
   });
   setRegion(document.getElementById('top'), top => {
+  const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
-  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(ac);
+  const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal();
-  if (keep && keep.indexOf('in-') === 0) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
+  if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
