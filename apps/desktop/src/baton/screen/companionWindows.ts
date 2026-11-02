@@ -4,6 +4,7 @@
  * the system dialogs (D111). Both are inline pages of ours that never navigate, node is how they
  * hand back an answer, and words from a model only ever reach them as textContent.
  */
+import { protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -100,7 +101,7 @@ const companionWindow = (bounds: Electron.Rectangle, focusable = true): Electron
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   markCompanionWindow(win);
   win.setAlwaysOnTop(true, "screen-saver");
-  win.setContentProtection(true);
+  protectFromCapture(win);
   return win;
 };
 

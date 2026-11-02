@@ -13,11 +13,15 @@ const $ = (t, c, x) => { const e = document.createElement(t); if (c) e.className
 const ICON = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
   sessions: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/>',
+  approvals: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  jobs: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   dictation: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   assistant: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/>',
   voice: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
   screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
+  tools: '<path d="M14 6l4 4-8 8H6v-4z"/><path d="M13 7l4 4"/>',
+  memory: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 11h8M8 15h8"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
@@ -29,10 +33,14 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['sessions','Sessions'],['dictation','Dictation'],['history','History'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
+  approvals: ['Approvals', 'Everything waiting for your yes, with what it would do and what it would use. High-risk actions still ask you aloud when they happen.'],
+  jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
+  tools: ['Skills and tools', 'The plugins, skills and servers that Claude Code and Codex already have. Tessaya adds none of its own. A plugin switch changes Claude Code\u2019s own setting and applies to its next session.'],
+  memory: ['Memory', 'What Tessaya has been asked to remember, as plain notes. Open one to correct it, or delete it. Clearing a note never touches Tessaya itself.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
@@ -41,6 +49,7 @@ const INTRO = {
   checks: ['Checks', 'See what is wrong without reading a log.']
 };
 let cur = 'home', collapsed = false, modal = null, S = null;
+let aboutSeen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
 function control(c) {
@@ -172,8 +181,19 @@ function banner(kind, em, title, text, btn, onclick) {
 function dayLabel(iso) { const d = new Date(iso), t = new Date(); const same = (a, b) => a.toDateString() === b.toDateString(); const y = new Date(t); y.setDate(t.getDate() - 1); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString([], { month: 'long', day: 'numeric' }); }
 function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 
+// The wake sting plays once when the window opens and when About opens, on every mark that is up, then each rests on its still.
+let stingUntil = 0;
+function startSting() {
+  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  stingUntil = Date.now() + 2100; render(); setTimeout(render, 2150);
+}
+function markHtml() {
+  if (Date.now() < stingUntil && window.TESSAYA_STING) { const dark = document.documentElement.dataset.theme === 'dark'; return '<img alt="" style="width:100%;height:100%;display:block" src="data:image/webp;base64,' + (dark ? TESSAYA_STING.dark : TESSAYA_STING.light) + '">'; }
+  return S.status.brandMark || S.status.mark;
+}
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
+  const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
   p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
   const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
   const sub = $('p', 'lede');
@@ -489,7 +509,7 @@ function modalPage(b) {
   else if (modal === 'keys') bindingsPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
+  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
 function setRegion(el, build) {
@@ -523,8 +543,8 @@ function syncModal() {
   setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
-function closeModal() { modal = null; render(); }
-function go(t) { cur = t; render(); document.getElementById('panel').scrollTop = 0; }
+function closeModal() { modal = null; aboutSeen = false; render(); }
+function go(t) { cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
@@ -532,7 +552,7 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); side.appendChild(brand);
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); 
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
@@ -554,5 +574,5 @@ function render(state) {
 addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
-get().then(s => render(s));
+get().then(s => { render(s); startSting(); });
 `;

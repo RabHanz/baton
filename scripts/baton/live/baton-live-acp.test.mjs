@@ -16,8 +16,15 @@ import {
   splitAttachments,
   safeInboxName,
   parsePanePrompt,
+  parseReviewScreen,
   answerKeys,
   answerFrom,
+  enqueue,
+  readQueue,
+  drainSession,
+  deliveredNote,
+  lostNote,
+  queuedNote,
 } from "./baton-live-acp.mjs";
 
 const AGENT = NodePath.join(
@@ -218,3 +225,138 @@ NodeTest.test(
     }
   },
 );
+
+const queueDir = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-queue-"));
+const msg = (text) => ({ text, shown: text, at: "2026-11-01T20:34:35.000Z" });
+const harness = (state) => {
+  const said = [];
+  const typed = [];
+  return {
+    said,
+    typed,
+    deps: {
+      findLive: () => state.live,
+      typeInto: async (_pane, text) => {
+        if (state.failure !== null) return state.failure;
+        typed.push(text);
+        return null;
+      },
+      say: (_id, text) => said.push(text),
+    },
+  };
+};
+
+NodeTest.test("a message sent while the session waits on a question is kept, then sent in order once it clears", async () => {
+  const dir = queueDir();
+  const state = { live: { pane: "p", status: "waiting" }, failure: null };
+  const { deps, said, typed } = harness(state);
+  NodeAssert.equal(enqueue(dir, "s1", msg("first thing")), 1);
+  NodeAssert.equal(enqueue(dir, "s1", msg("second thing")), 2);
+  NodeAssert.match(queuedNote("the session is waiting on a question.", 2), /Not delivered yet: .*question\. 2 messages queued; they send when you answer it\./);
+  await drainSession(dir, "s1", deps);
+  NodeAssert.deepEqual(typed, [], "nothing is typed over a question");
+  NodeAssert.equal(readQueue(dir, "s1").length, 2);
+  state.live = { pane: "p", status: "idle" };
+  await drainSession(dir, "s1", deps);
+  NodeAssert.deepEqual(typed, ["first thing", "second thing"]);
+  NodeAssert.deepEqual(said, [deliveredNote("first thing"), deliveredNote("second thing")]);
+  NodeAssert.equal(readQueue(dir, "s1").length, 0);
+});
+
+NodeTest.test("the queue is on disk, so a restart finds what was waiting", () => {
+  const dir = queueDir();
+  enqueue(dir, "s2", msg("keep me"));
+  NodeAssert.deepEqual(
+    readQueue(dir, "s2").map((item) => item.text),
+    ["keep me"],
+  );
+  NodeAssert.deepEqual(NodeFS.readdirSync(dir), ["s2.json"]);
+});
+
+NodeTest.test("a message Herdr keeps refusing is handed back quoted, and the ones behind it still go", async () => {
+  const dir = queueDir();
+  const state = { live: { pane: "p", status: "idle" }, failure: "Herdr did not take the message: no pane" };
+  const { deps, said, typed } = harness(state);
+  enqueue(dir, "s3", msg("my important words"));
+  enqueue(dir, "s3", msg("and these"));
+  for (let i = 0; i < 6; i += 1) await drainSession(dir, "s3", deps);
+  NodeAssert.ok(said.some((line) => line.includes('Your message was: "my important words"')), said.join("|"));
+  state.failure = null;
+  await drainSession(dir, "s3", deps);
+  NodeAssert.deepEqual(typed, ["and these"]);
+  NodeAssert.equal(readQueue(dir, "s3").length, 0);
+});
+
+NodeTest.test("when the session is gone for good every queued message is quoted back", async () => {
+  const dir = queueDir();
+  const { deps, said } = harness({ live: null, failure: null });
+  enqueue(dir, "s4", msg("one"));
+  enqueue(dir, "s4", msg("two"));
+  for (let i = 0; i < 10; i += 1) await drainSession(dir, "s4", deps);
+  NodeAssert.deepEqual(said, [
+    lostNote("the session is no longer running here.", "one"),
+    lostNote("the session is no longer running here.", "two"),
+  ]);
+  NodeAssert.equal(readQueue(dir, "s4").length, 0);
+});
+
+NodeTest.test("the review screen of a multi-question form is read, with its answers, Submit, Cancel and a way back", () => {
+  const prompt = parsePanePrompt(fixture("pane-review.txt"));
+  NodeAssert.equal(prompt.question, "Ready to submit your answers?");
+  NodeAssert.equal(prompt.header, "Review your answers");
+  NodeAssert.deepEqual(
+    prompt.tabs?.map((t) => [t.label, t.answered]),
+    [
+      ["Browser", true],
+      ["Connectors", true],
+      ["Submit", true],
+    ],
+  );
+  NodeAssert.match(prompt.context, /Which browser profile should that happen in\? → My main profile/);
+  NodeAssert.match(prompt.context, /should those connectors be removed\? → Remove after \(Recommended\)/);
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Submit answers", "Cancel", "Go back"],
+  );
+  NodeAssert.equal(prompt.selected, 0);
+  NodeAssert.deepEqual(answerKeys(prompt, "Submit answers"), { keys: ["enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "cancel"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Go back"), { keys: ["left"], text: null });
+  NodeAssert.equal(answerKeys(prompt, "banana"), null, "no free text on the review screen");
+});
+
+NodeTest.test("a question in a real multi-question form has its tabs, and free text goes to the last option", () => {
+  // Read from a throwaway Claude Code session asked for two questions in one AskUserQuestion call.
+  const prompt = parsePanePrompt(fixture("pane-form-tabs.txt"));
+  NodeAssert.equal(prompt.question, "Which colour do you prefer?");
+  NodeAssert.deepEqual(
+    prompt.tabs?.map((t) => [t.label, t.answered]),
+    [
+      ["Colour", false],
+      ["Size", false],
+      ["Submit", true],
+    ],
+  );
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Red", "Green"],
+  );
+  NodeAssert.equal(prompt.header, "Colour · Size");
+  NodeAssert.equal(prompt.customIndex, 2);
+  NodeAssert.deepEqual(answerKeys(prompt, "green"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Extra large, please"), {
+    keys: ["down", "down"],
+    text: "Extra large, please",
+  });
+});
+
+NodeTest.test("a free-text option called Other is the custom slot too", () => {
+  const screen = fixture("pane-form-tabs.txt").replace("3. Type something.", "3. Other");
+  NodeAssert.equal(parsePanePrompt(screen).customIndex, 2);
+});
+
+NodeTest.test("the permission dialog and the single question still read as before", () => {
+  NodeAssert.equal(parsePanePrompt(fixture("pane-permission.txt")).question, "Do you want to proceed?");
+  NodeAssert.equal(parsePanePrompt(fixture("pane-question.txt")).question, "Which colour do you prefer?");
+  NodeAssert.equal(parseReviewScreen(["nothing here"]), null);
+});

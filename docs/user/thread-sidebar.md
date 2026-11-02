@@ -297,3 +297,11 @@ several selected threads together. Choose **Wake thread** to bring a thread back
 A snoozed thread keeps working and stays hidden until its wake time, even while
 its agent wakes itself for background work. It comes back early only when it needs
 an approval or answer from you, when a run fails, or when you send it a message.
+
+## Pictures, videos and thinking in a thread
+
+A picture or video a session makes, reads or screenshots appears in the reply that mentions it, wherever on the machine it lives, up to a size limit and never from private folders such as `.ssh` or files named like secrets. A name that does not resolve stays plain text. The official T3 Code phone app shows these pictures and videos, because the server attaches them, but it cannot show the open "thinking" row or the quiet one-line note for a picture that failed to load: those are part of the web and desktop apps. Open the thread at app.t3.codes in your phone's browser to see them.
+
+## Questions a terminal session is waiting on
+
+When a Claude Code session mirrored from a terminal stops on a question, an approval or a multi-question form, the thread shows the question and its choices, and answering there presses the same keys in the terminal: pick a choice, type your own answer, and on the last screen of a form choose Submit answers, Cancel or Go back. A message that is not an answer waits in order and sends when the session is ready. The web and desktop apps show the question as a card; the official phone app shows T3's own question prompt where it supports one, and otherwise you answer from the web or desktop app.

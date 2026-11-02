@@ -40,6 +40,12 @@ const VK: Record<string, number> = {
   space: 0x20,
 };
 
+/** A chord that puts something on the clipboard. */
+export const isCopyChord = (keys: ReadonlyArray<string>): boolean => {
+  const k = keys.map((x) => x.toLowerCase());
+  return k.includes("ctrl") && (k.includes("c") || k.includes("x") || k.includes("insert"));
+};
+
 /** Windows virtual-key codes for a chord, in press order. */
 export const virtualKeys = (keys: ReadonlyArray<string>): ReadonlyArray<number> =>
   keys.map((key) => {
@@ -172,6 +178,8 @@ const runOnce = (file: string, args: ReadonlyArray<string>): Promise<void> =>
 export interface Clipboard {
   readonly readText: () => string | Promise<string>;
   readonly writeText: (text: string) => void | Promise<void>;
+  /** Writes `next` only if the clipboard still holds `expected`, in one step where the platform can. */
+  readonly replaceIf?: (expected: string, next: string) => void | Promise<void>;
 }
 
 /**
@@ -181,7 +189,7 @@ export interface Clipboard {
  */
 export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
   let saved: { readonly text: string; readonly timer: ReturnType<typeof setTimeout> } | null = null;
-  return async (text: string, chord: () => Promise<void>): Promise<void> => {
+  const paste = async (text: string, chord: () => Promise<void>): Promise<void> => {
     if (saved !== null) clearTimeout(saved.timer);
     const previous = saved?.text ?? (await clipboard.readText());
     saved = null;
@@ -204,11 +212,22 @@ export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
         text: previous,
         timer: setTimeout(() => {
           saved = null;
-          void clipboard.writeText(previous);
+          // Only if it is still ours: a copy he or the assistant made since is not undone (Ctrl+C right after typing).
+          void (clipboard.replaceIf !== undefined
+            ? Promise.resolve(clipboard.replaceIf(text, previous))
+            : Promise.resolve(clipboard.readText()).then((now) => {
+                if (now === text) return clipboard.writeText(previous);
+              }));
         }, restoreMs),
       };
     }
   };
+  /** He or the assistant is copying now: what is on the clipboard after this is theirs, so nothing is put back. */
+  const cancelRestore = () => {
+    if (saved !== null) clearTimeout(saved.timer);
+    saved = null;
+  };
+  return Object.assign(paste, { cancelRestore });
 };
 
 export const createInputDriver = (input: {
@@ -244,7 +263,10 @@ export const createInputDriver = (input: {
             ? `wheel ${Math.round(amount * 120)}`
             : `wheelat ${physical(p)} ${Math.round(amount * 120)}`,
         ),
-      press: keys,
+      press: (list) => {
+        if (isCopyChord(list)) paste.cancelRestore();
+        return keys(list);
+      },
       type: (text) => paste(text, () => keys(["ctrl", "v"])),
       dispose: ps.dispose,
     };
@@ -276,7 +298,10 @@ export const createInputDriver = (input: {
         for (let i = 0; i < Math.abs(Math.round(amount)); i++)
           await xdo("click", amount > 0 ? "4" : "5");
       },
-      press: (list) => xdo("key", "--clearmodifiers", xdotoolChord(list)),
+      press: (list) => {
+        if (isCopyChord(list)) paste.cancelRestore();
+        return xdo("key", "--clearmodifiers", xdotoolChord(list));
+      },
       type: (text) => xdo("type", "--delay", "8", "--", text),
       dispose: () => undefined,
     };

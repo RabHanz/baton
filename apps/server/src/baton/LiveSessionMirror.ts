@@ -64,6 +64,7 @@ import {
   parseLiveTranscriptLine,
   splitTranscriptChunk,
   type LiveToolStep,
+  type LiveTranscriptImage,
   type LiveTranscriptMessage,
 } from "@t3tools/baton-shared/liveTranscript";
 import { derive as deriveIds } from "@t3tools/provider-core/server/IdAllocator";
@@ -130,6 +131,9 @@ const realpathOrNothing = (path: string): ReadonlyArray<string> => {
   }
 };
 const MAX_SENT_FILE_BYTES = 20 * 1024 * 1024;
+/** A turn shows at most this many tool screenshots; the newest win. */
+const MAX_TOOL_SHOTS = 4;
+
 const INLINE_IMAGE_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
@@ -219,6 +223,7 @@ export const liveMedia = (input: {
   };
   const attachments: Array<ChatAttachment> = [];
   const notes: Array<string> = [];
+  const links: Array<string> = [];
   (message.images ?? []).forEach((image, index) => {
     const bytes = Buffer.from(image.data, "base64");
     const extension = inferImageExtension({ mimeType: image.mimeType });
@@ -240,9 +245,12 @@ export const liveMedia = (input: {
       mimeType: image.mimeType,
       sizeBytes: bytes.length,
     };
-    if (store(attachment, bytes) !== null) attachments.push(attachment);
+    const copy = store(attachment, bytes);
+    if (copy === null) return;
+    // A reply's pictures (tool screenshots) ride in its markdown; a user message's are T3 attachments.
+    if (message.role === "assistant") links.push(`![${attachment.name}](<${copy}>)`);
+    else attachments.push(attachment);
   });
-  const links: Array<string> = [];
   const sent = message.files ?? [];
   sent.forEach((file, index) => {
     const quiet = false;
@@ -528,6 +536,8 @@ interface Follow {
   open: OrchestrationV2Run | null;
   /** Image and video paths the session's own tool calls used since the last user message. */
   touched: Set<string>;
+  /** Screenshots tools returned since the last user message; the next reply shows them. */
+  shots: Array<LiveTranscriptImage>;
   /** When the newest mirrored message was written: a finished turn ends there, not at "now". */
   lastAt: DateTime.Utc | null;
   /** Since when the session has read idle while a terminal turn is open. */
@@ -919,13 +929,20 @@ const make = Effect.gen(function* () {
           for (const path of pathsInto(message.kind === "use" ? message.input : message.output)) {
             follow.touched.add(path);
           }
+          if (message.kind === "result" && message.images !== undefined) {
+            follow.shots.push(...message.images);
+            follow.shots.splice(0, Math.max(0, follow.shots.length - MAX_TOOL_SHOTS));
+          }
           ownerAt(message.createdAt);
           events.push(...toolEvents(follow, session.sessionId, message, follow.target));
           continue;
         }
         if (message.role === "assistant") ownerAt(message.createdAt);
         follow.written.add(message.uuid);
-        if (message.role === "user") follow.touched = new Set();
+        if (message.role === "user") {
+          follow.touched = new Set();
+          follow.shots = [];
+        }
         const at = DateTime.makeUnsafe(message.createdAt);
         follow.lastAt = at;
         if (message.role === "user") {
@@ -978,13 +995,16 @@ const make = Effect.gen(function* () {
           ...messageEvents(
             follow.threadId,
             session.sessionId,
-            message,
+            message.role === "assistant" && follow.shots.length > 0
+              ? { ...message, images: [...(message.images ?? []), ...follow.shots] }
+              : message,
             follow.target,
             undefined,
             session.cwd,
             [...follow.touched],
           ),
         );
+        if (message.role === "assistant") follow.shots = [];
       }
       if (events.length > 0) yield* engine.writeEvents({ events });
     });
@@ -1305,6 +1325,7 @@ const make = Effect.gen(function* () {
         target: null,
         open: null,
         touched: new Set<string>(),
+        shots: [],
         lastAt: null,
         idleSince: null,
         // A session busy when Baton starts is taken to be working on something.

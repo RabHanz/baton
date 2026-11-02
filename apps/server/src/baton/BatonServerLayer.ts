@@ -21,6 +21,7 @@ import * as AccountRotationReactor from "./AccountRotationReactor.ts";
 import * as AdoptedSessionService from "./AdoptedSessionService.ts";
 import * as BatonDatabase from "./BatonDatabase.ts";
 import * as BatonEngine from "./BatonEngine.ts";
+import * as BatonJobReactor from "./BatonJobReactor.ts";
 import * as BatonJobService from "./BatonJobService.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
@@ -82,8 +83,10 @@ export const workers = Layer.effectDiscard(
     // The synopsis first: a rule that fires should see a synopsis the same events already moved.
     yield* (yield* SynopsisReactor.BatonSynopsisReactor).start();
     yield* (yield* OrchestrationReactor.BatonOrchestrationReactor).start();
+    yield* (yield* BatonJobReactor.BatonJobReactor).start();
   }),
 ).pipe(
+  Layer.provideMerge(BatonJobReactor.layer),
   Layer.provideMerge(AccountRotationReactor.layer),
   // Every live Claude Code session as a T3 thread, for T3's official apps (D83).
   Layer.provideMerge(LiveSessionMirror.layer),

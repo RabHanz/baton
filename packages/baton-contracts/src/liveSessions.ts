@@ -22,6 +22,8 @@ export const BATON_LIVE_WS_METHODS = {
   liveAttach: "baton.live.attach",
   /** Bring a Claude session from a plain terminal or VS Code into Herdr, same conversation (D74). */
   liveAdopt: "baton.live.adopt",
+  /** Set a live Claude session's model and effort with its own slash commands, confirmed from its transcript. */
+  liveSetModel: "baton.live.setModel",
 } as const;
 
 /** Where a live session is: a Herdr pane, or a Claude conversation by id. */
@@ -59,6 +61,28 @@ export const BatonLiveAdoptResult = Schema.Struct({
   detail: Schema.String,
 });
 export type BatonLiveAdoptResult = typeof BatonLiveAdoptResult.Type;
+
+export const BatonLiveSetModelInput = Schema.Struct({
+  sessionId: TrimmedNonEmptyString,
+  model: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
+  effort: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(20))),
+});
+export type BatonLiveSetModelInput = typeof BatonLiveSetModelInput.Type;
+
+export const BatonLiveSetModelResult = Schema.Struct({
+  state: Schema.Literals([
+    "applied",
+    "not_confirmed",
+    "not_in_herdr",
+    "busy",
+    "not_running",
+    "refused",
+  ]),
+  detail: Schema.String,
+  /** What the session itself said back, as it said it. */
+  confirmed: Schema.Array(Schema.String),
+});
+export type BatonLiveSetModelResult = typeof BatonLiveSetModelResult.Type;
 
 /**
  * Which project a live session belongs to, the same on every box (D72): the

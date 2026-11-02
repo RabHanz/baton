@@ -23,8 +23,13 @@ import {
   type BatonLiveAdoptResult,
   type BatonLiveAttachInput,
   type BatonLiveAttachResult,
+  type BatonLiveSetModelInput,
+  type BatonLiveSetModelResult,
 } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
+import { claudeProjectSlug } from "@t3tools/baton-shared/liveTranscript";
+import { setLiveModel } from "@t3tools/baton-shared/liveModel";
+import { herdrSend } from "./HerdrSend.ts";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { readClaudeLiveSessions } from "./ClaudeLiveSessions.ts";
@@ -159,3 +164,64 @@ export const liveAdopt = (input: BatonLiveAdoptInput): Effect.Effect<BatonLiveAd
         : { adopted: true, pane: `${pane[1]}~${pane[2]}`, detail: `Now in Herdr ${pane[1]}.` };
     });
   });
+
+/** Tell a live Claude session its model and effort, and report only what it confirmed (D-live-model). */
+export const liveSetModel = (
+  adopted: AdoptedSessionService["Service"],
+  input: BatonLiveSetModelInput,
+): Effect.Effect<BatonLiveSetModelResult> =>
+  Effect.gen(function* () {
+    const live = yield* readClaudeLiveSessions({ account: null });
+    const found = live.find((s) => s.sessionId === input.sessionId) ?? null;
+    const path =
+      found === null
+        ? null
+        : NodePath.join(
+            found.configDir ?? NodePath.join(NodeOS.homedir(), ".claude"),
+            "projects",
+            claudeProjectSlug(found.cwd),
+            `${found.sessionId}.jsonl`,
+          );
+    const services = yield* Effect.context<never>();
+    return yield* Effect.promise(() =>
+      setLiveModel(
+        {
+          session: found,
+          send: async (pane, text) =>
+            (
+              await Effect.runPromiseWith(services)(
+                herdrSend(adopted, { pane, text, submit: true }),
+              )
+            ).delivered,
+          mark: () => {
+            try {
+              return path === null ? null : NodeFS.statSync(path).size;
+            } catch {
+              // A fresh session has no transcript until its first line, which may be this command's.
+              return path === null ? null : 0;
+            }
+          },
+          since: (mark) => {
+            try {
+              return path === null ? "" : NodeFS.readFileSync(path).subarray(mark).toString("utf8");
+            } catch {
+              return "";
+            }
+          },
+          wait: async (ms) => void (await sleep(ms)),
+        },
+        {
+          ...(input.model === undefined ? {} : { model: input.model }),
+          ...(input.effort === undefined ? {} : { effort: input.effort }),
+        },
+      ),
+    );
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.succeed({
+        state: "not_confirmed" as const,
+        detail: `Not changed: ${String(cause)}`.slice(0, 300),
+        confirmed: [],
+      }),
+    ),
+  );

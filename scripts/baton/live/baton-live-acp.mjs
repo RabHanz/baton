@@ -121,9 +121,70 @@ const FOOTER = /Esc to cancel|Enter to (confirm|select)|↑\/↓ to navigate/;
 const RULE = /^\s*[─━╌]{8,}\s*$/;
 const SOLID = /^\s*[─━]{8,}\s*$/;
 const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
-const CUSTOM = /^type something\.?$/i;
+const CUSTOM = /^(?:type something|other)\.?$/i;
 const DROPPED = /^chat about this$/i;
 const clean = (text) => text.replace(/^[\s│┃|]+/, "").replace(/\s+/g, " ").trim();
+
+/** The tab bar of a multi-question form: each question's name and whether it is answered (☒). */
+const tabsOf = (line) =>
+  [...line.matchAll(/([☐☒✔])\s+(.+?)(?=\s+[☐☒✔]|\s*→|\s*$)/g)]
+    .map((m) => ({ label: m[2].trim(), answered: m[1] !== "☐", submit: m[1] === "✔" }))
+    .filter((tab) => tab.label.length > 0);
+
+/**
+ * The last screen of a multi-question form: "Review your answers", each question with its answer, then
+ * "Ready to submit your answers?" over Submit and Cancel. It has no Esc footer, which is why it was not
+ * read: a session sat waiting on it with nothing to show. Going back one question is the left arrow.
+ */
+export function parseReviewScreen(lines) {
+  let ask = -1;
+  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
+    if (/^\s*Ready to submit your answers\?\s*$/.test(lines[i])) {
+      ask = i;
+      break;
+    }
+  if (ask < 0) return null;
+  const options = [];
+  for (let i = ask + 1; i < lines.length && i <= ask + 8; i += 1) {
+    const m = NUMBERED.exec(lines[i]);
+    if (m === null) {
+      if (options.length > 0 && lines[i].trim() === "") break;
+      continue;
+    }
+    options.push({ number: Number(m[3]), label: m[4], selected: m[2] !== undefined });
+  }
+  if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
+  let top = ask - 1;
+  while (top >= 0 && ask - top < 40 && !/Review your answers/.test(lines[top])) top -= 1;
+  const answers = [];
+  for (let i = Math.max(0, top); i < ask; i += 1) {
+    const q = /^[\s│┃]*●\s*(.*)$/.exec(lines[i]);
+    if (q !== null) answers.push({ question: clean(q[1]), answer: "" });
+    else if (answers.length > 0) {
+      const a = /^\s*→\s*(.*)$/.exec(lines[i]);
+      if (a !== null && answers.at(-1).answer === "") answers.at(-1).answer = clean(a[1]);
+      else if (/^[\s│┃]/.test(lines[i]) && lines[i].trim() !== "" && answers.at(-1).answer === "")
+        answers.at(-1).question = `${answers.at(-1).question} ${clean(lines[i])}`.trim();
+    }
+  }
+  const tabLine = lines.slice(Math.max(0, top - 2), top + 1).find((l) => /^\s*←/.test(l));
+  const question = "Ready to submit your answers?";
+  const context = answers.map((a) => `${a.question} → ${a.answer}`).join(" · ").slice(0, 600);
+  return {
+    question,
+    header: "Review your answers",
+    ...(tabLine === undefined ? {} : { tabs: tabsOf(tabLine.trim()) }),
+    context,
+    options: [
+      ...options.map((o) => ({ index: o.number - 1, label: o.label, description: "" })),
+      { index: -1, label: "Go back", description: "Back to the last question", keys: ["left"] },
+    ],
+    selected: options.findIndex((o) => o.selected),
+    customIndex: null,
+    review: true,
+    key: [question, ...options.map((o) => o.label), context].join("\u0000"),
+  };
+}
 
 /**
  * The prompt on a Claude Code screen, or null when none can be read. Options keep their screen
@@ -131,6 +192,8 @@ const clean = (text) => text.replace(/^[\s│┃|]+/, "").replace(/\s+/g, " ").t
  */
 export function parsePanePrompt(screen) {
   const lines = String(screen ?? "").replace(/\r/g, "").split("\n");
+  const review = parseReviewScreen(lines);
+  if (review !== null) return review;
   let footer = -1;
   for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
     if (FOOTER.test(lines[i])) {
@@ -199,12 +262,23 @@ export function parsePanePrompt(screen) {
     .filter((l) => !RULE.test(l))
     .map(clean)
     .filter((l) => l.length > 0);
-  const header = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
+  // A multi-question form puts its tabs on one line: ← ☐ Chrome ☒ Connectors ✔ Submit →
+  const tabs = context.length > 0 && /^←/.test(context[0]) ? tabsOf(context.shift()) : null;
+  const tabbed = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
+  // A tabbed form's header is its tabs, so the card says which question of how many this is.
+  const header =
+    tabs !== null && tabs.length > 1
+      ? tabs
+          .filter((tab) => !tab.submit)
+          .map((tab) => (tab.answered ? `${tab.label} ✓` : tab.label))
+          .join(" · ")
+      : tabbed;
   const visible = options.filter((o) => !CUSTOM.test(o.label) && !DROPPED.test(o.label));
   const custom = options.find((o) => CUSTOM.test(o.label));
   return {
     question,
     header,
+    ...(tabs === null ? {} : { tabs }),
     context: context.join(" · ").slice(0, 600),
     options: visible.map((o) => ({
       index: o.number - 1,
@@ -225,6 +299,7 @@ export function answerKeys(prompt, answer) {
     ? prompt.options.find((o) => o.index === Number(wanted) - 1)
     : undefined;
   const option = byLabel ?? byNumber;
+  if (option?.keys !== undefined) return { keys: option.keys, text: null };
   const target = option?.index ?? (wanted.length > 0 ? prompt.customIndex : null);
   if (target === null || target === undefined) return null;
   const delta = target - prompt.selected;
@@ -323,6 +398,103 @@ const herdrArgs = (paneRef, verb, rest) => {
 const BLOCKED_NOTE =
   "Claude Code is waiting on a question or an approval in its terminal; answer it there first.";
 
+// ---------------------------------------------------------------------------------------------
+// The message queue. A message that cannot be delivered now is kept, in order, in a small file per
+// session under ~/.t3/baton/live-queue, so a restart does not lose it; a drainer delivers it when the
+// pane takes input. The turn never waits for it (T3 would queue every later send behind it).
+
+const QUEUE_DIR = process.env.BATON_LIVE_QUEUE_DIR ?? NodePath.join(NodeOS.homedir(), ".t3", "baton", "live-queue");
+const QUEUE_TRIES = Number(process.env.BATON_LIVE_QUEUE_TRIES ?? 6);
+const QUEUE_EVERY_MS = Number(process.env.BATON_LIVE_QUEUE_EVERY_MS ?? 3_000);
+/** A session gone this long with messages waiting is not coming back soon: they are handed back. */
+const QUEUE_GONE_TRIES = Number(process.env.BATON_LIVE_QUEUE_GONE_TRIES ?? 10);
+
+const queueFile = (dir, sessionId) => NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
+
+export function readQueue(dir, sessionId) {
+  try {
+    const parsed = JSON.parse(NodeFS.readFileSync(queueFile(dir, sessionId), "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeQueue(dir, sessionId, items) {
+  const file = queueFile(dir, sessionId);
+  if (items.length === 0) return void NodeFS.rmSync(file, { force: true });
+  NodeFS.mkdirSync(dir, { recursive: true });
+  const temp = `${file}.tmp`;
+  NodeFS.writeFileSync(temp, JSON.stringify(items), { mode: 0o600 });
+  NodeFS.renameSync(temp, file);
+}
+
+/** Adds one message at the end; returns how many are now waiting. */
+export function enqueue(dir, sessionId, item) {
+  const items = [...readQueue(dir, sessionId), { tries: 0, ...item }];
+  writeQueue(dir, sessionId, items);
+  return items.length;
+}
+
+export const queuedSessions = (dir) => {
+  try {
+    return NodeFS.readdirSync(dir).filter((name) => name.endsWith(".json"));
+  } catch {
+    return [];
+  }
+};
+
+const preview = (text) => (text.length > 60 ? `${text.slice(0, 60)}…` : text);
+
+export const queuedNote = (reason, count) =>
+  `Not delivered yet: ${reason} ${count} message${count === 1 ? "" : "s"} queued; they send ${
+    reason.includes("question") ? "when you answer it" : "as soon as it can take them"
+  }.`;
+
+export const deliveredNote = (shown) => `Delivered: ${preview(shown)}`;
+
+/** The words are never lost: a message that cannot be delivered comes back, quoted. */
+export const lostNote = (reason, shown) => `Not delivered: ${reason} Your message was: "${shown}"`;
+
+/**
+ * One pass over one session's queue, oldest first. Stops at the first message that cannot go yet, so
+ * the order is kept. `deps` are the live session, the pane and the thread, injected for tests.
+ */
+export async function drainSession(dir, sessionId, deps) {
+  const items = readQueue(dir, sessionId);
+  if (items.length === 0) return;
+  const live = deps.findLive(sessionId);
+  if (live === null || live.pane === null) {
+    const gone = items.map((item) => ({ ...item, gone: (item.gone ?? 0) + 1 }));
+    if (gone[0].gone >= QUEUE_GONE_TRIES) {
+      for (const item of items) {
+        deps.say(sessionId, lostNote("the session is no longer running here.", item.shown));
+      }
+      return writeQueue(dir, sessionId, []);
+    }
+    return writeQueue(dir, sessionId, gone);
+  }
+  if (live.status === "waiting") return;
+  while (true) {
+    const [head, ...rest] = readQueue(dir, sessionId);
+    if (head === undefined) return;
+    const failure = await deps.typeInto(live.pane, head.text);
+    if (failure === null) {
+      writeQueue(dir, sessionId, rest);
+      deps.say(sessionId, deliveredNote(head.shown));
+      continue;
+    }
+    if (failure === BLOCKED_NOTE) return;
+    const tries = head.tries + 1;
+    if (tries >= QUEUE_TRIES) {
+      writeQueue(dir, sessionId, rest);
+      deps.say(sessionId, lostNote(failure, head.shown));
+      continue;
+    }
+    return writeQueue(dir, sessionId, [{ ...head, tries }, ...rest]);
+  }
+}
+
 /** The prompt on the pane's screen now, or null. */
 export async function readPanePrompt(paneRef) {
   const read = await run(HERDR, herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]));
@@ -333,7 +505,7 @@ export async function readPanePrompt(paneRef) {
  * D88: answer the prompt showing in the pane with keystrokes, then wait until it is gone. Returns
  * what to tell the thread, or null when `text` is not an answer to it (nothing was pressed).
  */
-async function answerPrompt(sessionId, paneRef, text) {
+export async function answerPrompt(sessionId, paneRef, text) {
   const shown = await readPanePrompt(paneRef);
   if (shown === null) return null;
   const answer = answerFrom(text, shown);
@@ -451,14 +623,17 @@ async function prompt(params) {
   if (isAppContinuation(promptText(params.prompt))) return { stopReason: "end_turn" };
   let live = findLiveSession(sessionId);
   if (live === null) {
-    say(sessionId, "That Claude Code session is not running on this machine now.");
+    say(
+      sessionId,
+      lostNote("that Claude Code session is not running on this machine now.", promptText(params.prompt).trim()),
+    );
     return { stopReason: "end_turn" };
   }
   if (live.pane === null) {
     // A plain-terminal session (often one he drives through Remote Control) cannot take typed
     // input from outside, and moving it into Herdr restarts it. That only happens when asked.
     if (!isAdoptRequest(promptText(params.prompt))) {
-      say(sessionId, notSentNote(live));
+      say(sessionId, `${notSentNote(live)}\n\nYour message was: "${promptText(params.prompt).trim()}"`);
       return { stopReason: "end_turn" };
     }
     const adopted = await adopt(sessionId, live);
@@ -471,22 +646,43 @@ async function prompt(params) {
   }
   const text = composeForSession(params.prompt, live.cwd);
   if (text.length === 0) return { stopReason: "end_turn" };
+  const shown = promptText(params.prompt).replace(/\s+/g, " ").trim() || text.slice(0, 60);
   const turn = { cancelled: false, pane: live.pane };
   turns.set(sessionId, turn);
   try {
     // A question or approval on the screen takes the message as its answer (D88).
     if (live.status === "waiting") {
       const answered = await answerPrompt(sessionId, live.pane, promptText(params.prompt));
-      say(sessionId, answered ?? BLOCKED_NOTE);
+      if (answered !== null) {
+        say(sessionId, answered);
+        return { stopReason: "end_turn" };
+      }
+    }
+    // Messages already waiting go first: this one joins the end so the order he typed is kept.
+    if (live.status === "waiting" || readQueue(QUEUE_DIR, sessionId).length > 0) {
+      const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
+      say(sessionId, queuedNote(live.status === "waiting" ? "the session is waiting on a question." : "earlier messages are still waiting.", count));
+      startDrainer();
       return { stopReason: "end_turn" };
     }
     const failure = await typeInto(live.pane, text);
     if (failure === BLOCKED_NOTE) {
-      say(sessionId, (await answerPrompt(sessionId, live.pane, promptText(params.prompt))) ?? failure);
-      return { stopReason: "end_turn" };
+      const answered = await answerPrompt(sessionId, live.pane, promptText(params.prompt));
+      if (answered !== null) {
+        say(sessionId, answered);
+        return { stopReason: "end_turn" };
+      }
     }
     if (failure !== null) {
-      say(sessionId, failure);
+      const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
+      say(
+        sessionId,
+        queuedNote(
+          failure === BLOCKED_NOTE ? "the session is waiting on a question." : "Herdr did not take it yet.",
+          count,
+        ),
+      );
+      startDrainer();
       return { stopReason: "end_turn" };
     }
     // The turn ends once Herdr has delivered the text. Holding it open until Claude Code went idle
@@ -496,6 +692,25 @@ async function prompt(params) {
   } finally {
     turns.delete(sessionId);
   }
+}
+
+let drainer = null;
+const drainDeps = { findLive: findLiveSession, typeInto, say };
+/** Delivers queued messages in the background; also at start-up, for what a restart left behind. */
+function startDrainer() {
+  if (drainer !== null) return;
+  const tick = async () => {
+    const names = queuedSessions(QUEUE_DIR);
+    for (const name of names) {
+      await drainSession(QUEUE_DIR, name.slice(0, -".json".length), drainDeps).catch(() => undefined);
+    }
+    if (queuedSessions(QUEUE_DIR).length === 0) {
+      clearInterval(drainer);
+      drainer = null;
+    }
+  };
+  drainer = setInterval(() => void tick(), QUEUE_EVERY_MS);
+  drainer.unref?.();
 }
 
 async function handle(message) {
@@ -533,6 +748,7 @@ async function handle(message) {
 }
 
 function main() {
+  startDrainer();
   const lines = NodeReadline.createInterface({ input: process.stdin });
   lines.on("line", (line) => {
     let message;

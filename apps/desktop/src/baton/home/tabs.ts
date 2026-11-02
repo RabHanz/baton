@@ -5,8 +5,12 @@
 export const TABS = [
   { id: "home", label: "Home" },
   { id: "sessions", label: "Sessions" },
+  { id: "approvals", label: "Approvals" },
+  { id: "jobs", label: "Jobs" },
   { id: "dictation", label: "Dictation" },
   { id: "history", label: "History" },
+  { id: "memory", label: "Memory" },
+  { id: "tools", label: "Skills" },
   { id: "assistant", label: "Assistant" },
   { id: "voice", label: "Voice" },
   { id: "screen", label: "Screen" },
@@ -19,10 +23,14 @@ export type TabId = (typeof TABS)[number]["id"] | "settings";
 const EXACT: Readonly<Record<string, TabId>> = {
   "v.enabled": "voice",
   "v.muted": "voice",
+  "v.listenAfterWake": "voice",
+  "v.conversation": "voice",
+  "v.waitMs": "voice",
   "v.direct": "voice",
   "v.mic": "voice",
   "v.sounds": "voice",
   "v.cues": "voice",
+  "v.verifyWake": "voice",
   "v.holdKeyCues": "voice",
   "v.pillRest": "voice",
   "v.pillEdge": "voice",
@@ -48,7 +56,12 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "s.brainCheck": "assistant",
   "s.act": "assistant",
   "s.oneAssistant": "assistant",
+  "s.chrome": "assistant",
+  "s.social": "assistant",
   "s.account": "assistant",
+  "v.notice": "assistant",
+  "v.quiet": "assistant",
+  "v.brief": "assistant",
   "s.accountEmail": "assistant",
   "s.capture": "screen",
   "v.check": "checks",
@@ -67,6 +80,11 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("v.wake:")) return "voice";
   if (id.startsWith("v.result:")) return "checks";
   if (id.startsWith("n:")) return "sessions";
+  if (/^j[a-z]?[:.]/.test(id)) return "jobs";
+  if (/^a[:.]/.test(id)) return "approvals";
+  if (/^k[:.]/.test(id)) return "tools";
+  if (/^p[:.]/.test(id)) return "memory";
+  if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";
 };

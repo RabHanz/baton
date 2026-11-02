@@ -4,7 +4,15 @@
  */
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, TrimmedNonEmptyString, TrimmedString } from "@t3tools/contracts";
+import {
+  IsoDateTime,
+  ModelSelection,
+  ProjectId,
+  RuntimeMode,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "@t3tools/contracts";
 
 import { BatonSessionState } from "./sessionState.ts";
 import { WorkSessionId } from "./workSession.ts";
@@ -18,7 +26,13 @@ export const BatonJobTool = Schema.Literals(["read", "edit", "shell", "web", "se
 export type BatonJobTool = typeof BatonJobTool.Type;
 
 /** Where a message could go. Every one of these is public, and none is done without his yes. */
-export const BatonOutboundChannel = Schema.Literals(["email", "social", "chat", "pr_comment", "other_public"]);
+export const BatonOutboundChannel = Schema.Literals([
+  "email",
+  "social",
+  "chat",
+  "pr_comment",
+  "other_public",
+]);
 export type BatonOutboundChannel = typeof BatonOutboundChannel.Type;
 
 export const BatonJobPermissions = Schema.Struct({
@@ -38,7 +52,11 @@ export const BatonJobLimits = Schema.Struct({
 });
 export type BatonJobLimits = typeof BatonJobLimits.Type;
 
-export const DEFAULT_JOB_LIMITS: BatonJobLimits = { wallClockMinutes: 120, workerTurns: 40, dollars: null };
+export const DEFAULT_JOB_LIMITS: BatonJobLimits = {
+  wallClockMinutes: 120,
+  workerTurns: 40,
+  dollars: null,
+};
 
 /** What a standing permission is for: sending on a channel, or starting without waiting for his OK. */
 export const BatonGrantKind = Schema.Literals([
@@ -84,6 +102,16 @@ export const BatonJobTerms = Schema.Struct({
   scheduleTaskId: Schema.NullOr(TrimmedNonEmptyString),
   /** The provider instance the worker runs on, chosen from the pool unless he said. */
   workerInstanceId: Schema.NullOr(TrimmedNonEmptyString),
+  /** The job this is a part of (the coordinator, D148); null for a job of its own. */
+  parentId: Schema.NullOr(WorkSessionId),
+  /** For a part that waits on others: the parts it needs finished first, and how it is to run. Null once nothing is pending. */
+  partSpec: Schema.NullOr(
+    Schema.Struct({
+      after: Schema.Array(WorkSessionId),
+      role: Schema.optionalKey(Schema.String),
+      routine: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -105,3 +133,97 @@ export const BatonJob = Schema.Struct({
   terms: BatonJobTerms,
 });
 export type BatonJob = typeof BatonJob.Type;
+
+export const BATON_JOB_WS_METHODS = {
+  jobList: "baton.job.list",
+  jobStart: "baton.job.start",
+  jobAgree: "baton.job.agree",
+  jobRefine: "baton.job.refine",
+  jobGrant: "baton.job.grant",
+  jobRevoke: "baton.job.revoke",
+  jobStop: "baton.job.stop",
+  jobSchedule: "baton.job.schedule",
+  jobSplit: "baton.job.split",
+} as const;
+
+/** His words verbatim become the goal; the worker starts in plan mode (D145). */
+export const BatonJobStartInput = Schema.Struct({
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  goal: TrimmedNonEmptyString,
+  permissions: BatonJobPermissions,
+  limits: Schema.optionalKey(
+    Schema.Struct({
+      wallClockMinutes: Schema.optionalKey(Schema.Number),
+      workerTurns: Schema.optionalKey(Schema.Number),
+      dollars: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+    }),
+  ),
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  /** A retried start is the same job. */
+  id: Schema.optionalKey(WorkSessionId),
+});
+export type BatonJobStartInput = typeof BatonJobStartInput.Type;
+
+export const BatonJobStartResult = Schema.Struct({
+  terms: BatonJobTerms,
+  threadId: ThreadId,
+});
+export type BatonJobStartResult = typeof BatonJobStartResult.Type;
+
+export const BatonJobRefInput = Schema.Struct({ id: WorkSessionId });
+export type BatonJobRefInput = typeof BatonJobRefInput.Type;
+
+export const BatonJobRefineInput = Schema.Struct({
+  id: WorkSessionId,
+  text: TrimmedNonEmptyString,
+  via: Schema.Literals(["voice", "text"]),
+  /** True when the edit adds a folder, project, tool or a longer leash: it asks for his OK again. */
+  widens: Schema.optionalKey(Schema.Boolean),
+});
+export type BatonJobRefineInput = typeof BatonJobRefineInput.Type;
+
+export const BatonJobGrantInput = Schema.Struct({ id: WorkSessionId, channel: BatonGrantKind });
+export type BatonJobGrantInput = typeof BatonJobGrantInput.Type;
+
+/** Null when no such job exists. */
+export const BatonJobTermsResult = Schema.Struct({ terms: Schema.NullOr(BatonJobTerms) });
+export type BatonJobTermsResult = typeof BatonJobTermsResult.Type;
+
+export const BatonJobListResult = Schema.Struct({ jobs: Schema.Array(BatonJob) });
+export type BatonJobListResult = typeof BatonJobListResult.Type;
+
+export const BatonJobStopResult = Schema.Struct({ stopped: Schema.Boolean });
+export type BatonJobStopResult = typeof BatonJobStopResult.Type;
+
+/** `everyMinutes` of null takes the schedule off. A scheduled job runs again in its own thread and reports there. */
+export const BatonJobScheduleInput = Schema.Struct({
+  id: WorkSessionId,
+  everyMinutes: Schema.NullOr(Schema.Number.check(Schema.isGreaterThanOrEqualTo(1))),
+});
+export type BatonJobScheduleInput = typeof BatonJobScheduleInput.Type;
+
+/** One part of a job that has several: its own title and goal (his words), and optionally a pack role. */
+export const BatonJobPart = Schema.Struct({
+  title: TrimmedNonEmptyString,
+  goal: TrimmedNonEmptyString,
+  role: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Mechanical, repeatable work: runs on the cheap model of the routing table. */
+  routine: Schema.optionalKey(Schema.Boolean),
+  /** The parts (numbered from 1, earlier ones only) that must be done before this one starts. */
+  after: Schema.optionalKey(
+    Schema.Array(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
+  ),
+});
+
+export const BatonJobSplitInput = Schema.Struct({
+  id: WorkSessionId,
+  parts: Schema.Array(BatonJobPart).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
+});
+export type BatonJobSplitInput = typeof BatonJobSplitInput.Type;
+
+export const BatonJobSplitResult = Schema.Struct({
+  started: Schema.Array(Schema.Struct({ id: WorkSessionId, threadId: ThreadId })),
+});
+export type BatonJobSplitResult = typeof BatonJobSplitResult.Type;

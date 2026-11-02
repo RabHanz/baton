@@ -147,6 +147,17 @@ export interface BatonEngineShape {
     readonly threadId: ThreadId;
     readonly settled: boolean;
   }) => Effect.Effect<boolean>;
+  /** Upstream's `thread.interaction-mode.set`: a plan-mode worker leaves plan mode once he agrees (D145). */
+  readonly setInteractionMode: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+    readonly interactionMode: ProviderInteractionMode;
+  }) => Effect.Effect<void, BatonEngineError>;
+  /** Upstream's `run.interrupt` on the thread's active run; false when nothing is running. */
+  readonly interruptThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<boolean>;
   /** Upstream's `thread.delete`. */
   readonly deleteThread: (input: {
     readonly tag: string;
@@ -369,6 +380,39 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const setInteractionMode: BatonEngineShape["setInteractionMode"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.interaction-mode.set",
+        commandId: yield* commandId(`${input.tag}:mode`),
+        threadId: input.threadId,
+        interactionMode: input.interactionMode,
+      });
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BatonEngineError({ operation: "thread.interaction-mode.set", detail: String(cause) }),
+      ),
+    );
+
+  const interruptThread: BatonEngineShape["interruptThread"] = (input) =>
+    Effect.gen(function* () {
+      const shell = yield* orchestrator.getThreadShell(input.threadId);
+      if (shell === null || shell.activeRunId === null) return false;
+      yield* orchestrator.dispatch({
+        type: "run.interrupt",
+        commandId: yield* commandId(`${input.tag}:interrupt`),
+        threadId: input.threadId,
+        runId: shell.activeRunId,
+        reason: "Stopped by him.",
+        holdQueue: true,
+      });
+      return true;
+    }).pipe(
+      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not stop a thread", cause)),
+      Effect.catchCause(() => Effect.succeed(false)),
+    );
+
   const settleThread: BatonEngineShape["settleThread"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -461,7 +505,9 @@ export const make = Effect.gen(function* () {
       }
       return true;
     }).pipe(
-      Effect.tapCause((cause) => Effect.logWarning("Tessaya could not keep a thread active", cause)),
+      Effect.tapCause((cause) =>
+        Effect.logWarning("Tessaya could not keep a thread active", cause),
+      ),
       Effect.catchCause(() => Effect.succeed(false)),
     );
 
@@ -535,6 +581,8 @@ export const make = Effect.gen(function* () {
     sendMessage,
     switchProvider,
     setThreadSelection,
+    setInteractionMode,
+    interruptThread,
     settleThread,
   } satisfies BatonEngineShape;
 });
@@ -547,6 +595,7 @@ export const layerStatic = (input: {
   readonly projects?: ReadonlyArray<OrchestrationProjectShell>;
   readonly launch?: (launch: BatonThreadLaunch) => ThreadId | null;
   readonly sent?: Array<{ readonly threadId: ThreadId; readonly text: string }>;
+  readonly messages?: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
 }) =>
   Layer.succeed(BatonEngine, {
     threadShells: Effect.succeed(input.shells ?? []),
@@ -557,7 +606,7 @@ export const layerStatic = (input: {
     projects: Effect.succeed(input.projects ?? []),
     changedThreads: Stream.empty,
     domainEvents: Stream.empty,
-    recentMessages: () => Effect.succeed([]),
+    recentMessages: () => Effect.succeed(input.messages ?? []),
     launchThread: (launch) => Effect.succeed(input.launch?.(launch) ?? null),
     sendMessage: ({ threadId, text }) =>
       Effect.sync(() => {
@@ -566,6 +615,8 @@ export const layerStatic = (input: {
       }),
     switchProvider: () => Effect.void,
     setThreadSelection: () => Effect.void,
+    setInteractionMode: () => Effect.void,
+    interruptThread: () => Effect.succeed(true),
     settleThread: () => Effect.succeed(true),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),

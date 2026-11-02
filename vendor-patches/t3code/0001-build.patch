@@ -84,6 +84,98 @@ index b2ad7e1c687449d64780456c722cb7db43996098..85c229aedc9462e64a5c88d62ad458f0
      "@t3tools/client-runtime": "workspace:*",
      "@t3tools/contracts": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
+diff --git a/knip.jsonc b/knip.jsonc
+index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e10181ba7e04b 100644
+--- a/knip.jsonc
++++ b/knip.jsonc
+@@ -34,6 +34,8 @@
+         "sign-macos.ts",
+         "smoke-desktop-app.ts",
+         "verify-windows-desktop-artifact.ts",
++        // Baton's labs, proofs and evals are run by hand from the command line.
++        "baton/**/*.{ts,mjs}",
+       ],
+       "ignoreDependencies": ["agent-device", "esbuild"],
+       // The `t3` npm package's files: copied into the package, never imported.
+@@ -47,6 +49,8 @@
+         "src/bin.ts!",
+         "src/claude-history-worker.ts!",
+         "scripts/cli.ts",
++        // Baton's proofs run by hand against a live server.
++        "scripts/baton-*.ts",
+         "scripts/fetch-expo-schema.ts",
+         "scripts/probe-claude-fork-local-rollback-replay.ts",
+         "scripts/update-test-shard-weights.ts",
+@@ -56,7 +60,12 @@
+         "graphql.config.ts",
+       ],
+       // The generated operations export every selection's class.
+-      "ignoreIssues": { "**/*.graphql.ts": ["exports", "types", "namespaceMembers"] },
++      "ignoreIssues": {
++        "**/*.graphql.ts": ["exports", "types", "namespaceMembers"],
++        // Baton's modules export for their tests and for the vendor patches that import them.
++        "src/baton/**": ["exports"],
++        "src/provider/Drivers/ClaudeAccountHome.ts": ["exports"],
++      },
+       // Keep the transitive Effect runtime pinned for standalone npm installs.
+       // The Vite+ web build prerequisite.
+       // Native and disk-loaded provider packages stay external to the bundle; the
+@@ -64,8 +73,13 @@
+       "ignoreDependencies": ["@effect/platform-node-shared", "@t3tools/web", "@napi-rs/keyring"],
+     },
+     "apps/desktop": {
++      // Baton's modules export for their tests.
++      "ignoreIssues": { "src/baton/**": ["exports"] },
+       // Electron loads these bundles by filename rather than importing them.
+       "entry": [
++        // Baton's labs run by hand under Electron.
++        "src/baton/screen/smoke/*.ts",
++        "src/baton/voice/speechLab.ts",
+         "gnome-extension/extension.js!",
+         "src/electron/WindowsForegroundFocusWorker.ts!",
+         "src/snapShot/GlobalShiftShortcutWorker.ts!",
+@@ -82,7 +96,8 @@
+       ],
+       // The injected runtime resolves Playwright by string; release tooling runs
+       // electron-builder from this workspace, outside its package scripts.
+-      "ignoreDependencies": ["playwright-core", "electron-builder"],
++      // onnxruntime-node is the sidecar's native speech runtime, loaded by name at run time.
++      "ignoreDependencies": ["playwright-core", "electron-builder", "onnxruntime-node"],
+     },
+     "apps/web": {
+       // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
+@@ -91,13 +106,20 @@
+       // UI component modules are copied and adapted as cohesive sets. Keep their
+       // named subcomponents even before they have callers; the file audit still
+       // reports an entire component module when nothing imports it.
+-      "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
++      "ignoreIssues": {
++        "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"],
++        "src/components/**/{Baton,baton}*": ["exports"],
++      },
++      // Baton's model-picker line is mounted by a vendor patch the file audit cannot see.
++      "ignore": ["src/components/chat/ModelPickerAccountLine.tsx"],
+     },
+     "apps/marketing": {
+       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
+       "ignoreDependencies": ["@astrojs/check"],
+     },
+     "apps/mobile": {
++      // Baton's mobile route is wired by a vendor patch the file audit cannot see.
++      "ignore": ["src/features/baton/BatonRouteScreen.tsx", "src/state/baton-work-sessions.ts"],
+       // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
+       "entry": [
+         "index.ts!",
+@@ -140,6 +162,9 @@
+       // These workspace packages are private to this monorepo.
+       "includeEntryExports": true,
+     },
++    // The contracts and shared packages are declared for the types Baton re-exports.
++    "packages/baton-shared": { "ignoreDependencies": ["@t3tools/contracts"] },
++    "packages/baton-voice": { "ignoreDependencies": ["@t3tools/contracts", "@t3tools/shared"] },
+     "packages/effect-acp": {
+       "includeEntryExports": true,
+       "entry": ["test/fixtures/*.ts"],
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
 index 9600ad7ad356d0e842193bfe06e1e83d6deaaa45..13caf79ca6c140e7c764fdfcbd95166b7a62640b 100644
 --- a/packages/client-runtime/package.json

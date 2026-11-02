@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_Descendants};
-use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetWindowRect, WindowFromPoint, GA_ROOT};
+use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GetWindowRect, WindowFromPoint, GA_ROOT};
 
 const MAX_ELEMENTS: i32 = 4000;
 const MIN_SIDE: i32 = 8;
@@ -53,14 +53,19 @@ unsafe fn at_point(automation: &IUIAutomation, label: &str, x: i32, y: i32) -> w
     Ok(json!({"found": false, "elements": 1}))
 }
 
-/// Physical pixels in and out. `found: false` means the tree has no such element.
-pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
+/// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
+/// searches the window with the keyboard, wherever the pointer is; otherwise the window under (x, y).
+pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
-        let top = GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT);
+        let top = if foreground {
+            GetForegroundWindow()
+        } else {
+            GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT)
+        };
         let condition = automation.ControlViewCondition().map_err(err)?;
         // 0x80040201 can come from the window or any one provider in it, and fails the whole
         // search, so ask for the element at the point instead.
@@ -107,6 +112,45 @@ pub fn locate(label: &str, x: i32, y: i32) -> Result<Value, String> {
             }),
             None => json!({"found": false, "elements": count}),
         })
+    }
+}
+
+/// What the keyboard's window offers, by name and kind: the agent reads this before it takes a
+/// screenshot, and clicks a line of it with `locate`. Names only, so no coordinates leave here.
+pub fn tree(max: usize) -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let root = automation.ElementFromHandle(GetForegroundWindow()).map_err(err)?;
+        let title = root.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+        let condition = automation.ControlViewCondition().map_err(err)?;
+        let all = root.FindAll(TreeScope_Descendants, &condition).map_err(err)?;
+        let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
+        let mut lines: Vec<String> = Vec::new();
+        for i in 0..count {
+            if lines.len() >= max {
+                break;
+            }
+            let Ok(element) = all.GetElement(i) else { continue };
+            let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+            let name = name.trim();
+            if name.is_empty() || element.CurrentIsOffscreen().map(|o| o.as_bool()).unwrap_or(true) {
+                continue;
+            }
+            let Ok(rect) = element.CurrentBoundingRectangle() else { continue };
+            if rect.right - rect.left < MIN_SIDE || rect.bottom - rect.top < MIN_SIDE {
+                continue;
+            }
+            let kind = element.CurrentLocalizedControlType().map(|k| k.to_string()).unwrap_or_default();
+            let focused = element.CurrentHasKeyboardFocus().map(|f| f.as_bool()).unwrap_or(false);
+            let line = format!("{kind}: {}{}", name.chars().take(80).collect::<String>(), if focused { " (focused)" } else { "" });
+            if lines.last() != Some(&line) {
+                lines.push(line);
+            }
+        }
+        Ok(json!({"window": title, "controls": lines, "total": count}))
     }
 }
 

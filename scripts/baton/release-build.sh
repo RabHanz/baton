@@ -10,8 +10,8 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 version="${1:?usage: release-build.sh <version>}"
 out="${BATON_RELEASE_DIR:-release-cli}"
-export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
-mkdir -p "$TMPDIR"
+[ -d /mnt/HC_Volume_106652742/tmp ] && export TMPDIR="${TMPDIR:-/mnt/HC_Volume_106652742/tmp/lanes}"
+[ -z "${TMPDIR:-}" ] || mkdir -p "$TMPDIR"
 # shellcheck source=toolchain.sh
 source scripts/baton/toolchain.sh
 export PATH="$PWD/node_modules/.bin:$PATH" # build-exe spawns `vp pack` by name
@@ -23,9 +23,13 @@ if [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 26 ]; then
   [ -x "$sea_node" ] || { echo "release-build: no Node >= 26 in $baton_toolchain_dir for the SEA step" >&2; exit 1; }
 fi
 
-# Reuse the installed release's Rust resource monitor rather than needing cargo here.
-active="$(node -p 'require(process.env.HOME + "/.t3/runtime/service-state.json").activeVersion')"
-monitor="$HOME/.t3/runtime/versions/$active/resource-monitor"
+# Reuse the installed release's Rust resource monitor rather than needing cargo here; CI passes
+# BATON_RESOURCE_MONITOR_DIR (laid out like dist/resource-monitor) from a fresh cargo build.
+monitor="${BATON_RESOURCE_MONITOR_DIR:-}"
+if [ -z "$monitor" ]; then
+  active="$(node -p 'require(process.env.HOME + "/.t3/runtime/service-state.json").activeVersion')"
+  monitor="$HOME/.t3/runtime/versions/$active/resource-monitor"
+fi
 [ -d "$monitor" ] || { echo "release-build: no resource monitor at $monitor" >&2; exit 1; }
 
 restore() { git diff --name-only -- '*package.json' | xargs -r git checkout -q --; }

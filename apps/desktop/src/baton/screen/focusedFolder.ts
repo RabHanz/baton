@@ -5,7 +5,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 
-/** "file:///C:/Users/Rab/My%20Docs" to a Windows path. */
+/** "file:///C:/Users/Sam/My%20Docs" to a Windows path. */
 export const folderFromUrl = (url: string): string | null => {
   const match = /^file:\/\/\/([A-Za-z]:\/.*)$/.exec(url.trim());
   if (match === null) return null;

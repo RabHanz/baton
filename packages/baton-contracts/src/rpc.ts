@@ -82,12 +82,29 @@ import {
 import {
   BATON_LIVE_WS_METHODS,
   BatonLiveAdoptInput,
+  BatonLiveSetModelInput,
+  BatonLiveSetModelResult,
   BatonLiveAdoptResult,
   BatonLiveAttachInput,
   BatonLiveAttachResult,
   BatonHerdrSendInput,
   BatonHerdrSendResult,
 } from "./liveSessions.ts";
+import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
+import {
+  BATON_JOB_WS_METHODS,
+  BatonJobGrantInput,
+  BatonJobListResult,
+  BatonJobRefInput,
+  BatonJobRefineInput,
+  BatonJobStartInput,
+  BatonJobStartResult,
+  BatonJobStopResult,
+  BatonJobScheduleInput,
+  BatonJobSplitInput,
+  BatonJobSplitResult,
+  BatonJobTermsResult,
+} from "./jobs.ts";
 import {
   BATON_HANDOFF_WS_METHODS,
   WorkSessionHandoffInput,
@@ -190,10 +207,70 @@ const WsBatonLiveAdoptRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveAdopt, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsBatonLiveSetModelRpc = Rpc.make(BATON_LIVE_WS_METHODS.liveSetModel, {
+  payload: BatonLiveSetModelInput,
+  success: BatonLiveSetModelResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonHerdrSendRpc = Rpc.make(BATON_LIVE_WS_METHODS.herdrSend, {
   payload: BatonHerdrSendInput,
   success: BatonHerdrSendResult,
   error: EnvironmentAuthorizationError,
+});
+
+const WsBatonJobListRpc = Rpc.make(BATON_JOB_WS_METHODS.jobList, {
+  payload: Schema.Struct({}),
+  success: BatonJobListResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobStartRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStart, {
+  payload: BatonJobStartInput,
+  success: BatonJobStartResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobAgreeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobAgree, {
+  payload: BatonJobRefInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobRefineRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRefine, {
+  payload: BatonJobRefineInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobGrantRpc = Rpc.make(BATON_JOB_WS_METHODS.jobGrant, {
+  payload: BatonJobGrantInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobRevokeRpc = Rpc.make(BATON_JOB_WS_METHODS.jobRevoke, {
+  payload: BatonJobGrantInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonJobStopRpc = Rpc.make(BATON_JOB_WS_METHODS.jobStop, {
+  payload: BatonJobRefInput,
+  success: BatonJobStopResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsBatonJobScheduleRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSchedule, {
+  payload: BatonJobScheduleInput,
+  success: BatonJobTermsResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonJobSplitRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSplit, {
+  payload: BatonJobSplitInput,
+  success: BatonJobSplitResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
+  payload: Schema.Struct({}),
+  success: WatchResult,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
 const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
@@ -355,11 +432,22 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonHerdrSendRpc,
   WsBatonLiveAttachRpc,
   WsBatonLiveAdoptRpc,
+  WsBatonLiveSetModelRpc,
   WsBatonWorkSessionSettleRpc,
   WsBatonWorkSessionUnsettleRpc,
   WsBatonWorkSessionArchiveRpc,
   WsBatonWorkSessionUnarchiveRpc,
   WsBatonFleetGetRpc,
+  WsBatonJobListRpc,
+  WsBatonJobStartRpc,
+  WsBatonJobAgreeRpc,
+  WsBatonJobRefineRpc,
+  WsBatonJobGrantRpc,
+  WsBatonJobRevokeRpc,
+  WsBatonJobStopRpc,
+  WsBatonJobScheduleRpc,
+  WsBatonJobSplitRpc,
+  WsBatonWatchGetRpc,
   WsBatonOrchestrationRuleCreateRpc,
   WsBatonOrchestrationRuleListRpc,
   WsBatonOrchestrationRuleDisableRpc,
