@@ -843,11 +843,11 @@ function render(state) {
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); stt.setAttribute('role', 'status'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
-  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
-  if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Alerts'); pop.appendChild($('b', null, 'Alerts'));
-    if (need) { const b = $('button', 'btn', need + (need === 1 ? ' session needs you' : ' sessions need you')); b.onclick = () => { bellOpen = false; go('sessions'); }; pop.appendChild(b); }
-    if (up && up.lead) { const b = $('button', 'btn', 'Update ready: ' + up.button); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
-    if (!need && !(up && up.lead)) pop.appendChild($('p', null, 'Nothing needs you right now.'));
+  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', L('alerts.title')); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
+  if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', L('alerts.title')); pop.appendChild($('b', null, L('alerts.title')));
+    if (need) { const b = $('button', 'btn', L(need === 1 ? 'alerts.one' : 'alerts.many', { n: need })); b.onclick = () => { bellOpen = false; go('sessions'); }; pop.appendChild(b); }
+    if (up && up.lead) { const b = $('button', 'btn', L('alerts.update', { name: up.button })); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
+    if (!need && !(up && up.lead)) pop.appendChild($('p', null, L('alerts.none')));
     top.appendChild(pop); }
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
