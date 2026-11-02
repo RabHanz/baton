@@ -96,6 +96,12 @@ type JobOp =
   | "commit_list"
   | "notices_stop"
   | "notices_resume"
+  | "cloud_dispatch"
+  | "cloud_status"
+  | "cloud_list"
+  | "cloud_cancel"
+  | "cloud_usage"
+  | "cloud_approve"
   | "trust_show"
   | "activity_today"
   | "permission_off"
@@ -580,6 +586,63 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "He said stop telling him about something ('stop telling me about the nightly build'). Silences the offers whose title matches the words, until notices_resume. Say what was silenced.",
     inputSchema: object({ about: { type: "string", maxLength: 200 } }, ["about"]),
     run: async (a) => ({ text: await host.jobs("notices_stop", { about: str(a, "about", 200) }) }),
+  },
+  {
+    name: "cloud_dispatch",
+    description:
+      "Ask for a coding task to run in the cloud (Claude, Codex or another assistant). It only creates a request that waits for his answer on a card in Approvals; nothing runs until he picks an assistant and an account there. The branch must already be pushed. Set from_web_or_file to true when the brief was built from web or file content, so the card says it is data.",
+    inputSchema: object(
+      {
+        repo: { type: "string", maxLength: 120 },
+        branch: { type: "string", maxLength: 120 },
+        brief: { type: "string", maxLength: 4000 },
+        provider: { type: "string", maxLength: 20 },
+        label: { type: "string", maxLength: 60 },
+        from_web_or_file: { type: "boolean" },
+      },
+      ["repo", "branch", "brief"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("cloud_dispatch", {
+        repo: str(a, "repo", 120),
+        branch: str(a, "branch", 120),
+        brief: str(a, "brief", 4000),
+        ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}),
+        ...(typeof a["label"] === "string" ? { label: a["label"].slice(0, 60) } : {}),
+        from_web_or_file: a["from_web_or_file"] === true,
+      }),
+    }),
+  },
+  {
+    name: "cloud_status",
+    description: "Where one cloud request stands: waiting, running, its link and result.",
+    inputSchema: object({ id: { type: "string", maxLength: 40 }, provider: { type: "string", maxLength: 20 } }, ["id"]),
+    run: async (a) => ({ text: await host.jobs("cloud_status", { id: str(a, "id", 40), ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}) }) }),
+  },
+  {
+    name: "cloud_list",
+    description: "Cloud requests. With mine, only the ones this session asked for (give its label).",
+    inputSchema: object({ mine: { type: "boolean" }, label: { type: "string", maxLength: 60 } }),
+    run: async (a) => ({ text: await host.jobs("cloud_list", { mine: a["mine"] === true, ...(typeof a["label"] === "string" ? { label: a["label"].slice(0, 60) } : {}) }) }),
+  },
+  {
+    name: "cloud_cancel",
+    description: "Withdraw a cloud request that is still waiting. A task that has started cannot be stopped from here.",
+    inputSchema: object({ id: { type: "string", maxLength: 40 }, provider: { type: "string", maxLength: 20 } }, ["id"]),
+    run: async (a) => ({ text: await host.jobs("cloud_cancel", { id: str(a, "id", 40), ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}) }) }),
+  },
+  {
+    name: "cloud_usage",
+    description: "Each cloud account's weekly use and when it resets, per assistant. An assistant that reports none says so.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("cloud_usage", {}) }),
+  },
+  {
+    name: "cloud_approve",
+    description:
+      "Only when he says 'approve cloud request N on <account>' (the account must be named). It reads the card back and shows him a dialog; nothing runs unless he presses Approve himself. Never call it on your own.",
+    inputSchema: object({ id: { type: "string", maxLength: 40 }, account: { type: "string", maxLength: 80 }, provider: { type: "string", maxLength: 20 } }, ["id", "account"]),
+    run: async (a) => ({ text: await host.jobs("cloud_approve", { id: str(a, "id", 40), account: str(a, "account", 80), ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}) }) }),
   },
   {
     name: "trust_show",

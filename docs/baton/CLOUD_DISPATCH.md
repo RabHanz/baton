@@ -65,3 +65,25 @@ exist besides `awaiting-director`, `running`, `denied`, `cancelled`, `closed`.
   `claude.ai/code/...` link. The command line is built in `local.ts` and nowhere else.
 - `codex cloud exec --env E --branch B "<prompt>"` prints a task id or link; `codex cloud status` prints
   text with a state word. There is no cancel and no JSON output. Not tried: no Codex Cloud login yet.
+
+## In the window
+
+- **Cloud** page (`cloud/cloudRows.ts`): the switch (off by default), where the logins are (This computer,
+  Another computer of mine, Advanced), the flag cap (1, 2, 3 or 5 points), what each assistant can do
+  with the exact sign-in line, and my requests (state, account, branch, link, PR, before and after, points).
+  Refreshes every 60 s while open.
+- **Approval card** in Approvals (and a needs-you row on Now): provider, then account, then confirm;
+  nothing preselected; accounts rejected or at 98% or more are greyed; Deny always there. Cards are
+  rows with ids `cl.p|a|ok|deny.<provider>:<id>[:<choice>]`; the rules are `card.ts`.
+- **Assistant tools**: `cloud_dispatch`, `cloud_status`, `cloud_list`, `cloud_cancel`, `cloud_usage`,
+  `cloud_approve`. Dispatch is routine because it only makes a waiting request; a brief built from web
+  or file content must say `from_web_or_file`, else the gate asks. `cloud_approve` reads the card back
+  and shows a dialog only the Director can press.
+- A request held by the shared computer (transport 3) can only be answered there, so its card offers
+  only that provider; requests held by Tessaya (transports 1 and 2) can be started by any ready assistant.
+
+## Not built yet
+
+The first-run step "Cloud tasks", the phone page card, the Vault option for the SSH key text with the
+Windows Hello gate, and picking a hub on another environment (the hub transport calls the environment
+this window is connected to).
