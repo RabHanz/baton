@@ -113,6 +113,7 @@ const BATON_QUIET = new Set([
   "commit_list",
   "notices_resume",
   "weave_list",
+  "note_search",
   "approvals_list",
   "job_revoke",
   "job_stop",
@@ -143,6 +144,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "text_transform",
   "text_undo",
   "text_command",
+  "note_add",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -280,6 +282,11 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "notices_stop":
     case "commit_add":
     case "commit_done":
+    case "note_add":
+      // A note outlasts the conversation: words that came from something it read are not kept unasked.
+      return outgoing
+        ? { verdict: "ask", why: "It would keep something it read as a note." }
+        : { verdict: "allow" };
     case "memory_remember":
       // A note outlasts the conversation, so words that came from something it read are not kept unasked.
       return outgoing
