@@ -1,0 +1,234 @@
+/**
+ * The session catalog's logic, with every outside thing passed in (the running sessions, the transcripts on
+ * disk, the history index, the `baton` program, typing into a pane, the clock), so the stopped -> resume ->
+ * ready -> deliver path is tested without Herdr or Claude. The Effect service and the RPC door sit on this.
+ */
+import type {
+  BatonCatalogSession,
+  BatonCatalogState,
+  ClaudeLiveSession,
+} from "@t3tools/baton-contracts";
+
+export interface TranscriptInfo {
+  readonly sessionId: string;
+  readonly cwd: string | null;
+  readonly title: string;
+  /** ISO time of the last write. */
+  readonly lastActivityAt: string;
+  readonly account: string | null;
+}
+
+export interface HistoryHit {
+  readonly sessionId: string;
+  readonly project: string;
+  readonly at: string | null;
+}
+
+export interface CatalogPorts {
+  readonly machine: string;
+  readonly live: () => Promise<ReadonlyArray<ClaudeLiveSession>>;
+  /** Newest first, up to `limit`. */
+  readonly transcripts: (limit: number) => Promise<ReadonlyArray<TranscriptInfo>>;
+  /** The history index, searched for the words; empty when it is not set up. */
+  readonly history: (query: string) => Promise<ReadonlyArray<HistoryHit>>;
+  readonly dirExists: (dir: string) => boolean;
+  /** `baton <args>`; the program's own output (it says which Herdr session and pane it used). */
+  readonly baton: (args: ReadonlyArray<string>) => Promise<{ readonly ok: boolean; readonly out: string }>;
+  /** Types the text into a Herdr pane and submits it. */
+  readonly type: (pane: string, text: string) => Promise<boolean>;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly now: () => number;
+}
+
+export const READY_TIMEOUT_MS = 45_000;
+const POLL_MS = 500;
+
+const basename = (path: string): string => path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
+
+const ready = (s: ClaudeLiveSession | undefined): s is ClaudeLiveSession =>
+  s !== undefined && s.herdrPane !== null && s.status !== "busy";
+
+export const createSessionCatalog = (ports: CatalogPorts) => {
+  /** Resumes in flight and messages waiting on them: kept so nothing is dropped and a second tap changes nothing. */
+  const resuming = new Map<string, Promise<{ state: BatonCatalogState; pane: string | null; detail: string | null }>>();
+  const waiting = new Map<string, string[]>();
+  const failed = new Map<string, string>();
+
+  const liveRow = (s: ClaudeLiveSession): BatonCatalogSession => ({
+    id: s.sessionId,
+    machine: ports.machine,
+    project: basename(s.cwd),
+    cwd: s.cwd,
+    title: s.name ?? basename(s.cwd),
+    lastActivityAt: s.updatedAt,
+    account: s.account,
+    state: "running",
+    source: "live",
+    canResume: false,
+    detail: s.herdrPane === null ? "It is running in a plain terminal. Bring it into Herdr to send to it from here." : null,
+    waiting: waiting.get(s.sessionId)?.length ?? 0,
+  });
+
+  const stoppedRow = (t: TranscriptInfo): BatonCatalogSession => {
+    const state: BatonCatalogState = resuming.has(t.sessionId) ? "resuming" : failed.has(t.sessionId) ? "failed" : "stopped";
+    const cwdOk = t.cwd !== null && ports.dirExists(t.cwd);
+    return {
+      id: t.sessionId,
+      machine: ports.machine,
+      project: t.cwd === null ? "unknown folder" : basename(t.cwd),
+      cwd: t.cwd,
+      title: t.title,
+      lastActivityAt: t.lastActivityAt,
+      account: t.account,
+      state,
+      source: "transcript",
+      canResume: cwdOk,
+      detail: failed.get(t.sessionId) ?? (cwdOk ? null : "Its folder is not on this machine, so it cannot be resumed here."),
+      waiting: waiting.get(t.sessionId)?.length ?? 0,
+    };
+  };
+
+  const list = async (input: { query?: string; limit?: number; before?: string }) => {
+    const limit = Math.max(1, Math.min(200, input.limit ?? 50));
+    const liveSessions = await ports.live();
+    const transcripts = await ports.transcripts(600);
+    const byId = new Map<string, BatonCatalogSession>();
+    for (const t of transcripts) byId.set(t.sessionId, stoppedRow(t));
+    for (const s of liveSessions) byId.set(s.sessionId, { ...liveRow(s), ...(byId.get(s.sessionId) === undefined ? {} : { title: byId.get(s.sessionId)!.title }) });
+    const q = (input.query ?? "").trim().toLowerCase();
+    // Older sessions live in the history index; it is only searched when words are given.
+    const hits = new Set<string>();
+    if (q !== "") {
+      for (const hit of await ports.history(q)) {
+        hits.add(hit.sessionId);
+        if (byId.has(hit.sessionId)) continue;
+        byId.set(hit.sessionId, {
+          id: hit.sessionId,
+          machine: ports.machine,
+          project: hit.project.replace(/^-+/, "").split("-").slice(-2).join("-") || hit.project,
+          cwd: null,
+          title: "Found in the history index",
+          lastActivityAt: hit.at,
+          account: null,
+          state: "stopped",
+          source: "history",
+          canResume: false,
+          detail: "Its transcript is no longer on this machine, so it can be read in the history but not resumed.",
+          waiting: 0,
+        });
+      }
+    }
+    let rows = [...byId.values()].filter((r) => q === "" || `${r.title} ${r.project} ${r.cwd ?? ""} ${r.account ?? ""}`.toLowerCase().includes(q) || hits.has(r.id));
+    rows.sort((a, b) => Date.parse(b.lastActivityAt ?? "") - Date.parse(a.lastActivityAt ?? "") || 0);
+    if (input.before !== undefined) rows = rows.filter((r) => r.lastActivityAt !== null && r.lastActivityAt < input.before!);
+    return { machine: ports.machine, sessions: rows.slice(0, limit), more: rows.length > limit };
+  };
+
+  const folders = async (input: { query?: string }) => {
+    const seen = new Map<string, { cwd: string; project: string; lastActivityAt: string | null }>();
+    for (const s of await ports.live()) seen.set(s.cwd, { cwd: s.cwd, project: basename(s.cwd), lastActivityAt: s.updatedAt });
+    for (const t of await ports.transcripts(600)) {
+      if (t.cwd === null || seen.has(t.cwd)) continue;
+      seen.set(t.cwd, { cwd: t.cwd, project: basename(t.cwd), lastActivityAt: t.lastActivityAt });
+    }
+    const q = (input.query ?? "").trim().toLowerCase();
+    return {
+      folders: [...seen.values()]
+        .filter((f) => ports.dirExists(f.cwd) && (q === "" || f.cwd.toLowerCase().includes(q)))
+        .sort((a, b) => Date.parse(b.lastActivityAt ?? "") - Date.parse(a.lastActivityAt ?? "") || 0)
+        .slice(0, 60),
+    };
+  };
+
+  /** Polls until the session is in a Herdr pane and not mid-turn, or says why not. */
+  const untilReady = async (sessionId: string, timeoutMs: number): Promise<ClaudeLiveSession | null> => {
+    const started = ports.now();
+    for (;;) {
+      const found = (await ports.live()).find((s) => s.sessionId === sessionId);
+      if (ready(found)) return found;
+      if (ports.now() - started >= timeoutMs) return null;
+      await ports.sleep(POLL_MS);
+    }
+  };
+
+  const cwdOf = async (sessionId: string, given?: string): Promise<string | null> =>
+    given ?? (await ports.transcripts(600)).find((t) => t.sessionId === sessionId)?.cwd ?? null;
+
+  const doResume = async (sessionId: string, given?: string) => {
+    const live = (await ports.live()).find((s) => s.sessionId === sessionId);
+    if (live !== undefined) {
+      return ready(live) || live.herdrPane !== null
+        ? { state: "running" as const, pane: live.herdrPane, detail: null }
+        : { state: "failed" as const, pane: null, detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here." };
+    }
+    const cwd = await cwdOf(sessionId, given);
+    if (cwd === null) return { state: "failed" as const, pane: null, detail: "I do not know which folder this conversation was in, and its transcript is not on this machine." };
+    if (!ports.dirExists(cwd)) return { state: "failed" as const, pane: null, detail: `The folder ${cwd} is not on this machine.` };
+    const out = await ports.baton(["--resume", sessionId, cwd]);
+    if (!/running in (\S+) pane (\S+)/.test(out.out)) {
+      return { state: "failed" as const, pane: null, detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
+    }
+    const up = await untilReady(sessionId, READY_TIMEOUT_MS);
+    return up === null
+      ? { state: "failed" as const, pane: null, detail: "It was started in Herdr but did not become ready within 45 seconds. Your messages are kept; try Resume again." }
+      : { state: "running" as const, pane: up.herdrPane, detail: null };
+  };
+
+  /** Idempotent: a resume already running is the one the caller waits on. */
+  const resume = (input: { sessionId: string; cwd?: string }) => {
+    const existing = resuming.get(input.sessionId);
+    if (existing !== undefined) return Promise.resolve({ state: "resuming" as const, pane: null as string | null, detail: null as string | null });
+    const job = doResume(input.sessionId, input.cwd).then(async (r) => {
+      resuming.delete(input.sessionId);
+      if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
+      else failed.delete(input.sessionId);
+      // Messages that arrived while it came back go now, in order, once.
+      if (r.state === "running" && r.pane !== null) {
+        const queued = waiting.get(input.sessionId) ?? [];
+        waiting.delete(input.sessionId);
+        for (const text of queued) await ports.type(r.pane, text);
+      }
+      return r;
+    });
+    resuming.set(input.sessionId, job);
+    return job;
+  };
+
+  const send = async (input: { sessionId: string; text: string; cwd?: string }) => {
+    const live = (await ports.live()).find((s) => s.sessionId === input.sessionId);
+    if (live !== undefined && live.herdrPane !== null) {
+      const ok = await ports.type(live.herdrPane, input.text);
+      return ok
+        ? { state: "running" as const, delivered: true, detail: null }
+        : { state: "failed" as const, delivered: false, detail: "Herdr did not take the message." };
+    }
+    if (live !== undefined) return { state: "failed" as const, delivered: false, detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here." };
+    // Stopped: keep the message, bring it back, and let the resume deliver it.
+    waiting.set(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
+    const result = await resume({ sessionId: input.sessionId, ...(input.cwd === undefined ? {} : { cwd: input.cwd }) });
+    if (result.state === "running") return { state: "running" as const, delivered: true, detail: null };
+    if (result.state === "resuming") return { state: "resuming" as const, delivered: false, detail: "It is resuming; your message is kept and goes when it is ready." };
+    return { state: "failed" as const, delivered: false, detail: `${result.detail ?? "It could not be resumed."} Your message is kept.` };
+  };
+
+  const create = async (input: { cwd: string }) => {
+    if (!ports.dirExists(input.cwd)) return { state: "failed" as const, sessionId: null, pane: null, detail: `The folder ${input.cwd} is not on this machine.` };
+    const before = new Set((await ports.live()).map((s) => s.sessionId));
+    const out = await ports.baton([input.cwd, "claude"]);
+    if (!/running in (\S+) pane (\S+)/.test(out.out)) {
+      return { state: "failed" as const, sessionId: null, pane: null, detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
+    }
+    const started = ports.now();
+    for (;;) {
+      const fresh = (await ports.live()).find((s) => !before.has(s.sessionId) && s.cwd === input.cwd && s.herdrPane !== null);
+      if (fresh !== undefined) return { state: "running" as const, sessionId: fresh.sessionId, pane: fresh.herdrPane, detail: null };
+      if (ports.now() - started >= READY_TIMEOUT_MS) {
+        return { state: "failed" as const, sessionId: null, pane: null, detail: "It was started in Herdr but did not report in within 45 seconds." };
+      }
+      await ports.sleep(POLL_MS);
+    }
+  };
+
+  return { list, folders, resume, send, create };
+};
+export type SessionCatalog = ReturnType<typeof createSessionCatalog>;

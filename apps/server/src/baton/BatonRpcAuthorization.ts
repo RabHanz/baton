@@ -19,6 +19,7 @@ import {
   BATON_COMMITMENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
+  BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
@@ -77,6 +78,12 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WEAVE_WS_METHODS.send]: AuthOrchestrationOperateScope,
   [BATON_WEAVE_WS_METHODS.tick]: AuthOrchestrationOperateScope,
   [BATON_WEAVE_WS_METHODS.list]: AuthOrchestrationReadScope,
+  // The session catalog: looking is a read; resuming, starting and sending change a machine: operate.
+  [BATON_SESSIONS_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_SESSIONS_WS_METHODS.folders]: AuthOrchestrationReadScope,
+  [BATON_SESSIONS_WS_METHODS.resume]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.create]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.send]: AuthOrchestrationOperateScope,
   // Cloud tasks: looking is a read; creating, approving or applying is operate.
   [BATON_CLOUD_WS_METHODS.read]: AuthOrchestrationReadScope,
   [BATON_CLOUD_WS_METHODS.act]: AuthOrchestrationOperateScope,
