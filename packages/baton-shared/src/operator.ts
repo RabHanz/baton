@@ -105,6 +105,7 @@ const BATON_QUIET = new Set([
   "morning_brief",
   "needs_me",
   "commit_list",
+  "notices_resume",
   "approvals_list",
   "job_revoke",
   "job_stop",
@@ -127,6 +128,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "memory_forget",
   "commit_add",
   "commit_done",
+  "notices_stop",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -237,6 +239,7 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return outgoing || (name === "job_agree" && context.tainted)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    case "notices_stop":
     case "commit_add":
     case "commit_done":
     case "memory_remember":
