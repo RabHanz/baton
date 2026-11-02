@@ -105,6 +105,7 @@ import {
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
 import { askHistory } from "@t3tools/baton-shared/historyIndex";
+import { windowsHello } from "../vault/hello.ts";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
@@ -1652,6 +1653,7 @@ export const startScreenCompanion = (input: {
     },
     tainted: () => agentTaint.on(),
     audit: vaultState.audit,
+    hello: (message) => windowsHello(message, input.platform),
     askToUnlock: () => input.onOpenTab?.("vault"),
   });
   // Transforms and spoken edits on the selection (Wispr parity): copy it, ask his own Claude, paste over it.

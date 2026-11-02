@@ -9,13 +9,20 @@ import { createVault, type Vault } from "./vaultStore.ts";
 
 const instances = new Map<
   string,
-  { readonly vault: Vault; readonly audit: (line: string) => void; readonly auditFile: string }
+  {
+    readonly vault: Vault;
+    readonly audit: (line: string) => void;
+    readonly auditFile: string;
+    /** Called on every lock, idle ones included, so the window can show it at once. */
+    readonly onLock: (listener: () => void) => void;
+  }
 >();
 
 export const vaultFor = (stateDir: string) => {
   const held = instances.get(stateDir);
   if (held !== undefined) return held;
   const auditFile = NodePath.join(stateDir, "vault-audit.ndjson");
+  const lockListeners: Array<() => void> = [];
   const vault = createVault({
     file: NodePath.join(stateDir, "vault.json"),
     os: {
@@ -34,8 +41,7 @@ export const vaultFor = (stateDir: string) => {
         }
       },
     },
-    // A value Tessaya left on the clipboard goes with the lock.
-    onLock: () => undefined,
+    onLock: () => lockListeners.forEach((listener) => listener()),
   });
   Electron.app
     .whenReady()
@@ -47,6 +53,7 @@ export const vaultFor = (stateDir: string) => {
   const made = {
     vault,
     auditFile,
+    onLock: (listener: () => void) => void lockListeners.push(listener),
     audit: (line: string) => {
       NodeFS.mkdirSync(stateDir, { recursive: true });
       NodeFS.appendFileSync(auditFile, `${line}\n`, { mode: 0o600 });
