@@ -62,6 +62,7 @@ import { answerNeeds } from "../presence/needsAnswer.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
+import { presenceControls, presencePatch } from "../presence/presenceRows.ts";
 import { EMPTY_NOW, nowAction, nowControls, type NowData } from "../presence/nowRows.ts";
 import { collectNeeds } from "../presence/needsAnswer.ts";
 import { createInitiative } from "../presence/initiativeEngine.ts";
@@ -2309,6 +2310,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...nowControls(nowData, Date.now()),
+      ...presenceControls(settings),
       ...memoryTab.controls(),
       ...cachedPack(),
       ...harnessControls(harnessItems()),
@@ -2921,6 +2923,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       } else void input.sessions?.act(`n:${act.ref}`, null);
+    } else if (id === "pr.watch") {
+      save({});
+      void Electron.shell.openPath(settingsPath);
+    } else if (id.startsWith("pr.")) {
+      const patch = presencePatch(id, value);
+      if (patch !== null) save(patch);
     } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
     else if (id.startsWith("now.")) {
       const act = nowAction(id);
