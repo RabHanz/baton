@@ -12,7 +12,7 @@ export const WATCH_LIMITS = {
   /** Waiting for his answer for this long. */
   unansweredMinutes: 30,
   /** Finished and never looked at for this long. */
-  unseenMinutes: 240,
+  unseenMinutes: 60,
 } as const;
 
 const SEVERITY: Record<WatchFinding["kind"], number> = {
