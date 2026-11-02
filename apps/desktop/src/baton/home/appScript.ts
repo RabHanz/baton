@@ -233,7 +233,7 @@ function vaultBar(c) {
   const w = $('div', 'rowwrap stack vaultbar');
   if (c.recovery) {
     const k = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Your recovery key'), $('div', 'hint', 'Print it or save it somewhere safe. It is shown once and is the only way in if you forget the passphrase.')); const pre = $('div', 'hpre vaultkey', c.recovery); t.appendChild(pre);
-    const ok = $('button', 'btn primary', 'I have saved it'); ok.onclick = () => set('vt.recoveryDone', null); k.append(t, ok); w.appendChild(k);
+    const sv = $('button', 'btn', 'Save as a file'); sv.onclick = () => set('vt.recoverySave', null); const pr = $('button', 'btn', 'Print'); pr.onclick = () => set('vt.recoveryPrint', null); const ok = $('button', 'btn primary', 'I have saved it'); ok.onclick = () => set('vt.recoveryDone', null); const bx = $('div', 'memacts'); bx.append(sv, pr, ok); k.append(t, bx); w.appendChild(k);
   }
   if (c.state === 'none') {
     w.appendChild(vtForm([vtInput('vt-new', 'Choose a passphrase (8 or more characters)', 'password')], { label: 'Make the vault', primary: true }, () => { const v = drafts.get('vt-new') || ''; drafts.delete('vt-new'); set('vt.create', v); }));
