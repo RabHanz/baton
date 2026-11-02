@@ -142,6 +142,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "weave_send",
   "text_transform",
   "text_undo",
+  "text_command",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -256,6 +257,7 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "text_transform":
+    case "text_command":
     case "text_undo":
       // It rewrites what he selected, in the app he is in; a command line or a read-then-act turn asks.
       if (name === "text_undo") return { verdict: "allow" };

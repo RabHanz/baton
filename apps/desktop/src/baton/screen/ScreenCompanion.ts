@@ -4,6 +4,7 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
+import { parseTextCommand } from "@t3tools/baton-shared/textCommand";
 import { findTransform } from "@t3tools/baton-shared/transforms";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { createTextEdit } from "../writing/textEdit.ts";
@@ -287,6 +288,7 @@ export interface AssistantActions {
       | "weave_list"
       | "text_transform"
       | "text_undo"
+      | "text_command"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
