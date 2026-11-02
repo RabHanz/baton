@@ -172,6 +172,9 @@ function memoryBar(c) {
   const sy = $('div', 'row'), st = $('div', 'text'); st.append($('div', 'label', 'Keep servers in step'), $('div', 'hint', 'Memory is carried between the servers this window is connected to. The last change wins, and a forgotten memory stays forgotten.'));
   const sw = $('button', 'sw'); sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', String(c.syncOn)); sw.setAttribute('aria-label', 'Keep servers in step'); sw.onclick = () => set('m.syncOn', !c.syncOn); sy.append(st, sw);
   if (c.syncOn) { const nb = $('button', 'btn quiet', 'Sync now'); nb.onclick = () => set('m.sync', null); sy.appendChild(nb); } w.appendChild(sy);
+  const pl = $('div', 'row'), pt = $('div', 'text'); pt.append($('div', 'label', 'Pull learnings from the history index'), $('div', 'hint', 'Once a day, short quotes about what worked and failed in your ventures are proposed here. They wait for your yes; nothing is copied from a session.'));
+  const ps = $('button', 'sw'); ps.setAttribute('role', 'switch'); ps.setAttribute('aria-checked', String(c.pullOn)); ps.setAttribute('aria-label', 'Pull learnings'); ps.onclick = () => set('m.pullOn', !c.pullOn); pl.append(pt, ps);
+  if (c.pullOn) { const pb = $('button', 'btn quiet', 'Pull now'); pb.onclick = () => set('m.pull', null); pl.appendChild(pb); } w.appendChild(pl);
   if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
   return w;
 }

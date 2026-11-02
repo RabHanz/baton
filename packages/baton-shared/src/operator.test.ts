@@ -187,15 +187,10 @@ describe("Baton's own tools (D143)", () => {
     expect(
       judgeToolCall({ tool: "mcp__baton__memory_forget", input: { id: "a" } }, off).verdict,
     ).toBe("ask");
-    expect(
-      judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, off).verdict,
-    ).toBe("allow");
-    expect(
-      judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, read).verdict,
-    ).toBe("allow"); // the vault asks, naming the secret, when the turn read something
-    expect(
-      judgeToolCall({ tool: "mcp__baton__vault_save_pending", input: { name: "x" } }, off).verdict,
-    ).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, off).verdict).toBe("allow");
+    expect(judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, read).verdict).toBe("allow"); // the vault asks, naming the secret, when the turn read something
+    expect(judgeToolCall({ tool: "mcp__baton__vault_save_pending", input: { name: "x" } }, off).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__browser_accessibility_on", input: {} }, off)).toMatchObject({ verdict: "ask", risky: true });
     const grant = judgeToolCall(
       { tool: "mcp__baton__job_grant", input: { id: "j1", channel: "email" } },
       off,
@@ -211,6 +206,8 @@ describe("Baton's own tools (D143)", () => {
       "memory_search",
       "memory_used",
       "vault_list",
+      "history_search",
+      "browser_route",
       "memory_pin",
       "dictation_start",
       "jobs_list",

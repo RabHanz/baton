@@ -68,7 +68,7 @@ describe("the Memory tab", () => {
     expect(tab.act("m.forget:a", null)).toBe(true);
     expect(tab.act("m.accept:a", null)).toBe(true);
     await settle();
-    expect(calls.filter(([op]) => op !== "list" && op !== "used")).toEqual([
+    expect(calls.filter(([op]) => op !== "list" && op !== "used" && op !== "pull")).toEqual([
       ["edit", { id: "a", text: "new words" }],
       ["pin", { id: "a", pinned: true }],
       ["forget", { id: "a" }],
