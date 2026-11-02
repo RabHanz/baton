@@ -11,12 +11,23 @@ import { createVault } from "./vaultStore.ts";
 
 const FAKE = "fake-test-value-1234";
 
-const setup = (over: { tainted?: boolean; yes?: boolean; run?: (c: string, e: Record<string, string>) => Promise<string> } = {}) => {
+const setup = (
+  over: {
+    tainted?: boolean;
+    yes?: boolean;
+    run?: (c: string, e: Record<string, string>) => Promise<string>;
+  } = {},
+) => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-vhost-"));
   const vault = createVault({ file: NodePath.join(dir, "v.json"), kdf: { N: 1024, r: 8, p: 1 } });
   vault.create("correct horse battery");
   vault.add({ name: "github", label: "GitHub token", category: "key", value: FAKE });
-  vault.add({ name: "bank", label: "Bank login", category: "financial", value: "fake-bank-pass-9" });
+  vault.add({
+    name: "bank",
+    label: "Bank login",
+    category: "financial",
+    value: "fake-bank-pass-9",
+  });
   let clip = "";
   const typed: string[] = [];
   const audit: string[] = [];

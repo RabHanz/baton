@@ -28,7 +28,10 @@ describe("memory sync", () => {
     sync.setEnabled(true);
     expect(await sync.run()).toContain("nothing to sync");
     out = null;
-    const failing = createMemorySync({ file, call: async () => Promise.reject(new Error("Memory did not answer.")) });
+    const failing = createMemorySync({
+      file,
+      call: async () => Promise.reject(new Error("Memory did not answer.")),
+    });
     expect(await failing.run()).toBe("Memory did not answer.");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });

@@ -9,6 +9,17 @@ describe("wake words at start", () => {
   it("gives a fresh install Sebastian and Alfred until Tessaya has a model", () => {
     expect(enabled(wakeWordsFor(null))).toEqual(["Sebastian", "Alfred"]);
     expect(wakeWordsFor(null)).toBe(FRESH_WAKE_WORDS);
+    // A saved list that has Tessaya on is switched off until its model ships.
+    expect(
+      enabled(
+        wakeWordsFor({
+          wakeWords: [
+            { word: "Tessaya", enabled: true, threshold: 0.9 },
+            { word: "Alfred", enabled: true, threshold: 0.9 },
+          ],
+        }),
+      ),
+    ).toEqual(["Alfred"]);
   });
   it("keeps Freya for a settings file from before the list was saved", () => {
     expect(enabled(wakeWordsFor({ enabled: true, sounds: true }))).toEqual([

@@ -29,13 +29,20 @@ const item = (id: string, over: Partial<MemoryItem> = {}): MemoryItem => ({
   ...over,
 });
 
-const notes = { list: () => [{ id: "n1", text: "likes tea", file: "/x" }] } as unknown as NotesStore;
+const notes = {
+  list: () => [{ id: "n1", text: "likes tea", file: "/x" }],
+} as unknown as NotesStore;
 
 const make = (call: (op: string, args: Record<string, unknown>) => Promise<unknown>) => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-mtab-"));
   const refresh = vi.fn();
   const reveal = vi.fn();
-  const sync = { enabled: () => false, setEnabled: vi.fn(), run: vi.fn(async () => "Synced 1 changes across 2 servers."), start: vi.fn() };
+  const sync = {
+    enabled: () => false,
+    setEnabled: vi.fn(),
+    run: vi.fn(async () => "Synced 1 changes across 2 servers."),
+    start: vi.fn(),
+  };
   const tab = createMemoryTab({ call, sync, notes, stateDir: dir, refresh, reveal });
   return { tab, refresh, reveal, sync, dir };
 };
@@ -89,24 +96,37 @@ describe("the Memory tab", () => {
 
   it("searches, filters, exports a file and imports a folder", async () => {
     const { tab, reveal, dir } = make(async (op) => {
-      if (op === "list") return { items: [item("a"), item("b", { kind: "preference", text: "tea at four" })] };
+      if (op === "list")
+        return { items: [item("a"), item("b", { kind: "preference", text: "tea at four" })] };
       if (op === "export") return { markdown: "# Tessaya memory\n- [fact] fact a\n" };
       if (op === "import") return { files: 2, added: 2, refused: 0, unchanged: 0 };
       return { items: [] };
     });
     await tab.load();
     tab.act("m.kind", "preference");
-    expect(tab.controls().filter((c) => c.kind === "memory").map((c) => c.id)).toEqual(["m:b"]);
+    expect(
+      tab
+        .controls()
+        .filter((c) => c.kind === "memory")
+        .map((c) => c.id),
+    ).toEqual(["m:b"]);
     tab.act("m.kind", "all");
     tab.act("m.query", "fact a");
-    expect(tab.controls().filter((c) => c.kind === "memory").map((c) => c.id)).toEqual(["m:a"]);
+    expect(
+      tab
+        .controls()
+        .filter((c) => c.kind === "memory")
+        .map((c) => c.id),
+    ).toEqual(["m:a"]);
     tab.act("m.export", null);
     await settle();
     expect(NodeFS.readFileSync(NodePath.join(dir, "memory-export.md"), "utf8")).toContain("fact a");
     expect(reveal).toHaveBeenCalled();
     tab.act("m.import", "/some/folder");
     await settle();
-    expect((tab.controls()[0] as { status: string }).status).toBe("Read 2 files: 2 added, 0 unchanged, 0 not kept.");
+    expect((tab.controls()[0] as { status: string }).status).toBe(
+      "Read 2 files: 2 added, 0 unchanged, 0 not kept.",
+    );
   });
 
   it("sync is switched and run from the tab", async () => {

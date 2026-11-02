@@ -17,7 +17,9 @@ export const createMemorySync = (input: {
 }) => {
   const enabled = (): boolean => {
     try {
-      return (JSON.parse(NodeFS.readFileSync(input.file, "utf8")) as { sync?: unknown }).sync === true;
+      return (
+        (JSON.parse(NodeFS.readFileSync(input.file, "utf8")) as { sync?: unknown }).sync === true
+      );
     } catch {
       return false;
     }
@@ -29,7 +31,8 @@ export const createMemorySync = (input: {
     if (!enabled()) return "Memory sync is off.";
     try {
       const out = (await input.call("sync", {})) as { servers?: number; applied?: number } | null;
-      if ((out?.servers ?? 0) < 2) return "Only one server is connected, so there is nothing to sync.";
+      if ((out?.servers ?? 0) < 2)
+        return "Only one server is connected, so there is nothing to sync.";
       return `Synced ${out?.applied ?? 0} changes across ${out?.servers} servers.`;
     } catch (error) {
       return error instanceof Error ? error.message : "Sync did not work.";

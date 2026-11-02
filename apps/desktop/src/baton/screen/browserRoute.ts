@@ -50,15 +50,28 @@ export const chooseBrowserRoute = (i: RouteInput): RouteChoice => {
       steps:
         i.chromeVisible === true
           ? ["call with a 10 second limit and one retry"]
-          : ["bring the Chrome window and the tab to the front", "call with a 10 second limit and one retry"],
+          : [
+              "bring the Chrome window and the tab to the front",
+              "call with a 10 second limit and one retry",
+            ],
     };
   }
-  const reason = !i.ownChromeOn ? "Using your own Chrome is off" : i.chrome.message.replace(/\.$/, "");
+  const reason = !i.ownChromeOn
+    ? "Using your own Chrome is off"
+    : i.chrome.message.replace(/\.$/, "");
   if (i.chromeVisible === false) {
-    return { route: "none", why: `${reason}, and no Chrome window is open to work in. Open Chrome and ask again.`, steps: [] };
+    return {
+      route: "none",
+      why: `${reason}, and no Chrome window is open to work in. Open Chrome and ask again.`,
+      steps: [],
+    };
   }
   if (i.accessibility === "on") {
-    return { route: "uia", why: `${reason}, so I work the Chrome window through the screen's own controls.`, steps: ["bring the Chrome window to the front", "ui_tree, then click_element"] };
+    return {
+      route: "uia",
+      why: `${reason}, so I work the Chrome window through the screen's own controls.`,
+      steps: ["bring the Chrome window to the front", "ui_tree, then click_element"],
+    };
   }
   if (i.accessibility === "off" && !i.relaunchApproved) {
     return {
@@ -69,22 +82,36 @@ export const chooseBrowserRoute = (i: RouteInput): RouteChoice => {
     };
   }
   if (i.accessibility === "off") {
-    return { route: "uia", why: `${reason}; Chrome was restarted with accessibility on, so I use the screen's controls.`, steps: ["ui_tree, then click_element"] };
+    return {
+      route: "uia",
+      why: `${reason}; Chrome was restarted with accessibility on, so I use the screen's controls.`,
+      steps: ["ui_tree, then click_element"],
+    };
   }
-  return { route: "pixels", why: `${reason}; I will read the screen and click by sight.`, steps: ["bring the Chrome window to the front", "screen_capture, then click"] };
+  return {
+    route: "pixels",
+    why: `${reason}; I will read the screen and click by sight.`,
+    steps: ["bring the Chrome window to the front", "screen_capture, then click"],
+  };
 };
 
 /** Chrome with accessibility off shows a window frame and nothing inside it. */
 export const accessibilityLooksOff = (tree: string): boolean => {
-  const named = tree.split(/\r?\n/).filter((l) => l.trim().length > 0 && !/^\s*(pane|window|group|title bar)\b/i.test(l.trim()));
+  const named = tree
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0 && !/^\s*(pane|window|group|title bar)\b/i.test(l.trim()));
   return named.length < 8;
 };
 
 /** `fn` with a time limit and one retry; says what happened in words when both fail. */
 export const withCallRetry = async <T>(
   fn: () => Promise<T>,
-  opts: { readonly ms?: number; readonly retries?: number; readonly label: string } = { label: "that" },
-): Promise<{ readonly ok: true; readonly value: T } | { readonly ok: false; readonly why: string }> => {
+  opts: { readonly ms?: number; readonly retries?: number; readonly label: string } = {
+    label: "that",
+  },
+): Promise<
+  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly why: string }
+> => {
   const ms = opts.ms ?? CALL_TIMEOUT_MS;
   const tries = 1 + (opts.retries ?? 1);
   for (let attempt = 1; attempt <= tries; attempt++) {
@@ -103,7 +130,10 @@ export const withCallRetry = async <T>(
       clearTimeout(timer);
     }
   }
-  return { ok: false, why: `${opts.label} did not answer in ${Math.round(ms / 1000)} seconds, even after trying again.` };
+  return {
+    ok: false,
+    why: `${opts.label} did not answer in ${Math.round(ms / 1000)} seconds, even after trying again.`,
+  };
 };
 
 export interface ChromeRelaunchPorts {
@@ -137,7 +167,9 @@ export const realRelaunchPorts = (platform: string): ChromeRelaunchPorts => ({
   platform,
   run: (command, args) =>
     new Promise((resolve, reject) =>
-      NodeChildProcess.execFile(command, [...args], { windowsHide: true }, (e) => (e === null ? resolve() : reject(e))),
+      NodeChildProcess.execFile(command, [...args], { windowsHide: true }, (e) =>
+        e === null ? resolve() : reject(e),
+      ),
     ),
   wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 });
