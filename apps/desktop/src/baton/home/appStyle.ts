@@ -1,16 +1,16 @@
 /**
  * The look of Baton's window (D140): a warm cream ground, a sidebar of tabs, one raised panel for
  * the page, a serif for what is said to him and a plain sans for everything he operates. One accent,
- * the Damson dye (#4A205E, #BC96CE on dark, from the logo kit); amber only for "needs you". Motion is short and one-off, with a reduced-motion
+ * the Woad dye (#14505A, #5FB3B3 on dark, from the logo kit); amber only for "needs you". Motion is short and one-off, with a reduced-motion
  * fallback; nothing repaints continuously.
  */
 /** The dark theme: a warm near-black ground, panels one step lighter, hairline rules, edge light instead of shadow. */
 export const DARK_TOKENS = `[data-theme=dark]{
   --ground:#121110;--side:#161513;--panel:#1b1a17;--sunk:#211f1c;--ink:#ece8df;--soft:#aaa59a;--faint:#8f8a7f;
-  --line:#2c2a26;--line-strong:#403d37;--accent:#BC96CE;--accent-deep:#2B1A36;--accent-wash:#26182F;--accent-ink:#151019;
+  --line:#2c2a26;--line-strong:#403d37;--accent:#5FB3B3;--accent-deep:#12292D;--accent-wash:#163035;--accent-ink:#0F1B1E;
   --warn:#e3a553;--warn-wash:#35280f;--bad:#f08a80;--bad-wash:#3b1f1c;
-  --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2c2a26;--accent-edge:#4F3862;--accent-text:#BC96CE;
-  --focus:#BC96CE;--on-ink:#14130f;--on-deep:#F3EFEB;--on-deep-soft:#C9AEDA;--btn-deep-bg:#F3EFEB;--btn-deep-fg:#151019;
+  --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2c2a26;--accent-edge:#2D5A5F;--accent-text:#5FB3B3;
+  --focus:#5FB3B3;--on-ink:#14130f;--on-deep:#EEEDE4;--on-deep-soft:#9FD0D0;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
   --panel-shadow:inset 0 1px 0 rgba(255,255,255,.05);--veil:rgba(0,0,0,.6);
   --modal-shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.7);--arrow:%23aaa59a;color-scheme:dark;
 }`;
@@ -18,13 +18,13 @@ export const DARK_TOKENS = `[data-theme=dark]{
 export const APP_CSS = `
 :root{
   --ground:#f3f0e8;--side:#efebe2;--panel:#fffdf8;--sunk:#f7f4ec;--ink:#1c1b18;--soft:#66625a;--faint:#9a958a;
-  --line:#e9e4d9;--line-strong:#d8d2c4;--accent:#4A205E;--accent-deep:#34163F;--accent-wash:#EFE7F2;--accent-ink:#ffffff;
+  --line:#e9e4d9;--line-strong:#d8d2c4;--accent:#14505A;--accent-deep:#0E3A42;--accent-wash:#E3EEEF;--accent-ink:#ffffff;
   --warn:#b4691f;--warn-wash:#f8ead6;--bad:#b3423a;--bad-wash:#f6e1de;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,Cambria,Georgia,serif;
   --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   --ease:cubic-bezier(.2,.8,.2,1);--r:14px;
-  --hover:rgba(28,27,24,.05);--row-hover:rgba(255,253,248,.7);--quiet:#ece8dd;--accent-edge:#CFB9DA;--accent-text:#4A205E;
-  --focus:#4A205E;--on-ink:#ffffff;--on-deep:#F3EFEB;--on-deep-soft:#D9C8E3;--btn-deep-bg:#F3EFEB;--btn-deep-fg:#151019;
+  --hover:rgba(28,27,24,.05);--row-hover:rgba(255,253,248,.7);--quiet:#ece8dd;--accent-edge:#B7D2D5;--accent-text:#14505A;
+  --focus:#14505A;--on-ink:#ffffff;--on-deep:#EEEDE4;--on-deep-soft:#BFD6D8;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
   --panel-shadow:0 1px 0 rgba(28,27,24,.03),0 12px 32px -22px rgba(28,27,24,.25);--veil:rgba(28,27,24,.38);
   --modal-shadow:0 30px 80px -20px rgba(28,27,24,.45);--arrow:%2366625a;color-scheme:light;
 }
@@ -134,7 +134,7 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 
 .sw{position:relative;width:40px;height:24px;flex:none;border-radius:12px;border:0;background:var(--line-strong);transition:background .18s}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s var(--ease)}
-.sw[aria-checked=true]{background:var(--accent)}[data-theme=dark] .sw[aria-checked=true]::after{background:#151019}.sw[aria-checked=true]::after{transform:translateX(16px)}
+.sw[aria-checked=true]{background:var(--accent)}[data-theme=dark] .sw[aria-checked=true]::after{background:#0F1B1E}.sw[aria-checked=true]::after{transform:translateX(16px)}
 .seg{display:flex;background:var(--quiet);border-radius:10px;padding:3px;gap:2px;flex:none}
 .seg button{border:0;background:transparent;padding:6px 12px;border-radius:8px;color:var(--soft);font-weight:600;font-size:13px}
 .seg button[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
