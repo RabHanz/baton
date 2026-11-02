@@ -183,6 +183,36 @@ function memoryRow(c) {
   const fg = $('button', 'btn quiet', c.held ? 'Dismiss' : 'Forget'); fg.onclick = () => set('m.forget:' + id, null); acts.appendChild(fg);
   r.appendChild(acts); wrap.appendChild(r); return wrap;
 }
+function catalogBar(c) {
+  const w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'); q.type = 'text'; q.id = 'in-c-q'; q.placeholder = c.words.search; q.setAttribute('aria-label', c.words.search); q.value = drafts.has('c-q') ? drafts.get('c-q') : c.query;
+  let tm = null; q.oninput = () => { drafts.set('c-q', q.value); clearTimeout(tm); tm = setTimeout(() => set('c.query', q.value), 250); };
+  f.onsubmit = e => { e.preventDefault(); clearTimeout(tm); set('c.query', q.value); }; f.appendChild(q); w.appendChild(f);
+  const seg = $('div', 'seg memseg'); for (const k of c.states) { const b = $('button', null, k.label); b.setAttribute('aria-pressed', String(k.value === c.stateFilter)); b.onclick = () => set('c.state', k.value); seg.appendChild(b); } w.appendChild(seg);
+  const tools = $('div', 'memtools');
+  if (c.machines.length > 2) { const m = $('select'); m.setAttribute('aria-label', c.words.machine); for (const o of c.machines) { const op = $('option', null, o.label); op.value = o.value; m.appendChild(op); } m.value = c.machine; m.onchange = () => set('c.machine', m.value); tools.appendChild(m); }
+  const nb = $('button', 'btn', c.words.new); nb.setAttribute('aria-expanded', String(c.creating)); nb.onclick = () => set('c.new', null); tools.appendChild(nb); w.appendChild(tools);
+  if (c.creating) {
+    const nf = $('form', 'vocab'), nm = $('select'); nm.setAttribute('aria-label', c.words.machine);
+    for (const o of c.machines.slice(1)) { const op = $('option', null, o.label); op.value = o.value; nm.appendChild(op); } nm.value = c.newMachine; nm.onchange = () => set('c.newMachine', nm.value);
+    const fi = $('input'); fi.type = 'text'; fi.id = 'in-c-folder'; fi.placeholder = c.words.folder; fi.setAttribute('aria-label', c.words.folder); fi.value = drafts.get('c-folder') || ''; fi.oninput = () => drafts.set('c-folder', fi.value);
+    const go = $('button', 'btn primary', c.words.start); go.type = 'submit'; nf.append(nm, fi, go);
+    nf.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('c-folder'); set('c.start', v); };
+    w.appendChild(nf);
+    if (c.folders.length) { const fl = $('div', 'memtools'); for (const d of c.folders.slice(0, 6)) { const b = $('button', 'btn quiet', d); b.onclick = () => { fi.value = d; drafts.set('c-folder', d); fi.focus(); }; fl.appendChild(b); } w.appendChild(fl); }
+  }
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  if (c.remaining > 0) { const mb = $('button', 'btn quiet', c.words.more + ' (' + c.remaining + ')'); mb.onclick = () => set('c.more', null); w.appendChild(mb); }
+  return w;
+}
+function catalogRow(c) {
+  const r = $('div', 'row sess'); const dot = $('span', 'sdot ' + (c.state === 'running' ? 'working' : c.state === 'resuming' ? 'waiting' : 'idle')); dot.setAttribute('aria-label', c.stateLabel);
+  const t = $('div', 'text'); const name = $(c.state === 'running' ? 'button' : 'div', 'sname', c.label);
+  if (c.state === 'running') name.onclick = () => set(c.id, null);
+  const meta = $('div', 'hint'); meta.append(document.createTextNode([c.project, c.machine, c.stateLabel, c.when, c.source].filter(Boolean).join(' \\u00b7 ')));
+  t.append(name, meta); r.append(dot, t);
+  if (c.resumeLabel) { const b = $('button', 'btn', c.resumeLabel); b.setAttribute('aria-label', c.resumeLabel + ' ' + c.label); b.onclick = () => set(c.id, 'resume'); r.appendChild(b); }
+  return r;
+}
 function memoryBar(c) {
   const w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'); q.type = 'text'; q.id = 'in-m-q'; q.placeholder = 'Search what Tessaya remembers'; q.setAttribute('aria-label', 'Search memory'); q.value = drafts.has('m-q') ? drafts.get('m-q') : c.query;
   let tm = null; q.oninput = () => { drafts.set('m-q', q.value); clearTimeout(tm); tm = setTimeout(() => set('m.query', q.value), 250); };
@@ -261,6 +291,8 @@ function row(c) {
   if (c.kind === 'list') return listRow(c);
   if (c.kind === 'memory') return memoryRow(c);
   if (c.kind === 'memoryBar') return memoryBar(c);
+  if (c.kind === 'catalogBar') return catalogBar(c);
+  if (c.kind === 'catalogRow') return catalogRow(c);
   // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.
   if (c.kind === 'choice' && (c.id === 's.voice' || c.options.some(o => o.note))) { const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.append(t, control(c)); return w; }
   if (c.kind === 'session') return session(c);
