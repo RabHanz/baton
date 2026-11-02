@@ -75,3 +75,32 @@ describe("the mark breathes only while the window is in front", () => {
     expect(APP_CSS).toMatch(/prefers-reduced-motion:reduce\)\{\*\{[^}]*animation:none/);
   });
 });
+
+describe("motion stays cheap", () => {
+  // Two one-shot layout transitions predate the rule (sidebar collapse, group fold): they run once per click.
+  const ONE_SHOT_LAYOUT = new Set(["grid-template-columns", "grid-template-rows"]);
+  const LAYOUT = /^(?:width|height|min-|max-|margin|padding|top|left|right|bottom|grid-|flex|font|line-height|border-width|gap)/;
+
+  it("never animates a layout property, apart from the two known one-shots", () => {
+    const bad = [...APP_CSS.matchAll(/transition:([^;}]*)/g)]
+      .flatMap((m) => m[1]!.split(","))
+      .map((part) => part.trim().split(/\s+/)[0]!)
+      .filter((property) => LAYOUT.test(property) && !ONE_SHOT_LAYOUT.has(property));
+    expect(bad).toEqual([]);
+    for (const m of APP_CSS.matchAll(/@keyframes [\w-]+\{(.*?\}\})/g)) {
+      expect(m[1]).not.toMatch(/(?:width|height|margin|padding|top|left|right|bottom)\s*:/);
+    }
+  });
+
+  it("gates every infinite animation behind the live class", () => {
+    for (const rule of APP_CSS.matchAll(/([^{}]+)\{[^{}]*animation:[^;}]*infinite[^{}]*\}/g)) {
+      expect(rule[1]).toMatch(/html\.live /);
+    }
+  });
+
+  it("has one set of duration and easing tokens", () => {
+    for (const token of ["--dur-instant", "--dur-quick", "--dur-base", "--dur-slow", "--dur-hero", "--stagger", "--ease-spring"]) {
+      expect(APP_CSS).toContain(`${token}:`);
+    }
+  });
+});
