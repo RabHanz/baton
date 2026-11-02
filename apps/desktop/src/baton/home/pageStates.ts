@@ -12,6 +12,8 @@ import { jobControls } from "../sessions/jobRows.ts";
 import { backupControls } from "../backup/backupRows.ts";
 import { EMPTY_NOW, nowControls } from "../presence/nowRows.ts";
 import { trustControls, type TrustData } from "../trust/trustRows.ts";
+import { cloudPageControls, approvalCardControls } from "../cloud/cloudRows.ts";
+import { DEFAULT_CLOUD, type CloudView } from "../cloud/cloudService.ts";
 import { harnessControls } from "../harness/harnessRows.ts";
 import { insightControls } from "../writing/insightRows.ts";
 import { scratchControls } from "../writing/scratchRows.ts";
@@ -32,6 +34,10 @@ const EMPTY_TRUST: TrustData = {
   playbooks: [],
   entries: [],
   filter: "all",
+};
+
+const CLOUD_VIEW: CloudView = {
+  on: true, transport: "local", providers: [], choices: [], requests: [], usage: [], detections: {}, error: null, loadedAt: null, cards: new Map(),
 };
 
 const status = { label: "Listening", tone: "good", device: "", mark: "" };
@@ -69,6 +75,9 @@ export const STATES: Readonly<
       ...trustControls(EMPTY_TRUST, NOW),
       ...helpControls({ tools: [], bindings: [], checks: [] }),
       ...backupControls(null, null),
+      ...cloudPageControls(CLOUD_VIEW, DEFAULT_CLOUD),
+      ...cloudPageControls(CLOUD_VIEW, { ...DEFAULT_CLOUD, on: true }),
+      ...approvalCardControls(CLOUD_VIEW),
     ],
   },
   error: {
@@ -83,6 +92,7 @@ export const STATES: Readonly<
         ],
       }),
       ...backupControls(null, "That is not a zip file."),
+      ...cloudPageControls({ ...CLOUD_VIEW, error: "The computer that runs cloud tasks did not answer." }, { ...DEFAULT_CLOUD, on: true, transport: "ssh" }),
     ],
   },
   offline: {

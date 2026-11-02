@@ -213,6 +213,9 @@ import {
   runPlaybooks,
   type PlaybookId,
 } from "../presence/playbooks.ts";
+import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
+import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudService.ts";
+import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
@@ -443,6 +446,8 @@ interface VoiceSettings {
   readonly toggleKey: string;
   /** The first-run guide was finished or skipped. */
   readonly setupDone?: boolean;
+  /** Cloud tasks: off until he turns them on. */
+  readonly cloud?: Partial<CloudSettings>;
   readonly paste: PasteMethod;
   /** null lets Parakeet detect the language. */
   readonly language: string | null;
@@ -1714,6 +1719,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         await requestKept({ kind: "job", op: "handoff", args });
         return "Handed the job to that worker. The same thread continues there.";
       }
+      if (op === "cloud_dispatch") {
+        return cloud.tool.dispatch({
+          ...(typeof args["provider"] === "string" ? { provider: args["provider"] } : {}),
+          repo: String(args["repo"] ?? ""),
+          branch: String(args["branch"] ?? ""),
+          brief: String(args["brief"] ?? ""),
+          ...(typeof args["label"] === "string" ? { label: args["label"] } : {}),
+          fromWeb: args["from_web_or_file"] === true,
+        });
+      }
+      if (op === "cloud_status") return cloud.tool.status(String(args["id"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
+      if (op === "cloud_list") return cloud.tool.list(args["mine"] === true, typeof args["label"] === "string" ? args["label"] : undefined);
+      if (op === "cloud_cancel") return cloud.tool.cancel(String(args["id"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
+      if (op === "cloud_usage") return cloud.tool.usage();
+      if (op === "cloud_approve") return cloud.tool.approve(String(args["id"] ?? ""), String(args["account"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
       if (op === "trust_show") return describeTrust(trustData(), Date.now());
       if (op === "activity_today") return describeToday(trustData().entries, new Date());
       if (op === "permission_off") {
@@ -3096,7 +3116,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       jobs,
       sessions: input.sessions?.rows() ?? [],
       findings: windowUp ? await watchFindings() : [],
-      extra: [...needsFromCommitments(commitments.list(), at), ...syncNeeds(syncNow, at)],
+      extra: [...needsFromCommitments(commitments.list(), at), ...syncNeeds(syncNow, at), ...cloudNeeds(cloud.view().requests)],
       config: needsConfig(),
       external: externalNeeds,
       now: at,
@@ -3155,6 +3175,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(() => void refreshNow().catch(() => undefined), NOW_REFRESH_MS).unref();
   setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
 
+  const cloudSettings = (): CloudSettings => ({ ...DEFAULT_CLOUD, ...settings.cloud });
+  const saveCloud = (patch: Partial<CloudSettings>) => {
+    save({ cloud: { ...settings.cloud, ...patch } });
+    void cloud.refresh().catch(() => undefined);
+  };
+  const cloud = createCloud({
+    settings: cloudSettings,
+    exec: nodeExec,
+    dir: NodePath.join(input.stateDir, "cloud"),
+    hub: null,
+    ask: async (q) =>
+      (await input.extras?.ask({ title: q.title, detail: q.detail, buttons: q.buttons, cancel: q.cancel, armMs: q.armMs, expiresMs: 120_000 })) ?? q.cancel,
+    changed: () => pushHome(),
+    now: () => Date.now(),
+  });
+  let cloudTimer: ReturnType<typeof setInterval> | null = null;
   let trustFilter: TrustFilter = "all";
   let backupPreview: (RestorePreview & { readonly file: string }) | null = null;
   let backupNote: string | null = null;
@@ -3246,6 +3282,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ),
       ...nowControls(nowData, Date.now()),
       ...trustControls(trustData(), Date.now()),
+      ...cloudPageControls(cloud.view(), cloudSettings()),
+      ...approvalCardControls(cloud.view()),
       ...helpControls({
         tools: buildBatonTools({} as ToolHost).map((t) => t.name),
         bindings: currentBindings().map((r) => ({
@@ -4158,6 +4196,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         backupPreview = null;
         forgetFiles();
       } else if (id === "bk.apply:later") backupPreview = null;
+    } else if (/^cl\.(p|a|ok|deny)\./.test(id)) {
+      void cloud.click(id).catch(() => undefined);
+    } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
+    else if (id === "cl.set.on") saveCloud({ on });
+    else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh")) saveCloud({ transport: value });
+    else if (id === "cl.set.cap") saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
+    else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey)(:save|:reset)$/.test(id)) {
+      const field = /^cl\.set\.(\w+):/.exec(id)![1] as "codexEnv" | "sshHost" | "sshUser" | "machineKey" | "approverKey";
+      saveCloud({ [field]: id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "" });
     } else if (id === "v.dnd") save({ doNotDisturb: on });
     else if (id === "v.snooze") toggleSnooze();
     else if (id === "q.setupDone") {
@@ -4424,6 +4471,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
       if (tab === "memory") void memoryTab.load();
+      if (tab === "approvals") void cloud.refresh().catch(() => undefined);
+      // The Cloud page refreshes every minute while it is open, and not otherwise.
+      if (cloudTimer !== null) {
+        clearInterval(cloudTimer);
+        cloudTimer = null;
+      }
+      if (tab === "cloud") {
+        void cloud.refresh().catch(() => undefined);
+        cloudTimer = setInterval(() => void cloud.refresh().catch(() => undefined), 60_000);
+        cloudTimer.unref();
+      }
     },
     appearance: () => settings.appearance,
     level: () => micNow,

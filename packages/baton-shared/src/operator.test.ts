@@ -343,3 +343,19 @@ describe("keys after a read", () => {
     expect(judgeToolCall(press(["win", "r"]), on).verdict).toBe("allow");
   });
 });
+
+describe("cloud tools", () => {
+  const ctx = (tainted: boolean) => ({ actWithoutAsking: false, tainted, textIsHis: false });
+  const call = (tool: string, input: Record<string, unknown> = {}) => ({ tool: `mcp__baton__${tool}`, input });
+  it("treats a dispatch as routine, but a brief built from something it read must say so", () => {
+    const brief = { repo: "o/r", branch: "b", brief: "Fix the test" };
+    expect(judgeToolCall(call("cloud_dispatch", brief), ctx(false)).verdict).toBe("allow");
+    expect(judgeToolCall(call("cloud_dispatch", brief), ctx(true)).verdict).toBe("ask");
+    expect(judgeToolCall(call("cloud_dispatch", { ...brief, from_web_or_file: true }), ctx(true)).verdict).toBe("allow");
+  });
+  it("lets it look and withdraw freely; the approval dialog is the ask", () => {
+    for (const t of ["cloud_status", "cloud_list", "cloud_usage", "cloud_cancel", "cloud_approve"]) {
+      expect(judgeToolCall(call(t, { id: "3", account: "rabee" }), ctx(true)).verdict).toBe("allow");
+    }
+  });
+});
