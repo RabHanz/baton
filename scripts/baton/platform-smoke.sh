@@ -59,6 +59,14 @@ opened=0
 # macOS does not log open_main for a second launch, but the app says when it made its window.
 grep -q 'main window created' "$out/app.log" 2>/dev/null && opened=1
 steps=$( [ -f "$log" ] && grep -o '"step":"[a-z-]*"' "$log" | sed 's/"step":"//;s/"//' | tr '\n' ' ' )
+if ! kill -0 "$pid" 2>/dev/null; then echo "NOTE the app process ($pid) had exited before the end"; fi
+if [ "$platform" = macos ]; then
+  # A native crash leaves no line in our logs, but macOS writes a report.
+  mkdir -p "$out/crash"; cp /Users/runner/Library/Logs/DiagnosticReports/* "$out/crash/" 2>/dev/null || true
+  ls "$out/crash" | head -5 | sed 's/^/crash report: /'
+  head -c 3000 "$out/crash/"*Tessaya*.ips 2>/dev/null | head -60
+  echo "--- app2.log (tail) ---"; tail -n 10 "$out/app2.log" 2>/dev/null || true
+fi
 echo "platform: $platform"
 echo "window opened (logged): $opened; page captures: $shots"
 echo "voice start steps: ${steps:-none}"
