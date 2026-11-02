@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -46,7 +46,10 @@ const make = (call: (op: string, args: Record<string, unknown>) => Promise<unkno
   const tab = createMemoryTab({ call, sync, notes, stateDir: dir, refresh, reveal });
   return { tab, refresh, reveal, sync, dir };
 };
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+// Lets the promise chains the tab starts finish; no clock is involved.
+const settle = async () => {
+  for (let i = 0; i < 30; i++) await Promise.resolve();
+};
 
 describe("the Memory tab", () => {
   it("shows his notes folder until the server has answered, then the server's memory", async () => {

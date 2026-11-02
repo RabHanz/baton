@@ -28,7 +28,7 @@ export const createVaultTab = (input: {
   readonly vault: Vault;
   readonly hello: (message: string) => Promise<HelloResult>;
   readonly clipboard: {
-    readonly read: () => string;
+    readonly read: () => string | Promise<string>;
     readonly write: (t: string) => void;
     readonly clear: () => void;
   };
@@ -148,7 +148,9 @@ export const createVaultTab = (input: {
         if (item === null) throw new VaultError("There is no such secret.");
         input.clipboard.write(item.value);
         setTimeout(() => {
-          if (input.clipboard.read() === item.value) input.clipboard.clear();
+          void Promise.resolve(input.clipboard.read()).then((now) => {
+            if (now === item.value) input.clipboard.clear();
+          });
         }, CLIPBOARD_CLEAR_MS).unref();
         note(item.name, "copy", "copied");
         status = "Copied. It clears from the clipboard in 10 seconds.";
