@@ -49,6 +49,7 @@ import {
 } from "./dictionaryEdit.ts";
 import {
   addInput,
+  checkInput,
   effective,
   parseBindings,
   removeInput,
@@ -63,6 +64,19 @@ import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
+import { parseWeaveHosts } from "@t3tools/baton-shared/weaveBoxes";
+import {
+  HOLD_KEY_CHOICES,
+  SETUP_STEPS,
+  setupHoldControl,
+  setupShouldShow,
+} from "../setup/firstRun.ts";
+import {
+  parseTrustLogs,
+  trustAction,
+  trustControls,
+  type TrustFilter,
+} from "../trust/trustRows.ts";
 import { expandSnippets, exportSnippets } from "@t3tools/baton-shared/snippets";
 import {
   checkTransformOutput,
@@ -389,6 +403,8 @@ interface VoiceSettings {
   readonly speechModel: "v3" | "fast";
   readonly holdKey: string;
   readonly toggleKey: string;
+  /** The first-run guide was finished or skipped. */
+  readonly setupDone?: boolean;
   readonly paste: PasteMethod;
   /** null lets Parakeet detect the language. */
   readonly language: string | null;
@@ -710,6 +726,8 @@ const wordName = (word: string | null): string | null =>
 export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBatonVoice => {
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
   const settingsPath = NodePath.join(input.stateDir, "fabric-voice.json");
+  /** Written once on a fresh install; the guide is shown while it exists and is not marked done. */
+  const setupMarker = NodePath.join(input.stateDir, "baton-setup.pending");
   let settings = readSettings(settingsPath);
   /** The window is told again whenever settings change, so Home never keeps the list it was first built from. */
   const pushHome = () => {
@@ -2334,6 +2352,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       onLevel: (frame) => {
         const level = frameLevel(frame);
+        micNow = level;
         pill.micLevel(level);
         if (silence.feed(level, Date.now()) === "warn") {
           pill.on({ type: "trouble", message: "Your microphone hears nothing" });
@@ -2364,6 +2383,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let checks: ReadonlyArray<CheckResult> | null = null;
   let micPeak: number | null = null;
   let levelTest: { peak: number } | null = null;
+  let micNow = 0;
   const silence = createSilenceWatch({ seconds: () => settings.micSilenceSeconds });
 
   const gather = async (): Promise<CheckInput> => {
@@ -2736,6 +2756,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .toReversed()
       .slice(0, 5);
     return {
+      setup: {
+        show: setupShouldShow(NodeFS.existsSync(setupMarker), settings.setupDone),
+        steps: SETUP_STEPS,
+        hold: settings.holdKey,
+      },
       wakeWords: settings.wakeWords
         .filter((w) => w.enabled && modelShipped(w.word))
         .map((w) => w.word),
@@ -2875,6 +2900,40 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(() => void refreshNow().catch(() => undefined), NOW_REFRESH_MS).unref();
   setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
 
+  let trustFilter: TrustFilter = "all";
+  const trustData = () => {
+    const on = (id: string) =>
+      input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
+    return {
+      screenAlways: on("s.capture"),
+      chrome: on("s.chrome"),
+      social: on("s.social"),
+      act: on("s.act"),
+      vault: !vaultState.vault.exists()
+        ? ("none" as const)
+        : vaultState.vault.isUnlocked()
+          ? ("unlocked" as const)
+          : ("locked" as const),
+      grants: (jobsCache ?? []).flatMap((j) =>
+        j.terms.grants
+          .filter((g) => g.revokedAt === null)
+          .map((g) => ({
+            jobId: j.workSessionId,
+            title: j.title,
+            channel: g.channel,
+            since: g.grantedAt,
+          })),
+      ),
+      weaveHosts: parseWeaveHosts(input.env["BATON_WEAVE_HOSTS"]).hosts.map((h) => h.name),
+      entries: parseTrustLogs({
+        turns: tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")),
+        social: tailOf(NodePath.join(input.stateDir, "social-actions.ndjson")),
+        vault: tailOf(vaultState.auditFile),
+      }),
+      filter: trustFilter,
+    };
+  };
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -2890,6 +2949,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...nowControls(nowData, Date.now()),
+      ...trustControls(trustData(), Date.now()),
+      setupHoldControl(settings.holdKey),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
@@ -3753,6 +3814,37 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? ""
           : "A built-in cannot be removed; replace it with your own of the same name.";
       } else if (act?.kind === "reset") transforms.reset();
+    } else if (id === "q.setupDone") {
+      save({ setupDone: true });
+      NodeFS.rmSync(setupMarker, { force: true });
+    } else if (id === "setup.hold") {
+      if (typeof value === "string" && HOLD_KEY_CHOICES.includes(value)) {
+        const checked = checkInput({ type: "key", accelerator: value });
+        if (checked.ok) {
+          save({ bindings: withBinding(settings.bindings, "hold", [{ type: "key", accelerator: value }]) });
+          applyBindings();
+        }
+      }
+    } else if (id.startsWith("trust.")) {
+      const act = trustAction(id, value);
+      if (act?.kind === "filter") trustFilter = act.filter;
+      else if (act?.kind === "revoke") {
+        if (act.what === "vault") vaultState.vault.lock();
+        else {
+          const toggle = { screen: "s.capture", chrome: "s.chrome", social: "s.social", act: "s.act" }[
+            act.what
+          ];
+          input.extras?.applySetting(toggle, false);
+        }
+      } else if (act?.kind === "grant") {
+        void requestKept({
+          kind: "job",
+          op: "revoke",
+          args: { id: act.jobId, channel: act.channel },
+        })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      }
     } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
     else if (id.startsWith("now.")) {
       const act = nowAction(id);
@@ -3967,6 +4059,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (tab === "memory") void memoryTab.load();
     },
     appearance: () => settings.appearance,
+    level: () => micNow,
   });
   // First run after an update: the list was just resolved and rewritten, so the window is told once more.
   setTimeout(pushHome, 3_000).unref();
@@ -4150,7 +4243,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // First run after install, and until he has chosen what Baton works through: the window opens on its own.
   const shownPath = NodePath.join(input.stateDir, "baton-home.shown");
   const firstRun = !NodeFS.existsSync(shownPath);
-  if (firstRun) NodeFS.writeFileSync(shownPath, new Date().toISOString());
+  if (firstRun) {
+    NodeFS.writeFileSync(shownPath, new Date().toISOString());
+    NodeFS.writeFileSync(setupMarker, "");
+  }
   if (firstRun || input.extras?.needsBrainChoice() === true) {
     setTimeout(() => home.open(), 2_000).unref();
   }

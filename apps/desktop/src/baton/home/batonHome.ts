@@ -161,6 +161,19 @@ export interface HomeActivity {
 
 /** What the tabs show beyond the controls: all data, nothing the page decides. */
 export interface HomeExtra {
+  /** The first-run guide: shown on its own when `show`, and run again from Settings. */
+  readonly setup?: {
+    readonly show: boolean;
+    readonly steps: ReadonlyArray<{
+      readonly id: string;
+      readonly title: string;
+      readonly text: string;
+      readonly controls: ReadonlyArray<string>;
+      readonly meter?: boolean;
+      readonly tryBox?: boolean;
+    }>;
+    readonly hold: string;
+  };
   readonly wakeWords: ReadonlyArray<string>;
   readonly activity: ReadonlyArray<HomeActivity>;
   readonly stats: {
@@ -253,6 +266,8 @@ export interface BatonHomeInput {
   readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
   readonly appearance: () => Appearance;
+  /** The microphone's level now, 0 to 1, for the guide's meter. */
+  readonly level?: () => number;
 }
 
 export interface BatonHome {
@@ -288,6 +303,7 @@ const SET = "baton-home:set";
 const SESSIONS = "baton-home:sessions";
 const PUSH = "baton-home:state";
 const THEME = "baton-home:theme";
+const LEVEL = "baton-home:level";
 
 const withTabs = (state: HomeState): HomeState => ({
   ...state,
@@ -308,6 +324,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     }
     return withTabs(input.state());
   });
+  Electron.ipcMain.handle(LEVEL, () => input.level?.() ?? 0);
   Electron.ipcMain.on(SESSIONS, () => input.openSessions());
   // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
   let tabShots = 0;

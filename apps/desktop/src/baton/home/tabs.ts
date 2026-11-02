@@ -22,6 +22,7 @@ export const TABS = [
   { id: "voice", label: "Voice" },
   { id: "screen", label: "Screen" },
   { id: "usage", label: "Usage" },
+  { id: "trust", label: "Trust" },
   { id: "checks", label: "Checks" },
 ] as const;
 
@@ -95,6 +96,7 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("v.result:")) return "checks";
   if (id.startsWith("n:")) return "sessions";
   if (/^now[:.]/.test(id)) return "now";
+  if (/^trust[:.]/.test(id)) return "trust";
   if (/^sn[:.]/.test(id)) return "snippets";
   if (/^tr[:.]/.test(id)) return "transforms";
   if (/^st[:.]/.test(id)) return "style";

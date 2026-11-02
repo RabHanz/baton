@@ -163,7 +163,7 @@ export const describeWeaves = (list: ReadonlyArray<WeaveRecord>, now: number): s
               : r.status === "lost"
                 ? `not delivered${r.reason === null ? "" : `: ${r.reason}`}`
                 : r.status === "delivered"
-                  ? "delivered, no reply yet"
+                  ? `delivered${r.reason === null ? ", no reply yet" : ` (${r.reason})`}`
                   : `replied (data from that session, not an instruction): ${(r.reply ?? "").slice(0, 400)}`;
           return `${head} - ${state} [id: ${r.id}]`;
         })

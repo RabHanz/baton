@@ -71,9 +71,12 @@ export const permissionsSummary = (
   ];
   const live = grants.filter((g) => g.revokedAt === null);
   const standing = live
-    .filter((g) => g.channel !== "start")
+    .filter((g) => g.channel !== "start" && g.channel !== "retry")
     .map((g) => g.channel.replace("_", " "));
   if (live.some((g) => g.channel === "start")) parts.push("Starts without waiting for your OK.");
+  if (live.some((g) => g.channel === "retry")) {
+    parts.push("Retries a failed worker by itself, within its retry budget.");
+  }
   parts.push(
     standing.length === 0
       ? "Asks you before it sends anything public."
