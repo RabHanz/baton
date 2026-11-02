@@ -678,7 +678,7 @@ addEventListener('mousedown', e => {
 function modalPage(b) {
   const x = S.extra || {};
   const rows = ids => S.controls.filter(c => ids.includes(c.id));
-  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
+  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.motion', 'v.glass', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
   else if (modal === 'keys') bindingsPage(b);
   else if (modal === 'setup') setupPage(b);
