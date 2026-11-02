@@ -49,6 +49,7 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
+import { importFolder } from "./BatonMemoryImport.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
@@ -410,6 +411,19 @@ export const make = Effect.gen(function* () {
             tainted: input.tainted,
             project: input.project ?? null,
           }),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
+    [BATON_MEMORY_WS_METHODS.syncHello]: () =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.syncHello)),
+    [BATON_MEMORY_WS_METHODS.syncPull]: (input) =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.changesSince(input.since))),
+    [BATON_MEMORY_WS_METHODS.syncPush]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.applyChanges(input.from, input.changes, input.upTo), (applied) => ({
+            applied,
+          })),
         ),
       ),
     [BATON_MEMORY_WS_METHODS.export]: () =>

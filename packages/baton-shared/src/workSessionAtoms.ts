@@ -170,6 +170,22 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:memory-learn",
       tag: BATON_MEMORY_WS_METHODS.learn,
     }),
+    memoryImport: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-import",
+      tag: BATON_MEMORY_WS_METHODS.import,
+    }),
+    memorySyncHello: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-syncHello",
+      tag: BATON_MEMORY_WS_METHODS.syncHello,
+    }),
+    memorySyncPull: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-syncPull",
+      tag: BATON_MEMORY_WS_METHODS.syncPull,
+    }),
+    memorySyncPush: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-syncPush",
+      tag: BATON_MEMORY_WS_METHODS.syncPush,
+    }),
     jobList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:job-list",
       tag: BATON_JOB_WS_METHODS.jobList,

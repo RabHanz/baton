@@ -88,6 +88,7 @@ import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { createMemorySync } from "../memory/memorySync.ts";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -285,6 +286,8 @@ export interface ScreenCompanion {
     | { readonly kind: "refused"; readonly reply: string }
   >;
   readonly setActions: (actions: AssistantActions) => void;
+  /** Memory sync between servers (D150): off by default; the Memory tab switches it and runs it now. */
+  readonly memorySync: ReturnType<typeof createMemorySync>;
   /** A lesson or a drive is running. */
   readonly active: () => boolean;
   /** Silences what is queued and what an answer has yet to say. */
@@ -470,6 +473,14 @@ export const startScreenCompanion = (input: {
         ? Promise.reject(new Error("Memory is not reachable yet."))
         : actions.memory(op, args),
     notes,
+  });
+  let stopMemorySync: (() => void) | null = null;
+  const memorySync = createMemorySync({
+    file: NodePath.join(input.stateDir, "baton-memory.json"),
+    call: (op, args) =>
+      actions?.memory === undefined
+        ? Promise.reject(new Error("Memory is not reachable yet."))
+        : actions.memory(op, args),
   });
   /** A reply is kept in full and logged in full, whatever route made it. */
   const converse = (
@@ -1853,8 +1864,10 @@ export const startScreenCompanion = (input: {
 
   return {
     said,
+    memorySync,
     setActions: (next) => {
       actions = next;
+      stopMemorySync ??= memorySync.start();
     },
     active: () => runningMode() !== null,
     hush,
@@ -2097,6 +2110,7 @@ export const startScreenCompanion = (input: {
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
     dispose: () => {
+      stopMemorySync?.();
       agent?.dispose();
       void agentMcp?.close();
       end();
