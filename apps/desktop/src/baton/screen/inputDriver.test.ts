@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createPaster } from "./inputDriver.ts";
+import { createPaster, isCopyChord } from "./inputDriver.ts";
 
 const fakeTimers = () => {
   vi.useFakeTimers();
@@ -42,5 +42,23 @@ describe("typing by the clipboard", () => {
     clip = "copied from the app";
     await vi.advanceTimersByTimeAsync(200);
     expect(clip).toBe("copied from the app");
+  });
+
+  it("puts nothing back once a copy chord is pressed, even when the copied text equals what was pasted", async () => {
+    using _timers = fakeTimers();
+    let clip = "his";
+    const paste = createPaster(
+      { readText: () => clip, writeText: (text) => void (clip = text) },
+      40,
+    );
+    const pasted = paste("hello", async () => undefined);
+    await vi.advanceTimersByTimeAsync(160);
+    await pasted;
+    expect(isCopyChord(["ctrl", "c"])).toBe(true);
+    expect(isCopyChord(["ctrl", "v"])).toBe(false);
+    // Copying "hello" from the app: the same text, so only the chord can tell.
+    paste.cancelRestore();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(clip).toBe("hello");
   });
 });
