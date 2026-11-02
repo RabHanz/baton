@@ -37,7 +37,18 @@ const EMPTY_TRUST: TrustData = {
 };
 
 const CLOUD_VIEW: CloudView = {
-  on: true, transport: "local", providers: [], choices: [], requests: [], usage: [], detections: {}, error: null, loadedAt: null, cards: new Map(), environments: [], tested: null,
+  on: true,
+  transport: "local",
+  providers: [],
+  choices: [],
+  requests: [],
+  usage: [],
+  detections: {},
+  error: null,
+  loadedAt: null,
+  cards: new Map(),
+  environments: [],
+  tested: null,
 };
 
 const status = { label: "Listening", tone: "good", device: "", mark: "" };
@@ -92,7 +103,10 @@ export const STATES: Readonly<
         ],
       }),
       ...backupControls(null, "That is not a zip file."),
-      ...cloudPageControls({ ...CLOUD_VIEW, error: "The computer that runs cloud tasks did not answer." }, { ...DEFAULT_CLOUD, on: true, transport: "ssh" }),
+      ...cloudPageControls(
+        { ...CLOUD_VIEW, error: "The computer that runs cloud tasks did not answer." },
+        { ...DEFAULT_CLOUD, on: true, transport: "ssh" },
+      ),
     ],
   },
   offline: {
@@ -127,6 +141,16 @@ export const BAD =
   /\bundefined\b|\bNaN\b|\[object Object\]|\bnull\b|\bat .+\(.+:\d+:\d+\)|\b(?:TypeError|ReferenceError|SyntaxError|ECONNREFUSED|ENOENT|EACCES)\b/;
 
 const MODALS = ["general", "system", "keys", "account", "updates", "about", "setup"];
+
+/** The window's page script opened on one of the states above, for tests that look at one page. */
+export const openState = (name: string) => {
+  const state = STATES[name]!;
+  return openWindowPage(APP_SCRIPT, {
+    status,
+    ...state,
+    controls: state.controls.map((c) => ({ ...c, tab: tabOf(c.id) })),
+  });
+};
 
 /** One line per offending page and state; empty when every page is clean. */
 export const sweepPages = async (): Promise<ReadonlyArray<string>> => {
