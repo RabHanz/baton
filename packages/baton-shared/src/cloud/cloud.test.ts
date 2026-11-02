@@ -1,0 +1,266 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import { CARD_START, fromSpoken, reduceCard, type CardState } from "./card.ts";
+import { claudeSsh } from "./claudeSsh.ts";
+import { hubProvider, serveCloudCall, type Described } from "./hub.ts";
+import { claudeHarness, codexHarness, localProvider, type BriefStore, type PendingStore } from "./local.ts";
+import { jsonLines, safeArg } from "./parse.ts";
+import { providerChoices } from "./registry.ts";
+import { STUBS } from "./stubs.ts";
+import { overCap, pickable, type CloudProvider, type CloudRequest, type Exec, type ExecResult, type ProviderId, type Usage } from "./types.ts";
+
+type Call = { file: string; args: ReadonlyArray<string>; stdin?: string; env?: Readonly<Record<string, string>> };
+/** A fake process runner: records calls, answers from a script keyed by the first words of the arguments. */
+const fakeExec = (answer: (c: Call) => Partial<ExecResult>) => {
+  const calls: Call[] = [];
+  const exec: Exec = async (file, args, o) => {
+    const c: Call = { file, args, ...(o.stdin === undefined ? {} : { stdin: o.stdin }), ...(o.env === undefined ? {} : { env: o.env }) };
+    calls.push(c);
+    return { code: 0, stdout: "", stderr: "", ...answer(c) };
+  };
+  return { exec, calls };
+};
+const memoryStores = () => {
+  let list: ReadonlyArray<CloudRequest> = [];
+  const briefs = new Map<string, string>();
+  let n = 0;
+  const store: PendingStore = { load: () => list, save: (l) => void (list = l), nextId: () => `L-${(n += 1)}` };
+  const brief: BriefStore = { get: (id) => briefs.get(id) ?? null, put: (id, b) => void briefs.set(id, b), drop: (id) => void briefs.delete(id) };
+  return { store, brief };
+};
+const input = { repo: "o/r", branch: "feat/x", brief: "Fix the flaky test\nmore detail", label: "session 1" };
+const SSH = { host: "box", user: "dev", machineKey: "/k/machine", approverKey: "/k/approver" };
+
+describe("transport 3: the central shell over ssh", () => {
+  it("sends the brief on stdin and every value as a plain argument", async () => {
+    const { exec, calls } = fakeExec(() => ({ stdout: '{"id":3,"card":{"task":"Fix the flaky test"}}\n' }));
+    const r = await claudeSsh(SSH, exec).dispatch({ ...input, expectedUsage: 1 });
+    expect(r.ok && r.value).toMatchObject({ id: "3", state: "awaiting-director", task: "Fix the flaky test", provider: "claude" });
+    expect(calls[0]!.file).toBe("ssh");
+    expect(calls[0]!.args).toEqual(["-i", "/k/machine", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=10", "dev@box", "cloud-dispatch", "dispatch", "--repo", "o/r", "--branch", "feat/x", "--task-file", "-", "--label", "session-1", "--usage", "1"]);
+    expect(calls[0]!.stdin).toBe(input.brief);
+  });
+
+  it("refuses a value that could change the remote command, and a brief that is too long or empty", async () => {
+    const { exec, calls } = fakeExec(() => ({}));
+    const p = claudeSsh(SSH, exec);
+    expect((await p.dispatch({ ...input, branch: "x; rm -rf /" })).ok).toBe(false);
+    expect((await p.dispatch({ ...input, repo: "o/r $(id)" })).ok).toBe(false);
+    expect(await p.dispatch({ ...input, brief: "x".repeat(4001) })).toEqual({ ok: false, error: "A cloud brief is at most 4000 characters." });
+    expect((await p.dispatch({ ...input, brief: "  " })).ok).toBe(false);
+    expect(calls).toHaveLength(0);
+    expect(() => safeArg("a b", "x")).toThrow();
+  });
+
+  it("uses the approver key only for approve and deny, and the machine key for the rest", async () => {
+    const { exec, calls } = fakeExec(() => ({ stdout: '{"id":3,"state":"running","account":"rabee"}' }));
+    const p = claudeSsh(SSH, exec);
+    await p.status("3");
+    await p.approve("3", "rabee", "card-3");
+    await p.deny("3", "not now please");
+    expect(calls.map((c) => c.args[1])).toEqual(["/k/machine", "/k/approver", "/k/approver"]);
+    expect(calls[1]!.args.slice(-6)).toEqual(["approve", "3", "--account", "rabee", "--answer-ref", "card-3"]);
+    expect(calls[2]!.args.slice(-4)).toEqual(["deny", "3", "--reason", "not-now-please"]);
+  });
+
+  it("says in plain words what went wrong, and never prints a key", async () => {
+    const run = async (r: Partial<ExecResult>) => (await claudeSsh(SSH, fakeExec(() => r).exec).status("1")) as { ok: false; error: string };
+    expect((await run({ missing: true, code: null })).error).toContain("ssh is not installed");
+    expect((await run({ code: 255, stderr: "ssh: connect to host box port 22: Connection refused" })).error).toBe("The cloud dispatch computer could not be reached.");
+    expect((await run({ code: 255, stderr: "Permission denied (publickey)." })).error).toBe("The cloud dispatch key was not accepted.");
+    expect((await run({ code: 1, stdout: '{"error":"no such request"}' })).error).toBe("no such request");
+    const unset = (await claudeSsh({ ...SSH, host: "" }, fakeExec(() => ({})).exec).status("1")) as { ok: false; error: string };
+    expect(unset.error).toContain("not set up on this computer");
+    for (const e of [await run({ code: 255, stderr: "Load key /k/machine: bad" }), unset]) expect(JSON.stringify(e)).not.toContain("/k/");
+  });
+
+  it("reads usage and a list of requests from JSON lines", async () => {
+    const usage = '{"accounts":[{"account":"rabee","weeklyPercent":41,"resetsAt":"Monday 14:00 PKT","rejected":false},{"account":"optima","weeklyPercent":100,"rejected":true}]}';
+    const u = await claudeSsh(SSH, fakeExec(() => ({ stdout: usage })).exec).usage();
+    expect(u.ok && u.value.map((x) => [x.account, x.weeklyPercent, x.rejected])).toEqual([["rabee", 41, false], ["optima", 100, true]]);
+    const lines = '{"id":1,"state":"running","account":"rabee","pr":"https://github.com/o/r/pull/9","pointsUsed":1.5}\nnot json\n{"id":2,"state":"awaiting-director"}\n';
+    const l = await claudeSsh(SSH, fakeExec(() => ({ stdout: lines })).exec).list({ mine: true, label: "s1" });
+    expect(l.ok && l.value.map((r) => [r.id, r.state, r.result?.kind ?? null, r.pointsUsed])).toEqual([["1", "running", "pr", 1.5], ["2", "awaiting-director", null, null]]);
+    expect(jsonLines(lines)).toHaveLength(2);
+  });
+});
+
+describe("transport 1: this computer's own harness", () => {
+  it("shows plain states, with the exact line to sign in", async () => {
+    const signedIn = fakeExec(() => ({ stdout: '{"loggedIn":true,"email":"me@example.org"}' }));
+    expect((await claudeHarness(signedIn.exec).detect()).line).toBe("Claude: signed in as me@example.org");
+    expect(signedIn.calls[0]!.args).toEqual(["auth", "status", "--json"]);
+    const out = await claudeHarness(fakeExec(() => ({ stdout: '{"loggedIn":false}' })).exec).detect();
+    expect(out).toMatchObject({ installed: true, signedIn: false, signInCommand: "claude auth login" });
+    expect((await claudeHarness(fakeExec(() => ({ missing: true, code: null })).exec).detect()).installed).toBe(false);
+    const codex = await codexHarness(fakeExec((c) => (c.args[0] === "login" ? { stdout: "Logged in using ChatGPT\n" } : {})).exec).detect();
+    expect(codex).toMatchObject({ signedIn: true, line: "Codex: Logged in using ChatGPT" });
+    expect((await codexHarness(fakeExec(() => ({ code: 1, stderr: "Not logged in" })).exec).detect()).signInCommand).toBe("codex login");
+  });
+
+  it("holds a request, starts nothing until approved, then runs the harness once with its own login", async () => {
+    const { exec, calls } = fakeExec((c) => (c.args[0] === "--cloud" ? { stdout: "Started: https://claude.ai/code/session_abc\n" } : { stdout: '{"loggedIn":true,"email":"me@example.org"}' }));
+    const { store, brief } = memoryStores();
+    const h = claudeHarness(exec);
+    const p = localProvider(h, store, brief);
+    await p.detect();
+    const made = await p.dispatch(input);
+    expect(made.ok && made.value.state).toBe("awaiting-director");
+    expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(0);
+    expect((await p.approve("L-1", "someone@else.org", "r")).ok).toBe(false);
+    const done = await p.approve("L-1", "me@example.org", "r");
+    expect(done.ok && done.value).toMatchObject({ state: "running", account: "me@example.org", sessionLink: "https://claude.ai/code/session_abc" });
+    expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
+    expect(calls.every((c) => c.env === undefined)).toBe(true);
+    expect((await p.approve("L-1", "me@example.org", "r")).ok).toBe(false);
+  });
+
+  it("withdraws a waiting request but not a running one, and denies without running", async () => {
+    const { exec, calls } = fakeExec(() => ({}));
+    const { store, brief } = memoryStores();
+    const p = localProvider(codexHarness(exec, { codexEnv: "env_1" }), store, brief);
+    await p.dispatch(input);
+    await p.dispatch(input);
+    expect((await p.cancel("L-1")).ok).toBe(true);
+    expect((await p.deny("L-2", "no")).ok).toBe(true);
+    expect(store.load().map((r) => r.state)).toEqual(["cancelled", "denied"]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("starts Codex with the named login folder and reads its diff", async () => {
+    const { exec, calls } = fakeExec((c) => (c.args[1] === "exec" ? { stdout: "Submitted task_abc123\n" } : c.args[1] === "diff" ? { stdout: "diff --git a b\n" } : {}));
+    const { store, brief } = memoryStores();
+    const p = localProvider(codexHarness(exec, { codexEnv: "env_1", codexHomes: { work: "/h/work" } }), store, brief);
+    await p.dispatch(input);
+    const ok = await p.approve("L-1", "work", "r");
+    expect(ok.ok && ok.value.sessionLink).toBe("task_abc123");
+    expect(calls[0]).toMatchObject({ file: "codex", env: { CODEX_HOME: "/h/work" } });
+    expect(calls[0]!.args.slice(0, 6)).toEqual(["cloud", "exec", "--env", "env_1", "--branch", "feat/x"]);
+    expect(calls[0]!.args[6]).toBe(input.brief);
+    const d = await p.diff!("L-1");
+    expect(d.ok && d.value).toContain("diff --git");
+    expect(calls[1]!.args).toEqual(["cloud", "diff", "task_abc123"]);
+  });
+
+  it("needs a Codex environment before it starts anything", async () => {
+    const { exec, calls } = fakeExec(() => ({}));
+    const { store, brief } = memoryStores();
+    const p = localProvider(codexHarness(exec), store, brief);
+    await p.dispatch(input);
+    const r = await p.approve("L-1", "This computer's Codex login", "r");
+    expect(r.ok).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("transport 2: through the hub's connection", () => {
+  const described = async (providers: Map<ProviderId, CloudProvider>) => {
+    const r = await serveCloudCall(providers, { op: "describe" });
+    return (r.ok ? r.value : []) as Described[];
+  };
+
+  it("runs a call on the hub's providers and returns plain data", async () => {
+    const { exec } = fakeExec(() => ({ stdout: '{"loggedIn":true,"email":"hub@example.org"}' }));
+    const { store, brief } = memoryStores();
+    const providers = new Map<ProviderId, CloudProvider>([["claude", localProvider(claudeHarness(exec), store, brief)]]);
+    const [d] = await described(providers);
+    expect(d).toMatchObject({ id: "claude", detection: { signedIn: true, identity: "hub@example.org" } });
+    const far = hubProvider(d!, (op, provider, args) => serveCloudCall(providers, { op, provider, args }));
+    const made = await far.dispatch(input);
+    expect(made.ok && made.value.state).toBe("awaiting-director");
+    expect((await far.list({})).ok).toBe(true);
+    expect(far.transport).toBe("hub");
+  });
+
+  it("says plainly when the hub does not have the provider, and never throws", async () => {
+    const r = await serveCloudCall(new Map(), { op: "dispatch", provider: "codex", args: {} });
+    expect(r).toEqual({ ok: false, error: "That cloud provider is not set up on the computer that runs cloud tasks." });
+    const { store, brief } = memoryStores();
+    const boom = { ...localProvider(claudeHarness(fakeExec(() => ({})).exec), store, brief), status: async () => { throw new Error("secret detail"); } };
+    const e = await serveCloudCall(new Map([["claude", boom as CloudProvider]]), { op: "status", provider: "claude", args: { id: "1" } });
+    expect(e).toEqual({ ok: false, error: "The computer that runs cloud tasks failed on that request." });
+    expect((await serveCloudCall(new Map(), { op: "rm -rf" })).ok).toBe(false);
+  });
+});
+
+describe("the approval card, for any provider", () => {
+  const usage: Usage[] = [
+    { provider: "claude", account: "signzart", weeklyPercent: 9, resetsAt: "Monday 12:00 PKT", rejected: false, pointsThisWeek: 1 },
+    { provider: "claude", account: "rabee", weeklyPercent: 41, resetsAt: "Monday 14:00 PKT", rejected: false, pointsThisWeek: null },
+    { provider: "claude", account: "optima", weeklyPercent: 100, resetsAt: "Monday 18:00 PKT", rejected: true, pointsThisWeek: null },
+    { provider: "codex", account: "work", weeklyPercent: null, resetsAt: null, rejected: false, pointsThisWeek: null },
+  ];
+  const providers: CloudProvider[] = [
+    claudeSsh({ ...SSH }, fakeExec(() => ({})).exec),
+    localProvider(codexHarness(fakeExec(() => ({})).exec, { codexHomes: { work: "/h" } }), memoryStores().store, memoryStores().brief),
+    ...STUBS,
+  ];
+  const choices = providerChoices(providers, usage, new Set<ProviderId>(["claude", "codex"]));
+
+  it("asks for the provider first; only set-up providers are enabled; nothing is preselected", () => {
+    expect(choices.map((c) => [c.id, c.enabled])).toEqual([["claude", true], ["codex", true], ["gemini", false], ["cursor", false], ["opencode", false], ["grok", false]]);
+    expect(choices.find((c) => c.id === "gemini")!.why).toContain("no adapter yet");
+    expect(CARD_START).toEqual({ phase: "provider" });
+    const notReady = providerChoices(providers, usage, new Set<ProviderId>(["claude"]));
+    expect(notReady.find((c) => c.id === "codex")).toMatchObject({ enabled: false });
+  });
+
+  it("disables an account that is rejected or at 98% or more, and shows the live figures", () => {
+    const claude = choices.find((c) => c.id === "claude")!;
+    expect(claude.accounts.map((a) => [a.account, a.enabled, a.percent, a.resets])).toEqual([
+      ["signzart", true, 9, "Monday 12:00 PKT"], ["rabee", true, 41, "Monday 14:00 PKT"], ["optima", false, 100, "Monday 18:00 PKT"],
+    ]);
+    expect(pickable({ weeklyPercent: 98, rejected: false }).enabled).toBe(false);
+    expect(pickable({ weeklyPercent: 97, rejected: false }).enabled).toBe(true);
+    expect(claude.accounts[2]!.why).toBe("rejected");
+  });
+
+  it("walks provider, account, confirm; a disabled choice cannot be picked; going back clears it", () => {
+    let s: CardState = CARD_START;
+    s = reduceCard(s, { type: "provider", provider: "gemini" }, choices);
+    expect(s).toEqual(CARD_START);
+    s = reduceCard(s, { type: "account", account: "rabee" }, choices);
+    expect(s).toEqual(CARD_START);
+    s = reduceCard(s, { type: "provider", provider: "claude" }, choices);
+    s = reduceCard(s, { type: "account", account: "optima" }, choices);
+    expect(s).toEqual({ phase: "account", provider: "claude" });
+    s = reduceCard(s, { type: "confirm" }, choices);
+    expect(s.phase).toBe("account");
+    s = reduceCard(s, { type: "account", account: "rabee" }, choices);
+    expect(s).toEqual({ phase: "confirm", provider: "claude", account: "rabee" });
+    expect(reduceCard(s, { type: "back" }, choices)).toEqual({ phase: "account", provider: "claude" });
+    s = reduceCard(s, { type: "confirm" }, choices);
+    expect(s.phase).toBe("approving");
+    expect(reduceCard(s, { type: "deny" }, choices).phase).toBe("approving");
+    const failed = reduceCard(s, { type: "failed", message: "The approval key was not accepted." }, choices);
+    expect(failed.phase).toBe("error");
+    expect(reduceCard(failed, { type: "retry" }, choices)).toEqual({ phase: "account", provider: "claude" });
+    expect(reduceCard(s, { type: "approved" }, choices)).toEqual({ phase: "done", provider: "claude", account: "rabee" });
+    expect(reduceCard(CARD_START, { type: "deny" }, choices)).toEqual({ phase: "denied" });
+  });
+
+  it("a spoken approval repeats the account, stops at the confirm step and reads the card back", () => {
+    const ok = fromSpoken(choices, { account: "Rabee" });
+    expect("state" in ok && ok.state).toEqual({ phase: "confirm", provider: "claude", account: "rabee" });
+    expect("readBack" in ok && ok.readBack).toContain("account rabee, 41% used this week");
+    expect(fromSpoken(choices, { account: "optima" })).toEqual({ refused: "optima cannot be used now: rejected." });
+    expect("refused" in fromSpoken(choices, { account: "nobody" })).toBe(true);
+    expect("refused" in fromSpoken(choices, { provider: "gemini", account: "rabee" })).toBe(true);
+  });
+});
+
+describe("one cap for every provider", () => {
+  it("flags a run over 2 points on its own figure, and a provider with no figure never trips it", () => {
+    expect(overCap({ pointsUsed: 2.5 })).toBe(true);
+    expect(overCap({ pointsUsed: 2 })).toBe(false);
+    expect(overCap({ pointsUsed: null })).toBe(false);
+    expect(pickable(undefined)).toEqual({ enabled: true, why: "usage unknown" });
+    expect(pickable({ weeklyPercent: null, rejected: false })).toEqual({ enabled: true, why: "usage unknown" });
+  });
+
+  it("shows a provider with no usage as unknown, not zero", async () => {
+    const { store, brief } = memoryStores();
+    const u = await localProvider(codexHarness(fakeExec(() => ({})).exec), store, brief).usage();
+    expect(u.ok && u.value).toEqual([{ provider: "codex", account: "This computer's Codex login", weeklyPercent: null, resetsAt: null, rejected: false, pointsThisWeek: null }]);
+  });
+});
