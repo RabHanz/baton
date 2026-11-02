@@ -476,7 +476,7 @@ const MIC_POLL_MS = 5_000;
 const LOCATE_TIMEOUT_MS = 1_500;
 const LOCATE_MAX_DIP = 160;
 
-const readSettings = (path: string): VoiceSettings => {
+export const readSettings = (path: string): VoiceSettings => {
   try {
     const saved: Record<string, unknown> = JSON.parse(NodeFS.readFileSync(path, "utf8"));
     const wakeWords = wakeWordsFor(saved);
@@ -493,11 +493,12 @@ const readSettings = (path: string): VoiceSettings => {
     }
     return {
       ...DEFAULT_SETTINGS,
+      ...cleanupFromSaved(saved),
+      // After the spread: it carries every saved field raw, and these are the resolved ones.
       wakeWords,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       appearance: parseAppearance(saved["appearance"]),
-      ...cleanupFromSaved(saved),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -710,9 +711,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // Legacy name (D71): existing settings live in this file, so it keeps "fabric".
   const settingsPath = NodePath.join(input.stateDir, "fabric-voice.json");
   let settings = readSettings(settingsPath);
+  /** The window is told again whenever settings change, so Home never keeps the list it was first built from. */
+  const pushHome = () => {
+    try {
+      home.refresh();
+    } catch {
+      // The window is not built yet; it reads the settings when it is.
+    }
+  };
   const save = (next: Partial<VoiceSettings>) => {
     settings = { ...settings, ...next };
     NodeFS.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    pushHome();
   };
 
   const tray = new Electron.Tray(
@@ -3942,6 +3952,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     appearance: () => settings.appearance,
   });
+  // First run after an update: the list was just resolved and rewritten, so the window is told once more.
+  setTimeout(pushHome, 3_000).unref();
 
   let speakingNow = false;
 
@@ -4110,6 +4122,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const before = JSON.stringify(settings);
     settings = readSettings(settingsPath);
     const after = JSON.stringify(settings);
+    pushHome();
     if (before === after) return;
     configureDictation();
     applyBindings();
