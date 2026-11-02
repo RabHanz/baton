@@ -62,6 +62,8 @@ import { answerNeeds } from "../presence/needsAnswer.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
+import { EMPTY_NOW, nowAction, nowControls, type NowData } from "../presence/nowRows.ts";
+import { collectNeeds } from "../presence/needsAnswer.ts";
 import { createInitiative } from "../presence/initiativeEngine.ts";
 import { readCiRuns } from "../presence/ciSource.ts";
 import {
@@ -373,6 +375,7 @@ const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
 const AWARENESS_SAMPLE_MS = 30_000;
 const INITIATIVE_MS = 2 * 60_000;
+const NOW_REFRESH_MS = 5 * 60_000;
 const CI_REFRESH_MS = 10 * 60_000;
 /** Changes this close together make one tray and window update. */
 const RENDER_COALESCE_MS = 40;
@@ -2248,6 +2251,49 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     };
   };
 
+  // The Now page (D149): read every few minutes, not on every redraw, because it can call gh.
+  let nowData: NowData = EMPTY_NOW;
+  const refreshNow = async (): Promise<void> => {
+    const at = Date.now();
+    const jobs = jobsCache ?? [];
+    const { ranked, unreadable } = await collectNeeds({
+      jobs,
+      sessions: input.sessions?.rows() ?? [],
+      findings: await watchFindings(),
+      extra: needsFromCommitments(commitments.list(), at),
+      config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+      now: at,
+    });
+    const day = new Date(at).toDateString();
+    const learned = (
+      (await requestKept({ kind: "memory", op: "list", args: { limit: 200 } }).catch(
+        () => null,
+      )) as { items?: ReadonlyArray<{ text: string; createdAt: string; proposed: boolean }> } | null
+    )?.items
+      ?.filter((m) => !m.proposed && new Date(m.createdAt).toDateString() === day)
+      .slice(0, 5)
+      .map((m) => m.text);
+    const state = initiative.state();
+    nowData = {
+      loaded: true,
+      needs: ranked,
+      unreadable,
+      commitments: commitments.list().filter((c) => c.status === "open"),
+      doing: [
+        ...jobs.filter((j) => j.group === "running").map((j) => `Running: ${j.title}`),
+        ...buildApprovals({ jobs, sessions: input.sessions?.rows() ?? [] })
+          .slice(0, 3)
+          .map((a) => `Waiting for your answer: ${a.title}`),
+      ],
+      learned: learned ?? [],
+      declined: state.declined.slice(-8).toReversed(),
+      muted: state.never.map((topic) => ({ topic, title: state.titles[topic] ?? topic })),
+    };
+    home.refresh();
+  };
+  setInterval(() => void refreshNow().catch(() => undefined), NOW_REFRESH_MS).unref();
+  setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -2262,6 +2308,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
+      ...nowControls(nowData, Date.now()),
       ...memoryTab.controls(),
       ...cachedPack(),
       ...harnessControls(harnessItems()),
@@ -2874,6 +2921,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       } else void input.sessions?.act(`n:${act.ref}`, null);
+    } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
+    else if (id.startsWith("now.")) {
+      const act = nowAction(id);
+      if (act?.kind === "commitment") {
+        try {
+          commitments.close(act.id, act.drop ? "dropped" : "done");
+        } catch {
+          // Already closed elsewhere; the refresh shows the truth.
+        }
+      } else if (act?.kind === "allow") initiative.allow(act.topic);
+      void refreshNow().catch(() => undefined);
     } else if (id === "j.load") wantJobs();
     else if (/^j[as]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);

@@ -4,6 +4,7 @@
  */
 export const TABS = [
   { id: "home", label: "Home" },
+  { id: "now", label: "Now" },
   { id: "sessions", label: "Sessions" },
   { id: "approvals", label: "Approvals" },
   { id: "jobs", label: "Jobs" },
@@ -81,6 +82,7 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("v.wake:")) return "voice";
   if (id.startsWith("v.result:")) return "checks";
   if (id.startsWith("n:")) return "sessions";
+  if (/^now[:.]/.test(id)) return "now";
   if (/^j[a-z]?[:.]/.test(id)) return "jobs";
   if (/^a[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
