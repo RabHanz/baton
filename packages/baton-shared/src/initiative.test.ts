@@ -1,3 +1,4 @@
+import { DateTime } from "effect";
 import type { WatchFinding } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -74,7 +75,7 @@ describe("the initiative policy", () => {
   });
 
   it("offers a failed build on a repository, only the newest run per workflow", () => {
-    const iso = (m: number) => new Date(now - m * 60_000).toISOString();
+    const iso = (m: number) => DateTime.formatIso(DateTime.makeUnsafe(now - m * 60_000));
     const t = triggersFromCi(
       [
         {
