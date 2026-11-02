@@ -1,4 +1,5 @@
 import {
+  AuthBatonCloudApproveScope,
   AuthStandardClientScopes,
   type AuthEnvironmentScope,
   type AuthPairingLink,
@@ -249,6 +250,8 @@ type ConsumeResult =
     };
 
 const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
+/** The desktop app's own session may also approve cloud tasks; a paired client never gets that by default. */
+const DESKTOP_SCOPES = [...AuthStandardClientScopes, AuthBatonCloudApproveScope] as const;
 const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
 const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
 const PAIRING_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -320,7 +323,7 @@ const make = Effect.gen(function* () {
     const now = yield* DateTime.now;
     yield* seedGrant(config.desktopBootstrapToken, {
       method: "desktop-bootstrap",
-      scopes: AuthStandardClientScopes,
+      scopes: DESKTOP_SCOPES,
       subject: "desktop-bootstrap",
       expiresAt: DateTime.add(now, {
         milliseconds: Duration.toMillis(DESKTOP_BOOTSTRAP_TTL_HOURS),
@@ -441,7 +444,7 @@ const make = Effect.gen(function* () {
       if (consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
         return {
           method: "desktop-bootstrap",
-          scopes: AuthStandardClientScopes,
+          scopes: DESKTOP_SCOPES,
           subject: "desktop-bootstrap",
           expiresAt: DateTime.add(now, {
             milliseconds: DESKTOP_BOOTSTRAP_TOKEN_WINDOW_MS,

@@ -366,7 +366,7 @@ export interface ScreenCompanion {
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   /** The same question, also put to a paired phone: the first answer counts. */
-  readonly askMirrored: (box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0]) => Promise<number>;
+  readonly askMirrored: (box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0], needs?: "cloud-approve") => Promise<number>;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
@@ -407,6 +407,7 @@ export type PhoneMirror = (question: {
   readonly buttons: ReadonlyArray<string>;
   readonly yes: number;
   readonly cancel: number;
+  readonly needs?: "cloud-approve";
 }) => { readonly answer: Promise<number>; readonly close: () => void } | null;
 const PHONE_SETTLE_STEPS = 40;
 
@@ -831,6 +832,7 @@ export const startScreenCompanion = (input: {
     spoken: string,
     yes = 0,
     noOnExpiry = false,
+    needs?: "cloud-approve",
   ): Promise<number> => {
     const shown = phoneTurn
       ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` }
@@ -844,6 +846,7 @@ export const startScreenCompanion = (input: {
             buttons: box.buttons,
             yes,
             cancel: box.cancel,
+            ...(needs === undefined ? {} : { needs }),
           }) ?? null);
     const local = askLocal(shown, spoken, yes, noOnExpiry);
     if (mirrored === null) return local;
@@ -2353,7 +2356,7 @@ export const startScreenCompanion = (input: {
     voice: () => settings.voice,
     volume: () => settings.volume,
     ask: windows.ask,
-    askMirrored: (box) => askHandsFree(box, box.title),
+    askMirrored: (box, needs) => askHandsFree(box, box.title, 0, false, needs),
     stop,
     dismissQuietly,
     menuItems: () => [

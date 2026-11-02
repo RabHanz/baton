@@ -8,6 +8,7 @@
  * sessions sit above threads and are read and operated by the people who read and operate them.
  */
 import {
+  AuthBatonCloudApproveScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   BATON_ACCOUNT_WS_METHODS,
@@ -87,6 +88,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // Cloud tasks: looking is a read; creating, approving or applying is operate.
   [BATON_CLOUD_WS_METHODS.read]: AuthOrchestrationReadScope,
   [BATON_CLOUD_WS_METHODS.act]: AuthOrchestrationOperateScope,
+  // Approving is its own scope: only the desktop app's session and a client paired for it have it.
+  [BATON_CLOUD_WS_METHODS.approve]: AuthBatonCloudApproveScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.

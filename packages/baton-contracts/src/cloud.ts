@@ -9,10 +9,13 @@ import * as Schema from "effect/Schema";
 export const BATON_CLOUD_WS_METHODS = {
   read: "baton.cloud.read",
   act: "baton.cloud.act",
+  /** Approve or deny: its own scope, so no assistant, tool or session client can approve its own request. */
+  approve: "baton.cloud.approve",
 } as const;
 
 export const BATON_CLOUD_READ_OPS = ["describe", "detect", "status", "list", "usage", "diff"] as const;
-export const BATON_CLOUD_ACT_OPS = ["dispatch", "cancel", "approve", "deny", "apply"] as const;
+export const BATON_CLOUD_ACT_OPS = ["dispatch", "cancel", "apply"] as const;
+export const BATON_CLOUD_APPROVE_OPS = ["approve", "deny"] as const;
 
 export const BatonCloudCallInput = Schema.Struct({
   op: Schema.String.check(Schema.isMaxLength(40)),

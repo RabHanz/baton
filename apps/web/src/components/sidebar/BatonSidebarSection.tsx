@@ -87,6 +87,7 @@ export function BatonSidebarSection(props: {
   const phoneCall = useAtomCommand(batonWorkSessions.phoneCall, quiet);
   const cloudRead = useAtomCommand(batonWorkSessions.cloudRead, quiet);
   const cloudAct = useAtomCommand(batonWorkSessions.cloudAct, quiet);
+  const cloudApprove = useAtomCommand(batonWorkSessions.cloudApprove, quiet);
   const commitmentsList = useAtomCommand(batonWorkSessions.commitmentsList, quiet);
   const commitmentsUpsert = useAtomCommand(batonWorkSessions.commitmentsUpsert, quiet);
   const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
@@ -378,9 +379,15 @@ export function BatonSidebarSection(props: {
     }
     // Only an environment this window is actually connected to can be asked.
     const target = fleet.environmentIds.find((id) => id === request.environmentId) ?? primary;
-    const result = await (request.op === "read" ? cloudRead : cloudAct)({ environmentId: target, input: request.args as never });
+    const result = await (request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct)({ environmentId: target, input: request.args as never });
     if (result._tag === "Success") return result.value;
-    return { ok: false, error: "The computer that runs cloud tasks did not answer." };
+    const refused = JSON.stringify(result).includes("baton:cloud-approve");
+    return {
+      ok: false,
+      error: refused
+        ? "This connection is not allowed to approve cloud tasks. Pair this computer with the approval permission on the computer that runs them."
+        : "The computer that runs cloud tasks did not answer.",
+    };
   };
   const onPhone = async (request: BatonPhoneBridgeRequest): Promise<unknown> => {
     const result = await phoneCall({
