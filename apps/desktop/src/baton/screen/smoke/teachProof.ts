@@ -91,14 +91,21 @@ const startClip = (id: string) => {
 };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const ps = (script: string) =>
-  new Promise<string>((resolve) =>
+  new Promise<string>((resolve) => {
+    // A file, not -Command: the here-string in it must reach PowerShell exactly as written.
+    const file = NodePath.join(out, `step-${Date.now()}.ps1`);
+    NodeFS.writeFileSync(file, script);
     NodeChildProcess.execFile(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script],
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file],
       { windowsHide: true, timeout: 30_000 },
-      (_e, stdout) => resolve(String(stdout).trim()),
-    ),
-  );
+      (error, stdout, stderr) => {
+        if (error !== null)
+          note("ps.failed", { message: error.message, stderr: String(stderr).slice(0, 400) });
+        resolve(String(stdout).trim());
+      },
+    );
+  });
 const locate = (name: string) =>
   new Promise<{ x: number; y: number } | null>((resolve) =>
     NodeChildProcess.execFile(
@@ -115,15 +122,21 @@ const locate = (name: string) =>
     ),
   );
 
+/** A window that is hidden may never answer a script; a missing answer is null. */
+const evalIn = (win: Electron.BrowserWindow, script: string): Promise<unknown> =>
+  Promise.race([
+    win.webContents.executeJavaScript(script).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+  ]);
+
 /** What the overlay and the pill are showing now. */
 const cardKicker = async (): Promise<string> => {
   for (const win of Electron.BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    const kicker = await win.webContents
-      .executeJavaScript(
-        "(()=>{const c=document.getElementById('card'),k=document.getElementById('k');return c&&c.classList.contains('on')&&k?k.textContent:''})()",
-      )
-      .catch(() => "");
+    const kicker = await evalIn(
+      win,
+      "(()=>{const c=document.getElementById('card'),k=document.getElementById('k');return c&&c.classList.contains('on')&&k?k.textContent:''})()",
+    );
     if (typeof kicker === "string" && kicker !== "") return kicker;
   }
   return "";
@@ -139,12 +152,15 @@ const until = async (test: (kicker: string) => boolean, ms: number): Promise<str
   return last;
 };
 
-const NOTEPAD = `$p=Start-Process notepad -PassThru;Start-Sleep 2;
+const NOTEPAD = `$ErrorActionPreference='Stop';$p=Start-Process "$env:windir\\notepad.exe" -PassThru;Start-Sleep 2;
 Add-Type @'
 using System;using System.Runtime.InteropServices;
 public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);}
 '@
 $p.Refresh();[W]::MoveWindow($p.MainWindowHandle,120,90,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null;$p.Id`;
+
+// Whatever happens, the run ends and its files are kept.
+setTimeout(() => Electron.app.exit(3), 8 * 60_000).unref();
 
 void Electron.app.whenReady().then(async () => {
   const driver = createInputDriver({
@@ -155,7 +171,11 @@ void Electron.app.whenReady().then(async () => {
   const clickOn = async (name: string) => {
     const at = await locate(name);
     if (at !== null) await driver.clickAt(Electron.screen.screenToDipPoint(at), "left", 1);
-    else note("locate.failed", { name });
+    else {
+      // The open Format menu takes its accelerator letter.
+      note("locate.failed", { name });
+      if (name === "Font...") await driver.press(["f"]);
+    }
   };
   const pill = createVoicePill({
     cueGain: () => 0,
@@ -235,29 +255,34 @@ void Electron.app.whenReady().then(async () => {
     await sleep(2500);
     note("scenario", { name: "drive" });
     void companion.said("drive: set the Notepad font size to 20", { direct: false });
-    let pressed = false;
-    for (let i = 0; i < 240 && !pressed; i += 1) {
-      await sleep(250);
+    // Every question the drive asks is answered with its first button, the way he would, after a pause to read it.
+    let pressed = 0;
+    const answer = async (): Promise<boolean> => {
       for (const win of Electron.BrowserWindow.getAllWindows()) {
         if (win.isDestroyed() || !win.isVisible()) continue;
-        const rect = (await win.webContents
-          .executeJavaScript(
-            "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
-          )
-          .catch(() => null)) as { x: number; y: number; t: string } | null;
+        const rect = (await evalIn(
+          win,
+          "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
+        )) as { x: number; y: number; t: string } | null;
         if (rect === null) continue;
         note("approval", { button: rect.t });
-        await sleep(3500);
+        await sleep(3000);
         const bounds = win.getBounds();
         await driver.clickAt({ x: bounds.x + rect.x, y: bounds.y + rect.y }, "left", 1);
-        pressed = true;
-        break;
+        pressed += 1;
+        return true;
       }
+      return false;
+    };
+    let ended = "";
+    for (let i = 0; i < 480 && !/Finished|Stopped/.test(ended); i += 1) {
+      if (!(await answer())) await sleep(250);
+      ended = await cardKicker();
     }
-    const end = await until((k) => /Finished|Stopped/.test(k), 120_000);
+    const end = ended;
     note("drive.end", { kicker: end });
     await sleep(6000);
-    results["drive"] = { approvalPressed: pressed, end };
+    results["drive"] = { approvalsPressed: pressed, end };
     await stopClip((Date.now() - began) / 1000);
   }
 

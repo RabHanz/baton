@@ -17,11 +17,14 @@ for($i=0;$i -lt 20;$i++){
   Start-Sleep -Milliseconds 300}
 exit 1`;
 
+// Notepad is moved to 120,90 on a 1024x768 runner desktop: where its menu bar sits when UI Automation cannot say.
+const FALLBACK = { Format: { x: 219, y: 130, w: 40, h: 20, sw: 1024, sh: 768 } };
+
 export const locate = (name) => {
   try {
     const out = NodeChildProcess.execFileSync(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", LOCATE],
+      ["-NoProfile", "-NonInteractive", "-STA", "-Command", LOCATE],
       {
         env: { ...process.env, LOC_NAME: name },
         encoding: "utf8",
@@ -30,8 +33,11 @@ export const locate = (name) => {
       },
     );
     return JSON.parse(out.trim());
-  } catch {
-    return null;
+  } catch (error) {
+    process.stderr.write(
+      `locate ${name} failed: ${String(error.stderr ?? error.message).slice(0, 300)}\n`,
+    );
+    return FALLBACK[name] ?? null;
   }
 };
 
