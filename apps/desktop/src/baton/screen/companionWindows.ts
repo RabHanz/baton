@@ -9,7 +9,7 @@ import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
 
-import { COMPANION_CSS } from "./companionStyle.ts";
+import { CARD_ABOVE_WORK_AREA, COMPANION_CSS } from "./companionStyle.ts";
 
 export type AnswerOutput = "spoken" | "written";
 
@@ -239,7 +239,7 @@ export const createCompanionWindows = (input: {
               const tall = Math.min(Math.ceil(height), area.height - 120);
               win.setBounds({
                 x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
-                y: Math.round(area.y + area.height - tall - 96),
+                y: Math.round(area.y + area.height - tall - CARD_ABOVE_WORK_AREA),
                 width: PROMPT_WIDTH,
                 height: tall,
               });

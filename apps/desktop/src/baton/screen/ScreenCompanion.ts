@@ -341,7 +341,9 @@ export interface ScreenCompanion {
   readonly warm: () => void;
   readonly openAskBox: () => void;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
-  readonly askFromPhone: (text: string) => Promise<{ readonly spoken: string; readonly card: string }>;
+  readonly askFromPhone: (
+    text: string,
+  ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
   readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
   /** A reply from outside the assistant, shown in full when answers are written only. */
@@ -785,11 +787,19 @@ export const startScreenCompanion = (input: {
     yes = 0,
     noOnExpiry = false,
   ): Promise<number> => {
-    const shown = phoneTurn ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` } : box;
+    const shown = phoneTurn
+      ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` }
+      : box;
     const mirrored =
       box.buttons.length < 2
         ? null
-        : (phoneMirror?.({ title: box.title, detail: shown.detail, buttons: box.buttons, yes, cancel: box.cancel }) ?? null);
+        : (phoneMirror?.({
+            title: box.title,
+            detail: shown.detail,
+            buttons: box.buttons,
+            yes,
+            cancel: box.cancel,
+          }) ?? null);
     const local = askLocal(shown, spoken, yes, noOnExpiry);
     if (mirrored === null) return local;
     const first = await Promise.race([
@@ -1340,6 +1350,8 @@ export const startScreenCompanion = (input: {
       subject !== null || !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
     input.onActivity?.(askFirst ? "Waiting for you" : "Starting", plan.title);
     say(current.lastSpoken);
+    // The plan box says it all: the "Planning" card under it would be a second card in the same place.
+    if (askFirst) await overlay.card(null);
     const response = !askFirst
       ? 0
       : await askHandsFree(
@@ -2203,13 +2215,17 @@ export const startScreenCompanion = (input: {
     phoneTurn = true;
     try {
       await typed(text);
-      for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1) await sleep(500);
+      for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1)
+        await sleep(500);
     } finally {
       phoneCapture = null;
       phoneTurn = false;
     }
     const spoken = mine.spoken.join(" ").trim();
-    return { spoken, card: mine.card ?? (spoken === "" ? "Done. There was nothing to say." : spoken) };
+    return {
+      spoken,
+      card: mine.card ?? (spoken === "" ? "Done. There was nothing to say." : spoken),
+    };
   };
 
   const windows = createCompanionWindows({
