@@ -30,6 +30,9 @@ case "$platform" in
     mnt="$(mktemp -d)"; hdiutil attach "$artifact" -mountpoint "$mnt" -nobrowse -quiet
     cp -R "$mnt"/*.app "$HOME/Tessaya.app"; hdiutil detach "$mnt" -quiet || true
     xattr -cr "$HOME/Tessaya.app"
+    # The unsigned bundle's seal is broken (resources added after electron-builder), and arm64 macOS kills a process that
+    # loads a native library under a broken seal. An ad-hoc signature is the least a downloaded build needs.
+    if [ "${SMOKE_ADHOC_SIGN:-1}" = 1 ]; then codesign --force --deep --sign - "$HOME/Tessaya.app" 2>&1 | tail -3; fi
     run=("$HOME/Tessaya.app/Contents/MacOS/Tessaya" --no-sandbox)
     ;;
   *) echo "unknown platform $platform"; exit 2 ;;
