@@ -48,7 +48,21 @@ export function promptText(blocks) {
 }
 
 /** The explicit request to move a plain-terminal session into Herdr. */
-export const isAdoptRequest = (text) => /^\s*bring (it )?into herdr\s*\.?\s*$/i.test(text);
+export const isAdoptRequest = (text) => /(?:^|\n)\s*bring (it )?into herdr\s*\.?\s*$/i.test(text);
+
+/** The answer to the "waiting on something I cannot read" question when he will deal with it in the terminal. */
+export const ANSWER_IN_TERMINAL = "I'll answer it in the terminal";
+export const isAnswerInTerminal = (text) => text.trim().endsWith(ANSWER_IN_TERMINAL);
+
+/** The last lines on a pane's screen, for a question Tessaya could not read as options. */
+export const screenTail = (screen, lines = 12) =>
+  screen
+    .split("\n")
+    .map((l) => l.replace(/\s+$/g, ""))
+    .filter((l) => l.trim() !== "")
+    .slice(-lines)
+    .join("\n")
+    .slice(0, 1200);
 
 /** What a send to a plain-terminal session says instead of being delivered. */
 export const notSentNote = (live) =>
@@ -563,6 +577,11 @@ export async function sendToStopped(dir, sessionId, item, deps) {
 }
 
 /** The prompt on the pane's screen now, or null. */
+export async function readPaneScreen(paneRef) {
+  const read = await run(HERDR, herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "40"]));
+  return read.ok ? screenTail(read.out) : "";
+}
+
 export async function readPanePrompt(paneRef) {
   const read = await run(
     HERDR,
@@ -650,7 +669,15 @@ export async function resumeSession(sessionId, deps) {
   for (;;) {
     const live = deps.findLive(sessionId);
     if (live !== null && live.pane !== null && live.status !== "busy") return { live };
-    if (deps.now() - started >= READY_MS) return { error: "It was started in Herdr but did not become ready within 45 seconds." };
+    if (deps.now() - started >= READY_MS) {
+      const at = /running in (\S+) pane (\S+)/.exec(out.out);
+      const screen = at === null || deps.screenOf === undefined ? "" : await deps.screenOf(at[1], at[2]).catch(() => "");
+      return {
+        error: /Is this a project you created or one you trust|trust this folder|Do you trust the files/i.test(screen)
+          ? `Claude Code is asking whether to trust this folder, and waits for you to choose in Herdr (herdr --session ${at[1]}). Choose, then resume again.`
+          : "It was started in Herdr but did not become ready within 45 seconds.",
+      };
+    }
     await deps.sleep(500);
   }
 }
@@ -777,6 +804,10 @@ async function prompt(params) {
     return { stopReason: "end_turn" };
   }
   if (isAppContinuation(promptText(params.prompt))) return { stopReason: "end_turn" };
+  if (isAnswerInTerminal(promptText(params.prompt))) {
+    say(sessionId, "Understood. Answer it in the terminal; it carries on from there.");
+    return { stopReason: "end_turn" };
+  }
   let live = findLiveSession(sessionId);
   if (live === null) {
     // Stopped: it is resumed and the message goes when it is ready. "Not delivered" is for nothing that can be fixed.
@@ -896,6 +927,8 @@ const resumeDeps = {
   },
   baton: (args) => run(BATON, args, 45_000).then((r) => ({ ok: r.ok, out: r.out })),
   findLive: findLiveSession,
+  screenOf: async (session, pane) =>
+    (await run("herdr", ["--session", session, "agent", "read", pane, "--source", "visible", "--lines", "25"], 8_000)).out,
   sleep,
   now: () => Date.now(),
 };
@@ -986,6 +1019,10 @@ if (
   process.argv[1] &&
   NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1])
 ) {
+  // `--pane-screen <pane>`: the last lines of a waiting pane, for a question it could not read as options.
+  if (process.argv[2] === "--pane-screen" && process.argv[3])
+    readPaneScreen(process.argv[3]).then((text) => process.stdout.write(`${JSON.stringify({ text })}\n`));
+  else
   // `--pane-prompt <pane>`: the server's mirror reads a waiting session's prompt through this (D88).
   if (process.argv[2] === "--pane-prompt" && process.argv[3])
     readPanePrompt(process.argv[3]).then((found) =>

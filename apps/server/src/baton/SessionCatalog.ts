@@ -38,12 +38,21 @@ export interface CatalogPorts {
   readonly type: (pane: string, text: string) => Promise<boolean>;
   /** Machines with no Herdr: brings the session back as a T3 thread resuming that id, sending nothing. */
   readonly thread?: (sessionId: string, cwd: string) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  /** What the Herdr pane shows now (the last lines), to explain a session that never became ready. */
+  readonly screen?: (session: string, pane: string) => Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
 }
 
 export const READY_TIMEOUT_MS = 45_000;
 const POLL_MS = 500;
+const TRUST = /Is this a project you created or one you trust|trust this folder|Do you trust the files/i;
+
+/** The sentence for a session that did not become ready: Claude's folder-trust question gets named, because it waits for a person. */
+export const notReadyReason = (screen: string, where: string): string =>
+  TRUST.test(screen)
+    ? `Claude Code is asking whether to trust this folder, and waits for you to choose in Herdr (${where}). Choose, then resume again.`
+    : "It was started in Herdr but did not become ready within 45 seconds. Your messages are kept; try Resume again.";
 
 const basename = (path: string): string => path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
 
@@ -149,6 +158,16 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     };
   };
 
+  const whereOf = (out: string): { session: string; pane: string } | null => {
+    const m = /running in (\S+) pane (\S+)/.exec(out);
+    return m === null ? null : { session: m[1]!, pane: m[2]! };
+  };
+  const whyNot = async (out: string): Promise<string> => {
+    const at = whereOf(out);
+    const screen = at === null || ports.screen === undefined ? "" : await ports.screen(at.session, at.pane).catch(() => "");
+    return notReadyReason(screen, at === null ? "its pane" : `herdr --session ${at.session}`);
+  };
+
   /** Polls until the session is in a Herdr pane and not mid-turn, or says why not. */
   const untilReady = async (sessionId: string, timeoutMs: number): Promise<ClaudeLiveSession | null> => {
     const started = ports.now();
@@ -185,7 +204,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     }
     const up = await untilReady(sessionId, READY_TIMEOUT_MS);
     return up === null
-      ? { state: "failed" as const, pane: null, detail: "It was started in Herdr but did not become ready within 45 seconds. Your messages are kept; try Resume again." }
+      ? { state: "failed" as const, pane: null, detail: await whyNot(out.out) }
       : { state: "running" as const, pane: up.herdrPane, detail: null };
   };
 
@@ -242,7 +261,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       const fresh = (await ports.live()).find((s) => !before.has(s.sessionId) && s.cwd === input.cwd && s.herdrPane !== null);
       if (fresh !== undefined) return { state: "running" as const, sessionId: fresh.sessionId, pane: fresh.herdrPane, detail: null };
       if (ports.now() - started >= READY_TIMEOUT_MS) {
-        return { state: "failed" as const, sessionId: null, pane: null, detail: "It was started in Herdr but did not report in within 45 seconds." };
+        return { state: "failed" as const, sessionId: null, pane: null, detail: await whyNot(out.out) };
       }
       await ports.sleep(POLL_MS);
     }
