@@ -261,6 +261,8 @@ export interface AssistantActions {
       | "commit_add"
       | "commit_done"
       | "commit_list"
+      | "notices_stop"
+      | "notices_resume"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
