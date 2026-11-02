@@ -5,6 +5,7 @@ import {
   draftsFromProposals,
   extractionPrompt,
   planMerges,
+  planRewrites,
   worthLearningFrom,
   type LearnInput,
 } from "./memoryLearning.ts";
@@ -99,5 +100,21 @@ describe("planMerges", () => {
       item({ id: "d", text: "Staging is on the second box" }),
     ]);
     expect(plans.map((p) => [p.keep.id, p.drop.id])).toEqual([["b", "a"]]);
+  });
+});
+
+describe("planRewrites", () => {
+  it("folds near-duplicates of one kind into the fuller wording, never touching his words or a pinned drop", () => {
+    const plans = planRewrites([
+      item({ id: "a", text: "The shop builds with pnpm", updatedAt: "2026-01-03T00:00:00.000Z" }),
+      item({ id: "b", text: "The shop builds with pnpm in CI on every push", confidence: 0.6 }),
+      item({ id: "c", kind: "preference", text: "Reports go out on Fridays", source: "user" }),
+      item({ id: "d", kind: "preference", text: "Reports go out on Fridays at noon by email", source: "thread" }),
+      item({ id: "e", text: "Staging is on the second box" }),
+    ]);
+    expect(plans.map((p) => [p.keep.id, p.drop.id, p.text])).toEqual([
+      ["b", "a", "The shop builds with pnpm in CI on every push"],
+      ["c", "d", "Reports go out on Fridays"],
+    ]);
   });
 });

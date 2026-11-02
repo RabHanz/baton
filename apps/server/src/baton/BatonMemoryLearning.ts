@@ -10,6 +10,7 @@ import {
   draftsFromProposals,
   extractionPrompt,
   planMerges,
+  planRewrites,
   worthLearningFrom,
   type LearnInput,
 } from "@t3tools/baton-shared/memoryLearning";
@@ -54,6 +55,8 @@ export class BatonMemoryLearning extends Context.Service<
     readonly learn: (input: LearnInput) => Effect.Effect<LearnResult>;
     /** The daily pass: merge near-duplicates, then delete what expired or faded. */
     readonly consolidate: Effect.Effect<{ readonly merged: number; readonly swept: number }>;
+    /** The weekly pass: near-duplicates become one item with the fuller wording. */
+    readonly rewriteNearDuplicates: Effect.Effect<number>;
   }
 >()("t3/baton/BatonMemoryLearning") {}
 
@@ -119,7 +122,18 @@ export const make = Effect.gen(function* () {
     return { merged: plans.length, swept: yield* memory.sweep };
   });
 
-  return BatonMemoryLearning.of({ learn, consolidate });
+  const rewriteNearDuplicates = Effect.gen(function* () {
+    const all = yield* memory.list({ includeSuperseded: true, limit: 100_000 });
+    let done = 0;
+    for (const { keep, drop, text } of planRewrites(all)) {
+      if (text !== keep.text) yield* memory.rewrite(keep.id, text).pipe(Effect.ignore);
+      yield* memory.forget(drop.id);
+      done++;
+    }
+    return done;
+  });
+
+  return BatonMemoryLearning.of({ learn, consolidate, rewriteNearDuplicates });
 });
 
 export const layer = Layer.effect(BatonMemoryLearning, make);
