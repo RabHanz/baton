@@ -779,11 +779,11 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   {
     name: "job_grant",
     description:
-      "Give one job a standing permission he asked for: start without waiting for his OK, or send on a channel. He is asked first, every time.",
+      "Give one job a standing permission he asked for: start without waiting for his OK, retry a failed worker by itself within its retry budget, or send on a channel. He is asked first, every time.",
     inputSchema: object(
       {
         id: { type: "string" },
-        channel: { enum: ["start", "email", "social", "chat", "pr_comment", "other_public"] },
+        channel: { enum: ["start", "retry", "email", "social", "chat", "pr_comment", "other_public"] },
       },
       ["id", "channel"],
     ),
