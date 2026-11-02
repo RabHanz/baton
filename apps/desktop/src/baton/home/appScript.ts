@@ -764,7 +764,7 @@ function paletteItems() {
   cmd('Stop what Tessaya is saying or doing', '', () => set('q.stop', null));
   cmd(on('v.muted') ? 'Unmute the microphone' : 'Mute the microphone', '', () => set('v.muted', !on('v.muted')));
   cmd('Ask Tessaya', 'Type a question or a request', () => set('q.ask', null));
-  cmd('Clear the screen', 'Remove Tessaya\'s pointer and cards', () => set('q.clear', null));
+  cmd('Clear the screen', 'Remove the pointer and cards', () => set('q.clear', null));
   cmd('Open T3 sessions', '', () => real && ipc.send('baton-home:sessions'));
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
