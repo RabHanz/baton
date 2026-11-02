@@ -461,6 +461,12 @@ export const lostNote = (reason, shown) => `Not delivered: ${reason} Your messag
  * the order is kept. `deps` are the live session, the pane and the thread, injected for tests.
  */
 export async function drainSession(dir, sessionId, deps) {
+  // A note (weaving: "sent to X") is only shown in this thread; it never waits on the pane.
+  const all = readQueue(dir, sessionId);
+  if (all.some((item) => item.kind === "note")) {
+    for (const item of all) if (item.kind === "note") deps.say(sessionId, String(item.text));
+    writeQueue(dir, sessionId, all.filter((item) => item.kind !== "note"));
+  }
   const items = readQueue(dir, sessionId);
   if (items.length === 0) return;
   const live = deps.findLive(sessionId);
