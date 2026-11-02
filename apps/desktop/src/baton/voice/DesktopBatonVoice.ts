@@ -137,7 +137,15 @@ import {
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
-import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
+import {
+  fileToEdit,
+  PACK_FOLDER,
+  packAction,
+  packControls,
+  packEdit,
+  savePackText,
+  useDefault,
+} from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
@@ -3284,6 +3292,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "p.folder") {
       NodeFS.mkdirSync(NodePath.join(input.stateDir, PACK_FOLDER), { recursive: true });
       void Electron.shell.openPath(NodePath.join(input.stateDir, PACK_FOLDER));
+    } else if (packEdit(id) !== null) {
+      const act = packEdit(id)!;
+      const dir = NodePath.join(input.stateDir, PACK_FOLDER);
+      if (act.save) {
+        const why = savePackText(dir, act.id, typeof value === "string" ? value : "");
+        input.extras?.notice(why ?? "Saved. It applies to the next job.");
+      } else useDefault(dir, act.id);
+      cachedPack.reset();
+      home.refresh();
     } else if (packAction(id) !== null) {
       const act = packAction(id)!;
       const dir = NodePath.join(input.stateDir, PACK_FOLDER);
