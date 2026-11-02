@@ -3195,11 +3195,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     exec: nodeExec,
     dir: NodePath.join(input.stateDir, "cloud"),
     hub: async (op, provider, args) => {
-      const read = ["describe", "detect", "status", "list", "usage", "diff"].includes(op);
+      const kind = ["describe", "detect", "status", "list", "usage", "diff"].includes(op) ? "read" : ["approve", "deny"].includes(op) ? "approve" : "act";
       try {
         const out = (await requestKept({
           kind: "cloud",
-          op: read ? "read" : "act",
+          op: kind,
           ...(cloudSettings().hubEnv === "" ? {} : { environmentId: cloudSettings().hubEnv }),
           args: { op, ...(provider === "" ? {} : { provider }), args },
         })) as { ok?: boolean; value?: unknown; error?: string } | null;

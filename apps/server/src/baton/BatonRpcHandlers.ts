@@ -381,6 +381,8 @@ export const make = Effect.gen(function* () {
       run(Effect.flatMap(BatonCloudService, (cloud) => cloud.call(input, "read"))),
     [BATON_CLOUD_WS_METHODS.act]: (input) =>
       run(Effect.flatMap(BatonCloudService, (cloud) => cloud.call(input, "act"))),
+    [BATON_CLOUD_WS_METHODS.approve]: (input) =>
+      run(Effect.flatMap(BatonCloudService, (cloud) => cloud.call(input, "approve"))),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(

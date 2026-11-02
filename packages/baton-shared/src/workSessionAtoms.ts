@@ -149,6 +149,10 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:cloud-act",
       tag: BATON_CLOUD_WS_METHODS.act,
     }),
+    cloudApprove: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:cloud-approve",
+      tag: BATON_CLOUD_WS_METHODS.approve,
+    }),
     commitmentsList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-list",
       tag: BATON_COMMITMENT_WS_METHODS.list,
