@@ -17,7 +17,8 @@ def score(features: np.ndarray) -> np.ndarray:
 
 positive = np.load(f"model/{word}/positive_features_test.npy")
 adversarial = np.load(f"model/{word}/negative_features_test.npy")
-background = np.load("validation_set_features.npy")
+import os
+background = np.load("clean_validation_features.npy" if os.path.exists("clean_validation_features.npy") else "validation_set_features.npy")
 frames = positive.shape[1]
 windows = np.lib.stride_tricks.sliding_window_view(background, frames, axis=0).transpose(0, 2, 1)
 windows = windows.astype(np.float32)
