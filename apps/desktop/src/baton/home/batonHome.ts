@@ -83,6 +83,28 @@ export type HomeControl =
       readonly detail: string;
       readonly fix?: string;
     })
+  /** One memory (D150): its text is the label, `hint` says where it came from. Edit, pin and forget are the page's. */
+  | (HomeControlBase & {
+      readonly kind: "memory";
+      readonly pinned: boolean;
+      /** A proposal waiting for his yes. */
+      readonly held: boolean;
+    })
+  /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
+  | (HomeControlBase & {
+      readonly kind: "memoryBar";
+      readonly query: string;
+      readonly filter: string;
+      readonly kinds: ReadonlyArray<{
+        readonly value: string;
+        readonly label: string;
+        readonly count: number;
+      }>;
+      readonly usedOnly: boolean;
+      readonly usedCount: number;
+      readonly syncOn: boolean;
+      readonly status: string;
+    })
   /** Shown masked until he clicks it. */
   | (HomeControlBase & {
       readonly kind: "secret";

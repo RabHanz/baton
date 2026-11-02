@@ -290,5 +290,9 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .seg,.seg button{border-radius:6px}
 .sidecard{border-radius:6px}
 .log time,.hrow time{font-variant-numeric:tabular-nums}
+.memedit{width:100%;min-height:72px;border:1px solid var(--line-strong);background:var(--panel);border-radius:9px;padding:8px 11px;font:inherit;color:inherit;resize:vertical;user-select:text}
+.memacts{display:flex;gap:6px;flex:none;align-items:center}.memedit+.memacts{margin-top:8px}
+.membar>.seg{margin:0 18px 10px;flex-wrap:wrap}.memtools{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 10px}.memstatus{padding:0 18px 12px}
+.btn[aria-pressed=true]{background:var(--accent-wash);border-color:var(--accent-edge);color:var(--accent-text)}
 :focus-visible{outline-color:var(--focus)}
 `;
