@@ -106,6 +106,7 @@ import {
   reviewSkill,
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
+import { jobsDigest, retriesUsed, retryBudget, retryRefusal, retryText } from "@t3tools/baton-shared/jobReport";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -1404,9 +1405,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ? `Not delivered yet, queued in order: ${w.reason ?? "it cannot take it now"} [id: ${w.id}].`
         : `Not delivered: ${w.reason ?? "unknown"} [id: ${w.id}].`;
   };
+  /** Asks a failed job's worker to try again, inside its retry budget. */
+  const retryJob = async (id: string, reason: string): Promise<string> => {
+    const job = (jobsCache ?? []).find((j) => j.workSessionId === id);
+    if (job === undefined) return "There is no such job. Ask for jobs_list.";
+    const why = retryRefusal(job);
+    if (why !== null) return why;
+    const last = input.sessions?.rows().find((r) => r.key === id);
+    await requestKept({
+      kind: "job",
+      op: "refine",
+      args: { id, text: retryText(job, reason, last?.session ?? null), via: "text" },
+    });
+    return `Asked the worker to try again (${retriesUsed(job.terms.revisions) + 1} of ${retryBudget(job)}).`;
+  };
   const briefExtra = (): ReadonlyArray<string> => {
-    const line = briefCommitments(commitments.list(), Date.now());
-    return line === null ? [] : [line];
+    const lines = [
+      briefCommitments(commitments.list(), Date.now()),
+      jobsDigest(jobsCache ?? [], Date.now()),
+    ];
+    return lines.filter((l): l is string => l !== null);
   };
   const awareness = createAwareness({
     switches: () => ({
@@ -1483,6 +1501,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return found.length === 0
           ? "No note has all of those words."
           : found.map((n) => `${previewOf(n.text, 300)} [id: ${n.id}]`).join("\n");
+      }
+      if (op === "retry") return retryJob(String(args["id"] ?? ""), String(args["reason"] ?? "it failed"));
+      if (op === "handoff") {
+        await requestKept({ kind: "job", op: "handoff", args });
+        return "Handed the job to that worker. The same thread continues there.";
       }
       if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
       if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
@@ -3493,7 +3516,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       if (act === null) return;
-      if (act.kind === "stop") job("stop", { id: act.id });
+      if (act.kind === "retry") {
+        void retryJob(act.id, "the last attempt failed")
+          .then((line) => input.extras?.notice(line))
+          .then(refreshJobs)
+          .catch(() => undefined);
+      } else if (act.kind === "stop") job("stop", { id: act.id });
       else if (act.kind === "schedule") {
         job("schedule", { id: act.id, everyMinutes: act.scheduled ? null : DAILY_MINUTES });
       } else if (act.kind === "answer") {

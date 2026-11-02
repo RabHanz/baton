@@ -141,6 +141,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "commit_done",
   "notices_stop",
   "weave_send",
+  "job_retry",
+  "job_handoff",
   "text_transform",
   "text_undo",
   "text_command",
@@ -252,6 +254,7 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "job_start":
     case "job_split":
     case "job_refine":
+    case "job_retry":
     case "job_agree":
       // A job's words are his own or they came from something it read; only the second asks.
       // Starting work is his agreement, not the model's: after a read it always asks.
@@ -303,6 +306,9 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return { verdict: "ask", why: "It would restart Chrome with accessibility on.", risky: true };
     case "memory_forget":
       return { verdict: "ask", why: "It would delete one of your notes." };
+    case "job_handoff":
+      // The same work on another provider or account spends another subscription: it asks every time.
+      return { verdict: "ask", why: "It would move a job to another worker or account." };
     case "job_schedule":
       // A repeating run is unattended spending, so it asks every time.
       return { verdict: "ask", why: "It would make a job run again on a schedule." };

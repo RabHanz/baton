@@ -20,6 +20,7 @@ import {
 } from "@t3tools/baton-shared/coordinator";
 import { BLOCKED_MARK } from "@t3tools/baton-shared/coordinator";
 import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/baton-shared/jobBrief";
+import { buildReport, reportCadence, reportDue } from "@t3tools/baton-shared/jobReport";
 import { permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ThreadId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
@@ -560,4 +561,60 @@ export const noticePart = Effect.fn("BatonJobFlow.noticePart")(function* (thread
   // Starting a waiting part changes the fleet; the summary waits for the next change.
   if (yield* releaseWaiting(terms.parentId, entries)) return;
   yield* summarizeParts(terms.parentId, entries);
+});
+
+/** Worker states in which a progress report is worth writing: it is going, or it is stuck on something. */
+const REPORTING_STATES: ReadonlySet<string> = new Set([
+  "working",
+  "starting",
+  "monitoring",
+  "needs_input",
+  "needs_approval",
+  "failed",
+  "limited",
+  "offline",
+]);
+
+/**
+ * A progress report in each agreed, unfinished job's record every so often (60 minutes unless the job
+ * said otherwise): what happened, what is next, what blocks, what it has used. Written from state, so it
+ * costs no turn and never wakes the worker.
+ */
+export const postReports = Effect.fn("BatonJobFlow.postReports")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const jobs = yield* BatonJobService;
+  const spend = yield* spendCounts(entries);
+  const cards = yield* jobs.view({ entries, turns: yield* turnCounts(entries), spend });
+  const now = yield* Clock.currentTimeMillis;
+  const wrote: string[] = [];
+  for (const card of cards) {
+    const entry = entries.find((e) => e.workSessionId === card.workSessionId);
+    if (entry === undefined || card.phase !== "approved" || !REPORTING_STATES.has(card.state)) continue;
+    if (!reportDue(card.terms.revisions, card.terms.createdAt, reportCadence(card), now)) continue;
+    const synopsis = entry.synopsis;
+    const text = buildReport({
+      title: card.title,
+      state: card.state,
+      minutes: card.usage?.minutes ?? 0,
+      turns: card.usage?.turns ?? 0,
+      dollars: card.usage?.dollars ?? null,
+      partial: card.usage?.partial ?? false,
+      doing: synopsis?.currentAction ?? null,
+      findings: synopsis?.recentFindings.map((f) => f.text) ?? [],
+      changedFiles: synopsis?.changedFiles ?? [],
+      next: synopsis?.next ?? [],
+      needsUser: synopsis?.needsUser ?? entry.needsUser,
+      failedChecks: synopsis?.validation.filter((v) => v.outcome === "failed").length ?? 0,
+      limitReached: card.limitReached,
+    });
+    yield* jobs.refine(card.workSessionId, {
+      by: "baton",
+      at: DateTime.formatIso(DateTime.makeUnsafe(now)),
+      via: "thread",
+      text,
+    });
+    wrote.push(card.workSessionId);
+  }
+  return wrote;
 });

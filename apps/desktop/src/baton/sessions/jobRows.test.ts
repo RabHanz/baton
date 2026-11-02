@@ -47,6 +47,33 @@ describe("the Jobs area", () => {
   });
 });
 
+describe("employee flows in the Jobs area", () => {
+  it("offers Retry only to an agreed job that failed inside its budget, and shows the last report", () => {
+    const failed = {
+      workSessionId: "f",
+      title: "f",
+      group: "failed",
+      phase: "approved",
+      limitReached: null,
+      permissionsSummary: "read",
+      terms: {
+        scheduleTaskId: null,
+        limits: { wallClockMinutes: 120, workerTurns: 40, dollars: null },
+        revisions: [{ at: "t", text: "Report: f has run 2 h. Doing: x." }],
+      },
+    } as unknown as BatonJob;
+    const rows = jobControls([failed]);
+    expect(rows.map((r) => r.id)).toContain("jr:f");
+    expect(rows.find((r) => r.id === "j:f")?.hint).toContain("Last report: f has run 2 h. Doing: x.");
+    expect(jobAction([failed], "jr:f")).toMatchObject({ kind: "retry", id: "f" });
+    const spent = {
+      ...failed,
+      terms: { ...failed.terms, revisions: [{ at: "t", text: "Retry 1 of 2: a" }, { at: "t", text: "Retry 2 of 2: b" }] },
+    } as unknown as BatonJob;
+    expect(jobControls([spent]).map((r) => r.id)).not.toContain("jr:f");
+  });
+});
+
 describe("what a job has used", () => {
   it("says minutes and turns against the caps once agreed, and nothing before", () => {
     const j = {
