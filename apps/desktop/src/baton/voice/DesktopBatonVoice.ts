@@ -2943,11 +2943,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       } else void input.sessions?.act(`n:${act.ref}`, null);
-    } else if (id === "pr.watch") {
-      save({});
-      void Electron.shell.openPath(settingsPath);
     } else if (id.startsWith("pr.")) {
-      const patch = presencePatch(id, value);
+      const patch = presencePatch(id, value, settings);
       if (patch !== null) save(patch);
     } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
     else if (id.startsWith("now.")) {
