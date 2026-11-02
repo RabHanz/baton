@@ -23,6 +23,7 @@ import * as BatonDatabase from "./BatonDatabase.ts";
 import * as BatonEngine from "./BatonEngine.ts";
 import * as BatonJobReactor from "./BatonJobReactor.ts";
 import * as BatonJobService from "./BatonJobService.ts";
+import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonWeaveService from "./BatonWeaveService.ts";
 import * as BatonCommitmentService from "./BatonCommitmentService.ts";
 import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
@@ -68,7 +69,9 @@ const servicesInner = IntentService.layer.pipe(
       BatonJobService.layer.pipe(Layer.provide(WorkSessionService.layer)),
       BatonMemoryService.layer,
       BatonCommitmentService.layer,
-      BatonWeaveService.layer.pipe(Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer)))),
+      BatonWeaveService.layer.pipe(
+        Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+      ),
       BatonMemoryLearning.layer.pipe(
         Layer.provide(BatonMemoryService.layer),
         Layer.provide(BatonOneShot.layer),
