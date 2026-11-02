@@ -2449,12 +2449,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
-        id: "v.pillCentre",
+        id: "v.pillPlace",
         section: "On screen",
-        label: "Put the pill in the centre",
+        label: "Pill position",
         hint: "Or drag it: it lines up on a grid and snaps to centre, top and bottom. Hold Alt or Shift to place it freely. Right-click it for the same places.",
+        kind: "choice",
+        value: pill.place(),
+        options: [
+          { value: "centre", label: "Centre" },
+          { value: "top", label: "Top" },
+          { value: "bottom", label: "Bottom" },
+        ],
+      },
+      {
+        id: "v.pillMove",
+        section: "On screen",
+        label: "Move the pill",
+        hint: "Shows the pill for ten seconds so you can drag it where you want it.",
         kind: "action",
-        button: "Centre",
+        button: "Move",
       },
       {
         id: "v.pillRest",
@@ -2771,7 +2784,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         history?.update(turn.id, { audio: null });
       }
       render();
-    } else if (id === "v.pillCentre") pill.moveTo("centre");
+    } else if (
+      id === "v.pillPlace" &&
+      (value === "centre" || value === "top" || value === "bottom")
+    ) {
+      pill.moveTo(value);
+    } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
