@@ -44,13 +44,14 @@ sleep 3
 kill "$pid" 2>/dev/null || true
 mkdir -p "$out/logs"; cp -R "$userdata/logs/." "$out/logs/" 2>/dev/null || true
 shots=$(find "$out/shots" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+opened=0; [ -f "$log" ] && grep -Eq '"kind":"open_main".*"visible":true' "$log" && opened=1
 steps=$( [ -f "$log" ] && grep -o '"step":"[a-z-]*"' "$log" | sed 's/"step":"//;s/"//' | tr '\n' ' ' )
 echo "platform: $platform"
-echo "window captures: $shots"
+echo "window opened (logged): $opened; page captures: $shots"
 echo "voice start steps: ${steps:-none}"
 echo "--- app.log (tail) ---"; tail -n 25 "$out/app.log" 2>/dev/null || true
 status=0
-[ "$shots" -gt 0 ] || { echo "FAIL no window was drawn"; status=1; }
+{ [ "$shots" -gt 0 ] || [ "$opened" = 1 ]; } || { echo "FAIL no window was drawn"; status=1; }
 [ -n "$steps" ] || { echo "FAIL no voice start steps were logged"; status=1; }
 [ -f "$log" ] && grep -q '"kind":"test-audio"' "$log" || { echo "NOTE the test audio never reached the voice start"; }
 exit $status

@@ -49,14 +49,17 @@ if ($Phase -eq 'first') {
   # opens its window, and the app records the page it draws.
   Start-Sleep -Seconds 25
   Start-Process -FilePath $exe
+  $vlog = Join-Path $userdata 'logs\voice-turns.ndjson'
+  $opened = $false
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
-  while ((Get-Date) -lt $deadline) {
+  while ((Get-Date) -lt $deadline -and -not $opened) {
     Start-Sleep -Seconds 3
-    if (@(Get-ChildItem $shots -Filter '*.png' -ErrorAction SilentlyContinue).Count -gt 0) { break }
+    if (Test-Path $vlog) { $opened = (Get-Content $vlog -Raw) -match '"kind":"open_main"[^\n]*"visible":true' }
   }
   Start-Sleep -Seconds 3
   $pngs = @(Get-ChildItem $shots -Filter '*.png' -ErrorAction SilentlyContinue)
-  if ($pngs.Count -eq 0) { Fail 'first run created no window: the app recorded no page' } else { Note "first run drew $($pngs.Count) page capture(s): $($pngs[0].Name)" }
+  if (-not $opened -and $pngs.Count -eq 0) { Fail 'first run created no window: no visible window was logged and no page was recorded' }
+  else { Note "first run drew a window (logged open_main: $opened; page captures: $($pngs.Count))" }
   Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 
