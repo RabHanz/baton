@@ -63,6 +63,7 @@ describe("memoryControls", () => {
     ]);
     expect(rows[0]).toMatchObject({ pinned: true, hint: "preference · your words · pinned" });
     expect(rows[1]!.hint).toBe("fact · 65% sure · project: shop · used in the last answer");
+    expect((rows[1] as unknown as { why: string }).why).toContain("I picked this up from a conversation on 2026-01-01");
   });
 
   it("filters by kind, search, held, replaced and used", () => {

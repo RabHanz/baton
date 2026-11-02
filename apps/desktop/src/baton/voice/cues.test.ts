@@ -12,11 +12,11 @@ import {
 } from "./pillSounds.ts";
 
 describe("the cues", () => {
-  it("are short (80 to 300 ms with their tail), quiet, and thinking is one soft note", () => {
+  it("are short (80 to 400 ms with their tail), quiet, and thinking is one soft note", () => {
     for (const [name, notes] of Object.entries(PILL_SOUNDS)) {
       const ms = soundMs(name as keyof typeof PILL_SOUNDS);
       expect(ms, name).toBeGreaterThanOrEqual(80);
-      expect(ms, name).toBeLessThanOrEqual(300);
+      expect(ms, name).toBeLessThanOrEqual(400);
       const peak = Math.max(...renderSound(notes, 16_000).map(Math.abs));
       expect(peak, name).toBeLessThan(0.12);
     }

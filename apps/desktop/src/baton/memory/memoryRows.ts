@@ -1,5 +1,5 @@
 /** The Memory area of Tessaya's window (D150): the bar, then one row per memory, grouped by kind. */
-import type { MemoryItem, MemoryKind } from "@t3tools/baton-shared/memory";
+import { whyRemembered, type MemoryItem, type MemoryKind } from "@t3tools/baton-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 
@@ -91,6 +91,7 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
     kind: "memory",
     pinned: item.pinned,
     held: item.proposed,
+    why: whyRemembered(item),
   });
   const sectionOf = (item: MemoryItem): string =>
     item.proposed

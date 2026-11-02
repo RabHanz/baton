@@ -102,6 +102,11 @@ export class BatonMemoryService extends Context.Service<
       id: string,
       patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
     ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
+    /** The weekly pass's rewrite: new wording, but the source and confidence stay as they were. */
+    readonly rewrite: (
+      id: string,
+      text: string,
+    ) => Effect.Effect<MemoryItem, BatonMemoryRefusedError>;
     readonly pin: (
       id: string,
       pinned: boolean,
@@ -314,6 +319,18 @@ export const make = Effect.gen(function* () {
       UPDATE fabric_memory_items SET
         text = ${text}, kind = ${patch.kind ?? current.kind}, source = 'user', confidence = 1,
         proposed = 0, updated_at = ${at}, origin = ${origin}
+      WHERE id = ${id}
+    `.pipe(Effect.orDie);
+    return yield* requireItem(id);
+  });
+
+  const rewrite = Effect.fn("BatonMemoryService.rewrite")(function* (id: string, wording: string) {
+    yield* requireItem(id);
+    const text = wording.trim().replace(/\s+/g, " ");
+    const reason = refuseToStore(text, privateTexts());
+    if (reason !== null) return yield* refuse(reason);
+    yield* sql`
+      UPDATE fabric_memory_items SET text = ${text}, updated_at = ${yield* nowIso}, origin = ${origin}
       WHERE id = ${id}
     `.pipe(Effect.orDie);
     return yield* requireItem(id);
@@ -571,6 +588,7 @@ export const make = Effect.gen(function* () {
     search,
     add,
     edit,
+    rewrite,
     pin,
     forget,
     accept,

@@ -4,8 +4,6 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
-import { parseTextCommand } from "@t3tools/baton-shared/textCommand";
-import { findTransform } from "@t3tools/baton-shared/transforms";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
@@ -22,6 +20,7 @@ import {
   clockLine,
   OPERATOR_PROMPT,
   decide,
+  entryRoute,
   instantDecision,
   makeSentenceStream,
   type BrainDecision,
@@ -100,7 +99,6 @@ import {
   chooseBrowserRoute,
   realRelaunchPorts,
   relaunchChromeWithAccessibility,
-  withCallRetry,
 } from "./browserRoute.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
@@ -1681,16 +1679,6 @@ export const startScreenCompanion = (input: {
     }),
     now: () => Date.now(),
   });
-  const runTransform = async (said: string): Promise<string> => {
-    const t = findTransform(transformStore.all(), said);
-    if (t === null) {
-      return `There is no transform called "${said}". They are: ${transformStore
-        .all()
-        .map((x) => x.name)
-        .join(", ")}.`;
-    }
-    return textEdit.transform(t);
-  };
   let hotkeys: ReadonlyArray<string> = [];
   const setTransformHotkeys = (on: boolean): void => {
     for (const k of hotkeys) Electron.globalShortcut.unregister(k);
@@ -1763,6 +1751,64 @@ export const startScreenCompanion = (input: {
         throw new Error("The window's controls can't be read here. Take a screenshot instead.");
       }
       return `${tree.window}\n${tree.controls.join("\n")}`;
+    },
+    browserRoute: async (ask) => {
+      const check = await refreshChrome();
+      const tree = await actions?.uiTree?.().catch(() => null);
+      // The tree is the focused window's: it says nothing about Chrome unless Chrome is that window.
+      const accessibility =
+        tree === null || tree === undefined || !/chrome/i.test(tree.window)
+          ? "unknown"
+          : accessibilityLooksOff(tree.controls.join("\n"))
+            ? "off"
+            : "on";
+      const choice = chooseBrowserRoute({
+        task: ask.task,
+        url: ask.url,
+        needsLogin: ask.needsLogin,
+        ownChromeOn: settings.browserChrome,
+        chrome: check,
+        chromeVisible: null,
+        accessibility,
+        relaunchApproved: chromeRelaunched,
+      });
+      agentRoutes.push({ route: choice.route, why: choice.why });
+      return [
+        `${choice.route}: ${choice.why}`,
+        ...choice.steps.map((step) => `- ${step}`),
+        ...(choice.needsApproval === undefined ? [] : ["If he agrees, browser_accessibility_on."]),
+      ].join("\n");
+    },
+    browserAccessibilityOn: async () => {
+      const response = await askHandsFree(
+        {
+          title: "Restart Chrome?",
+          detail:
+            "Chrome closes and opens again with your tabs, so I can read its pages through the screen's controls.",
+          buttons: ["Go ahead", "Not now"],
+          cancel: 1,
+          scoped: true,
+        },
+        "Can I restart Chrome? Yes or no.",
+      );
+      if (response !== 0) return "He said no.";
+      chromeRelaunched = true;
+      return relaunchChromeWithAccessibility(realRelaunchPorts(input.platform));
+    },
+    point: async (a) => {
+      if (lastShots.length === 0) throw new Error("Take a screenshot first.");
+      await pointAt(
+        { x: a.x, y: a.y, label: a.label ?? null, screen: a.screen ?? null, confidence: null },
+        lastShots,
+      );
+      return "Pointing.";
+    },
+    guided: async (mode, goal) => {
+      // The lesson or the plan runs on its own after this turn ends; its card must not be replaced by the turn's closing line.
+      void (mode === "teach" ? teach(goal) : drive(goal)).catch(fail);
+      return mode === "teach"
+        ? "The lesson has started and its first step is on his screen. Say nothing more."
+        : "The plan is being made and will be shown to him to approve. Say nothing more.";
     },
     click: async (a) => {
       const to = desktopPoint(a);
@@ -1947,7 +1993,7 @@ export const startScreenCompanion = (input: {
       );
       voice.finish(reply);
       input.onActivity?.(null);
-      linger("Tessaya", reply);
+      if (runningMode() === null) linger("Tessaya", reply);
       input.onNote?.("agent_turn", {
         ok: true,
         said: text,
@@ -2035,7 +2081,8 @@ export const startScreenCompanion = (input: {
       return { kind: "handled" };
     }
     // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
-    if (settings.oneAssistant && instantDecision(text, busy)?.route !== "control") {
+    // His own "teach:", "drive:" and "look:" prefixes name the mode: they are not for the assistant's judgement.
+    if (entryRoute(text, busy, settings.oneAssistant) === "assistant") {
       void agentTurn(text, started, direct);
       return { kind: "handled" };
     }
