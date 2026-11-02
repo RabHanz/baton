@@ -38,7 +38,9 @@ case "$platform" in
         while IFS= read -r -d '' f; do file "$f" | grep -q 'Mach-O' && codesign --force --sign - "$f" 2>&1 | tail -1; done
     fi
     if [ "${SMOKE_ADHOC_SIGN:-1}" = 1 ]; then codesign --force --deep --sign - "$HOME/Tessaya.app" 2>&1 | tail -3; fi
-    run=("$HOME/Tessaya.app/Contents/MacOS/Tessaya" --no-sandbox)
+    # The runner has no GPU. Chromium's GPU process asks Metal to compile shaders there, the compiler service is killed, and the
+    # whole app goes with it about 50 s in. With the GPU off the voice start reaches loop-started (proven on a real run).
+    run=("$HOME/Tessaya.app/Contents/MacOS/Tessaya" --no-sandbox --disable-gpu)
     ;;
   *) echo "unknown platform $platform"; exit 2 ;;
 esac

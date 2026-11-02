@@ -15,9 +15,9 @@ stranger-install proof), `smoke linux` runs the AppImage under xvfb, `smoke maco
 | Installs / unpacks | silent NSIS install, uninstall removes the app and keeps user data | AppImage runs with `--appimage-extract-and-run --no-sandbox` | dmg mounts, the .app runs after `xattr -cr` (unsigned) |
 | Starts on a clean user | yes; no private default in user data; no user pack; only default wake words | yes; lifecycle `start` logged | yes |
 | Window | yes, second launch opens the main window (`open_main`, visible) | yes (`open_main`, visible, 1100x780) | yes ("main window created" in the app log); `open_main` is not logged for a second launch |
-| Voice start | goes past `begin` when voice is on | reaches `loop-started`, plays the test phrase and transcribes it | reaches `core-made`, then the app is killed (below) |
+| Voice start | goes past `begin` when voice is on | reaches `loop-started`, plays the test phrase and transcribes it | reaches `loop-started` on the runner with the GPU off (`--disable-gpu`; below) |
 | Wake word, dictation, paste | built and proven on Windows | wake and transcription proven with the test input; dictation hotkey and paste not exercised | not proven |
-| Test audio reaches the voice start | yes | yes | no (the app dies first) |
+| Test audio reaches the voice start | yes | yes | yes, with the GPU off |
 | Auto-update | yes | the updater ran ("not available, latest 0.1.34") | not observed |
 | Noise in the log | none worth noting | GTK accelerator assertions and D-Bus connection errors under xvfb (cosmetic; no session bus in CI) | none observed |
 
@@ -34,8 +34,8 @@ and `stageBatonVoice` packages it into every desktop build. What each piece is o
 | --- | --- | --- | --- |
 | Microphone capture (`handy-recorder`: WASAPI, CoreAudio, ALSA) | real, used daily | real code; device listing proven on the CI runner (CoreAudio null device); a real microphone and the Microphone permission not tried | real code; listing proven with ALSA's null device; real microphones not tried |
 | Test input (`BATON_TEST_WAV`, `BATON_FAKE_MIC`) for CI | real | real | real (this is what the smoke job uses) |
-| Parakeet model load and inference (`transcribe-cpp`, the same GGUF) | real | the sidecar alone loads the GGUF in about 1 s and transcribes on the runner (exit 0); inside the app the voice start reaches `core-made`, then the app process is **SIGKILLed during the warm-up** (about 50 s in, no crash report; the system log shows its `MTLCompilerService` helpers SIGKILLed at the same second, so the Metal path on the VM runner without a GPU is the lead, not confirmed; an ad-hoc signature on the bundle did not change it) | real: the smoke job's phrase is transcribed ("What is the cup of Brazil?") |
-| Wake word and VAD (onnxruntime) | real | not proven | real in the smoke job |
+| Parakeet model load and inference (`transcribe-cpp`, the same GGUF) | real | the sidecar alone loads the GGUF in about 1 s and transcribes on the runner (exit 0); inside the app on the GPU-less runner the voice start reaches `loop-started` with `--disable-gpu`. Without that flag the app was SIGKILLed about 50 s in, at the same second its `MTLCompilerService` helpers died: Chromium's GPU process cannot compile Metal shaders on a VM with no GPU. That is a runner fact, not a user one: a Mac with a GPU has no such flag and was not tried | real: the smoke job's phrase is transcribed ("What is the cup of Brazil?") |
+| Wake word and VAD (onnxruntime) | real | started in the smoke job (wake phrase not required there) | real in the smoke job |
 | Hold-to-dictate hotkey (`handy-keys`) | real | the crate has a CGEventTap backend; needs Input Monitoring and Accessibility; **not exercised** | the crate's Linux backend; **not exercised**; Wayland has no global hotkeys without a portal |
 | Paste into the focused app | real (`paste_windows`, receipt-based, restores the clipboard) | real code (`pbcopy`, Command-V through `enigo`, clipboard restored after 1.5 s); needs Accessibility; **not exercised** | real code (`wl-copy` or `xclip` plus a chord; `wtype`/X11); **not exercised** |
 | Which app has focus | real | `osascript` front-app lookup; title not available | `hyprctl` / `swaymsg` / X11 tools where present, else "unknown window" (text still pastes) |
