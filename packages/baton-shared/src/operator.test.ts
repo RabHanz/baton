@@ -181,6 +181,11 @@ describe("Baton's own tools (D143)", () => {
       "ask",
     );
     expect(judgeToolCall({ tool: "mcp__baton__weave_list", input: {} }, off).verdict).toBe("allow");
+    const rewrite = { tool: "mcp__baton__text_transform", input: { name: "polish" } };
+    expect(judgeToolCall(rewrite, off).verdict).toBe("allow");
+    expect(judgeToolCall(rewrite, read).verdict).toBe("ask");
+    expect(judgeToolCall(rewrite, { ...off, focusedShell: true }).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__text_undo", input: {} }, read).verdict).toBe("allow");
     expect(judgeToolCall({ tool: "mcp__baton__commit_list", input: {} }, read).verdict).toBe(
       "allow",
     );

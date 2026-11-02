@@ -4,6 +4,11 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
+import { findTransform } from "@t3tools/baton-shared/transforms";
+import { createModelAsk } from "../writing/modelAsk.ts";
+import { createTextEdit } from "../writing/textEdit.ts";
+import { createTransformStore } from "../writing/transformStore.ts";
+import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
 import { isNeedsMeAsk } from "@t3tools/baton-shared/needsMe";
@@ -280,6 +285,8 @@ export interface AssistantActions {
       | "notices_resume"
       | "weave_send"
       | "weave_list"
+      | "text_transform"
+      | "text_undo"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
@@ -317,6 +324,8 @@ export interface ScreenCompanion {
   readonly active: () => boolean;
   /** Silences what is queued and what an answer has yet to say. */
   readonly hush: () => void;
+  /** Registers or drops the transform shortcuts (Transforms is opt-in). */
+  readonly setTransformHotkeys: (on: boolean) => void;
   /** The tray's Clear the screen, also what a spoken stop does. */
   readonly dismiss: () => void;
   /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
@@ -1638,6 +1647,80 @@ export const startScreenCompanion = (input: {
     audit: vaultState.audit,
     askToUnlock: () => input.onOpenTab?.("vault"),
   });
+  // Transforms and spoken edits on the selection (Wispr parity): copy it, ask his own Claude, paste over it.
+  const transformStore = createTransformStore(input.stateDir);
+  const textEdit = createTextEdit({
+    copySelection: async () => {
+      const before = await Promise.resolve(Electron.clipboard.readText());
+      Electron.clipboard.clear();
+      await driverFor().press(["ctrl", "c"]);
+      let got = "";
+      for (let i = 0; i < 8 && got === ""; i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        got = await Promise.resolve(Electron.clipboard.readText());
+      }
+      Electron.clipboard.writeText(before);
+      return got === "" ? null : got;
+    },
+    replaceSelection: (text) => driverFor().type(text),
+    press: (keys) => driverFor().press(keys),
+    setClipboard: (text) => Electron.clipboard.writeText(text),
+    ask: createModelAsk({
+      claudeBinary: () => settings.claudeBinary,
+      model: () => settings.model,
+      workDir: NodePath.join(input.stateDir, "edit"),
+      env: claudeEnv,
+      platform: input.platform,
+    }),
+    now: () => Date.now(),
+  });
+  const runTransform = async (said: string): Promise<string> => {
+    const t = findTransform(transformStore.all(), said);
+    if (t === null) {
+      return `There is no transform called "${said}". They are: ${transformStore
+        .all()
+        .map((x) => x.name)
+        .join(", ")}.`;
+    }
+    return textEdit.transform(t);
+  };
+  let hotkeys: ReadonlyArray<string> = [];
+  const setTransformHotkeys = (on: boolean): void => {
+    for (const k of hotkeys) Electron.globalShortcut.unregister(k);
+    hotkeys = [];
+    if (!on) return;
+    const bound: string[] = [];
+    const run = (work: () => Promise<string>) => () =>
+      void work().then(
+        (line) => linger("Tessaya", line),
+        () => undefined,
+      );
+    transformStore
+      .all()
+      .slice(0, 9)
+      .forEach((t, i) => {
+        const key = hotkeyFor(i);
+        if (
+          key !== null &&
+          Electron.globalShortcut.register(
+            key,
+            run(() => textEdit.transform(t)),
+          )
+        ) {
+          bound.push(key);
+        }
+      });
+    const undoKey = `${HOTKEY_PREFIX}Z`;
+    if (
+      Electron.globalShortcut.register(
+        undoKey,
+        run(() => textEdit.undo()),
+      )
+    )
+      bound.push(undoKey);
+    hotkeys = bound;
+  };
+  setTransformHotkeys(transformStore.read().enabled);
   const toolHost: ToolHost = {
     history: async (ask) => {
       const answer = await askHistory(input.env, ask);
@@ -2038,6 +2121,7 @@ export const startScreenCompanion = (input: {
 
   return {
     said,
+    setTransformHotkeys,
     memorySync,
     setActions: (next) => {
       actions = next;
