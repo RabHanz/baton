@@ -63,7 +63,7 @@ const TABS = ['home','now','snippets','insights','scratchpad','style','transform
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','assistant','voice','screen','usage','trust','help','checks']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = false, modal = null, S = null, query = '';
-let aboutSeen = false;
+let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
 function control(c) {
@@ -798,6 +798,8 @@ function palOpenNow() {
   };
   box.append(input, list); veil.appendChild(box); document.body.appendChild(veil); input.focus();
 }
+addEventListener('click', () => { if (bellOpen) { bellOpen = false; render(); } });
+addEventListener('keydown', e => { if (e.key === 'Escape' && bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palOpen) palClose(); else palOpenNow(); } }, true);
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
@@ -825,7 +827,12 @@ function render(state) {
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); stt.setAttribute('role', 'status'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
-  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
+  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
+  if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Alerts'); pop.appendChild($('b', null, 'Alerts'));
+    if (need) { const b = $('button', 'btn', need + (need === 1 ? ' session needs you' : ' sessions need you')); b.onclick = () => { bellOpen = false; go('sessions'); }; pop.appendChild(b); }
+    if (up && up.lead) { const b = $('button', 'btn', 'Update ready: ' + up.button); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
+    if (!need && !(up && up.lead)) pop.appendChild($('p', null, 'Nothing needs you right now.'));
+    top.appendChild(pop); }
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
