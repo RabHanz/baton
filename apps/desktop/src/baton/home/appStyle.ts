@@ -294,5 +294,6 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .memacts{display:flex;gap:6px;flex:none;align-items:center}.memedit+.memacts{margin-top:8px}
 .membar>.seg{margin:0 18px 10px;flex-wrap:wrap}.memtools{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 10px}.memstatus{padding:0 18px 12px}
 .btn[aria-pressed=true]{background:var(--accent-wash);border-color:var(--accent-edge);color:var(--accent-text)}
+.vaultbar select{border:1px solid var(--line-strong);background:var(--panel);border-radius:9px;padding:7px 11px}.vaultkey{margin-top:8px;font-family:ui-monospace,Consolas,monospace;letter-spacing:.04em;word-break:break-all}.vaulthead{padding:12px 18px 4px;font-size:13px;color:var(--soft)}.vaultbar input[type=password]{flex:1;min-width:0;border:1px solid var(--line-strong);background:var(--panel);border-radius:9px;padding:7px 11px}
 :focus-visible{outline-color:var(--focus)}
 `;
