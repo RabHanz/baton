@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { describe, expect, it } from "vite-plus/test";
 
 import { lastUsed, parseTrustLogs, trustAction, trustControls, type TrustData } from "./trustRows.ts";
