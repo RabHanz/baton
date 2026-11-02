@@ -245,6 +245,7 @@ export interface AssistantActions {
       | "schedule"
       | "brief"
       | "approvals"
+      | "needs"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
@@ -1875,7 +1876,7 @@ export const startScreenCompanion = (input: {
     controls: () => [
       {
         id: "s.output",
-        section: "Answers",
+        section: "Answers and voice",
         label: "How Tessaya answers",
         kind: "choice",
         value: settings.output,
@@ -1886,7 +1887,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.volume",
-        section: "Answers",
+        section: "Answers and voice",
         label: "Speaking volume",
         hint: "How loud Tessaya speaks, apart from your system volume.",
         kind: "choice",
@@ -1899,7 +1900,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.voice",
-        section: "Answers",
+        section: "Answers and voice",
         label: "Voice",
         hint: "Quick is smaller and less accurate. System uses your computer's voice.",
         kind: "choice",
@@ -1935,7 +1936,6 @@ export const startScreenCompanion = (input: {
         hint: "Tessaya keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
         kind: "toggle",
         on: settings.oneAssistant,
-        more: true,
       },
       {
         id: "s.chrome",
@@ -1961,7 +1961,6 @@ export const startScreenCompanion = (input: {
         hint: "Applies once Use my Chrome is on. Reading is routine; every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson. Off, social sites are refused.",
         kind: "toggle",
         on: settings.socialOn,
-        more: true,
       },
       {
         id: "s.act",
@@ -2009,7 +2008,6 @@ export const startScreenCompanion = (input: {
         hint: "Off, Tessaya asks before it looks at your screen.",
         kind: "toggle",
         on: settings.captureApproval === "always",
-        more: true,
       },
     ],
     needsBrainChoice: () => !settings.brainChosen,
