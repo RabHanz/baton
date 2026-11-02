@@ -16,7 +16,7 @@ jobs:
   baton-ci:
     name: baton-ci
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,3 +51,22 @@ jobs:
             echo "== $ws: $(echo $files | wc -w) test files"
             (cd "$ws" && vp test run $files)
           done
+
+      # The server crashed at start after a sync (a route registered twice) and no check ran the server. When the
+      # server's own code or the patches change, build the Linux archive and run its CLI smoke test, as a release would.
+      - name: Does the server start? (when the server or the patches changed)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-}"
+          if [[ -z "$base" || "$base" == 0000000* ]] || ! git cat-file -e "$base" 2>/dev/null; then base=HEAD~1; fi
+          if ! git diff --name-only "$base"...HEAD | grep -qE '^(apps/server/src/|vendor-patches/|packages/baton-contracts/|apps/server/package.json)'; then
+            echo "nothing the server runs changed; skipping"; exit 0
+          fi
+          rustup toolchain install stable --profile minimal > /dev/null 2>&1 || true
+          cargo build --release --manifest-path native/resource-monitor/Cargo.toml
+          mkdir -p "$RUNNER_TEMP/resource-monitor/linux-x64"
+          cp native/resource-monitor/target/release/t3-resource-monitor "$RUNNER_TEMP/resource-monitor/linux-x64/"
+          export BATON_RESOURCE_MONITOR_DIR="$RUNNER_TEMP/resource-monitor"
+          NODE_ENV=production bash scripts/baton/release-build.sh 0.0.0-baton.0
