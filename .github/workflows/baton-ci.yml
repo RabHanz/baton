@@ -1,0 +1,44 @@
+name: baton-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: baton-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  baton-ci:
+    name: baton-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-ci-deps
+
+      - name: Typecheck (new errors fail; known ones sit in typecheck-baseline.txt)
+        run: node scripts/baton/typecheck-gate.mjs
+
+      - name: Unit tests of changed Baton files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-}"
+          if [[ -z "$base" || "$base" == 0000000* ]] || ! git cat-file -e "$base" 2>/dev/null; then base=HEAD~1; fi
+          changed=$(git diff --name-only --diff-filter=d "$base"...HEAD 2>/dev/null || git diff --name-only --diff-filter=d "$base" HEAD)
+          for ws in apps/server apps/desktop packages/baton-shared packages/baton-voice packages/baton-contracts; do
+            files=$(echo "$changed" | grep -E "^$ws/.*(baton|Baton).*\.test\.tsx?$|^$ws/.*\.test\.ts$" | grep -vE '\.browser\.test\.' | sed "s|^$ws/||" || true)
+            if [[ "$ws" == packages/baton-* ]]; then files=$(echo "$changed" | grep -E "^$ws/.*\.test\.ts$" | sed "s|^$ws/||" || true); fi
+            [[ -z "$files" ]] && continue
+            echo "== $ws: $(echo $files | wc -w) test files"
+            (cd "$ws" && vp test run $files)
+          done
