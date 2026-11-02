@@ -194,6 +194,8 @@ class FakeFragment extends FakeElement {}
 
 export class FakeDocument {
   activeElement: FakeElement | null = null;
+  /** Elements made so far: the work a draw costs. */
+  created = 0;
   documentElement: FakeElement;
   body: FakeElement;
   constructor() {
@@ -214,6 +216,7 @@ export class FakeDocument {
     }
   }
   createElement(tag: string) {
+    this.created += 1;
     return new FakeElement(tag.toLowerCase(), this);
   }
   createElementNS(_ns: string, tag: string) {
@@ -276,6 +279,8 @@ export const openWindowPage = async (script: string, state: unknown) => {
   };
   return {
     errors,
+    /** How many elements the script has made so far. */
+    made: () => doc.created,
     textOf: (id: string) => doc.getElementById(id)?.textContent ?? "",
     show: (tab: string) => {
       run(`go(${JSON.stringify(tab)})`);
