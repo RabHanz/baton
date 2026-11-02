@@ -10,7 +10,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 import * as Electron from "electron";
 import * as NodeFS from "node:fs";
-import * as OS from "node:os";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -370,7 +370,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     const chosen = input.look?.() ?? { motion: "full" as const, glass: "on" as const };
     return { motion: effectiveMotion(chosen.motion, systemAsks()), glass: effectiveGlass(chosen.glass, systemAsks()) };
   };
-  const material = () => materialFor(process.platform, OS.release(), look().glass);
+  const material = () => materialFor(process.platform, NodeOS.release(), look().glass);
   const overlayFor = (t: "light" | "dark") => ({
     // With a material behind it the strip stays clear, so the glass shows through to the window controls.
     color: material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[t],
