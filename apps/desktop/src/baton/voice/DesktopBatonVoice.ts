@@ -58,7 +58,8 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
-import { answerNeeds } from "../presence/needsAnswer.ts";
+import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
+import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
@@ -1162,6 +1163,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     now: Date.now(),
   });
   const commitments = createCommitmentStore(input.stateDir);
+  const externalNeeds = createExternalNeeds();
   const briefExtra = (): ReadonlyArray<string> => {
     const line = briefCommitments(commitments.list(), Date.now());
     return line === null ? [] : [line];
@@ -1193,6 +1195,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
     presence: () => awareness.describe(),
+    needsMe: async () =>
+      answerNeedsSpoken({
+        jobs: jobsCache ?? [],
+        sessions: input.sessions?.rows() ?? [],
+        findings: await watchFindings(),
+        extra: needsFromCommitments(commitments.list(), Date.now()),
+        config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+        external: externalNeeds,
+        now: Date.now(),
+      }),
     sessionsList: () => {
       const rows = input.sessions?.rows() ?? [];
       return rows.length === 0
@@ -1230,6 +1242,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           findings: await watchFindings(),
           extra: needsFromCommitments(commitments.list(), Date.now()),
           config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+          external: externalNeeds,
           now: Date.now(),
         });
       }
@@ -2263,6 +2276,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       findings: await watchFindings(),
       extra: needsFromCommitments(commitments.list(), at),
       config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+      external: externalNeeds,
       now: at,
     });
     const day = new Date(at).toDateString();

@@ -3,6 +3,7 @@ import type { BatonJob, BatonSessionSummary, WatchFinding } from "@t3tools/baton
 import { buildApprovals } from "@t3tools/baton-shared/approvals";
 import {
   describeNeeds,
+  spokenNeeds,
   needsFromApprovals,
   needsFromFindings,
   needsFromJobs,
@@ -10,7 +11,7 @@ import {
   type NeedItem,
 } from "@t3tools/baton-shared/needsMe";
 
-import { readExternalNeeds, type Run } from "./needsSources.ts";
+import { readExternalNeeds, type ExternalNeeds, type Run } from "./needsSources.ts";
 
 export interface NeedsInput {
   readonly jobs: ReadonlyArray<BatonJob>;
@@ -22,12 +23,16 @@ export interface NeedsInput {
   readonly hidden?: ReadonlySet<string>;
   readonly now: number;
   readonly run?: Run;
+  /** A cached, time-limited reader; the default reads fresh. */
+  readonly external?: ExternalNeeds;
 }
 
 export const collectNeeds = async (
   input: NeedsInput,
 ): Promise<{ ranked: ReadonlyArray<NeedItem>; unreadable: ReadonlyArray<string> }> => {
-  const external = await readExternalNeeds(input.config, input.now, input.run);
+  const external =
+    (await input.external?.(input.config, input.now)) ??
+    (await readExternalNeeds(input.config, input.now, input.run));
   const ranked = rankNeeds(
     [
       ...needsFromFindings(input.findings),
@@ -45,4 +50,12 @@ export const collectNeeds = async (
 export const answerNeeds = async (input: NeedsInput): Promise<string> => {
   const { ranked, unreadable } = await collectNeeds(input);
   return describeNeeds(ranked, unreadable);
+};
+
+/** The spoken short form (top 3) and the full card, from one read. */
+export const answerNeedsSpoken = async (
+  input: NeedsInput,
+): Promise<{ spoken: string; card: string }> => {
+  const { ranked, unreadable } = await collectNeeds(input);
+  return { spoken: spokenNeeds(ranked, unreadable), card: describeNeeds(ranked, unreadable) };
 };
