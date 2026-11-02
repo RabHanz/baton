@@ -86,13 +86,20 @@ describe("the second check before a wake from sleep", () => {
     expect(Math.max(...r.heard)).toBeGreaterThan(16_000 * 0.6);
   });
 
-  it("does not check a wake when he is already awake", async () => {
+  it("checks a wake that fires in an open window too, so a false fire cannot flash the pill or extend it", async () => {
     let checks = 0;
-    const r = rig(async () => !!(checks += 1));
+    const r = rig(async () => {
+      checks += 1;
+      return false;
+    });
     r.core.activate("wake");
     await r.core.idle();
+    const wakesBefore = r.events.filter((e) => e.type === "wake").length;
     r.wake();
     r.push(0.2);
-    expect(checks).toBe(0);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(0.2);
+    expect(checks).toBe(1);
+    expect(r.events.filter((e) => e.type === "wake")).toHaveLength(wakesBefore);
   });
 });

@@ -627,8 +627,9 @@ export const createVoiceCore = (input: {
 
     const score = input.wake.process(frame);
     if (score !== null) {
-      if (input.verifyWake !== undefined && machine.mode === "sleeping" && !hearingItself()) {
-        // From sleep the model alone is not enough: recognise what was just said first.
+      if (input.verifyWake !== undefined && machine.mode !== "dictation" && !hearingItself()) {
+        // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
+        // cue, flash the pill and extend the window): recognise what was just said first.
         if (!verifying) {
           verifying = true;
           const firedAt = samples;
