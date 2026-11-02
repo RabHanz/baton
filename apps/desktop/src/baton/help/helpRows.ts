@@ -17,6 +17,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   session_show: ["How is the build session going?", "Shows what a session did and is doing."],
   session_send: ["Tell the build session to rerun the tests", "Sends a message to a session."],
   fleet_status: ["What is everyone working on?", "A summary across machines."],
+  dictation_stop: ["Stop dictating", "Ends dictation."],
   dictation_start: ["Start dictating", "Your words are typed into the app you are in."],
   memory_search: ["What do you remember about the site?", "Searches your notes and past conversations."],
   memory_remember: ["Remember that I prefer tabs", "Keeps a note you can edit in Memory."],
