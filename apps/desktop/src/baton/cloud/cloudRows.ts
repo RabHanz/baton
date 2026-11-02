@@ -96,6 +96,10 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       field("cl.set.approverKeyVault", "cloud.ssh.approverKeyVault", s.approverKeyVault),
     );
   }
+  out.push({ id: "cl.test", section, label: text("cloud.test.label"), hint: text("cloud.test.hint"), kind: "action", button: text("cloud.test.button") });
+  if (v.tested !== null) {
+    v.tested.forEach((t, i) => out.push({ id: `cl.testrow.${i}`, section: text("cloud.test.section"), label: t.line, kind: "check", status: t.ok ? "ok" : "warn", detail: "" }));
+  }
   const assistants = text("cloud.section.assistants");
   for (const p of v.providers) {
     const d = v.detections[p.id];
@@ -187,7 +191,12 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
             id: ids("a", a.account),
             section,
             label: a.account,
-            hint: a.percent === null && !(a.why ?? "").includes("rejected") ? text("cloud.card.unknown") : a.why === "rejected" ? a.why : text("cloud.card.usage", { percent: a.percent ?? "?", resets: a.resets === null ? "" : text("cloud.card.resets", { when: a.resets }) }),
+            hint: a.enabled
+              ? [
+                  a.percent === null ? text("cloud.card.unknown") : text("cloud.card.usage", { percent: a.percent, resets: a.resets === null ? "" : text("cloud.card.resets", { when: a.resets }) }),
+                  ...((a.why ?? "").includes("renews soon") ? [text("cloud.card.renewSoon")] : []),
+                ].join(" · ")
+              : (a.why ?? ""),
             kind: "action",
             button: text("cloud.card.use", { account: a.account }),
             disabled: !a.enabled,

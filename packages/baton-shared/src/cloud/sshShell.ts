@@ -1,9 +1,6 @@
 /**
- * The shared computer's dispatch shell (transport 3, advanced). One connection serves every provider the
- * shell offers; the contract is in docs/baton/CLOUD_DISPATCH.md. A key per caller reaches only the allowed
- * subcommands, and approve/deny need a separate approver key. Use the computer's PUBLIC address, not a
- * tailnet one: Tailscale SSH ignores authorized_keys and so ignores the shell's forced command.
- * Arguments are a list, values need no quoting, and the brief travels on stdin.
+ * The shared computer's dispatch shell (advanced transport); the contract is in docs/baton/CLOUD_DISPATCH.md.
+ * Use its PUBLIC address: Tailscale SSH ignores the forced command. Arguments are a list; the brief is stdin.
  */
 import { jsonLines, jsonObject, requestFrom, safeArg, safeWords, usageFromShell } from "./parse.ts";
 import {

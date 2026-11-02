@@ -73,22 +73,70 @@ export const startWarmUp = (
 
 export const warmUpVoice = (input: WarmUpInput): Promise<boolean> => startWarmUp(input).result;
 
+const FRAME_SAMPLES_PER_MS = 16;
+/** A frame this quiet is room tone: a long run of them is shortened, because the replay below runs at the speed of speech. */
+const QUIET_RMS = 0.004;
+const KEEP_QUIET_MS = 1_200;
+
+const rms = (frame: Int16Array): number => {
+  let sum = 0;
+  for (const v of frame) sum += (v / 32768) ** 2;
+  return Math.sqrt(sum / Math.max(1, frame.length));
+};
+
+/** The held audio with every long quiet stretch cut to 1.2 s: enough to end a phrase, not minutes of waiting in silence. */
+export const compactQuiet = (frames: ReadonlyArray<Int16Array>): ReadonlyArray<Int16Array> => {
+  const out: Int16Array[] = [];
+  let quietMs = 0;
+  for (const frame of frames) {
+    if (rms(frame) < QUIET_RMS) {
+      quietMs += frame.length / FRAME_SAMPLES_PER_MS;
+      if (quietMs > KEEP_QUIET_MS) continue;
+    } else quietMs = 0;
+    out.push(frame);
+  }
+  return out;
+};
+
 /**
- * The core, except that audio arriving before `ready` is kept (the newest `maxFrames`, about 5 min) and given to it in order
- * the moment it is ready: a phrase said while the models are still loading is heard late, not dropped.
+ * The core, except that audio arriving before `ready` is kept (the newest `maxFrames`, about 5 min) and played in once it
+ * is ready. Played in at the speed it was said, not all at once: the wake check, the command window and the recogniser
+ * all follow the clock, so a phrase pushed in a burst finishes before the window that waits for it has opened.
  */
 export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => void }>(
   core: T,
   ready: Promise<unknown>,
   maxFrames = 15_000,
+  /** For the turn log, and a test's clock. */
+  on: {
+    readonly first?: () => void;
+    readonly played?: (frames: number) => void;
+    readonly sleep?: (ms: number) => Promise<void>;
+  } = {},
 ): T => {
+  const sleep =
+    on.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let open = false;
+  let seen = false;
   const held: Int16Array[] = [];
-  void ready.then(() => {
+  void ready.then(async () => {
+    const backlog = compactQuiet(held.splice(0));
+    on.played?.(backlog.length);
+    let next = 0;
+    // Frames that arrive while this plays queue behind it, in order; the last check and `open = true` have no await between them.
+    for (;;) {
+      const frame = backlog[next++] ?? held.shift();
+      if (frame === undefined) break;
+      core.pushAudio(frame);
+      await sleep(frame.length / FRAME_SAMPLES_PER_MS);
+    }
     open = true;
-    for (const frame of held.splice(0)) core.pushAudio(frame);
   });
   const pushAudio = (frame: Int16Array) => {
+    if (!seen) {
+      seen = true;
+      on.first?.();
+    }
     if (open) return core.pushAudio(frame);
     held.push(frame);
     if (held.length > maxFrames) held.shift();

@@ -30,6 +30,9 @@ on:
       perf_enforce:
         type: boolean
         default: false
+      starved_only:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -55,6 +58,10 @@ on:
         default: ""
       perf_enforce:
         description: "Fail the resource step when a budget in scripts/baton/perf-budgets.json is exceeded"
+        type: boolean
+        default: false
+      starved_only:
+        description: "In the resource step, run only the starved starts (skip the four 60 s phases)"
         type: boolean
         default: false
 
@@ -139,7 +146,7 @@ jobs:
 
       - name: Resource budget (idle, wake-listen, dictation, assistant turn, starved start)
         shell: pwsh
-        run: ./scripts/baton/resource-proof.ps1 -Out "$env:RUNNER_TEMP/resource-proof" ${{ inputs.perf_enforce && '-Enforce' || '' }}
+        run: ./scripts/baton/resource-proof.ps1 -Out "$env:RUNNER_TEMP/resource-proof" ${{ inputs.perf_enforce && '-Enforce' || '' }} ${{ inputs.starved_only && '-OnlyStarved' || '' }}
 
       - name: "Stranger - uninstall keeps the user's data, removes the app"
         if: inputs.stranger

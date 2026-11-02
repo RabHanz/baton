@@ -206,6 +206,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     onCommitments,
     onWeave,
     onPhone,
+    onCloud,
     resolveIntent,
     runIntent,
   ]);

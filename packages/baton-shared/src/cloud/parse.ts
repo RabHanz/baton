@@ -79,6 +79,7 @@ export const usageFromShell = (o: Record<string, unknown>): { readonly usage: Re
         resetsAt: str(pick(a, "resets_pkt", "resets_at")),
         rejected: a["rejected"] === true,
         ...(typeof a["available"] === "boolean" ? { available: a["available"] } : {}),
+        ...(["ok", "renew-soon", "expired", "not-logged-in"].includes(String(a["login"])) ? { login: a["login"] as "ok" } : {}),
         pointsThisWeek: num(points[id]?.[account]),
       });
     }
