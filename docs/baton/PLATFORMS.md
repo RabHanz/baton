@@ -1,7 +1,7 @@
 # Platforms: what works where (2026-11-02)
 
 Tessaya is Windows first. This page says what was observed on each platform, how, and what stands between it and the same
-features. "Observed" means a CI run read the logs of a released build (`baton-v0.1.34`); nothing here was tried by a person on
+features. "Observed" means a CI run read the logs of a released build (`baton-v0.1.34` for the first table; a build of this repository's `main` for the voice rows, since the sidecar is packaged from `main` on); nothing here was tried by a person on
 a Mac or a Linux desktop.
 
 How to read it again: dispatch `baton-voice-proof.yml` with a release `tag`. The `prove` job is Windows (including the
@@ -15,9 +15,9 @@ stranger-install proof), `smoke linux` runs the AppImage under xvfb, `smoke maco
 | Installs / unpacks | silent NSIS install, uninstall removes the app and keeps user data | AppImage runs with `--appimage-extract-and-run --no-sandbox` | dmg mounts, the .app runs after `xattr -cr` (unsigned) |
 | Starts on a clean user | yes; no private default in user data; no user pack; only default wake words | yes; lifecycle `start` logged | yes |
 | Window | yes, second launch opens the main window (`open_main`, visible) | yes (`open_main`, visible, 1100x780) | yes ("main window created" in the app log); `open_main` is not logged for a second launch |
-| Voice start | goes past `begin` when voice is on | stops at `begin`: `binary:false`, the dictation sidecar is not built for Linux | stops at `begin`: `binary:false`, same |
-| Wake word, dictation, paste | built and proven on Windows | not available (needs the sidecar) | not available |
-| Test audio reaches the voice start | yes on Windows | no | no |
+| Voice start | goes past `begin` when voice is on | reaches `loop-started`, plays the test phrase and transcribes it | reaches `core-made`, then the app is killed (below) |
+| Wake word, dictation, paste | built and proven on Windows | wake and transcription proven with the test input; dictation hotkey and paste not exercised | not proven |
+| Test audio reaches the voice start | yes | yes | no (the app dies first) |
 | Auto-update | yes | the updater ran ("not available, latest 0.1.34") | not observed |
 | Noise in the log | none worth noting | GTK accelerator assertions and D-Bus connection errors under xvfb (cosmetic; no session bus in CI) | none observed |
 
@@ -25,16 +25,25 @@ Windows stranger-install proof (first read 2026-11-02): clean machine, silent in
 second launch, 12 text files in user data with no private name, no voice settings written (voice off until he turns it on),
 no user operating-system pack, uninstall removes the app and the Add or remove entry and leaves the 45 user-data files.
 
-## What is Windows only today
+## The sidecar, piece by piece: real, stubbed, unproven
 
-- The dictation and wake sidecar (`native/baton-dictation`): Parakeet through `transcribe-cpp`, `handy-recorder`,
-  `handy-keys` hotkeys, `enigo` typing, the Windows paste path and Win32 window work. It is the whole voice start beyond
-  `begin`. Its crates build on mac and Linux; the Win32 modules do not.
-- UI Automation: `ui_tree`, `click_element`, the focused-control reads and the drive's window-under-point lookup.
-- Windows Hello as the vault's consent gate (`UserConsentVerifier` through PowerShell) and DPAPI as one of the vault's key
-  wraps (Electron's `safeStorage` uses the Keychain on macOS and the Secret Service or kwallet on Linux, so the wrap itself
-  carries over; the Hello prompt does not).
-- The Windows installer packaging checks (SmartScreen, NSIS uninstall).
+`native/baton-dictation` builds and passes its tests on Windows, Linux x64 and macOS arm64 and x64 (CI, `baton-dictation-build.yml`),
+and `stageBatonVoice` packages it into every desktop build. What each piece is on each platform:
+
+| Piece | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Microphone capture (`handy-recorder`: WASAPI, CoreAudio, ALSA) | real, used daily | real code; device listing proven on the CI runner (CoreAudio null device); a real microphone and the Microphone permission not tried | real code; listing proven with ALSA's null device; real microphones not tried |
+| Test input (`BATON_TEST_WAV`, `BATON_FAKE_MIC`) for CI | real | real | real (this is what the smoke job uses) |
+| Parakeet model load and inference (`transcribe-cpp`, the same GGUF) | real | the sidecar alone loads the GGUF in about 1 s and transcribes on the runner (exit 0); inside the app the voice start reaches `core-made`, then the app process is **SIGKILLed during the warm-up** (about 50 s in, no crash report; the system log shows its `MTLCompilerService` helpers SIGKILLed at the same second, so the Metal path on the VM runner without a GPU is the lead, not confirmed; an ad-hoc signature on the bundle did not change it) | real: the smoke job's phrase is transcribed ("What is the cup of Brazil?") |
+| Wake word and VAD (onnxruntime) | real | not proven | real in the smoke job |
+| Hold-to-dictate hotkey (`handy-keys`) | real | the crate has a CGEventTap backend; needs Input Monitoring and Accessibility; **not exercised** | the crate's Linux backend; **not exercised**; Wayland has no global hotkeys without a portal |
+| Paste into the focused app | real (`paste_windows`, receipt-based, restores the clipboard) | real code (`pbcopy`, Command-V through `enigo`, clipboard restored after 1.5 s); needs Accessibility; **not exercised** | real code (`wl-copy` or `xclip` plus a chord; `wtype`/X11); **not exercised** |
+| Which app has focus | real | `osascript` front-app lookup; title not available | `hyprctl` / `swaymsg` / X11 tools where present, else "unknown window" (text still pastes) |
+| Mouse hooks (chords, side buttons) | real (`mouse_windows`) | **stubbed**: no hook, bindings with mouse buttons do nothing | **stubbed** |
+| UI Automation: `ui_tree`, `locate`, `window_at`, window rect, pointer nudge | real | **stubbed** (return nothing); plan: Accessibility API | **stubbed**; plan: AT-SPI |
+
+The desktop app finds the binary next to itself (`resources/baton-voice/baton-dictation`, `.exe` on Windows; `BATON_DICTATION`
+overrides) and no longer says "Voice is Windows only for now" when it is there.
 
 ## Plan for native feature parity (planned, not built)
 
