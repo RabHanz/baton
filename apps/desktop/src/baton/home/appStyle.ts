@@ -299,4 +299,5 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .heat{display:grid;grid-template-rows:repeat(7,11px);grid-auto-flow:column;grid-auto-columns:11px;gap:3px;padding:8px 18px 12px}
 .heat i{display:block;width:11px;height:11px;border-radius:2px;background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line)}
 .heat .h1{background:var(--accent-wash)}.heat .h2{background:var(--accent-edge)}.heat .h3{background:var(--accent)}.heat .h4{background:var(--accent-deep)}.heat .hx{visibility:hidden}
+.editor{display:block;width:calc(100% - 36px);margin:4px 18px 8px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.5;border:1px solid var(--line-strong);background:var(--panel);color:var(--ink);border-radius:var(--r);padding:10px 12px;resize:vertical}.editor:focus{outline:2px solid var(--focus);outline-offset:1px}
 `;
