@@ -1177,3 +1177,10 @@ and the dry run of the hands' harness. Not proven: against a real session.
 Jobs, J1 (D145, 2026-11-02): the job terms, the lifecycle reducer and the permission and cap rules. Proven: the pure rules and the service against an in-memory database
 (`jobs.test.ts`, `BatonJobService.test.ts`): no work turn before agreement, a refinement kept, a standing permission skipping the wait only for its own job, a widening edit
 asking again, the permissions in words, the worker account by headroom. Not proven: creating a real worker thread in plan mode, the wire, any window, the phone.
+
+## 2026-11-03: Trust, playbooks, backup, recovery
+
+Merged: weaving to live threads outside Herdr, the standing `retry` grant, the status-file writer, the
+Trust page and the first-run guide (#257); unattended playbooks, all off by default (#259); the employee
+spine regression test (#261); backup and restore (#263); heartbeat and interrupted-job recovery (#264).
+All unit tested or tested in CI; none seen on the laptop yet. Details and gaps: `GAP_AUDIT_2026-11-02.md` section 6b.
