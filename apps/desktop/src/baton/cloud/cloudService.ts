@@ -33,6 +33,9 @@ export interface CloudSettings {
   /** Key file paths, never keys. */
   readonly machineKey: string;
   readonly approverKey: string;
+  /** Names of vault items holding the keys instead of files; the vault wins when both are set. */
+  readonly machineKeyVault: string;
+  readonly approverKeyVault: string;
   /** A run that uses more than this many points of its own provider's weekly figure is flagged. */
   readonly capPoints: number;
   /** Also ask with a pop-up (mirrored to a paired phone) for each waiting task. */
@@ -47,6 +50,8 @@ export const DEFAULT_CLOUD: CloudSettings = {
   sshUser: "",
   machineKey: "",
   approverKey: "",
+  machineKeyVault: "",
+  approverKeyVault: "",
   capPoints: 2,
   askPopup: false,
 };
@@ -64,6 +69,8 @@ export interface CloudDeps {
   readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number }) => Promise<number>;
   readonly changed: () => void;
   readonly now: () => number;
+  /** A key from the vault for one call (Hello-gated), or null when no vault key is named. */
+  readonly vaultKey?: (name: string, why: string) => Promise<{ readonly ok: true; readonly path: string; readonly done: () => void } | { readonly ok: false; readonly error: string }>;
 }
 
 export const NOT_SET_UP = "Cloud tasks are not set up on this computer. Turn them on under Cloud.";
@@ -97,11 +104,29 @@ export const createCloud = (deps: CloudDeps) => {
   const providers = (): ReadonlyArray<CloudProvider> => {
     const s = deps.settings();
     if (s.transport === "hub") return hubProviders;
-    const sig = JSON.stringify([s.transport, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey]);
+    const sig = JSON.stringify([s.transport, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey, s.machineKeyVault, s.approverKeyVault]);
     if (built?.sig === sig) return built.list;
     const list =
       s.transport === "ssh"
-        ? sshProviders({ host: s.sshHost, user: s.sshUser, machineKey: s.machineKey, approverKey: s.approverKey }, deps.exec)
+        ? sshProviders(
+            {
+              host: s.sshHost,
+              user: s.sshUser,
+              machineKey: s.machineKey,
+              approverKey: s.approverKey,
+              ...(deps.vaultKey === undefined || (s.machineKeyVault === "" && s.approverKeyVault === "")
+                ? {}
+                : {
+                    keyFor: async (role: "machine" | "approver") => {
+                      const name = role === "machine" ? s.machineKeyVault : s.approverKeyVault;
+                      if (name === "") return null;
+                      const used = await deps.vaultKey!(name, role === "approver" ? "Approve a cloud task" : "Send a cloud task");
+                      return used.ok ? { path: used.path, done: used.done } : { error: used.error };
+                    },
+                  }),
+            },
+            deps.exec,
+          )
         : [...buildLocalProviders(deps.exec, fileStores(deps.dir), { codexEnv: s.codexEnv }).values(), ...STUBS];
     built = { sig, list };
     return list;

@@ -216,6 +216,8 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloud.offer.confirmTitle": "Approve on {account}?",
     "cloud.offer.approve": "Approve",
     "cloud.offer.back": "Back",
+    "cloud.ssh.machineKeyVault": "Shared computer: vault item holding the sending key (instead of a file)",
+    "cloud.ssh.approverKeyVault": "Shared computer: vault item holding the approval key (asks Windows Hello each time)",
   },
 };
 
