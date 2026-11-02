@@ -9,9 +9,7 @@ import * as NodePath from "node:path";
 
 import {
   changedPixels,
-  clipboardRaw,
   clipboardText,
-  clipLog,
   makeHost,
   ps,
   setClipboardText,
@@ -439,21 +437,18 @@ await task(
     await setClipboardText("SENTINEL");
     await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
     await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
+    const copied = Date.now();
     await t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" });
-    await sleep(1500);
-    let clip = await clipboardText();
-    if (clip !== "alpha beta gamma") {
-      // The chord did not put the text on the clipboard: use the menu, by name.
-      t.replan(`the clipboard reads "${clip}" after Ctrl+C; copying from the Edit menu instead`);
-      await t.tool("click_element", { label: "Edit", why: "open the menu" });
-      await t.tool("click_element", { label: "Copy", why: "copy the selection" });
-      await sleep(1000);
+    // On the runner Notepad leaves the clipboard empty for about five seconds after a copy, so the loop
+    // reads it back until the text is there (and says how long that took) instead of trusting the keystroke.
+    let clip = "";
+    for (let i = 0; i < 30 && clip !== "alpha beta gamma"; i += 1) {
+      await sleep(400);
       clip = await clipboardText();
-      t.check(false, `Ctrl+C right after typing did not copy (the menu did: "${clip}")`);
     }
     t.check(
       clip === "alpha beta gamma",
-      `the clipboard holds "${clip}" after a copy made straight after typing`,
+      `the clipboard held "${clip}" ${Math.round((Date.now() - copied) / 100) / 10}s after a copy made straight after typing`,
     );
   },
 );
@@ -487,31 +482,6 @@ await task(
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
   },
 );
-
-// Diagnostic: Ctrl+C after typing, with different pauses, and every clipboard command the driver made.
-await task("diag-copy", "Diagnose Ctrl+C", async (t) => {
-  const notes: string[] = [];
-  for (const pause of [0, 700]) {
-    await t.launch("notepad.exe", [], "Notepad");
-    await t.waitTree(/notepad/i);
-    await setClipboardText("SENTINEL");
-    clipLog.length = 0;
-    await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
-    await sleep(pause);
-    await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
-    const at = Date.now();
-    await t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" });
-    const seen: string[] = [];
-    for (let i = 0; i < 16; i += 1) {
-      seen.push(`+${Date.now() - at}ms ${await clipboardRaw()}`);
-      await sleep(400);
-    }
-    notes.push(`pause ${pause}: ${seen.join(" | ")} log: ${clipLog.slice(0, 8).join(", ")}`);
-    await t.cleanup();
-  }
-  t.evidence = notes.join(" || ");
-  for (const n of notes) console.log(`DIAG ${n}`);
-});
 
 host.dispose();
 const passed = results.filter((r) => r.result === "pass").length;

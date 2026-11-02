@@ -63,10 +63,7 @@ NodeReadline.createInterface({ input: clipProc.stdout }).on("line", (line) =>
   clipWaiting.shift()?.(line),
 );
 let clipChain: Promise<unknown> = Promise.resolve();
-export const clipLog: string[] = [];
-const clipStart = Date.now();
 const clip = (command: string): Promise<string> => {
-  clipLog.push(`${Date.now() - clipStart}ms ${command.split(" ")[0]}`);
   const turn = clipChain.then(
     () =>
       new Promise<string>((resolve, reject) => {
@@ -137,16 +134,6 @@ public static class Diff { public static int Count(string a, string b) {
 
 /** For tests that read or set the clipboard themselves, through the same helper. */
 export const clipboardText = () => clipboard.readText();
-/** The helper's raw answer, so an error is not mistaken for an empty clipboard. */
-export const clipboardRaw = async () => {
-  try {
-    return `ok:${Buffer.from(await clip("get"), "base64").toString("utf8")}`;
-  } catch (error) {
-    return `${(error as Error).message.slice(0, 80)}`;
-  }
-};
-export const setClipboardText = (text: string) => clipboard.writeText(text);
-
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
   readonly shot: (name: string) => Promise<string>;
