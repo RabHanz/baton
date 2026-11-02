@@ -278,6 +278,7 @@ export interface BatonDesktopBridge {
         | BatonMemoryBridgeRequest
         | BatonCommitmentBridgeRequest
         | BatonWeaveBridgeRequest
+        | BatonCloudBridgeRequest
         | BatonPhoneBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
@@ -348,6 +349,15 @@ export interface BatonCommitmentBridgeRequest {
 export interface BatonWeaveBridgeRequest {
   readonly kind: "weave";
   readonly op: "send" | "list" | "tick";
+  readonly args: Readonly<Record<string, unknown>>;
+}
+
+/** Cloud tasks on the computer that runs them (transport 2): which environments are connected, and a read or an act call to one. */
+export interface BatonCloudBridgeRequest {
+  readonly kind: "cloud";
+  readonly op: "environments" | "read" | "act";
+  /** The connected environment to ask; absent means the one this window is on. */
+  readonly environmentId?: string;
   readonly args: Readonly<Record<string, unknown>>;
 }
 

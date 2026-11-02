@@ -614,7 +614,7 @@ function tabPage(p) {
   if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Tessaya last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
 }
 
-const MODAL = ['general','system','keys','account','updates','about'].map(id => [L('modal.' + id), id]);
+const MODAL = ['general','system','keys','account','updates','cloud','about'].map(id => [L('modal.' + id), id]);
 let capturing = null, capNote = '';
 function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
 function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
@@ -681,6 +681,7 @@ function modalPage(b) {
   if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.motion', 'v.glass', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
   else if (modal === 'keys') bindingsPage(b);
+  else if (modal === 'cloud') { b.appendChild($('h1', null, L('modal.cloud'))); b.appendChild($('p', 'hint', L('cloudmodal.text'))).style.marginBottom = '14px'; const o1 = $('button', 'btn', L('cloudmodal.open')); o1.onclick = () => { modal = null; go('cloud'); }; const o2 = $('button', 'btn', L('cloudmodal.setup')); o2.style.marginLeft = '8px'; o2.onclick = () => { const sp = (S.extra || {}).setup; setupStep = sp ? Math.max(0, sp.steps.findIndex(s => s.id === 'cloud')) : 0; modal = 'setup'; render(); }; b.append(o1, o2); }
   else if (modal === 'setup') setupPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
@@ -696,7 +697,7 @@ function setupPage(b) {
   b.appendChild($('h1', null, step.title));
   const lead = $('p', 'hint', step.text); lead.style.marginBottom = '14px'; b.appendChild(lead);
   const list = [];
-  for (const id of step.controls) for (const c of S.controls) if (c.id === id || (id.slice(-1) === ':' && c.id.indexOf(id) === 0)) list.push(c);
+  for (const id of step.controls) for (const c of S.controls) if (c.id === id || ((id.slice(-1) === ':' || id.slice(-1) === '.') && c.id.indexOf(id) === 0)) list.push(c);
   if (list.length) { const g = $('div', 'group'); for (const c of list) g.appendChild(row(c)); b.appendChild(g); }
   if (step.meter) {
     const m = $('div', 'meter'); m.setAttribute('role', 'meter'); m.setAttribute('aria-label', 'Microphone level'); m.setAttribute('aria-valuemin', '0'); m.setAttribute('aria-valuemax', '100');

@@ -47,6 +47,8 @@ const CLOUD_VIEW: CloudView = {
   error: null,
   loadedAt: null,
   cards: new Map(),
+  environments: [],
+  tested: null,
 };
 
 const status = { label: "Listening", tone: "good", device: "", mark: "" };

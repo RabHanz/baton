@@ -79,10 +79,18 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
   if (req.method !== "POST") return say(404, "No such page.");
 
   if (parts[0] === "approvals" && parts.length === 2) {
-    const decision = parseDecision(body["decision"]);
-    if (decision === null) return say(400, "Say approve or deny.");
     const now = await deps.state();
     const approval = now.approvals.find((a) => a.id === parts[1]);
+    const choice = body["choice"];
+    // A question with a button for each answer (the cloud card): the phone sends which one, never a key.
+    if (typeof choice === "number" && approval !== undefined && approval.kind === "prompt" && approval.buttons !== undefined) {
+      if (!Number.isInteger(choice) || choice < 0 || choice >= approval.buttons.length) return say(400, "That is not one of the buttons.");
+      if (body["action"] !== approval.action) return say(409, "It changed since you looked. Look again.");
+      const took = await deps.answerPrompt(approval.ref, choice);
+      return took ? say(200, "Sent. Your computer carries on.") : say(409, "It was already answered on your computer.");
+    }
+    const decision = parseDecision(body["decision"]);
+    if (decision === null) return say(400, "Say approve or deny.");
     if (approval === undefined) return say(404, "That is no longer waiting for you.");
     if (approval.kind === "prompt" && approval.yes !== undefined && approval.cancel !== undefined) {
       if (body["action"] !== approval.action)

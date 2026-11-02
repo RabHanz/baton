@@ -46,6 +46,10 @@ const STEPS: ReadonlyArray<Omit<SetupStep, "title" | "text">> = [
     controls: ["v.pillPlace"],
   },
   {
+    id: "cloud",
+    controls: ["cl.set.on", "cl.det.", "cl.signin.", "cl.set.cap", "setup.cloud.github", "setup.cloud.always"],
+  },
+  {
     id: "privacy",
     controls: ["v.keepVoice", "pr.awWindow", "pr.awIdle", "pr.awFocus", "pr.awJobs"],
   },

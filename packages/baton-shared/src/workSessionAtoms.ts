@@ -18,6 +18,7 @@ import {
   BATON_JOB_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
+  BATON_CLOUD_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -139,6 +140,14 @@ export function createBatonWorkSessionAtoms<R, E>(
     weaveTick: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:weave-tick",
       tag: BATON_WEAVE_WS_METHODS.tick,
+    }),
+    cloudRead: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:cloud-read",
+      tag: BATON_CLOUD_WS_METHODS.read,
+    }),
+    cloudAct: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:cloud-act",
+      tag: BATON_CLOUD_WS_METHODS.act,
     }),
     commitmentsList: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-list",

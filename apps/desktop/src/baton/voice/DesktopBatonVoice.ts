@@ -17,6 +17,7 @@ import type {
   BatonCommitmentBridgeRequest,
   BatonPhoneBridgeRequest,
   BatonWeaveBridgeRequest,
+  BatonCloudBridgeRequest,
   BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
@@ -217,6 +218,9 @@ import {
   type PlaybookId,
 } from "../presence/playbooks.ts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
+import { terminalPlan } from "../cloud/terminal.ts";
+import { useVaultKey } from "../cloud/vaultKey.ts";
+import type { ProviderId } from "@t3tools/baton-shared/cloud/types";
 import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudService.ts";
 import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
@@ -717,6 +721,14 @@ export interface TrayExtras extends BrainVoiceHook {
   /** Registers or drops the Transforms shortcuts. */
   readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
+  readonly askMirrored?: (input: {
+    readonly title: string;
+    readonly detail: string;
+    readonly buttons: ReadonlyArray<string>;
+    readonly cancel: number;
+    readonly expiresMs?: number;
+    readonly armMs?: number;
+  }) => Promise<number>;
   readonly ask: (input: {
     readonly title: string;
     readonly detail: string;
@@ -1512,6 +1524,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonMemoryBridgeRequest
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
+      | BatonCloudBridgeRequest
       | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
@@ -1549,6 +1562,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonMemoryBridgeRequest
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
+      | BatonCloudBridgeRequest
       | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
@@ -3349,16 +3363,34 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     settings: cloudSettings,
     exec: nodeExec,
     dir: NodePath.join(input.stateDir, "cloud"),
-    hub: null,
-    ask: async (q) =>
-      (await input.extras?.ask({
-        title: q.title,
-        detail: q.detail,
-        buttons: q.buttons,
-        cancel: q.cancel,
-        armMs: q.armMs,
-        expiresMs: 120_000,
-      })) ?? q.cancel,
+    hub: async (op, provider, args) => {
+      const read = ["describe", "detect", "status", "list", "usage", "diff"].includes(op);
+      try {
+        const out = (await requestKept({
+          kind: "cloud",
+          op: read ? "read" : "act",
+          ...(cloudSettings().hubEnv === "" ? {} : { environmentId: cloudSettings().hubEnv }),
+          args: { op, ...(provider === "" ? {} : { provider }), args },
+        })) as { ok?: boolean; value?: unknown; error?: string } | null;
+        return out?.ok === true ? { ok: true, value: out.value } : { ok: false, error: out?.error ?? "The computer that runs cloud tasks did not answer." };
+      } catch {
+        return { ok: false, error: "There is no connection to the computer that runs cloud tasks." };
+      }
+    },
+    environments: async () =>
+      ((await requestKept({ kind: "cloud", op: "environments", args: {} }).catch(() => [])) as ReadonlyArray<{ id: string; label: string }> | null) ?? [],
+    vaultKey: (name, why) =>
+      useVaultKey(name, why, {
+        unlocked: () => vaultState.vault.isUnlocked(),
+        read: (n) => (vaultState.vault.isUnlocked() ? (vaultState.vault.valueOf(n)?.value ?? null) : null),
+        hello: (message) => windowsHello(message, input.platform),
+      }),
+    ask: async (q) => {
+      const box = { title: q.title, detail: q.detail, buttons: q.buttons, cancel: q.cancel, armMs: q.armMs, expiresMs: 120_000 };
+      // The waiting-task question also goes to a paired phone; the spoken-approval dialog stays on this computer.
+      const asker = q.everywhere === true ? (input.extras?.askMirrored ?? input.extras?.ask) : input.extras?.ask;
+      return (await asker?.(box)) ?? q.cancel;
+    },
     changed: () => pushHome(),
     now: () => Date.now(),
   });
@@ -4414,29 +4446,32 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (/^cl\.(p|a|ok|deny)\./.test(id)) {
       void cloud.click(id).catch(() => undefined);
     } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
+    else if (id === "cl.test") void cloud.test().catch(() => undefined);
     else if (id === "cl.set.on") saveCloud({ on });
-    else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh"))
-      saveCloud({ transport: value });
-    else if (id === "cl.set.cap")
-      saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
-    else if (
-      /^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey)(:save|:reset)$/.test(id)
-    ) {
-      const field = /^cl\.set\.(\w+):/.exec(id)![1] as
-        | "codexEnv"
-        | "sshHost"
-        | "sshUser"
-        | "machineKey"
-        | "approverKey";
-      saveCloud({
-        [field]:
-          id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "",
-      });
+    else if (id === "cl.set.ask") saveCloud({ askPopup: on });
+    else if (id === "cl.set.hubEnv" && typeof value === "string") saveCloud({ hubEnv: value });
+    else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh")) saveCloud({ transport: value });
+    else if (id === "cl.set.cap") saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
+    else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey|machineKeyVault|approverKeyVault)(:save|:reset)$/.test(id)) {
+      const field = /^cl\.set\.(\w+):/.exec(id)![1] as "codexEnv" | "sshHost" | "sshUser" | "machineKey" | "approverKey" | "machineKeyVault" | "approverKeyVault";
+      saveCloud({ [field]: id.endsWith(":save") && typeof value === "string" ? value.trim().slice(0, 300) : "" });
     } else if (id === "v.dnd") save({ doNotDisturb: on });
     else if (id === "v.snooze") toggleSnooze();
     else if (id === "q.setupDone") {
       save({ setupDone: true });
       NodeFS.rmSync(setupMarker, { force: true });
+    } else if (id === "setup.cloud.github") {
+      void Electron.shell.openExternal("https://github.com/apps/claude");
+    } else if (id.startsWith("cl.signin.")) {
+      const command = cloud.view().detections[id.slice("cl.signin.".length) as ProviderId]?.signInCommand ?? "";
+      const plan = terminalPlan(input.platform, command);
+      if (plan !== null) {
+        try {
+          NodeChildProcess.spawn(plan.file, [...plan.args], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+        } catch {
+          input.extras?.notice(`Open a terminal and run: ${command}`);
+        }
+      }
     } else if (id === "setup.hold") {
       if (typeof value === "string" && HOLD_KEY_CHOICES.includes(value)) {
         const checked = checkInput({ type: "key", accelerator: value });

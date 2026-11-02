@@ -226,6 +226,23 @@ describe("the phone API", () => {
     expect(calls).toEqual(["prompt pr1 0", "prompt pr1 1"]);
   });
 
+  it("answers a question with a button for each answer by its index, only within range", async () => {
+    const { deps, calls } = make();
+    const withButtons: PhoneDeps = {
+      ...deps,
+      state: async () => {
+        const s = await deps.state();
+        return { ...s, approvals: [{ id: "d:pr1", kind: "prompt", title: "Cloud task waiting", action: "Fix the flaky test", permission: "x", ref: "pr1", answerable: true, yes: 0, cancel: 3, buttons: ["Claude - a", "Codex - b", "Deny", "Decide later"] }] };
+      },
+    };
+    const post = (json: Record<string, unknown>) => handlePhone(withButtons, { method: "POST", path: "approvals/d:pr1", scopes: operate, json });
+    expect((await post({ choice: 1, action: "Fix the flaky test" })).status).toBe(200);
+    expect((await post({ choice: 4, action: "Fix the flaky test" })).status).toBe(400);
+    expect((await post({ choice: -1, action: "Fix the flaky test" })).status).toBe(400);
+    expect((await post({ choice: 0, action: "Something else" })).status).toBe(409);
+    expect(calls).toEqual(["prompt pr1 1"]);
+  });
+
   it("says 501 when the server cannot transcribe", async () => {
     const { deps } = make();
     const off: PhoneDeps = {
