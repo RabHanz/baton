@@ -18,6 +18,7 @@ import {
   BATON_COMMITMENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
   BATON_CLOUD_WS_METHODS,
+  BATON_SESSIONS_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
@@ -58,6 +59,7 @@ import { pullAction } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonCloudService } from "./BatonCloudService.ts";
+import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
@@ -91,6 +93,7 @@ export type BatonServices =
   | BatonPhoneInbox
   | BatonWeaveService
   | BatonCloudService
+  | BatonSessionCatalogService
   | BatonMemoryLearning
   | ServerConfig.ServerConfig
   | ScheduledTaskService
@@ -377,6 +380,16 @@ export const make = Effect.gen(function* () {
       ),
     [BATON_WEAVE_WS_METHODS.tick]: () =>
       run(Effect.flatMap(BatonWeaveService, (weave) => weave.tick)),
+    [BATON_SESSIONS_WS_METHODS.list]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.list(input))),
+    [BATON_SESSIONS_WS_METHODS.folders]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.folders(input))),
+    [BATON_SESSIONS_WS_METHODS.resume]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.resume(input))),
+    [BATON_SESSIONS_WS_METHODS.create]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.create(input))),
+    [BATON_SESSIONS_WS_METHODS.send]: (input) =>
+      run(Effect.flatMap(BatonSessionCatalogService, (s) => s.send(input))),
     [BATON_CLOUD_WS_METHODS.read]: (input) =>
       run(Effect.flatMap(BatonCloudService, (cloud) => cloud.call(input, "read"))),
     [BATON_CLOUD_WS_METHODS.act]: (input) =>

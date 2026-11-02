@@ -25,6 +25,7 @@ import * as BatonJobReactor from "./BatonJobReactor.ts";
 import * as BatonJobService from "./BatonJobService.ts";
 import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
+import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
 import * as BatonWeaveService from "./BatonWeaveService.ts";
 import * as BatonCommitmentService from "./BatonCommitmentService.ts";
 import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
@@ -74,6 +75,9 @@ const servicesInner = IntentService.layer.pipe(
       BatonCommitmentService.layer,
       BatonPhoneInbox.layer,
       BatonCloudService.layer,
+      BatonSessionCatalogService.layer.pipe(
+        Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+      ),
       BatonWeaveService.layer.pipe(
         Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
       ),
