@@ -118,4 +118,16 @@ layer("BatonPhoneInbox", (it) => {
       assert.isFalse(yield* inbox.answerPrompt("prompt-2", 0));
     }),
   );
+
+  it.effect("keeps up to eight answers for the cloud card and answers the last one by its index", () =>
+    Effect.gen(function* () {
+      const inbox = yield* BatonPhoneInbox;
+      const buttons = ["A", "B", "C", "D", "E", "F", "Deny", "Decide later"];
+      yield* inbox.mirror({ id: "prompt-8", title: "Cloud task waiting", detail: "d", buttons, yes: 0, cancel: 7 });
+      const [shown] = yield* inbox.pending;
+      assert.deepStrictEqual(shown?.buttons, buttons);
+      assert.isTrue(yield* inbox.answerPrompt("prompt-8", 7));
+      assert.strictEqual(yield* inbox.promptAnswer("prompt-8"), 7);
+    }),
+  );
 });
