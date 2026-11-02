@@ -12,6 +12,7 @@ const set = (id, v) => real ? ipc.invoke('baton-home:set', id, v).then(render) :
 const $ = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x !== undefined) e.textContent = x; return e; };
 const ICON = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  style: '<path d="M5 19l4-1 9-9-3-3-9 9z"/><path d="M14 6l3 3"/>',
   transforms: '<path d="M4 12h12M12 6l6 6-6 6"/>',
   snippets: '<path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h5"/>',
   now: '<circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
@@ -37,8 +38,9 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
+  style: ['Style', 'How formal Tessaya writes for each kind of app, and how much it tidies what you say.'],
   transforms: ['Transforms', 'Rewrite selected text with a named prompt: Polish, Prompt engineer, Shorten, Translate, or your own. By shortcut or by voice, with an undo.'],
   snippets: ['Snippets', 'Say a short cue and the full text lands in the field: an email address, a link, a prompt you reuse.'],
   now: ['Now', 'What needs you, what Tessaya is keeping track of and doing, what it learned today, and what it held back and why.'],
