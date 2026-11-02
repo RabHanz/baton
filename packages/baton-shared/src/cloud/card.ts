@@ -55,7 +55,7 @@ export const reduceCard = (s: CardState, e: CardEvent, choices: ReadonlyArray<Pr
 };
 
 /**
- * A spoken 'approve cloud request 3 on rabee' only gets as far as the confirm step: the account must be
+ * A spoken 'approve cloud request 3 on <account>' only gets as far as the confirm step: the account must be
  * named, it must be one that can be picked, and the card is read back before anything is approved.
  */
 export const fromSpoken = (
