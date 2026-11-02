@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off cryptoRandomUUID:off
 /**
  * The desktop's end of the phone relay: it takes what the phone asked from the server, runs it through the one assistant exactly
  * like a typed Ask, and sends the short reply and the card text back. It also mirrors the questions it asks him to the phone.
