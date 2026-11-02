@@ -78,6 +78,8 @@ import {
   cleanupSettingOf,
   STYLE_CATEGORIES,
 } from "@t3tools/baton-shared/writingStyle";
+import { computeDeepInsights } from "@t3tools/baton-shared/insightsDeep";
+import { insightControls } from "../writing/insightRows.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -766,6 +768,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const snippets = createSnippetStore(input.stateDir);
   const transforms = createTransformStore(input.stateDir);
   const styles = createStyleStore(input.stateDir);
+  /** Worked out from History at most every half minute; Home redraws far more often. */
+  let deepAt = 0;
+  let deepValue: ReturnType<typeof computeDeepInsights> | null = null;
+  const deepInsights = () => {
+    if (history === null) return null;
+    if (Date.now() - deepAt > 30_000) {
+      const turns = history.list({ query: "", limit: 20_000 });
+      deepValue = turns.some((t) => t.kind === "dictation")
+        ? computeDeepInsights(turns, Date.now())
+        : null;
+      deepAt = Date.now();
+    }
+    return deepValue;
+  };
   const askModel = createModelAsk({
     claudeBinary: () => settings.claudeBinary,
     model: () => settings.cleanupModel,
@@ -2523,6 +2539,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
+      ...insightControls(deepInsights()),
       ...presenceControls(settings),
       ...memoryTab.controls(),
       ...vaultTab.controls(),
