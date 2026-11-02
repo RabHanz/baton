@@ -191,7 +191,7 @@ describe("the approval card, for any provider", () => {
     { provider: "codex", account: "work", weeklyPercent: null, resetsAt: null, rejected: false, pointsThisWeek: null },
   ];
   const providers: CloudProvider[] = [
-    claudeSsh({ ...SSH }, fakeExec(() => ({})).exec),
+    claudeSsh({ ...SSH, accounts: ["signzart", "rabee", "optima"] }, fakeExec(() => ({})).exec),
     localProvider(codexHarness(fakeExec(() => ({})).exec, { codexHomes: { work: "/h" } }), memoryStores().store, memoryStores().brief),
     ...STUBS,
   ];

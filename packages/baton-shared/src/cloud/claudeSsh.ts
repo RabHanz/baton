@@ -34,7 +34,9 @@ export const sshProblem = (r: ExecResult, key: "machine" | "approver"): string =
   return typeof e === "string" && e !== "" ? e.slice(0, 200) : "The cloud dispatch computer refused that.";
 };
 
-export const claudeSsh = (s: SshSettings, exec: Exec, caller = "tessaya"): CloudProvider => {
+export const claudeSsh = (s: SshSettings, exec: Exec): CloudProvider => {
+  /** Account names the shell reported last; the card offers these when none are configured. */
+  let known: ReadonlyArray<string> = [];
   const ready = s.host !== "" && s.user !== "" && s.machineKey !== "";
   const call = async (
     key: "machine" | "approver",
@@ -78,7 +80,7 @@ export const claudeSsh = (s: SshSettings, exec: Exec, caller = "tessaya"): Cloud
       line: ready ? "Claude runs on the shared cloud computer." : "Claude on a shared cloud computer is not set up.",
       signInCommand: null,
     }),
-    accounts: () => s.accounts ?? ["signzart", "rabee", "optima"],
+    accounts: () => s.accounts ?? known,
     dispatch: async (input) => {
       const brief = input.brief.trim();
       if (brief === "") return fail("There is nothing to send.");
@@ -117,6 +119,7 @@ export const claudeSsh = (s: SshSettings, exec: Exec, caller = "tessaya"): Cloud
         const u = typeof x === "object" && x !== null ? usageFrom("claude", x as Record<string, unknown>) : null;
         return u === null ? [] : [u];
       });
+      known = list.map((u) => u.account);
       return { ok: true, value: list };
     },
     approve: async (id, account, answerRef) => {
