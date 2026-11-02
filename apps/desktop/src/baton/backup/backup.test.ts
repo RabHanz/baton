@@ -22,7 +22,7 @@ describe("zip", () => {
     expect(back).not.toBeInstanceOf(Error);
     expect((back as Array<{ name: string; data: Buffer }>).map((e) => `${e.name}:${e.data}`)).toEqual(["a/b.txt:hello", "c.json:{}"]);
     const bad = Buffer.from(zip);
-    bad[35] = bad[35]! ^ 0xff;
+    bad[37] = bad[37]! ^ 0xff;
     expect(readZip(bad)).toBeInstanceOf(Error);
     expect(readZip(Buffer.from("not a zip at all, just text"))).toBeInstanceOf(Error);
   });
