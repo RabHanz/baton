@@ -7,6 +7,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 
+import { notConnected, parseFeed, type FeedRead } from "@t3tools/baton-shared/needsFeeds";
 import {
   needsFromDeadlines,
   needsFromLedger,
@@ -87,8 +88,31 @@ export const readDeadlines = (file: string): ReadonlyArray<DeadlineRow> => {
   return Array.isArray(parsed.rows) ? parsed.rows : [];
 };
 
+export interface NeedsConfig {
+  readonly repos: ReadonlyArray<string>;
+  readonly deadlinesFile: string | null;
+  /** Files other systems write (a status export): read-only. */
+  readonly feeds?: ReadonlyArray<string>;
+  /** Sources he expects an answer from; one with no readable feed is listed as not connected. */
+  readonly expect?: ReadonlyArray<string>;
+}
+
+export const readFeeds = (files: ReadonlyArray<string>, now: number): ReadonlyArray<FeedRead> =>
+  files.map((file) => {
+    const name = file.split(/[\\/]/).at(-1) ?? file;
+    try {
+      return parseFeed(NodeFS.readFileSync(file, "utf8"), now, name);
+    } catch {
+      return {
+        source: name,
+        items: [],
+        problem: `${name}: the feed file could not be read`,
+      } satisfies FeedRead;
+    }
+  });
+
 export const readExternalNeeds = async (
-  config: { readonly repos: ReadonlyArray<string>; readonly deadlinesFile: string | null },
+  config: NeedsConfig,
   now: number,
   run?: Run,
 ): Promise<{ items: ReadonlyArray<NeedItem>; unreadable: ReadonlyArray<string> }> => {
@@ -102,14 +126,18 @@ export const readExternalNeeds = async (
       unreadable.push("the deadlines file");
     }
   }
-  return { items: [...needsFromLedger(ledger.issues), ...deadlines], unreadable };
+  const feeds = readFeeds(config.feeds ?? [], now);
+  for (const f of feeds) if (f.problem !== null) unreadable.push(f.problem);
+  for (const missing of notConnected(config.expect ?? [], feeds))
+    unreadable.push(`${missing} (not connected)`);
+  return {
+    items: [...needsFromLedger(ledger.issues), ...deadlines, ...feeds.flatMap((f) => f.items)],
+    unreadable,
+  };
 };
 
 type External = { items: ReadonlyArray<NeedItem>; unreadable: ReadonlyArray<string> };
-export type ExternalNeeds = (
-  config: { readonly repos: ReadonlyArray<string>; readonly deadlinesFile: string | null },
-  now: number,
-) => Promise<External>;
+export type ExternalNeeds = (config: NeedsConfig, now: number) => Promise<External>;
 
 /**
  * gh is slow and a spoken answer must not wait for it: serve the last read while it is fresh, and
