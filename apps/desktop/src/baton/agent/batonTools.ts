@@ -59,6 +59,8 @@ type JobOp =
   | "commit_add"
   | "commit_done"
   | "commit_list"
+  | "notices_stop"
+  | "notices_resume"
   | "split";
 
 type Args = Readonly<Record<string, unknown>>;
@@ -382,6 +384,21 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     inputSchema: object({ include_closed: { type: "boolean" } }),
     run: async (a) => ({
       text: await host.jobs("commit_list", { include_closed: a["include_closed"] === true }),
+    }),
+  },
+  {
+    name: "notices_stop",
+    description:
+      "He said stop telling him about something ('stop telling me about the nightly build'). Silences the offers whose title matches the words, until notices_resume. Say what was silenced.",
+    inputSchema: object({ about: { type: "string", maxLength: 200 } }, ["about"]),
+    run: async (a) => ({ text: await host.jobs("notices_stop", { about: str(a, "about", 200) }) }),
+  },
+  {
+    name: "notices_resume",
+    description: "Take back a 'stop telling me about X': the matching offers are raised again.",
+    inputSchema: object({ about: { type: "string", maxLength: 200 } }, ["about"]),
+    run: async (a) => ({
+      text: await host.jobs("notices_resume", { about: str(a, "about", 200) }),
     }),
   },
   {
