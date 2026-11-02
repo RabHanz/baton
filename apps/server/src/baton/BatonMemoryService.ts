@@ -439,11 +439,15 @@ export const make = Effect.gen(function* () {
   });
 
   const flag = Effect.fn("BatonMemoryService.flag")(function* (key: string) {
-    const rows = yield* sql<{ value: string }>`SELECT value FROM fabric_memory_meta WHERE key = ${`flag:${key}`}`.pipe(Effect.orDie);
+    const rows = yield* sql<{
+      value: string;
+    }>`SELECT value FROM fabric_memory_meta WHERE key = ${`flag:${key}`}`.pipe(Effect.orDie);
     return rows[0]?.value === "1";
   });
   const setFlag = Effect.fn("BatonMemoryService.setFlag")(function* (key: string, on: boolean) {
-    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`flag:${key}`}, ${on ? "1" : "0"})`.pipe(Effect.orDie);
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`flag:${key}`}, ${on ? "1" : "0"})`.pipe(
+      Effect.orDie,
+    );
   });
 
   const MAX_TALKS = 12;

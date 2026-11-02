@@ -187,7 +187,9 @@ export const mergeCommitments = (
   }
   const seen = new Map<string, Commitment>();
   const out: Commitment[] = [];
-  for (const c of [...byId.values()].toSorted((x, y) => x.createdAt - y.createdAt || x.id.localeCompare(y.id))) {
+  for (const c of [...byId.values()].toSorted(
+    (x, y) => x.createdAt - y.createdAt || x.id.localeCompare(y.id),
+  )) {
     const key = c.text.toLowerCase();
     if (c.status === "open") {
       if (seen.has(key)) continue;

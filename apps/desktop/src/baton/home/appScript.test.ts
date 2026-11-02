@@ -32,8 +32,13 @@ describe("command palette", () => {
   ];
   it("matches every word, label first, and shows a few when the box is empty", () => {
     expect(page.paletteRank(items, "").length).toBe(3);
-    expect(page.paletteRank(items, "trust").map((i) => i.label)).toEqual(["Trust", "Hold to dictate"]);
-    expect(page.paletteRank(items, "mute mic").map((i) => i.label)).toEqual(["Mute the microphone"]);
+    expect(page.paletteRank(items, "trust").map((i) => i.label)).toEqual([
+      "Trust",
+      "Hold to dictate",
+    ]);
+    expect(page.paletteRank(items, "mute mic").map((i) => i.label)).toEqual([
+      "Mute the microphone",
+    ]);
     expect(page.paletteRank(items, "zzz")).toEqual([]);
   });
 });

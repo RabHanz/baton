@@ -72,17 +72,15 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
         ? "Due now"
         : `Due ${new Date(c.due).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
   return [
-    ...(data.interrupted ?? []).map(
-      (j): HomeControl => ({
-        id: `now.int:${j.id}`,
-        section: CUT,
-        label: j.title,
-        hint: "Tessaya restarted while this was running. It has not been continued.",
-        kind: "action",
-        button: "Continue",
-        lead: true,
-      }),
-    ),
+    ...(data.interrupted ?? []).map((j): HomeControl => ({
+      id: `now.int:${j.id}`,
+      section: CUT,
+      label: j.title,
+      hint: "Tessaya restarted while this was running. It has not been continued.",
+      kind: "action",
+      button: "Continue",
+      lead: true,
+    })),
     ...(data.brief == null ? [] : [note("now.brief", BRIEF, "Your morning brief", data.brief)]),
     ...(!data.loaded
       ? [note("now.loading", NEEDS, "Reading everything", "This takes a moment.")]

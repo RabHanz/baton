@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/prefer-effect-fn -- Baton file predating the rule (D82) */
 // @effect-diagnostics cryptoRandomUUID:off
 /**
  * Weaving (D149): one session messages another by name. The server reads the target's pane first
@@ -158,7 +159,11 @@ export const make = Effect.gen(function* () {
       const out = box.queueOnly
         ? null
         : yield* box.adapter.readOutput({ session, lines: SCREEN_LINES });
-      const input = box.queueOnly ? "empty" : out?.available ? paneInputState(out.output) : "unknown";
+      const input = box.queueOnly
+        ? "empty"
+        : out?.available
+          ? paneInputState(out.output)
+          : "unknown";
       const step = nextStep(rec, { present: true, busy, input }, now);
       if (step.do === "send") {
         const sent = yield* box.adapter.sendInput({ session, text: rec.text, submit: true });

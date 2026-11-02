@@ -27,7 +27,11 @@ import {
   retryRefusal,
   retryText,
 } from "@t3tools/baton-shared/jobReport";
-import { outboundDecision, permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
+import {
+  outboundDecision,
+  permissionsSummary,
+  workerFirstMessage,
+} from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ThreadId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -175,7 +179,12 @@ export const refineJob = Effect.fn("BatonJobFlow.refine")(function* (input: Bato
   const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
   const terms = yield* jobs.refine(
     input.id,
-    { by: input.note === true ? "baton" : "him", at, via: input.note === true ? "thread" : input.via, text: input.text },
+    {
+      by: input.note === true ? "baton" : "him",
+      at,
+      via: input.note === true ? "thread" : input.via,
+      text: input.text,
+    },
     input.widens === true,
   );
   if (terms === null || input.note === true) return terms;
@@ -642,7 +651,8 @@ export const postReports = Effect.fn("BatonJobFlow.postReports")(function* (
   const wrote: string[] = [];
   for (const card of cards) {
     const entry = entries.find((e) => e.workSessionId === card.workSessionId);
-    if (entry === undefined || card.phase !== "approved" || !REPORTING_STATES.has(card.state)) continue;
+    if (entry === undefined || card.phase !== "approved" || !REPORTING_STATES.has(card.state))
+      continue;
     if (!reportDue(card.terms.revisions, card.terms.createdAt, reportCadence(card), now)) continue;
     const synopsis = entry.synopsis;
     const text = buildReport({

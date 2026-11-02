@@ -28,20 +28,27 @@ export const backupControls = (
     },
     ...(note === null
       ? []
-      : [{ id: "bk.note", section, label: note, kind: "check" as const, status: "ok" as const, detail: "" }]),
+      : [
+          {
+            id: "bk.note",
+            section,
+            label: note,
+            kind: "check" as const,
+            status: "ok" as const,
+            detail: "",
+          },
+        ]),
     ...(preview === null
       ? []
       : [
-          ...preview.rows.map(
-            (r, i): HomeControl => ({
-              id: `bk.row:${i}`,
-              section: previewSection,
-              label: r.name,
-              kind: "check",
-              status: r.action === "refused" ? "warn" : "ok",
-              detail: text(`backup.${r.action}`),
-            }),
-          ),
+          ...preview.rows.map((r, i): HomeControl => ({
+            id: `bk.row:${i}`,
+            section: previewSection,
+            label: r.name,
+            kind: "check",
+            status: r.action === "refused" ? "warn" : "ok",
+            detail: text(`backup.${r.action}`),
+          })),
           {
             id: "bk.apply",
             section: previewSection,

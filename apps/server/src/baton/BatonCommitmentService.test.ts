@@ -26,7 +26,10 @@ layer("BatonCommitmentService", (it) => {
       assert.strictEqual(yield* svc.upsert([open("a", 5, 99)]), 0);
       assert.strictEqual(yield* svc.upsert([open("a", 20, 99)]), 1);
       const items = yield* svc.list;
-      assert.deepStrictEqual(items.map((c) => c.id), ["a", "b"]);
+      assert.deepStrictEqual(
+        items.map((c) => c.id),
+        ["a", "b"],
+      );
       assert.strictEqual(items[0]?.due, 99);
     }),
   );
@@ -35,7 +38,9 @@ layer("BatonCommitmentService", (it) => {
     Effect.gen(function* () {
       const svc = yield* BatonCommitmentService;
       yield* svc.upsert([open("c", 10)]);
-      yield* svc.upsert([{ ...open("c", 30), status: "done" as const, closedAt: 2_000_000_000_000 }]);
+      yield* svc.upsert([
+        { ...open("c", 30), status: "done" as const, closedAt: 2_000_000_000_000 },
+      ]);
       assert.strictEqual(yield* svc.upsert([open("c", 99)]), 0);
       const c = (yield* svc.list).find((x) => x.id === "c");
       assert.strictEqual(c?.status, "done");

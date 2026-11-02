@@ -13,11 +13,22 @@ import { BatonWeaveBoxes, makeLiveBox } from "./BatonWeaveBoxes.ts";
 import { BatonWeaveService, layer as weaveLayer } from "./BatonWeaveService.ts";
 
 const session = (sessionId: string, name: string, herdrPane: string | null) =>
-  ({ pid: 1, sessionId, cwd: "/w/x", name, status: "idle", herdrPane }) as unknown as ClaudeLiveSession;
+  ({
+    pid: 1,
+    sessionId,
+    cwd: "/w/x",
+    name,
+    status: "idle",
+    herdrPane,
+  }) as unknown as ClaudeLiveSession;
 
 const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "weave-live-"));
 const live = makeLiveBox(
-  Effect.succeed([session("sid-1", "plain", null), session("sid-2", "paned", "p1"), session("sid-3", "sender", null)]),
+  Effect.succeed([
+    session("sid-1", "plain", null),
+    session("sid-2", "paned", "p1"),
+    session("sid-3", "sender", null),
+  ]),
   () => dir,
 );
 
@@ -35,9 +46,16 @@ layer("weaving to live threads outside Herdr", (it) => {
   it.effect("queues for the session and notes the sender's thread", () =>
     Effect.gen(function* () {
       const weave = yield* BatonWeaveService;
-      const sent = yield* weave.send({ to: "plain", text: "please look at the build", from: "sender" });
+      const sent = yield* weave.send({
+        to: "plain",
+        text: "please look at the build",
+        from: "sender",
+      });
       assert.strictEqual(sent.status, "delivered");
-      assert.deepStrictEqual(queued("sid-1").map((i) => i.text), ["please look at the build"]);
+      assert.deepStrictEqual(
+        queued("sid-1").map((i) => i.text),
+        ["please look at the build"],
+      );
       const [note] = queued("sid-3");
       assert.strictEqual(note?.kind, "note");
       assert.match(note?.text ?? "", /^Sent to live:plain/);

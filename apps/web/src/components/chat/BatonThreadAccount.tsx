@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
  * The account a thread runs as, and one click to change it for this thread alone (D95). Each
  * account is a provider instance and their homes share transcripts, so the thread keeps its
