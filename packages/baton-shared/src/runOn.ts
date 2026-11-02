@@ -1,6 +1,6 @@
 /**
  * "Run on": which machine a job's worker runs on. The job flow always ran on the server the window is paired with; with more
- * than one server connected (this computer, signzart, onnyx) he can name where. Pure: it picks a connected server by its
+ * than one server connected (this computer and others) he can name where. Pure: it picks a connected server by its
  * label and says plainly when the name matches none, or the server is not connected.
  */
 

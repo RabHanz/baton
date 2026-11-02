@@ -793,7 +793,7 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
           type: "string",
           maxLength: 60,
           description:
-            "Which connected computer runs the worker: its name (signzart, onnyx). Leave out, or 'this computer', to run it here. The project must exist there.",
+            "Which connected computer runs the worker: its name as the sidebar shows it. Leave out, or 'this computer', to run it here. The project must exist there.",
         },
         folders: { type: "array", items: { type: "string" }, maxItems: 10 },
         tools: {
