@@ -315,7 +315,7 @@ import { describeJobs } from "../agent/jobText.ts";
 import { describeWatch } from "@t3tools/baton-shared/watch";
 import {
   freshFindings,
-  inQuietHours,
+  isSilenced,
   morningBrief,
   noticeLine,
 } from "@t3tools/baton-shared/attention";
@@ -387,6 +387,10 @@ interface VoiceSettings {
   readonly noticeMode: "off" | "written" | "spoken";
   /** "22-8" is silent from 22:00 to 08:00; "none" is never silent. */
   readonly quietHours: string;
+  /** Nothing unprompted is said or offered while this is on. */
+  readonly doNotDisturb: boolean;
+  /** Same, until this time (epoch ms): the one-hour snooze. */
+  readonly snoozeUntil: number;
   readonly briefMode: "off" | "written" | "spoken";
   /** Repositories whose ledger labels count in "what needs me" (read-only, gh), and a deadlines file. */
   /** What the assistant may know of his state: each off until he turns it on (D149). */
@@ -460,6 +464,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   micSilenceSeconds: DEFAULT_SILENCE_SECONDS,
   noticeMode: "written",
   quietHours: "22-8",
+  doNotDisturb: false,
+  snoozeUntil: 0,
   briefMode: "written",
   awarenessWindow: false,
   awarenessIdle: false,
@@ -2067,6 +2073,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const pill: VoicePill = createVoicePill({
+    menuItems: () => [
+      {
+        label: Date.now() < settings.snoozeUntil ? "End the snooze" : "Snooze for an hour",
+        click: () => toggleSnooze(),
+      },
+    ],
     ...((process.env["BATON_TEST_DIR"] ?? "") === ""
       ? {}
       : { captureDir: process.env["BATON_TEST_DIR"] as string }),
@@ -2588,10 +2600,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         findings?: ReadonlyArray<WatchFinding>;
       } | null
     )?.findings ?? [];
+  const toggleSnooze = () =>
+    save({ snoozeUntil: Date.now() < settings.snoozeUntil ? 0 : Date.now() + HIDE_FOR_MS });
+  const silenced = (at: Date) => isSilenced(settings, at);
   const checkAttention = async () => {
     if (mainContents === null || mainContents.isDestroyed()) return;
     const at = new Date();
-    if (inQuietHours(settings.quietHours, at.getHours())) return;
+    if (silenced(at)) return;
     const found = await watchFindings();
     if (settings.noticeMode !== "off") {
       const { fresh, next } = freshFindings(found, announced);
@@ -2671,7 +2686,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     now: () => Date.now(),
     hour: () => new Date().getHours(),
     policy: () =>
-      settings.initiativeMode === "off" || mainContents === null || mainContents.isDestroyed()
+      settings.initiativeMode === "off" ||
+      silenced(new Date()) || mainContents === null || mainContents.isDestroyed()
         ? null
         : {
             ...DEFAULT_POLICY,
@@ -2767,6 +2783,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         now,
         day: new Date(now).toDateString(),
         hour: new Date(now).getHours(),
+        quiet: silenced(new Date(now)),
         findings,
         ci: windowUp ? await ciRuns() : [],
         jobs,
@@ -3472,6 +3489,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        id: "v.dnd",
+        section: "Notices",
+        label: "Do not disturb",
+        hint: "Nothing unprompted is said or offered, and no reminder is spoken, until you turn this off.",
+        kind: "toggle",
+        on: settings.doNotDisturb,
+      },
+      {
+        id: "v.snooze",
+        section: "Notices",
+        label: "Snooze for an hour",
+        hint: "Also in the pill's right-click menu.",
+        kind: "action",
+        button: Date.now() < settings.snoozeUntil ? "End the snooze" : "Snooze",
+      },
+      {
         id: "v.quiet",
         section: "Notices",
         label: "Quiet hours",
@@ -3908,7 +3941,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? ""
           : "A built-in cannot be removed; replace it with your own of the same name.";
       } else if (act?.kind === "reset") transforms.reset();
-    } else if (id === "q.setupDone") {
+    } else if (id === "v.dnd") save({ doNotDisturb: on });
+    else if (id === "v.snooze") toggleSnooze();
+    else if (id === "q.setupDone") {
       save({ setupDone: true });
       NodeFS.rmSync(setupMarker, { force: true });
     } else if (id === "setup.hold") {
