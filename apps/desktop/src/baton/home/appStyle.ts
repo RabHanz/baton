@@ -123,6 +123,8 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 .stat.kvr{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .stat b.sm{font:600 14px var(--sans);margin:0;color:var(--ink)}
 .day{font:600 12px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:24px 0 8px}
+.dayhead{display:block;width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer}
+.dayhead:focus-visible{outline:2px solid var(--blue-soft,currentColor);outline-offset:2px}
 .day.first{margin-top:0}
 .log{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
 .log .li{display:grid;grid-template-columns:78px 1fr auto;gap:14px;padding:12px 16px;border-top:1px solid var(--line);align-items:baseline}
