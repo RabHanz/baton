@@ -27,10 +27,10 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 50f9a2acc0f39efc58d9330465d0f38a98858bb5..93e23711720bf19f117ff42c176b22e5f0d16cad 100644
+index 1fed13e08ad0b12dd9d120be6ab8e6892fa4eeb6..3a9d38c6f36b431bce102435f39066c07f918dce 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
-@@ -943,9 +943,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
+@@ -959,9 +959,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
    readonly hasCompletedRun: boolean;
    readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
    readonly legacyImportItemCount: number;
@@ -46,7 +46,7 @@ index 50f9a2acc0f39efc58d9330465d0f38a98858bb5..93e23711720bf19f117ff42c176b22e5
    );
  }
  
-@@ -6056,6 +6061,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6251,6 +6256,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -55,10 +55,10 @@ index 50f9a2acc0f39efc58d9330465d0f38a98858bb5..93e23711720bf19f117ff42c176b22e5
          ? yield* contextHandoffService
              .prepareLegacyImport({
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index fad06732fb48e949524e2bf5e051b83a1af61e90..75c80c7d67be8ee1bab5f69c055582be7c5a90fc 100644
+index 9a5ad6114e2b9ca163ba9f28fbb2e2f902941d2f..8a7eec97838c942f1a0f2801ec9da1c5f1edc806 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -1502,6 +1502,9 @@ export const layer: Layer.Layer<
+@@ -1672,6 +1672,9 @@ export const layer: Layer.Layer<
            ) + 1,
          nativeThreadHasTurns:
            nativeInputRunIds.size > 0 ||
@@ -69,7 +69,7 @@ index fad06732fb48e949524e2bf5e051b83a1af61e90..75c80c7d67be8ee1bab5f69c055582be
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
 diff --git a/apps/server/src/project/AgentSessionScanner.test.ts b/apps/server/src/project/AgentSessionScanner.test.ts
-index 3cbec21d8831dcf12c5ab6f8525ca502ea26c12e..32a2feb7f3312a7178d5486fa34190a52ff3cc5c 100644
+index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..2efbd17dc6a3d6f6a2e530440c061ffe147ac67a 100644
 --- a/apps/server/src/project/AgentSessionScanner.test.ts
 +++ b/apps/server/src/project/AgentSessionScanner.test.ts
 @@ -1075,6 +1075,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
@@ -89,10 +89,10 @@ index 3cbec21d8831dcf12c5ab6f8525ca502ea26c12e..32a2feb7f3312a7178d5486fa34190a5
            filePath: path.join(claudeHomePath, "projects", "-other", "claude-other.jsonl"),
            contents: claudeTranscript(otherWorkspace, "claude-other"),
 diff --git a/apps/server/src/project/AgentSessionScanner.ts b/apps/server/src/project/AgentSessionScanner.ts
-index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd80dcabe6d 100644
+index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6408e9357 100644
 --- a/apps/server/src/project/AgentSessionScanner.ts
 +++ b/apps/server/src/project/AgentSessionScanner.ts
-@@ -89,6 +89,7 @@ const TranscriptRecord = Schema.Struct({
+@@ -90,6 +90,7 @@ const TranscriptRecord = Schema.Struct({
    sessionId: Schema.optional(Schema.String),
    aiTitle: Schema.optional(Schema.String),
    customTitle: Schema.optional(Schema.String),
@@ -100,7 +100,7 @@ index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd8
    isSidechain: Schema.optional(Schema.Boolean),
    isMeta: Schema.optional(Schema.Boolean),
    isCompactSummary: Schema.optional(Schema.Boolean),
-@@ -266,6 +267,8 @@ interface ClaudeFields {
+@@ -278,6 +279,8 @@ interface ClaudeFields {
    readonly title: string | undefined;
    readonly customTitle: string | null;
    readonly model: string | undefined;
@@ -109,7 +109,7 @@ index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd8
  }
  
  const emptyClaudeFields: ClaudeFields = {
-@@ -273,12 +276,14 @@ const emptyClaudeFields: ClaudeFields = {
+@@ -285,12 +288,14 @@ const emptyClaudeFields: ClaudeFields = {
    title: undefined,
    customTitle: null,
    model: undefined,
@@ -124,7 +124,7 @@ index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd8
      sessionId: record.sessionId?.trim() || fields.sessionId,
      title: record.aiTitle?.trim() || fields.title,
      // Claude flushes the AI title after the user's rename; an empty rename clears it.
-@@ -1579,7 +1584,7 @@ export const make = Effect.gen(function* () {
+@@ -1636,7 +1641,7 @@ export const make = Effect.gen(function* () {
              snapshot.records,
              snapshot.claudeFields,
            );
@@ -132,9 +132,9 @@ index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd8
 +          if (parsedThread === null || snapshot.claudeFields.automated) {
              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
            }
- 
+           let savedTitle: string | undefined;
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 741fc73103b7d58d22fe7aac978291ecd2bd1819..2877936669c4927ba680d3dcfb0902fd1df887c3 100644
+index d0d51a0b241ba15c096708e1f592e673374a756d..ae584d6c912d40247905de882068bf551c193ab9 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -4,6 +4,7 @@ import * as Random from "effect/Random";
@@ -145,7 +145,7 @@ index 741fc73103b7d58d22fe7aac978291ecd2bd1819..2877936669c4927ba680d3dcfb0902fd
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -624,7 +625,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -663,7 +664,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    layerProviderInstallationRefresh,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -158,7 +158,7 @@ index 741fc73103b7d58d22fe7aac978291ecd2bd1819..2877936669c4927ba680d3dcfb0902fd
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -734,6 +740,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -775,6 +781,7 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
@@ -167,10 +167,10 @@ index 741fc73103b7d58d22fe7aac978291ecd2bd1819..2877936669c4927ba680d3dcfb0902fd
      Ws.layer,
    ),
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb7260c1ef 100644
+index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8330b2209 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -227,6 +227,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -231,6 +231,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
  import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
@@ -181,7 +181,7 @@ index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb
  import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-@@ -556,13 +560,14 @@ function projectFileFailureContext(
+@@ -598,13 +602,14 @@ function projectFileFailureContext(
  const PROVIDER_STATUS_DEBOUNCE_MS = 200;
  
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
@@ -198,7 +198,7 @@ index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb
  const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
  type SplitWsRpc = Extract<
    ServerWsRpc,
-@@ -572,7 +577,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+@@ -614,7 +619,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
    SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
  const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
    !isSplitWsRpc(rpc);
@@ -207,8 +207,8 @@ index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb
  const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
  const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
  // Replaying each intervening event costs a shell refetch; past this gap a
-@@ -1863,7 +1868,7 @@ export const layerWsRpc = (
-         return result;
+@@ -1909,7 +1914,7 @@ export const layerWsRpc = (
+         return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
        });
  
 -      const handlers = ServerWsRpcGroup.of({
@@ -216,7 +216,7 @@ index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3252,8 +3257,11 @@ export const layerWsRpc = (
+@@ -3318,8 +3323,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -230,7 +230,7 @@ index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb
        );
      }),
    );
-@@ -3326,7 +3334,7 @@ export const layer = Layer.unwrap(
+@@ -3394,7 +3402,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),

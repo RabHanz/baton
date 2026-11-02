@@ -8038,7 +8038,7 @@ index fa9c40e127adad36177ca591cd5beb0bb4545dd4..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/ThreadStatusIndicators.tsx b/apps/web/src/components/ThreadStatusIndicators.tsx
-index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc3166715167007109fc36 100644
+index ea49b01665b645c778731a375295672d00e700bb..0964589173c30b63818b55b112bd39ffe7c37863 100644
 --- a/apps/web/src/components/ThreadStatusIndicators.tsx
 +++ b/apps/web/src/components/ThreadStatusIndicators.tsx
 @@ -603,7 +603,7 @@ export function ThreadWorktreeIndicator({
@@ -8051,7 +8051,7 @@ index 0af0e063bdea3460ebb0f37d561de04c99cd6a83..a48b28e9518fb5e883dc316671516700
    compact = false,
  }: {
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index 144402d1dfe9fc52caa766d69ba099d0f24df626..fef80daf39b4252025e4f41cfed2cbb7f46305e4 100644
+index 49f21a1ddc829bb8d43af7d05bd9b6c9635a33dd..160c117c0f93546303a7acf9814396d21e0ea111 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
 @@ -20,6 +20,8 @@ import {
@@ -8063,7 +8063,7 @@ index 144402d1dfe9fc52caa766d69ba099d0f24df626..fef80daf39b4252025e4f41cfed2cbb7
  import { Badge } from "../ui/badge";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { toastManager } from "../ui/toast";
-@@ -427,6 +429,8 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -430,6 +432,8 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
@@ -8073,7 +8073,7 @@ index 144402d1dfe9fc52caa766d69ba099d0f24df626..fef80daf39b4252025e4f41cfed2cbb7
      </div>
    );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-index 1c792cf4cec5aa2cec100f6f1900fa7d7effddcc..443eef68240bd08d107085c33360bdeb6d4b0f23 100644
+index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..b835cd5071f0e33b69bdd739a4db0e730dcdf54e 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
 +++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
 @@ -1,5 +1,6 @@
@@ -8083,7 +8083,7 @@ index 1c792cf4cec5aa2cec100f6f1900fa7d7effddcc..443eef68240bd08d107085c33360bdeb
  import { memo, useLayoutEffect, useRef, useState } from "react";
  import { StarIcon } from "lucide-react";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-@@ -38,6 +39,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -39,6 +40,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
    getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
  }) {
@@ -8091,7 +8091,7 @@ index 1c792cf4cec5aa2cec100f6f1900fa7d7effddcc..443eef68240bd08d107085c33360bdeb
    const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
      props.onSelectInstance(instanceId);
    };
-@@ -122,7 +124,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -123,7 +125,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
              </>
            ) : null}
  
@@ -8100,7 +8100,7 @@ index 1c792cf4cec5aa2cec100f6f1900fa7d7effddcc..443eef68240bd08d107085c33360bdeb
              const isUnavailable = !isProviderInstancePickerReady(entry);
              const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
              const unavailableSelectionIsReachable =
-@@ -168,6 +170,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -169,6 +171,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                    acpRegistryAgentId={entry.acpRegistryAgentId}
                    acpRegistryIconUrl={entry.acpRegistryIconUrl}
                    showBadge={showInstanceBadge}
@@ -8154,7 +8154,7 @@ index 1207b5017100d7300d7a161e676531d145f45a75..6948dbb89c00d446274b4beaf50de58b
          <ConfirmDialogHost />
          <CustomSnoozeDialogHost />
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
-index 27129f11128b3f4f4a0304b3484b0e9513e461d7..f1246c1cb630c2bf39797e2d3799d07f346ac040 100644
+index 4ac36acedf761847ea5db4db237120aaa0da9939..d43691ae05eb0f95c5f7b0e5e1dd5429fe1a64de 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 +++ b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 @@ -2,6 +2,7 @@ import { ProviderDriverKind } from "@t3tools/contracts";
@@ -8165,7 +8165,7 @@ index 27129f11128b3f4f4a0304b3484b0e9513e461d7..f1246c1cb630c2bf39797e2d3799d07f
    normalizeProviderAccentColor,
    providerAccentForegroundColor,
    providerInstanceInitials,
-@@ -78,3 +79,25 @@ describe("shouldShowInstanceBadge", () => {
+@@ -83,3 +84,25 @@ describe("shouldShowInstanceBadge", () => {
      expect(shouldShowInstanceBadge(disabled, [disabled])).toBe(false);
    });
  });
@@ -8192,7 +8192,7 @@ index 27129f11128b3f4f4a0304b3484b0e9513e461d7..f1246c1cb630c2bf39797e2d3799d07f
 +  });
 +});
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.ts b/packages/client-runtime/src/state/providerInstanceDisplay.ts
-index 62f65445e82171f79eaa56be8d16655b95a4942d..221e0c2dbcb857a6c6b94a9398e6873769460835 100644
+index ad69b7275342b1afd577641f8a5f4f0a513bee54..625068d9960120924a06bced3bc890785359dcd2 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.ts
 +++ b/packages/client-runtime/src/state/providerInstanceDisplay.ts
 @@ -43,6 +43,28 @@ export function providerInstanceInitials(label: string): string {

@@ -231,7 +231,7 @@ index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70
        expect(live?.groupId).toBe("work-group:work-entry-0");
        const details = rows.filter((row) => row.kind === "work");
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a53dc53e2 100644
+index e32a7eb485fc69e9b2d39ea65a82ea6cc5a1b109..12dbc96e4ad75cbc06ad462bcab13d4f63baf520 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -119,8 +119,9 @@ describe("deriveMessagesTimelineRows", () => {
@@ -246,7 +246,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
      });
      for (const entries of [
        [first, steer, next],
-@@ -1669,6 +1670,103 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1725,6 +1726,103 @@ describe("deriveMessagesTimelineRows", () => {
      expect(rows.some((row) => row.kind === "thinking")).toBe(false);
    });
  
@@ -350,7 +350,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
    it("carries the latest thought on the live row while a later tool runs", () => {
      type WorkEntry = Extract<
        Parameters<typeof deriveMessagesTimelineRows>[0]["timelineEntries"][number],
-@@ -1719,8 +1817,10 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1775,8 +1873,10 @@ describe("deriveMessagesTimelineRows", () => {
  
      expect(rows.find((row) => row.kind === "work-live")).toMatchObject({
        entry: { id: "running-command" },
@@ -362,7 +362,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
    });
  
    it("keeps an actually running tool in the shared activity row", () => {
-@@ -2550,6 +2650,32 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -2606,6 +2706,32 @@ describe("deriveMessagesTimelineRows", () => {
        }
      },
    );
@@ -395,7 +395,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
  });
  
  describe("v2 run and attempt history", () => {
-@@ -4179,6 +4305,7 @@ describe("live subagents after their parent turn settles", () => {
+@@ -4235,6 +4361,7 @@ describe("live subagents after their parent turn settles", () => {
        expect(rows.map((row) => row.id)).toEqual([
          "user",
          `turn-fold:${runId}`,
@@ -403,7 +403,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
          "child",
          "assistant",
        ]);
-@@ -4187,7 +4314,13 @@ describe("live subagents after their parent turn settles", () => {
+@@ -4243,7 +4370,13 @@ describe("live subagents after their parent turn settles", () => {
  
    it("keeps a launch batch visible while any member is still running", () => {
      const rows = rowsFor([child("done", 3, "completed"), child("live", 4, "running")]);
@@ -418,7 +418,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
      expect(rows.find((row) => row.id === "done")).toMatchObject({
        subagents: [{ item: { id: "done" } }, { item: { id: "live" } }],
      });
-@@ -4337,6 +4470,7 @@ describe("subagent continued by a later turn", () => {
+@@ -4393,6 +4526,7 @@ describe("subagent continued by a later turn", () => {
        "answer-1",
        "prompt-2",
        `turn-fold:${run2}`,
@@ -427,7 +427,7 @@ index c9aec993bcd869941e08e49b24b923c12c2d7bed..1b17397e2470d76111d866cdacda0b2a
      ]);
    });
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d9b726a70 100644
+index 8a4a7552901a210fef0c36ccdb0aa7d6a1e43236..644126c7aa482fce1b7dfbe429d1fee0fc1a9af4 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -27,6 +27,7 @@ import {
@@ -462,7 +462,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
      }
    | {
        kind: "turn-fold";
-@@ -1396,6 +1407,8 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1400,6 +1411,8 @@ export function deriveMessagesTimelineRows(input: {
    expandedRunIds?: ReadonlySet<RunId>;
    expandedAttemptIds?: ReadonlySet<RunAttemptId>;
    expandedWorkGroupIds?: ReadonlySet<string>;
@@ -471,7 +471,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
    isWorking: boolean;
    /** Native subagent work has no app run; runless entries form the live response. */
    runlessWorkActive?: boolean;
-@@ -1664,16 +1677,49 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1668,16 +1681,49 @@ export function deriveMessagesTimelineRows(input: {
    let hasActivityRow = false;
    const hasActiveCompaction =
      activeCompactionEntry !== undefined || (activeRunIsCompaction && !compactionRunFinished);
@@ -523,7 +523,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
        ),
      );
    };
-@@ -1726,6 +1772,10 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1730,6 +1776,10 @@ export function deriveMessagesTimelineRows(input: {
      }
  
      if (collapsedEntryIds.has(timelineEntry.id)) {
@@ -534,7 +534,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
        continue;
      }
  
-@@ -1843,9 +1893,11 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1847,9 +1897,11 @@ export function deriveMessagesTimelineRows(input: {
          groupedEntries.push(nextEntry.entry);
          cursor += 1;
        }
@@ -547,7 +547,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
        if (visibleGroupedEntries.length > 0) {
          const activeInProgressToolEntries = visibleGroupedEntries.filter(workEntryIsInActiveRun);
          if (activeInProgressToolEntries.length > 0) {
-@@ -1925,6 +1977,9 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1929,6 +1981,9 @@ export function deriveMessagesTimelineRows(input: {
              hasFailure:
                latestToolEntry !== undefined &&
                workEntryDisplayIndicatesToolFailure(latestToolEntry),
@@ -557,7 +557,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
            });
            if (expanded) {
              nextRows.push(
-@@ -2391,6 +2446,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+@@ -2398,6 +2453,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
        return (
          a.createdAt === (b as typeof a).createdAt && a.compacting === (b as typeof a).compacting
        );
@@ -568,7 +568,7 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
      case "thinking": {
        const bt = b as typeof a;
        return a.createdAt === bt.createdAt && a.groupId === bt.groupId && a.expanded === bt.expanded;
-@@ -2493,7 +2552,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+@@ -2500,7 +2559,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
          a.summaryKind === bw.summaryKind &&
          a.toolSurface === bw.toolSurface &&
          Equal.equals(a.toolIcon, bw.toolIcon) &&
@@ -579,10 +579,10 @@ index 1f22bc1c14978faeee31ee9bf47772ff42db6eca..930e22f28a10c93513d2afff7570a62d
      }
  
 diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
-index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2ba940b99 100644
+index 4c2816376605819265ca7a92d32a55690c255af9..785c14b89a4a4d2acd1e9b8afcdda063db8dddd2 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.tsx
-@@ -107,6 +107,7 @@ import {
+@@ -113,6 +113,7 @@ import {
    WorkGroupSection,
    WorkingTimelineRow,
    ThinkingTimelineRow,
@@ -590,7 +590,7 @@ index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2
    LiveWorkEntryTimelineRow,
    WorkGroupToggleTimelineRow,
  } from "./TimelineWorkGroupRows";
-@@ -511,6 +512,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -522,6 +523,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
        return next;
      });
    };
@@ -604,7 +604,7 @@ index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2
    const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
      suspendEndScrollMaintenanceForDisclosure(anchorKey);
      setExpandedWorkGroupIds((existing) => {
-@@ -672,6 +680,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -683,6 +691,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      expandedRunIds: visibleExpandedRunIds,
      expandedAttemptIds: visibleExpandedAttemptIds,
      expandedWorkGroupIds,
@@ -612,7 +612,7 @@ index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2
      isWorking,
      runlessWorkActive,
      activeTurnStartedAt,
-@@ -1044,6 +1053,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -1055,6 +1064,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      onToggleTurnFold,
      onToggleAttemptFold,
      onToggleWorkGroup,
@@ -620,7 +620,7 @@ index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2
      onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
      onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
      retryableWorkspacePreparationRunIds,
-@@ -1489,6 +1499,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
+@@ -1500,6 +1510,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
            {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
          </WorkLogBlock>
        ) : null}
@@ -629,7 +629,7 @@ index 8c779ee950d679a19421633dfc818d7bdbe0b359..4ddfd03620a31d2e46beaaf9a5e13ee2
        {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
        {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
 diff --git a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-index a440b62a584d24bdc4a4e62e942589ffc0be2789..a42238da71defe52d339c1c0f13c55d0dc4632d1 100644
+index a1fccbaf78678e3b80e090847c612e51ebdf5e37..54880e37a6055bf00704a131d91d03c21017e9c9 100644
 --- a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 +++ b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 @@ -2,7 +2,11 @@ import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
@@ -654,7 +654,7 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..a42238da71defe52d339c1c0f13c55d0
  import { Button } from "../ui/button";
  import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
  import {
-@@ -357,6 +361,41 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
+@@ -358,6 +362,41 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
    );
  }
  
@@ -696,7 +696,7 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..a42238da71defe52d339c1c0f13c55d0
  export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
    const ctx = use(TimelineRowCtx);
    const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
-@@ -500,7 +539,8 @@ export function LiveWorkEntryTimelineRow({
+@@ -501,7 +540,8 @@ export function LiveWorkEntryTimelineRow({
    if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
  
    const failed = workEntryDisplayIndicatesToolFailure(row.entry);
@@ -706,7 +706,7 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..a42238da71defe52d339c1c0f13c55d0
    const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
  
    return (
-@@ -531,7 +571,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -532,7 +572,7 @@ export function LiveWorkEntryTimelineRow({
              </span>
            }
            label={
@@ -715,7 +715,7 @@ index a440b62a584d24bdc4a4e62e942589ffc0be2789..a42238da71defe52d339c1c0f13c55d0
                <ChatMarkdown
                  inline
                  text={thoughtLine}
-@@ -585,17 +625,40 @@ export function WorkGroupToggleTimelineRow({
+@@ -586,17 +626,40 @@ export function WorkGroupToggleTimelineRow({
    row: Extract<TimelineRow, { kind: "work-toggle" }>;
  }) {
    const ctx = use(TimelineRowCtx);
@@ -779,10 +779,10 @@ index 6334ef53bd0500a8b15b00940bb370f1babd8163..c86958ca1565f93e5328e510c48c343e
    onCancelWorktreeSetup: (() => void) | null;
    retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index fb5e12b08372b816f49dc830b0e5433ee23778c3..4dcf43fc00d157e02c468f71d1f221ca8db7d324 100644
+index bed4ed73a40c5546ae899e5334c7f668e8811db9..c8c1408f0c6ee99dcadc3cbfda681fc5b5afdb7a 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -297,3 +297,11 @@ several selected threads together. Choose **Wake thread** to bring a thread back
+@@ -324,3 +324,11 @@ several selected threads together. Choose **Wake thread** to bring a thread back
  A snoozed thread keeps working and stays hidden until its wake time, even while
  its agent wakes itself for background work. It comes back early only when it needs
  an approval or answer from you, when a run fails, or when you send it a message.
@@ -795,10 +795,10 @@ index fb5e12b08372b816f49dc830b0e5433ee23778c3..4dcf43fc00d157e02c468f71d1f221ca
 +
 +When a Claude Code session mirrored from a terminal stops on a question, an approval or a multi-question form, the thread shows the question and its choices, and answering there presses the same keys in the terminal: pick a choice, type your own answer, and on the last screen of a form choose Submit answers, Cancel or Go back. A message that is not an answer waits in order and sends when the session is ready. The web and desktop apps show the question as a card; the official phone app shows T3's own question prompt where it supports one, and otherwise you answer from the web or desktop app.
 diff --git a/packages/client-runtime/src/work-log/presentation.test.ts b/packages/client-runtime/src/work-log/presentation.test.ts
-index 28caf074e4fc010c249c9b03e0307e754f8e700e..a67d78bf1a93d02783708c85cb6119918ce0b23f 100644
+index f79cd14c91981455a5eb4699beebdead0c129aff..3a8511bd7e998e427a88a21f34d6083fba0207d2 100644
 --- a/packages/client-runtime/src/work-log/presentation.test.ts
 +++ b/packages/client-runtime/src/work-log/presentation.test.ts
-@@ -189,3 +189,12 @@ describe("resolveWorkEntryToolPresentation", () => {
+@@ -204,3 +204,12 @@ describe("resolveWorkEntryToolPresentation", () => {
      ).toBeNull();
    });
  });
@@ -812,7 +812,7 @@ index 28caf074e4fc010c249c9b03e0307e754f8e700e..a67d78bf1a93d02783708c85cb611991
 +  });
 +});
 diff --git a/packages/client-runtime/src/work-log/presentation.ts b/packages/client-runtime/src/work-log/presentation.ts
-index 1d884f0b54eb9b33bddd5d8a23ce3af93b05c587..ded798bc82c8d9682bd50566a0fee5b42d22d316 100644
+index 29c5f938b5bf0d25c41a6994a286064b9490a568..b453e629e15aabfa35b14e545624ec4d21a38124 100644
 --- a/packages/client-runtime/src/work-log/presentation.ts
 +++ b/packages/client-runtime/src/work-log/presentation.ts
 @@ -630,8 +630,11 @@ export function toolGroupSummaryKind(
@@ -839,10 +839,10 @@ index 1d884f0b54eb9b33bddd5d8a23ce3af93b05c587..ded798bc82c8d9682bd50566a0fee5b4
    return end ? text.slice(0, end.index + end[0].length) : text;
  }
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index e3d0b2ce57cf7087590490a50ab4deb302dfe267..54a382e7e44f725aea5274afb31c2f65e71a72e0 100644
+index 19542c44590912aa3b52e976e87a198334326f5f..cfb6e5da2957f331121c731752deb02f8d78b7eb 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -299,6 +299,14 @@
+@@ -303,6 +303,14 @@
        "types": "./src/previewViewport.ts",
        "import": "./src/previewViewport.ts"
      },
