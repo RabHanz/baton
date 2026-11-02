@@ -1,6 +1,6 @@
 # Hands loop on real apps: task results (issue #52)
 
-Run 2026-11-03 by the `Baton hands loop` workflow (`.github/workflows/baton-hands-loop.yml`, run 41357657467) on a
+Run 2026-11-03 by the `Baton hands loop` workflow (`.github/workflows/baton-hands-loop.yml`, run 41366647867) on a
 `windows-2022` GitHub runner: a real Windows Server 2022 desktop (1024x768, one interactive session) with Notepad,
 Calculator, File Explorer, Paint and Settings. The code under test is the code the assistant uses: the tool table
 (`batonTools.ts`: `ui_tree`, `click_element`, `wait_for`, `type_text`, `press_keys`, `drag`, `screen_capture`), the
@@ -24,20 +24,20 @@ input driver (`inputDriver.ts`, a real `SendInput` and clipboard paste), the rea
 
 ## Result: 12 of 12 passed
 
-| Task                                                                               | Result | Steps | Seconds | Evidence or failure cause                                                         |
-| ---------------------------------------------------------------------------------- | ------ | ----- | ------- | --------------------------------------------------------------------------------- |
-| Type a sentence in Notepad and Save As to a named file, then read the file back    | pass   | 9     | 8       | fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.) |
-| Open Help > About Notepad by name and confirm the dialog                           | pass   | 6     | 4.6     | the About Notepad dialog is the window with the keyboard                          |
-| Turn on Word Wrap from the Format menu and verify the saved setting                | pass   | 8     | 6.5     | fWrap went from "" to "1"                                                         |
-| Compute 12 x 34 in Calculator by clicking its buttons, and read the result         | pass   | 20    | 5.3     | the display reads: text: 408                                                      |
-| Create a folder in File Explorer and rename it, then check the disk                | pass   | 13    | 10.3    | reports became reports-2026 on disk                                               |
-| Draw a line in Paint and check, from screenshots, that the picture changed         | pass   | 4     | 6       | 152 sampled pixels changed after the stroke                                       |
-| Click a menu that does not exist, then re-plan from the tree and open Edit         | pass   | 9     | 4.7     | the Edit menu opened (its items are listed)                                       |
-| Refuse a third identical failing action, without clicking anything                 | pass   | 7     | 4.6     | outcomes: no control, no control, stopped, stopped                                |
-| Close Notepad with unsaved text, wait for the save question, and answer Don't Save | pass   | 8     | 7.1     | Notepad exited after the answer                                                   |
-| Type text, select all and copy in Notepad, and read the clipboard back             | pass   | 9     | 7.8     | the clipboard holds "alpha beta gamma"                                            |
-| Read the window's controls and find the one with the keyboard                      | pass   | 4     | 4.5     | focused line: edit: Text Editor (focused)                                         |
-| Open Settings > About and read the Windows edition name from the page              | pass   | 3     | 6.2     | read from the page: text: Windows Server 2022 Datacenter                          |
+| Task                                                                                | Result | Steps | Seconds | Evidence or failure cause                                                          |
+| ----------------------------------------------------------------------------------- | ------ | ----- | ------- | ---------------------------------------------------------------------------------- |
+| Type a sentence in Notepad and Save As to a named file, then read the file back     | pass   | 9     | 8       | fox.txt holds exactly the sentence (The quick brown fox jumps over the lazy dog.)  |
+| Open Help > About Notepad by name and confirm the dialog                            | pass   | 6     | 4.6     | the About Notepad dialog is the window with the keyboard                           |
+| Turn on Word Wrap from the Format menu and verify the saved setting                 | pass   | 8     | 6.5     | fWrap went from "" to "1"                                                          |
+| Compute 12 x 34 in Calculator by clicking its buttons, and read the result          | pass   | 20    | 5.3     | the display reads: text: 408                                                       |
+| Create a folder in File Explorer and rename it, then check the disk                 | pass   | 13    | 10.3    | reports became reports-2026 on disk                                                |
+| Draw a line in Paint and check, from screenshots, that the picture changed          | pass   | 4     | 6       | 152 sampled pixels changed after the stroke                                        |
+| Click a menu that does not exist, then re-plan from the tree and open Edit          | pass   | 9     | 4.7     | the Edit menu opened (its items are listed)                                        |
+| Refuse a third identical failing action, without clicking anything                  | pass   | 7     | 4.6     | outcomes: no control, no control, stopped, stopped                                 |
+| Close Notepad with unsaved text, wait for the save question, and answer Don't Save  | pass   | 8     | 7.1     | Notepad exited after the answer                                                    |
+| Type text, then at once select all and copy in Notepad, and read the clipboard back | pass   | 6     | 10.6    | the clipboard held "alpha beta gamma" 5.3s after a copy made straight after typing |
+| Read the window's controls and find the one with the keyboard                       | pass   | 4     | 4.5     | focused line: edit: Text Editor (focused)                                          |
+| Open Settings > About and read the Windows edition name from the page               | pass   | 3     | 6.2     | read from the page: text: Windows Server 2022 Datacenter                           |
 
 ## Step logs
 
@@ -217,12 +217,15 @@ The set did not pass first time. Eight runs to get here, each a real fix:
 3. **File Explorer: the keyboard shortcut for New folder did nothing** because a fresh window has no focused file
    list. Re-planned from the tree, which names a `New folder` button: `click_element` found it and the task passed.
    This is the loop working as designed (read the tree, take the route it names).
-4. **A copy shortcut that did not copy: found, and a product bug.** `press_keys ["ctrl","c"]` returned "Pressed" but the
-   clipboard was unchanged. A diagnostic run polled the clipboard after each way of copying: Ctrl+C worked after a 2.5
-   s pause and failed straight after `type_text`. Typing goes by the clipboard, and 400 ms after a paste Tessaya put
-   his old clipboard back; a copy made inside that window was overwritten by the restore. The restore now happens only
-   if the clipboard still holds what was pasted (`createPaster`, with a test that fails on the old code). The harness
-   keeps its read-back and its menu fallback, so a regression shows as a re-plan in the step log.
+4. **A copy that looked like it failed: found, with one real bug and one slow app.** `press_keys ["ctrl","c"]` returned
+   "Pressed" and a read-back found the clipboard empty. Polling the clipboard for several seconds showed the keystroke
+   was fine: on the runner Notepad leaves the clipboard empty for about five seconds after a copy, then the text
+   appears. The task now reads back until the text is there and records how long (5.3 s here). The investigation
+   also found a real race in the product: typing goes by the clipboard and put his old one back 400 ms after the
+   paste, which could overwrite a copy made soon after. The put-back now happens only if the clipboard still holds
+   what was pasted, and a copy chord (Ctrl+C, Ctrl+X, Ctrl+Insert) cancels it, because copying the same text as the
+   paste cannot be told apart by content. Both have unit tests (the first fails on the old code). Lesson for the
+   assistant: confirm a copy by reading it back for a few seconds, not by "Pressed".
 5. **The stop rule was only in the prompt.** Task 8 needed the third identical failing action to be refused; that
    was a model's good behaviour, not code. `failureGuard.ts` now enforces it in the tool server (two failures in a
    row with the same arguments, the third call is refused without running), with a unit test, and the task checks
