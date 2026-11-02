@@ -64,7 +64,7 @@ const HEADER = /^\d{4}-\d\d-\d\dT\d\d:\d\d\s+(\S+)\s+(\S+)\s+([0-9a-f]{8}(?:-[0-
 // Tool output and thinking are file dumps, not lessons.
 const NOISE_ROLES = new Set(["tool_result", "tool_use", "thinking", "system", "meta"]);
 
-/** `-home-onnyx-the-margin` is the project the session ran in; the tail after the box's path prefix is the venture. */
+/** `-home-user-shop` is the project the session ran in; the tail after the box's path prefix is the venture. */
 const ventureOf = (project: string): string | null => {
   const name = project.replace(/^-home-[^-]+-/, "").replace(/^-mnt-HC-Volume-\d+-dev-/, "").replace(/^-+/, "").toLowerCase();
   return /^[a-z0-9][a-z0-9_-]{1,39}$/.test(name) && name !== "prompts" ? name : null;
