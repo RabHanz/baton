@@ -38,6 +38,10 @@ export interface CloudRequest {
   readonly pointsUsed: number | null;
   /** The brief was built from web or file content: it is data, and the card says so. */
   readonly fromWeb: boolean;
+  /** Why it did not start or end well, in the provider's words. */
+  readonly error: string | null;
+  /** The provider flagged the run as over its per-run cap. */
+  readonly overCap: boolean;
 }
 
 /** One account's live figure. Null means the provider reports none, which is never the same as zero. */
@@ -48,6 +52,8 @@ export interface Usage {
   /** When the week resets, as the provider or the box words it (for example "Monday 14:00 PKT"). */
   readonly resetsAt: string | null;
   readonly rejected: boolean;
+  /** False when the provider says the account cannot take a task now (a rejected account is also unavailable). */
+  readonly available?: boolean;
   readonly pointsThisWeek: number | null;
 }
 
@@ -146,10 +152,11 @@ export const ACCOUNT_LIMIT_PERCENT = 98;
 
 /** Whether an account may be picked, and if not why, from its live figure (absent figure: usable, said so). */
 export const pickable = (
-  u: Pick<Usage, "weeklyPercent" | "rejected"> | undefined,
+  u: Pick<Usage, "weeklyPercent" | "rejected" | "available"> | undefined,
 ): { readonly enabled: boolean; readonly why: string | null } => {
   if (u === undefined) return { enabled: true, why: "usage unknown" };
   if (u.rejected) return { enabled: false, why: "rejected" };
+  if (u.available === false) return { enabled: false, why: "not available" };
   if (u.weeklyPercent === null) return { enabled: true, why: "usage unknown" };
   if (u.weeklyPercent >= ACCOUNT_LIMIT_PERCENT) return { enabled: false, why: `${u.weeklyPercent}% used` };
   return { enabled: true, why: null };

@@ -31,7 +31,7 @@ const pick = (o: Record<string, unknown>, ...names: string[]): unknown => names.
 const STATES: ReadonlySet<string> = new Set(["awaiting-director", "approved", "running", "done", "failed", "denied", "cancelled", "closed"]);
 export const cloudState = (v: unknown): CloudState => {
   const s = (str(v) ?? "").toLowerCase().replace(/[_\s]+/g, "-");
-  return STATES.has(s) ? (s as CloudState) : s === "awaiting" || s === "pending" ? "awaiting-director" : s === "complete" || s === "completed" || s === "ready" ? "done" : s === "error" ? "failed" : "unknown";
+  return STATES.has(s) ? (s as CloudState) : s.includes("failed") ? "failed" : s === "awaiting" || s === "pending" ? "awaiting-director" : s === "complete" || s === "completed" || s === "ready" ? "done" : s === "error" ? "failed" : "unknown";
 };
 
 /** One request from the central shell (or a harness), whatever it calls its fields. */
@@ -47,10 +47,12 @@ export const requestFrom = (provider: ProviderId, o: Record<string, unknown>): C
     task: str(pick(merged, "task", "title", "summary")),
     repo: str(merged["repo"]),
     branch: str(merged["branch"]),
-    caller: str(merged["caller"]),
+    caller: str(pick(merged, "caller", "asked_by")),
     label: str(merged["label"]),
     account: str(merged["account"]),
     sessionLink: str(pick(merged, "session", "sessionLink", "session_link", "url")),
+    error: str(merged["error"]),
+    overCap: merged["over_cap"] === true,
     result: prUrl !== null ? { kind: "pr", url: prUrl } : branch !== null ? { kind: "branch", url: null } : null,
     expectedUsage: num(pick(merged, "expectedUsage", "expected_usage", "usage")),
     weeklyBefore: num(pick(merged, "weeklyBefore", "weekly_before")),
@@ -58,6 +60,30 @@ export const requestFrom = (provider: ProviderId, o: Record<string, unknown>): C
     pointsUsed: num(pick(merged, "pointsUsed", "points_used")),
     fromWeb: merged["fromWeb"] === true || merged["from_web"] === true,
   };
+};
+
+/** The shell's `usage` answer: `providers.<id>.accounts.<name> = {available, pct, rejected, resets_pkt}` and `points_used_7d`. */
+export const usageFromShell = (o: Record<string, unknown>): { readonly usage: ReadonlyArray<Usage>; readonly ready: ReadonlyMap<string, { readonly ready: boolean; readonly needs: string | null }> } => {
+  const providers = typeof o["providers"] === "object" && o["providers"] !== null ? (o["providers"] as Record<string, Record<string, unknown>>) : {};
+  const points = typeof o["points_used_7d"] === "object" && o["points_used_7d"] !== null ? (o["points_used_7d"] as Record<string, Record<string, unknown>>) : {};
+  const usage: Usage[] = [];
+  const ready = new Map<string, { ready: boolean; needs: string | null }>();
+  for (const [id, p] of Object.entries(providers)) {
+    ready.set(id, { ready: p["ready"] === true, needs: str(p["needs"]) });
+    const accounts = typeof p["accounts"] === "object" && p["accounts"] !== null ? (p["accounts"] as Record<string, Record<string, unknown>>) : {};
+    for (const [account, a] of Object.entries(accounts)) {
+      usage.push({
+        provider: id as ProviderId,
+        account,
+        weeklyPercent: num(a["pct"]),
+        resetsAt: str(pick(a, "resets_pkt", "resets_at")),
+        rejected: a["rejected"] === true,
+        ...(typeof a["available"] === "boolean" ? { available: a["available"] } : {}),
+        pointsThisWeek: num(points[id]?.[account]),
+      });
+    }
+  }
+  return { usage, ready };
 };
 
 export const usageFrom = (provider: ProviderId, o: Record<string, unknown>): Usage | null => {
