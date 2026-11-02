@@ -33,7 +33,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     encoding: "utf8",
     timeout: 120_000,
     windowsHide: true,
-    shell: process.platform === "win32",
+    shell: NodePath.sep === "\\",
   });
   if (run.status !== 0) {
     console.error(`claude did not finish: ${(run.stderr || run.error?.message || "no answer").slice(0, 300)}`);
