@@ -155,15 +155,17 @@ export const make = Effect.gen(function* () {
       }
       const busy = cand.runtimeState === "working" || cand.runtimeState === "blocked";
       const session = synth(cand);
-      const out = yield* box.adapter.readOutput({ session, lines: SCREEN_LINES });
-      const input = out.available ? paneInputState(out.output) : "unknown";
+      const out = box.queueOnly
+        ? null
+        : yield* box.adapter.readOutput({ session, lines: SCREEN_LINES });
+      const input = box.queueOnly ? "empty" : out?.available ? paneInputState(out.output) : "unknown";
       const step = nextStep(rec, { present: true, busy, input }, now);
       if (step.do === "send") {
         const sent = yield* box.adapter.sendInput({ session, text: rec.text, submit: true });
         if (sent.delivered) {
           yield* setState(rec.id, {
             status: "delivered",
-            reason: null,
+            reason: box.queueOnly ? sent.detail : null,
             tries: rec.tries + 1,
             deliveredAt: now,
           });
@@ -227,7 +229,14 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie);
     // Earlier messages to the same pane go first, so the order he sent them in is kept.
     yield* drainPane(target.target.pane);
-    return (yield* get(id))!;
+    const sent = (yield* get(id))!;
+    if (input.from !== undefined && sent.status === "delivered") {
+      const line = `Sent to ${sent.toLabel}: "${sent.text.slice(0, 80)}"${sent.reason === null ? "" : ` (${sent.reason})`}`;
+      yield* Effect.forEach(boxes, (b) => b.notify?.(input.from!, line) ?? Effect.void, {
+        discard: true,
+      });
+    }
+    return sent;
   });
 
   /** Oldest first; stops at the first message that cannot go yet. */
@@ -263,7 +272,7 @@ export const make = Effect.gen(function* () {
     for (const row of waiting) {
       const { box: boxName, pane } = splitKey(row.to_pane);
       const box = boxNamed(boxName);
-      if (box === undefined) continue;
+      if (box === undefined || box.queueOnly) continue;
       const text = yield* Effect.gen(function* () {
         const found = yield* box.adapter.discover;
         const cand = found.candidates.find((c) => c.location.pane === pane);

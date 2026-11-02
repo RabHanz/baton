@@ -360,3 +360,13 @@ NodeTest.test("the permission dialog and the single question still read as befor
   NodeAssert.equal(parsePanePrompt(fixture("pane-question.txt")).question, "Which colour do you prefer?");
   NodeAssert.equal(parseReviewScreen(["nothing here"]), null);
 });
+
+NodeTest.test("a note from weaving is shown in the thread at once, even with no pane", async () => {
+  const dir = queueDir();
+  const { deps, said, typed } = harness({ live: null, failure: null });
+  enqueue(dir, "s5", { text: "Sent to build: hi", shown: "Sent to build: hi", kind: "note" });
+  await drainSession(dir, "s5", deps);
+  NodeAssert.deepEqual(said, ["Sent to build: hi"]);
+  NodeAssert.deepEqual(typed, []);
+  NodeAssert.equal(readQueue(dir, "s5").length, 0);
+});

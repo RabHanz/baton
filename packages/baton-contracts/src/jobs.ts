@@ -62,7 +62,7 @@ export const DEFAULT_JOB_LIMITS: BatonJobLimits = {
   dollars: null,
 };
 
-/** What a standing permission is for: sending on a channel, or starting without waiting for his OK. */
+/** What a standing permission is for: sending on a channel, starting without waiting for his OK, or retrying a failed worker on its own within the retry budget. */
 export const BatonGrantKind = Schema.Literals([
   "email",
   "social",
@@ -70,6 +70,7 @@ export const BatonGrantKind = Schema.Literals([
   "pr_comment",
   "other_public",
   "start",
+  "retry",
 ]);
 export type BatonGrantKind = typeof BatonGrantKind.Type;
 

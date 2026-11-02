@@ -11,6 +11,8 @@ describe("where each control lives", () => {
     expect(tabOf("s.capture")).toBe("screen");
     expect(tabOf("s.act")).toBe("assistant");
     expect(tabOf("v.appMode")).toBe("dictation");
+    expect(tabOf("trust.revoke:chrome")).toBe("trust");
+    expect(tabOf("tr.enabled")).toBe("transforms");
   });
   it("sends an id it does not know to Settings, not nowhere", () => {
     expect(tabOf("x.new")).toBe("settings");

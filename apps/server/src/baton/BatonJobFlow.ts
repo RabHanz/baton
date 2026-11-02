@@ -20,8 +20,14 @@ import {
 } from "@t3tools/baton-shared/coordinator";
 import { BLOCKED_MARK } from "@t3tools/baton-shared/coordinator";
 import { briefNudge, NUDGE_MARK, parseJobBrief } from "@t3tools/baton-shared/jobBrief";
-import { buildReport, reportCadence, reportDue } from "@t3tools/baton-shared/jobReport";
-import { permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
+import {
+  buildReport,
+  reportCadence,
+  reportDue,
+  retryRefusal,
+  retryText,
+} from "@t3tools/baton-shared/jobReport";
+import { outboundDecision, permissionsSummary, workerFirstMessage } from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import { type ThreadId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
@@ -275,6 +281,34 @@ export const enforceCaps = Effect.fn("BatonJobFlow.enforceCaps")(function* (
     stopped.push(card.workSessionId);
   }
   return stopped;
+});
+
+/**
+ * A failed worker is asked to try again by itself, but only for a job holding a standing "retry"
+ * permission (off unless he gave it) and only inside its retry budget. A job that stopped at a limit
+ * is never retried here: that needs his decision to raise the limit.
+ */
+export const autoRetry = Effect.fn("BatonJobFlow.autoRetry")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const jobs = yield* BatonJobService;
+  const cards = yield* jobs.view({ entries });
+  const retried: string[] = [];
+  for (const card of cards) {
+    if (card.group !== "failed" || card.limitReached !== null) continue;
+    if (outboundDecision(card.terms.grants, "retry") !== "standing") continue;
+    if (retryRefusal(card) !== null) continue;
+    const threadId = yield* threadOf(card.workSessionId);
+    if (threadId === null) continue;
+    const entry = entries.find((e) => e.workSessionId === card.workSessionId);
+    const text = retryText(card, "the worker failed", entry?.synopsis?.currentAction ?? null);
+    const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+    // The record comes first: it counts against the budget even if the message below fails.
+    yield* jobs.refine(card.workSessionId, { by: "baton", at, via: "thread", text });
+    yield* (yield* BatonEngine).sendMessage({ tag: "job", threadId, text });
+    retried.push(card.workSessionId);
+  }
+  return retried;
 });
 
 /**
