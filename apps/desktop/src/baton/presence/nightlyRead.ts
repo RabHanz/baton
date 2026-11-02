@@ -9,7 +9,7 @@ import { parseNightly, parseSync, type NightlyStatus, type SyncStatus } from "@t
 
 export type RunGh = (args: ReadonlyArray<string>) => Promise<string>;
 
-const runGh: RunGh = (args) =>
+export const runGh: RunGh = (args) =>
   new Promise((resolve, reject) =>
     NodeChildProcess.execFile("gh", [...args], { timeout: 8_000, windowsHide: true, maxBuffer: 1 << 20 }, (error, stdout) =>
       error === null ? resolve(stdout) : reject(error),
