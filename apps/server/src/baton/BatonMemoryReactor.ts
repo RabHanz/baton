@@ -60,6 +60,14 @@ export const learnFromJobThread = Effect.fn("BatonMemoryReactor.learnFromJobThre
 
 const FIRST_PASS = "10 minutes";
 const DAILY = "1 day";
+const WEEK_MS = 7 * 86_400_000;
+
+/** Once a week, on the first daily tick of it: fold near-duplicates into one item. */
+const weeklyIfDue = Effect.gen(function* () {
+  const week = Math.floor((yield* Clock.currentTimeMillis) / WEEK_MS);
+  if (!(yield* (yield* BatonMemoryService).noteOnce("weekly-rewrite", String(week)))) return;
+  yield* (yield* BatonMemoryLearning).rewriteNearDuplicates;
+});
 
 export const layer = Layer.effect(
   BatonMemoryReactor,
@@ -83,6 +91,7 @@ export const layer = Layer.effect(
             Effect.andThen(
               Effect.flatMap(BatonMemoryLearning, (learning) => learning.consolidate).pipe(
                 Effect.andThen(Effect.flatMap(Clock.currentTimeMillis, dailyEpisode)),
+                Effect.andThen(weeklyIfDue),
                 Effect.andThen(pullIfEnabled),
                 Effect.ignoreCause({ log: true }),
                 Effect.repeat(Schedule.spaced(DAILY)),
