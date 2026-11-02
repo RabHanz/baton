@@ -88,7 +88,13 @@ void Electron.app.whenReady().then(async () => {
     )) as { same: boolean; t: number };
     same = same && probe.same;
     clocks.push(probe.t);
-    const frame = (await win.webContents.capturePage(rect)).toBitmap();
+    const shot = await win.webContents.capturePage(rect);
+    const frame = shot.toBitmap();
+    if (elapsed < 200) {
+      NodeFS.writeFileSync(NodePath.join(out, "first.png"), shot.toPNG());
+      console.log(`first frame ${shot.getSize().width}x${shot.getSize().height}, bytes set ${frame.filter((b) => b !== 0).length}, rect ${JSON.stringify(rect)}`);
+    }
+    if (elapsed > 9000 && elapsed < 9200) NodeFS.writeFileSync(NodePath.join(out, "mid.png"), shot.toPNG());
     if (previous !== null && previous.length === frame.length) {
       let sum = 0;
       for (let i = 0; i < frame.length; i += 1) sum += Math.abs(frame[i]! - previous[i]!);
