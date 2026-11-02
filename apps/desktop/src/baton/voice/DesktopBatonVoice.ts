@@ -2077,7 +2077,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "ask") tray("Ask Tessaya…");
     else if (id === "clear") tray("Clear the screen");
   };
+  /** How long the sidecar has been reading the speech model, from its "loading" lines (0 when it is not). */
+  let speechLoadMs = 0;
   const onDictation = (event: DictationEvent) => {
+    if (event.ev === "loading") {
+      speechLoadMs = event.elapsedMs;
+      return;
+    }
     if (event.ev === "binding") return onBinding(event.id);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;
     setRecording(event.ev === "recording");
@@ -2418,7 +2424,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmStarted = Date.now();
     let modelsReady = 0;
     const showWarm = () => {
-      note = `Starting: loading the speech models (${modelsReady} of 2 ready, ${Math.round((Date.now() - warmStarted) / 1000)} s).`;
+      const total = Math.round((Date.now() - warmStarted) / 1000);
+      const reading = speechLoadMs > 0 ? `, reading the speech model for ${Math.round(speechLoadMs / 1000)} s` : "";
+      note = `Starting: loading the speech models (${modelsReady} of 2 ready${reading}, ${total} s).${total > 30 ? " This computer is busy; it is still working." : ""}`;
       render();
     };
     showWarm();
@@ -2427,7 +2435,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmSidecar = sidecar;
     const warm = startWarmUp({
       pushFrame: (frame) => warming.pushAudio(frame),
-      transcribe: (pcm) => makeSidecarStt(warmSidecar).transcribe(pcm),
+      // Read the model first, on its own call that waits as long as the sidecar says it is loading, so the first real
+      // phrase never sits behind a load that a fixed timer gave up on.
+      transcribe: async (pcm) => {
+        await warmSidecar.preload();
+        speechLoadMs = 0;
+        return makeSidecarStt(warmSidecar).transcribe(pcm);
+      },
       settled: () => warming.idle(),
       onStage: (ready) => {
         modelsReady = ready;
