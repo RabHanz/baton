@@ -12,6 +12,7 @@ const set = (id, v) => real ? ipc.invoke('baton-home:set', id, v).then(render) :
 const $ = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x !== undefined) e.textContent = x; return e; };
 const ICON = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  scratchpad: '<path d="M6 4h12v16H6z"/><path d="M9 9h6M9 13h6"/>',
   insights: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
   style: '<path d="M5 19l4-1 9-9-3-3-9 9z"/><path d="M14 6l3 3"/>',
   transforms: '<path d="M4 12h12M12 6l6 6-6 6"/>',
@@ -39,8 +40,9 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['scratchpad','Scratchpad'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
+  scratchpad: ['Scratchpad', 'Quick notes you speak or type, kept on this computer and searchable.'],
   insights: ['Insights', 'How much you dictate, how fast, what Tessaya fixed and where. Worked out on this computer from your History; compared only with your own past.'],
   style: ['Style', 'How formal Tessaya writes for each kind of app, and how much it tidies what you say.'],
   transforms: ['Transforms', 'Rewrite selected text with a named prompt: Polish, Prompt engineer, Shorten, Translate, or your own. By shortcut or by voice, with an undo.'],

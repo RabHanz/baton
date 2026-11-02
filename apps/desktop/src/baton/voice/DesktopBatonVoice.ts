@@ -80,6 +80,9 @@ import {
 } from "@t3tools/baton-shared/writingStyle";
 import { computeDeepInsights } from "@t3tools/baton-shared/insightsDeep";
 import { insightControls } from "../writing/insightRows.ts";
+import { previewOf, searchNotes } from "@t3tools/baton-shared/scratchpad";
+import { createScratchStore } from "../writing/scratchStore.ts";
+import { SCRATCH_HOTKEY, scratchAction, scratchControls } from "../writing/scratchRows.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -768,6 +771,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const snippets = createSnippetStore(input.stateDir);
   const transforms = createTransformStore(input.stateDir);
   const styles = createStyleStore(input.stateDir);
+  const scratch = createScratchStore(input.stateDir);
+  let scratchQuery = "";
+  /** The next dictation becomes a note (the keyboard shortcut); cleared when it lands. */
+  let noteNext = false;
+  const setNoteHotkey = (on: boolean) => {
+    Electron.globalShortcut.unregister(SCRATCH_HOTKEY);
+    if (!on) return;
+    Electron.globalShortcut.register(SCRATCH_HOTKEY, () => {
+      noteNext = true;
+      input.extras?.notice("The next thing you dictate goes to your Scratchpad.");
+    });
+  };
+  setNoteHotkey(scratch.hotkeyOn());
   /** Worked out from History at most every half minute; Home redraws far more often. */
   let deepAt = 0;
   let deepValue: ReturnType<typeof computeDeepInsights> | null = null;
@@ -1085,7 +1101,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       clean: (raw) => writeClean(raw, flushApp),
       fit: (text) => fitToCaret(text, flushApp),
       paste: (text) =>
-        sidecar === null
+        noteNext
+          ? Promise.resolve(
+              (() => {
+                noteNext = false;
+                try {
+                  scratch.add(text);
+                  input.extras?.notice("Saved to your Scratchpad.");
+                  return true;
+                } catch {
+                  return false;
+                }
+              })(),
+            )
+          : sidecar === null
           ? Promise.resolve(false)
           : sidecar.paste(text).then(
               () => true,
@@ -1411,6 +1440,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return runCommitOp(commitments, op, args, Date.now());
       }
       if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
+      if (op === "note_add") {
+        try {
+          return `Saved to the Scratchpad [id: ${scratch.add(String(args["text"] ?? "")).id}].`;
+        } catch (error) {
+          return error instanceof Error ? error.message : "That was not saved.";
+        }
+      }
+      if (op === "note_search") {
+        const found = searchNotes(scratch.notes(), String(args["query"] ?? "")).slice(0, 10);
+        return found.length === 0
+          ? "No note has all of those words."
+          : found.map((n) => `${previewOf(n.text, 300)} [id: ${n.id}]`).join("\n");
+      }
       if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
       if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
       if (op === "needs") {
@@ -2540,6 +2582,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
+      ...scratchControls(scratch.notes(), scratchQuery, scratch.hotkeyOn()),
       ...presenceControls(settings),
       ...memoryTab.controls(),
       ...vaultTab.controls(),
@@ -3193,6 +3236,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           })
           .catch(() => undefined);
       }
+    } else if (/^sc[.:]/.test(id)) {
+      const act = scratchAction(id, value);
+      if (act?.kind === "add") {
+        try {
+          scratch.add(act.text);
+        } catch {
+          // Empty or too long: nothing is added.
+        }
+      } else if (act?.kind === "search") scratchQuery = act.query.trim();
+      else if (act?.kind === "hotkey") {
+        scratch.setHotkey(act.on);
+        setNoteHotkey(act.on);
+      } else if (act?.kind === "copy") {
+        const note = scratch.notes().find((n) => n.id === act.id);
+        if (note !== undefined) void Electron.clipboard.writeText(note.text);
+      } else if (act?.kind === "delete") scratch.remove(act.id);
     } else if (id.startsWith("st.")) {
       const act = styleAction(id, value);
       if (act?.kind === "style") styles.set(act.category, act.style);
