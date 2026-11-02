@@ -261,9 +261,9 @@ export const sampleCatalogRows = (now: number): CatalogRow[] => {
   return [
     ["laptop", "Laptop", "C:\\work\\tessaya", "Wire the sessions browser", 4, "running"],
     ["laptop", "Laptop", "C:\\work\\notes", "Write the launch post", 190, "stopped"],
-    ["hetzner", "Hetzner box", "/srv/ventureos", "Fix the weekly digest", 60 * 30, "stopped"],
-    ["hetzner", "Hetzner box", "/srv/baton", "Teach mode quality set", 12, "running"],
-    ["hetzner", "Hetzner box", "/srv/old-site", "Old landing page", 60 * 24 * 12, "stopped"],
+    ["server", "Build server", "/srv/digest-bot", "Fix the weekly digest", 60 * 30, "stopped"],
+    ["server", "Build server", "/srv/baton", "Teach mode quality set", 12, "running"],
+    ["server", "Build server", "/srv/old-site", "Old landing page", 60 * 24 * 12, "stopped"],
   ].map(([env, machine, cwd, title, min, state], i) => ({
     id: `s${i}`,
     environmentId: String(env),

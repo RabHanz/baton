@@ -18,10 +18,10 @@ const rows = sampleCatalogRows(NOW);
 describe("the sessions browser's rows", () => {
   it("finds every word in the title, folder, machine or account, newest first", () => {
     expect(matches(rows[1]!, "launch post laptop")).toBe(true);
-    expect(matches(rows[1]!, "launch hetzner")).toBe(false);
+    expect(matches(rows[1]!, "launch server")).toBe(false);
     expect(visibleRows(rows, INITIAL_VIEW)[0]!.title).toBe("Wire the sessions browser");
     expect(
-      visibleRows(rows, { ...INITIAL_VIEW, machine: "hetzner", state: "stopped" }).map(
+      visibleRows(rows, { ...INITIAL_VIEW, machine: "server", state: "stopped" }).map(
         (r) => r.title,
       ),
     ).toEqual(["Fix the weekly digest", "Old landing page"]);

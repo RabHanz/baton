@@ -132,7 +132,7 @@ void Electron.app.whenReady().then(async () => {
 
   check(
     "the browser lists sessions from two machines",
-    /Laptop/.test(await text()) && /Hetzner box/.test(await text()),
+    /Laptop/.test(await text()) && /Build server/.test(await text()),
   );
   // Search, typed with the real keyboard.
   await click("#in-c-q");
