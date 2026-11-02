@@ -616,24 +616,48 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   {
     name: "cloud_status",
     description: "Where one cloud request stands: waiting, running, its link and result.",
-    inputSchema: object({ id: { type: "string", maxLength: 40 }, provider: { type: "string", maxLength: 20 } }, ["id"]),
-    run: async (a) => ({ text: await host.jobs("cloud_status", { id: str(a, "id", 40), ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}) }) }),
+    inputSchema: object(
+      { id: { type: "string", maxLength: 40 }, provider: { type: "string", maxLength: 20 } },
+      ["id"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("cloud_status", {
+        id: str(a, "id", 40),
+        ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}),
+      }),
+    }),
   },
   {
     name: "cloud_list",
-    description: "Cloud requests. With mine, only the ones this session asked for (give its label).",
+    description:
+      "Cloud requests. With mine, only the ones this session asked for (give its label).",
     inputSchema: object({ mine: { type: "boolean" }, label: { type: "string", maxLength: 60 } }),
-    run: async (a) => ({ text: await host.jobs("cloud_list", { mine: a["mine"] === true, ...(typeof a["label"] === "string" ? { label: a["label"].slice(0, 60) } : {}) }) }),
+    run: async (a) => ({
+      text: await host.jobs("cloud_list", {
+        mine: a["mine"] === true,
+        ...(typeof a["label"] === "string" ? { label: a["label"].slice(0, 60) } : {}),
+      }),
+    }),
   },
   {
     name: "cloud_cancel",
-    description: "Withdraw a cloud request that is still waiting. A task that has started cannot be stopped from here.",
-    inputSchema: object({ id: { type: "string", maxLength: 40 }, provider: { type: "string", maxLength: 20 } }, ["id"]),
-    run: async (a) => ({ text: await host.jobs("cloud_cancel", { id: str(a, "id", 40), ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}) }) }),
+    description:
+      "Withdraw a cloud request that is still waiting. A task that has started cannot be stopped from here.",
+    inputSchema: object(
+      { id: { type: "string", maxLength: 40 }, provider: { type: "string", maxLength: 20 } },
+      ["id"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("cloud_cancel", {
+        id: str(a, "id", 40),
+        ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}),
+      }),
+    }),
   },
   {
     name: "cloud_usage",
-    description: "Each cloud account's weekly use and when it resets, per assistant. An assistant that reports none says so.",
+    description:
+      "Each cloud account's weekly use and when it resets, per assistant. An assistant that reports none says so.",
     inputSchema: object({}),
     run: async () => ({ text: await host.jobs("cloud_usage", {}) }),
   },
@@ -641,8 +665,21 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     name: "cloud_approve",
     description:
       "Only when he says 'approve cloud request N on <account>' (the account must be named). It reads the card back and shows him a dialog; nothing runs unless he presses Approve himself. Never call it on your own.",
-    inputSchema: object({ id: { type: "string", maxLength: 40 }, account: { type: "string", maxLength: 80 }, provider: { type: "string", maxLength: 20 } }, ["id", "account"]),
-    run: async (a) => ({ text: await host.jobs("cloud_approve", { id: str(a, "id", 40), account: str(a, "account", 80), ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}) }) }),
+    inputSchema: object(
+      {
+        id: { type: "string", maxLength: 40 },
+        account: { type: "string", maxLength: 80 },
+        provider: { type: "string", maxLength: 20 },
+      },
+      ["id", "account"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("cloud_approve", {
+        id: str(a, "id", 40),
+        account: str(a, "account", 80),
+        ...(typeof a["provider"] === "string" ? { provider: a["provider"].slice(0, 20) } : {}),
+      }),
+    }),
   },
   {
     name: "trust_show",
@@ -752,6 +789,12 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
         title: { type: "string", maxLength: 120 },
         goal: { type: "string", maxLength: 4000 },
         project: { type: "string", maxLength: 200 },
+        run_on: {
+          type: "string",
+          maxLength: 60,
+          description:
+            "Which connected computer runs the worker: its name (signzart, onnyx). Leave out, or 'this computer', to run it here. The project must exist there.",
+        },
         folders: { type: "array", items: { type: "string" }, maxItems: 10 },
         tools: {
           type: "array",
@@ -773,6 +816,9 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
         title: str(a, "title", 120),
         goal: str(a, "goal", 4_000),
         project: str(a, "project", 200),
+        ...(typeof a["run_on"] === "string" && a["run_on"].trim() !== ""
+          ? { runOn: str(a, "run_on", 60) }
+          : {}),
         folders: strings(a, "folders"),
         tools: strings(a, "tools"),
         ...(a["report_every_minutes"] === undefined
