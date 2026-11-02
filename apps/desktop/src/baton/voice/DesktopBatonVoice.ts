@@ -6,6 +6,7 @@
  * Windows first (D97, D106): capture, speech and paste are `baton-dictation`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -220,6 +221,12 @@ import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudSe
 import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
+import {
+  CONNECTOR_INFO,
+  parseConnectorSource,
+  reviewConnector,
+  type ConnectorKind,
+} from "@t3tools/baton-shared/connectors";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import {
   fileToEdit,
@@ -2730,6 +2737,44 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       );
     }
   };
+  /** A calendar, mail or chat server: the card shows the exact command, and `claude mcp add` runs only after his yes. */
+  const addConnector = async (kind: ConnectorKind, address: string): Promise<void> => {
+    const tell = (text: string) => input.extras?.notice(text);
+    const plan = parseConnectorSource(kind, address);
+    if (!plan.ok) return tell(`Not connected: ${plan.why}`);
+    const exists = harnessItems().some((i) => i.kind === "mcp" && i.name === plan.name);
+    const card = reviewConnector(kind, plan, exists);
+    const answer = await (input.extras?.ask({
+      ...card,
+      buttons: ["Connect", "Cancel"],
+      cancel: 1,
+      expiresMs: 5 * 60_000,
+    }) ?? Promise.resolve(1));
+    if (answer !== 0) return tell("Not connected.");
+    try {
+      await new Promise<void>((resolve, reject) =>
+        NodeChildProcess.execFile(
+          settings.claudeBinary,
+          [...plan.argv],
+          { timeout: 60_000, windowsHide: true },
+          (error, _stdout, stderr) =>
+            error === null
+              ? resolve()
+              : reject(new Error(stderr.trim().split("\n").at(-1) ?? error.message)),
+        ),
+      );
+      forgetFiles();
+      harnessItems.reset();
+      home.refresh();
+      tell(
+        `Connected ${CONNECTOR_INFO[kind].label.toLowerCase()} (${plan.name}). Claude Code signs you in the first time it uses it.`,
+      );
+    } catch (error) {
+      tell(
+        `Not connected: ${error instanceof Error ? error.message : "Claude Code did not accept it"}`,
+      );
+    }
+  };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   const vaultState = vaultFor(input.stateDir);
   const vaultTab = createVaultTab({
@@ -4586,6 +4631,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       setLoginItem(Electron.app, input.loginEntry, on);
     } else if (id === "k.addskill:add" && typeof value === "string") {
       void addSkillFrom(value);
+    } else if (/^k\.conn\.(calendar|mail|chat):add$/.test(id) && typeof value === "string") {
+      void addConnector(id.split(".")[2]!.split(":")[0] as ConnectorKind, value);
     } else if (id === "v.diag") {
       try {
         const file = makeDiagnosticsFile({
