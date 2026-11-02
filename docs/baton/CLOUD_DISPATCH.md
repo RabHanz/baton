@@ -87,8 +87,32 @@ the Director picks a provider and an account. Keys are file paths in settings an
 - A request held by the shared computer (transport 3) can only be answered there, so its card offers
   only that provider; requests held by Tessaya (transports 1 and 2) can be started by any ready assistant.
 
+## First run, phone, vault, hub picker, Windows
+
+- **First run:** the setup guide has an optional "Cloud tasks" step (one sentence on what it is, detect
+  installed and signed-in assistants with the exact sign-in line and an "Open sign-in" button that opens a
+  visible terminal for one of two fixed commands, "Connect GitHub" help, the per-run flag, and a fixed line
+  that every task waits for a yes). Settings > Cloud Tasks opens the Cloud page or re-runs that step.
+- **Phone:** with "Also ask me with a pop-up and on my phone" on, each waiting task is one question with a
+  button per open assistant-and-account, then Deny, then Decide later; choosing one only asks "Approve on X?".
+  The phone page draws a button per answer and sends the button's index; it never holds a key. The desktop,
+  which holds the app's own handle, makes the approve call after the second yes.
+- **Vault:** the SSH keys can be vault items instead of files. Using one asks Windows Hello (an unlocked
+  vault is the gate where there is no Hello), writes the key to a private temp file for the one call and
+  deletes it after, even if the call fails; the text is never logged or shown.
+- **Hub picker:** "Another computer of mine" lists the connected environments (from the sidebar's fleet)
+  and sends `baton.cloud.read` or `baton.cloud.act` to the one chosen.
+- **Windows:** a program installed with npm is a `.cmd` shim. Tessaya reads the shim, finds the node script
+  it runs and starts `node script args` with the argument list, so a task description is only text.
+  Only if that fails, and only when every argument is plain, does it use cmd. Programs are found on PATH
+  with PATHEXT, folders with spaces are fine, and a named login is passed as `CLAUDE_CONFIG_DIR` or
+  `CODEX_HOME` for that one call.
+- **Approve is never a tool:** `cloud_approve` reads the card back and opens a dialog only the Director can
+  press. The hub's `approve` is operate-scope like any change, so a client paired with operate scope can
+  reach it; a separate approve scope would need a new auth scope in the contracts (a question for the
+  manager).
+
 ## Not built yet
 
-The first-run step "Cloud tasks", the phone page card, the Vault option for the SSH key text with the
-Windows Hello gate, and picking a hub on another environment (the hub transport calls the environment
-this window is connected to).
+The hub door has no scope of its own for approving, and the Claude and Codex commands are unproven until the
+pilot (see the assumptions above).

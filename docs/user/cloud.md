@@ -36,6 +36,12 @@ text as information, not as instructions you wrote.
 You can also say "approve cloud request 3 on rabee". Tessaya reads the card back and shows a window; it
 runs only if you press **Approve** there.
 
+## On your phone
+
+If you turn on **Also ask me with a pop-up and on my phone**, each waiting task also appears as a question
+on this computer and on a paired phone, with one button for each assistant and account that can take it,
+then **Deny** and **Decide later**. Choosing one only asks you to confirm.
+
 ## Watching them
 
 The **Cloud** page lists your requests with their state, account, branch, link and the result. It
