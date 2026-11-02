@@ -4,6 +4,7 @@ import {
   claudeProjectSlug,
   isComposerEcho,
   stripT3Wrappers,
+  labelAttachmentPaths,
   parseLiveToolSteps,
   parseLiveTranscriptLine,
   splitTranscriptChunk,
@@ -125,6 +126,16 @@ describe("a live transcript read as messages", () => {
     expect(stripT3Wrappers(echo)).toBe("why is it saying this?");
     expect(isComposerEcho(echo, "why is it saying this?")).toBe(true);
     expect(stripT3Wrappers("see @/etc/hosts for details")).toBe("see @/etc/hosts for details");
+  });
+
+  it("shows an inbox path as a short label", () => {
+    const old =
+      "@/mnt/HC_Volume_106652742/dev/t3code/.baton/inbox/2026-11-02T11-13-47-490Z-baton-live4-5ab4ae0c-3cf4-4d50-aae3-94117d982204-6c567ac6-f2d7-4b0c-9541-41a0a052d316.png";
+    expect(labelAttachmentPaths(`Look at ${old}`)).toBe("Look at \u{1F4CE} image, 11:13");
+    expect(
+      labelAttachmentPaths("He attached image IMG_9489.png:\n@/w/.baton/inbox/2026-11-02/IMG_9489-a3f9.png"),
+    ).toBe("\u{1F4CE} IMG_9489-a3f9.png");
+    expect(stripT3Wrappers("why?\nHe attached image IMG_9489.png:\n@/w/.baton/inbox/2026-11-02/IMG_9489-a3f9.png")).toBe("why?");
   });
 
   it("recognises the composer's message when attachments were appended to it", () => {

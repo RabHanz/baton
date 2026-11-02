@@ -15,6 +15,7 @@ import {
   promptText,
   splitAttachments,
   safeInboxName,
+  readableInboxName,
   parsePanePrompt,
   parseReviewScreen,
   answerKeys,
@@ -209,11 +210,12 @@ NodeTest.test(
       const calls = NodeFS.readFileSync(log, "utf8");
       NodeAssert.match(
         calls,
-        /^--session fab-x agent prompt p1 say ALPHA\n@.*\/work\/\.baton\/inbox\/.*shot\.png\n--session fab-x agent send-keys p1 enter\n--session fab-x agent send-keys p1 esc\n$/s,
+        /^--session fab-x agent prompt p1 say ALPHA\nHe attached image shot\.png:\n@.*\/work\/\.baton\/inbox\/\d{4}-\d\d-\d\d\/shot-[0-9a-f]{4}\.png\n--session fab-x agent send-keys p1 enter\n--session fab-x agent send-keys p1 esc\n$/s,
       );
-      const inbox = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox"));
+      const day = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox"))[0];
+      const inbox = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox", day));
       NodeAssert.equal(
-        NodeFS.readFileSync(NodePath.join(cwd, ".baton", "inbox", inbox[0]), "utf8"),
+        NodeFS.readFileSync(NodePath.join(cwd, ".baton", "inbox", day, inbox[0]), "utf8"),
         "png-bytes",
       );
 
@@ -369,4 +371,17 @@ NodeTest.test("a note from weaving is shown in the thread at once, even with no 
   NodeAssert.deepEqual(said, ["Sent to build: hi"]);
   NodeAssert.deepEqual(typed, []);
   NodeAssert.equal(readQueue(dir, "s5").length, 0);
+});
+
+NodeTest.test("inbox names a person can read", () => {
+  const now = new Date("2026-11-02T11:13:47Z");
+  NodeAssert.equal(readableInboxName("IMG_9489.png", now, "a3f9"), "IMG_9489-a3f9.png");
+  NodeAssert.equal(
+    readableInboxName(
+      "baton-live4-5ab4ae0c-3cf4-4d50-aae3-94117d982204-6c567ac6-f2d7-4b0c-9541-41a0a052d316.png",
+      now,
+      "a3f9",
+    ),
+    "image-11-13-a3f9.png",
+  );
 });

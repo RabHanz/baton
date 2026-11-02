@@ -87,6 +87,22 @@ const textOf = (content: unknown): string => {
 };
 
 /**
+ * A T3 inbox or attachment path as a short label: the file's own name, or "image, 11:13" for the
+ * old generated names (a timestamp, the thread id and a uuid). The full path stays on disk.
+ */
+export const labelAttachmentPaths = (text: string): string =>
+  text
+    .replace(/(?:^|\n)He attached (?:image|file) [^\n]*:\n(?=@\/)/g, "\n")
+    .replace(/@\/\S*\/(?:\.baton\/inbox|attachments)\/(\S+)/g, (_, rest: string) => {
+      const name = rest.slice(rest.lastIndexOf("/") + 1);
+      const old = /^\d{4}-\d\d-\d\dT(\d\d)-(\d\d)-\d\d-\d+Z-.*?(\.[A-Za-z0-9]+)?$/.exec(name);
+      if (old === null) return `\u{1F4CE} ${name}`;
+      const image = /^\.(png|jpe?g|gif|webp|heic)$/i.test(old[3] ?? "");
+      return `\u{1F4CE} ${image ? "image" : "file"}, ${old[1]}:${old[2]}`;
+    })
+    .trim();
+
+/**
  * What T3's own send path wraps around a user's words on the way into the terminal: a pasted-content
  * tag, an `[Image: name; ref=...]` marker, the `<t3_context>` block and trailing `@/path` lines.
  * The user's own words are what is left.
@@ -96,6 +112,7 @@ export const stripT3Wrappers = (text: string): string =>
     .replace(/<t3_context\b[\s\S]*?(?:<\/t3_context>|$)/g, "")
     .replace(/<\/?pasted_content\b[^>]*>/g, "")
     .replace(/\[Image:[^\]]*\]/g, "")
+    .replace(/\n?He attached (?:image|file) [^\n]*:\s*@\/\S+/g, "")
     .replace(/(?:\s+@\/\S+)+\s*$/, "")
     .replace(/[ \t]+\n/g, "\n")
     .trim();
@@ -124,7 +141,8 @@ export const parseLiveTranscriptLine = (line: string): LiveTranscriptMessage | n
   const content = isRecord(message) ? message["content"] : undefined;
   const images = type === "user" ? imagesOf(content) : [];
   const sent = type === "assistant" ? sentFilesOf(content) : { files: [], caption: "" };
-  const words = type === "user" ? stripT3Wrappers(textOf(content)) : textOf(content);
+  const raw = textOf(content);
+  const words = labelAttachmentPaths(type === "user" ? stripT3Wrappers(raw) : raw);
   const text = words.length > 0 ? words : sent.caption;
   if (text.length === 0 && images.length === 0 && sent.files.length === 0) return null;
   // Claude Code's own plumbing recorded as user turns: background-task notices, slash-command
