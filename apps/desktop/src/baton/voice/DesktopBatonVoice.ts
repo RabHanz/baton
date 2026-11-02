@@ -88,6 +88,12 @@ import {
   IMPORT_MAX_BYTES,
   importDictionary,
 } from "@t3tools/baton-shared/dictionaryIO";
+import {
+  LANGUAGE_HINT,
+  languageOptions,
+  languageToSave,
+  shownLanguage,
+} from "@t3tools/baton-shared/dictationLanguages";
 import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/baton-shared/audioFile";
 import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
@@ -2802,10 +2808,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         kind: "choice",
         value: settings.speechModel,
         options: [
-          { value: "v3", label: "Most languages, slower" },
+          { value: "v3", label: "25 European languages, slower" },
           { value: "fast", label: "English, 3x quicker" },
         ],
         more: true,
+      },
+      {
+        id: "v.language",
+        section: "Dictation",
+        label: "Language you speak",
+        hint: LANGUAGE_HINT,
+        kind: "choice",
+        value: shownLanguage(settings.speechModel, settings.language),
+        options: languageOptions(settings.speechModel),
       },
       {
         id: "v.learnWords",
@@ -3446,6 +3461,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       configureDictation();
     } else if (id === "v.cleanup" && (value === "claude" || value === "local" || value === "off")) {
       save({ dictationCleanupChosen: true, dictationCleanup: value });
+    } else if (id === "v.language" && typeof value === "string") {
+      const chosen = languageToSave(settings.speechModel, value);
+      if (chosen !== undefined) {
+        save({ language: chosen });
+        configureDictation();
+      }
     } else if (id === "v.speechModel" && (value === "v3" || value === "fast"))
       setSpeechModel(value);
     else if (id === "v.appMode" && typeof value === "string" && focusedApp.exe.length > 0) {
@@ -3593,7 +3614,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const setSpeechModel = (speechModel: VoiceSettings["speechModel"]) => {
-    save({ speechModel });
+    save({ speechModel, ...(speechModel === "fast" ? { language: "en" } : {}) });
     if (parakeetPath !== null || settings.enabled) requestDictation();
     else render();
   };
