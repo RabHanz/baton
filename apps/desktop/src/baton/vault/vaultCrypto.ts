@@ -24,12 +24,20 @@ export const seal = (key: Buffer, plain: Buffer, aad: string): Sealed => {
   const cipher = NodeCrypto.createCipheriv("aes-256-gcm", key, iv);
   cipher.setAAD(Buffer.from(aad));
   const ct = Buffer.concat([cipher.update(plain), cipher.final()]);
-  return { iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), ct: ct.toString("base64") };
+  return {
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    ct: ct.toString("base64"),
+  };
 };
 
 /** Throws when the key is wrong or anything was changed. */
 export const open = (key: Buffer, sealed: Sealed, aad: string): Buffer => {
-  const decipher = NodeCrypto.createDecipheriv("aes-256-gcm", key, Buffer.from(sealed.iv, "base64"));
+  const decipher = NodeCrypto.createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(sealed.iv, "base64"),
+  );
   decipher.setAAD(Buffer.from(aad));
   decipher.setAuthTag(Buffer.from(sealed.tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(sealed.ct, "base64")), decipher.final()]);
@@ -51,7 +59,8 @@ export const newRecoveryKey = (): { readonly bytes: Buffer; readonly text: strin
   let bits = "";
   for (const b of bytes) bits += b.toString(2).padStart(8, "0");
   let chars = "";
-  for (let i = 0; i < bits.length; i += 5) chars += ALPHABET[Number.parseInt(bits.slice(i, i + 5).padEnd(5, "0"), 2)];
+  for (let i = 0; i < bits.length; i += 5)
+    chars += ALPHABET[Number.parseInt(bits.slice(i, i + 5).padEnd(5, "0"), 2)];
   return { bytes, text: chars.match(/.{1,4}/g)!.join("-") };
 };
 

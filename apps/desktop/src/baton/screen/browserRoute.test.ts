@@ -20,8 +20,14 @@ const base: RouteInput = {
 
 describe("chooseBrowserRoute", () => {
   it("reads a public page with a plain fetch", () => {
-    expect(chooseBrowserRoute({ ...base, task: "read", needsLogin: false, url: "https://example.test" }).route).toBe("fetch");
-    expect(chooseBrowserRoute({ ...base, task: "read", needsLogin: true, url: "https://example.test" }).route).toBe("chrome");
+    expect(
+      chooseBrowserRoute({ ...base, task: "read", needsLogin: false, url: "https://example.test" })
+        .route,
+    ).toBe("fetch");
+    expect(
+      chooseBrowserRoute({ ...base, task: "read", needsLogin: true, url: "https://example.test" })
+        .route,
+    ).toBe("chrome");
   });
 
   it("uses his Chrome when it is on and connected, bringing a hidden tab forward first", () => {
@@ -35,18 +41,30 @@ describe("chooseBrowserRoute", () => {
     const off = chooseBrowserRoute({ ...base, ownChromeOn: false, accessibility: "on" });
     expect(off).toMatchObject({ route: "uia" });
     expect(off.why).toContain("own Chrome is off");
-    const gone = chooseBrowserRoute({ ...base, chrome: { state: "not-connected", message: "The Chrome extension is installed but not connected." }, accessibility: "on" });
+    const gone = chooseBrowserRoute({
+      ...base,
+      chrome: {
+        state: "not-connected",
+        message: "The Chrome extension is installed but not connected.",
+      },
+      accessibility: "on",
+    });
     expect(gone.why).toContain("not connected");
   });
 
   it("asks before restarting Chrome for accessibility, reads pixels meanwhile, and uses the controls once restarted", () => {
     const off = { ...base, ownChromeOn: false, accessibility: "off" as const };
-    expect(chooseBrowserRoute(off)).toMatchObject({ route: "pixels", needsApproval: "relaunch-accessibility" });
+    expect(chooseBrowserRoute(off)).toMatchObject({
+      route: "pixels",
+      needsApproval: "relaunch-accessibility",
+    });
     expect(chooseBrowserRoute({ ...off, relaunchApproved: true }).route).toBe("uia");
   });
 
   it("says plainly when there is no window to work in, and reads pixels when nothing is known", () => {
-    expect(chooseBrowserRoute({ ...base, ownChromeOn: false, chromeVisible: false })).toMatchObject({ route: "none" });
+    expect(chooseBrowserRoute({ ...base, ownChromeOn: false, chromeVisible: false })).toMatchObject(
+      { route: "none" },
+    );
     expect(chooseBrowserRoute({ ...base, ownChromeOn: false }).route).toBe("pixels");
   });
 });
@@ -63,12 +81,18 @@ describe("withCallRetry", () => {
   it("retries once after a timeout, then gives a reason", async () => {
     vi.useFakeTimers();
     let calls = 0;
-    const ok = withCallRetry(() => (++calls === 1 ? new Promise<string>(() => undefined) : Promise.resolve("done")), { label: "Chrome" });
+    const ok = withCallRetry(
+      () => (++calls === 1 ? new Promise<string>(() => undefined) : Promise.resolve("done")),
+      { label: "Chrome" },
+    );
     await vi.advanceTimersByTimeAsync(10_001);
     expect(await ok).toEqual({ ok: true, value: "done" });
     const bad = withCallRetry(() => new Promise<string>(() => undefined), { label: "Chrome" });
     await vi.advanceTimersByTimeAsync(20_100);
-    expect(await bad).toEqual({ ok: false, why: "Chrome did not answer in 10 seconds, even after trying again." });
+    expect(await bad).toEqual({
+      ok: false,
+      why: "Chrome did not answer in 10 seconds, even after trying again.",
+    });
     vi.useRealTimers();
   });
 });
@@ -76,11 +100,27 @@ describe("withCallRetry", () => {
 describe("relaunchChromeWithAccessibility", () => {
   it("closes politely and starts with the flag", async () => {
     const ran: string[] = [];
-    const out = await relaunchChromeWithAccessibility({ platform: "win32", run: async (c, a) => void ran.push(`${c} ${a.join(" ")}`), wait: async () => undefined });
+    const out = await relaunchChromeWithAccessibility({
+      platform: "win32",
+      run: async (c, a) => void ran.push(`${c} ${a.join(" ")}`),
+      wait: async () => undefined,
+    });
     expect(ran[0]).toBe("taskkill /IM chrome.exe");
     expect(ran[1]).toContain("--force-renderer-accessibility");
     expect(out).toContain("tabs come back");
-    expect(await relaunchChromeWithAccessibility({ platform: "linux", run: async () => undefined, wait: async () => undefined })).toContain("not supported");
-    expect(await relaunchChromeWithAccessibility({ platform: "win32", run: async () => Promise.reject(new Error("x")), wait: async () => undefined })).toContain("could not be restarted");
+    expect(
+      await relaunchChromeWithAccessibility({
+        platform: "linux",
+        run: async () => undefined,
+        wait: async () => undefined,
+      }),
+    ).toContain("not supported");
+    expect(
+      await relaunchChromeWithAccessibility({
+        platform: "win32",
+        run: async () => Promise.reject(new Error("x")),
+        wait: async () => undefined,
+      }),
+    ).toContain("could not be restarted");
   });
 });

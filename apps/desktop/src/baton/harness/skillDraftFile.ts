@@ -11,7 +11,8 @@ export const draftsDir = (stateDir: string): string => NodePath.join(stateDir, "
 export const writeDraft = (stateDir: string, title: string, text: string): string => {
   const base = slugOf(title) || "finished-job";
   let name = base;
-  for (let n = 2; NodeFS.existsSync(NodePath.join(draftsDir(stateDir), name)); n += 1) name = `${base}-${n}`;
+  for (let n = 2; NodeFS.existsSync(NodePath.join(draftsDir(stateDir), name)); n += 1)
+    name = `${base}-${n}`;
   const file = NodePath.join(draftsDir(stateDir), name, "SKILL.md");
   NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
   NodeFS.writeFileSync(file, text);

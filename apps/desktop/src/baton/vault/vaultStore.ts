@@ -129,7 +129,8 @@ export const createVault = (input: {
 
   const clean = (value: string): string => {
     if (value.length === 0) throw new VaultError("There is nothing to keep.");
-    if (Buffer.byteLength(value) > VAULT_VALUE_MAX) throw new VaultError("That is too big for the vault (256 KB).");
+    if (Buffer.byteLength(value) > VAULT_VALUE_MAX)
+      throw new VaultError("That is too big for the vault (256 KB).");
     return value;
   };
 
@@ -182,7 +183,8 @@ export const createVault = (input: {
       }
       if (!(await consent())) throw new VaultError("Windows Hello did not confirm it is you.");
       const vaultKey = input.os.unwrap(file.byOs);
-      if (vaultKey === null) throw new VaultError("This computer's account cannot open the vault; use the passphrase.");
+      if (vaultKey === null)
+        throw new VaultError("This computer's account cannot open the vault; use the passphrase.");
       unlockWith(vaultKey, file);
     },
 
@@ -199,7 +201,8 @@ export const createVault = (input: {
       if (!NAME_PATTERN.test(item.name)) {
         throw new VaultError("A name is lower-case letters, digits, dots, dashes or underscores.");
       }
-      if (list.some((i) => i.name === item.name)) throw new VaultError("There is already a secret by that name.");
+      if (list.some((i) => i.name === item.name))
+        throw new VaultError("There is already a secret by that name.");
       const at = new Date(now()).toISOString();
       const made: VaultItem = {
         id: NodeCrypto.randomUUID(),
@@ -262,13 +265,18 @@ export const createVault = (input: {
     /** The vault re-wrapped under an export passphrase; carries no plaintext. */
     exportBlob: (exportPassphrase: string): string => {
       const { items: list } = need();
-      if (exportPassphrase.length < 8) throw new VaultError("Use a passphrase of at least 8 characters.");
+      if (exportPassphrase.length < 8)
+        throw new VaultError("Use a passphrase of at least 8 characters.");
       const salt = NodeCrypto.randomBytes(16);
       return JSON.stringify({
         v: 1,
         kdf,
         salt: salt.toString("base64"),
-        data: seal(deriveKey(exportPassphrase, salt, kdf), Buffer.from(JSON.stringify(list)), "vault-v1-export"),
+        data: seal(
+          deriveKey(exportPassphrase, salt, kdf),
+          Buffer.from(JSON.stringify(list)),
+          "vault-v1-export",
+        ),
       });
     },
 
@@ -280,7 +288,11 @@ export const createVault = (input: {
       try {
         parsed = JSON.parse(blob) as typeof parsed;
         incoming = JSON.parse(
-          open(deriveKey(exportPassphrase, Buffer.from(parsed.salt, "base64"), parsed.kdf), parsed.data, "vault-v1-export").toString("utf8"),
+          open(
+            deriveKey(exportPassphrase, Buffer.from(parsed.salt, "base64"), parsed.kdf),
+            parsed.data,
+            "vault-v1-export",
+          ).toString("utf8"),
         ) as VaultItem[];
       } catch {
         throw new VaultError("That file or passphrase did not open.");
@@ -288,7 +300,11 @@ export const createVault = (input: {
       let added = 0;
       for (const item of incoming) {
         if (list.some((i) => i.name === item.name) || !NAME_PATTERN.test(item.name)) continue;
-        list.push({ ...item, id: NodeCrypto.randomUUID(), policy: policyFor(item.category, item.policy) });
+        list.push({
+          ...item,
+          id: NodeCrypto.randomUUID(),
+          policy: policyFor(item.category, item.policy),
+        });
         added++;
       }
       if (added > 0) save();

@@ -47,7 +47,10 @@ describe("desktop memory", () => {
 
   it("a stuck server costs the turn no more than the wait", async () => {
     vi.useFakeTimers();
-    const memory = createDesktopMemory({ call: () => new Promise(() => undefined), notes: notes() });
+    const memory = createDesktopMemory({
+      call: () => new Promise(() => undefined),
+      notes: notes(),
+    });
     const pending = memory.forSentence("hello");
     await vi.advanceTimersByTimeAsync(900);
     expect(await pending).toBe("");
@@ -60,7 +63,15 @@ describe("the MemoryClient other lanes call", () => {
     const calls: Array<[string, Record<string, unknown>]> = [];
     const client = createMemoryClient(async (op, args) => {
       calls.push([op, args]);
-      return { item: { id: "a" }, items: [{ id: "a" }], hits: [], forgotten: true, markdown: "# m", block: "", ids: [] };
+      return {
+        item: { id: "a" },
+        items: [{ id: "a" }],
+        hits: [],
+        forgotten: true,
+        markdown: "# m",
+        block: "",
+        ids: [],
+      };
     });
     expect((await client.add({ kind: "fact", text: "x", source: "user" })).id).toBe("a");
     expect(await client.forget("a")).toBe(true);
