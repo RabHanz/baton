@@ -18,6 +18,8 @@ export interface Commitment {
   /** Where it came from: his voice, the assistant's own judgement, or an offer he accepted. */
   readonly source: "voice" | "assistant" | "offer";
   readonly createdAt: number;
+  /** When it last changed, so two devices can tell which edit is newer. */
+  readonly updatedAt?: number;
   readonly closedAt?: number;
   /** A session or job it is about, so a follow-up can open it. */
   readonly ref?: string;
@@ -52,7 +54,9 @@ export const addCommitment = (
   if (due !== null && !Number.isFinite(due)) throw new Error("The due time is not a time.");
   // The same words, still open: it is the same commitment, so only its date can move.
   const same = list.find((c) => c.status === "open" && c.text.toLowerCase() === text.toLowerCase());
-  if (same !== undefined) return list.map((c) => (c === same ? { ...c, due: due ?? c.due } : c));
+  if (same !== undefined) {
+    return list.map((c) => (c === same ? { ...c, due: due ?? c.due, updatedAt: now } : c));
+  }
   return [
     ...list,
     {
@@ -63,6 +67,7 @@ export const addCommitment = (
       status: "open",
       source: input.source ?? "voice",
       createdAt: now,
+      updatedAt: now,
       ...(input.ref === undefined ? {} : { ref: input.ref }),
     },
   ];
@@ -76,7 +81,7 @@ export const closeCommitment = (
 ): ReadonlyArray<Commitment> => {
   const hit = list.find((c) => c.id === id && c.status === "open");
   if (hit === undefined) throw new Error("No open commitment has that id.");
-  return list.map((c) => (c === hit ? { ...c, status, closedAt: now } : c));
+  return list.map((c) => (c === hit ? { ...c, status, closedAt: now, updatedAt: now } : c));
 };
 
 export const pruneCommitments = (
@@ -160,4 +165,44 @@ export const briefCommitments = (list: ReadonlyArray<Commitment>, now: number): 
       : []),
   ];
   return parts.length === 0 ? `Keeping track of ${open.length} open.` : parts.join(" ");
+};
+
+const stamp = (c: Commitment): number => c.updatedAt ?? c.closedAt ?? c.createdAt;
+
+/**
+ * Two copies of the ledger (this device's file and the server's) become one. Per id a closed one
+ * beats an open one, otherwise the newer edit wins; two devices that each wrote the same words
+ * keep the older. Nothing is lost by merging in either order.
+ */
+export const mergeCommitments = (
+  a: ReadonlyArray<Commitment>,
+  b: ReadonlyArray<Commitment>,
+): ReadonlyArray<Commitment> => {
+  const byId = new Map<string, Commitment>();
+  for (const c of [...a, ...b]) {
+    const kept = byId.get(c.id);
+    if (kept === undefined) byId.set(c.id, c);
+    else if (kept.status === "open" && c.status !== "open") byId.set(c.id, c);
+    else if (kept.status === c.status && stamp(c) > stamp(kept)) byId.set(c.id, c);
+  }
+  const seen = new Map<string, Commitment>();
+  const out: Commitment[] = [];
+  for (const c of [...byId.values()].toSorted((x, y) => x.createdAt - y.createdAt || x.id.localeCompare(y.id))) {
+    const key = c.text.toLowerCase();
+    if (c.status === "open") {
+      if (seen.has(key)) continue;
+      seen.set(key, c);
+    }
+    out.push(c);
+  }
+  return out;
+};
+
+/** The rows of `local` the server does not already hold in the same state: what to push. */
+export const commitmentsToPush = (
+  local: ReadonlyArray<Commitment>,
+  remote: ReadonlyArray<Commitment>,
+): ReadonlyArray<Commitment> => {
+  const held = new Map(remote.map((c) => [c.id, JSON.stringify(c)]));
+  return local.filter((c) => held.get(c.id) !== JSON.stringify(c));
 };

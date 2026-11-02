@@ -16,6 +16,8 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_LIVE_WS_METHODS,
+  BATON_COMMITMENT_WS_METHODS,
+  BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -69,6 +71,12 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_JOB_WS_METHODS.jobSchedule]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobSplit]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
+  // A weave types into another session's terminal: operate. Listing only reads the records.
+  [BATON_WEAVE_WS_METHODS.send]: AuthOrchestrationOperateScope,
+  [BATON_WEAVE_WS_METHODS.tick]: AuthOrchestrationOperateScope,
+  [BATON_WEAVE_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // Memory (D150): reading and searching are reads. Every write is operate-level, and so is
   // recall, which records that the items were used.
   [BATON_MEMORY_WS_METHODS.list]: AuthOrchestrationReadScope,
