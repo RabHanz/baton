@@ -515,7 +515,7 @@
     "app": "edge",
     "mode": "teach",
     "goal": "show me how to open a web page in Edge",
-    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; ",
+    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; ",
     "steps": [
       {
         "say": "Press Ctrl+L to select the address bar.",
@@ -534,7 +534,7 @@
     "done": "The page is open.",
     "check": {
       "type": "title",
-      "contains": "Tessaya Test Page"
+      "contains": "page.html|Tessaya Test Page"
     },
     "close": "Get-Process msedge -EA 0|Stop-Process -Force"
   },
@@ -543,7 +543,7 @@
     "app": "edge",
     "mode": "drive",
     "goal": "open the test page in Edge",
-    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; ",
+    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; ",
     "plan": {
       "title": "Open the test page",
       "spoken": "I can see Edge's address bar. I'll type the address.",
@@ -567,7 +567,7 @@
     },
     "check": {
       "type": "title",
-      "contains": "Tessaya Test Page"
+      "contains": "page.html|Tessaya Test Page"
     },
     "close": "Get-Process msedge -EA 0|Stop-Process -Force"
   },

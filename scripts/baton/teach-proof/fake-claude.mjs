@@ -42,10 +42,10 @@ const psLocate = (name) => {
 };
 
 /** The sidecar looks in the window with the keyboard, and in the menus and dialogs of the same process. */
-const sidecarLocate = (name) => {
+const sidecarLocate = (name, attempts = 3) => {
   const exe = process.env["SIDECAR"];
   if (!exe) return null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const out = NodeChildProcess.execFileSync(
         exe,
@@ -69,8 +69,12 @@ const sidecarLocate = (name) => {
 
 /** "A|B|C": the first name the window has; Calculator's buttons are named differently on different Windows. */
 export const locate = (names) => {
-  for (const name of names.split("|")) {
-    const found = sidecarLocate(name) ?? psLocate(name);
+  const list = names.split("|");
+  for (const [i, name] of list.entries()) {
+    // Only the last name is worth waiting for: the others are guesses at what this Windows calls the control.
+    const found =
+      sidecarLocate(name, i === list.length - 1 ? 3 : 1) ??
+      (process.env["SIDECAR"] ? null : psLocate(name));
     if (found !== null) return found;
   }
   return null;

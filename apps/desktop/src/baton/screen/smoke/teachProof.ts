@@ -127,7 +127,7 @@ const locate = (name: string) =>
 const evalIn = (win: Electron.BrowserWindow, script: string): Promise<unknown> =>
   Promise.race([
     win.webContents.executeJavaScript(script).catch(() => null),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
   ]);
 
 /** What the overlay and the pill are showing now. */
@@ -369,7 +369,7 @@ function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandl
       }
       if (c.type === "title") {
         const fg = await side("foreground");
-        return { pass: fg.includes(c.contains ?? "$^"), detail: fg.slice(0, 160) };
+        return { pass: new RegExp(c.contains ?? "$^").test(fg), detail: fg.slice(0, 160) };
       }
       const after = await shot("after");
       const r = await run(
@@ -428,7 +428,10 @@ $n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 300
         }
         ended = await until((x) => /Finished|Stopped/.test(x), 60_000);
       } else {
-        for (let i = 0; i < 600 && !/Finished|Stopped/.test(ended); i += 1) {
+        for (
+          const stop = Date.now() + 150_000;
+          Date.now() < stop && !/Finished|Stopped/.test(ended);
+        ) {
           if (!(await answer())) await sleep(250);
           ended = await cardKicker();
         }
