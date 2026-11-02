@@ -37,3 +37,30 @@ describe("the Insights area", () => {
     expect(rows.find((r) => r.id === "in.cat:0")).toMatchObject({ label: "Work messages" });
   });
 });
+
+describe("the voice profile rows", () => {
+  it("are absent until there is a dictation, and then say how he dictates", async () => {
+    const { voiceProfileControls } = await import("./insightRows.ts");
+    const { computeVoiceProfile } = await import("@t3tools/baton-shared/voiceProfile");
+    expect(voiceProfileControls(null)).toEqual([]);
+    const p = computeVoiceProfile([
+      {
+        at: "2026-11-02T10:00:00",
+        kind: "dictation",
+        raw: "um hello there",
+        cleaned: "Hello there.",
+        seconds: 3,
+        corrected: false,
+        fixed: null,
+      },
+    ]);
+    const rows = voiceProfileControls(p);
+    expect(rows.map((r) => r.label)).toEqual([
+      "How you dictate",
+      "Filler words",
+      "What Tessaya changes",
+      "Words you keep correcting",
+    ]);
+    expect(rows.every((r) => r.section === "Your voice")).toBe(true);
+  });
+});
