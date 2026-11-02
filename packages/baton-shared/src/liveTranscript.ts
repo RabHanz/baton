@@ -112,6 +112,8 @@ export const stripT3Wrappers = (text: string): string =>
     .replace(/<t3_context\b[\s\S]*?(?:<\/t3_context>|$)/g, "")
     .replace(/<\/?pasted_content\b[^>]*>/g, "")
     .replace(/\[Image:[^\]]*\]/g, "")
+    // The composer records a pasted image as a markdown token; the transcript carries the picture as a block, not text.
+    .replace(/!\[[^\]]*\]\(t3-context:\/\/[^)\s]*\)/g, "")
     .replace(/\n?He attached (?:image|file) [^\n]*:\s*@\/\S+/g, "")
     .replace(/(?:\s+@\/\S+)+\s*$/, "")
     .replace(/[ \t]+\n/g, "\n")
@@ -181,9 +183,15 @@ const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
  * agent types the composer text and may add `@path` lines for attachments, so the transcript
  * copy starts with what T3 recorded.
  */
-export const isComposerEcho = (transcriptText: string, composerText: string): boolean => {
+export const isComposerEcho = (
+  transcriptText: string,
+  composerText: string,
+  /** The composer message carried pictures: with no words either side, the pictures are what match. */
+  composerHasPictures = false,
+): boolean => {
   const sent = normalize(stripT3Wrappers(composerText));
-  return sent.length > 0 && normalize(stripT3Wrappers(transcriptText)).startsWith(sent);
+  const heard = normalize(stripT3Wrappers(transcriptText));
+  return sent.length > 0 ? heard.startsWith(sent) : composerHasPictures && heard.length === 0;
 };
 
 /** A tool call the session made, or its result, as Claude Code wrote it (D85). */

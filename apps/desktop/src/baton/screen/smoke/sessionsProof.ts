@@ -6,6 +6,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as Electron from "electron";
@@ -88,7 +89,25 @@ void Electron.app.whenReady().then(async () => {
     clipboard: Electron.clipboard,
   });
   let refresh = () => undefined as void;
-  const catalog = createCatalog({ service: mockCatalogService(), onChange: () => refresh() });
+  // A real folder on the runner, as the Director's case: it exists, holds a BRIEF.md, and the service checks the disk the
+  // way the server does, so a path the form mangles or a reason it hides turns this run red.
+  const loom = NodePath.join(NodeOS.tmpdir(), "tessaya-loom");
+  NodeFS.mkdirSync(loom, { recursive: true });
+  NodeFS.writeFileSync(NodePath.join(loom, "BRIEF.md"), "brief");
+  const mock = mockCatalogService();
+  const created: unknown[] = [];
+  const catalog = createCatalog({
+    service: {
+      ...mock,
+      create: async (target) => {
+        created.push(target);
+        if (!NodeFS.existsSync(target.cwd) || !NodeFS.statSync(target.cwd).isDirectory())
+          throw new Error(`The folder ${target.cwd} is not on this machine.`);
+        return mock.create(target);
+      },
+    },
+    onChange: () => refresh(),
+  });
   await catalog.refresh();
   const home = createBatonHome({
     stateDir: out,
@@ -123,6 +142,11 @@ void Electron.app.whenReady().then(async () => {
     await sleep(600);
     return true;
   };
+  // A picture of the page at each state, for the run's artifact.
+  const frame = async (name: string) => {
+    const image = await win.webContents.capturePage();
+    NodeFS.writeFileSync(NodePath.join(out, `frame-${name}.png`), image.toPNG());
+  };
   const steps: Step[] = [];
   const check = (step: string, ok: boolean, detail = "") => steps.push({ step, ok, detail });
 
@@ -134,6 +158,7 @@ void Electron.app.whenReady().then(async () => {
     "the browser lists sessions from two machines",
     /Laptop/.test(await text()) && /Build server/.test(await text()),
   );
+  await frame("1-list");
   // Search, typed with the real keyboard.
   await click("#in-c-q");
   await driver.type("digest");
@@ -147,6 +172,7 @@ void Electron.app.whenReady().then(async () => {
   await driver.press(["ctrl", "a"]);
   await driver.press(["backspace"]);
   await sleep(1200);
+  await frame("2-search");
   // Resume the stopped session.
   await js(
     "window.__seen=[];new MutationObserver(()=>{const t=document.getElementById('page').innerText;if(/Resuming/.test(t))window.__seen.push('resuming')}).observe(document.body,{subtree:true,childList:true,characterData:true});0",
@@ -154,6 +180,7 @@ void Electron.app.whenReady().then(async () => {
   const resumed = await click("button[aria-label^='Resume Write the launch post']");
   check("Resume is on the stopped session", resumed);
   await sleep(500);
+  await frame("3-resuming");
   const during = await text();
   check("the row says Resuming... meanwhile", /Resuming/.test(during), during.slice(0, 0));
   await sleep(2500);
@@ -163,14 +190,62 @@ void Electron.app.whenReady().then(async () => {
     !/Resume Write the launch post/.test(after) &&
       /Write the launch post[\s\S]{0,120}Running/.test(after),
   );
-  // New session in a folder on a machine.
+  await frame("4-running");
+  // New session in a folder on a machine: the form, with the Director's settings and a real folder.
+  await click("#page button[aria-expanded]");
+  await sleep(800);
+  const width = (await js(
+    "document.getElementById('in-c-folder').getBoundingClientRect().width",
+  )) as number;
+  check("the folder box is wide enough to read a path", width >= 220, String(Math.round(width)));
+  await frame("5-form-empty");
+  check(
+    "the form is titled as a new session",
+    /Start a new session/.test(await text()) && /Start new session/.test(await text()),
+  );
+  // A folder that already holds stopped sessions says so, and offers Resume latest beside Start new.
+  await click("#in-c-folder");
+  await driver.type("/srv/digest-bot");
+  await sleep(600);
+  check(
+    "a folder with earlier sessions offers Resume latest",
+    /earlier sessions here/.test(await text()) && /Resume latest/.test(await text()),
+  );
+  await frame("6-earlier-here");
+  await driver.press(["ctrl", "a"]);
+  await driver.type(loom);
+  await js(
+    "(()=>{const s=[...document.querySelectorAll('#page form select')];const set=(el,v)=>{el.value=v;el.dispatchEvent(new Event('change'))};const pick=(label,v)=>{const el=s.find(x=>x.getAttribute('aria-label')===label);if(el)set(el,v)};pick('Model','opus');pick('Effort','medium');0})()",
+  );
+  await click("#in-c-msg");
+  await driver.type("Read BRIEF.md in this folder and carry it out completely.");
+  await sleep(500);
+  const typedBack = (await js("document.getElementById('in-c-folder').value")) as string;
+  check("the typed path is what the box holds", typedBack === loom, typedBack);
+  await frame("7-form-filled");
+  await click("#page form.newses button[type=submit]");
+  await sleep(1500);
+  const sent = created.at(-1) as
+    | { cwd?: string; model?: string; effort?: string; message?: string }
+    | undefined;
+  check(
+    "the service got the folder, Opus, medium effort and the first message",
+    sent?.cwd === loom &&
+      sent.model === "opus" &&
+      sent.effort === "medium" &&
+      /BRIEF\.md/.test(sent.message ?? ""),
+    JSON.stringify(sent),
+  );
+  check("a new session row for that folder appears", /tessaya-loom/.test(await text()));
+  // A folder that is not there: the reason is shown, not a generic line.
   await click("#page button[aria-expanded]");
   await sleep(800);
   await click("#in-c-folder");
-  await driver.type("/srv/new-project");
-  await click("#page form.vocab button[type=submit]");
+  await driver.type("Z:\\no\\such\\folder");
+  await click("#page form.newses button[type=submit]");
   await sleep(1500);
-  check("New session starts a session in that folder", /new-project/.test(await text()));
+  check("a missing folder says why", /not on this machine/.test(await text()));
+  await frame("8-error");
 
   const seconds = (Date.now() - began) / 1000;
   await stopClip(seconds);

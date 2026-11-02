@@ -137,6 +137,12 @@ export type HomeControl =
       readonly creating: boolean;
       readonly newMachine: string;
       readonly folders: ReadonlyArray<string>;
+      /** Folders that already hold stopped sessions: how many, and the latest one's row id. */
+      readonly earlierHere: ReadonlyArray<{
+        readonly cwd: string;
+        readonly count: number;
+        readonly id: string;
+      }>;
       readonly models: ReadonlyArray<HomeOption>;
       readonly efforts: ReadonlyArray<HomeOption>;
       readonly status: string;
@@ -152,6 +158,8 @@ export type HomeControl =
       readonly state: "running" | "stopped" | "resuming" | "failed";
       readonly stateLabel: string;
       readonly resumeLabel: string | null;
+      /** One line on what Resume does. */
+      readonly note: string;
       readonly source: string;
     })
   /** The Memory area's bar: search, the kinds to browse, export, import and sync. */

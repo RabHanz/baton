@@ -212,3 +212,25 @@ describe("a live transcript read as messages", () => {
     ).toEqual([]);
   });
 });
+
+describe("a message sent from a T3 composer with a pasted image", () => {
+  // The composer records its text with the image as a markdown token; the session's transcript holds the words only
+  // (the picture arrives as an image block). Seen on a real thread: the same message mirrored a second time, 5 s later.
+  const composer =
+    "![IMG_9498.png](t3-context://v1/image/d774e4af-562e-480d-8e72-8afecc450daf) The duplicated image and media bug is still not resolved.";
+  it("is still the composer's own message when the transcript lacks the image token", () => {
+    expect(
+      isComposerEcho("The duplicated image and media bug is still not resolved.", composer),
+    ).toBe(true);
+    expect(
+      isComposerEcho(
+        "The duplicated image and media bug is still not resolved.\n@/w/.baton/inbox/a.png",
+        composer,
+      ),
+    ).toBe(true);
+  });
+  it("is not an echo of a different message, and an image alone is not a message to match on words", () => {
+    expect(isComposerEcho("Something else entirely.", composer)).toBe(false);
+    expect(isComposerEcho("anything", "![a.png](t3-context://v1/image/x)")).toBe(false);
+  });
+});
