@@ -141,6 +141,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "commit_done",
   "notices_stop",
   "weave_send",
+  "text_transform",
+  "text_undo",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -252,6 +254,16 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       // A job's words are his own or they came from something it read; only the second asks.
       // Starting work is his agreement, not the model's: after a read it always asks.
       return outgoing || (name === "job_agree" && context.tainted)
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
+    case "text_transform":
+    case "text_undo":
+      // It rewrites what he selected, in the app he is in; a command line or a read-then-act turn asks.
+      if (name === "text_undo") return { verdict: "allow" };
+      if (context.focusedShell === true) {
+        return { verdict: "ask", why: "It would rewrite text in a command line." };
+      }
+      return context.tainted
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "weave_send": {

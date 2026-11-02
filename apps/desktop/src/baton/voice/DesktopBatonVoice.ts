@@ -21,6 +21,7 @@ import type {
 import {
   chooseMode,
   cleanupFromSaved,
+  cleanupLevelFor,
   DICTATION_MODES,
   MODE_LABELS,
   strictestCleanup,
@@ -63,6 +64,16 @@ import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approva
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
 import { expandSnippets, exportSnippets } from "@t3tools/baton-shared/snippets";
+import {
+  checkTransformOutput,
+  refuseTransformInput,
+  transformMessage,
+  transformSystemPrompt,
+  type Transform,
+} from "@t3tools/baton-shared/transforms";
+import { createModelAsk } from "../writing/modelAsk.ts";
+import { createTransformStore } from "../writing/transformStore.ts";
+import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
 import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
@@ -485,6 +496,8 @@ export interface TrayExtras extends BrainVoiceHook {
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when `speak` and spoken answers are on. */
   readonly announce: (text: string, speak: boolean) => void;
+  /** Registers or drops the Transforms shortcuts. */
+  readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
   readonly ask: (input: {
     readonly title: string;
@@ -737,6 +750,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     return strictestCleanup(settings.dictationCleanup, [spokenIn, now ?? { exe: "", title: "" }]);
   };
   const snippets = createSnippetStore(input.stateDir);
+  const transforms = createTransformStore(input.stateDir);
+  const askModel = createModelAsk({
+    claudeBinary: () => settings.claudeBinary,
+    model: () => settings.cleanupModel,
+    workDir: NodePath.join(input.stateDir, "voice", "transform"),
+    env: () => input.env,
+    platform: input.platform,
+    timeoutMs: 25_000,
+  });
+  const autoRewrite = async (t: Transform, text: string): Promise<string | null> => {
+    if (refuseTransformInput(text) !== null) return null;
+    const checked = checkTransformOutput(
+      text,
+      await askModel(transformSystemPrompt(t), transformMessage(text)),
+    );
+    return checked.ok ? checked.text : null;
+  };
+  let transformNote = "";
+  input.extras?.setTransformHotkeys?.(transforms.read().enabled);
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
     const out = await rewriter.clean({
@@ -744,7 +776,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mode: chooseMode(app, settings.appModes),
       level: await levelNow(app),
     });
-    return { ...out, text: expandSnippets(out.text, snippets.list(), app.exe) };
+    let text = expandSnippets(out.text, snippets.list(), app.exe);
+    // Transforms: one chosen rewrite after every dictation, if he asked. A failure inserts the cleaned text.
+    const tcfg = transforms.read();
+    const auto = tcfg.enabled ? transforms.all().find((t) => t.id === tcfg.autoApply) : undefined;
+    if (auto !== undefined && cleanupLevelFor("claude", app) === "claude") {
+      const rewritten = await autoRewrite(auto, text).catch(() => null);
+      if (rewritten !== null) text = rewritten;
+    }
+    return { ...out, text };
   };
   let snippetNote = "";
   /** What Baton last put in a field, where an app will not say what is around the caret. */
@@ -1335,6 +1375,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           extra: briefExtra(),
         });
       }
+      // Rewrites of the selection are answered by the companion, which holds the keyboard.
+      if (op === "text_transform" || op === "text_undo") return "That is not available here.";
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
         findings?: ReadonlyArray<WatchFinding>;
@@ -2431,6 +2473,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ),
       ...nowControls(nowData, Date.now()),
       ...snippetControls(snippets.list(), snippetNote),
+      ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...presenceControls(settings),
       ...memoryTab.controls(),
       ...vaultTab.controls(),
@@ -3084,6 +3127,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           })
           .catch(() => undefined);
       }
+    } else if (id.startsWith("tr.")) {
+      const act = transformAction(id, value);
+      transformNote = "";
+      if (act?.kind === "enabled") {
+        transforms.setEnabled(act.on);
+        input.extras?.setTransformHotkeys?.(act.on);
+      } else if (act?.kind === "auto") transforms.setAutoApply(act.id);
+      else if (act?.kind === "put") {
+        transformNote = transforms.put(act.transform) ? "" : "You can have 20 of your own.";
+      } else if (act?.kind === "bad") {
+        transformNote = "That is not a transform. Write it as Name = what to do with the text.";
+      } else if (act?.kind === "remove") {
+        transformNote = transforms.remove(act.id)
+          ? ""
+          : "A built-in cannot be removed; replace it with your own of the same name.";
+      } else if (act?.kind === "reset") transforms.reset();
     } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
     else if (id.startsWith("now.")) {
       const act = nowAction(id);
