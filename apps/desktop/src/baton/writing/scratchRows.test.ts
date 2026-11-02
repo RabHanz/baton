@@ -38,6 +38,10 @@ describe("the Scratchpad area", () => {
     expect(scratchAction("sc.hotkey", true)).toEqual({ kind: "hotkey", on: true });
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "scratch-"));
     createScratchStore(dir).add("kept");
-    expect(createScratchStore(dir).notes().map((n) => n.text)).toEqual(["kept"]);
+    expect(
+      createScratchStore(dir)
+        .notes()
+        .map((n) => n.text),
+    ).toEqual(["kept"]);
   });
 });

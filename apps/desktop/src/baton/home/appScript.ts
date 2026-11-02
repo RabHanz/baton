@@ -40,6 +40,15 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
+// A file dropped on the window is transcribed (Scratchpad). The path comes from Electron, never from the page's own data.
+if (real) {
+  addEventListener('dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault(); });
+  addEventListener('drop', e => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (!f) return; e.preventDefault();
+    let p = ''; try { p = require('electron').webUtils.getPathForFile(f); } catch (_) { p = f.path || ''; }
+    if (p) set('tf.file', p);
+  });
+}
 const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['scratchpad','Scratchpad'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   scratchpad: ['Scratchpad', 'Quick notes you speak or type, kept on this computer and searchable.'],
