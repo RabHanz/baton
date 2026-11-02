@@ -341,7 +341,9 @@ export interface ScreenCompanion {
   readonly warm: () => void;
   readonly openAskBox: () => void;
   /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
-  readonly askFromPhone: (text: string) => Promise<{ readonly spoken: string; readonly card: string }>;
+  readonly askFromPhone: (
+    text: string,
+  ) => Promise<{ readonly spoken: string; readonly card: string }>;
   /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
   readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
   /** A reply from outside the assistant, shown in full when answers are written only. */
@@ -666,14 +668,23 @@ export const startScreenCompanion = (input: {
 
   const FINISHED_CARD_MS = 12_000;
   /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
-  const finishedCard = async (kicker: string, text: string, bubble: string | null) => {
+  const finishedCard = async (
+    kicker: string,
+    text: string,
+    bubble: string | null,
+    more: ReadonlyArray<{ id: string; label: string }> = [],
+  ) => {
     const mine = ++showing;
     input.onCue?.("finished");
     await overlay.card({
       kicker,
       text,
       state: "done",
-      actions: [{ id: "close", label: "Close", primary: true }],
+      actions: [
+        { id: "another", label: "Show another", primary: true },
+        ...more,
+        { id: "close", label: "Close" },
+      ],
     });
     if (bubble !== null) void overlay.bubble(bubble.slice(0, 140));
     setTimeout(() => mine === showing && void wipe(), FINISHED_CARD_MS).unref();
@@ -683,8 +694,36 @@ export const startScreenCompanion = (input: {
     { id: "skip", label: "Skip" },
     { id: "stop", label: "Stop" },
   ] as const;
+  /** A step he can see no target for: asking the screen again comes first. */
+  const LOOK_ACTIONS = [
+    { id: "look", label: "Look again", primary: true },
+    { id: "skip", label: "Skip" },
+    { id: "stop", label: "Stop" },
+  ] as const;
+  const LOOK_AGAIN = "he asked you to look again: the pointer found nothing.";
+  /** Set when a drive typed something: Undo presses Ctrl+Z once for each typed step. */
+  let undoable: { typed: number } | null = null;
   /** A button on a step card: the same as saying it. */
   const cardAction = (id: string) => {
+    if (id === "look" && run?.mode === "teach") {
+      run.step -= 1;
+      void teachStep(LOOK_AGAIN).catch(fail);
+      return;
+    }
+    if (id === "another") {
+      void wipe();
+      windows.openAsk();
+      return;
+    }
+    if (id === "undo" && undoable !== null) {
+      const { typed } = undoable;
+      undoable = null;
+      void (async () => {
+        for (let i = 0; i < typed; i += 1) await driverFor().press(["ctrl", "z"]);
+        await finishedCard("Undone", "I set it back.", null);
+      })().catch(fail);
+      return;
+    }
     if (id === "again") {
       if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
     } else if (id === "skip") {
@@ -785,11 +824,19 @@ export const startScreenCompanion = (input: {
     yes = 0,
     noOnExpiry = false,
   ): Promise<number> => {
-    const shown = phoneTurn ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` } : box;
+    const shown = phoneTurn
+      ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` }
+      : box;
     const mirrored =
       box.buttons.length < 2
         ? null
-        : (phoneMirror?.({ title: box.title, detail: shown.detail, buttons: box.buttons, yes, cancel: box.cancel }) ?? null);
+        : (phoneMirror?.({
+            title: box.title,
+            detail: shown.detail,
+            buttons: box.buttons,
+            yes,
+            cancel: box.cancel,
+          }) ?? null);
     const local = askLocal(shown, spoken, yes, noOnExpiry);
     if (mirrored === null) return local;
     const first = await Promise.race([
@@ -1143,7 +1190,7 @@ export const startScreenCompanion = (input: {
       if (lesson.step === 1) {
         input.onCue?.("start");
         void show("Lesson", "Looking at your screen");
-      } else if (note !== undefined) input.onCue?.("stepDone");
+      } else if (note !== undefined && note !== LOOK_AGAIN) input.onCue?.("stepDone");
       input.onActivity?.("Checking", `Step ${lesson.step}`);
       const captured = await capture();
       // What this step was judged against: any change from here on is his doing.
@@ -1178,12 +1225,15 @@ export const startScreenCompanion = (input: {
         return end();
       }
       say(line);
+      const found = pointable(reply.point);
       await pointAt(reply.point, shots, lesson.step);
       await show(
         `Step ${lesson.step} · waiting for you`,
         line,
-        "Do it and I'll notice, or say next.",
-        { state: "waiting", actions: STEP_ACTIONS },
+        found
+          ? "Do it and I'll notice, or say next."
+          : "I couldn't point at it on your screen. Look again, or do it your way and I'll notice.",
+        { state: found ? "waiting" : "error", actions: found ? STEP_ACTIONS : LOOK_ACTIONS },
       );
       void overlay.waiting();
       input.onCue?.("waiting");
@@ -1486,10 +1536,13 @@ export const startScreenCompanion = (input: {
     input.onActivity?.(null);
     say(message);
     if (result.kind === "finished") {
+      const typed = plan.actions.filter((a) => a.kind === "type").length;
+      undoable = typed > 0 ? { typed } : null;
       await finishedCard(
         `Finished · ${plan.actions.length} of ${plan.actions.length}`,
         plan.title,
         null,
+        typed > 0 ? [{ id: "undo", label: "Undo typing" }] : [],
       );
     } else {
       // Plain words, never a raw error; the way out is on the card.
@@ -2203,13 +2256,17 @@ export const startScreenCompanion = (input: {
     phoneTurn = true;
     try {
       await typed(text);
-      for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1) await sleep(500);
+      for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1)
+        await sleep(500);
     } finally {
       phoneCapture = null;
       phoneTurn = false;
     }
     const spoken = mine.spoken.join(" ").trim();
-    return { spoken, card: mine.card ?? (spoken === "" ? "Done. There was nothing to say." : spoken) };
+    return {
+      spoken,
+      card: mine.card ?? (spoken === "" ? "Done. There was nothing to say." : spoken),
+    };
   };
 
   const windows = createCompanionWindows({
