@@ -1,10 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * A live check of the shared computer's dispatch shell, from this computer, with the same code the app
- * uses: usage, then a dummy request that is looked at and denied, so nothing ever runs.
- *   node scripts/baton/cloud-smoke.ts --host <public address> --user <user> --machine-key <file> --approver-key <file> \
- *     --repo <owner/name> --branch <pushed branch>
- * Prints plain lines; never prints a key.
+ * Live check of the shared computer's dispatch shell with the app's own code: usage, then a dummy request that
+ * is looked at and denied. Needs --host --user --machine-key --approver-key --repo --branch. Prints no key.
  */
 import { sshProviders } from "../../packages/baton-shared/src/cloud/sshShell.ts";
 import { nodeExec } from "../../packages/baton-shared/src/cloud/nodeExec.ts";
