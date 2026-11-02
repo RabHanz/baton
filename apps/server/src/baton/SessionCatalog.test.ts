@@ -41,6 +41,17 @@ const machine = (over: Partial<CatalogPorts> = {}) => {
 };
 
 describe("sending to a stopped session", () => {
+  it("on a machine with no Herdr it comes back as a thread and does not call baton", async () => {
+    const { catalog, batonCalls } = machine({ thread: async (id) => ({ threadId: `import:claudeAgent:${id}` }) });
+    expect(await catalog.resume({ sessionId: ID })).toEqual({
+      state: "running", pane: null, detail: null, threadId: `import:claudeAgent:${ID}`,
+    });
+    expect(batonCalls).toEqual([]);
+    const sent = await catalog.send({ sessionId: ID, text: "hi" });
+    expect(sent.delivered).toBe(false);
+    expect(sent.detail).toContain("thread");
+  });
+
   it("resumes it in the right folder, waits until it is ready, then delivers the message once", async () => {
     const { catalog, typed, batonCalls } = machine();
     const sent = await catalog.send({ sessionId: ID, text: "carry on with the tests" });
