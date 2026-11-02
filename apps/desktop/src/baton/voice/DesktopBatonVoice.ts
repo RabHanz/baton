@@ -509,6 +509,8 @@ export interface DesktopBatonVoice {
   readonly onTurnEnd: () => void;
   /** The assistant is looking, planning or driving; null when it stops. */
   readonly onActivity: (label: string | null, caption?: string) => void;
+  /** A lesson or drive sound, through the pill's own cue path. */
+  readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
   readonly onSpeechLevel: (level: number) => void;
   /** He dismissed the assistant's output. */
@@ -3020,6 +3022,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     onSpoken: (text) => core?.noteSpoken(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
+    cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
     onSpeechLevel: pill.speechLevel,

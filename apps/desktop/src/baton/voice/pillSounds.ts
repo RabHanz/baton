@@ -11,7 +11,15 @@ export interface PillNote {
   readonly gain: number;
 }
 
-export type PillSound = "wake" | "end" | "error" | "thinking";
+export type PillSound =
+  | "wake"
+  | "end"
+  | "error"
+  | "thinking"
+  | "start"
+  | "stepDone"
+  | "waiting"
+  | "finished";
 
 export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
   wake: [
@@ -22,9 +30,25 @@ export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
     { hz: 659.25, at: 0, len: 0.1, gain: 0.04 },
     { hz: 440, at: 0.06, len: 0.17, gain: 0.04 },
   ],
+  // Falling: something did not work.
   error: [
-    { hz: 349.23, at: 0, len: 0.1, gain: 0.045 },
-    { hz: 349.23, at: 0.12, len: 0.13, gain: 0.04 },
+    { hz: 392, at: 0, len: 0.1, gain: 0.045 },
+    { hz: 293.66, at: 0.09, len: 0.16, gain: 0.04 },
+  ],
+  // A lesson or a drive begins: rising.
+  start: [
+    { hz: 440, at: 0, len: 0.1, gain: 0.04 },
+    { hz: 659.25, at: 0.07, len: 0.15, gain: 0.04 },
+  ],
+  // One step is done: a soft tick.
+  stepDone: [{ hz: 880, at: 0, len: 0.07, gain: 0.03 }],
+  // Waiting for him: one low soft note.
+  waiting: [{ hz: 392, at: 0, len: 0.16, gain: 0.03 }],
+  // All done: three notes that resolve.
+  finished: [
+    { hz: 523.25, at: 0, len: 0.1, gain: 0.04 },
+    { hz: 659.25, at: 0.08, len: 0.1, gain: 0.04 },
+    { hz: 783.99, at: 0.16, len: 0.2, gain: 0.04 },
   ],
   // One soft low note, only after a long wait: "still working", never a chime.
   thinking: [{ hz: 329.63, at: 0, len: 0.14, gain: 0.03 }],
