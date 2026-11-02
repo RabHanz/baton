@@ -8,11 +8,13 @@ import { assert, it } from "@effect/vitest";
 import * as ServerConfig from "../config.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   agreeJob,
   enforceCaps,
+  postReports,
   noticePlan,
   refineJob,
   releaseWaiting,
@@ -421,6 +423,57 @@ layer("BatonJobFlow", (it) => {
           spend: new Map([[id, { tokens: 0, dollars: null, partial: true }]]),
         });
         assert.isNull(none.find((j) => j.workSessionId === id)?.limitReached);
+      }),
+  );
+
+  it.effect(
+    "writes a progress report into a running job's record once per cadence, from state",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const id = WorkSessionId.make("job-report-1");
+        const { threadId } = yield* startJob({
+          id,
+          projectId: ProjectId.make("project-site"),
+          title: "Reported",
+          goal: "Do the thing",
+          permissions: { folders: [], projects: [], tools: ["read"] },
+          limits: { reportEveryMinutes: 1 },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+        yield* jobs.planReady(id);
+        yield* agreeJob(id);
+        const entries = [
+          {
+            workSessionId: id,
+            title: "Reported",
+            lifecycle: "active",
+            state: "working",
+            needsUser: false,
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [{ threadId }],
+            synopsis: {
+              currentAction: "running the tests",
+              recentFindings: [{ text: "fixed the import" }],
+              changedFiles: ["a.ts"],
+              next: ["rebuild"],
+              validation: [{ label: "tests", outcome: "failed" }],
+              needsUser: false,
+            },
+          },
+        ] as never;
+        // The job was just created, so nothing is due yet.
+        assert.deepStrictEqual(yield* postReports(entries), []);
+        yield* TestClock.adjust("2 minutes");
+        assert.deepStrictEqual(yield* postReports(entries), [id]);
+        // Written once for this stretch; the next waits for the cadence again.
+        assert.deepStrictEqual(yield* postReports(entries), []);
+        const report = (yield* jobs.terms(id))?.revisions.find((r) => r.text.startsWith("Report:"));
+        assert.include(report?.text ?? "", "Doing: running the tests.");
+        assert.include(report?.text ?? "", "Next: rebuild.");
+        assert.include(report?.text ?? "", "1 failed check");
       }),
   );
 });

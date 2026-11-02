@@ -10,7 +10,7 @@ import * as Stream from "effect/Stream";
 
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { enforceCaps, noticePart, noticePlan } from "./BatonJobFlow.ts";
+import { enforceCaps, noticePart, noticePlan, postReports } from "./BatonJobFlow.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import type * as ServerConfig from "../config.ts";
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
@@ -42,7 +42,11 @@ export const layer = Layer.effect(
           Effect.forever(
             Effect.sleep("45 seconds").pipe(
               Effect.andThen(
-                FleetQuery.getFleet({}).pipe(Effect.flatMap((fleet) => enforceCaps(fleet.entries))),
+                FleetQuery.getFleet({}).pipe(
+                  Effect.flatMap((fleet) =>
+                    enforceCaps(fleet.entries).pipe(Effect.andThen(postReports(fleet.entries))),
+                  ),
+                ),
               ),
               Effect.provideContext(context),
               Effect.ignoreCause({ log: true }),
