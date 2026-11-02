@@ -82,8 +82,9 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Get-ChildItem installer -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
-          $wake = if ('${{ inputs.require_wake }}' -eq 'false') { @() } else { @('-RequireWake') }
-          ./scripts/baton/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @wake
+          $extra = @{}
+          if ('${{ inputs.require_wake }}' -ne 'false') { $extra.RequireWake = $true }
+          ./scripts/baton/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @extra
 
       - uses: actions/upload-artifact@v4
         if: always()
