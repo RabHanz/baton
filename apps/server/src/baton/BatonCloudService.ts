@@ -37,18 +37,19 @@ export const layer = Layer.effect(
       settingsFromEnv(process.env["BATON_CLOUD_CONFIG"]),
     );
     return BatonCloudService.of({
-      call: (input, kind) =>
-        Effect.promise(async () => {
-          const allowed: ReadonlyArray<string> = kind === "read" ? BATON_CLOUD_READ_OPS : BATON_CLOUD_ACT_OPS;
-          // A read method never changes anything, whatever op it is sent.
-          if (!allowed.includes(input.op)) return { ok: false, error: "That request is not allowed here." };
-          const out = await serveCloudCall(providers, {
+      call: Effect.fn("BatonCloudService.call")(function* (input: BatonCloudCallInput, kind: "read" | "act") {
+        const allowed: ReadonlyArray<string> = kind === "read" ? BATON_CLOUD_READ_OPS : BATON_CLOUD_ACT_OPS;
+        // A read method never changes anything, whatever op it is sent.
+        if (!allowed.includes(input.op)) return { ok: false, error: "That request is not allowed here." } as BatonCloudCallResult;
+        const out = yield* Effect.promise(() =>
+          serveCloudCall(providers, {
             op: input.op,
             ...(input.provider === undefined ? {} : { provider: input.provider }),
             ...(input.args === undefined ? {} : { args: input.args }),
-          });
-          return out.ok ? { ok: true, value: out.value } : { ok: false, error: out.error };
-        }),
+          }),
+        );
+        return (out.ok ? { ok: true, value: out.value } : { ok: false, error: out.error }) as BatonCloudCallResult;
+      }),
     });
   }),
 );
