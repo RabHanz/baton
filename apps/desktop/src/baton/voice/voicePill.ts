@@ -107,8 +107,9 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-tone=good] #t{color:var(--green)}
 #p[data-tone=off] #t{color:var(--red)}
 #p[data-tone=warn]{border-color:var(--amber)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
-</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span></div>
+</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -147,7 +148,7 @@ for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEvent
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
- show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':calm||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);
+ show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':calm||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
   live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;

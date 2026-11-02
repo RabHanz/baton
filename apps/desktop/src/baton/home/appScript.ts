@@ -647,11 +647,11 @@ function setRegion(el, build) {
   if (next.innerHTML === el.innerHTML) return false;
   el.replaceChildren(...next.childNodes); return true;
 }
-let shownModal = null, lastSig = '';
+let shownModal = null, lastSig = '', modalOpener = null;
 function ensureVeil() {
   let v = document.getElementById('veil'); if (v) return v;
   v = $('div'); v.id = 'veil'; v.onclick = e => { if (e.target === v) closeModal(); };
-  const m = $('div'); m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', 'Settings');
+  const m = $('div'); m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-label', 'Settings'); m.tabIndex = -1;
   const nav = $('div'); nav.id = 'mnav'; const body = $('div'); body.id = 'mbody';
   m.append(nav, body); v.appendChild(m); document.body.appendChild(v); return v;
 }
@@ -660,9 +660,11 @@ function syncModal() {
   const v = ensureVeil();
   if (!modal) {
     shownModal = null;
+    if (v.classList.contains('on') && !v.classList.contains('out') && modalOpener && modalOpener.focus) { try { modalOpener.focus(); } catch (_) {} modalOpener = null; }
     if (v.classList.contains('on') && !v.classList.contains('out')) { v.classList.add('out'); setTimeout(() => { if (!modal) v.className = ''; }, 170); }
     return;
   }
+  if (shownModal === null && !v.classList.contains('on')) { modalOpener = document.activeElement; setTimeout(() => { const mm = document.getElementById('modal'); const first = mm && (mm.querySelector('button[aria-current], #mnav button') || mm); if (first) first.focus(); }, 0); }
   v.classList.remove('out'); v.classList.add('on');
   setRegion(document.getElementById('mnav'), nav => {
     nav.appendChild($('h4', null, 'Settings'));
@@ -683,7 +685,7 @@ function render(state) {
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
   const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
-  const nav = $('nav'); 
+  const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages');
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
@@ -694,7 +696,7 @@ function render(state) {
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
-  const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
+  const stt = $('div', 'state'); stt.setAttribute('role', 'status'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
@@ -703,7 +705,19 @@ function render(state) {
   syncModal();
   if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
-addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && modal) closeModal();
+  // Tab stays inside the settings dialog while it is open.
+  if (e.key === 'Tab' && modal) {
+    const mm = document.getElementById('modal'); if (!mm) return;
+    const items = Array.from(mm.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(x => !x.disabled && x.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (!mm.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
 get().then(s => { render(s); startSting(); });
