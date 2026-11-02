@@ -76,7 +76,7 @@ nav{display:flex;flex-direction:column;gap:2px}
 
 #main{display:flex;flex-direction:column;min-width:0;padding:0 12px 12px 0}
 #app.collapsed #main{padding-left:12px}
-#top .search{margin-left:auto;width:220px;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:var(--quiet);color:var(--ink);font:inherit;font-size:13px}#top .search:focus{outline:2px solid var(--line-strong);outline-offset:1px}.rowwrap.stack>.voices,.rowwrap.stack>.brain{margin:0 18px 14px}#top{height:50px;display:flex;align-items:center;gap:8px;padding:0 6px 0 4px;flex:none}
+#top .search{margin-left:auto;width:220px;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:var(--quiet);color:var(--ink);font:inherit;font-size:13px}#top .search:focus{outline:2px solid var(--line-strong);outline-offset:1px}.rowwrap.stack>.voices,.rowwrap.stack>.brain{margin:0 18px 14px}#top{-webkit-app-region:drag;padding-right:calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 6px)!important;height:50px;display:flex;align-items:center;gap:8px;padding:0 6px 0 4px;flex:none}
 .ibtn{border:0;background:transparent;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--soft);position:relative}
 .ibtn:hover{background:var(--hover);color:var(--ink)}
 .ibtn .pip{position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--warn);border:2px solid var(--ground)}
@@ -179,7 +179,7 @@ input[type=text]{border:1px solid var(--line-strong);background:var(--panel);bor
 .sdot.working{background:var(--accent)}.sdot.waiting{background:var(--warn)}
 .sname{display:block;border:0;background:transparent;padding:0;font:600 14px var(--sans);text-align:left;color:var(--ink)}
 button.sname:hover{text-decoration:underline}
-.reveal{border:0;background:transparent;padding:0;font:inherit;color:inherit;text-decoration:underline dotted}
+.reveal{border:0;background:transparent;padding:0;font:inherit;color:var(--accent-text);text-decoration:underline;cursor:pointer}.sess .reveal{display:inline-block;max-width:100%;vertical-align:bottom;margin-left:8px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:var(--quiet);font:inherit;font-size:12px;line-height:20px;color:var(--soft);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}.sess .reveal:hover{border-color:var(--accent-edge);color:var(--accent-text)}
 .send{display:flex;gap:8px;margin-top:8px}
 .send input{flex:1}
 
