@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * The read-only sources behind "what needs me": issue labels on repositories he lists, and a
  * deadlines file. Both are settings and empty by default; nothing is written, sent or spent. A

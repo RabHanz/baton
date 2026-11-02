@@ -245,6 +245,7 @@ export interface AssistantActions {
       | "schedule"
       | "brief"
       | "approvals"
+      | "needs"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
