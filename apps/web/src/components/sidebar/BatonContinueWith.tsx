@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-raw-colors -- Baton file predating the rule (D82) */
 /**
  * "Continue with…" (§6.1): move a work session's thread to another provider instance. Since the
  * v2 port this is upstream's `provider.switch` on the same thread (D80).

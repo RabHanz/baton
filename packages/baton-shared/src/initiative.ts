@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
  * When Tessaya speaks up (D149). Triggers come from the watch, jobs, CI, approvals and commitments;
  * a policy scores them (importance x urgency, less the cost of interrupting), then applies quiet

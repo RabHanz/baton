@@ -66,7 +66,9 @@ describe.skipIf(!ready)("voice pipeline end to end (real models)", () => {
     const wake = await createOpenWakeWordProvider({
       melspectrogram: NodePath.join(models, "melspectrogram.onnx"),
       embedding: NodePath.join(models, "embedding_model.onnx"),
-      wakes: [{ word: "jarvis", path: NodePath.join(models, "hey_jarvis_v0.1.onnx"), threshold: 0.5 }],
+      wakes: [
+        { word: "jarvis", path: NodePath.join(models, "hey_jarvis_v0.1.onnx"), threshold: 0.5 },
+      ],
     });
     const vad = await createSileroVad(NodePath.join(models, "silero_vad.onnx"));
     const stt = createWhisperCppStt({

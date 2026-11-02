@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/namespace-node-imports, unicorn/no-useless-spread -- Baton file predating the rule (D82) */
 // How fast Baton's first words come (D143). Reads voice-turns.ndjson, prints p50, p90 and the slowest
 // turns for the last N. Run: node scripts/baton/latency-report.mjs <path to voice-turns.ndjson> [N=50]
 // Older turns report `firstSentenceMs` (from the end of the transcript to the first sentence queued);

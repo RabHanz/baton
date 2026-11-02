@@ -372,7 +372,8 @@ export const make = Effect.gen(function* () {
           Effect.map(weave.list(input.limit), (items) => ({ items })),
         ),
       ),
-    [BATON_WEAVE_WS_METHODS.tick]: () => run(Effect.flatMap(BatonWeaveService, (weave) => weave.tick)),
+    [BATON_WEAVE_WS_METHODS.tick]: () =>
+      run(Effect.flatMap(BatonWeaveService, (weave) => weave.tick)),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(

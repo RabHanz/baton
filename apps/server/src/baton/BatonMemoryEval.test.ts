@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-test-in-loop -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -12,7 +13,9 @@ import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.t
 
 /** docs/baton/evals-memory/*.json: what is remembered, then what a question should bring back first. */
 interface Corpus {
-  readonly items: ReadonlyArray<Omit<MemoryDraft, "supersedes"> & { key: string; supersedes?: string }>;
+  readonly items: ReadonlyArray<
+    Omit<MemoryDraft, "supersedes"> & { key: string; supersedes?: string }
+  >;
   readonly cases: ReadonlyArray<{
     readonly query: string;
     readonly scopeRef?: string;
@@ -24,11 +27,20 @@ interface Corpus {
 }
 
 const dir = NodePath.join(import.meta.dirname, "../../../../docs/baton/evals-memory");
-const files = NodeFS.readdirSync(dir).filter((f) => f.endsWith(".json")).toSorted();
-const corpora = files.map((f) => [f, JSON.parse(NodeFS.readFileSync(NodePath.join(dir, f), "utf8")) as Corpus] as const);
+const files = NodeFS.readdirSync(dir)
+  .filter((f) => f.endsWith(".json"))
+  .toSorted();
+const corpora = files.map(
+  (f) => [f, JSON.parse(NodeFS.readFileSync(NodePath.join(dir, f), "utf8")) as Corpus] as const,
+);
 
 it.effect("there are at least twenty retrieval cases", () =>
-  Effect.sync(() => assert.isAtLeast(corpora.reduce((n, [, c]) => n + c.cases.length, 0), 20)),
+  Effect.sync(() =>
+    assert.isAtLeast(
+      corpora.reduce((n, [, c]) => n + c.cases.length, 0),
+      20,
+    ),
+  ),
 );
 
 for (const [file, corpus] of corpora) {

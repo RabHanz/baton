@@ -7,7 +7,9 @@ import { VOICE_FRAME_SAMPLES, VOICE_SAMPLE_RATE } from "./types.ts";
 const tone = (frames: number): Int16Array[] =>
   Array.from({ length: frames }, (_, f) =>
     Int16Array.from({ length: VOICE_FRAME_SAMPLES }, (_, i) =>
-      Math.round(9000 * Math.sin((2 * Math.PI * 523 * (f * VOICE_FRAME_SAMPLES + i)) / VOICE_SAMPLE_RATE)),
+      Math.round(
+        9000 * Math.sin((2 * Math.PI * 523 * (f * VOICE_FRAME_SAMPLES + i)) / VOICE_SAMPLE_RATE),
+      ),
     ),
   );
 const loud = (frame: Int16Array) => frame.some((v) => Math.abs(v) > 500);
@@ -23,7 +25,8 @@ const makeCore = () => {
   core.subscribe((e) => events.push(e));
   return { core, events };
 };
-const feed = (core: ReturnType<typeof makeCore>["core"], frames: Int16Array[]) => frames.forEach((f) => core.pushAudio(f));
+const feed = (core: ReturnType<typeof makeCore>["core"], frames: Int16Array[]) =>
+  frames.forEach((f) => core.pushAudio(f));
 const frames = (ms: number) => Math.ceil((ms * VOICE_SAMPLE_RATE) / 1000 / VOICE_FRAME_SAMPLES);
 
 describe("a cue is not heard", () => {
@@ -41,7 +44,9 @@ describe("a cue is not heard", () => {
     events.length = 0;
     core.playingCue(250 + 150);
     feed(core, tone(frames(250 + 150)));
-    expect(events.filter((e) => e.type === "wake" || e.type === "audio" || e.type === "speech_end")).toEqual([]);
+    expect(
+      events.filter((e) => e.type === "wake" || e.type === "audio" || e.type === "speech_end"),
+    ).toEqual([]);
     expect(core.hearingSpeech()).toBe(false);
     // After the window the same sound is heard again: only the window is gated.
     feed(core, tone(frames(100)));

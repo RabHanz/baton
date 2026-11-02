@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
  * Writes the status file Tessaya reads for "what needs me" (shape: packages/baton-shared/src/needsFeeds.ts,
  * doc: docs/baton/STATUS_FILES.md). Any system can run it from cron or a hook. Node only, no installs.
@@ -15,7 +16,8 @@ import * as NodePath from "node:path";
 
 const ITEMS_MAX = 50;
 
-const clean = (v, max) => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : undefined);
+const clean = (v, max) =>
+  typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : undefined;
 
 /** `id|title|why|weight|due` -> an item, or null when it has no title. */
 export const parseItem = (spec) => {
@@ -39,9 +41,16 @@ export const parseItem = (spec) => {
 /** The document the reader expects. Items without a title are dropped; at most 50 are kept. */
 export const buildStatus = (source, items, now = new Date()) => {
   const name = clean(source, 60);
-  if (name === undefined) throw new Error("--source is required: the name of the system writing this");
+  if (name === undefined)
+    throw new Error("--source is required: the name of the system writing this");
   const kept = items
-    .map((i) => (typeof i === "string" ? parseItem(i) : parseItem(`${i.id ?? ""}|${i.title ?? ""}|${i.why ?? ""}|${i.weight ?? ""}|${i.due ?? ""}`)))
+    .map((i) =>
+      typeof i === "string"
+        ? parseItem(i)
+        : parseItem(
+            `${i.id ?? ""}|${i.title ?? ""}|${i.why ?? ""}|${i.weight ?? ""}|${i.due ?? ""}`,
+          ),
+    )
     .filter((i) => i !== null)
     .slice(0, ITEMS_MAX);
   return { source: name, asOf: now.toISOString(), items: kept };
@@ -65,7 +74,8 @@ const main = () => {
     else if (key === "--source") opt.source = value;
     else if (key === "--item") opt.items.push(value);
     else if (key === "--items-json") {
-      const raw = value === "-" ? NodeFS.readFileSync(0, "utf8") : NodeFS.readFileSync(value, "utf8");
+      const raw =
+        value === "-" ? NodeFS.readFileSync(0, "utf8") : NodeFS.readFileSync(value, "utf8");
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) throw new Error("--items-json must hold a JSON array");
       opt.items.push(...parsed);

@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-raw-colors, shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /* oxlint-disable t3code/no-low-value-comments, t3code/no-unreasoned-state-sync -- Baton file predating upstream's rule (D82) */
 /**
  * One line, above the Fleet: say what you want.
@@ -126,8 +127,16 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     return () => clearTimeout(timer);
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
-  const { environmentId, focusedWorkSessionId, onRan, onJob, onMemory, onCommitments, onWeave, onPhone } =
-    props;
+  const {
+    environmentId,
+    focusedWorkSessionId,
+    onRan,
+    onJob,
+    onMemory,
+    onCommitments,
+    onWeave,
+    onPhone,
+  } = props;
   const ownsVoice = useRef(false);
   // The desktop voice core's intent calls, answered with this bar's own RPCs:
   // spoken sentences meet the same grammar and gates as typed ones. Dictation
@@ -182,7 +191,17 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       voiceListenerClaimed = false;
       ownsVoice.current = false;
     };
-  }, [environmentId, onRan, onJob, onMemory, onCommitments, onWeave, onPhone, resolveIntent, runIntent]);
+  }, [
+    environmentId,
+    onRan,
+    onJob,
+    onMemory,
+    onCommitments,
+    onWeave,
+    onPhone,
+    resolveIntent,
+    runIntent,
+  ]);
   useEffect(() => {
     if (ownsVoice.current) batonDesktopBridge()?.setBatonVoiceFocus?.(focusedWorkSessionId);
   }, [focusedWorkSessionId]);

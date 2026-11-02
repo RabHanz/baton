@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-wall-clock-in-tests -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalRandom:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

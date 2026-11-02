@@ -7,8 +7,7 @@ import { APP_SCRIPT } from "./appScript.ts";
 import { fill, STRINGS, tableFor, text } from "./strings.ts";
 import { TABS } from "./tabs.ts";
 
-const read = (relative: string) =>
-  NodeFS.readFileSync(new URL(relative, import.meta.url), "utf8");
+const read = (relative: string) => NodeFS.readFileSync(new URL(relative, import.meta.url), "utf8");
 
 describe("the window's words", () => {
   it("has English for every page, introduction and dialog the script names", () => {
@@ -54,9 +53,13 @@ describe("the window's words", () => {
   it("does not grow the text written straight into the page script", () => {
     const body = APP_SCRIPT.slice(APP_SCRIPT.indexOf("const real"));
     const made = [
-      ...body.matchAll(/\$\(\s*'[a-z0-9]+'\s*,\s*(?:'[^']*'|null)\s*,\s*'([^']*[A-Za-z]{3}[^']*)'\s*\)/g),
+      ...body.matchAll(
+        /\$\(\s*'[a-z0-9]+'\s*,\s*(?:'[^']*'|null)\s*,\s*'([^']*[A-Za-z]{3}[^']*)'\s*\)/g,
+      ),
     ].length;
-    const set = [...body.matchAll(/(?:placeholder|title|textContent)\s*=\s*'([^']*[A-Za-z]{3}[^']*)'/g)].length;
+    const set = [
+      ...body.matchAll(/(?:placeholder|title|textContent)\s*=\s*'([^']*[A-Za-z]{3}[^']*)'/g),
+    ].length;
     expect(made).toBeLessThanOrEqual(90);
     expect(set).toBeLessThanOrEqual(12);
   });

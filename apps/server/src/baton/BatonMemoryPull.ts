@@ -58,10 +58,16 @@ export const pullAction = Effect.fn("BatonMemoryPull.action")(function* (
   action: "status" | "enable" | "disable" | "run",
 ) {
   const memory = yield* BatonMemoryService;
-  if (action === "enable" || action === "disable") yield* memory.setFlag(PULL_FLAG, action === "enable");
+  if (action === "enable" || action === "disable")
+    yield* memory.setFlag(PULL_FLAG, action === "enable");
   const enabled = yield* memory.flag(PULL_FLAG);
   if (action !== "run") {
-    return { enabled, found: 0, held: 0, message: enabled ? "Pulling learnings daily." : "Not pulling learnings." };
+    return {
+      enabled,
+      found: 0,
+      held: 0,
+      message: enabled ? "Pulling learnings daily." : "Not pulling learnings.",
+    };
   }
   const out = yield* pullLearnings();
   return {

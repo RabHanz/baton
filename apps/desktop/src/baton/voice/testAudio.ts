@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
  * A test microphone: with BATON_TEST_WAV set, the voice loop hears recorded files, in order, at real-time

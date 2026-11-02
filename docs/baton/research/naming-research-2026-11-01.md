@@ -7,11 +7,11 @@ status: trademark screen is PARTIAL. No official register answered from this box
 
 ## Answer
 
-| Rank | Name | Say it | Buy | Yearly cost | Main risk |
-|---|---|---|---|---|---|
-| 1 | Tramoka | tra-MOH-ka | tramoka.com | $11.62 at Dynadot, $11.81 at Porkbun, same on renewal | Link to weaving is indirect (Latin/Italian trama = weft). Official registers unchecked. x.com/tramoka returned 200, meaning unclear. |
-| 2 | Filara | fi-LAH-ra | filara.ai | $165.40 minimum for 2 years at Porkbun ($82.70/yr), .ai renewal in 2-year units | No .com, .app, .dev, .org, .co. Same name already used by several apps, one a design app about stitching. |
-| 3 | Weavia | WEE-vee-a | weavia.ai ($165.40 for 2 years) or weavia.app ($8.00 first year, $14.50 renewal at Dynadot) | as shown | Close to WEAVIATE, a live US registration for AI database software. Worst legal fit of the three. weavia.com held since 2004. |
+| Rank | Name    | Say it     | Buy                                                                                         | Yearly cost                                                                     | Main risk                                                                                                                            |
+| ---- | ------- | ---------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | Tramoka | tra-MOH-ka | tramoka.com                                                                                 | $11.62 at Dynadot, $11.81 at Porkbun, same on renewal                           | Link to weaving is indirect (Latin/Italian trama = weft). Official registers unchecked. x.com/tramoka returned 200, meaning unclear. |
+| 2    | Filara  | fi-LAH-ra  | filara.ai                                                                                   | $165.40 minimum for 2 years at Porkbun ($82.70/yr), .ai renewal in 2-year units | No .com, .app, .dev, .org, .co. Same name already used by several apps, one a design app about stitching.                            |
+| 3    | Weavia  | WEE-vee-a  | weavia.ai ($165.40 for 2 years) or weavia.app ($8.00 first year, $14.50 renewal at Dynadot) | as shown                                                                        | Close to WEAVIATE, a live US registration for AI database software. Worst legal fit of the three. weavia.com held since 2004.        |
 
 Reserve: Skeinora (SKAY-nor-a), every checked TLD free, but "skein" is often misread as "skine", which hurts spelling and a wake word.
 
@@ -31,20 +31,21 @@ Free .com, not shortlisted: weftika, weftari, weftivo, weaviro, filarix, filaveo
 
 T = taken, F = free (unregistered at registry).
 
-| Name | .com | .net | .org | .app | .dev | .io | .ai | .co | .so |
-|---|---|---|---|---|---|---|---|---|---|
-| filara | T | F | T | T | T | F | F | T | F |
-| weavia | T | T | F | F | F | T | F | F | F |
-| tramoka | F | F | F | F | F | F | F | F | F |
-| tramavo | F | F | F | F | F | F | F | F | F |
-| skeinora | F | F | F | F | F | F | F | F | F |
-| skeinova | F | F | F | F | F | F | F | F | F |
-| weftana | F | F | F | F | F | F | F | F | F |
-| weftaro | F | F | F | F | F | F | F | F | F |
-| tessoka | F | F | F | F | F | F | F | F | F |
-| weavika | F | F | F | F | F | F | F | F | F |
+| Name     | .com | .net | .org | .app | .dev | .io | .ai | .co | .so |
+| -------- | ---- | ---- | ---- | ---- | ---- | --- | --- | --- | --- |
+| filara   | T    | F    | T    | T    | T    | F   | F   | T   | F   |
+| weavia   | T    | T    | F    | F    | F    | T   | F   | F   | F   |
+| tramoka  | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| tramavo  | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| skeinora | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| skeinova | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| weftana  | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| weftaro  | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| tessoka  | F    | F    | F    | F    | F    | F   | F   | F   | F   |
+| weavika  | F    | F    | F    | F    | F    | F   | F   | F   | F   |
 
 Held-domain detail:
+
 - filara.com: registered 2000-06-16, expires 2027-06-16, registrar Ascio, nameservers dns.intendo.it and dns2.intendo.it, status active, no A record. No asking price found.
 - weavia.com: see below. No asking price found.
 - filara.co: registered 2026-07-10, expires 2028-07-10. Recently taken by someone.
@@ -68,18 +69,18 @@ Reading (inferred): held 22 years. The last change came 15 days after the 2025 e
 
 Sources: Porkbun raw table https://porkbun.com/products/domains and https://porkbun.com/tld/ai. Dynadot raw https://www.dynadot.com/domain/tlds, /domain/ai, /domain/app, /domain/dev. Namecheap and NameSilo returned 403. Cloudflare's own page says at cost but shows no table to curl.
 
-| TLD | Porkbun first / renew | Dynadot first / renew | Note |
-|---|---|---|---|
-| .com | $11.81 / $11.81 | $11.62 / $11.62 | best value |
-| .net | $12.52 / $12.52 | $12.52 / $12.52 | |
-| .org | $7.98 / $11.84 | $7.99 / $11.64 | |
-| .app | $8.75 / $14.93 | $8.00 / $14.50 | |
-| .dev | $8.75 / $12.87 | EUR 7.32 / EUR 11.44 (page served in euros) | |
-| .co | $15.76 / $31.20 | $15.50 / $31.20 | renewal doubles |
-| .io | $28.12 / $51.80 | $28.89 / $53.50 | renewal nearly doubles |
-| .ai | $82.70 / $82.70 per year, 2-year minimum, so $165.40 | $85.60 / $85.60 listed per year | see contradiction C1 |
-| .so | not shown | not shown | price unknown |
-| .sh | $31.20 / $46.65 | not read | |
+| TLD  | Porkbun first / renew                                | Dynadot first / renew                       | Note                   |
+| ---- | ---------------------------------------------------- | ------------------------------------------- | ---------------------- |
+| .com | $11.81 / $11.81                                      | $11.62 / $11.62                             | best value             |
+| .net | $12.52 / $12.52                                      | $12.52 / $12.52                             |                        |
+| .org | $7.98 / $11.84                                       | $7.99 / $11.64                              |                        |
+| .app | $8.75 / $14.93                                       | $8.00 / $14.50                              |                        |
+| .dev | $8.75 / $12.87                                       | EUR 7.32 / EUR 11.44 (page served in euros) |                        |
+| .co  | $15.76 / $31.20                                      | $15.50 / $31.20                             | renewal doubles        |
+| .io  | $28.12 / $51.80                                      | $28.89 / $53.50                             | renewal nearly doubles |
+| .ai  | $82.70 / $82.70 per year, 2-year minimum, so $165.40 | $85.60 / $85.60 listed per year             | see contradiction C1   |
+| .so  | not shown                                            | not shown                                   | price unknown          |
+| .sh  | $31.20 / $46.65                                      | not read                                    |                        |
 
 Verbatim, Porkbun /tld/ai: "Note: .AI Domains require a minimum term of 2 years for registration and renewals. .AI transfers include a 2 year renewal."
 
@@ -89,39 +90,39 @@ Secondary, CostGoat (https://costgoat.com/compare/domains/ai and /com): .ai chea
 
 Registers actually checked: none of the official ones.
 
-| Register | Result from this box |
-|---|---|
-| USPTO tmsearch | page loads; search endpoint returned 403, AWS WAF challenge |
-| UK IPO tmtext | 403, security check captcha |
-| TMview (covers UK, EU, US data) | "Request Rejected" |
-| EUIPO eSearch | connection reset |
-| WIPO Global Brand Database | Altcha challenge |
-| Justia, uspto.report | 403 |
+| Register                        | Result from this box                                        |
+| ------------------------------- | ----------------------------------------------------------- |
+| USPTO tmsearch                  | page loads; search endpoint returned 403, AWS WAF challenge |
+| UK IPO tmtext                   | 403, security check captcha                                 |
+| TMview (covers UK, EU, US data) | "Request Rejected"                                          |
+| EUIPO eSearch                   | connection reset                                            |
+| WIPO Global Brand Database      | Altcha challenge                                            |
+| Justia, uspto.report            | 403                                                         |
 
 The onnyx route was not used: this agent's Bash is limited to curl fetches. Captchas were not solved.
 
 Secondary source used: Trademarkia, US filter only, exact-word search, https://www.trademarkia.com/search/trademarks?query=NAME. Controls worked: nike 170, weaviate 1. Prefix results: only page 1 read, 20 rows each (filar* 23 total, weavi* 65, skein* 18).
 
-| Name | US exact | Near matches seen |
-|---|---|---|
-| Filara | 0 (filaro, fylara 0) | filar*: FILAROID 88188165 class 9 dead/abandoned. No live 9/42 on page 1. FILAROLA, FILARE are live in unrelated classes. |
-| Weavia | 0 (weavea, wevia 0) | WEAVIATE, Weaviate B.V., 79325996, filed 2021-08-25, "Live/Registered on 02 May 2023", class 9 plus services, "Design, development and maintenance of database software". WEAVING THE FUTURE, Woven by Toyota, 79419684, live, classes 9 and 42. |
-| Tramoka | 0 (trameka 0, tram*ka 0) | TRAMAKO 88540337 class 9, "Dead/Cancelled on 21 Aug 2026". |
-| Tramavo | 0 | none searched further |
-| Skeinora, Skeinova | 0 | SKEIN, Skein Labs Inc., 99469384, "Live/Pending on 16 Jun 2026", classes 5, 9. Different spelling length but shares the stem. |
-| Weftana, Weftaro | 0 | wefta* 0 |
-| Tessoka, Weavika | 0 | not searched further |
+| Name               | US exact                 | Near matches seen                                                                                                                                                                                                                                |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Filara             | 0 (filaro, fylara 0)     | filar*: FILAROID 88188165 class 9 dead/abandoned. No live 9/42 on page 1. FILAROLA, FILARE are live in unrelated classes.                                                                                                                        |
+| Weavia             | 0 (weavea, wevia 0)      | WEAVIATE, Weaviate B.V., 79325996, filed 2021-08-25, "Live/Registered on 02 May 2023", class 9 plus services, "Design, development and maintenance of database software". WEAVING THE FUTURE, Woven by Toyota, 79419684, live, classes 9 and 42. |
+| Tramoka            | 0 (trameka 0, tram*ka 0) | TRAMAKO 88540337 class 9, "Dead/Cancelled on 21 Aug 2026".                                                                                                                                                                                       |
+| Tramavo            | 0                        | none searched further                                                                                                                                                                                                                            |
+| Skeinora, Skeinova | 0                        | SKEIN, Skein Labs Inc., 99469384, "Live/Pending on 16 Jun 2026", classes 5, 9. Different spelling length but shares the stem.                                                                                                                    |
+| Weftana, Weftaro   | 0                        | wefta* 0                                                                                                                                                                                                                                         |
+| Tessoka, Weavika   | 0                        | not searched further                                                                                                                                                                                                                             |
 
 Zero on Trademarkia is not clearance: it is US only, excludes UK, EU and unregistered rights, and exact-word.
 
 ## Other namespaces
 
-| Name | GitHub | npm | PyPI | App Store (GB) | Google Play | YouTube | Bluesky | X | TikTok |
-|---|---|---|---|---|---|---|---|---|---|
-| filara | taken: user, 1 repo, 2016 | free | free | taken: FILARA (Adev LLC, shopping), Filara (YUNG WKND LLC, Graphics & Design) | Filara (Art & Design), FILARA FITNESS | taken: title "Jose Moreno" | no record | 200 | 200 |
-| weavia | free | free | free | no exact title | no exact title seen | free | no record | 404 | 200 |
-| tramoka | free | free | free | no exact title | no exact title seen | free | no record | 200 | 200 |
-| skeinora | free | free | free | no exact title | no exact title seen | free | no record | 404 | 200 |
+| Name     | GitHub                    | npm  | PyPI | App Store (GB)                                                                | Google Play                           | YouTube                    | Bluesky   | X   | TikTok |
+| -------- | ------------------------- | ---- | ---- | ----------------------------------------------------------------------------- | ------------------------------------- | -------------------------- | --------- | --- | ------ |
+| filara   | taken: user, 1 repo, 2016 | free | free | taken: FILARA (Adev LLC, shopping), Filara (YUNG WKND LLC, Graphics & Design) | Filara (Art & Design), FILARA FITNESS | taken: title "Jose Moreno" | no record | 200 | 200    |
+| weavia   | free                      | free | free | no exact title                                                                | no exact title seen                   | free                       | no record | 404 | 200    |
+| tramoka  | free                      | free | free | no exact title                                                                | no exact title seen                   | free                       | no record | 200 | 200    |
+| skeinora | free                      | free | free | no exact title                                                                | no exact title seen                   | free                       | no record | 404 | 200    |
 
 X and TikTok status codes are unreliable: both can serve 200 for a missing page. Treat X 404 as probably free, and every 200 as unknown. Reddit returned 403 for all. Instagram not checked. tessoka on GitHub is taken; the other shortlisted names are free. All ten are free on npm and PyPI.
 
@@ -133,19 +134,19 @@ UK Companies House search: no filara, tramoka or skeinora match on the results p
 
 Origin taxonomy: all `market-research` unless stated. Confidence: high, medium or low.
 
-| # | Claim | Status | Confidence | Evidence, captured_at 2026-11-01 |
-|---|---|---|---|---|
-| 1 | tramoka.com and the 8 other TLDs are unregistered | observed | high | RDAP URLs below |
-| 2 | filara.ai, .io, .net, .so are unregistered | observed | high | RDAP |
-| 3 | weavia.ai, .app, .dev, .org, .co, .so are unregistered | observed | high | RDAP |
-| 4 | Checkout price for those is standard, not premium | unknown | low | RDAP cannot show it |
-| 5 | .ai needs a 2-year minimum at Porkbun | observed | high | porkbun.com/tld/ai |
-| 6 | No exact US mark for the ten names | reported | medium | Trademarkia |
-| 7 | WEAVIATE is live in the US for database software | reported | high | Trademarkia 79325996 |
-| 8 | UK and EU marks for all names | unknown | n/a | registers blocked |
-| 9 | weavia.com will probably renew | inferred | medium | RDAP history |
-| 10 | Tramoka has no bad meaning in other languages | unknown | n/a | not checked |
-| 11 | Wake-word quality rankings | inferred, origin `model` | low | phonetic judgement only, no recogniser test |
+| #   | Claim                                                  | Status                   | Confidence | Evidence, captured_at 2026-11-01            |
+| --- | ------------------------------------------------------ | ------------------------ | ---------- | ------------------------------------------- |
+| 1   | tramoka.com and the 8 other TLDs are unregistered      | observed                 | high       | RDAP URLs below                             |
+| 2   | filara.ai, .io, .net, .so are unregistered             | observed                 | high       | RDAP                                        |
+| 3   | weavia.ai, .app, .dev, .org, .co, .so are unregistered | observed                 | high       | RDAP                                        |
+| 4   | Checkout price for those is standard, not premium      | unknown                  | low        | RDAP cannot show it                         |
+| 5   | .ai needs a 2-year minimum at Porkbun                  | observed                 | high       | porkbun.com/tld/ai                          |
+| 6   | No exact US mark for the ten names                     | reported                 | medium     | Trademarkia                                 |
+| 7   | WEAVIATE is live in the US for database software       | reported                 | high       | Trademarkia 79325996                        |
+| 8   | UK and EU marks for all names                          | unknown                  | n/a        | registers blocked                           |
+| 9   | weavia.com will probably renew                         | inferred                 | medium     | RDAP history                                |
+| 10  | Tramoka has no bad meaning in other languages          | unknown                  | n/a        | not checked                                 |
+| 11  | Wake-word quality rankings                             | inferred, origin `model` | low        | phonetic judgement only, no recogniser test |
 
 ## Contradictions
 
@@ -164,7 +165,15 @@ Origin taxonomy: all `market-research` unless stated. Confidence: high, medium o
 ## Proposed registry row (not added)
 
 ```json
-{"provider":"baton-naming","subject":"domain-status-and-trademark-screen","source":"docs/research/baton-naming-domains-trademarks-2026-11-01.md","retrieved_at":"2026-11-01","assertion":"tramoka.com free at registry; official trademark registers unreachable from the box","refresh_interval_days":7,"severity":"low"}
+{
+  "provider": "baton-naming",
+  "subject": "domain-status-and-trademark-screen",
+  "source": "docs/research/baton-naming-domains-trademarks-2026-11-01.md",
+  "retrieved_at": "2026-11-01",
+  "assertion": "tramoka.com free at registry; official trademark registers unreachable from the box",
+  "refresh_interval_days": 7,
+  "severity": "low"
+}
 ```
 
 ## Sources, all 2026-11-01
@@ -178,7 +187,6 @@ Origin taxonomy: all `market-research` unless stated. Confidence: high, medium o
 - Namespaces: https://api.github.com/users/ , https://registry.npmjs.org/ , https://pypi.org/pypi/ , https://itunes.apple.com/search , https://play.google.com/store/search , https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle , https://find-and-update.company-information.service.gov.uk/search/companies
 - Expiry lifecycle, secondary: https://support.dnsimple.com/articles/what-happens-when-domain-expires/ , https://www.name.com/support/articles/227849228-how-the-pending-delete-period-works
 
-
 # Baton rename, round 2: softer names
 
 retrieved_at: 2026-11-01, about 14:35-15:20 UTC (19:35-20:20 GMT+5). Last .com recheck 15:08 UTC.
@@ -189,16 +197,16 @@ why: the Director prefers Filara and Weavia to Tramoka ("They're easier to say a
 
 ## Answer
 
-| Rank | Name | Say it (British) | Meaning | Domain | Yearly cost | Risks |
-|---|---|---|---|---|---|---|
-| 1 | Filissa | fi-LISS-uh | fil- from Latin filum, thread; Italian filo. Closest sound to Filara. | filissa.com | $11.62 Dynadot, $11.81 Porkbun | Heard as Felicia or Melissa. FILISUND live US class 9, weak likeness. French filasse (tow, flaxen hair) is near, mild. Soft F onset. |
-| 2 | Tessaya | teh-SAY-uh | Italian tessere, to weave, with "say" inside. | tessaya.com | same | Two live TESSA class 9 marks (79151729, 78595420); only page 1 of 79 results read. Spelling could drift to Tesaya. Strongest wake-word onset of the eight. |
-| 3 | Whisela | wih-SELL-uh | whisper + -ela. | whisela.com | same | Silent h trips first-sight spelling. Could be heard as "weasel" or "whistle". WHISEL marks both dead. |
-| 4 | Weavenna | wee-VEN-uh | weave + -enna. Most direct meaning. | weavenna.com | same | WEVEN 97724958 is live in class 42 for software (Something Green, venue software). Different field, same sound stem. Weav- also sits near WEAVIATE. |
-| 5 | Silella | sih-LELL-uh | silk + -ella. | silella.com | same | Repeated L blurs in speech, weak wake word. |
-| 6 | Filenna | fi-LEN-uh | fil- + -enna. | filenna.com | same | Reads as "file". FILENET, FILENE and live FILENICHE class 42 nearby; only page 1 of 38 results read. |
-| 7 | Weavela | WEE-vuh-luh | weave + -ela. | weavela.com | same | Sounds like "weevil". WEAVELOGIC status unresolved; WEAVELY is bedding (class 24). |
-| 8 | Wevella | weh-VELL-uh | weave + -ella. | wevella.com | same | Contains "vella": Hindi, Punjabi and Urdu slang for an idle, jobless person. Bad fit for a Pakistani or Indian audience. W and V are close in sound. |
+| Rank | Name     | Say it (British) | Meaning                                                               | Domain       | Yearly cost                    | Risks                                                                                                                                                      |
+| ---- | -------- | ---------------- | --------------------------------------------------------------------- | ------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Filissa  | fi-LISS-uh       | fil- from Latin filum, thread; Italian filo. Closest sound to Filara. | filissa.com  | $11.62 Dynadot, $11.81 Porkbun | Heard as Felicia or Melissa. FILISUND live US class 9, weak likeness. French filasse (tow, flaxen hair) is near, mild. Soft F onset.                       |
+| 2    | Tessaya  | teh-SAY-uh       | Italian tessere, to weave, with "say" inside.                         | tessaya.com  | same                           | Two live TESSA class 9 marks (79151729, 78595420); only page 1 of 79 results read. Spelling could drift to Tesaya. Strongest wake-word onset of the eight. |
+| 3    | Whisela  | wih-SELL-uh      | whisper + -ela.                                                       | whisela.com  | same                           | Silent h trips first-sight spelling. Could be heard as "weasel" or "whistle". WHISEL marks both dead.                                                      |
+| 4    | Weavenna | wee-VEN-uh       | weave + -enna. Most direct meaning.                                   | weavenna.com | same                           | WEVEN 97724958 is live in class 42 for software (Something Green, venue software). Different field, same sound stem. Weav- also sits near WEAVIATE.        |
+| 5    | Silella  | sih-LELL-uh      | silk + -ella.                                                         | silella.com  | same                           | Repeated L blurs in speech, weak wake word.                                                                                                                |
+| 6    | Filenna  | fi-LEN-uh        | fil- + -enna.                                                         | filenna.com  | same                           | Reads as "file". FILENET, FILENE and live FILENICHE class 42 nearby; only page 1 of 38 results read.                                                       |
+| 7    | Weavela  | WEE-vuh-luh      | weave + -ela.                                                         | weavela.com  | same                           | Sounds like "weevil". WEAVELOGIC status unresolved; WEAVELY is bedding (class 24).                                                                         |
+| 8    | Wevella  | weh-VELL-uh      | weave + -ella.                                                        | wevella.com  | same                           | Contains "vella": Hindi, Punjabi and Urdu slang for an idle, jobless person. Bad fit for a Pakistani or Indian audience. W and V are close in sound.       |
 
 All eight: .com, .net, .org, .app, .dev, .ai and .io unregistered; npm, PyPI and GitHub user name free; no exact title found in the App Store or Google Play; no exact US mark on Trademarkia.
 
@@ -207,6 +215,7 @@ Recommendation: Filissa with filissa.com if sound wins, which is what he asked f
 ## Are Filara and Weavia taken?
 
 **Filara: yes, he is right, and more than round 1 showed.**
+
 - filara.org is a live textile business. Page title, verbatim: "FILARA — Origin Textiles". Meta description, verbatim: "Premium Thai silk and Mongolian cashmere for designers, boutiques, and private clients."
 - App Store: FILARA (Adev Llc, Shopping, updated 2026-10-30) and Filara (YUNG WKND LLC, Graphics & Design, updated 2026-10-27, an embroidery design app).
 - Google Play: Filara and FILARA FITNESS.
@@ -215,6 +224,7 @@ Recommendation: Filissa with filissa.com if sound wins, which is what he asked f
 - Textile, design and shopping use by others, on the exact name, right on the fabric theme: treat it as taken.
 
 **Weavia: not as a brand, on what could be reached. He is right about the .com only.**
+
 - No company, app or product named Weavia found: web searches, App Store GB and US, Google Play titles, Companies House (round 1), npm, PyPI, GitHub user.
 - Exact US marks on Trademarkia: 0.
 - weavia.com has been registered since 2004 and is unused; expiry detail is in round 1.
@@ -230,6 +240,7 @@ Result: 1,561 registered, 413 unregistered. Every request gave a clean 200 or 40
 Cut by ear to 30, screened on six other TLDs, npm, PyPI, GitHub and Trademarkia exact: weavela weavanna weavenna weavissa weavila wevella wevenna wevissa filissa filenna telanna telenna linissa silella loomisa loomanna audenna audetta whisara whisela vespela heedina nearina presela tessaya hushela sonenna nelenna wevonia filinia.
 
 Deep check on 15. Dropped from the 15, with reason:
+
 - Telanna: TELANA 79431005, Telana Limited, Live/Registered, classes 009, 035. PitchBook lists Telana as a company.
 - Whisara: WHISARY 90604651, Zeqin Cai, Live/Registered, class 009, "Earphones; Webcams; ...". Too close for a voice product.
 - Wevenna: WEVEN live in class 42, and sounds closer to it than Weavenna does. WEVANA 99376663 also on file.
@@ -242,19 +253,19 @@ Dropped earlier: Presela, one US result; Filinia, 4 syllables; Aranela and Seric
 
 ## What was reached
 
-| Check | Result |
-|---|---|
-| .com RDAP (Verisign) | reached, all 1,974 |
-| .net, .org, .ai, .io RDAP | reached, the 30 |
-| .app, .dev RDAP (Google registry) | 50 calls rate-limited 429 on first pass. Retried at 15 a minute for the 15, all 404. The other 15 not retried. |
-| Premium or checkout price | NOT reached. Porkbun and Dynadot render results in JavaScript, Namecheap's status endpoint gave a Cloudflare block, GoDaddy did not resolve. No first-party source found on whether a free .com can carry a premium price. |
-| Official registers (USPTO, UK IPO, EUIPO, TMview, WIPO) | NOT retried this round. All blocked this box in round 1, same day. |
-| Trademarkia, US only | reached. Exact for the 30, 29 near-spelling queries. Control weaviate 1. Pages over 10 rows: only page 1 read for filen*, weven*, filis*, telen*, tessa. Status of some rows taken from a text extract. |
-| Web search | 11 brand queries, covering all 15 and both Filara and Weavia. Result text is the tool's summary, so secondary. |
-| GitHub, npm, PyPI | reached, the 30 |
-| App Store GB | reached, 15 names, no exact titles |
-| Google Play search | reached for 8 finalists plus Filara and Weavia; no exact title seen beyond Filara |
-| Meanings | Wiktionary: no page for any of the 15; full-text search 0 hits for Filissa, Filenna, Wevella, Whisara, Tessaya. Other names and native Urdu, Arabic and Hindi script NOT searched. No native speaker consulted. So bad-meaning flags for Urdu, Arabic, Spanish, Italian, Hindi and French are a partial screen. |
+| Check                                                   | Result                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| .com RDAP (Verisign)                                    | reached, all 1,974                                                                                                                                                                                                                                                                                              |
+| .net, .org, .ai, .io RDAP                               | reached, the 30                                                                                                                                                                                                                                                                                                 |
+| .app, .dev RDAP (Google registry)                       | 50 calls rate-limited 429 on first pass. Retried at 15 a minute for the 15, all 404. The other 15 not retried.                                                                                                                                                                                                  |
+| Premium or checkout price                               | NOT reached. Porkbun and Dynadot render results in JavaScript, Namecheap's status endpoint gave a Cloudflare block, GoDaddy did not resolve. No first-party source found on whether a free .com can carry a premium price.                                                                                      |
+| Official registers (USPTO, UK IPO, EUIPO, TMview, WIPO) | NOT retried this round. All blocked this box in round 1, same day.                                                                                                                                                                                                                                              |
+| Trademarkia, US only                                    | reached. Exact for the 30, 29 near-spelling queries. Control weaviate 1. Pages over 10 rows: only page 1 read for filen*, weven*, filis*, telen*, tessa. Status of some rows taken from a text extract.                                                                                                         |
+| Web search                                              | 11 brand queries, covering all 15 and both Filara and Weavia. Result text is the tool's summary, so secondary.                                                                                                                                                                                                  |
+| GitHub, npm, PyPI                                       | reached, the 30                                                                                                                                                                                                                                                                                                 |
+| App Store GB                                            | reached, 15 names, no exact titles                                                                                                                                                                                                                                                                              |
+| Google Play search                                      | reached for 8 finalists plus Filara and Weavia; no exact title seen beyond Filara                                                                                                                                                                                                                               |
+| Meanings                                                | Wiktionary: no page for any of the 15; full-text search 0 hits for Filissa, Filenna, Wevella, Whisara, Tessaya. Other names and native Urdu, Arabic and Hindi script NOT searched. No native speaker consulted. So bad-meaning flags for Urdu, Arabic, Spanish, Italian, Hindi and French are a partial screen. |
 
 ## Verbatim sources
 
@@ -271,17 +282,17 @@ Vella, secondary and paraphrased from a search summary: वेल्ला (vell
 
 Origin `market-research` unless stated. captured_at 2026-11-01. Numbers continue from round 1.
 
-| # | Claim | Status | Confidence | Evidence |
-|---|---|---|---|---|
-| 12 | The top 8 .com names are unregistered | observed | high | Verisign RDAP, rechecked 15:08 UTC |
-| 13 | They sell at standard price | unknown | low | RDAP cannot show it; registrar pages unreadable by curl |
-| 14 | Filara is in use as a textile brand and app name | observed | high | filara.org, iTunes API |
-| 15 | No brand named Weavia is findable | reported | medium | searches above; UK and EU unchecked |
-| 16 | No exact US mark for the top 8 | reported | medium | Trademarkia |
-| 17 | UK and EU marks for all names | unknown | n/a | registers blocked in round 1 |
-| 18 | "vella" is Hindi, Punjabi and Urdu slang for idle | reported | medium | search summary, secondary |
-| 19 | The ranks and wake-word notes | inferred, origin `model` | low | phonetic judgement, no recogniser test |
-| 20 | Likely mishearings (weevil, weasel, file) | inferred, origin `model` | low | judgement only |
+| #   | Claim                                             | Status                   | Confidence | Evidence                                                |
+| --- | ------------------------------------------------- | ------------------------ | ---------- | ------------------------------------------------------- |
+| 12  | The top 8 .com names are unregistered             | observed                 | high       | Verisign RDAP, rechecked 15:08 UTC                      |
+| 13  | They sell at standard price                       | unknown                  | low        | RDAP cannot show it; registrar pages unreadable by curl |
+| 14  | Filara is in use as a textile brand and app name  | observed                 | high       | filara.org, iTunes API                                  |
+| 15  | No brand named Weavia is findable                 | reported                 | medium     | searches above; UK and EU unchecked                     |
+| 16  | No exact US mark for the top 8                    | reported                 | medium     | Trademarkia                                             |
+| 17  | UK and EU marks for all names                     | unknown                  | n/a        | registers blocked in round 1                            |
+| 18  | "vella" is Hindi, Punjabi and Urdu slang for idle | reported                 | medium     | search summary, secondary                               |
+| 19  | The ranks and wake-word notes                     | inferred, origin `model` | low        | phonetic judgement, no recogniser test                  |
+| 20  | Likely mishearings (weevil, weasel, file)         | inferred, origin `model` | low        | judgement only                                          |
 
 ## Contradictions
 
@@ -299,7 +310,15 @@ Origin `market-research` unless stated. captured_at 2026-11-01. Numbers continue
 ## Proposed registry row (not added)
 
 ```json
-{"provider":"baton-naming","subject":"round-2-soft-names","source":"docs/research/baton-naming-round2-2026-11-01.md","retrieved_at":"2026-11-01","assertion":"filissa.com and tessaya.com unregistered at registry; Filara in use as a textile brand; no Weavia brand found; official registers unreached","refresh_interval_days":7,"severity":"low"}
+{
+  "provider": "baton-naming",
+  "subject": "round-2-soft-names",
+  "source": "docs/research/baton-naming-round2-2026-11-01.md",
+  "retrieved_at": "2026-11-01",
+  "assertion": "filissa.com and tessaya.com unregistered at registry; Filara in use as a textile brand; no Weavia brand found; official registers unreached",
+  "refresh_interval_days": 7,
+  "severity": "low"
+}
 ```
 
 ## Sources, all 2026-11-01
@@ -311,7 +330,6 @@ Origin `market-research` unless stated. captured_at 2026-11-01. Numbers continue
 - Vella: https://wiki.neonvagabond.xyz/content/wiktionary_en_all_nopic_2024-05/A/%E0%A4%B5%E0%A5%87%E0%A4%B2%E0%A5%8D%E0%A4%B2%E0%A4%BE , https://www.bollymeaning.com/2012/08/vella-velle-vela-vele-meaning.html , https://www.urdupod101.com/lesson/mustknow-urdu-slang-words-phrases-20-common-slang-expressions-used-in-the-workplace?lp=118
 - Near names: https://pitchbook.com/profiles/company/63603-01 , https://trademarkdir.com/trademark/wevana-99376663 , https://github.com/weaviate/weaviate
 - Attempted, no usable result: https://porkbun.com/checkout/search?q=weavela.com , https://www.dynadot.com/domain/search?domain=weavela.com , https://domains.revved.com/v1/domainStatus , https://find.godaddy.com/domainsapi/v1/search/exact
-
 
 # Tessaya clearance
 
@@ -333,15 +351,15 @@ Exact and phonetic, USPTO: **0 hits, live or dead**, for TESSAYA, TESAYA, TESSAI
 
 Live marks that matter, classes 9 and 42, nearest first. Software marks for unrelated uses are not listed unless useful. No live record for a voice assistant turned up under these roots.
 
-| Mark | Serial / Reg | Owner | Goods | Status | Closeness |
-|---|---|---|---|---|---|
-| TESA | 99418507 | Tesa App LLC | AI "personal shopping assistant", classes 9, 42 | Notice of allowance 2026-05-12, intent-to-use, no registration yet | Closest. AI assistant software, same first letters. Differs in length, stress and purpose. Low to moderate. |
-| TESSA KNOWS | 50040543 | Blue Magic Tree, Inc. | Software to archive and search "the user's own conversations with" AI chatbots, class 9 | Filed 2026-08-09, not yet examined | Adjacent field. Name reads TESSA plus KNOWS. Low to moderate. |
-| TESS | 90573055 | Sandhills Ventures LLC | AI chatbot software for buying agricultural products, class 42 | Registered | Chatbot, narrow field. Low. |
-| TESS, TESS BY VERITEXT | 99204549, 99204554 | Veritext, LLC | AI legal case analysis, classes 9, 42 | Registration review complete; extension granted | Narrow field. Low. |
-| TESSA | 79151729 / Reg 4924710 | Maschinenfabrik Reinhausen GmbH | Electrical apparatus and computer programs for transformers, classes 9, 37, 42 | Registered, section 71 accepted 2026-06-15 | Word near, goods remote. Low, but see next row. |
-| TESSA | 79399606 | EIKONA Media GmbH | Digital asset management software, class 9 | Final refusal mailed | Goods wording excludes high-voltage industrial use, which suggests friction with Reinhausen (inferred; refusal not read). Low. |
-| TESSERA | 50156643 and others | Microsoft Corporation; Consensys; Tessera Data; several more | Security modules, finance, data, health, photo sharing | Mixed | Different sound and ending. Low, a crowded word. |
+| Mark                   | Serial / Reg           | Owner                                                        | Goods                                                                                   | Status                                                             | Closeness                                                                                                                      |
+| ---------------------- | ---------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| TESA                   | 99418507               | Tesa App LLC                                                 | AI "personal shopping assistant", classes 9, 42                                         | Notice of allowance 2026-05-12, intent-to-use, no registration yet | Closest. AI assistant software, same first letters. Differs in length, stress and purpose. Low to moderate.                    |
+| TESSA KNOWS            | 50040543               | Blue Magic Tree, Inc.                                        | Software to archive and search "the user's own conversations with" AI chatbots, class 9 | Filed 2026-08-09, not yet examined                                 | Adjacent field. Name reads TESSA plus KNOWS. Low to moderate.                                                                  |
+| TESS                   | 90573055               | Sandhills Ventures LLC                                       | AI chatbot software for buying agricultural products, class 42                          | Registered                                                         | Chatbot, narrow field. Low.                                                                                                    |
+| TESS, TESS BY VERITEXT | 99204549, 99204554     | Veritext, LLC                                                | AI legal case analysis, classes 9, 42                                                   | Registration review complete; extension granted                    | Narrow field. Low.                                                                                                             |
+| TESSA                  | 79151729 / Reg 4924710 | Maschinenfabrik Reinhausen GmbH                              | Electrical apparatus and computer programs for transformers, classes 9, 37, 42          | Registered, section 71 accepted 2026-06-15                         | Word near, goods remote. Low, but see next row.                                                                                |
+| TESSA                  | 79399606               | EIKONA Media GmbH                                            | Digital asset management software, class 9                                              | Final refusal mailed                                               | Goods wording excludes high-voltage industrial use, which suggests friction with Reinhausen (inferred; refusal not read). Low. |
+| TESSERA                | 50156643 and others    | Microsoft Corporation; Consensys; Tessera Data; several more | Security modules, finance, data, health, photo sharing                                  | Mixed                                                              | Different sound and ending. Low, a crowded word.                                                                               |
 
 Not relevant: TESSA 78595420 (Kids Fun, Inc.) is music CDs and DVDs and live performance. TESYA is class 7 and 35.
 
@@ -349,13 +367,13 @@ Risk view: low in the US for an exact or phonetic conflict. Low to moderate on o
 
 ## 2. Official registers
 
-| Register | Answered? | What happened |
-|---|---|---|
-| USPTO | **Yes** | Search backend returned real results; TSDR returned 79151729 and 99418507. Round 1 recorded USPTO as blocked. |
-| UK IPO | **Blocked** | HTTP 403, page title "Service Captcha" |
-| EUIPO | **No search done** | eSearch shell page 200 and a single record by number answered, but a name-search route did not (302). |
-| TMview | **Blocked** | POST returned "Request Rejected" from its firewall |
-| WIPO Brand Database | **Blocked** | Captcha challenge page; API 403 |
+| Register            | Answered?          | What happened                                                                                                 |
+| ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| USPTO               | **Yes**            | Search backend returned real results; TSDR returned 79151729 and 99418507. Round 1 recorded USPTO as blocked. |
+| UK IPO              | **Blocked**        | HTTP 403, page title "Service Captcha"                                                                        |
+| EUIPO               | **No search done** | eSearch shell page 200 and a single record by number answered, but a name-search route did not (302).         |
+| TMview              | **Blocked**        | POST returned "Request Rejected" from its firewall                                                            |
+| WIPO Brand Database | **Blocked**        | Captcha challenge page; API 403                                                                               |
 
 Hand searches needed: UK IPO, EUIPO eSearch or TMview, WIPO. Search TESSAYA, TESAYA, TESSA, TESA in classes 9 and 42. I did not try to get past any captcha or firewall.
 
@@ -378,25 +396,25 @@ Confidence: medium for English, Spanish, Italian, French, Portuguese. Low to med
 
 RDAP, 2026-11-01:
 
-| Name | Result |
-|---|---|
-| tessaya.com | 404, unregistered (Verisign) |
-| tessaya.app, .dev | 404, unregistered (Google registry) |
-| tessaya.ai, .io | 404, unregistered (Identity Digital; IANA bootstrap lists it for .ai, and it answered for .io) |
-| tesaya.com | **Registered** 2023-08-15, redirects to brandbucket.com/names/tesaya (a brand-name sale page; the page itself blocked this box) |
-| tessaia.com, tessay.com, tesaia.com | Registered |
+| Name                                | Result                                                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| tessaya.com                         | 404, unregistered (Verisign)                                                                                                    |
+| tessaya.app, .dev                   | 404, unregistered (Google registry)                                                                                             |
+| tessaya.ai, .io                     | 404, unregistered (Identity Digital; IANA bootstrap lists it for .ai, and it answered for .io)                                  |
+| tesaya.com                          | **Registered** 2023-08-15, redirects to brandbucket.com/names/tesaya (a brand-name sale page; the page itself blocked this box) |
+| tessaia.com, tessay.com, tesaia.com | Registered                                                                                                                      |
 
 Premium pricing: **not established.** Porkbun and Dynadot pages load but fill prices by script. The Namecheap backend returned 403. See the price in a browser at checkout.
 
-| Namespace | Result |
-|---|---|
-| GitHub org and user `tessaya` | Free: 404 on both API routes and the web page |
-| npm `tessaya` | Free, 404 |
-| PyPI `tessaya` | Free, 404 |
-| X @tessaya | **Taken**: "Jennifer Germano (@Tessaya)" |
-| TikTok @tessaya | **Taken**: nickname Tessaya, 2 followers, 0 videos |
-| YouTube @tessaya | **Taken**: resolves to channel "Tes Saya", 1 video |
-| Instagram @tessaya | **Unknown**: page has no profile data; API said login required |
+| Namespace                     | Result                                                         |
+| ----------------------------- | -------------------------------------------------------------- |
+| GitHub org and user `tessaya` | Free: 404 on both API routes and the web page                  |
+| npm `tessaya`                 | Free, 404                                                      |
+| PyPI `tessaya`                | Free, 404                                                      |
+| X @tessaya                    | **Taken**: "Jennifer Germano (@Tessaya)"                       |
+| TikTok @tessaya               | **Taken**: nickname Tessaya, 2 followers, 0 videos             |
+| YouTube @tessaya              | **Taken**: resolves to channel "Tes Saya", 1 video             |
+| Instagram @tessaya            | **Unknown**: page has no profile data; API said login required |
 
 GitHub repo `argakonto/tessaya`: JavaScript project, no description, last pushed 2022-02-14. Not a conflict.
 
@@ -430,20 +448,20 @@ Wiktionary, teso: "erect (having an erect penis)" (Portuguese, colloquial). tesa
 
 All origin: market-research. Captured 2026-11-01.
 
-| # | Claim | Status | Confidence | Evidence |
-|---|---|---|---|---|
-| 1 | No US mark, live or dead, for TESSAYA or the phonetic spellings tested | observed | high | USPTO search, controls passed |
-| 2 | No live US mark found for a voice assistant under TESSA, TESA, TESS or TESSERA roots | observed | medium | USPTO goods text, keyword filter over 9 and 42 |
-| 3 | TESA 99418507 is the nearest live US mark | inferred | medium | USPTO, TSDR |
-| 4 | USPTO reachable from this box | observed | high | Supersedes round 1, below |
-| 5 | UK, EU, WIPO marks | unknown | n/a | Registers not searched |
-| 6 | tessaya.com, .app, .dev, .ai, .io unregistered | observed | high | RDAP 404 |
-| 7 | Those domains sell at standard price | unknown | low | Prices not readable |
-| 8 | GitHub, npm, PyPI names free | observed | high | 404 responses |
-| 9 | X, TikTok, YouTube handles taken | observed | high | Public pages |
-| 10 | Instagram handle status | unknown | n/a | Login wall |
-| 11 | No bad or sexual meaning found for the whole word | reported | medium | Dictionaries and search; no native speaker |
-| 12 | Tessaya is a character in James Barclay's novels | reported | high | Italian Wikipedia, worldswithoutend.com, abbeys.com.au |
+| #   | Claim                                                                                | Status   | Confidence | Evidence                                               |
+| --- | ------------------------------------------------------------------------------------ | -------- | ---------- | ------------------------------------------------------ |
+| 1   | No US mark, live or dead, for TESSAYA or the phonetic spellings tested               | observed | high       | USPTO search, controls passed                          |
+| 2   | No live US mark found for a voice assistant under TESSA, TESA, TESS or TESSERA roots | observed | medium     | USPTO goods text, keyword filter over 9 and 42         |
+| 3   | TESA 99418507 is the nearest live US mark                                            | inferred | medium     | USPTO, TSDR                                            |
+| 4   | USPTO reachable from this box                                                        | observed | high       | Supersedes round 1, below                              |
+| 5   | UK, EU, WIPO marks                                                                   | unknown  | n/a        | Registers not searched                                 |
+| 6   | tessaya.com, .app, .dev, .ai, .io unregistered                                       | observed | high       | RDAP 404                                               |
+| 7   | Those domains sell at standard price                                                 | unknown  | low        | Prices not readable                                    |
+| 8   | GitHub, npm, PyPI names free                                                         | observed | high       | 404 responses                                          |
+| 9   | X, TikTok, YouTube handles taken                                                     | observed | high       | Public pages                                           |
+| 10  | Instagram handle status                                                              | unknown  | n/a        | Login wall                                             |
+| 11  | No bad or sexual meaning found for the whole word                                    | reported | medium     | Dictionaries and search; no native speaker             |
+| 12  | Tessaya is a character in James Barclay's novels                                     | reported | high       | Italian Wikipedia, worldswithoutend.com, abbeys.com.au |
 
 **We were wrong:** round 1 recorded USPTO as blocked from this box, and round 2 carried that forward without retrying. Today its search backend answers POST queries and TSDR status pages answer. What changed our mind: testing both directly. Why round 1 was blocked is unknown; it may have been a different path, or a block since lifted.
 
@@ -469,7 +487,16 @@ Not load-bearing for the decision.
 docs/research/registry.json was not updated: the Researcher has no Edit tool, and this row was not worth rewriting the 83 KB file by hand. Rounds 1 and 2 left theirs unadded too. An orchestrator should append all three.
 
 ```json
-{"provider":"baton-naming","subject":"tessaya-clearance","source":"docs/research/tessaya-clearance-2026-11-01.md","retrieved_at":"2026-11-01","assertion":"No US mark for TESSAYA or phonetic spellings at USPTO; tessaya.com/.app/.dev/.ai/.io unregistered; UK, EU, WIPO unsearched; X, TikTok, YouTube handles taken","refresh_interval_days":7,"affected_pack":"none (Baton rename)","severity":"low"}
+{
+  "provider": "baton-naming",
+  "subject": "tessaya-clearance",
+  "source": "docs/research/tessaya-clearance-2026-11-01.md",
+  "retrieved_at": "2026-11-01",
+  "assertion": "No US mark for TESSAYA or phonetic spellings at USPTO; tessaya.com/.app/.dev/.ai/.io unregistered; UK, EU, WIPO unsearched; X, TikTok, YouTube handles taken",
+  "refresh_interval_days": 7,
+  "affected_pack": "none (Baton rename)",
+  "severity": "low"
+}
 ```
 
 ## Sources, all 2026-11-01

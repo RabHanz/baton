@@ -18,7 +18,9 @@ export interface TrustEntry {
 const obj = (raw: string): Record<string, unknown> | null => {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : null;
   } catch {
     return null;
   }
@@ -176,7 +178,14 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
           kind: "action",
           button,
         }
-      : { id: `trust.off:${key}`, section: PERMS, label, kind: "check", status: "ok", detail: offText };
+      : {
+          id: `trust.off:${key}`,
+          section: PERMS,
+          label,
+          kind: "check",
+          status: "ok",
+          detail: offText,
+        };
   const rows: HomeControl[] = [
     row(
       "screen",
@@ -251,28 +260,24 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
             detail: "Every job asks before it sends anything public.",
           },
         ]
-      : data.grants.map(
-          (g): HomeControl => ({
-            id: `trust.revoke:grant:${g.jobId}:${g.channel}`,
-            section: STANDING,
-            label: `${g.title}: ${CHANNEL_WORDS[g.channel] ?? g.channel}`,
-            hint: `Given ${g.since.slice(0, 10)}. Stays until you take it back.`,
-            kind: "action",
-            button: "Revoke",
-          }),
-        )),
+      : data.grants.map((g): HomeControl => ({
+          id: `trust.revoke:grant:${g.jobId}:${g.channel}`,
+          section: STANDING,
+          label: `${g.title}: ${CHANNEL_WORDS[g.channel] ?? g.channel}`,
+          hint: `Given ${g.since.slice(0, 10)}. Stays until you take it back.`,
+          kind: "action",
+          button: "Revoke",
+        }))),
   );
   rows.push(
-    ...data.playbooks.map(
-      (p): HomeControl => ({
-        id: `trust.playbook:${p.id}`,
-        section: PLAYS,
-        label: p.title,
-        hint: `${p.what} At most ${p.perDay} a day. Never sends, posts or spends. Off until you turn it on.`,
-        kind: "toggle",
-        on: p.on,
-      }),
-    ),
+    ...data.playbooks.map((p): HomeControl => ({
+      id: `trust.playbook:${p.id}`,
+      section: PLAYS,
+      label: p.title,
+      hint: `${p.what} At most ${p.perDay} a day. Never sends, posts or spends. Off until you turn it on.`,
+      kind: "toggle",
+      on: p.on,
+    })),
   );
   rows.push({
     id: "trust.filter",
@@ -297,16 +302,14 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
             detail: "Nothing it did on your behalf matches.",
           },
         ]
-      : shown.map(
-          (e, i): HomeControl => ({
-            id: `trust.log:${i}`,
-            section: LOG,
-            label: e.text,
-            kind: "check",
-            status: e.outcome === "refused" || e.outcome === "failed" ? "warn" : "ok",
-            detail: `${new Date(e.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}, ${e.outcome}`,
-          }),
-        )),
+      : shown.map((e, i): HomeControl => ({
+          id: `trust.log:${i}`,
+          section: LOG,
+          label: e.text,
+          kind: "check",
+          status: e.outcome === "refused" || e.outcome === "failed" ? "warn" : "ok",
+          detail: `${new Date(e.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}, ${e.outcome}`,
+        }))),
   );
   return rows;
 };
@@ -347,7 +350,12 @@ export const describeTrust = (data: TrustData, now: number): string => {
     data.grants.length === 0
       ? "No job holds a standing permission."
       : `Standing permissions: ${data.grants.map((g) => `${g.title} (${CHANNEL_WORDS[g.channel] ?? g.channel})`).join("; ")}.`,
-    `By itself: ${data.playbooks.filter((p) => p.on).map((p) => p.title).join("; ") || "nothing, all playbooks are off"}.`,
+    `By itself: ${
+      data.playbooks
+        .filter((p) => p.on)
+        .map((p) => p.title)
+        .join("; ") || "nothing, all playbooks are off"
+    }.`,
   ].join(" ");
 };
 
@@ -384,5 +392,9 @@ export const PERMISSION_WORDS: Readonly<Record<string, Permission>> = {
 /** 'turn off Chrome' -> the permission, or null when the words match none. */
 export const permissionFromWords = (words: string): Permission | null => {
   const w = words.toLowerCase().trim();
-  return PERMISSION_WORDS[w] ?? Object.entries(PERMISSION_WORDS).find(([k]) => w.includes(k))?.[1] ?? null;
+  return (
+    PERMISSION_WORDS[w] ??
+    Object.entries(PERMISSION_WORDS).find(([k]) => w.includes(k))?.[1] ??
+    null
+  );
 };
