@@ -1,7 +1,7 @@
 # Platforms: what works where (2026-11-02)
 
 Tessaya is Windows first. This page says what was observed on each platform, how, and what stands between it and the same
-features. "Observed" means a CI run read the logs of a released build (`baton-v0.1.34`); nothing here was tried by a person on
+features. "Observed" means a CI run read the logs of a released build (`baton-v0.1.34` for the first table; a build of this repository's `main` for the voice rows, since the sidecar is packaged from `main` on); nothing here was tried by a person on
 a Mac or a Linux desktop.
 
 How to read it again: dispatch `baton-voice-proof.yml` with a release `tag`. The `prove` job is Windows (including the
@@ -15,9 +15,9 @@ stranger-install proof), `smoke linux` runs the AppImage under xvfb, `smoke maco
 | Installs / unpacks | silent NSIS install, uninstall removes the app and keeps user data | AppImage runs with `--appimage-extract-and-run --no-sandbox` | dmg mounts, the .app runs after `xattr -cr` (unsigned) |
 | Starts on a clean user | yes; no private default in user data; no user pack; only default wake words | yes; lifecycle `start` logged | yes |
 | Window | yes, second launch opens the main window (`open_main`, visible) | yes (`open_main`, visible, 1100x780) | yes ("main window created" in the app log); `open_main` is not logged for a second launch |
-| Voice start | goes past `begin` when voice is on | stops at `begin`: `binary:false`, the dictation sidecar is not built for Linux | stops at `begin`: `binary:false`, same |
-| Wake word, dictation, paste | built and proven on Windows | not available (needs the sidecar) | not available |
-| Test audio reaches the voice start | yes on Windows | no | no |
+| Voice start | goes past `begin` when voice is on | reaches `loop-started`, plays the test phrase and transcribes it | reaches `core-made`, then the app is killed (below) |
+| Wake word, dictation, paste | built and proven on Windows | wake and transcription proven with the test input; dictation hotkey and paste not exercised | not proven |
+| Test audio reaches the voice start | yes | yes | no (the app dies first) |
 | Auto-update | yes | the updater ran ("not available, latest 0.1.34") | not observed |
 | Noise in the log | none worth noting | GTK accelerator assertions and D-Bus connection errors under xvfb (cosmetic; no session bus in CI) | none observed |
 
@@ -34,7 +34,7 @@ and `stageBatonVoice` packages it into every desktop build. What each piece is o
 | --- | --- | --- | --- |
 | Microphone capture (`handy-recorder`: WASAPI, CoreAudio, ALSA) | real, used daily | real code; device listing proven on the CI runner (CoreAudio null device); a real microphone and the Microphone permission not tried | real code; listing proven with ALSA's null device; real microphones not tried |
 | Test input (`BATON_TEST_WAV`, `BATON_FAKE_MIC`) for CI | real | real | real (this is what the smoke job uses) |
-| Parakeet model load and inference (`transcribe-cpp`, the same GGUF) | real | loads (voice start reaches `core-made` on the runner); inference in the app not yet proven, see below | real: the smoke job's phrase is transcribed ("What is the cup of Brazil?") |
+| Parakeet model load and inference (`transcribe-cpp`, the same GGUF) | real | the sidecar alone loads the GGUF in about 1 s and transcribes on the runner (exit 0); inside the app the voice start reaches `core-made`, then the app process is **SIGKILLed during the warm-up** (about 50 s in, no crash report, no kernel message found; cause not identified; an ad-hoc signature on the bundle did not change it) | real: the smoke job's phrase is transcribed ("What is the cup of Brazil?") |
 | Wake word and VAD (onnxruntime) | real | not proven | real in the smoke job |
 | Hold-to-dictate hotkey (`handy-keys`) | real | the crate has a CGEventTap backend; needs Input Monitoring and Accessibility; **not exercised** | the crate's Linux backend; **not exercised**; Wayland has no global hotkeys without a portal |
 | Paste into the focused app | real (`paste_windows`, receipt-based, restores the clipboard) | real code (`pbcopy`, Command-V through `enigo`, clipboard restored after 1.5 s); needs Accessibility; **not exercised** | real code (`wl-copy` or `xclip` plus a chord; `wtype`/X11); **not exercised** |
