@@ -40,6 +40,10 @@ export interface ToolHost {
   readonly pin?: (id: string, pinned: boolean) => Promise<string>;
   readonly used?: () => Promise<string>;
   /** The vault (D151): the model gets names and sentences, never a value. */
+  /** Which way to work a browser, with the reason: his Chrome, the controls, pixels or a plain fetch. */
+  readonly browserRoute?: (ask: { readonly task: "read" | "act"; readonly url?: string | undefined; readonly needsLogin: boolean }) => Promise<string>;
+  /** Restarts Chrome with accessibility on so its page can be read through the controls. He is asked first. */
+  readonly browserAccessibilityOn?: () => Promise<string>;
   /** The history index of past work, read only; says so when this computer has none. */
   readonly history?: (ask: { readonly query?: string; readonly session?: string }) => Promise<string>;
   readonly vault?: {
@@ -298,6 +302,30 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first.',
     inputSchema: object({ id: { type: "string" } }, ["id"]),
     run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
+  },
+  {
+    name: "browser_route",
+    description:
+      "Before a browser task, ask which way to work it: his own Chrome through the extension, the window's controls (ui_tree and click_element), pixels (screen_capture and click), or a plain fetch for reading a public page. Returns the route, why, and what to do first. If it says a route is not possible, tell him the reason in plain words.",
+    inputSchema: object(
+      { task: { type: "string", enum: ["read", "act"] }, url: { type: "string" }, needs_login: { type: "boolean" } },
+      ["task"],
+    ),
+    run: async (a) => ({
+      text:
+        (await host.browserRoute?.({
+          task: a["task"] === "read" ? "read" : "act",
+          url: typeof a["url"] === "string" ? a["url"] : undefined,
+          needsLogin: a["needs_login"] !== false,
+        })) ?? "Browser routes are not available here.",
+    }),
+  },
+  {
+    name: "browser_accessibility_on",
+    description:
+      "Restart Chrome with accessibility on so ui_tree and click_element can read its pages. Chrome restores his tabs. He is asked first; use it only when browser_route says to.",
+    inputSchema: object({}),
+    run: async () => ({ text: (await host.browserAccessibilityOn?.()) ?? "Not available here." }),
   },
   {
     name: "history_search",
