@@ -98,7 +98,8 @@ import {
   STYLE_CATEGORIES,
 } from "@t3tools/baton-shared/writingStyle";
 import { computeDeepInsights } from "@t3tools/baton-shared/insightsDeep";
-import { insightControls } from "../writing/insightRows.ts";
+import { computeVoiceProfile } from "@t3tools/baton-shared/voiceProfile";
+import { insightControls, voiceProfileControls } from "../writing/insightRows.ts";
 import { previewOf, searchNotes } from "@t3tools/baton-shared/scratchpad";
 import { createScratchStore } from "../writing/scratchStore.ts";
 import { SCRATCH_HOTKEY, scratchAction, scratchControls } from "../writing/scratchRows.ts";
@@ -981,6 +982,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Worked out from History at most every half minute; Home redraws far more often. */
   let deepAt = 0;
   let deepValue: ReturnType<typeof computeDeepInsights> | null = null;
+  let profileValue: ReturnType<typeof computeVoiceProfile> = null;
   const deepInsights = () => {
     if (history === null) return null;
     if (Date.now() - deepAt > 30_000) {
@@ -988,6 +990,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       deepValue = turns.some((t) => t.kind === "dictation")
         ? computeDeepInsights(turns, Date.now())
         : null;
+      profileValue = computeVoiceProfile(turns);
       deepAt = Date.now();
     }
     return deepValue;
@@ -3412,6 +3415,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
+      ...voiceProfileControls(profileValue),
       {
         id: "d.import",
         section: "Vocabulary files",
