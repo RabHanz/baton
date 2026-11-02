@@ -85,6 +85,9 @@ struct Config {
     /// The desktop cleans the text up first, then pastes it with `target`.
     #[serde(default)]
     cleanup: bool,
+    /// Two quick taps of the hold key keep the microphone open until the next press.
+    #[serde(default)]
+    latch: bool,
 }
 
 enum Msg {
@@ -114,6 +117,49 @@ struct Job {
     pcm: Vec<f32>,
     model: PathBuf,
     language: Option<String>,
+}
+
+const TAP_MAX: Duration = Duration::from_millis(300);
+const DOUBLE_TAP_GAP: Duration = Duration::from_millis(400);
+
+/// What the hold key's press or release asks of the recorder.
+#[derive(Debug, PartialEq)]
+enum TapAction {
+    Begin,
+    Finish,
+    Nothing,
+}
+
+/// Hold to talk, or tap twice to keep talking: the second quick tap latches the microphone open, and the next press ends it.
+#[derive(Default)]
+struct DoubleTap {
+    pressed_at: Option<Instant>,
+    /// When a short tap was released: a press soon after is the second tap.
+    tapped_at: Option<Instant>,
+    latched: bool,
+}
+
+impl DoubleTap {
+    fn press(&mut self, now: Instant, enabled: bool) -> TapAction {
+        if self.latched {
+            *self = DoubleTap::default();
+            return TapAction::Finish;
+        }
+        let again = enabled && self.tapped_at.is_some_and(|t| now.duration_since(t) <= DOUBLE_TAP_GAP);
+        self.pressed_at = Some(now);
+        self.tapped_at = None;
+        self.latched = again;
+        TapAction::Begin
+    }
+
+    fn release(&mut self, now: Instant) -> TapAction {
+        if self.latched {
+            return TapAction::Nothing;
+        }
+        let short = self.pressed_at.take().is_some_and(|p| now.duration_since(p) <= TAP_MAX);
+        self.tapped_at = if short { Some(now) } else { None };
+        TapAction::Finish
+    }
 }
 
 enum Work {
@@ -625,6 +671,7 @@ fn serve() {
     let mut enigo = None;
     let mut recording: Option<Recording> = None;
     let mut held = false;
+    let mut taps = DoubleTap::default();
     let mut toggle_down = false;
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
@@ -724,6 +771,7 @@ fn serve() {
                                     if recording.take().is_some() {
                                         let _ = job_tx.send(Work::Abort);
                                         held = false;
+                                        taps = DoubleTap::default();
                                         emit(json!({"ev": "idle"}));
                                     }
                                     keys = None;
@@ -786,6 +834,7 @@ fn serve() {
                         recording = None;
                         let _ = job_tx.send(Work::Abort);
                         held = false;
+                        taps = DoubleTap::default();
                         emit(json!({"ev": "idle"}));
                     }
                     "transcribe" => {
@@ -822,12 +871,19 @@ fn serve() {
                     _ => {}
                 }
             }
-            Msg::Key { hold: true, pressed: true } => {
-                held = true;
-                begin(&config, &mut recording, &tx, &job_tx);
-            }
+            Msg::Key { hold: true, pressed: true } => match taps.press(Instant::now(), config.latch) {
+                TapAction::Begin => {
+                    held = true;
+                    begin(&config, &mut recording, &tx, &job_tx);
+                }
+                TapAction::Finish => {
+                    held = false;
+                    finish(&mut recording, &job_tx, true);
+                }
+                TapAction::Nothing => {}
+            },
             Msg::Key { hold: true, pressed: false } => {
-                if held {
+                if held && taps.release(Instant::now()) == TapAction::Finish {
                     held = false;
                     finish(&mut recording, &job_tx, true);
                 }
@@ -848,6 +904,7 @@ fn serve() {
                 recording = None;
                 let _ = job_tx.send(Work::Abort);
                 held = false;
+                taps = DoubleTap::default();
                 emit(json!({"ev": "error", "message": message}));
             }
             Msg::Finished { id, dictated, target, result } => match result {
@@ -1032,6 +1089,40 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_double_tap_keeps_the_microphone_open_until_the_next_press() {
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        let mut taps = DoubleTap::default();
+        assert_eq!(taps.press(ms(0), true), TapAction::Begin);
+        assert_eq!(taps.release(ms(100)), TapAction::Finish, "a first short tap ends as a hold would");
+        assert_eq!(taps.press(ms(300), true), TapAction::Begin, "the second tap begins again");
+        assert_eq!(taps.release(ms(380)), TapAction::Nothing, "and its release does not end it");
+        assert_eq!(taps.press(ms(5_000), true), TapAction::Finish, "the next press ends it");
+        assert_eq!(taps.release(ms(5_050)), TapAction::Finish);
+        assert_eq!(taps.press(ms(9_000), true), TapAction::Begin, "and the key is an ordinary hold again");
+    }
+
+    #[test]
+    fn slow_taps_and_long_holds_never_latch_and_the_setting_can_be_off() {
+        let t0 = Instant::now();
+        let ms = |n: u64| t0 + Duration::from_millis(n);
+        let mut taps = DoubleTap::default();
+        taps.press(ms(0), true);
+        taps.release(ms(1_000));
+        assert_eq!(taps.press(ms(1_100), true), TapAction::Begin);
+        assert_eq!(taps.release(ms(1_150)), TapAction::Finish, "a long hold before it is not a tap");
+        taps.press(ms(10_000), true);
+        taps.release(ms(10_100));
+        taps.press(ms(10_900), true);
+        assert_eq!(taps.release(ms(10_950)), TapAction::Finish, "a second tap after a long gap is a hold");
+        let mut off = DoubleTap::default();
+        off.press(ms(0), false);
+        off.release(ms(50));
+        off.press(ms(100), false);
+        assert_eq!(off.release(ms(150)), TapAction::Finish, "with the setting off it never latches");
+    }
 
     #[test]
     fn hotkeys_come_as_nothing_one_key_or_a_list() {

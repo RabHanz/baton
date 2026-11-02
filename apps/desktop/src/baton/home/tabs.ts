@@ -62,6 +62,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.speechModel": "dictation",
   "v.copyLast": "dictation",
   "v.learnWords": "dictation",
+  "v.doubleTap": "dictation",
   "v.language": "dictation",
   "d.import": "dictation",
   "v.keepVoice": "history",

@@ -406,6 +406,8 @@ interface VoiceSettings {
   readonly verifyWake: boolean;
   /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
   readonly learnWords: boolean;
+  /** Two quick taps of the dictation key keep the microphone open until the next press. */
+  readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -494,6 +496,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   conversationOpenMs: 30_000,
   verifyWake: true,
   learnWords: true,
+  doubleTap: true,
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -571,6 +574,7 @@ export const readSettings = (path: string): VoiceSettings => {
       wakeWords,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
+      doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
     };
   } catch {
@@ -2020,6 +2024,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       paste: settings.paste,
       language: settings.language,
       cleanup: true,
+      latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
     });
   };
@@ -3625,6 +3630,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         options: languageOptions(settings.speechModel),
       },
       {
+        id: "v.doubleTap",
+        section: "Dictation",
+        label: "Double-tap to keep talking",
+        hint: "Tap the dictation key twice, quickly, and Tessaya keeps listening after you let go. Press the key once more to finish. Holding it still works as before.",
+        kind: "toggle",
+        on: settings.doubleTap,
+      },
+      {
         id: "v.learnWords",
         section: "Dictation",
         label: "Learn words from my edits",
@@ -4512,7 +4525,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
-    else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
+    else if (id === "v.doubleTap") {
+      save({ doubleTap: on });
+      configureDictation();
+    } else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
