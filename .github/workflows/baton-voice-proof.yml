@@ -20,12 +20,23 @@ on:
         description: "Also fail unless the phrase woke it (a synthetic voice may not)"
         type: boolean
         default: true
+      smoke_only:
+        description: "Skip the Windows job; run only the Linux and macOS smoke jobs"
+        type: boolean
+        default: false
+      smoke_args:
+        description: "Extra launch arguments for the smoke jobs (an experiment)"
+        default: ""
+      smoke_env:
+        description: "Extra environment for the smoke jobs, KEY=VALUE separated by spaces (an experiment)"
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   prove:
+    if: ${{ !inputs.smoke_only }}
     runs-on: windows-2022
     timeout-minutes: 75
     steps:
@@ -121,8 +132,6 @@ jobs:
   # baton-desktop-release.yml does (no release is made).
   smoke:
     name: smoke ${{ matrix.platform }}
-    # macOS is reported, not required, until the warm-up kill is explained (docs/baton/PLATFORMS.md).
-    continue-on-error: ${{ matrix.platform == 'macos' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -175,6 +184,8 @@ jobs:
       - name: Launch with the test hooks
         env:
           REQUIRE_WAKE: ${{ inputs.require_wake && '1' || '0' }}
+          SMOKE_ARGS: ${{ inputs.smoke_args }}
+          SMOKE_ENV: ${{ inputs.smoke_env }}
         run: bash scripts/baton/platform-smoke.sh "${{ matrix.platform }}" "$(find release \( -name "*.AppImage" -o -name "*.dmg" \) | head -1)" "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@v4
         if: always()
