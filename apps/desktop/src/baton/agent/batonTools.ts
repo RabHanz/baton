@@ -85,6 +85,8 @@ type JobOp =
   | "text_transform"
   | "text_undo"
   | "text_command"
+  | "note_add"
+  | "note_search"
   | "split";
 
 type Args = Readonly<Record<string, unknown>>;
@@ -527,6 +529,19 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     run: async (a) => ({
       text: await host.jobs("text_command", { instruction: str(a, "instruction", 300) }),
     }),
+  },
+  {
+    name: "note_add",
+    description:
+      "Save a quick note to his Scratchpad ('take a note: buy milk'). His words, as he said them. Not a memory about him: for that use memory_remember.",
+    inputSchema: object({ text: { type: "string", maxLength: 20000 } }, ["text"]),
+    run: async (a) => ({ text: await host.jobs("note_add", { text: str(a, "text", 20_000) }) }),
+  },
+  {
+    name: "note_search",
+    description: "Find notes in his Scratchpad by words (every word must appear), newest first.",
+    inputSchema: object({ query: { type: "string", maxLength: 200 } }, ["query"]),
+    run: async (a) => ({ text: await host.jobs("note_search", { query: str(a, "query", 200) }) }),
   },
   {
     name: "text_undo",

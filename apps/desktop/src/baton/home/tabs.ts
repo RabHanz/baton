@@ -7,6 +7,7 @@ export const TABS = [
   { id: "now", label: "Now" },
   { id: "snippets", label: "Snippets" },
   { id: "insights", label: "Insights" },
+  { id: "scratchpad", label: "Scratchpad" },
   { id: "style", label: "Style" },
   { id: "transforms", label: "Transforms" },
   { id: "sessions", label: "Sessions" },
@@ -92,6 +93,7 @@ export const tabOf = (id: string): TabId => {
   if (/^tr[:.]/.test(id)) return "transforms";
   if (/^st[:.]/.test(id)) return "style";
   if (/^in[:.]/.test(id)) return "insights";
+  if (/^sc[:.]/.test(id)) return "scratchpad";
   if (/^j[a-z]?[:.]/.test(id)) return "jobs";
   if (/^a[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
