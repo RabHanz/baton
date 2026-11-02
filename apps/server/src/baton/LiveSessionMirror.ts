@@ -522,6 +522,13 @@ const readRange = (path: string, from: number, to: number): string => {
   }
 };
 
+/** The files a reply shows are the ones tools touched since the last reply: taken once, so no later reply repeats them. */
+export const takeTouched = (follow: { touched: Set<string> }): ReadonlyArray<string> => {
+  const taken = [...follow.touched];
+  follow.touched = new Set();
+  return taken;
+};
+
 interface Follow {
   readonly threadId: ThreadId;
   path: string | null;
@@ -1001,7 +1008,7 @@ const make = Effect.gen(function* () {
             follow.target,
             undefined,
             session.cwd,
-            [...follow.touched],
+            message.role === "assistant" ? takeTouched(follow) : [],
           ),
         );
         if (message.role === "assistant") follow.shots = [];
