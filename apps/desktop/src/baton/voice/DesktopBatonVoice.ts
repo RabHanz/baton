@@ -66,6 +66,7 @@ import { runCommitOp } from "../presence/commitTools.ts";
 import { presenceControls, presencePatch } from "../presence/presenceRows.ts";
 import { EMPTY_NOW, nowAction, nowControls, type NowData } from "../presence/nowRows.ts";
 import { collectNeeds } from "../presence/needsAnswer.ts";
+import { createAnomalySource } from "../presence/anomalySource.ts";
 import { createInitiative } from "../presence/initiativeEngine.ts";
 import { readCiRuns } from "../presence/ciSource.ts";
 import {
@@ -2062,6 +2063,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     return ciCache.runs;
   };
+  const anomalies = createAnomalySource({ dir: input.stateDir, now: () => Date.now() });
   const initiative = createInitiative({
     dir: input.stateDir,
     now: () => Date.now(),
@@ -2080,6 +2082,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...triggersFromFindings(await watchFindings()),
       ...triggersFromCommitments(commitments.list(), Date.now()),
       ...triggersFromCi(await ciRuns(), Date.now()),
+      ...anomalies.triggers(
+        (jobsCache ?? []).map((j) => ({ id: j.workSessionId, title: j.title, group: j.group })),
+        await ciRuns(),
+      ),
     ],
     present: async (offer) => {
       if (settings.initiativeMode === "spoken") input.extras?.announce(offer.offer, true);
