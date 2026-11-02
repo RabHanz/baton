@@ -357,6 +357,20 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     height: 50,
   });
   const boundsFile = NodePath.join(input.stateDir, "baton-window.json");
+  /** The page for a theme, written next to the other state only when it differs from what is there. */
+  const documentFile = (t: "light" | "dark"): string | null => {
+    const file = NodePath.join(input.stateDir, `baton-window-${t}.html`);
+    try {
+      const html = homeDocumentFor(t);
+      if (!NodeFS.existsSync(file) || NodeFS.readFileSync(file, "utf8") !== html) {
+        NodeFS.mkdirSync(input.stateDir, { recursive: true });
+        NodeFS.writeFileSync(file, html);
+      }
+      return file;
+    } catch {
+      return null;
+    }
+  };
   const theme = () => resolveTheme(input.appearance(), Electron.nativeTheme.shouldUseDarkColors);
   /** The page and the window's own colour, set live: no reload, no flicker. */
   const applyTheme = () => {
@@ -431,9 +445,14 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       created.on("closed", () => {
         if (win === created) win = null;
       });
-      void created.loadURL(
-        `data:text/html;charset=utf-8,${encodeURIComponent(homeDocumentFor(theme()))}`,
-      );
+      // A file, not a 600 KB data: URL that is percent-encoded and parsed on every open; the URL is the fallback.
+      const file = documentFile(theme());
+      if (file !== null) void created.loadFile(file);
+      else {
+        void created.loadURL(
+          `data:text/html;charset=utf-8,${encodeURIComponent(homeDocumentFor(theme()))}`,
+        );
+      }
       win = created;
     },
   };

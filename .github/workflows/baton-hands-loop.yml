@@ -5,6 +5,7 @@ name: Baton hands loop
 # The planner is scripted (a runner has no model login); the results are the table in
 # docs/baton/research/hands-loop-tasks.md.
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [baton/hands-ci]
