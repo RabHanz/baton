@@ -43,9 +43,6 @@ interface Result {
   steps: Step[];
   /** Model turns a planner would spend: one per tool call, a batch counting once. */
   turns: number;
-  clicks: number;
-  invoked: number;
-  covered: number;
   treeBytes: number;
 }
 const BATCH = process.env["HANDS_BATCH"] === "1";
@@ -209,9 +206,6 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
     cause,
     steps: t.steps,
     turns: t.turns,
-    clicks: stats.clicks - before.clicks,
-    invoked: stats.invoked - before.invoked,
-    covered: stats.covered - before.covered,
     treeBytes: stats.treeBytes - before.treeBytes,
   };
   results.push(r);

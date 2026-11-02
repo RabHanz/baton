@@ -48,9 +48,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # base: the old per-property UI Automation reads and coordinate clicks. cache: one cached read per element.
-        # invoke: cache plus acting through the control's own pattern. batch: invoke plus several steps per turn.
-        variant: [base, cache, invoke, batch]
+        # base: the old per-property UI Automation reads. cache: one cached read per element. batch: cache plus
+        # several steps per model turn (act_batch).
+        variant: [base, cache, batch]
         rep: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
@@ -69,7 +69,6 @@ jobs:
           SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
           HANDS_OUT: ${{ github.workspace }}/hands-${{ matrix.variant }}-${{ matrix.rep }}
           BATON_UIA_CACHE: ${{ matrix.variant == 'base' && '0' || '1' }}
-          HANDS_INVOKE: ${{ (matrix.variant == 'invoke' || matrix.variant == 'batch') && '1' || '0' }}
           HANDS_BATCH: ${{ matrix.variant == 'batch' && '1' || '0' }}
         run: |
           mkdir -p "$HANDS_OUT"
