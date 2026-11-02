@@ -127,7 +127,7 @@ const locate = (name: string) =>
 const evalIn = (win: Electron.BrowserWindow, script: string): Promise<unknown> =>
   Promise.race([
     win.webContents.executeJavaScript(script).catch(() => null),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
   ]);
 
 /** What the overlay and the pill are showing now. */
@@ -161,7 +161,7 @@ public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(Int
 $p.Refresh();[W]::MoveWindow($p.MainWindowHandle,120,90,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null;$p.Id`;
 
 // Whatever happens, the run ends and its files are kept.
-setTimeout(() => Electron.app.exit(3), 8 * 60_000).unref();
+setTimeout(() => Electron.app.exit(3), (process.env["PROOF_APP"] ? 28 : 8) * 60_000).unref();
 
 void Electron.app.whenReady().then(async () => {
   const driver = createInputDriver({
@@ -260,6 +260,266 @@ void Electron.app.whenReady().then(async () => {
     });
   }
 
+  // Every question a drive asks is answered with its first button, the way he would, after a pause to read it.
+  let pressed = 0;
+  const answer = async (): Promise<boolean> => {
+    for (const win of Electron.BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed() || !win.isVisible()) continue;
+      const rect = (await evalIn(
+        win,
+        "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
+      )) as { x: number; y: number; t: string } | null;
+      if (rect === null) continue;
+      note("approval", { button: rect.t });
+      await sleep(3000);
+      const bounds = win.getBounds();
+      await driver.clickAt({ x: bounds.x + rect.x, y: bounds.y + rect.y }, "left", 1);
+      pressed += 1;
+      return true;
+    }
+    return false;
+  };
+
+  // The quality set: every scenario of one app (PROOF_APP) from scenarios.json, each recorded and checked outside the UI.
+  if ((process.env["PROOF_APP"] ?? "") !== "") {
+    interface Scenario {
+      readonly id: string;
+      readonly app: string;
+      readonly mode: "teach" | "drive";
+      readonly goal: string;
+      readonly launch: string;
+      readonly steps?: ReadonlyArray<{
+        readonly act: ReadonlyArray<ReadonlyArray<string | number>>;
+      }>;
+      readonly check: {
+        readonly type: string;
+        readonly script?: string;
+        readonly contains?: string;
+      };
+      readonly close?: string;
+    }
+    const all = JSON.parse(
+      NodeFS.readFileSync(NodePath.join(NodePath.dirname(fake), "scenarios.json"), "utf8"),
+    ) as Scenario[];
+    const mine = all.filter((x) => x.app === process.env["PROOF_APP"]);
+    const PRELUDE = `Add-Type @'
+using System;using System.Runtime.InteropServices;
+public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);}
+'@
+function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandle -ne 0}|Select-Object -First 1;if($p){[W]::MoveWindow($p.MainWindowHandle,100,60,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null;(New-Object -ComObject WScript.Shell).AppActivate($p.Id)|Out-Null}}
+`;
+    // Files, not pipes: an app started by the script (Explorer, Edge) would hold a pipe open and the call would never end.
+    const run = (script: string) =>
+      new Promise<{ code: number; out: string }>((resolve) => {
+        const base = NodePath.join(
+          out,
+          `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        );
+        NodeFS.writeFileSync(`${base}.ps1`, PRELUDE + script);
+        const log = NodeFS.openSync(`${base}.log`, "w");
+        const child = NodeChildProcess.spawn(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", `${base}.ps1`],
+          { windowsHide: true, stdio: ["ignore", log, log] },
+        );
+        const timer = setTimeout(() => child.kill(), 60_000);
+        const done = (code: number) => {
+          clearTimeout(timer);
+          NodeFS.closeSync(log);
+          resolve({ code, out: NodeFS.readFileSync(`${base}.log`, "utf8").trim().slice(0, 300) });
+        };
+        child.on("exit", (code) => done(code ?? 1));
+        child.on("error", () => done(1));
+      });
+    const side = (...args: string[]) =>
+      new Promise<string>((resolve) =>
+        NodeChildProcess.execFile(
+          sidecarBinary,
+          args,
+          { windowsHide: true, timeout: 20_000, maxBuffer: 8e6 },
+          (_e, stdout) => resolve(String(stdout)),
+        ),
+      );
+    const expand = (text: string) =>
+      text
+        .replaceAll("{TEMPURL}", (process.env["TEMP"] ?? "").replaceAll("\\", "/"))
+        .replaceAll("{TEMP}", process.env["TEMP"] ?? "");
+    const shot = async (name: string) => {
+      const file = NodePath.join(out, `${name}.png`);
+      await run(
+        `Add-Type -AssemblyName System.Windows.Forms,System.Drawing;$b=[System.Windows.Forms.SystemInformation]::VirtualScreen;$m=New-Object System.Drawing.Bitmap $b.Width,$b.Height;$g=[System.Drawing.Graphics]::FromImage($m);$g.CopyFromScreen($b.Left,$b.Top,0,0,$m.Size);$m.Save('${file}')`,
+      );
+      return file;
+    };
+    const judge = async (
+      c: Scenario["check"],
+      before: string,
+    ): Promise<{ pass: boolean; detail: string }> => {
+      if (c.type === "ps") {
+        const r = await run(c.script ?? "exit 1");
+        return { pass: r.code === 0, detail: r.out };
+      }
+      if (c.type === "tree") {
+        const tree = await side("ui_tree");
+        const hit = new RegExp(c.contains ?? "$^").test(tree);
+        return {
+          pass: hit,
+          detail: hit ? "found in the window's controls" : `not in: ${tree.slice(0, 160)}`,
+        };
+      }
+      if (c.type === "title") {
+        const fg = await side("foreground");
+        return { pass: new RegExp(c.contains ?? "$^").test(fg), detail: fg.slice(0, 160) };
+      }
+      const after = await shot("after");
+      const r = await run(
+        `Add-Type -ReferencedAssemblies System.Drawing @"
+using System.Drawing;
+public static class Diff { public static int Count(string a, string b) { using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) { int n = 0; int w = System.Math.Min(x.Width, y.Width), h = System.Math.Min(x.Height, y.Height); for (int i = 0; i < w; i += 3) for (int j = 0; j < h; j += 3) if (x.GetPixel(i, j).ToArgb() != y.GetPixel(i, j).ToArgb()) n++; return n; } } }
+"@
+$n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 300){exit 0}else{exit 1}`,
+      );
+      return { pass: r.code === 0, detail: r.out };
+    };
+    const perform = async (acts: ReadonlyArray<ReadonlyArray<string | number>>) => {
+      for (const [kind, a, b, c, d] of acts) {
+        if (kind === "click") await clickOn(String(a));
+        else if (kind === "key") await driver.press([String(a)]);
+        else if (kind === "chord") await driver.press(String(a).split("+"));
+        else if (kind === "type") await driver.type(expand(String(a)));
+        else if (kind === "drag") {
+          await driver.pressAt(Electron.screen.screenToDipPoint({ x: Number(a), y: Number(b) }));
+          await sleep(300);
+          await driver.releaseAt(Electron.screen.screenToDipPoint({ x: Number(c), y: Number(d) }));
+        }
+        await sleep(700);
+      }
+    };
+    const display = Electron.screen.getPrimaryDisplay();
+    process.env["PROOF_SCREEN_W"] = String(Math.round(display.size.width * display.scaleFactor));
+    const rows: Array<Record<string, unknown>> = [];
+    const writeResults = () => {
+      NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(rows, null, 2));
+      NodeFS.writeFileSync(
+        NodePath.join(out, "results.md"),
+        [
+          `### ${process.env["PROOF_APP"]}`,
+          "| scenario | result | seconds | cause |",
+          "| --- | --- | --- | --- |",
+          ...rows.map(
+            (r) =>
+              `| ${String(r["id"])} | ${r["pass"] === true ? "pass" : "fail"} | ${String(r["seconds"])} | ${String(
+                r["cause"] || r["check"],
+              )
+                .replaceAll("|", "/")
+                .replaceAll("\n", " ")
+                .slice(0, 160)} |`,
+          ),
+        ].join("\n"),
+      );
+    };
+    for (const sc of mine) {
+      const began = Date.now();
+      note("scenario", { id: sc.id });
+      process.env["PROOF_SCENARIO"] = sc.id;
+      let cause = "";
+      let ended = "";
+      let verdict: { pass: boolean; detail: string } = { pass: false, detail: "" };
+      let stopClip: (seconds: number) => Promise<void> = async () => undefined;
+      // One scenario never takes the whole run with it: a call that hangs is a failure with a cause.
+      const body = async () => {
+        await run(sc.launch);
+        await sleep(1500);
+        const before = await shot("before");
+        stopClip = startClip(sc.id);
+        await sleep(2000);
+        void companion.said(`${sc.mode}: ${sc.goal}`, { direct: false });
+        if (sc.mode === "teach") {
+          const steps = sc.steps ?? [];
+          for (let i = 1; i <= steps.length && cause === ""; i += 1) {
+            const k = await until((x) => x.startsWith(`Step ${i}`), 60_000);
+            if (!k.startsWith(`Step ${i}`)) {
+              cause = `no card for step ${i} (saw "${k}")`;
+              break;
+            }
+            await sleep(2500);
+            await perform(steps[i - 1]!.act);
+            const moved = await until((x) => !x.startsWith(`Step ${i} `), 20_000);
+            if (moved.startsWith(`Step ${i} `) || moved === "") {
+              note("noticed.not", { id: sc.id, step: i });
+              void companion.said("next", { direct: false });
+            }
+          }
+          ended = await until((x) => /Finished|Stopped/.test(x), 60_000);
+        } else {
+          for (
+            const stop = Date.now() + 150_000;
+            Date.now() < stop && !/Finished|Stopped/.test(ended);
+          ) {
+            if (!(await answer())) await sleep(250);
+            ended = await cardKicker();
+          }
+        }
+        await sleep(3000);
+        // Notepad writes its settings when it closes, so a registry check comes after the close.
+        if (sc.check.type === "ps" && sc.close !== undefined) {
+          await run(sc.close);
+          await sleep(1500);
+        }
+        verdict = await judge(sc.check, before);
+      };
+      const timedOut = await Promise.race([
+        body().then(() => false),
+        sleep(300_000).then(() => true),
+      ]);
+      if (timedOut) cause = `hung for 5 minutes (last card "${ended}")`;
+      if (cause === "" && !/Finished/.test(ended)) cause = `ended with "${ended}"`;
+      if (cause === "" && !verdict.pass) cause = `check failed: ${verdict.detail}`;
+      const seconds = Math.round((Date.now() - began) / 1000);
+      rows.push({
+        id: sc.id,
+        mode: sc.mode,
+        app: sc.app,
+        pass: cause === "" && verdict.pass,
+        cause,
+        ended,
+        check: verdict.detail,
+        seconds,
+      });
+      note("scenario.result", rows.at(-1) as object);
+      writeResults();
+      companion.stop();
+      await sleep(1500);
+      await Promise.race([stopClip(seconds), sleep(60_000)]);
+      if (sc.close !== undefined) await run(sc.close);
+    }
+    NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(rows, null, 2));
+    NodeFS.writeFileSync(
+      NodePath.join(out, "results.md"),
+      [
+        `### ${process.env["PROOF_APP"]}`,
+        "| scenario | result | seconds | cause |",
+        "| --- | --- | --- | --- |",
+        ...rows.map(
+          (r) =>
+            `| ${String(r["id"])} | ${r["pass"] === true ? "pass" : "fail"} | ${String(r["seconds"])} | ${String(
+              r["cause"] || r["check"],
+            )
+              .replaceAll("|", "/")
+              .replaceAll("\n", " ")
+              .slice(0, 160)} |`,
+        ),
+      ].join("\n"),
+    );
+    timeline.end(() => {
+      companion.dispose();
+      sidecar?.dispose();
+      driver.dispose();
+      Electron.app.exit(0);
+    });
+    return;
+  }
+
   const results: Record<string, unknown> = {};
   // Each of the five cues once, through the pill, and what its page said; a runner may have no sound device.
   for (const cue of ["start", "stepDone", "waiting", "error", "finished"] as const) {
@@ -316,24 +576,7 @@ void Electron.app.whenReady().then(async () => {
     note("scenario", { name: "drive" });
     void companion.said("drive: set the Notepad font size to 20", { direct: false });
     // Every question the drive asks is answered with its first button, the way he would, after a pause to read it.
-    let pressed = 0;
-    const answer = async (): Promise<boolean> => {
-      for (const win of Electron.BrowserWindow.getAllWindows()) {
-        if (win.isDestroyed() || !win.isVisible()) continue;
-        const rect = (await evalIn(
-          win,
-          "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
-        )) as { x: number; y: number; t: string } | null;
-        if (rect === null) continue;
-        note("approval", { button: rect.t });
-        await sleep(3000);
-        const bounds = win.getBounds();
-        await driver.clickAt({ x: bounds.x + rect.x, y: bounds.y + rect.y }, "left", 1);
-        pressed += 1;
-        return true;
-      }
-      return false;
-    };
+    // Every question the drive asks is answered with its first button, the way he would, after a pause to read it.
     let ended = "";
     for (let i = 0; i < 480 && !/Finished|Stopped/.test(ended); i += 1) {
       if (!(await answer())) await sleep(250);
