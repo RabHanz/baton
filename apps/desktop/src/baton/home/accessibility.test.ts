@@ -48,3 +48,13 @@ describe("the window's accessibility", () => {
     expect(PILL_DOCUMENT).toContain("@media (prefers-reduced-motion:reduce)");
   });
 });
+
+describe("the top bar takes clicks", () => {
+  it("keeps the drag region to empty space: every control inside #top is no-drag", () => {
+    expect(APP_CSS).toMatch(/#top\{[^}]*-webkit-app-region:drag/);
+    const rule = APP_CSS.match(/(#top [^{}]*)\{-webkit-app-region:no-drag\}/)?.[1] ?? "";
+    for (const selector of ["#top button", "#top input", "#top select", "#top a", "#top .state"]) {
+      expect(rule).toContain(selector);
+    }
+  });
+});
