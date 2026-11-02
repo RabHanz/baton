@@ -40,7 +40,7 @@ describe("the window's words", () => {
 
   // A page that has been moved over keeps its words in the table. Add a file to this list when you
   // move it; a new page starts here.
-  const MOVED = ["../backup/backupRows.ts", "../setup/firstRun.ts"];
+  const MOVED = ["../backup/backupRows.ts", "../setup/firstRun.ts", "../cloud/cloudRows.ts"];
   it.each(MOVED)("%s has no user-facing text of its own", (file) => {
     const source = read(file);
     const literal =

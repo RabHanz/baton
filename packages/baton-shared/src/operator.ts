@@ -117,6 +117,9 @@ const BATON_QUIET = new Set([
   "commit_list",
   "notices_resume",
   "trust_show",
+  "cloud_status",
+  "cloud_list",
+  "cloud_usage",
   "activity_today",
   "permission_off",
   "weave_list",
@@ -155,6 +158,9 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "text_undo",
   "text_command",
   "note_add",
+  "cloud_dispatch",
+  "cloud_cancel",
+  "cloud_approve",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -290,6 +296,15 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
             why: "It would message another session; the first one in a job needs your yes.",
           };
     }
+    case "cloud_dispatch":
+      // Routine: it only makes a request that waits for him. A brief built from something it read must say so.
+      return outgoing && call.input["from_web_or_file"] !== true
+        ? { verdict: "ask", why: "It follows something it read, and the brief does not say so." }
+        : { verdict: "allow" };
+    case "cloud_cancel":
+    case "cloud_approve":
+      // Withdrawing is harmless; approving shows its own dialog that only he can press.
+      return { verdict: "allow" };
     case "notices_stop":
     case "commit_add":
     case "commit_done":

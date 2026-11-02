@@ -23,6 +23,7 @@ const ICON = {
   now: '<circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
   sessions: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/>',
   approvals: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  cloud: '<path d="M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17 8.5a4.5 4.5 0 0 1 .5 9.5z"/>',
   jobs: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V5h6v3M3 13h18"/>',
   dictation: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   assistant: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/>',
@@ -55,12 +56,12 @@ if (real) {
     if (p) set('tf.file', p);
   });
 }
-const GROUPS = [['Now', ['home','now','sessions','approvals','jobs']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks','help']]];
+const GROUPS = [['Now', ['home','now','sessions','approvals','jobs','cloud']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks','help']]];
 const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]')); } catch (e) { return new Set(); } })();
 const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
-const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','dictation','history','memory','vault','tools','assistant','voice','screen','usage','trust','checks','help'].map(id => [id, L('tab.' + id)]);
+const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','assistant','voice','screen','usage','trust','checks','help'].map(id => [id, L('tab.' + id)]);
 const INTRO = {};
-for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','dictation','tools','memory','vault','history','assistant','voice','screen','usage','trust','help','checks']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','assistant','voice','screen','usage','trust','help','checks']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = false, modal = null, S = null, query = '';
 let aboutSeen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
