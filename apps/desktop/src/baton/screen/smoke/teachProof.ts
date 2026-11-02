@@ -122,15 +122,21 @@ const locate = (name: string) =>
     ),
   );
 
+/** A window that is hidden may never answer a script; a missing answer is null. */
+const evalIn = (win: Electron.BrowserWindow, script: string): Promise<unknown> =>
+  Promise.race([
+    win.webContents.executeJavaScript(script).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+  ]);
+
 /** What the overlay and the pill are showing now. */
 const cardKicker = async (): Promise<string> => {
   for (const win of Electron.BrowserWindow.getAllWindows()) {
     if (win.isDestroyed()) continue;
-    const kicker = await win.webContents
-      .executeJavaScript(
-        "(()=>{const c=document.getElementById('card'),k=document.getElementById('k');return c&&c.classList.contains('on')&&k?k.textContent:''})()",
-      )
-      .catch(() => "");
+    const kicker = await evalIn(
+      win,
+      "(()=>{const c=document.getElementById('card'),k=document.getElementById('k');return c&&c.classList.contains('on')&&k?k.textContent:''})()",
+    );
     if (typeof kicker === "string" && kicker !== "") return kicker;
   }
   return "";
@@ -152,6 +158,9 @@ using System;using System.Runtime.InteropServices;
 public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);}
 '@
 $p.Refresh();[W]::MoveWindow($p.MainWindowHandle,120,90,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null;$p.Id`;
+
+// Whatever happens, the run ends and its files are kept.
+setTimeout(() => Electron.app.exit(3), 8 * 60_000).unref();
 
 void Electron.app.whenReady().then(async () => {
   const driver = createInputDriver({
@@ -251,11 +260,10 @@ void Electron.app.whenReady().then(async () => {
     const answer = async (): Promise<boolean> => {
       for (const win of Electron.BrowserWindow.getAllWindows()) {
         if (win.isDestroyed() || !win.isVisible()) continue;
-        const rect = (await win.webContents
-          .executeJavaScript(
-            "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
-          )
-          .catch(() => null)) as { x: number; y: number; t: string } | null;
+        const rect = (await evalIn(
+          win,
+          "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
+        )) as { x: number; y: number; t: string } | null;
         if (rect === null) continue;
         note("approval", { button: rect.t });
         await sleep(3000);
