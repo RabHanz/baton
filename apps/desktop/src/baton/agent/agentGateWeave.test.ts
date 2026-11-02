@@ -33,16 +33,13 @@ describe("the gate on weaving", () => {
     await r.gate(weave("build", "other job message", "j2"));
     expect(r.asked).toHaveLength(3);
   });
-  it("a no is not remembered, a secret is refused outright, and a message after a read asks again", async () => {
+  it("a no is not remembered, and a message after a read asks again", async () => {
     const no = rig(false);
     expect((await no.gate(weave("build", "please rerun", "j1"))).allow).toBe(false);
     expect((await no.gate(weave("build", "please rerun", "j1"))).allow).toBe(false);
     expect(no.asked).toHaveLength(2);
 
     const r = rig();
-    expect((await r.gate(weave("build", "the password is hunter22x", "j1"))).allow).toBe(false);
-    expect(r.asked).toHaveLength(0);
-
     await r.gate(weave("build", "first one", "j1"));
     r.taint.mark();
     await r.gate(weave("build", "second one", "j1"));

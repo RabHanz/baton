@@ -180,12 +180,6 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(weave, { ...off, weaveStanding: true, tainted: true }).verdict).toBe(
       "ask",
     );
-    expect(
-      judgeToolCall(
-        { ...weave, input: { ...weave.input, text: "my password is hunter22x" } },
-        { ...off, weaveStanding: true },
-      ).verdict,
-    ).toBe("deny");
     expect(judgeToolCall({ tool: "mcp__baton__weave_list", input: {} }, off).verdict).toBe("allow");
     const rewrite = { tool: "mcp__baton__text_transform", input: { name: "polish" } };
     expect(judgeToolCall(rewrite, off).verdict).toBe("allow");

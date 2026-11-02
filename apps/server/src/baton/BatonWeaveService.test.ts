@@ -3,37 +3,43 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
-import { AdoptedSessionService } from "./AdoptedSessionService.ts";
+import { BatonWeaveBoxes } from "./BatonWeaveBoxes.ts";
 import { BatonWeaveService, layer as weaveLayer } from "./BatonWeaveService.ts";
 
 /** One pane, whose screen and state the test sets, and a record of what was typed. */
 const pane = { state: "idle", screen: "work\n│ > │", typed: [] as string[] };
 
-const fakeAdopted = Layer.succeed(AdoptedSessionService, {
-  discover: Effect.sync(() => ({
-    available: true,
-    reason: "",
-    candidates: [
-      {
-        runtime: "herdr",
-        label: "build",
-        location: { workspace: "w", pane: "p1", host: null },
-        agentKind: "claude",
-        runtimeState: pane.state,
-      },
-    ],
-  })),
-  register: (input: { id: string }) => Effect.succeed({ id: input.id }),
-  readOutput: () => Effect.sync(() => ({ available: true, detail: "", output: pane.screen })),
-  sendInput: (input: { text: string }) =>
-    Effect.sync(() => {
-      pane.typed.push(input.text);
-      return { delivered: true, detail: "" };
-    }),
-} as never);
+const fakeBox = (name: string, label: string, paneId: string) => ({
+  name,
+  adapter: {
+    discover: Effect.sync(() => ({
+      available: true,
+      reason: "",
+      candidates: [
+        {
+          runtime: "herdr",
+          label,
+          location: { workspace: "w", pane: paneId, host: null },
+          agentKind: "claude",
+          runtimeState: pane.state,
+        },
+      ],
+    })),
+    readOutput: () => Effect.sync(() => ({ available: true, detail: "", output: pane.screen })),
+    sendInput: (input: { text: string; session: { location: { pane: string } } }) =>
+      Effect.sync(() => {
+        pane.typed.push(`${name}/${input.session.location.pane}: ${input.text}`);
+        return { delivered: true, detail: "" };
+      }),
+  },
+});
+const fakeBoxes = Layer.succeed(BatonWeaveBoxes, [
+  fakeBox("here", "build", "p1"),
+  fakeBox("onnyx", "research", "p9"),
+] as never);
 
 const layer = it.layer(
-  weaveLayer.pipe(Layer.provideMerge(fakeAdopted), Layer.provideMerge(SqlitePersistenceMemory)),
+  weaveLayer.pipe(Layer.provideMerge(fakeBoxes), Layer.provideMerge(SqlitePersistenceMemory)),
 );
 
 layer("BatonWeaveService", (it) => {
@@ -45,7 +51,7 @@ layer("BatonWeaveService", (it) => {
       pane.screen = "work\n│ > │";
       const sent = yield* weave.send({ to: "build", text: "please rerun the tests", job: "j1" });
       assert.strictEqual(sent.status, "delivered");
-      assert.deepStrictEqual(pane.typed, ["please rerun the tests"]);
+      assert.deepStrictEqual(pane.typed, ["here/p1: please rerun the tests"]);
       pane.screen = "│ > please rerun the tests │\n● All 40 pass.\n│ > │";
       const ticked = yield* weave.tick;
       assert.strictEqual(ticked.replied, 1);
@@ -66,14 +72,30 @@ layer("BatonWeaveService", (it) => {
       assert.deepStrictEqual(pane.typed, []);
       pane.screen = "│ > │";
       assert.strictEqual((yield* weave.tick).delivered, 1);
-      assert.deepStrictEqual(pane.typed, ["second message here"]);
+      assert.deepStrictEqual(pane.typed, ["here/p1: second message here"]);
+    }),
+  );
+
+  it.effect("reaches a session on another box by its box name, and reads its reply there", () =>
+    Effect.gen(function* () {
+      const weave = yield* BatonWeaveService;
+      pane.typed.length = 0;
+      pane.screen = "│ > │";
+      const sent = yield* weave.send({ to: "onnyx:research", text: "what did you find" });
+      assert.strictEqual(sent.status, "delivered");
+      assert.strictEqual(sent.toLabel, "onnyx:research");
+      assert.deepStrictEqual(pane.typed, ["onnyx/p9: what did you find"]);
+      const bare = yield* weave.send({ to: "research", text: "and the second part" });
+      assert.strictEqual(bare.toLabel, "onnyx:research");
     }),
   );
 
   it.effect("refuses a secret and an unknown session in plain words", () =>
     Effect.gen(function* () {
       const weave = yield* BatonWeaveService;
-      const secret = yield* Effect.flip(weave.send({ to: "build", text: "my password is hunter22x" }));
+      const secret = yield* Effect.flip(
+        weave.send({ to: "build", text: "my password is hunter22x" }),
+      );
       assert.include(secret.reason, "password");
       const none = yield* Effect.flip(weave.send({ to: "ghost", text: "hello there friend" }));
       assert.include(none.reason, "no session");

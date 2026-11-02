@@ -47,7 +47,7 @@ export const pullLearnings = Effect.fn("BatonMemoryPull.pull")(function* (
           // From the index, not from him: nothing becomes memory until he says yes.
           tainted: true,
         })
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        .pipe(Effect.orElseSucceed(() => null));
       if (item?.proposed === true) held++;
     }
   }
