@@ -1,5 +1,5 @@
 import * as NodeAssert from "node:assert/strict";
-import * as NodeChild from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -8,6 +8,8 @@ import * as NodeURL from "node:url";
 
 const SCRIPT = NodeURL.fileURLToPath(new URL("./cloud-logins.sh", import.meta.url));
 const DAY = 86_400_000;
+// A fixed moment, handed to the script, so no test depends on the clock.
+const NOW = 1_800_000_000_000;
 
 /** Runs the script over fake account folders with a fake `claude`; no real token, address or network. */
 const run = (accounts) => {
@@ -25,13 +27,13 @@ const run = (accounts) => {
     if (creds !== null) NodeFS.writeFileSync(NodePath.join(folders, name, ".credentials.json"), JSON.stringify(creds));
   }
   const out = NodePath.join(root, "state", "cloud-logins.json");
-  NodeChild.execFileSync("bash", [SCRIPT], {
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BATON_CLOUD_DIR: folders, BATON_CLOUD_LOGINS_FILE: out },
+  NodeChildProcess.execFileSync("bash", [SCRIPT], {
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, BATON_CLOUD_DIR: folders, BATON_CLOUD_LOGINS_FILE: out, BATON_NOW: String(NOW / 1000) },
   });
   return { report: JSON.parse(NodeFS.readFileSync(out, "utf8")), history: NodeFS.readFileSync(NodePath.join(root, "state", "cloud-logins.history"), "utf8") };
 };
 const creds = (accessHours, refreshDays, extra = {}) => ({
-  claudeAiOauth: { accessToken: "fake", refreshToken: "fake", expiresAt: Date.now() + accessHours * 3_600_000, refreshTokenExpiresAt: Date.now() + refreshDays * DAY, ...extra },
+  claudeAiOauth: { accessToken: "fake", refreshToken: "fake", expiresAt: NOW + accessHours * 3_600_000, refreshTokenExpiresAt: NOW + refreshDays * DAY, ...extra },
 });
 
 NodeTest.test("the login lasts until the refresh token, not the access token", () => {
@@ -63,7 +65,7 @@ NodeTest.test("writes one history line per account with times only, never a toke
 });
 
 NodeTest.test("a credentials file without a refresh time still reports whether the login works", () => {
-  const { report } = run({ old: { claudeAiOauth: { accessToken: "fake", expiresAt: Date.now() + 3_600_000 } } });
+  const { report } = run({ old: { claudeAiOauth: { accessToken: "fake", expiresAt: NOW + 3_600_000 } } });
   NodeAssert.equal(report.accounts[0].state, "ok");
   NodeAssert.equal(report.accounts[0].loginExpiresInDays, undefined);
 });

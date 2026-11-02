@@ -14,7 +14,7 @@ root="${BATON_CLOUD_DIR:-$HOME/.claude-cloud}"
 out="${BATON_CLOUD_LOGINS_FILE:-${BATON_STATE:-$HOME/.t3/baton}/cloud-logins.json}"
 renew_days="${BATON_CLOUD_RENEW_DAYS:-5}"
 mkdir -p "$(dirname "$out")"
-now=$(date +%s)
+now="${BATON_NOW:-$(date +%s)}"
 rows=()
 for dir in "$root"/*/; do
   [ -d "$dir" ] || continue
