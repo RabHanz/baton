@@ -4,7 +4,7 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index d49d2cdebb7019662d8e885034b6473721f4dac2..4f40d3a9c546c98e65dfb911288f85898b76135e 100644
+index 3442a54d60c4ac7d36fed3b8aa19fa29e3d6a82c..05f828fa3e80cf4ba01a42ce6ca2c6148b9fc527 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
 @@ -37,6 +37,7 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
@@ -101,7 +101,7 @@ index 985f9c00775a0a37ae1027d3c75d158622beeb85..943e2167c147c5fb0d6124ad72033151
      if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
        return Option.none<Electron.BrowserWindow>();
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 950ed972c6453bcfd61c293606cb9fa3913442f5..8541d572d782643e2046f904b165479e1874ba72 100644
+index da56807186ac59aaf080e447fe3d763b3601c506..5870f3122dbd7cbf2f4e063d7658e91c7da88eac 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -112,14 +112,14 @@ index 950ed972c6453bcfd61c293606cb9fa3913442f5..8541d572d782643e2046f904b165479e
  
  const SNAP_SHOT_EVENT_TYPES = new Set([
    "requested",
-@@ -434,3 +435,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -435,3 +436,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);
 +
 +exposeBatonDesktopBridge(); // Baton (vendor-patches/t3code/0007-desktop.patch)
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 0dcb2b85ac2c544a7f60fed6bfb74949bff96fa5..c8e54bd5f251ec70d3bff512a39a95fbb415bda8 100644
+index 4f8949823e354618ba1eaf12694de9561cac99f7..36551babb71f446e6a7a07d03d999c7db00ee992 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
 @@ -17,6 +17,7 @@ import { vi } from "vite-plus/test";
@@ -131,10 +131,10 @@ index 0dcb2b85ac2c544a7f60fed6bfb74949bff96fa5..c8e54bd5f251ec70d3bff512a39a95fb
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 10801089841d1179eaa3aa70268f21112377cbd4..da5af8d1a13ba36c56742385e6ebb92e64e38c55 100644
+index 5e02f4cfd8bbec32909c57bb4696ed223d361b94..62269c64a4cbcd8f36bfdb080d35351e1a308916 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -11,6 +11,7 @@ import * as Electron from "electron";
+@@ -12,6 +12,7 @@ import * as Electron from "electron";
  import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
  
  import * as DesktopAssets from "../app/DesktopAssets.ts";
@@ -142,7 +142,7 @@ index 10801089841d1179eaa3aa70268f21112377cbd4..da5af8d1a13ba36c56742385e6ebb92e
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
  import * as DesktopState from "../app/DesktopState.ts";
-@@ -379,6 +380,17 @@ export const make = Effect.gen(function* () {
+@@ -387,6 +388,17 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -160,7 +160,7 @@ index 10801089841d1179eaa3aa70268f21112377cbd4..da5af8d1a13ba36c56742385e6ebb92e
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: 840,
-@@ -390,17 +402,7 @@ export const make = Effect.gen(function* () {
+@@ -398,17 +410,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -179,7 +179,7 @@ index 10801089841d1179eaa3aa70268f21112377cbd4..da5af8d1a13ba36c56742385e6ebb92e
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -503,26 +505,6 @@ export const make = Effect.gen(function* () {
+@@ -512,26 +514,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -206,7 +206,7 @@ index 10801089841d1179eaa3aa70268f21112377cbd4..da5af8d1a13ba36c56742385e6ebb92e
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -599,33 +581,65 @@ export const make = Effect.gen(function* () {
+@@ -608,33 +590,65 @@ export const make = Effect.gen(function* () {
          installContextMenu(popup, popup.webContents);
        });
      };
