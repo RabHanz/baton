@@ -18,6 +18,7 @@ import {
   BATON_LIVE_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
   BATON_PHONE_WS_METHODS,
+  BATON_CLOUD_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
@@ -76,6 +77,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WEAVE_WS_METHODS.send]: AuthOrchestrationOperateScope,
   [BATON_WEAVE_WS_METHODS.tick]: AuthOrchestrationOperateScope,
   [BATON_WEAVE_WS_METHODS.list]: AuthOrchestrationReadScope,
+  // Cloud tasks: looking is a read; creating, approving or applying is operate.
+  [BATON_CLOUD_WS_METHODS.read]: AuthOrchestrationReadScope,
+  [BATON_CLOUD_WS_METHODS.act]: AuthOrchestrationOperateScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
   // The desktop relay takes and answers the phone's asks: operate.

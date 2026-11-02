@@ -115,6 +115,7 @@ import {
   BatonWeaveTickInput,
   BatonWeaveTickResult,
 } from "./weave.ts";
+import { BATON_CLOUD_WS_METHODS, BatonCloudCallInput, BatonCloudCallResult } from "./cloud.ts";
 import {
   BATON_COMMITMENT_WS_METHODS,
   BatonCommitmentError,
@@ -335,6 +336,17 @@ const WsBatonPhoneCallRpc = Rpc.make(BATON_PHONE_WS_METHODS.call, {
   payload: BatonPhoneCallInput,
   success: BatonPhoneCallResult,
   error: Schema.Union([BatonPhoneError, EnvironmentAuthorizationError]),
+});
+
+const WsBatonCloudReadRpc = Rpc.make(BATON_CLOUD_WS_METHODS.read, {
+  payload: BatonCloudCallInput,
+  success: BatonCloudCallResult,
+  error: EnvironmentAuthorizationError,
+});
+const WsBatonCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
+  payload: BatonCloudCallInput,
+  success: BatonCloudCallResult,
+  error: EnvironmentAuthorizationError,
 });
 
 const WeaveErrors = Schema.Union([BatonWeaveError, EnvironmentAuthorizationError]);
@@ -623,6 +635,8 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonCommitmentListRpc,
   WsBatonCommitmentUpsertRpc,
   WsBatonPhoneCallRpc,
+  WsBatonCloudReadRpc,
+  WsBatonCloudActRpc,
   WsBatonMemoryListRpc,
   WsBatonMemorySearchRpc,
   WsBatonMemoryAddRpc,

@@ -15,6 +15,7 @@ export * from "./commitments.ts";
 export * from "./phone.ts";
 export * from "./memory.ts";
 export * from "./weave.ts";
+export * from "./cloud.ts";
 export * from "./watch.ts";
 export * from "./workSession.ts";
 export * from "@t3tools/contracts";
