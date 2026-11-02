@@ -243,6 +243,23 @@ describe("the phone API", () => {
     expect(calls).toEqual(["prompt pr1 1"]);
   });
 
+  it("lets a phone answer a cloud approval only if it holds the approval permission", async () => {
+    const { deps, calls } = make();
+    const cloudQuestion: PhoneDeps = {
+      ...deps,
+      state: async () => {
+        const s = await deps.state();
+        return { ...s, approvals: [{ id: "d:pr1", kind: "prompt", title: "Cloud task waiting", action: "Fix it", permission: "x", ref: "pr1", answerable: true, yes: 0, cancel: 3, needs: "cloud-approve", buttons: ["Claude - a", "Codex - b", "Deny", "Decide later"] }] };
+      },
+    };
+    const post = (scopes: ReadonlySet<string>) => handlePhone(cloudQuestion, { method: "POST", path: "approvals/d:pr1", scopes, json: { choice: 0, action: "Fix it" } });
+    const refused = await post(operate);
+    expect(refused.status).toBe(403);
+    expect(calls).toEqual([]);
+    expect((await post(new Set([...operate, "baton:cloud-approve"]))).status).toBe(200);
+    expect(calls).toEqual(["prompt pr1 0"]);
+  });
+
   it("says 501 when the server cannot transcribe", async () => {
     const { deps } = make();
     const off: PhoneDeps = {

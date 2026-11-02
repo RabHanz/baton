@@ -688,14 +688,17 @@ export interface TrayExtras extends BrainVoiceHook {
   /** Registers or drops the Transforms shortcuts. */
   readonly setTransformHotkeys?: (on: boolean) => void;
   readonly writtenOnly: () => boolean;
-  readonly askMirrored?: (input: {
-    readonly title: string;
-    readonly detail: string;
-    readonly buttons: ReadonlyArray<string>;
-    readonly cancel: number;
-    readonly expiresMs?: number;
-    readonly armMs?: number;
-  }) => Promise<number>;
+  readonly askMirrored?: (
+    input: {
+      readonly title: string;
+      readonly detail: string;
+      readonly buttons: ReadonlyArray<string>;
+      readonly cancel: number;
+      readonly expiresMs?: number;
+      readonly armMs?: number;
+    },
+    needs?: "cloud-approve",
+  ) => Promise<number>;
   readonly ask: (input: {
     readonly title: string;
     readonly detail: string;
@@ -3227,8 +3230,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ask: async (q) => {
       const box = { title: q.title, detail: q.detail, buttons: q.buttons, cancel: q.cancel, armMs: q.armMs, expiresMs: 120_000 };
       // The waiting-task question also goes to a paired phone; the spoken-approval dialog stays on this computer.
-      const asker = q.everywhere === true ? (input.extras?.askMirrored ?? input.extras?.ask) : input.extras?.ask;
-      return (await asker?.(box)) ?? q.cancel;
+      if (q.everywhere === true && input.extras?.askMirrored !== undefined) {
+        // A phone may answer it only if it was paired with the approval permission.
+        return await input.extras.askMirrored(box, "cloud-approve");
+      }
+      return (await input.extras?.ask(box)) ?? q.cancel;
     },
     changed: () => pushHome(),
     now: () => Date.now(),

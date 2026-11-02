@@ -35,6 +35,8 @@ export interface PhonePrompt {
   readonly buttons: ReadonlyArray<string>;
   readonly yes: number;
   readonly cancel: number;
+  /** Answering from a phone needs this permission (a cloud approval); absent means any paired phone may. */
+  readonly needs?: "cloud-approve";
 }
 
 export const isConnected = (lastSeen: number | null, now: number): boolean =>

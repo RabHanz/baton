@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
+  AuthBatonCloudApproveScope,
+  AuthOrchestrationOperateScope,
   AuthEnvironmentScopes,
   AuthEnvironmentScope,
   authScopeRequiredResponse,
@@ -47,6 +49,14 @@ describe("authorization grants", () => {
       expect(response.requiredPermission).toBe(scope);
     },
   );
+
+  it("never gives the cloud approval scope to a standard client, or to a session that only holds operate", () => {
+    expect(AuthStandardClientScopes).not.toContain(AuthBatonCloudApproveScope);
+    expect(sessionGrantsScope({ authenticated: true, scopes: [AuthOrchestrationOperateScope] }, AuthBatonCloudApproveScope)).toBe(false);
+    expect(sessionGrantsScope({ authenticated: true, permissions: [...AuthStandardClientScopes] }, AuthBatonCloudApproveScope)).toBe(false);
+    expect(sessionGrantsScope({ authenticated: true, permissions: [AuthBatonCloudApproveScope] }, AuthBatonCloudApproveScope)).toBe(true);
+    expect(authScopeRequiredResponse(AuthBatonCloudApproveScope)).toEqual({ requiredScope: AuthOrchestrationOperateScope, requiredPermission: AuthBatonCloudApproveScope });
+  });
 
   it("keeps old clients able to decode grants with new permissions", () => {
     const response = authScopeResponse(AuthStandardClientScopes);
