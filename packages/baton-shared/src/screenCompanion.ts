@@ -599,7 +599,13 @@ export const shellCheck = (plan: DrivePlan, focused: string | null): ShellCheck 
     (focused !== null && (isShellWindow(focused) || hostsTerminal(focused))) ||
     typed.some((text) => SHELL_NAME.test(text)) ||
     planWords(plan).some((words) => SHELL_WORD.test(words));
-  const keyboard = plan.actions.some((a) => a.kind === "type" || a.kind === "press");
+  // Keys that follow the plan's own click go to the window it clicked, which the runner checks at every step;
+  // only keys that depend on whatever has the focus now need a second yes when that cannot be told.
+  const firstKey = plan.actions.findIndex((a) => a.kind === "type" || a.kind === "press");
+  const firstClick = plan.actions.findIndex(
+    (a) => a.kind === "click" || a.kind === "double_click" || a.kind === "drag",
+  );
+  const keyboard = firstKey !== -1 && (firstClick === -1 || firstKey < firstClick);
   return {
     shell,
     ask: shell || (focused === null && keyboard),
