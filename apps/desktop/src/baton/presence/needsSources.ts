@@ -81,7 +81,9 @@ export const readLedger = async (
 };
 
 export const readDeadlines = (file: string): ReadonlyArray<DeadlineRow> => {
-  const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as { rows?: ReadonlyArray<DeadlineRow> };
+  const parsed = JSON.parse(NodeFS.readFileSync(file, "utf8")) as {
+    rows?: ReadonlyArray<DeadlineRow>;
+  };
   return Array.isArray(parsed.rows) ? parsed.rows : [];
 };
 

@@ -44,12 +44,15 @@ export const contextLine = (input: {
   readonly window: string | null;
   readonly session: string | null;
   readonly target: string | null;
+  /** His state right now, from the awareness switches he turned on (data). */
+  readonly presence?: string;
 }): string =>
   [
     `now: ${input.now}`,
     input.window === null ? null : `the window he is using (data): ${input.window}`,
     input.session === null ? null : `the session he has focused: ${input.session}`,
     input.target === null ? null : `current target: ${input.target}`,
+    input.presence === undefined || input.presence === "" ? null : input.presence,
   ]
     .filter((x): x is string => x !== null)
     .join("\n");
