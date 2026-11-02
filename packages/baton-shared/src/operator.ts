@@ -98,6 +98,7 @@ const BATON_QUIET = new Set([
   "memory_used",
   "vault_list",
   "history_search",
+  "browser_route",
   "memory_pin",
   "remember_target",
   "wait",
@@ -135,6 +136,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "memory_forget",
   "vault_use",
   "vault_save_pending",
+  "browser_accessibility_on",
   "commit_add",
   "commit_done",
   "notices_stop",
@@ -276,6 +278,9 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return { verdict: "allow" };
     case "vault_save_pending":
       return { verdict: "ask", why: "It would keep the secret you just told it in your vault." };
+    case "browser_accessibility_on":
+      // It closes and reopens his Chrome: always asked, whatever he allowed before.
+      return { verdict: "ask", why: "It would restart Chrome with accessibility on.", risky: true };
     case "memory_forget":
       return { verdict: "ask", why: "It would delete one of your notes." };
     case "job_schedule":
