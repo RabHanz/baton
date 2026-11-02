@@ -16,6 +16,9 @@ export type TriggerKind =
   | "session_waiting"
   | "session_finished"
   | "ci_failed"
+  | "job_slow"
+  | "step_repeating"
+  | "pressure"
   | "commitment_due";
 
 export interface Trigger {
