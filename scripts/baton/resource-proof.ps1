@@ -171,8 +171,9 @@ foreach ($r in $results) {
 $sb = $budgets.starved
 if ($null -ne $sb) {
   if ($null -eq $starved.loopStartedSeconds -or $starved.loopStartedSeconds -gt $sb.loopStartedSeconds) { $fail += "starved start: loop-started took $($starved.loopStartedSeconds) s (budget $($sb.loopStartedSeconds) s)" }
-  # The first phrase is reported, not enforced, until a starved start is shown to hear it (docs/baton/PERF.md).
-  if (-not $starved.firstPhraseHeard) { Write-Host 'NOTE starved start: the first phrase was not heard' }
+  # Enforced since run 41479939470 heard it: the first phrase after a slow start must be heard, however it is started.
+  if (-not $starved.firstPhraseHeard) { $fail += 'starved start: the first phrase was not heard' }
+  if (-not $starvedOne.firstPhraseHeard) { $fail += 'starved start with one speech thread: the first phrase was not heard' }
 }
 if ($fail.Count -gt 0) {
   $fail | ForEach-Object { Write-Host "OVER BUDGET $_" }
