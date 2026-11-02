@@ -54,19 +54,19 @@ export const layer = Layer.effect(
       ),
     );
     return BatonSessionCatalogService.of({
-      list: Effect.fn("BatonSessionCatalogService.list")(function* (input) {
+      list: Effect.fn("BatonSessionCatalogService.list")(function* (input: { query?: string; limit?: number; before?: string }) {
         return yield* Effect.promise(() => catalog.list(input));
       }),
-      folders: Effect.fn("BatonSessionCatalogService.folders")(function* (input) {
+      folders: Effect.fn("BatonSessionCatalogService.folders")(function* (input: { query?: string }) {
         return yield* Effect.promise(() => catalog.folders(input));
       }),
-      resume: Effect.fn("BatonSessionCatalogService.resume")(function* (input) {
+      resume: Effect.fn("BatonSessionCatalogService.resume")(function* (input: { sessionId: string; cwd?: string }) {
         return yield* Effect.promise(() => catalog.resume(input));
       }),
-      create: Effect.fn("BatonSessionCatalogService.create")(function* (input) {
+      create: Effect.fn("BatonSessionCatalogService.create")(function* (input: { cwd: string }) {
         return yield* Effect.promise(() => catalog.create(input));
       }),
-      send: Effect.fn("BatonSessionCatalogService.send")(function* (input) {
+      send: Effect.fn("BatonSessionCatalogService.send")(function* (input: { sessionId: string; text: string; cwd?: string }) {
         return yield* Effect.promise(() => catalog.send(input));
       }),
     });
