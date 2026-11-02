@@ -60,6 +60,8 @@ export const morningBrief = (input: {
   readonly jobs: ReadonlyArray<BatonJob>;
   readonly findings: ReadonlyArray<WatchFinding>;
   readonly now: number;
+  /** Further plain sentences, such as the commitments due. */
+  readonly extra?: ReadonlyArray<string>;
 }): string => {
   const day = 24 * 3_600_000;
   const recent = input.jobs.filter((j) => input.now - Date.parse(j.lastActivityAt) <= day);
@@ -84,6 +86,7 @@ export const morningBrief = (input: {
   if (running.length > 0) parts.push(`Still running: ${list(running)}.`);
   const stuck = input.findings.filter((f) => f.kind === "stalled").map((f) => f.title);
   if (stuck.length > 0) parts.push(`Looks stalled: ${list(stuck)}.`);
+  parts.push(...(input.extra ?? []));
   return parts.length === 0
     ? "Good morning. Nothing happened overnight and nothing is waiting."
     : `Good morning. ${parts.join(" ")}`;

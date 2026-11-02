@@ -89,7 +89,12 @@ export const createAssistantAgent = (input: {
       });
       const remembered = (await input.recall?.(text).catch(() => "")) ?? "";
       const reply = await agent.ask(
-        [{ type: "text", text: `${header}${remembered === "" ? "" : `\n\n${remembered}`}\n\nhe says: ${text}` }],
+        [
+          {
+            type: "text",
+            text: `${header}${remembered === "" ? "" : `\n\n${remembered}`}\n\nhe says: ${text}`,
+          },
+        ],
         onDelta,
       );
       turns += 1;
