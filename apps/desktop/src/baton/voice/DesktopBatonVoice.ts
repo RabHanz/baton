@@ -97,6 +97,8 @@ import {
 import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/baton-shared/audioFile";
 import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
 import { makeDiagnosticsFile } from "../health/diagnosticsFile.ts";
+import { capabilities } from "@t3tools/baton-shared/degraded";
+import { createProbes } from "../health/probes.ts";
 import {
   normalizeSkillUrl,
   parseSkill,
@@ -2576,13 +2578,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // The Now page (D149): read every few minutes, not on every redraw, because it can call gh.
   let nowData: NowData = EMPTY_NOW;
+  const probe = createProbes({});
   const refreshNow = async (): Promise<void> => {
     const at = Date.now();
+    // Asking the server goes through the T3 window and would open it: only while it is already open.
+    const windowUp = mainContents !== null && !mainContents.isDestroyed();
     const jobs = jobsCache ?? [];
     const { ranked, unreadable } = await collectNeeds({
       jobs,
       sessions: input.sessions?.rows() ?? [],
-      findings: await watchFindings(),
+      findings: windowUp ? await watchFindings() : [],
       extra: needsFromCommitments(commitments.list(), at),
       config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
       external: externalNeeds,
@@ -2590,13 +2595,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     const day = new Date(at).toDateString();
     const learned = (
-      (await requestKept({ kind: "memory", op: "list", args: { limit: 200 } }).catch(
-        () => null,
-      )) as { items?: ReadonlyArray<{ text: string; createdAt: string; proposed: boolean }> } | null
+      (windowUp
+        ? await requestKept({ kind: "memory", op: "list", args: { limit: 200 } }).catch(() => null)
+        : null) as {
+        items?: ReadonlyArray<{ text: string; createdAt: string; proposed: boolean }>;
+      } | null
     )?.items
       ?.filter((m) => !m.proposed && new Date(m.createdAt).toDateString() === day)
       .slice(0, 5)
       .map((m) => m.text);
+    const probed = await probe(settings.claudeBinary);
     const state = initiative.state();
     nowData = {
       loaded: true,
@@ -2612,11 +2620,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       learned: learned ?? [],
       declined: state.declined.slice(-8).toReversed(),
       muted: state.never.map((topic) => ({ topic, title: state.titles[topic] ?? topic })),
+      capabilities: capabilities({
+        network: probed.network,
+        claude: probed.claude,
+        speechModel: sidecar !== null && parakeetPath !== null,
+        server: jobsCache !== null,
+      }),
       weaves:
         (
-          (await requestKept({ kind: "weave", op: "list", args: { limit: 10 } }).catch(
-            () => null,
-          )) as { items?: ReadonlyArray<WeaveRecord> } | null
+          (windowUp
+            ? await requestKept({ kind: "weave", op: "list", args: { limit: 10 } }).catch(
+                () => null,
+              )
+            : null) as { items?: ReadonlyArray<WeaveRecord> } | null
         )?.items ?? [],
     };
     home.refresh();
