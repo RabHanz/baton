@@ -1,10 +1,10 @@
 {
-  "note": "null means measured but not yet asserted; numbers are set from docs/baton/PERF.md after a run on the Windows runner",
+  "note": "Regression guards set about 30% above the first measured runs on the windows-2022 runner (docs/baton/PERF.md). They are not the goal: the goal (idle under 450 MB and under 2% of one core) is not met yet.",
   "phases": {
-    "idle": { "cpuAvg": null, "rssMBMax": null },
-    "wake-listen": { "cpuAvg": null, "rssMBMax": null },
-    "dictation": { "cpuAvg": null, "rssMBMax": null },
-    "assistant-turn": { "cpuAvg": null, "rssMBMax": null }
+    "idle": { "cpuAvg": 3, "rssMBMax": 1200 },
+    "wake-listen": { "cpuAvg": 5, "rssMBMax": 2800 },
+    "dictation": { "cpuAvg": 60, "rssMBMax": 3600 },
+    "assistant-turn": { "cpuAvg": 40, "rssMBMax": 3600 }
   },
   "starved": { "loopStartedSeconds": 240 }
 }

@@ -332,7 +332,7 @@ import {
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { loginItemOn, setLoginItem } from "./loginItem.ts";
-import { warmUpVoice } from "./warmUp.ts";
+import { holdFramesUntil, startWarmUp } from "./warmUp.ts";
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
@@ -2387,7 +2387,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmTicker = setInterval(showWarm, 1_000);
     const warming = core;
     const warmSidecar = sidecar;
-    const warmed = await warmUpVoice({
+    const warm = startWarmUp({
       pushFrame: (frame) => warming.pushAudio(frame),
       transcribe: (pcm) => makeSidecarStt(warmSidecar).transcribe(pcm),
       settled: () => warming.idle(),
@@ -2395,18 +2395,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         modelsReady = ready;
         showWarm();
       },
-    }).finally(() => clearInterval(warmTicker));
+    });
+    const warmed = await warm.result.finally(() => clearInterval(warmTicker));
     note = null;
+    // A slow computer: the microphone opens, what is said is kept, and it is heard the moment the models are ready.
+    let startCore = core;
     if (!warmed) {
-      const slow = "Still loading the speech models. The first thing you say may take a little longer to be heard.";
+      const slow = "Still loading the speech models. What you say now is kept and heard as soon as they are ready.";
       note = slow;
       render();
-      setTimeout(() => {
+      startCore = holdFramesUntil(core, warm.complete);
+      void warm.complete.then(() => {
         if (note === slow) {
           note = null;
           render();
         }
-      }, 20_000).unref();
+      });
     }
     step(warmed ? "warm-done" : "warm-timeout");
     // With BATON_TEST_WAV set, recorded files stand in for the microphone; unset, nothing changes.
@@ -2436,7 +2440,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
-      core,
+      core: startCore,
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
         state = next;
