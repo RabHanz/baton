@@ -111,7 +111,7 @@ export interface VaultAuditEntry {
   readonly purpose: string;
   readonly target: string;
   readonly how: string;
-  readonly outcome: "used" | "refused" | "declined" | "failed" | "revealed" | "copied";
+  readonly outcome: "used" | "refused" | "declined" | "failed" | "revealed" | "copied" | "saved";
 }
 
 export const auditLine = (entry: VaultAuditEntry): string => JSON.stringify(entry);
