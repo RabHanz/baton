@@ -54,6 +54,11 @@ point at a polling loop.
 
 ## Starting on a starved CPU
 
+First attempt (one core shared with TWO busy loops, so the app had a third of a core): the models had not finished loading after four
+minutes and the first phrase was still not heard, with or without the hold (loop-started after 138 to 162 s; `pill_state error` at about 100 s
+into the audio). That is harsher than a slow laptop. The proof now shares the core with ONE busy loop (about half a core), the hold keeps up
+to five minutes of audio, and the wait is seven minutes. The result of that run is below once read.
+
 The proof also starts the app on one core shared with two busy loops and plays the wake phrase right away. Before this change the start gave up
 waiting for the models after 8 s, opened the microphone, and the first phrase was lost: **loop-started took 138 and 162 s, first phrase heard:
 no.** Now the start waits up to 45 s showing how many of the two models are ready and for how long ("Starting: loading the speech models
