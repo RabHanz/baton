@@ -20,3 +20,20 @@ describe("APP_SCRIPT", () => {
     expect(page.wakeLine([])).toBe("Off");
   });
 });
+
+describe("command palette", () => {
+  const page = NodeVM.runInNewContext(
+    `${/function paletteRank[\s\S]*?\n}\n/.exec(APP_SCRIPT)![0]}; ({ paletteRank })`,
+  ) as { paletteRank: (items: unknown[], q: string) => Array<{ label: string }> };
+  const items = [
+    { kind: "Page", label: "Trust", hint: "Open the Trust page" },
+    { kind: "Command", label: "Mute the microphone", hint: "" },
+    { kind: "Setting", label: "Hold to dictate", hint: "Trust me" },
+  ];
+  it("matches every word, label first, and shows a few when the box is empty", () => {
+    expect(page.paletteRank(items, "").length).toBe(3);
+    expect(page.paletteRank(items, "trust").map((i) => i.label)).toEqual(["Trust", "Hold to dictate"]);
+    expect(page.paletteRank(items, "mute mic").map((i) => i.label)).toEqual(["Mute the microphone"]);
+    expect(page.paletteRank(items, "zzz")).toEqual([]);
+  });
+});

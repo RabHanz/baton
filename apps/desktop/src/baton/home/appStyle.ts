@@ -214,6 +214,16 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 #mbody{padding:26px 32px;overflow:auto;position:relative}
 #mbody h1{font-size:26px;margin-bottom:16px}
 #mclose{position:absolute;top:14px;right:14px}
+.palveil{position:fixed;inset:0;background:var(--veil);display:flex;justify-content:center;align-items:flex-start;padding-top:12vh;z-index:50}
+.palbox{width:min(640px,92vw);background:var(--panel);border:1px solid var(--line-strong);border-radius:12px;box-shadow:var(--modal-shadow);overflow:hidden}
+.palin{width:100%;border:0;border-bottom:1px solid var(--line);padding:14px 16px;font:inherit;font-size:15px;background:transparent;color:var(--ink)}
+.pallist{max-height:50vh;overflow:auto;padding:6px}
+.palopt{display:flex;gap:10px;align-items:baseline;padding:8px 10px;border-radius:8px;cursor:pointer}
+.palopt[aria-selected=true]{background:var(--accent-wash);outline:1px solid var(--accent-edge)}
+.palkind{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);width:62px;flex:none}
+.pallabel{font-weight:600}
+.palhint{color:var(--faint);font-size:12px;margin-left:auto;text-align:right}
+.palempty{padding:14px;color:var(--faint)}
 .meter{height:10px;border-radius:5px;background:var(--sunk);border:1px solid var(--line);overflow:hidden;margin:10px 0}
 .meter>i{display:block;height:100%;width:0;background:var(--accent)}
 .trybox{width:100%;min-height:96px;margin-top:6px;padding:10px;border:1px solid var(--line-strong);border-radius:9px;background:var(--panel);color:var(--ink);font:inherit;resize:vertical}
