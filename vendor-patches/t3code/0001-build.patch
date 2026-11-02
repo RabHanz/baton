@@ -266,7 +266,7 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e4c9cd90c 100644
+index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..49d14c0791010b069baf39cd0517411860054251 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -318,7 +318,17 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1089,6 +1110,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1051,7 +1072,8 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+   ];
+ }
+ 
+-export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
++// Baton ships the voice sidecar, wake and speech runtimes and models beside the app: about 40 more files than upstream.
++export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 140;
+ export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
+ export const WINDOWS_SERVER_EXTRA_RESOURCES = [
+   {
+@@ -1089,6 +1111,10 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -329,7 +339,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2338,6 +2363,94 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2338,6 +2364,94 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -424,7 +434,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2783,6 +2896,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2783,6 +2897,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -432,7 +442,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3401,6 +3515,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3401,6 +3516,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -453,7 +463,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3762,6 +3890,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3762,6 +3891,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
