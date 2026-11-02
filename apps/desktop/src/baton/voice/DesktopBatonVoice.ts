@@ -221,8 +221,10 @@ import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { createPhoneRelay, nextPollMs } from "../phone/phoneRelay.ts";
-import { createNightlyCache } from "../presence/nightlyRead.ts";
-import { nightlyRow, syncRow } from "@t3tools/baton-shared/nightly";
+import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
+import { createSyncExtraCache } from "../presence/syncRead.ts";
+import { syncCapability, syncNeeds, type SyncState } from "@t3tools/baton-shared/syncState";
+import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
@@ -1645,7 +1647,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs: jobsCache ?? [],
         sessions: input.sessions?.rows() ?? [],
         findings: await watchFindings(),
-        extra: needsFromCommitments(commitments.list(), Date.now()),
+        extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now())],
         config: needsConfig(),
         external: externalNeeds,
         now: Date.now(),
@@ -1714,7 +1716,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
-          extra: needsFromCommitments(commitments.list(), Date.now()),
+          extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now())],
           config: needsConfig(),
           external: externalNeeds,
           now: Date.now(),
@@ -3043,16 +3045,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let nowData: NowData = EMPTY_NOW;
   const probe = createProbes({});
   const readLastNightly = createNightlyCache("RabHanz/baton");
+  const readSyncExtra = createSyncExtraCache("RabHanz/baton", input.env["BATON_REPO_DIR"], runGh);
+  /** Last read of the upstream sync; the rows below use it, and a failed read leaves it unknown. */
+  let syncNow: SyncState = { localBehind: null, status: null, pr: null };
   const refreshNow = async (): Promise<void> => {
     const at = Date.now();
     // Asking the server goes through the T3 window and would open it: only while it is already open.
     const windowUp = mainContents !== null && !mainContents.isDestroyed();
     const jobs = jobsCache ?? [];
+    const last = await readLastNightly();
+    syncNow = { ...(await readSyncExtra()), status: last.sync };
     const { ranked, unreadable } = await collectNeeds({
       jobs,
       sessions: input.sessions?.rows() ?? [],
       findings: windowUp ? await watchFindings() : [],
-      extra: needsFromCommitments(commitments.list(), at),
+      extra: [...needsFromCommitments(commitments.list(), at), ...syncNeeds(syncNow, at)],
       config: needsConfig(),
       external: externalNeeds,
       now: at,
@@ -3069,7 +3076,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .slice(0, 5)
       .map((m) => m.text);
     const probed = await probe(settings.claudeBinary);
-    const { nightly, sync } = await readLastNightly();
+    const { nightly } = last;
     const state = initiative.state();
     nowData = {
       loaded: true,
@@ -3095,7 +3102,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           server: jobsCache !== null,
         }),
         nightlyRow(nightly, Date.now()),
-        syncRow(sync, Date.now()),
+        syncCapability(syncNow, Date.now()),
       ],
       weaves:
         (
