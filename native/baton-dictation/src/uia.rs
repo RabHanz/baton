@@ -8,7 +8,8 @@ use windows::Win32::UI::Accessibility::{
     IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern, TreeScope_Descendants,
     UIA_BoundingRectanglePropertyId, UIA_ExpandCollapsePatternId, UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId,
     UIA_IsOffscreenPropertyId, UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId, UIA_SelectionItemPatternId,
-    UIA_TogglePatternId,
+    UIA_TogglePatternId, UIA_DataItemControlTypeId, UIA_ListItemControlTypeId, UIA_TabItemControlTypeId,
+    UIA_TreeItemControlTypeId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, WindowFromPoint, GA_ROOT};
 
@@ -129,16 +130,22 @@ unsafe fn reachable(automation: &IUIAutomation, element: &IUIAutomationElement, 
     false
 }
 
-/// A control acted on by its own pattern, with no pointer: invoke, toggle, select, expand. None means no pattern fits.
+/// A control acted on by its own pattern, with no pointer. Invoke on a list item opens it (a double
+/// click), so items are only ever selected; None means a plain click is the right action.
 unsafe fn act(element: &IUIAutomationElement) -> Option<&'static str> {
+    let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+    if [UIA_ListItemControlTypeId, UIA_DataItemControlTypeId, UIA_TreeItemControlTypeId, UIA_TabItemControlTypeId]
+        .iter()
+        .any(|k| k.0 == kind)
+    {
+        let p = element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId).ok()?;
+        return p.Select().ok().map(|_| "select");
+    }
     if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) {
         return p.Invoke().ok().map(|_| "invoke");
     }
     if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId) {
         return p.Toggle().ok().map(|_| "toggle");
-    }
-    if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId) {
-        return p.Select().ok().map(|_| "select");
     }
     if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId) {
         return p.Expand().ok().map(|_| "expand");

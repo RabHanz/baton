@@ -164,7 +164,7 @@ class Task {
     console.log(`  windows before cleanup: ${open.replaceAll("\n", " ").slice(0, 300)}`);
     await ps(
       `Get-Process -Name ${Task.APPS.join(",")} -ErrorAction SilentlyContinue | Where-Object { @(${this.before.join(",") || "0"}) -notcontains $_.Id } | Stop-Process -Force -ErrorAction SilentlyContinue; ` +
-        `(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.LocationName -like 'explore*' } | ForEach-Object { $_.Quit() }`,
+        `(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.LocationName -like 'explore*' -or $_.LocationURL -like '*hands-*' } | ForEach-Object { $_.Quit() }`,
     ).catch(() => undefined);
     for (const pid of this.pids)
       await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(
@@ -581,6 +581,23 @@ await task(
         .split("\n")
         .find((l) => /windows (server|10|11)/i.test(l) && !/specification/i.test(l)) ?? "";
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
+  },
+);
+
+// 13. A big window: the tree call's cost on a folder of 400 files (where one cached read matters most).
+await task(
+  "big-tree",
+  "Read the controls of a File Explorer window holding 400 files, three times",
+  async (t) => {
+    const dir = NodePath.join(WORK, "many");
+    NodeFS.mkdirSync(dir, { recursive: true });
+    for (let i = 0; i < 400; i += 1) NodeFS.writeFileSync(NodePath.join(dir, `file-${i}.txt`), "x");
+    await t.launch("explorer.exe", [dir]);
+    await t.activate("many");
+    await t.waitTree(/many/i, 15);
+    let lines = 0;
+    for (let i = 0; i < 3; i += 1) lines = (await t.tool("ui_tree")).split("\n").length;
+    t.check(lines > 20, `the tree listed ${lines} lines`);
   },
 );
 
