@@ -52,7 +52,7 @@ export const transformControls = (
     label: `${t.name}: ${hotkeyFor(i)}`,
     kind: "check",
     status: "ok",
-    detail: t.prompt.slice(0, 160),
+    detail: t.prompt,
   })),
   {
     id: "tr.list",
