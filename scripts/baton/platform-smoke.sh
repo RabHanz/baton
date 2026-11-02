@@ -32,11 +32,20 @@ case "$platform" in
     xattr -cr "$HOME/Tessaya.app"
     # The unsigned bundle's seal is broken (resources added after electron-builder), and arm64 macOS kills a process that
     # loads a native library under a broken seal. An ad-hoc signature is the least a downloaded build needs.
+    # Experiment: sign every nested Mach-O on its own first (--deep skips loose libraries under Resources).
+    if [ "${SMOKE_SIGN_NESTED:-0}" = 1 ]; then
+      find "$HOME/Tessaya.app" -type f \( -name '*.dylib' -o -name '*.node' -o -name '*.so' -o -perm -u+x \) -print0 |
+        while IFS= read -r -d '' f; do file "$f" | grep -q 'Mach-O' && codesign --force --sign - "$f" 2>&1 | tail -1; done
+    fi
     if [ "${SMOKE_ADHOC_SIGN:-1}" = 1 ]; then codesign --force --deep --sign - "$HOME/Tessaya.app" 2>&1 | tail -3; fi
     run=("$HOME/Tessaya.app/Contents/MacOS/Tessaya" --no-sandbox)
     ;;
   *) echo "unknown platform $platform"; exit 2 ;;
 esac
+# Experiments from the workflow: extra launch arguments and environment (space separated).
+# shellcheck disable=SC2206
+[ -n "${SMOKE_ARGS:-}" ] && run+=(${SMOKE_ARGS})
+for kv in ${SMOKE_ENV:-}; do export "$kv"; done
 printf 'wake.wav 4000\n30000\n' > "$out/wav/list.txt"; cp "$wav" "$out/wav/wake.wav" 2>/dev/null || true
 # The sidecar on its own first, so a crash in it is told apart from a crash in the app.
 sidecar=""
@@ -52,6 +61,11 @@ fi
 if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
   echo "--- sidecar transcribes the phrase alone ---"
   "$sidecar" transcribe --model "$models/parakeet-tdt-0.6b-v3-Q8_0.gguf" "$wav" 2>&1 | head -6; echo "transcribe exit=${PIPESTATUS[0]}"
+fi
+if [ "$platform" = macos ]; then
+  # Memory over time, to tell a jetsam kill from anything else.
+  ( while true; do date +%T; ps -axo pid,rss,comm | sort -k2 -nr | head -4; vm_stat | head -4; sleep 5; done > "$out/mem.log" 2>&1 ) &
+  sampler=$!
 fi
 export BATON_TEST_WAV="$out/wav/list.txt" BATON_TEST_DIR="$out/shots"
 "${run[@]}" > "$out/app.log" 2>&1 &
@@ -88,6 +102,7 @@ if [ "$platform" = macos ]; then
   echo "--- signature of the app and the sidecar ---"
   codesign --verify --deep --strict --verbose=2 "$HOME/Tessaya.app" 2>&1 | tail -6
   codesign -dv "$sidecar" 2>&1 | tail -4
+  kill "${sampler:-0}" 2>/dev/null; echo "--- memory (last 40 lines) ---"; tail -n 40 "$out/mem.log"
   echo "--- why the kernel killed it (if it did) ---"
   log show --style compact --last 10m --predicate '(process == "kernel" OR process == "amfid" OR process == "syspolicyd" OR process == "ReportCrash" OR process == "launchd") AND (eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "SIGKILL" OR eventMessage CONTAINS[c] "Tessaya" OR eventMessage CONTAINS[c] "baton-dictation" OR eventMessage CONTAINS[c] "Code Signature" OR eventMessage CONTAINS[c] "AMFI")' 2>&1 | tail -25
   # A native crash leaves no line in our logs, but macOS writes a report.
