@@ -346,7 +346,17 @@ export const parseLearningFile = (markdown: string): ReadonlyArray<ParsedLearnin
       if (kv !== null) meta[kv[1]!.toLowerCase()] = kv[2]!.trim().replace(/^["']|["']$/g, "");
     }
   }
-  const kind = (KIND_SET.has(meta.kind ?? "") ? meta.kind : "learning") as MemoryKind;
+  // Claude-style memory files say what they are in `type`; map that when `kind` is absent.
+  const byType: Record<string, MemoryKind> = {
+    user: "preference",
+    feedback: "correction",
+    project: "fact",
+    reference: "fact",
+  };
+  const metaType = (/^\s+type\s*:\s*(\S+)/m.exec(match?.[1] ?? "") ?? [])[1] ?? meta.type ?? "";
+  const kind = (
+    KIND_SET.has(meta.kind ?? "") ? meta.kind : (byType[metaType] ?? "learning")
+  ) as MemoryKind;
   const project = meta.project ?? "";
   const scope = (SCOPE_SET.has(meta.scope ?? "")
     ? meta.scope

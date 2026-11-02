@@ -137,6 +137,13 @@ describe("learning files", () => {
       { kind: "learning", text: "Never skip the dry run", scope: "project", scopeRef: "shop", confidence: 0.8 },
     ]);
   });
+  it("reads a Claude-style memory file by its type", () => {
+    expect(
+      parseLearningFile("---\nname: voice\ndescription: x\nmetadata:\n  type: user\n---\nHe says Freya as FRAY-uh.\n"),
+    ).toEqual([
+      { kind: "preference", text: "He says Freya as FRAY-uh.", scope: "global", scopeRef: null, confidence: 0.6 },
+    ]);
+  });
   it("reads a plain file as one global learning", () => {
     expect(parseLearningFile("# Heading\nKeep the cache warm.\n")).toEqual([
       { kind: "learning", text: "Keep the cache warm.", scope: "global", scopeRef: null, confidence: 0.6 },
