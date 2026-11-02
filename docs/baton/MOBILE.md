@@ -63,3 +63,21 @@ Per the vision: one brain that hears him anywhere, across devices.
 
 Open questions for him: does he want his own build of the app on his phone (step 1) given the official app updates on its own
 schedule; and is "ask by text with the phone's dictation" enough for the first version.
+
+## 5. The web companion at /tessaya (built; not yet tried on a phone)
+
+A Tessaya server serves a phone page at `/tessaya` (no app store). Open it over Tailscale or the tunnel, pair the phone the normal
+T3 way first (the page uses that session), and add it to the home screen (a manifest with the Woad icons and a service worker make it installable).
+
+- **Shows:** What needs me, Approvals (Approve or Deny, with the exact action text; a stale or changed approval is refused),
+  Now, Jobs (Stop, and Retry only where a retry is allowed, with the reason otherwise), and the Weave list. A badge count on the
+  tab and the app icon; the page polls every 20 seconds while in view. No push notifications (policy).
+- **Ask box and Talk button:** typed words and heard words go to the server's one intent brain (`baton.intent.run`), the same door the
+  window's ask box uses. Talk records in the browser (MediaRecorder), makes a 16 kHz WAV there and uploads it; the server runs the
+  dictation sidecar's `transcribe` with the speech model (`BATON_DICTATION`, `BATON_STT_MODEL`, or `voice/models` beside the database)
+  and shows what it heard with the reply. A server without them answers "Voice is not available on this server".
+- **Auth:** the server's own session. Reading needs `orchestration:read`; Approve, Deny, Stop, Retry, Ask and Talk need
+  `orchestration:operate`. A phone without the session sees a "not paired" card.
+- **Limits, stated:** the desktop's richer assistant (screen, vault, memory tools) lives in the desktop app, not the server, so the
+  phone reaches the server's intent brain, not that. A session's own question is answered in its thread, not here. Nothing
+  here was tried on a real phone.
