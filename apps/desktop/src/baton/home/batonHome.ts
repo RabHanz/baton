@@ -114,6 +114,25 @@ export type HomeControl =
       readonly pullOn: boolean;
       readonly status: string;
     })
+  /** The Vault area's header: make, unlock, lock, add, export, import, and the activity log (D151). */
+  | (HomeControlBase & {
+      readonly kind: "vaultBar";
+      readonly state: "none" | "locked" | "unlocked";
+      readonly status: string;
+      /** Shown once after the vault is made, until he says it is saved. */
+      readonly recovery: string | null;
+      /** Windows Hello is there to confirm it is him. */
+      readonly hello: boolean;
+      readonly activity: ReadonlyArray<string>;
+    })
+  /** One secret: its name and rules; the value only while he has asked to see it. */
+  | (HomeControlBase & {
+      readonly kind: "vaultItem";
+      readonly policy: string;
+      /** Financial: the policy cannot be changed. */
+      readonly locked: boolean;
+      readonly revealed: string | null;
+    })
   /** Shown masked until he clicks it. */
   | (HomeControlBase & {
       readonly kind: "secret";

@@ -14,6 +14,7 @@ import type {
   BatonJob,
   BatonJobBridgeRequest,
   BatonCommitmentBridgeRequest,
+  BatonWeaveBridgeRequest,
   BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
@@ -60,6 +61,7 @@ import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
+import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { createCommitmentSync } from "../presence/commitmentSync.ts";
@@ -87,6 +89,9 @@ import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
+import { windowsHello } from "../vault/hello.ts";
+import { createVaultTab } from "../vault/vaultTab.ts";
+import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
@@ -1112,7 +1117,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | VoiceIntentRequest
       | BatonJobBridgeRequest
       | BatonMemoryBridgeRequest
-      | BatonCommitmentBridgeRequest,
+      | BatonCommitmentBridgeRequest
+      | BatonWeaveBridgeRequest,
   ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
@@ -1147,7 +1153,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | VoiceIntentRequest
       | BatonJobBridgeRequest
       | BatonMemoryBridgeRequest
-      | BatonCommitmentBridgeRequest,
+      | BatonCommitmentBridgeRequest
+      | BatonWeaveBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -1200,6 +1207,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   setInterval(() => void syncCommitments(), COMMIT_SYNC_MS).unref();
   const externalNeeds = createExternalNeeds();
+  const weaveOp = async (
+    op: "weave_send" | "weave_list",
+    args: Readonly<Record<string, unknown>>,
+  ) => {
+    if (op === "weave_list") {
+      await requestKept({ kind: "weave", op: "tick", args: {} }).catch(() => undefined);
+      const out = (await requestKept({ kind: "weave", op: "list", args: {} })) as {
+        items?: ReadonlyArray<WeaveRecord>;
+      } | null;
+      return describeWeaves(out?.items ?? [], Date.now());
+    }
+    const out = (await requestKept({
+      kind: "weave",
+      op: "send",
+      args: {
+        to: String(args["session"] ?? ""),
+        text: String(args["text"] ?? ""),
+        from: "Tessaya",
+        ...(typeof args["job"] === "string" ? { job: args["job"] } : {}),
+      },
+    })) as { weave?: WeaveRecord } | null;
+    const w = out?.weave;
+    if (w === undefined) return "The message was not sent.";
+    return w.status === "delivered"
+      ? `Delivered to ${w.toLabel}. Ask for weave_list later to read its reply [id: ${w.id}].`
+      : w.status === "queued"
+        ? `Not delivered yet, queued in order: ${w.reason ?? "it cannot take it now"} [id: ${w.id}].`
+        : `Not delivered: ${w.reason ?? "unknown"} [id: ${w.id}].`;
+  };
   const briefExtra = (): ReadonlyArray<string> => {
     const line = briefCommitments(commitments.list(), Date.now());
     return line === null ? [] : [line];
@@ -1266,6 +1302,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "commit_add" || op === "commit_done" || op === "commit_list") {
         return runCommitOp(commitments, op, args, Date.now());
       }
+      if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
       if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
       if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
       if (op === "needs") {
@@ -1994,6 +2031,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }),
   );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
+  const vaultState = vaultFor(input.stateDir);
+  const vaultTab = createVaultTab({
+    vault: vaultState.vault,
+    hello: (message) => windowsHello(message, input.platform),
+    clipboard: {
+      read: () => Electron.clipboard.readText(),
+      write: (t) => Electron.clipboard.writeText(t),
+      clear: () => Electron.clipboard.clear(),
+    },
+    audit: vaultState.audit,
+    readAudit: () => {
+      try {
+        return NodeFS.readFileSync(vaultState.auditFile, "utf8").split("\n").filter((l) => l !== "");
+      } catch {
+        return [];
+      }
+    },
+    stateDir: input.stateDir,
+    refresh: () => home.refresh(),
+    reveal: (file) => Electron.shell.showItemInFolder(file),
+  });
   const memoryTab = createMemoryTab({
     call: (op, args) =>
       requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
@@ -2344,6 +2402,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       learned: learned ?? [],
       declined: state.declined.slice(-8).toReversed(),
       muted: state.never.map((topic) => ({ topic, title: state.titles[topic] ?? topic })),
+      weaves:
+        (
+          (await requestKept({ kind: "weave", op: "list", args: { limit: 10 } }).catch(
+            () => null,
+          )) as { items?: ReadonlyArray<WeaveRecord> } | null
+        )?.items ?? [],
     };
     home.refresh();
   };
@@ -2367,6 +2431,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...nowControls(nowData, Date.now()),
       ...presenceControls(settings),
       ...memoryTab.controls(),
+      ...vaultTab.controls(),
       ...cachedPack(),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
@@ -2854,6 +2919,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
     if (memoryTab.act(id, value)) return;
+    if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
     else if (id === "q.ask" || id === "q.clear") {
       const entry = input.extras

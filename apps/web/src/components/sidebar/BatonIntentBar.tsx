@@ -25,6 +25,7 @@ import {
   type BatonIntentResolution,
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
+  type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
 } from "@t3tools/baton-contracts";
@@ -64,6 +65,8 @@ export interface BatonIntentBarProps {
   /** The desktop assistant's memory calls (D150), answered with the memory RPCs. */
   readonly onMemory?: (request: BatonMemoryBridgeRequest) => Promise<unknown>;
   /** The desktop assistant's commitments ledger (D149), answered with the commitments RPCs. */
+  /** The desktop assistant's weave calls (D149), answered with the weave RPCs. */
+  readonly onWeave?: (request: BatonWeaveBridgeRequest) => Promise<unknown>;
   readonly onCommitments?: (request: BatonCommitmentBridgeRequest) => Promise<unknown>;
 }
 
@@ -121,7 +124,8 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     return () => clearTimeout(timer);
   }, [text, props.environmentId, props.focusedWorkSessionId, resolveIntent]);
 
-  const { environmentId, focusedWorkSessionId, onRan, onJob, onMemory, onCommitments } = props;
+  const { environmentId, focusedWorkSessionId, onRan, onJob, onMemory, onCommitments, onWeave } =
+    props;
   const ownsVoice = useRef(false);
   // The desktop voice core's intent calls, answered with this bar's own RPCs:
   // spoken sentences meet the same grammar and gates as typed ones. Dictation
@@ -136,6 +140,10 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       if (request.kind === "memory") {
         if (onMemory === undefined) throw new Error("Memory is not available here.");
         return onMemory(request);
+      }
+      if (request.kind === "weave") {
+        if (onWeave === undefined) throw new Error("Weaving is not available here.");
+        return onWeave(request);
       }
       if (request.kind === "commitments") {
         if (onCommitments === undefined) throw new Error("Commitments are not available here.");
@@ -168,7 +176,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       voiceListenerClaimed = false;
       ownsVoice.current = false;
     };
-  }, [environmentId, onRan, onJob, onMemory, onCommitments, resolveIntent, runIntent]);
+  }, [environmentId, onRan, onJob, onMemory, onCommitments, onWeave, resolveIntent, runIntent]);
   useEffect(() => {
     if (ownsVoice.current) batonDesktopBridge()?.setBatonVoiceFocus?.(focusedWorkSessionId);
   }, [focusedWorkSessionId]);
