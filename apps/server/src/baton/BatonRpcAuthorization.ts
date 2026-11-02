@@ -81,6 +81,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_MEMORY_WS_METHODS.forget]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.accept]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.recall]: AuthOrchestrationOperateScope,
+  // Each call spends a cheap-model turn on his subscription.
+  [BATON_MEMORY_WS_METHODS.learn]: AuthOrchestrationOperateScope,
   // A rule starts provider sessions and messages threads when it fires, so
   // creating or re-enabling one is an operate-level act even though the RPC
   // itself only writes a row. Reading the rules is a read.
