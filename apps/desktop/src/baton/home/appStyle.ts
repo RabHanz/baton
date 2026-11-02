@@ -323,6 +323,7 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .skip{position:absolute;left:8px;top:-48px;z-index:100;background:var(--ink);color:var(--on-ink);padding:8px 12px;border-radius:var(--r);font-weight:600;text-decoration:none}.skip:focus{top:8px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 #panel:focus{outline:none}
+:root{--dur-instant:80ms;--dur-quick:140ms;--dur-base:220ms;--dur-slow:420ms;--dur-hero:900ms;--stagger:28ms;--ease-out:cubic-bezier(.16,1,.3,1);--ease-spring:linear(0,.55 12%,.93 26%,1.04 40%,.99 60%,1)}
 @keyframes breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.035);opacity:.92}}
 html.live .brand #mark{animation:breathe 6s ease-in-out infinite;will-change:transform,opacity}
 #top button,#top input,#top select,#top a,#top .state,#top .pop{-webkit-app-region:no-drag}
