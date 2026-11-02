@@ -96,6 +96,7 @@ import {
 } from "@t3tools/baton-shared/dictationLanguages";
 import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/baton-shared/audioFile";
 import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
+import { makeDiagnosticsFile } from "../health/diagnosticsFile.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -3061,6 +3062,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
+        id: "v.diag",
+        section: "Check",
+        label: "Something is wrong and you want to report it",
+        hint: "Makes one text file of versions, why Tessaya last stopped, and timings, with no dictated or spoken words, tokens, email addresses or user names. It is not sent anywhere: read it, then attach it yourself.",
+        kind: "action",
+        button: "Make a diagnostics file",
+      },
+      {
         id: "v.check",
         section: "Check",
         label: "Is everything working?",
@@ -3531,6 +3540,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.login") {
       save({ openAtLogin: on });
       setLoginItem(Electron.app, input.loginEntry, on);
+    } else if (id === "v.diag") {
+      try {
+        const file = makeDiagnosticsFile({
+          stateDir: input.stateDir,
+          logDir: input.logDir,
+          version: Electron.app.getVersion(),
+          settingsFile: settingsPath,
+        });
+        Electron.shell.showItemInFolder(file);
+        input.extras?.notice(
+          "The diagnostics file is made and shown in its folder. Nothing was sent.",
+        );
+      } catch {
+        input.extras?.notice("The diagnostics file could not be made.");
+      }
     } else if (id === "v.check") void runAllChecks();
     else if (id === "v.micTest") testMic();
     else if (id === "v.file") {
