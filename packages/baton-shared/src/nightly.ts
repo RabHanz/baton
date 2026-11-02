@@ -81,3 +81,39 @@ export const nightlyRow = (
   if (age > 2 * 86_400_000) return { name, state: "limited", why: `The last nightly ran ${when}; it should run every night.` };
   return { name, state: "works", why: `All ${ran.length} checks passed ${when}.` };
 };
+
+/** `upstream-sync.json` as the nightly sync writes it (scripts/baton/sync-status.mjs). */
+export interface SyncStatus {
+  readonly at: string;
+  readonly result: string;
+  readonly ok: boolean;
+  readonly behindCommits: number | null;
+  readonly conflictingFiles: ReadonlyArray<string>;
+  readonly touching?: Readonly<Record<string, ReadonlyArray<string>>>;
+}
+
+export const parseSync = (text: string): SyncStatus | null => {
+  try {
+    const v = JSON.parse(text) as Partial<SyncStatus>;
+    return typeof v.at === "string" && typeof v.result === "string" && Array.isArray(v.conflictingFiles) ? (v as SyncStatus) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The sync debt, in commits and in words: how far behind upstream, and why if the last run stopped. */
+export const syncRow = (
+  status: SyncStatus | null,
+  now: number,
+): { readonly name: string; readonly state: "works" | "limited" | "unknown"; readonly why: string } => {
+  const name = "Upstream sync";
+  if (status === null) return { name, state: "unknown", why: "Unknown: the last sync result could not be read here." };
+  const behind = status.behindCommits === null ? "an unknown number of" : String(status.behindCommits);
+  const when = ago(now - Date.parse(status.at));
+  if (status.result === "conflict") {
+    const files = status.conflictingFiles.slice(0, 4).join(", ");
+    return { name, state: "limited", why: `${behind} commits behind upstream. The last run (${when}) stopped on a conflict in ${files === "" ? "the patch series" : files}.` };
+  }
+  if (!status.ok) return { name, state: "limited", why: `${behind} commits behind upstream. The last run (${when}) ended: ${status.result}.` };
+  return { name, state: "works", why: `${behind} commits behind upstream as of ${when}; the last run: ${status.result}.` };
+};

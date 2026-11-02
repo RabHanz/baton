@@ -170,6 +170,8 @@ jobs:
   # baton-desktop-release.yml does (no release is made).
   smoke:
     name: smoke ${{ matrix.platform }}
+    # macOS is reported, not required: its runner killed the app in 2 of 4 runs of the same build (docs/baton/PLATFORMS.md).
+    continue-on-error: ${{ matrix.platform == 'macos' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -221,7 +223,8 @@ jobs:
             --build-version 99.0.0 --output-dir release --verbose
       - name: Launch with the test hooks
         env:
-          REQUIRE_WAKE: ${{ inputs.require_wake && '1' || '0' }}
+          # A synthetic voice does not wake the macOS build reliably; the wake phrase is required on Windows and Linux.
+          REQUIRE_WAKE: ${{ inputs.require_wake && matrix.platform != 'macos' && '1' || '0' }}
           SMOKE_ARGS: ${{ inputs.smoke_args }}
           SMOKE_ENV: ${{ inputs.smoke_env }}
         run: bash scripts/baton/platform-smoke.sh "${{ matrix.platform }}" "$(find release \( -name "*.AppImage" -o -name "*.dmg" \) | head -1)" "$RUNNER_TEMP/smoke"
