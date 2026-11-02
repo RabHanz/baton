@@ -13,7 +13,8 @@ export type RetryPlan =
   | { readonly kind: "cleanup"; readonly why: string }
   | { readonly kind: "none"; readonly why: string };
 
-type Row = Pick<HistoryTurn, "kind" | "status" | "audio" | "delivery">;
+type Row = Pick<HistoryTurn, "kind" | "status" | "audio" | "delivery"> &
+  Partial<Pick<HistoryTurn, "raw" | "cleaned">>;
 
 /** Recognition again when a recording exists; otherwise only the clean-up retry, and only where it applies. */
 export const retryPlan = (turn: Row): RetryPlan => {
@@ -25,7 +26,7 @@ export const retryPlan = (turn: Row): RetryPlan => {
 };
 
 export interface MenuItem {
-  readonly id: "copy" | "copy_raw" | "retry_transcript" | "retry" | "delete";
+  readonly id: "copy" | "copy_raw" | "undo_ai" | "retry_transcript" | "retry" | "delete";
   readonly label: string;
   readonly enabled: boolean;
   /** Said plainly when the item cannot run. */
@@ -42,6 +43,15 @@ export const rowMenu = (turn: Row, busy: boolean): ReadonlyArray<MenuItem> => {
       ? { id: "retry_transcript", label: "Retry transcript", enabled: !busy }
       : { id: "retry_transcript", label: "Retry transcript", enabled: false, note: plan.why },
   ];
+  // Wispr's "Undo AI edit": the words as heard replace the written ones, and are copied to paste back.
+  if (
+    turn.kind === "dictation" &&
+    typeof turn.cleaned === "string" &&
+    typeof turn.raw === "string" &&
+    turn.cleaned.trim() !== turn.raw.trim()
+  ) {
+    items.splice(2, 0, { id: "undo_ai", label: "Undo AI edit", enabled: true });
+  }
   if (plan.kind === "cleanup") items.push({ id: "retry", label: "Retry clean-up", enabled: !busy });
   items.push({ id: "delete", label: "Delete", enabled: true });
   return items;
