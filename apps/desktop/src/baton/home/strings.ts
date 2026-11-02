@@ -207,6 +207,15 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloudmodal.text": "Cloud tasks run on someone else's computer while you keep working. Each one waits for your yes.",
     "cloudmodal.open": "Open the Cloud page",
     "cloudmodal.setup": "Run the cloud setup step",
+    "cloud.ask.label": "Also ask me with a pop-up and on my phone",
+    "cloud.ask.hint": "Each waiting task also appears as a question here and on a paired phone, with one button per assistant and account. Choosing one only asks you to confirm.",
+    "cloud.offer.title": "Cloud task waiting: {task}",
+    "cloud.offer.pick": "{label} - {account} ({usage})",
+    "cloud.offer.deny": "Deny",
+    "cloud.offer.later": "Decide later",
+    "cloud.offer.confirmTitle": "Approve on {account}?",
+    "cloud.offer.approve": "Approve",
+    "cloud.offer.back": "Back",
   },
 };
 

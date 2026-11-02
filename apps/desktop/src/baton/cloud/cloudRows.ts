@@ -45,6 +45,7 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
         { value: "ssh", label: text("cloud.transport.ssh") },
       ],
     },
+    { id: "cl.set.ask", section, label: text("cloud.ask.label"), hint: text("cloud.ask.hint"), kind: "toggle", on: s.askPopup },
     {
       id: "cl.set.cap",
       section,

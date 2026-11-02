@@ -75,3 +75,31 @@ export const fromSpoken = (
     readBack: `Approve this cloud task on ${c.label}, account ${a.account}${a.percent === null ? "" : `, ${a.percent}% used this week`}? Only your yes on the card runs it.`,
   };
 };
+
+export type OfferPick =
+  | { readonly kind: "pick"; readonly provider: ProviderId; readonly account: string }
+  | { readonly kind: "deny" }
+  | { readonly kind: "later" };
+
+/**
+ * The card as one question with a button for each assistant-and-account that may be picked (so it fits a
+ * dialog and a phone): nothing is preselected, a closed choice is not a button, and the last button is
+ * "decide later". Choosing one only leads to a second question, "approve on X?"; it approves nothing.
+ */
+export const offerQuestion = (
+  choices: ReadonlyArray<ProviderChoice>,
+  words: { readonly pick: (label: string, account: string, usage: string) => string; readonly deny: string; readonly later: string },
+): { readonly buttons: ReadonlyArray<string>; readonly cancel: number; readonly picks: ReadonlyArray<OfferPick> } => {
+  const options = choices
+    .filter((c) => c.enabled)
+    .flatMap((c) =>
+      c.accounts
+        .filter((a) => a.enabled)
+        .map((a) => ({
+          button: words.pick(c.label, a.account, a.percent === null ? "usage unknown" : `${a.percent}% used`),
+          pick: { kind: "pick", provider: c.id, account: a.account } as OfferPick,
+        })),
+    );
+  const picks: OfferPick[] = [...options.map((o) => o.pick), { kind: "deny" }, { kind: "later" }];
+  return { buttons: [...options.map((o) => o.button), words.deny, words.later], cancel: picks.length - 1, picks };
+};

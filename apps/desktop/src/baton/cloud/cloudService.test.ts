@@ -11,7 +11,7 @@ import { createCloud, DEFAULT_CLOUD, NOT_SET_UP, type CloudSettings } from "./cl
 
 type Call = { file: string; args: ReadonlyArray<string>; env?: Readonly<Record<string, string>> };
 
-const rig = (over: Partial<CloudSettings> = {}, pressed = 0) => {
+const rig = (over: Partial<CloudSettings> = {}, pressed: number | ReadonlyArray<number> = 0) => {
   const calls: Call[] = [];
   const asked: string[] = [];
   const exec: Exec = async (file, args, o) => {
@@ -26,7 +26,7 @@ const rig = (over: Partial<CloudSettings> = {}, pressed = 0) => {
     exec,
     dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
     hub: null,
-    ask: async (q) => (asked.push(q.detail), pressed),
+    ask: async (q) => (asked.push(`${q.title} | ${q.buttons.join(" / ")}`), typeof pressed === "number" ? pressed : (pressed[asked.length - 1] ?? q.cancel)),
     changed: () => undefined,
     now: () => 1_000,
   });
@@ -87,7 +87,7 @@ describe("cloud tasks in the desktop", () => {
     await no.cloud.tool.dispatch(task);
     expect(await no.cloud.tool.approve("L-1", "me@example.org")).toBe("Left as it was. Nothing was approved.");
     expect(no.calls.some((c) => c.args[0] === "--cloud")).toBe(false);
-    expect(no.asked[0]).toContain("Approve this cloud task on Claude, account me@example.org");
+    expect(no.asked[0]).toContain("Approve a cloud task?");
     const yes = rig({}, 0);
     await yes.cloud.tool.dispatch(task);
     expect(await yes.cloud.tool.approve("L-1", "someone@else.org")).toContain("I cannot approve on someone@else.org");
@@ -130,5 +130,41 @@ describe("cloud tasks in the desktop", () => {
     const account = rows.find((r) => r.id.startsWith("cl.a.claude:L-1:"));
     expect(account).toMatchObject({ hint: "usage unknown" });
     expect(await cloud.tool.usage()).toContain("usage unknown");
+  });
+
+  it("with the pop-up on, asks one question with a button per open choice, then asks to confirm, then runs once", async () => {
+    const { cloud, calls, asked } = rig({ askPopup: true }, [0, 0]);
+    await cloud.tool.dispatch(task);
+    await cloud.settled();
+    expect(asked[0]).toContain("Cloud task waiting: Fix the flaky test");
+    expect(asked[0]).toContain("Claude - me@example.org (usage unknown) / Codex - This computer's Codex login (usage unknown) / Deny / Decide later");
+    expect(asked[1]).toContain("Approve on me@example.org?");
+    expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
+    await cloud.refresh();
+    await cloud.settled();
+    expect(asked).toHaveLength(2);
+  });
+
+  it("with the pop-up on, Deny and Decide later run nothing, and Back asks again", async () => {
+    const deny = rig({ askPopup: true }, [2]);
+    await deny.cloud.tool.dispatch(task);
+    await deny.cloud.settled();
+    expect(deny.cloud.view().requests[0]!.state).toBe("denied");
+    const later = rig({ askPopup: true }, [3]);
+    await later.cloud.tool.dispatch(task);
+    await later.cloud.settled();
+    expect(later.cloud.view().requests[0]!.state).toBe("awaiting-director");
+    const back = rig({ askPopup: true }, [0, 1, 3]);
+    await back.cloud.tool.dispatch(task);
+    await back.cloud.settled();
+    expect(back.asked).toHaveLength(3);
+    expect(back.calls.some((c) => c.args[0] === "--cloud")).toBe(false);
+  });
+
+  it("does not pop anything up while the setting is off", async () => {
+    const { cloud, asked } = rig({}, 0);
+    await cloud.tool.dispatch(task);
+    await cloud.settled();
+    expect(asked).toHaveLength(0);
   });
 });

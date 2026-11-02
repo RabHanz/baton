@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { CARD_START, fromSpoken, reduceCard, type CardState } from "./card.ts";
+import { CARD_START, fromSpoken, offerQuestion, reduceCard, type CardState } from "./card.ts";
 import { sshProviders } from "./sshShell.ts";
 import { hubProvider, serveCloudCall, type Described } from "./hub.ts";
 import { claudeHarness, codexHarness, localProvider, type BriefStore, type PendingStore } from "./local.ts";
@@ -287,6 +287,18 @@ describe("the approval card, for any provider", () => {
     expect(reduceCard(failed, { type: "retry" }, choices)).toEqual({ phase: "account", provider: "claude" });
     expect(reduceCard(s, { type: "approved" }, choices)).toEqual({ phase: "done", provider: "claude", account: "rabee" });
     expect(reduceCard(CARD_START, { type: "deny" }, choices)).toEqual({ phase: "denied" });
+  });
+
+  it("offers the card as one question with a button per open choice, deny and later, and no default", () => {
+    const q = offerQuestion(choices, { pick: (l, a, u) => `${l} - ${a} (${u})`, deny: "Deny", later: "Decide later" });
+    expect(q.buttons).toEqual([
+      "Claude - signzart (9% used)", "Claude - rabee (41% used)",
+      "Codex - work (usage unknown)", "Deny", "Decide later",
+    ]);
+    expect(q.picks[0]).toEqual({ kind: "pick", provider: "claude", account: "signzart" });
+    expect(q.picks.slice(-2)).toEqual([{ kind: "deny" }, { kind: "later" }]);
+    expect(q.cancel).toBe(4);
+    expect(q.buttons.join()).not.toContain("optima");
   });
 
   it("a spoken approval repeats the account, stops at the confirm step and reads the card back", () => {

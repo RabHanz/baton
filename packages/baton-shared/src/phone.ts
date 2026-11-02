@@ -34,6 +34,8 @@ export interface PhoneApproval extends Omit<Approval, "kind"> {
   /** For a mirrored question: which button means yes and which means no. */
   readonly yes?: number;
   readonly cancel?: number;
+  /** A question with more than two answers (the cloud card): one button each, none preselected. */
+  readonly buttons?: ReadonlyArray<string>;
 }
 
 export interface PhoneAskRow {
@@ -93,6 +95,7 @@ export const buildPhoneState = (input: {
     answerable: true,
     yes: p.yes,
     cancel: p.cancel,
+    ...(p.buttons.length > 2 ? { buttons: p.buttons } : {}),
   }));
   const approvals = [
     ...mirrored,

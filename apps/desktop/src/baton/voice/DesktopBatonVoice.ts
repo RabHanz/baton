@@ -4206,6 +4206,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       void cloud.click(id).catch(() => undefined);
     } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
     else if (id === "cl.set.on") saveCloud({ on });
+    else if (id === "cl.set.ask") saveCloud({ askPopup: on });
     else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh")) saveCloud({ transport: value });
     else if (id === "cl.set.cap") saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
     else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey)(:save|:reset)$/.test(id)) {
