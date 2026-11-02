@@ -100,7 +100,7 @@ export const tabOf = (id: string): TabId => {
   if (exact !== undefined) return exact;
   if (id.startsWith("v.wake:")) return "voice";
   if (id.startsWith("v.result:")) return "checks";
-  if (id.startsWith("n:")) return "sessions";
+  if (id.startsWith("n:") || id.startsWith("c:") || id.startsWith("c.")) return "sessions";
   if (/^now[:.]/.test(id)) return "now";
   if (/^cl\.(p|a|ok|deny|head|busy|done|denied|fail)\./.test(id)) return "approvals";
   if (/^cl[:.]/.test(id)) return "cloud";
