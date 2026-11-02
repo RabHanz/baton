@@ -18,6 +18,10 @@ jobs:
           filter: blob:none
       - name: Nothing private ships by default
         run: node scripts/baton/guard-private.mjs
+      - name: Every shipped third-party piece has a notice
+        run: |
+          node scripts/baton/check-notices.mjs
+          node --test scripts/baton/check-notices.test.mjs
       - name: Upstream paths equal PIN + series
         run: bash scripts/baton/patches.sh verify
       - name: patches.sh self-test
