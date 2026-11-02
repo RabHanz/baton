@@ -14,7 +14,10 @@ WORDS = {
         "ipa": ["tɛsˈeɪə", "təsˈeɪə", "tɛsˈeɪjə", "tɛsˈɑɪə", "təsˈɛɪə"],
         "negative": ["tessa", "tesla", "the say", "to say", "this say", "it's a", "decayed", "essay", "tasia",
                      "the sire", "teasing", "tess", "testing", "thesis", "that's a", "taser", "sayer", "tis a",
-                     "messiah", "to sail", "thesaurus", "tea say", "chaya", "tessier"],
+                     "messiah", "to sail", "thesaurus", "tea say", "chaya", "tessier",
+                     # near misses seen on the laptop and in the harness's near-miss list
+                     "tessie", "tesco", "tessera", "thessaly", "tessellate", "texas", "theresa", "tessaly",
+                     "the sayer", "ta say", "te say", "tess a", "tessa's", "tasha", "tessa he said"],
     },
     "onyx": {
         # ON-iks. He owns the name Onnyx, so it can come up when he is not addressing Baton.
@@ -47,6 +50,7 @@ WORDS = {
 
 if __name__ == "__main__":
     word, n_samples, steps = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+    POSITIVE, ADVERSARIAL = (150, 110) if word == "tessaya" else (70, 70)
     print(yaml.safe_dump({
         "model_name": word,
         "target_phrase": WORDS[word]["target"],
@@ -66,9 +70,11 @@ if __name__ == "__main__":
             {"clean_negatives": "./clean_negative_features.npy"} if CLEAN
             else {"ACAV100M_sample": "./openwakeword_features_ACAV100M_2000_hrs_16bit.npy"}
         ),
+        # Tessaya's first model had recall 0.60 at 2 false positives an hour: more positives and more
+        # adversarial negatives per batch, and a longer run.
         "batch_n_per_class": (
-            {"clean_negatives": 1024, "adversarial_negative": 70, "positive": 70} if CLEAN
-            else {"ACAV100M_sample": 1024, "adversarial_negative": 70, "positive": 70}
+            {"clean_negatives": 1024, "adversarial_negative": ADVERSARIAL, "positive": POSITIVE} if CLEAN
+            else {"ACAV100M_sample": 1024, "adversarial_negative": ADVERSARIAL, "positive": POSITIVE}
         ),
         "model_type": "dnn",
         "layer_size": 64,

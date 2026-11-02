@@ -28,8 +28,8 @@ jobs:
       matrix:
         word: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.word)) || fromJSON('["sebastian","alfred","freya","onyx"]') }}
     env:
-      N_SAMPLES: 30000
-      STEPS: 100000
+      N_SAMPLES: ${{ matrix.word == 'tessaya' && 45000 || 30000 }}
+      STEPS: ${{ matrix.word == 'tessaya' && 250000 || 100000 }}
       CLEAN: ${{ github.event_name == 'workflow_dispatch' && inputs.clean && '1' || '0' }}
     steps:
       - uses: actions/checkout@v6
