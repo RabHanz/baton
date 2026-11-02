@@ -853,5 +853,8 @@ addEventListener('keydown', e => {
 });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
+// The mark breathes only while the window is in front and seen: no animation runs in the background.
+function syncBreath() { document.documentElement.classList.toggle('live', document.hasFocus() && !document.hidden); }
+addEventListener('focus', syncBreath); addEventListener('blur', syncBreath); document.addEventListener('visibilitychange', syncBreath); syncBreath();
 get().then(s => { render(s); startSting(); });
 `;

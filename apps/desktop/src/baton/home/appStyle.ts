@@ -323,6 +323,8 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .skip{position:absolute;left:8px;top:-48px;z-index:100;background:var(--ink);color:var(--on-ink);padding:8px 12px;border-radius:var(--r);font-weight:600;text-decoration:none}.skip:focus{top:8px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 #panel:focus{outline:none}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.035);opacity:.92}}
+html.live .brand #mark{animation:breathe 6s ease-in-out infinite;will-change:transform,opacity}
 #top button,#top input,#top select,#top a,#top .state,#top .pop{-webkit-app-region:no-drag}
 #top{position:relative}
 .pop{position:absolute;right:6px;top:46px;z-index:30;width:280px;padding:12px 14px;border:1px solid var(--line-strong);background:var(--panel);border-radius:12px;box-shadow:0 18px 40px -16px rgba(0,0,0,.4)}

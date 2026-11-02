@@ -242,6 +242,10 @@ export class FakeDocument {
     return null;
   }
   addEventListener() {}
+  hidden = false;
+  hasFocus() {
+    return true;
+  }
 }
 
 /** Runs the page script against `state` and returns a way to switch tabs and read each page's text. */
