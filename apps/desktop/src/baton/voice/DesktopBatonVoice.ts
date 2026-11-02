@@ -107,6 +107,8 @@ import {
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { jobsDigest, retriesUsed, retryBudget, retryRefusal, retryText } from "@t3tools/baton-shared/jobReport";
+import { draftMessage, draftSystemPrompt, fallbackDraft, notesOf, usableDraft } from "@t3tools/baton-shared/skillDraft";
+import { draftPath, writeDraft } from "../harness/skillDraftFile.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -1405,6 +1407,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ? `Not delivered yet, queued in order: ${w.reason ?? "it cannot take it now"} [id: ${w.id}].`
         : `Not delivered: ${w.reason ?? "unknown"} [id: ${w.id}].`;
   };
+  /** A finished job as a draft SKILL.md in its own folder, opened for him to read; never installed by itself. */
+  const draftSkill = async (id: string): Promise<string> => {
+    const job = (jobsCache ?? []).find((j) => j.workSessionId === id);
+    if (job === undefined) return "There is no such job.";
+    if (job.group !== "done") return "Only a finished job can become a skill.";
+    const draftJob = { title: job.title, goal: job.goal, notes: notesOf(job.terms.revisions) };
+    let text = fallbackDraft(draftJob);
+    let how = "from a plain template, because the model did not answer";
+    try {
+      const made = usableDraft(await askModel(draftSystemPrompt, draftMessage(draftJob)));
+      if (made !== null) {
+        text = made;
+        how = "by your own Claude";
+      }
+    } catch {
+      // The template stands in.
+    }
+    const file = writeDraft(input.stateDir, job.title, text);
+    void Electron.shell.openPath(file);
+    return `A skill draft was written ${how}, and opened for you to read and edit: ${file}. To add it, paste its path under "Add a skill" on the Skills tab; it is reviewed first.`;
+  };
   /** Asks a failed job's worker to try again, inside its retry budget. */
   const retryJob = async (id: string, reason: string): Promise<string> => {
     const job = (jobsCache ?? []).find((j) => j.workSessionId === id);
@@ -1502,6 +1525,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? "No note has all of those words."
           : found.map((n) => `${previewOf(n.text, 300)} [id: ${n.id}]`).join("\n");
       }
+      if (op === "skill_draft") return draftSkill(String(args["id"] ?? ""));
       if (op === "retry") return retryJob(String(args["id"] ?? ""), String(args["reason"] ?? "it failed"));
       if (op === "handoff") {
         await requestKept({ kind: "job", op: "handoff", args });
@@ -2234,11 +2258,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** A skill from a web address: fetched, reviewed, and filed only after he says yes on the card. */
   const addSkillFrom = async (address: string): Promise<void> => {
     const tell = (text: string) => input.extras?.notice(text);
-    const target = normalizeSkillUrl(address);
-    if (target === null) return tell("Use an https address, or a GitHub page of a SKILL.md.");
+    const draft = draftPath(input.stateDir, address);
+    const target = draft === null ? normalizeSkillUrl(address) : { url: `file:///${draft}`, host: "this computer (your draft)" };
+    if (target === null) return tell("Use an https address, a GitHub page of a SKILL.md, or the path of one of your drafts.");
     try {
-      const text = await fetchSkillText(target.url);
-      const parsed = parseSkill(text, nameFromUrl(target.url));
+      const text = draft === null ? await fetchSkillText(target.url) : NodeFS.readFileSync(draft, "utf8");
+      const parsed = parseSkill(text, draft === null ? nameFromUrl(target.url) : NodePath.basename(NodePath.dirname(draft)));
       if (!parsed.ok) return tell(`Not added: ${parsed.why}`);
       const card = reviewCard({
         host: target.host,
@@ -3516,7 +3541,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       if (act === null) return;
-      if (act.kind === "retry") {
+      if (act.kind === "draft") {
+        void draftSkill(act.id).then((line) => input.extras?.notice(line)).catch(() => undefined);
+      } else if (act.kind === "retry") {
         void retryJob(act.id, "the last attempt failed")
           .then((line) => input.extras?.notice(line))
           .then(refreshJobs)

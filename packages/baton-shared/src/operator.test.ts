@@ -185,6 +185,8 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(retry, off).verdict).toBe("allow");
     expect(judgeToolCall(retry, read).verdict).toBe("ask");
     expect(judgeToolCall({ tool: "mcp__baton__job_handoff", input: { id: "j1", instance: "codex" } }, off).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, off).verdict).toBe("allow");
+    expect(judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, read).verdict).toBe("ask");
     const jot = { tool: "mcp__baton__note_add", input: { text: "buy milk" } };
     expect(judgeToolCall(jot, off).verdict).toBe("allow");
     expect(judgeToolCall(jot, read).verdict).toBe("ask");
