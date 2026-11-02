@@ -118,6 +118,8 @@ struct Job {
 
 enum Work {
     Clip(Job),
+    /// Load the model now, so the first real phrase does not wait behind it.
+    Load { id: Option<u64>, model: PathBuf },
     Begin { model: PathBuf, language: Option<String> },
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant },
@@ -227,7 +229,27 @@ fn ensure_loaded(loaded: &mut Option<(PathBuf, Session)>, model: &Path) -> Resul
         return Ok(0);
     }
     *loaded = None;
-    let (session, ms) = load(model)?;
+    // A load on a busy computer can take minutes. The desktop cannot tell that from a hang unless it hears this: one line a
+    // second while the file is read, so it waits for as long as the load is making progress and no longer.
+    let done = Arc::new(AtomicBool::new(false));
+    {
+        let done = done.clone();
+        thread::spawn(move || {
+            let started = Instant::now();
+            while !done.load(Ordering::Relaxed) {
+                emit(json!({"ev": "loading", "elapsedMs": started.elapsed().as_millis() as u64}));
+                for _ in 0..10 {
+                    if done.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+            }
+        });
+    }
+    let result = load(model);
+    done.store(true, Ordering::Relaxed);
+    let (session, ms) = result?;
     *loaded = Some((model.to_path_buf(), session));
     Ok(ms)
 }
@@ -258,6 +280,13 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
+            }
+            Ok(Work::Load { id, model }) => {
+                let line = match ensure_loaded(&mut loaded, &model) {
+                    Ok(load_ms) => json!({"ev": "model_ready", "id": id, "loadMs": load_ms}),
+                    Err(error) => json!({"ev": "model_ready", "id": id, "error": error}),
+                };
+                emit(line);
             }
             Ok(Work::Begin { model, language }) => {
                 live = Some(match ensure_loaded(&mut loaded, &model) {
@@ -710,6 +739,15 @@ fn serve() {
                         }
                     }
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
+                    "load" => {
+                        let id = value["id"].as_u64();
+                        match &config.model {
+                            Some(model) => {
+                                let _ = job_tx.send(Work::Load { id, model: model.clone() });
+                            }
+                            None => emit(json!({"ev": "model_ready", "id": id, "error": "no model configured"})),
+                        }
+                    }
                     "foreground" => {
                         let window = foreground_window();
                         let (app, title) = window_app(window);
