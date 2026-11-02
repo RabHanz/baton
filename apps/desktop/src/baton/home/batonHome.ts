@@ -10,12 +10,16 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 import * as Electron from "electron";
 import * as NodeFS from "node:fs";
+import * as OS from "node:os";
 import * as NodePath from "node:path";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
 import { THEME_GROUND, resolveTheme, type Appearance } from "./theme.ts";
 import { tabOf, type TabId } from "./tabs.ts";
+import { applyLookScript, effectiveGlass, effectiveMotion, lookClasses, materialFor, type Glass, type Motion } from "./look.ts";
+import { shouldSplash } from "./splash.ts";
+import { startSplash } from "./splashWindow.ts";
 
 export interface HomeOption {
   readonly value: string;
@@ -269,12 +273,18 @@ export interface BatonHomeInput {
   readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
   readonly appearance: () => Appearance;
+  /** The motion and glass he chose; the system's own asks are read here. */
+  readonly look?: () => { readonly motion: Motion; readonly glass: Glass };
+  /** Whether this run was started quietly (at sign-in, or hidden): no splash then. */
+  readonly quietLaunch?: () => boolean;
   /** The microphone's level now, 0 to 1, for the guide's meter. */
   readonly level?: () => number;
 }
 
 export interface BatonHome {
   readonly open: () => void;
+  /** Re-reads Motion and Glass and applies them to the open window now. */
+  readonly applyLook: () => void;
   /** Push fresh state if the window is up. */
   readonly refresh: () => void;
 }
@@ -352,8 +362,18 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     }, 500).unref();
   });
 
+  const systemAsks = () => ({
+    reducedMotion: Electron.systemPreferences.getAnimationSettings?.().prefersReducedMotion === true,
+    reducedTransparency: (Electron.nativeTheme as { prefersReducedTransparency?: boolean }).prefersReducedTransparency === true,
+  });
+  const look = () => {
+    const chosen = input.look?.() ?? { motion: "full" as const, glass: "on" as const };
+    return { motion: effectiveMotion(chosen.motion, systemAsks()), glass: effectiveGlass(chosen.glass, systemAsks()) };
+  };
+  const material = () => materialFor(process.platform, OS.release(), look().glass);
   const overlayFor = (t: "light" | "dark") => ({
-    color: THEME_GROUND[t],
+    // With a material behind it the strip stays clear, so the glass shows through to the window controls.
+    color: material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[t],
     symbolColor: t === "dark" ? "#e9e6df" : "#1c1b18",
     height: 50,
   });
@@ -389,10 +409,35 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     open.webContents.send(THEME, theme());
   };
   Electron.nativeTheme.on("updated", applyTheme);
+  /** The classes on the page's root, and the window's material: live, no reload. */
+  const applyLook = () => {
+    const open = live();
+    if (open === null) return;
+    const now = look();
+    void open.webContents.executeJavaScript(applyLookScript(lookClasses(now.motion, now.glass))).catch(() => undefined);
+    if (process.platform === "win32") {
+      try {
+        open.setBackgroundMaterial(material().backgroundMaterial ?? "none");
+        open.setBackgroundColor(material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()]);
+        open.setTitleBarOverlay(overlayFor(theme()));
+      } catch {
+        // Windows 10 and older builds keep a plain background.
+      }
+    } else if (process.platform === "darwin") {
+      try {
+        open.setVibrancy(material().vibrancy ?? null);
+      } catch {
+        // No vibrancy: plain.
+      }
+    }
+  };
+  let opened = false;
   return {
+    applyLook,
     refresh: () => {
       live()?.webContents.send(PUSH, withTabs(input.state()));
       applyTheme();
+      applyLook();
     },
     open: () => {
       const existing = live();
@@ -412,7 +457,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         minWidth: 860,
         minHeight: 580,
         title: "Tessaya",
-        backgroundColor: THEME_GROUND[theme()],
+        backgroundColor: material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()],
+        ...material(),
         autoHideMenuBar: true,
         // Our own title strip, so the window controls take the page's theme, not Windows'.
         ...(process.platform === "darwin"
@@ -442,7 +488,32 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       // The page is ours alone: it never navigates, and a link opens nothing.
       created.webContents.on("will-navigate", (event) => event.preventDefault());
       created.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-      created.once("ready-to-show", () => created.show());
+      // The splash plays on a cold start the person made; it never holds the window past its own 2.5 s cap.
+      const coldStart = !opened && process.uptime() < 20;
+      opened = true;
+      const wanted = shouldSplash({
+        coldStart,
+        quietLaunch: input.quietLaunch?.() ?? false,
+        reducedMotion: look().motion !== "full",
+      });
+      const splash = wanted
+        ? startSplash(
+            (() => {
+              const b = created.getBounds();
+              return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+            })(),
+            theme(),
+          )
+        : null;
+      created.webContents.on("did-finish-load", applyLook);
+      created.once("ready-to-show", () => {
+        if (splash === null) return created.show();
+        splash.whenToShow(() => {
+          created.setOpacity(0);
+          created.show();
+          splash.fade((o) => created.isDestroyed() || created.setOpacity(o), 0, 1);
+        });
+      });
       created.on("closed", () => {
         if (win === created) win = null;
       });
