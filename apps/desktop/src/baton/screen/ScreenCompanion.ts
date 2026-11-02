@@ -5,6 +5,7 @@
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
+import { detectSecret } from "@t3tools/baton-shared/memory";
 import { isNeedsMeAsk } from "@t3tools/baton-shared/needsMe";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -1603,7 +1604,12 @@ export const startScreenCompanion = (input: {
   vaultHost = createVaultHost({
     vault: vaultState.vault,
     confirm: async (title, detail) =>
-      (await askHandsFree({ title, detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true }, title, 0, true)) === 0,
+      (await askHandsFree(
+        { title, detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true },
+        title,
+        0,
+        true,
+      )) === 0,
     type: async (text) => {
       await driverFor().type(text);
     },
@@ -1738,7 +1744,19 @@ export const startScreenCompanion = (input: {
       if (text.startsWith("- ")) linger("Memory used", text);
       return text;
     },
-    jobs: async (op, args) => actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
+    jobs: async (op, args) => {
+      // A weave never carries a secret: it is offered to the vault instead and nothing is sent.
+      if (op === "weave_send") {
+        const secret = detectSecret(String(args["text"] ?? ""));
+        if (secret !== null) {
+          return (
+            vaultHost?.offer(String(args["text"]), secret) ??
+            `That looks like ${secret}, and a weave never carries one. Nothing was sent.`
+          );
+        }
+      }
+      return actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.";
+    },
     target: async (label, workSessionId) => {
       conversation.add({
         route: "act",

@@ -4,7 +4,6 @@
  * made it, and code decides. A model's reply can never widen this.
  */
 import { highRiskSubject } from "./intentParser.ts";
-import { detectSecret } from "./memory.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
 import { isChromeTool, judgeChrome } from "./webPolicy.ts";
 
@@ -251,14 +250,14 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "weave_send": {
-      // A message to another session never carries a secret, whoever asked for it.
-      if (detectSecret(text) !== null) {
-        return { verdict: "deny", why: "A message to another session never carries a secret." };
-      }
+      // A secret in the text is caught by the tool itself, which offers the vault and sends nothing.
       if (outgoing) return { verdict: "ask", why: "It follows something it read." };
       return context.weaveStanding === true
         ? { verdict: "allow" }
-        : { verdict: "ask", why: "It would message another session; the first one in a job needs your yes." };
+        : {
+            verdict: "ask",
+            why: "It would message another session; the first one in a job needs your yes.",
+          };
     }
     case "notices_stop":
     case "commit_add":
