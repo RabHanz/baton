@@ -116,14 +116,10 @@ export const routes = HttpRouter.use((router) =>
       ),
     );
 
+    // One registration serves "/tessaya" and "/tessaya/": the router ignores a trailing slash and refuses both.
     yield* router.add(
       "GET",
       "/tessaya",
-      Effect.sync(() => page(HTML, "text/html; charset=utf-8")),
-    );
-    yield* router.add(
-      "GET",
-      "/tessaya/",
       Effect.sync(() => page(HTML, "text/html; charset=utf-8")),
     );
     yield* router.add(
