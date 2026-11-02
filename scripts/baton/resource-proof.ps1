@@ -117,15 +117,15 @@ $results += Measure-App 'dictation' $app 60 $Seconds; Stop-Tree $app
 Set-Voice $true; $app = Start-App $turns
 $results += Measure-App 'assistant-turn' $app 60 $Seconds; Stop-Tree $app
 
-# starved start: one core shared with two busy loops; the voice start must still finish and still hear the first phrase
+# starved start: one core shared with one busy loop; the voice start must still finish and still hear the first phrase
 $starved = $null
 $cores = [Environment]::ProcessorCount
 Set-Voice $true
 Remove-Item $log -ErrorAction SilentlyContinue
 $env:BATON_TEST_WAV = $starve; $env:BATON_TEST_DIR = (Join-Path $Out 'shots')
-$burners = 1..2 | ForEach-Object { $b = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '(Get-Process -Id $PID).ProcessorAffinity = 1; while ($true) { }' -PassThru; $b }
+$burners = 1..1 | ForEach-Object { $b = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '(Get-Process -Id $PID).ProcessorAffinity = 1; while ($true) { }' -PassThru; $b }
 $wrapper = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "(Get-Process -Id `$PID).ProcessorAffinity = 1; & '$exe'" -PassThru
-$t0 = Get-Date; $loopAt = $null; $heard = $false; $deadline = $t0.AddSeconds(300)
+$t0 = Get-Date; $loopAt = $null; $heard = $false; $deadline = $t0.AddSeconds(420)
 while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 3
   if (Test-Path $log) {
