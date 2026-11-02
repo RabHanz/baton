@@ -76,7 +76,9 @@ export const startBatonMcp = async (input: {
       const out = await tool.run(args);
       return {
         content: [
-          ...(out.text === undefined ? [] : [{ type: "text", text: (input.scrub ?? ((t) => t))(out.text) }]),
+          ...(out.text === undefined
+            ? []
+            : [{ type: "text", text: (input.scrub ?? ((t) => t))(out.text) }]),
           ...(out.images ?? []).map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType })),
         ],
       };
@@ -86,7 +88,9 @@ export const startBatonMcp = async (input: {
         content: [
           {
             type: "text",
-            text: (input.scrub ?? ((t) => t))(error instanceof Error ? error.message : String(error)),
+            text: (input.scrub ?? ((t) => t))(
+              error instanceof Error ? error.message : String(error),
+            ),
           },
         ],
       };

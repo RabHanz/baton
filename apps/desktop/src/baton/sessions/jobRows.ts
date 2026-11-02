@@ -1,5 +1,11 @@
 /** The Jobs area of Baton's window (D145): job cards as window rows, grouped by where each job is. */
 import type { BatonJob } from "@t3tools/baton-contracts";
+import {
+  REPORT_MARK,
+  retryBudget,
+  retriesUsed,
+  retryRefusal,
+} from "@t3tools/baton-shared/jobReport";
 
 import type { HomeControl } from "../home/batonHome.ts";
 
@@ -34,6 +40,13 @@ export const usageLine = (j: BatonJob): string => {
   return `Used ${j.usage.minutes} of ${mins} min and ${j.usage.turns} of ${turns} turns.${spend}`;
 };
 
+/** The newest progress report in the job's record, shortened; empty when there is none. */
+export const lastReport = (j: BatonJob): string => {
+  const mine = j.terms.revisions?.filter((r) => r.text.startsWith(REPORT_MARK)) ?? [];
+  const text = mine.at(-1)?.text.slice(REPORT_MARK.length).trim() ?? "";
+  return text === "" ? "" : `Last report: ${text.length > 260 ? `${text.slice(0, 260)}...` : text}`;
+};
+
 /** Daily is the one schedule the window offers; the assistant can set any other. */
 export const DAILY_MINUTES = 1440;
 
@@ -52,8 +65,8 @@ export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeCo
             id: `j:${j.workSessionId}`,
             section: SECTION[group],
             label: j.title,
-            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. ${usageLine(j)} May: ${j.permissionsSummary}`.replace(
-              "  ",
+            hint: `${status(j)}${scheduled ? ", scheduled" : ""}. ${usageLine(j)} ${lastReport(j)} May: ${j.permissionsSummary}`.replace(
+              / {2,}/g,
               " ",
             ),
             kind: "action",
@@ -78,6 +91,30 @@ export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeCo
                 } as const,
               ]
             : []),
+          ...(group === "done" && j.phase === "approved"
+            ? [
+                {
+                  id: `jk:${j.workSessionId}`,
+                  section: SECTION[group],
+                  label: `${j.title}: save this as a skill`,
+                  hint: "Writes a draft SKILL.md from what the job did, for you to read and edit. Nothing is installed by itself.",
+                  kind: "action",
+                  button: "Draft a skill",
+                } as const,
+              ]
+            : []),
+          ...(j.phase === "approved" && retryRefusal(j) === null
+            ? [
+                {
+                  id: `jr:${j.workSessionId}`,
+                  section: SECTION[group],
+                  label: `${j.title}: try the worker again`,
+                  hint: `It is told why it failed and not to repeat the step. ${retriesUsed(j.terms.revisions)} of ${retryBudget(j)} retries used.`,
+                  kind: "action",
+                  button: "Retry",
+                } as const,
+              ]
+            : []),
           ...(j.phase === "approved"
             ? [
                 {
@@ -99,7 +136,7 @@ export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeCo
 
 /** What a row's action is about: approval, stop, the schedule, or an answer typed in. */
 export const jobAction = (jobs: ReadonlyArray<BatonJob>, id: string) => {
-  const match = /^(j|ja|js):(.+?)(:later)?$/.exec(id);
+  const match = /^(j|ja|js|jr|jk):(.+?)(:later)?$/.exec(id);
   const job = match === null ? undefined : jobs.find((j) => j.workSessionId === match[2]);
   if (match === null || job === undefined) return null;
   const kind = match[1];
@@ -108,11 +145,15 @@ export const jobAction = (jobs: ReadonlyArray<BatonJob>, id: string) => {
     kind:
       kind === "ja"
         ? "answer"
-        : kind === "js"
-          ? "schedule"
-          : match[3] === undefined
-            ? "primary"
-            : "stop",
+        : kind === "jk"
+          ? "draft"
+          : kind === "jr"
+            ? "retry"
+            : kind === "js"
+              ? "schedule"
+              : match[3] === undefined
+                ? "primary"
+                : "stop",
     approve: job.phase === "awaiting_agreement",
     scheduled: job.terms.scheduleTaskId !== null,
   } as const;

@@ -311,7 +311,8 @@ export interface BatonJobBridgeRequest {
     | "watch"
     | "stop"
     | "schedule"
-    | "split";
+    | "split"
+    | "handoff";
   readonly args: Readonly<Record<string, unknown>>;
 }
 

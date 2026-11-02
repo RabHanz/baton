@@ -41,11 +41,18 @@ export interface ToolHost {
   readonly used?: () => Promise<string>;
   /** The vault (D151): the model gets names and sentences, never a value. */
   /** Which way to work a browser, with the reason: his Chrome, the controls, pixels or a plain fetch. */
-  readonly browserRoute?: (ask: { readonly task: "read" | "act"; readonly url?: string | undefined; readonly needsLogin: boolean }) => Promise<string>;
+  readonly browserRoute?: (ask: {
+    readonly task: "read" | "act";
+    readonly url?: string | undefined;
+    readonly needsLogin: boolean;
+  }) => Promise<string>;
   /** Restarts Chrome with accessibility on so its page can be read through the controls. He is asked first. */
   readonly browserAccessibilityOn?: () => Promise<string>;
   /** The history index of past work, read only; says so when this computer has none. */
-  readonly history?: (ask: { readonly query?: string; readonly session?: string }) => Promise<string>;
+  readonly history?: (ask: {
+    readonly query?: string;
+    readonly session?: string;
+  }) => Promise<string>;
   readonly vault?: {
     readonly list: () => Promise<string>;
     readonly use: (a: {
@@ -87,6 +94,9 @@ type JobOp =
   | "text_command"
   | "note_add"
   | "note_search"
+  | "retry"
+  | "skill_draft"
+  | "handoff"
   | "split";
 
 type Args = Readonly<Record<string, unknown>>;
@@ -313,7 +323,11 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     description:
       "Before a browser task, ask which way to work it: his own Chrome through the extension, the window's controls (ui_tree and click_element), pixels (screen_capture and click), or a plain fetch for reading a public page. Returns the route, why, and what to do first. If it says a route is not possible, tell him the reason in plain words.",
     inputSchema: object(
-      { task: { type: "string", enum: ["read", "act"] }, url: { type: "string" }, needs_login: { type: "boolean" } },
+      {
+        task: { type: "string", enum: ["read", "act"] },
+        url: { type: "string" },
+        needs_login: { type: "boolean" },
+      },
       ["task"],
     ),
     run: async (a) => ({
@@ -350,7 +364,9 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     description:
       "The names and labels of the secrets in his vault (API keys, passwords, recovery codes, private notes), never their values. Use it to find the right name for vault_use.",
     inputSchema: object({}),
-    run: async () => ({ text: (await host.vault?.list()) ?? "There is no vault on this computer." }),
+    run: async () => ({
+      text: (await host.vault?.list()) ?? "There is no vault on this computer.",
+    }),
   },
   {
     name: "vault_use",
@@ -545,7 +561,8 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   },
   {
     name: "text_undo",
-    description: "Take back the last rewrite of his selected text (a transform), if it was a few minutes ago.",
+    description:
+      "Take back the last rewrite of his selected text (a transform), if it was a few minutes ago.",
     inputSchema: object({}),
     run: async () => ({ text: await host.jobs("text_undo", {}) }),
   },
@@ -598,6 +615,13 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
           items: { enum: ["read", "edit", "shell", "web", "sessions"] },
           maxItems: 5,
         },
+        report_every_minutes: {
+          type: "number",
+          minimum: 0,
+          maximum: 1440,
+          description:
+            "A progress report in the job's record this often while it runs; 0 is off; 60 if not given.",
+        },
       },
       ["title", "goal", "project"],
     ),
@@ -608,6 +632,48 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
         project: str(a, "project", 200),
         folders: strings(a, "folders"),
         tools: strings(a, "tools"),
+        ...(a["report_every_minutes"] === undefined
+          ? {}
+          : { reportEveryMinutes: Math.max(0, Math.min(1440, num(a, "report_every_minutes"))) }),
+      }),
+    }),
+  },
+  {
+    name: "job_retry",
+    description:
+      "Try a failed job's worker again, with the reason it failed so it does not repeat the same step. Only an agreed job that failed or hit a limit, and only within its retry budget (two unless the job says otherwise). Raise a hit limit first with job_refine (widens true).",
+    inputSchema: object({ id: { type: "string" }, reason: { type: "string", maxLength: 400 } }, [
+      "id",
+      "reason",
+    ]),
+    run: async (a) => ({
+      text: await host.jobs("retry", { id: str(a, "id", 200), reason: str(a, "reason", 400) }),
+    }),
+  },
+  {
+    name: "skill_draft",
+    description:
+      "Write a draft skill (a SKILL.md) from a finished job, for him to read and edit. It is opened for him and never installed by itself; adding it goes through the Skills tab review.",
+    inputSchema: object({ id: { type: "string" } }, ["id"]),
+    run: async (a) => ({ text: await host.jobs("skill_draft", { id: str(a, "id", 200) }) }),
+  },
+  {
+    name: "job_handoff",
+    description:
+      "Hand a job to another worker: the same thread continues on another provider or account (the instance's name from the Assistant page, such as a Codex or another Claude account). He is asked first. Say why in note; it is sent to the new worker.",
+    inputSchema: object(
+      {
+        id: { type: "string" },
+        instance: { type: "string" },
+        note: { type: "string", maxLength: 1000 },
+      },
+      ["id", "instance"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("handoff", {
+        id: str(a, "id", 200),
+        instance: str(a, "instance", 200),
+        ...(typeof a["note"] === "string" ? { note: a["note"].slice(0, 1000) } : {}),
       }),
     }),
   },
