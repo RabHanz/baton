@@ -18,6 +18,7 @@ import { harnessControls } from "../harness/harnessRows.ts";
 import { insightControls } from "../writing/insightRows.ts";
 import { scratchControls } from "../writing/scratchRows.ts";
 import { snippetControls } from "../writing/snippetRows.ts";
+import { catalogControls, INITIAL_VIEW, sampleCatalogRows } from "../sessions/catalogRows.ts";
 import type { HomeControl } from "./batonHome.ts";
 import { openWindowPage } from "./fakeDom.ts";
 import { TABS, tabOf } from "./tabs.ts";
@@ -76,6 +77,14 @@ export const STATES: Readonly<
   },
   empty: {
     controls: [
+      ...catalogControls({
+        rows: sampleCatalogRows(NOW),
+        view: { ...INITIAL_VIEW, creating: true, newMachine: "server" },
+        now: NOW,
+        folders: ["/srv/baton"],
+        status: "",
+        loaded: true,
+      }),
       ...nowControls({ ...EMPTY_NOW, loaded: true }, NOW),
       ...approvalControls([], "ready"),
       ...jobControls([]),

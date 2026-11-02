@@ -1,0 +1,55 @@
+name: Tessaya sessions browser proof
+
+# The sessions browser in the real Home window: search, Resume on a stopped session, New session; recorded and asserted.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["baton/sessions-proof**"]
+
+permissions:
+  contents: read
+
+jobs:
+  click:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch the Electron binary
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - name: Install ffmpeg for the recording
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y > /dev/null || echo "no ffmpeg, so no clip"
+      - name: Bundle the harness
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
+          mkdir -p node_modules/.cache/baton-smoke
+          "$esbuild" src/baton/screen/smoke/sessionsProof.ts --bundle --platform=node --format=cjs \
+            --external:electron --external:onnxruntime-node --log-level=warning \
+            --outfile=node_modules/.cache/baton-smoke/sessionsProof.cjs
+      - name: Click everything, recorded
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          PROOF_OUT: ${{ github.workspace }}/sessions-proof-out
+        run: |
+          mkdir -p "$PROOF_OUT"
+          timeout 900 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/sessionsProof.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
+          cat "$PROOF_OUT/results.md" >> "$GITHUB_STEP_SUMMARY" || true
+          grep -q "fail" "$PROOF_OUT/results.md" && exit 1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sessions-proof
+          path: sessions-proof-out
+          if-no-files-found: warn
