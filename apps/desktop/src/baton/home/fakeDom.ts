@@ -101,19 +101,19 @@ export class FakeElement extends FakeNode {
     this.raw = null;
     this.append(...ns);
   }
-  get firstChild() {
+  get firstChild(): FakeElement | FakeText | null {
     return this.children[0] ?? null;
   }
-  get lastChild() {
+  get lastChild(): FakeElement | FakeText | null {
     return this.children.at(-1) ?? null;
   }
   get parentNode() {
     return this.parent;
   }
-  get nextSibling() {
+  get nextSibling(): FakeElement | FakeText | null {
     return this.parent?.children[this.parent.children.indexOf(this) + 1] ?? null;
   }
-  get previousSibling() {
+  get previousSibling(): FakeElement | FakeText | null {
     const i = this.parent === null ? -1 : this.parent.children.indexOf(this);
     return i > 0 ? this.parent!.children[i - 1]! : null;
   }
