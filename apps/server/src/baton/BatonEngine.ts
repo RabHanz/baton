@@ -600,6 +600,8 @@ export const layerStatic = (input: {
   readonly runs?: ReadonlyMap<string, ReadonlyArray<{ readonly status: string }>>;
   /** Collects the threads that were interrupted. */
   readonly interrupted?: Array<ThreadId>;
+  /** Collects the provider switches (handoffs). */
+  readonly switched?: Array<{ readonly threadId: ThreadId; readonly tag: string }>;
 }) =>
   Layer.succeed(BatonEngine, {
     threadShells: Effect.succeed(input.shells ?? []),
@@ -617,7 +619,10 @@ export const layerStatic = (input: {
         input.sent?.push({ threadId, text });
         return true;
       }),
-    switchProvider: () => Effect.void,
+    switchProvider: (switchInput) =>
+      Effect.sync(() => {
+        input.switched?.push({ threadId: switchInput.threadId, tag: switchInput.tag });
+      }),
     setThreadSelection: () => Effect.void,
     setInteractionMode: () => Effect.void,
     interruptThread: ({ threadId }) =>
