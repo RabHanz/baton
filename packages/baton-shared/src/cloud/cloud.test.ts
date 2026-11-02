@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { CARD_START, fromSpoken, reduceCard, type CardState } from "./card.ts";
-import { claudeSsh } from "./claudeSsh.ts";
+import { sshProviders } from "./sshShell.ts";
 import { hubProvider, serveCloudCall, type Described } from "./hub.ts";
 import { claudeHarness, codexHarness, localProvider, type BriefStore, type PendingStore } from "./local.ts";
 import { jsonLines, safeArg } from "./parse.ts";
@@ -32,19 +32,42 @@ const memoryStores = () => {
 const input = { repo: "o/r", branch: "feat/x", brief: "Fix the flaky test\nmore detail", label: "session 1" };
 const SSH = { host: "box", user: "dev", machineKey: "/k/machine", approverKey: "/k/approver" };
 
-describe("transport 3: the central shell over ssh", () => {
-  it("sends the brief on stdin and every value as a plain argument", async () => {
-    const { exec, calls } = fakeExec(() => ({ stdout: '{"id":3,"card":{"task":"Fix the flaky test"}}\n' }));
-    const r = await claudeSsh(SSH, exec).dispatch({ ...input, expectedUsage: 1 });
-    expect(r.ok && r.value).toMatchObject({ id: "3", state: "awaiting-director", task: "Fix the flaky test", provider: "claude" });
+const SHELL_USAGE = JSON.stringify({
+  cap_points_per_run: 2.0,
+  points_used_7d: { claude: { rabee: 1.5 } },
+  providers: {
+    claude: { ready: true, needs: null, accounts: {
+      optima: { available: true, pct: 0.0, rejected: false, resets_pkt: "Mon 18:00" },
+      rabee: { available: true, pct: 41.0, rejected: false, resets_pkt: "Mon 14:00" },
+      signzart: { available: false, pct: 100.0, rejected: true, resets_pkt: "Mon 12:00" },
+    } },
+    codex: { ready: false, needs: "a codex-cloud wrapper running `codex cloud exec`", accounts: {} },
+  },
+});
+const SHELL_DISPATCH = JSON.stringify({ card: { asked_by: "orchestrator / t3code-ab", branch: "feat/x", cap_points: 2.0, id: "20261102-1308-e85d", repo: "o/r", suggested_provider: "claude", task: "Fix the flaky test", usage: "unknown until measured" }, id: "20261102-1308-e85d", state: "awaiting-director" });
+
+describe("transport 3: the shared computer's dispatch shell", () => {
+  const claude = (exec: Exec, over: Partial<typeof SSH> = {}) => sshProviders({ ...SSH, ...over }, exec).find((p) => p.id === "claude")!;
+
+  it("sends the brief on stdin, names the provider, and passes every value as a plain argument", async () => {
+    const { exec, calls } = fakeExec(() => ({ stdout: SHELL_DISPATCH }));
+    const r = await claude(exec).dispatch({ ...input, expectedUsage: 1 });
+    expect(r.ok && r.value).toMatchObject({ id: "20261102-1308-e85d", state: "awaiting-director", task: "Fix the flaky test", provider: "claude", caller: "orchestrator / t3code-ab" });
     expect(calls[0]!.file).toBe("ssh");
-    expect(calls[0]!.args).toEqual(["-i", "/k/machine", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=10", "dev@box", "cloud-dispatch", "dispatch", "--repo", "o/r", "--branch", "feat/x", "--task-file", "-", "--label", "session-1", "--usage", "1"]);
+    expect(calls[0]!.args).toEqual(["-i", "/k/machine", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=10", "dev@box", "dispatch", "--provider", "claude", "--repo", "o/r", "--branch", "feat/x", "--task-file", "-", "--label", "session-1"]);
     expect(calls[0]!.stdin).toBe(input.brief);
+  });
+
+  it("does not read the terminal when there is no brief to send (ssh -n)", async () => {
+    const { exec, calls } = fakeExec(() => ({ stdout: "{}" }));
+    await claude(exec).status("20261102-1308-e85d");
+    expect(calls[0]!.args.slice(0, 3)).toEqual(["-n", "-i", "/k/machine"]);
+    expect(calls[0]!.args.slice(-2)).toEqual(["status", "20261102-1308-e85d"]);
   });
 
   it("refuses a value that could change the remote command, and a brief that is too long or empty", async () => {
     const { exec, calls } = fakeExec(() => ({}));
-    const p = claudeSsh(SSH, exec);
+    const p = claude(exec);
     expect((await p.dispatch({ ...input, branch: "x; rm -rf /" })).ok).toBe(false);
     expect((await p.dispatch({ ...input, repo: "o/r $(id)" })).ok).toBe(false);
     expect(await p.dispatch({ ...input, brief: "x".repeat(4001) })).toEqual({ ok: false, error: "A cloud brief is at most 4000 characters." });
@@ -53,36 +76,62 @@ describe("transport 3: the central shell over ssh", () => {
     expect(() => safeArg("a b", "x")).toThrow();
   });
 
-  it("uses the approver key only for approve and deny, and the machine key for the rest", async () => {
-    const { exec, calls } = fakeExec(() => ({ stdout: '{"id":3,"state":"running","account":"rabee"}' }));
-    const p = claudeSsh(SSH, exec);
-    await p.status("3");
-    await p.approve("3", "rabee", "card-3");
-    await p.deny("3", "not now please");
-    expect(calls.map((c) => c.args[1])).toEqual(["/k/machine", "/k/approver", "/k/approver"]);
-    expect(calls[1]!.args.slice(-6)).toEqual(["approve", "3", "--account", "rabee", "--answer-ref", "card-3"]);
-    expect(calls[2]!.args.slice(-4)).toEqual(["deny", "3", "--reason", "not-now-please"]);
+  it("uses the approver key only for approve and deny, and names the provider and account chosen", async () => {
+    const { exec, calls } = fakeExec(() => ({ stdout: '{"id":"20261102-1308-e85d","state":"running","provider":"claude","account":"rabee","session":"https://claude.ai/code/s","ledger":null,"weekly_before":0.0,"error":null}' }));
+    const p = claude(exec);
+    await p.status("20261102-1308-e85d");
+    const done = await p.approve("20261102-1308-e85d", "rabee", "card-1");
+    await p.deny("20261102-1308-e85d", "not now please");
+    expect(calls.map((c) => c.args[c.args.indexOf("-i") + 1])).toEqual(["/k/machine", "/k/approver", "/k/approver"]);
+    expect(calls[1]!.args.slice(-8)).toEqual(["approve", "20261102-1308-e85d", "--provider", "claude", "--account", "rabee", "--answer-ref", "card-1"]);
+    expect(calls[2]!.args.slice(-4)).toEqual(["deny", "20261102-1308-e85d", "--reason", "not-now-please"]);
+    expect(done.ok && done.value).toMatchObject({ state: "running", account: "rabee", sessionLink: "https://claude.ai/code/s" });
   });
 
-  it("says in plain words what went wrong, and never prints a key", async () => {
-    const run = async (r: Partial<ExecResult>) => (await claudeSsh(SSH, fakeExec(() => r).exec).status("1")) as { ok: false; error: string };
+  it("reads the shell's usage: unknown stays unknown, rejected and unavailable are not offered, readiness says what a provider needs", async () => {
+    const { exec } = fakeExec(() => ({ stdout: SHELL_USAGE }));
+    const ps = sshProviders(SSH, exec);
+    const claudeP = ps.find((p) => p.id === "claude")!;
+    const u = await claudeP.usage();
+    expect(u.ok && u.value.map((x) => [x.provider, x.account, x.weeklyPercent, x.resetsAt, x.rejected, x.pointsThisWeek])).toEqual([
+      ["claude", "optima", 0, "Mon 18:00", false, null], ["claude", "rabee", 41, "Mon 14:00", false, 1.5], ["claude", "signzart", 100, "Mon 12:00", true, null],
+    ]);
+    expect(claudeP.accounts()).toEqual(["optima", "rabee", "signzart"]);
+    const codex = ps.find((p) => p.id === "codex")!;
+    expect(codex.setup()).toMatchObject({ state: "not-set-up", needs: "a codex-cloud wrapper running `codex cloud exec`" });
+    expect((await codex.detect()).signedIn).toBe(false);
+    expect(pickable({ weeklyPercent: null, rejected: false, available: true }).enabled).toBe(true);
+    expect(pickable({ weeklyPercent: 5, rejected: false, available: false })).toEqual({ enabled: false, why: "not available" });
+  });
+
+  it("says in plain words what went wrong, shows a refusal as the shell worded it, and never prints a key", async () => {
+    const run = async (r: Partial<ExecResult>, over: Partial<typeof SSH> = {}) => (await claude(fakeExec(() => r).exec, over).status("1")) as { ok: false; error: string };
     expect((await run({ missing: true, code: null })).error).toContain("ssh is not installed");
-    expect((await run({ code: 255, stderr: "ssh: connect to host box port 22: Connection refused" })).error).toBe("The cloud dispatch computer could not be reached.");
-    expect((await run({ code: 255, stderr: "Permission denied (publickey)." })).error).toBe("The cloud dispatch key was not accepted.");
-    expect((await run({ code: 1, stdout: '{"error":"no such request"}' })).error).toBe("no such request");
-    const unset = (await claudeSsh({ ...SSH, host: "" }, fakeExec(() => ({})).exec).status("1")) as { ok: false; error: string };
-    expect(unset.error).toContain("not set up on this computer");
+    expect((await run({ code: 255, stderr: "ssh: connect to host box port 22: Connection refused" })).error).toBe("The shared computer could not be reached.");
+    expect((await run({ code: 255, stderr: "Permission denied (publickey)." })).error).toBe("The sending key was not accepted.");
+    expect((await run({ code: 1, stdout: '{"refused":"codex cannot run yet: it needs a wrapper"}' })).error).toBe("codex cannot run yet: it needs a wrapper");
+    const unset = await run({}, { host: "" });
+    expect(unset.error).toBe("The shared computer is not set up on this computer.");
     for (const e of [await run({ code: 255, stderr: "Load key /k/machine: bad" }), unset]) expect(JSON.stringify(e)).not.toContain("/k/");
+    const noApprover = (await claude(fakeExec(() => ({})).exec, { approverKey: "" }).approve("1", "a", "r")) as { ok: false; error: string };
+    expect(noApprover.error).toContain("approval key is not set");
   });
 
-  it("reads usage and a list of requests from JSON lines", async () => {
-    const usage = '{"accounts":[{"account":"rabee","weeklyPercent":41,"resetsAt":"Monday 14:00 PKT","rejected":false},{"account":"optima","weeklyPercent":100,"rejected":true}]}';
-    const u = await claudeSsh(SSH, fakeExec(() => ({ stdout: usage })).exec).usage();
-    expect(u.ok && u.value.map((x) => [x.account, x.weeklyPercent, x.rejected])).toEqual([["rabee", 41, false], ["optima", 100, true]]);
-    const lines = '{"id":1,"state":"running","account":"rabee","pr":"https://github.com/o/r/pull/9","pointsUsed":1.5}\nnot json\n{"id":2,"state":"awaiting-director"}\n';
-    const l = await claudeSsh(SSH, fakeExec(() => ({ stdout: lines })).exec).list({ mine: true, label: "s1" });
-    expect(l.ok && l.value.map((r) => [r.id, r.state, r.result?.kind ?? null, r.pointsUsed])).toEqual([["1", "running", "pr", 1.5], ["2", "awaiting-director", null, null]]);
-    expect(jsonLines(lines)).toHaveLength(2);
+  it("reads a list in the shell's shape, with string ids, and a state it names failed-to-start", async () => {
+    const list = JSON.stringify({ requests: [
+      { account: null, branch: "b", caller: "orchestrator", id: "20261102-1308-e85d", label: "t3code-ab", points_used: null, provider: "claude", repo: "o/r", state: "awaiting-director" },
+      { account: "rabee", branch: "c", caller: "orchestrator", id: "20261102-1400-aaaa", label: "t3code-ab", points_used: 2.5, provider: "claude", repo: "o/r", state: "closed", pr: "https://github.com/o/r/pull/9", over_cap: true },
+      { id: "20261102-1500-bbbb", provider: "claude", state: "failed-to-start", error: "claude exited 1" },
+    ] });
+    const { exec, calls } = fakeExec(() => ({ stdout: list }));
+    const l = await claude(exec).list({ mine: true, label: "t3code-ab" });
+    expect(l.ok && l.value.map((r) => [r.id, r.state, r.pointsUsed, r.overCap, r.result?.url ?? null, r.error])).toEqual([
+      ["20261102-1308-e85d", "awaiting-director", null, false, null, null],
+      ["20261102-1400-aaaa", "closed", 2.5, true, "https://github.com/o/r/pull/9", null],
+      ["20261102-1500-bbbb", "failed", null, false, null, "claude exited 1"],
+    ]);
+    expect(calls[0]!.args.slice(-4)).toEqual(["list", "--mine", "--label", "t3code-ab"]);
+    expect(jsonLines('{"a":1}\nnot json\n{"b":2}\n')).toHaveLength(2);
   });
 });
 
@@ -192,7 +241,7 @@ describe("the approval card, for any provider", () => {
     { provider: "codex", account: "work", weeklyPercent: null, resetsAt: null, rejected: false, pointsThisWeek: null },
   ];
   const providers: CloudProvider[] = [
-    claudeSsh({ ...SSH, accounts: ["signzart", "rabee", "optima"] }, fakeExec(() => ({})).exec),
+    { ...sshProviders(SSH, fakeExec(() => ({ stdout: SHELL_USAGE })).exec).find((p) => p.id === "claude")!, accounts: () => ["signzart", "rabee", "optima"] },
     localProvider(codexHarness(fakeExec(() => ({})).exec, { codexHomes: { work: "/h" } }), memoryStores().store, memoryStores().brief),
     ...STUBS,
   ];

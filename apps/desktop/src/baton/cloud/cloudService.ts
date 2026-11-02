@@ -5,7 +5,7 @@
  */
 import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
 import { CARD_START, fromSpoken, reduceCard, type CardEvent, type CardState } from "@t3tools/baton-shared/cloud/card";
-import { claudeSsh } from "@t3tools/baton-shared/cloud/claudeSsh";
+import { sshProviders } from "@t3tools/baton-shared/cloud/sshShell";
 import { hubProvider, type CloudOp, type Described } from "@t3tools/baton-shared/cloud/hub";
 import { providerChoices, type ProviderChoice } from "@t3tools/baton-shared/cloud/registry";
 import { STUBS } from "@t3tools/baton-shared/cloud/stubs";
@@ -97,7 +97,7 @@ export const createCloud = (deps: CloudDeps) => {
     if (built?.sig === sig) return built.list;
     const list =
       s.transport === "ssh"
-        ? [claudeSsh({ host: s.sshHost, user: s.sshUser, machineKey: s.machineKey, approverKey: s.approverKey }, deps.exec), ...STUBS]
+        ? sshProviders({ host: s.sshHost, user: s.sshUser, machineKey: s.machineKey, approverKey: s.approverKey }, deps.exec)
         : [...buildLocalProviders(deps.exec, fileStores(deps.dir), { codexEnv: s.codexEnv }).values(), ...STUBS];
     built = { sig, list };
     return list;
@@ -137,20 +137,23 @@ export const createCloud = (deps: CloudDeps) => {
     const found: Partial<Record<ProviderId, Detection>> = {};
     const reqs: CloudRequest[] = [];
     const uses: Usage[] = [];
-    // Providers that keep their requests in Tessaya's own list share that one list: ask it once.
+    // Every assistant of one transport shares one list of requests: ask for it once.
     let askedShared = false;
     for (const p of list) {
       found[p.id] = await p.detect();
       if (p.setup().state !== "ready" || found[p.id]?.signedIn !== true) continue;
-      if (p.approval === "local") {
-        if (askedShared) continue;
-        askedShared = true;
+      // One transport, one list of requests, whichever assistant is asked.
+      if (askedShared) {
+        const u = await p.usage();
+        if (u.ok) uses.push(...u.value.filter((x) => !uses.some((y) => y.provider === x.provider && y.account === x.account)));
+        continue;
       }
+      askedShared = true;
       const l = await p.list({});
       if (l.ok) reqs.push(...l.value.filter((r) => !reqs.some((x) => x.id === r.id && x.provider === r.provider)));
       else error = error ?? l.error;
       const u = await p.usage();
-      if (u.ok) uses.push(...u.value);
+      if (u.ok) uses.push(...u.value.filter((x) => !uses.some((y) => y.provider === x.provider && y.account === x.account)));
     }
     detections = found;
     requests = reqs;
