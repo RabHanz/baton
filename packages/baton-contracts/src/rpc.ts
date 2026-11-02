@@ -343,6 +343,11 @@ const WsBatonCloudReadRpc = Rpc.make(BATON_CLOUD_WS_METHODS.read, {
   success: BatonCloudCallResult,
   error: EnvironmentAuthorizationError,
 });
+const WsBatonCloudApproveRpc = Rpc.make(BATON_CLOUD_WS_METHODS.approve, {
+  payload: BatonCloudCallInput,
+  success: BatonCloudCallResult,
+  error: EnvironmentAuthorizationError,
+});
 const WsBatonCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
   payload: BatonCloudCallInput,
   success: BatonCloudCallResult,
@@ -637,6 +642,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonPhoneCallRpc,
   WsBatonCloudReadRpc,
   WsBatonCloudActRpc,
+  WsBatonCloudApproveRpc,
   WsBatonMemoryListRpc,
   WsBatonMemorySearchRpc,
   WsBatonMemoryAddRpc,
