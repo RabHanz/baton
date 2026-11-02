@@ -1255,7 +1255,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (anywhere !== true && Math.hypot(real.x - near.x, real.y - near.y) > LOCATE_MAX_DIP) {
         return null;
       }
-      return { ...real, name: found.name ?? label };
+      // The size comes in physical pixels; the overlay draws in desktop points.
+      const scale = Electron.screen.getDisplayNearestPoint(real).scaleFactor || 1;
+      return {
+        ...real,
+        name: found.name ?? label,
+        ...(found.width === undefined || found.height === undefined
+          ? {}
+          : { width: found.width / scale, height: found.height / scale }),
+      };
     },
     confirm: (prompt) => core?.confirm(prompt) ?? null,
     folder: (window) => focusedFolder(window, input.platform),

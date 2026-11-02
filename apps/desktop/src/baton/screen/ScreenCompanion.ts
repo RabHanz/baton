@@ -208,7 +208,14 @@ export interface AssistantActions {
     near: { readonly x: number; readonly y: number },
     /** The whole window with the keyboard, not only what is near the point (the assistant's click by name). */
     anywhere?: boolean,
-  ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
+  ) => Promise<{
+    readonly x: number;
+    readonly y: number;
+    readonly name: string;
+    /** The control's size in desktop points, when the tree gave it. */
+    readonly width?: number;
+    readonly height?: number;
+  } | null>;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
   readonly uiTree?: () => Promise<{
     readonly window: string;
@@ -706,6 +713,7 @@ export const startScreenCompanion = (input: {
   const pointAt = async (
     point: ReturnType<typeof parseReply>["point"],
     shots: ReadonlyArray<ScreenShot>,
+    badge?: number,
   ): Promise<void> => {
     if (!pointable(point)) return;
     const shot = shotFor(shots, point.screen);
@@ -714,7 +722,13 @@ export const startScreenCompanion = (input: {
     // The accessibility tree has the real rectangle; the model's pixels only say where to look.
     const found = point.label === null ? null : await actions?.locate?.(point.label, guess);
     input.onTrace?.({ pointedAt: found ?? guess, snapped: found != null });
-    const here = await overlay.point(found ?? guess, found?.name ?? point.label);
+    // The ring is sized to the real control; with only the model's guess it is a plain circle.
+    const here = await overlay.point(found ?? guess, found?.name ?? point.label, {
+      ...(found?.width !== undefined && found.height !== undefined
+        ? { size: { width: found.width, height: found.height } }
+        : {}),
+      ...(badge === undefined ? {} : { badge }),
+    });
     if (!here) input.onActivity?.("Pointing", "on your other screen");
   };
 
@@ -1007,7 +1021,7 @@ export const startScreenCompanion = (input: {
         return end();
       }
       say(reply.spoken);
-      await pointAt(reply.point, shots);
+      await pointAt(reply.point, shots, lesson.step);
       await show(
         `Step ${lesson.step}`,
         reply.spoken,
