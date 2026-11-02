@@ -3,6 +3,9 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
+import { serveCloudCall } from "@t3tools/baton-shared/cloud/hub";
+import { fileStores } from "@t3tools/baton-shared/cloud/nodeExec";
 import type { Exec, ExecResult } from "@t3tools/baton-shared/cloud/types";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -166,5 +169,53 @@ describe("cloud tasks in the desktop", () => {
     await cloud.tool.dispatch(task);
     await cloud.settled();
     expect(asked).toHaveLength(0);
+  });
+
+  it("through a hub: the other computer holds the logins and starts the work; this one only asks and shows the card", async () => {
+    const hubCalls: string[] = [];
+    const hubExec: Exec = async (_file, args) => {
+      hubCalls.push(args.join(" "));
+      return { code: 0, stderr: "", stdout: args[0] === "auth" ? '{"loggedIn":true,"email":"hub@example.org"}' : args[0] === "--cloud" ? "https://claude.ai/code/hub_1" : "" };
+    };
+    const providers = buildLocalProviders(hubExec, fileStores(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hub-"))), {});
+    const localExec: Exec = async () => {
+      throw new Error("the local computer must not run the harness");
+    };
+    const cloud = createCloud({
+      settings: () => ({ ...DEFAULT_CLOUD, on: true, transport: "hub", hubEnv: "env-2" }),
+      exec: localExec,
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+      hub: (op, provider, args) => serveCloudCall(providers, { op, provider, args }),
+      environments: async () => [{ id: "env-2", label: "Workshop" }],
+      ask: async (q) => q.cancel,
+      changed: () => undefined,
+      now: () => 1,
+    });
+    await cloud.tool.dispatch(task);
+    expect(cloud.view().environments).toEqual([{ id: "env-2", label: "Workshop" }]);
+    const picker = cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "hub", hubEnv: "env-2" }).find((r) => r.id === "cl.set.hubEnv");
+    expect(picker).toMatchObject({ kind: "choice", value: "env-2" });
+    expect(picker?.kind === "choice" && picker.options.map((o) => o.label)).toEqual(["The one this window is on", "Workshop"]);
+    await cloud.click("cl.p.claude:L-1:claude");
+    await cloud.click("cl.a.claude:L-1:hub@example.org");
+    expect(hubCalls.some((c) => c.startsWith("--cloud"))).toBe(false);
+    await cloud.click("cl.ok.claude:L-1");
+    expect(hubCalls.filter((c) => c.startsWith("--cloud"))).toHaveLength(1);
+    expect(cloud.view().requests[0]).toMatchObject({ state: "running", account: "hub@example.org" });
+  });
+
+  it("says plainly when there is no connection to the hub", async () => {
+    const cloud = createCloud({
+      settings: () => ({ ...DEFAULT_CLOUD, on: true, transport: "hub" }),
+      exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+      hub: null,
+      ask: async (q) => q.cancel,
+      changed: () => undefined,
+      now: () => 1,
+    });
+    await cloud.refresh();
+    expect(cloud.view().error).toBe("There is no connection to a computer that runs cloud tasks.");
+    expect(await cloud.tool.dispatch(task)).toContain("No cloud provider is ready");
   });
 });

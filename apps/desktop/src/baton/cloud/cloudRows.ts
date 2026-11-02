@@ -66,6 +66,17 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       more: true,
     },
   );
+  if (s.transport === "hub") {
+    out.push({
+      id: "cl.set.hubEnv",
+      section,
+      label: text("cloud.hub.label"),
+      hint: text("cloud.hub.hint"),
+      kind: "choice",
+      value: s.hubEnv,
+      options: [{ value: "", label: text("cloud.hub.thisWindow") }, ...v.environments.map((e) => ({ value: e.id, label: e.label }))],
+    });
+  }
   if (s.transport === "ssh") {
     const field = (id: string, key: string, value: string): HomeControl => ({
       id,

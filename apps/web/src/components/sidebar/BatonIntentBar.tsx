@@ -27,6 +27,7 @@ import {
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
   type BatonPhoneBridgeRequest,
+  type BatonCloudBridgeRequest,
   type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
@@ -70,6 +71,7 @@ export interface BatonIntentBarProps {
   /** The desktop assistant's weave calls (D149), answered with the weave RPCs. */
   readonly onWeave?: (request: BatonWeaveBridgeRequest) => Promise<unknown>;
   readonly onPhone?: (request: BatonPhoneBridgeRequest) => Promise<unknown>;
+  readonly onCloud?: (request: BatonCloudBridgeRequest) => Promise<unknown>;
   readonly onCommitments?: (request: BatonCommitmentBridgeRequest) => Promise<unknown>;
 }
 
@@ -136,6 +138,7 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
     onCommitments,
     onWeave,
     onPhone,
+    onCloud,
   } = props;
   const ownsVoice = useRef(false);
   // The desktop voice core's intent calls, answered with this bar's own RPCs:
@@ -155,6 +158,10 @@ export function BatonIntentBar(props: BatonIntentBarProps): ReactNode {
       if (request.kind === "phone") {
         if (onPhone === undefined) throw new Error("The phone relay is not available here.");
         return onPhone(request);
+      }
+      if (request.kind === "cloud") {
+        if (onCloud === undefined) throw new Error("Cloud tasks are not available here.");
+        return onCloud(request);
       }
       if (request.kind === "weave") {
         if (onWeave === undefined) throw new Error("Weaving is not available here.");
