@@ -15,11 +15,12 @@ describe("wake words at start", () => {
         wakeWordsFor({
           wakeWords: [
             { word: "Tessaya", enabled: true, threshold: 0.9 },
+            { word: "Sebastian", enabled: true, threshold: 0.9 },
             { word: "Alfred", enabled: true, threshold: 0.9 },
           ],
         }),
       ),
-    ).toEqual(["Alfred"]);
+    ).toEqual(["Sebastian", "Alfred"]);
   });
   it("keeps Freya for a settings file from before the list was saved", () => {
     expect(enabled(wakeWordsFor({ enabled: true, sounds: true }))).toEqual([
