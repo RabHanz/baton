@@ -89,8 +89,16 @@ import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
+import {
+  accessibilityLooksOff,
+  chooseBrowserRoute,
+  realRelaunchPorts,
+  relaunchChromeWithAccessibility,
+  withCallRetry,
+} from "./browserRoute.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { askHistory } from "@t3tools/baton-shared/historyIndex";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
@@ -1529,6 +1537,9 @@ export const startScreenCompanion = (input: {
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   const agentTools: string[] = [];
+  /** Which browser route ran and why, for the turn log. */
+  const agentRoutes: Array<{ readonly route: string; readonly why: string }> = [];
+  let chromeRelaunched = false;
   /** What the gate decided about each call this turn: allowed, he said yes, he said no, refused. */
   const agentDecisions: Array<{ readonly tool: string; readonly outcome: string }> = [];
   const agentGate = createAgentGate({
@@ -1623,6 +1634,10 @@ export const startScreenCompanion = (input: {
     askToUnlock: () => input.onOpenTab?.("vault"),
   });
   const toolHost: ToolHost = {
+    history: async (ask) => {
+      const answer = await askHistory(input.env, ask);
+      return answer.ok ? answer.text : answer.why;
+    },
     vault: {
       list: () => vaultHost!.list(),
       use: (a) => vaultHost!.use(a),
@@ -1806,6 +1821,7 @@ export const startScreenCompanion = (input: {
         agentTaint.reset();
         agentTools.length = 0;
         agentDecisions.length = 0;
+        agentRoutes.length = 0;
         leftPointer = null;
       },
     });
@@ -1842,6 +1858,7 @@ export const startScreenCompanion = (input: {
         said: text,
         reply,
         decisions: [...agentDecisions],
+        routes: [...agentRoutes],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
@@ -1857,6 +1874,7 @@ export const startScreenCompanion = (input: {
         totalMs: Date.now() - started,
         tools: [...agentTools],
         decisions: [...agentDecisions],
+        routes: [...agentRoutes],
         route: "agent",
       });
       // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.

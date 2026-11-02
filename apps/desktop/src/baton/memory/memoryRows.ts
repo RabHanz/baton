@@ -11,6 +11,7 @@ export interface MemoryTabState {
   readonly usedIds: ReadonlySet<string>;
   readonly usedOnly: boolean;
   readonly syncOn: boolean;
+  readonly pullOn: boolean;
   readonly status: string;
 }
 
@@ -66,6 +67,7 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
     usedOnly: s.usedOnly,
     usedCount: s.usedIds.size,
     syncOn: s.syncOn,
+    pullOn: s.pullOn,
     status: s.status,
   };
 
