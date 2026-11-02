@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -152,3 +153,78 @@ layer("BatonMemoryService", (it) => {
     }),
   );
 });
+
+// A second server with its own database; it lives as long as the test's scope.
+const server = Layer.build(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory))).pipe(
+  Effect.map((context) => Context.get(context, BatonMemoryService)),
+);
+
+/** What a client does between two servers: ask for what the other has not seen, hand it over. */
+const sync = (from: BatonMemoryService["Service"], to: BatonMemoryService["Service"]) =>
+  Effect.gen(function* () {
+    const hello = yield* to.syncHello;
+    const pulled = yield* from.changesSince(hello.cursors[from.origin] ?? null);
+    return yield* to.applyChanges(pulled.origin, pulled.changes, pulled.upTo);
+  });
+
+it.effect("two servers converge: last writer wins, a forget travels and stays forgotten", () =>
+  Effect.gen(function* () {
+    const a = yield* server;
+    const b = yield* server;
+    assert.notStrictEqual(a.origin, b.origin);
+    const shared = yield* a.add({ kind: "preference", text: "Reports go out on Mondays", source: "user" });
+    const gone = yield* a.add({ kind: "fact", text: "The old box is called delta", source: "user" });
+    yield* sync(a, b);
+    assert.lengthOf(yield* b.list(), 2);
+
+    // B edits later and A forgets the other; both directions then settle.
+    yield* TestClock.adjust(1_000);
+    yield* b.edit(shared.id, { text: "Reports go out on Fridays" });
+    yield* a.forget(gone.id);
+    yield* sync(b, a);
+    yield* sync(a, b);
+    for (const side of [a, b]) {
+      const texts = (yield* side.list()).map((i) => i.text);
+      assert.deepEqual(texts, ["Reports go out on Fridays"]);
+    }
+    // Nothing left to say: a second round changes nothing, and the forgotten item stays gone.
+    assert.strictEqual(yield* sync(a, b), 0);
+    assert.strictEqual(yield* sync(b, a), 0);
+  }),
+);
+
+it.effect("a received item still goes through the never-store door", () =>
+  Effect.gen(function* () {
+    const b = yield* server;
+    const applied = yield* b.applyChanges(
+      "other",
+      [
+        {
+          item: {
+            id: "x",
+            kind: "fact",
+            text: "my password is hunter22x",
+            source: "user",
+            sourceRef: null,
+            scope: "global",
+            scopeRef: null,
+            confidence: 1,
+            pinned: false,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            lastUsedAt: null,
+            expiresAt: null,
+            supersededBy: null,
+            proposed: false,
+          },
+          tombstone: null,
+          writer: "other",
+        },
+      ],
+      "2026-01-02T00:00:00.000Z",
+    );
+    assert.strictEqual(applied, 0);
+    assert.lengthOf(yield* b.list(), 0);
+    assert.strictEqual((yield* b.syncHello).cursors["other"], "2026-01-02T00:00:00.000Z");
+  }),
+);

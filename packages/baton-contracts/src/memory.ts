@@ -18,6 +18,9 @@ export const BATON_MEMORY_WS_METHODS = {
   used: "baton.memory.used",
   export: "baton.memory.export",
   learn: "baton.memory.learn",
+  syncHello: "baton.memory.syncHello",
+  syncPull: "baton.memory.syncPull",
+  syncPush: "baton.memory.syncPush",
 } as const;
 
 export const BatonMemoryKind = Schema.Literals([
@@ -131,3 +134,33 @@ export const BatonMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,
   held: Schema.Number,
 });
+
+/** Sync between servers (D150, MEMORY.md section 6): last writer wins, a tombstone beats an older item. */
+export const BatonMemoryTombstone = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  deletedAt: IsoDateTime,
+  origin: Schema.String,
+});
+export const BatonMemoryChange = Schema.Struct({
+  item: Schema.NullOr(BatonMemoryItem),
+  tombstone: Schema.NullOr(BatonMemoryTombstone),
+  writer: Schema.String,
+});
+export type BatonMemoryChange = typeof BatonMemoryChange.Type;
+export const BatonMemorySyncHelloResult = Schema.Struct({
+  origin: Schema.String,
+  /** For each peer server: the newest change of theirs this one has applied. */
+  cursors: Schema.Record(Schema.String, Schema.String),
+});
+export const BatonMemorySyncPullInput = Schema.Struct({ since: Schema.NullOr(Schema.String) });
+export const BatonMemorySyncPullResult = Schema.Struct({
+  origin: Schema.String,
+  changes: Schema.Array(BatonMemoryChange),
+  upTo: Schema.String,
+});
+export const BatonMemorySyncPushInput = Schema.Struct({
+  from: Schema.String,
+  changes: Schema.Array(BatonMemoryChange),
+  upTo: Schema.String,
+});
+export const BatonMemorySyncPushResult = Schema.Struct({ applied: Schema.Number });

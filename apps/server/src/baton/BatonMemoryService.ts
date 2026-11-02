@@ -8,6 +8,7 @@ import { BatonMemoryRefusedError } from "@t3tools/baton-contracts";
 import {
   EPISODE_TTL_DAYS,
   SAME_ITEM_OVERLAP,
+  applyDecision,
   DEFAULT_RECALL_TOKENS,
   effectiveConfidence,
   exportMarkdown,
@@ -19,6 +20,7 @@ import {
   startingConfidence,
   tokens,
   winner,
+  type MemoryChange,
   type MemoryDraft,
   type MemoryHit,
   type MemoryItem,
@@ -119,6 +121,23 @@ export class BatonMemoryService extends Context.Service<
     readonly exportMarkdown: Effect.Effect<string>;
     /** Deletes what expired or faded; returns how many. */
     readonly sweep: Effect.Effect<number>;
+    /** This server's id and, for each peer, the newest change of theirs it has applied. */
+    readonly syncHello: Effect.Effect<{
+      readonly origin: string;
+      readonly cursors: Readonly<Record<string, string>>;
+    }>;
+    /** Everything written here at or after `since` (null: all), except held proposals. */
+    readonly changesSince: (since: string | null) => Effect.Effect<{
+      readonly origin: string;
+      readonly changes: ReadonlyArray<MemoryChange>;
+      readonly upTo: string;
+    }>;
+    /** A peer's changes: last writer wins, a tombstone beats an older item. Returns how many took effect. */
+    readonly applyChanges: (
+      from: string,
+      changes: ReadonlyArray<MemoryChange>,
+      upTo: string,
+    ) => Effect.Effect<number>;
     /** Remembers `value` under `key`; true when it differs from what was there, so work is done once. */
     readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
@@ -226,7 +245,7 @@ export const make = Effect.gen(function* () {
           confidence = ${hers ? 1 : reinforced(same)},
           source = ${hers ? "user" : same.source},
           pinned = ${draft.pinned === true || same.pinned ? 1 : 0},
-          updated_at = ${at}
+          updated_at = ${at}, origin = ${origin}
         WHERE id = ${same.id}
       `.pipe(Effect.orDie);
       return yield* requireItem(same.id);
@@ -258,7 +277,7 @@ export const make = Effect.gen(function* () {
         const loser = winner(old, created).id === old.id ? created : old;
         const keeper = loser.id === old.id ? created : old;
         yield* sql`
-          UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}
+          UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}, origin = ${origin}
           WHERE id = ${loser.id}
         `.pipe(Effect.orDie);
       }
@@ -267,7 +286,7 @@ export const make = Effect.gen(function* () {
   });
 
   const touch = (id: string, at: string) =>
-    sql`UPDATE fabric_memory_items SET updated_at = ${at} WHERE id = ${id}`.pipe(Effect.orDie);
+    sql`UPDATE fabric_memory_items SET updated_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(Effect.orDie);
 
   const edit = Effect.fn("BatonMemoryService.edit")(function* (
     id: string,
@@ -282,7 +301,7 @@ export const make = Effect.gen(function* () {
     yield* sql`
       UPDATE fabric_memory_items SET
         text = ${text}, kind = ${patch.kind ?? current.kind}, source = 'user', confidence = 1,
-        proposed = 0, updated_at = ${at}
+        proposed = 0, updated_at = ${at}, origin = ${origin}
       WHERE id = ${id}
     `.pipe(Effect.orDie);
     return yield* requireItem(id);
@@ -398,6 +417,111 @@ export const make = Effect.gen(function* () {
     return true;
   });
 
+  const syncHello = Effect.gen(function* () {
+    const rows = yield* sql<{ key: string; value: string }>`
+      SELECT key, value FROM fabric_memory_meta WHERE key LIKE 'cursor:%'
+    `.pipe(Effect.orDie);
+    return {
+      origin,
+      cursors: Object.fromEntries(rows.map((r) => [r.key.slice("cursor:".length), r.value])),
+    };
+  });
+
+  const BATCH = 1_000;
+  const changesSince = Effect.fn("BatonMemoryService.changesSince")(function* (
+    since: string | null,
+  ) {
+    const from = since ?? "";
+    const rows = yield* sql<ItemRow>`
+      SELECT * FROM fabric_memory_items
+      WHERE updated_at >= ${from} AND proposed = 0
+      ORDER BY updated_at LIMIT ${BATCH}
+    `.pipe(Effect.orDie);
+    const stones = yield* sql<{ id: string; deleted_at: string; origin: string }>`
+      SELECT * FROM fabric_memory_tombstones WHERE deleted_at >= ${from}
+      ORDER BY deleted_at LIMIT ${BATCH}
+    `.pipe(Effect.orDie);
+    const changes: MemoryChange[] = [
+      ...rows.map((row) => ({ item: fromRow(row), tombstone: null, writer: row.origin })),
+      ...stones.map((s) => ({
+        item: null,
+        tombstone: { id: s.id, deletedAt: s.deleted_at, origin: s.origin },
+        writer: s.origin,
+      })),
+    ];
+    // A full batch means there is more: the peer resumes from the last stamp it was given.
+    const full = rows.length === BATCH || stones.length === BATCH;
+    const last = [
+      rows.at(-1)?.updated_at ?? "",
+      stones.at(-1)?.deleted_at ?? "",
+    ].reduce((a, b) => (a > b ? a : b), "");
+    return { origin, changes, upTo: full ? last : yield* nowIso };
+  });
+
+  const applyChanges = Effect.fn("BatonMemoryService.applyChanges")(function* (
+    peer: string,
+    changes: ReadonlyArray<MemoryChange>,
+    upTo: string,
+  ) {
+    let applied = 0;
+    for (const change of changes) {
+      const id = change.item?.id ?? change.tombstone?.id;
+      if (id === undefined || peer === origin) continue;
+      // Every received item passes the same door as one he types: a peer is not trusted to have checked.
+      if (change.item !== null && refuseToStore(change.item.text, privateTexts()) !== null) continue;
+      const row = yield* sql<ItemRow>`SELECT * FROM fabric_memory_items WHERE id = ${id}`.pipe(
+        Effect.orDie,
+      );
+      const stone = yield* sql<{ id: string; deleted_at: string; origin: string }>`
+        SELECT * FROM fabric_memory_tombstones WHERE id = ${id}
+      `.pipe(Effect.orDie);
+      const decision = applyDecision(
+        {
+          item: row[0] === undefined ? null : fromRow(row[0]),
+          tombstone:
+            stone[0] === undefined
+              ? null
+              : { id, deletedAt: stone[0].deleted_at, origin: stone[0].origin },
+          writer: row[0]?.origin ?? null,
+        },
+        change,
+      );
+      if (decision === "ignore") continue;
+      yield* sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(Effect.orDie);
+      if (change.tombstone !== null) {
+        yield* sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin) VALUES (${id}, ${change.tombstone.deletedAt}, ${change.tombstone.origin})`.pipe(
+          Effect.orDie,
+        );
+        yield* sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`.pipe(Effect.orDie);
+      } else if (change.item !== null) {
+        const i = change.item;
+        yield* sql`DELETE FROM fabric_memory_tombstones WHERE id = ${id}`.pipe(Effect.orDie);
+        yield* sql`
+          INSERT INTO fabric_memory_items (
+            id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
+            created_at, updated_at, last_used_at, expires_at, superseded_by, origin
+          ) VALUES (
+            ${i.id}, ${i.kind}, ${i.text}, ${i.source}, ${i.sourceRef}, ${i.scope}, ${i.scopeRef},
+            ${i.confidence}, ${i.pinned ? 1 : 0}, 0, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
+            ${i.expiresAt}, ${i.supersededBy}, ${change.writer}
+          )
+        `.pipe(Effect.orDie);
+      }
+      applied++;
+    }
+    // The cursor only moves forward.
+    const key = `cursor:${peer}`;
+    const held = yield* sql<{ value: string }>`SELECT value FROM fabric_memory_meta WHERE key = ${key}`.pipe(
+      Effect.orDie,
+    );
+    if (held[0] === undefined || held[0].value < upTo) {
+      yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${key}, ${upTo})`.pipe(
+        Effect.orDie,
+      );
+    }
+    return applied;
+  });
+
   return BatonMemoryService.of({
     origin,
     list,
@@ -413,6 +537,9 @@ export const make = Effect.gen(function* () {
     exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
     sweep,
     noteOnce,
+    syncHello,
+    changesSince,
+    applyChanges,
   });
 });
 

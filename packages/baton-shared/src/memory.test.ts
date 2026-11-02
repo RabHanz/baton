@@ -105,22 +105,24 @@ describe("memoryBlock", () => {
 });
 
 describe("applyDecision", () => {
-  const local = (over: { item?: MemoryItem | null; tombstone?: { id: string; deletedAt: string; origin: string } | null }) => ({
+  const held = (over: { item?: MemoryItem | null; tombstone?: { id: string; deletedAt: string; origin: string } | null; writer?: string | null }) => ({
     item: over.item ?? null,
     tombstone: over.tombstone ?? null,
+    writer: over.writer ?? null,
   });
-  it("last writer wins, with the origin as the tie-break", () => {
+  it("last writer wins, with the writer as the tie-break, and an echo is ignored", () => {
     const newer = item({ updatedAt: "2026-02-01T00:00:00.000Z" });
-    expect(applyDecision(local({ item: item() }), { item: newer, tombstone: null, origin: "b" }, "a")).toBe("apply");
-    expect(applyDecision(local({ item: newer }), { item: item(), tombstone: null, origin: "b" }, "a")).toBe("ignore");
-    expect(applyDecision(local({ item: item() }), { item: item(), tombstone: null, origin: "b" }, "a")).toBe("apply");
+    expect(applyDecision(held({ item: item(), writer: "a" }), { item: newer, tombstone: null, writer: "b" })).toBe("apply");
+    expect(applyDecision(held({ item: newer, writer: "a" }), { item: item(), tombstone: null, writer: "b" })).toBe("ignore");
+    expect(applyDecision(held({ item: item(), writer: "a" }), { item: item(), tombstone: null, writer: "b" })).toBe("apply");
+    expect(applyDecision(held({ item: item(), writer: "b" }), { item: item(), tombstone: null, writer: "b" })).toBe("ignore");
   });
   it("a tombstone beats an older item and an old item cannot resurrect", () => {
     const stone = { id: "a", deletedAt: "2026-03-01T00:00:00.000Z", origin: "b" };
-    expect(applyDecision(local({ item: item() }), { item: null, tombstone: stone, origin: "b" }, "a")).toBe("apply");
-    expect(applyDecision(local({ tombstone: stone }), { item: item(), tombstone: null, origin: "b" }, "a")).toBe("ignore");
+    expect(applyDecision(held({ item: item() }), { item: null, tombstone: stone, writer: "b" })).toBe("apply");
+    expect(applyDecision(held({ tombstone: stone }), { item: item(), tombstone: null, writer: "b" })).toBe("ignore");
     expect(
-      applyDecision(local({ item: item({ updatedAt: "2026-04-01T00:00:00.000Z" }) }), { item: null, tombstone: stone, origin: "b" }, "a"),
+      applyDecision(held({ item: item({ updatedAt: "2026-04-01T00:00:00.000Z" }) }), { item: null, tombstone: stone, writer: "b" }),
     ).toBe("ignore");
   });
 });
