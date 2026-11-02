@@ -13,3 +13,7 @@ Say or type what you want done as a job ("fix the failing build in the shop proj
 - **Stop** ends a running turn; the job and its notes stay. **Retry** is offered only for a job that failed and has retries left, and says why not otherwise.
 - A job that a restart interrupted shows a Continue button.
 - **What needs me** (the Now page) ranks what to look at first: failures, questions, stalled work.
+
+## Run on
+
+Say where a job runs: "start it on the studio computer" (any computer connected to your Tessaya, by the name shown in the sidebar), or leave it out to run it on this computer. The project has to exist on that computer. Later calls about the job (agree, stop, refine) go to the computer it runs on, and the jobs list shows all of them with where each runs.
