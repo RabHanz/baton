@@ -10,6 +10,12 @@ export type PhoneCall = (op: string, args: Record<string, unknown>) => Promise<u
 
 const POLL_MS = 1_500;
 
+/**
+ * How long to wait before looking at the inbox again: quick while things are happening, slower the longer nothing does. A phone ask
+ * after a quiet hour waits at most the longest delay, still inside the server's 45 s "connected" window.
+ */
+export const nextPollMs = (quietTicks: number): number => (quietTicks < 12 ? 5_000 : quietTicks < 60 ? 15_000 : 30_000);
+
 export const createPhoneRelay = (input: {
   readonly call: PhoneCall;
   /** The assistant, as a typed Ask. */

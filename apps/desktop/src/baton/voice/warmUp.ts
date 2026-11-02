@@ -3,12 +3,13 @@
  * Models load on first use: the wake scorer and the speech detector on the first frames, the recogniser on
  * the first transcription. Armed cold, the first phrase after launch waits behind that load and is lost.
  * So before the microphone opens, a second of silence goes through all three; a failure here only means
- * the first real phrase pays for the load, as it did.
+ * the first real phrase pays for the load, as it did. A starved CPU can take far longer than a healthy one
+ * (about a second there), so the limit is generous and the caller shows each stage as it finishes.
  */
 const FRAME_SAMPLES = 320;
 const WARM_FRAMES = 100;
 /** The microphone opens after this at the latest, however the models are doing. */
-export const WARM_LIMIT_MS = 8_000;
+export const WARM_LIMIT_MS = 45_000;
 
 /**
  * A second of quiet noise, not digital silence: a recogniser may decline to answer for silence at all,
@@ -29,6 +30,8 @@ export const warmUpVoice = async (input: {
   readonly transcribe: (pcm: Int16Array) => Promise<string>;
   /** Resolves once every frame pushed so far has been scored. */
   readonly settled: () => Promise<void>;
+  /** Called as each of the two stages finishes (frames scored; recogniser answered), so the start can show progress. */
+  readonly onStage?: (ready: number, total: number) => void;
   /** Resolves after the limit. Real time by default; a test passes its own. */
   readonly limit?: () => Promise<void>;
 }): Promise<boolean> => {
@@ -39,8 +42,13 @@ export const warmUpVoice = async (input: {
     for (let i = 0; i < WARM_FRAMES; i += 1) input.pushFrame(new Int16Array(FRAME_SAMPLES));
     // Never wait on it for good: the recogniser may not answer for silence at all, and a start that waits
     // for that never opens the microphone (0.1.30).
+    let ready = 0;
+    const stage = () => input.onStage?.((ready += 1), 2);
     return await Promise.race([
-      Promise.all([input.settled(), input.transcribe(warmClip())]).then(() => true),
+      Promise.all([
+        input.settled().then(stage),
+        input.transcribe(warmClip()).then(stage),
+      ]).then(() => true),
       limit().then(() => false),
     ]);
   } catch {
