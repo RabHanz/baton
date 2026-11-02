@@ -134,6 +134,8 @@ public static class Diff { public static int Count(string a, string b) {
 
 /** For tests that read or set the clipboard themselves, through the same helper. */
 export const clipboardText = () => clipboard.readText();
+export const setClipboardText = (text: string) => clipboard.writeText(text);
+
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
   readonly shot: (name: string) => Promise<string>;
