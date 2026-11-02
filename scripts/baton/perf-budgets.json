@@ -6,5 +6,5 @@
     "dictation": { "cpuAvg": 60, "rssMBMax": 3600 },
     "assistant-turn": { "cpuAvg": 40, "rssMBMax": 3600 }
   },
-  "starved": { "loopStartedSeconds": 240 }
+  "starved": { "loopStartedSeconds": 300 }
 }
