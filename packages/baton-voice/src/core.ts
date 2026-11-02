@@ -626,8 +626,18 @@ export const createVoiceCore = (input: {
     samples += frame.length;
 
     const score = input.wake.process(frame);
-    if (score !== null) {
-      if (input.verifyWake !== undefined && machine.mode !== "dictation" && !hearingItself()) {
+    const wakeWord = score === null ? null : (input.wake.lastWord?.() ?? null);
+    if (
+      score !== null &&
+      hearingItself() &&
+      wakeWord !== null &&
+      echoesSpeech(wakeWord, spokenLately)
+    ) {
+      // The reply itself says the name: it is its own voice, never a barge-in.
+      emit({ type: "dropped", text: wakeWord, reason: "own voice" });
+    } else if (score !== null) {
+      // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
+      if (input.verifyWake !== undefined && machine.mode !== "dictation") {
         // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
         // cue, flash the pill and extend the window): recognise what was just said first.
         if (!verifying) {
