@@ -332,6 +332,11 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     }, 500).unref();
   });
 
+  const overlayFor = (t: "light" | "dark") => ({
+    color: THEME_GROUND[t],
+    symbolColor: t === "dark" ? "#e9e6df" : "#1c1b18",
+    height: 50,
+  });
   const boundsFile = NodePath.join(input.stateDir, "baton-window.json");
   const theme = () => resolveTheme(input.appearance(), Electron.nativeTheme.shouldUseDarkColors);
   /** The page and the window's own colour, set live: no reload, no flicker. */
@@ -339,6 +344,14 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     const open = live();
     if (open === null) return;
     open.setBackgroundColor(THEME_GROUND[theme()]);
+    // The window controls follow the page, both ways, live.
+    if (process.platform !== "darwin") {
+      try {
+        open.setTitleBarOverlay(overlayFor(theme()));
+      } catch {
+        // A platform without the overlay keeps its own frame.
+      }
+    }
     open.webContents.send(THEME, theme());
   };
   Electron.nativeTheme.on("updated", applyTheme);
@@ -367,6 +380,10 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         title: "Tessaya",
         backgroundColor: THEME_GROUND[theme()],
         autoHideMenuBar: true,
+        // Our own title strip, so the window controls take the page's theme, not Windows'.
+        ...(process.platform === "darwin"
+          ? {}
+          : { titleBarStyle: "hidden" as const, titleBarOverlay: overlayFor(theme()) }),
         show: false,
         webPreferences: { nodeIntegration: true, contextIsolation: false },
       });
