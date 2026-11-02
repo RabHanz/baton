@@ -192,16 +192,26 @@ function catalogBar(c) {
   if (c.machines.length > 2) { const m = $('select'); m.setAttribute('aria-label', c.words.machine); for (const o of c.machines) { const op = $('option', null, o.label); op.value = o.value; m.appendChild(op); } m.value = c.machine; m.onchange = () => set('c.machine', m.value); tools.appendChild(m); }
   const nb = $('button', 'btn', c.words.new); nb.setAttribute('aria-expanded', String(c.creating)); nb.onclick = () => set('c.new', null); tools.appendChild(nb); w.appendChild(tools);
   if (c.creating) {
-    const nf = $('form', 'vocab'), nm = $('select'); nm.setAttribute('aria-label', c.words.machine);
-    for (const o of c.machines.slice(1)) { const op = $('option', null, o.label); op.value = o.value; nm.appendChild(op); } nm.value = c.newMachine; nm.onchange = () => set('c.newMachine', nm.value);
-    const fi = $('input'); fi.type = 'text'; fi.id = 'in-c-folder'; fi.placeholder = c.words.folder; fi.setAttribute('aria-label', c.words.folder); fi.value = drafts.get('c-folder') || ''; fi.oninput = () => drafts.set('c-folder', fi.value);
-    const sel = (opts, label) => { const x = $('select'); x.setAttribute('aria-label', label); for (const o of opts) { const op = $('option', null, o.label); op.value = o.value; x.appendChild(op); } return x; };
+    const nf = $('form', 'newses'); nf.setAttribute('aria-label', c.words.newTitle); nf.appendChild($('div', 'nstitle', c.words.newTitle));
+    const field = (label, el) => { const w = $('label', 'nsfield'); w.append($('span', 'hint', label), el); return w; };
+    const sel = (opts, label, value) => { const x = $('select'); x.setAttribute('aria-label', label); for (const o of opts) { const op = $('option', null, o.label); op.value = o.value; x.appendChild(op); } if (value !== undefined) x.value = value; return x; };
+    const nm = sel(c.machines.slice(1), c.words.machine, c.newMachine); nm.onchange = () => set('c.newMachine', nm.value);
+    const fi = $('input'); fi.type = 'text'; fi.id = 'in-c-folder'; fi.placeholder = c.words.folder; fi.setAttribute('aria-label', c.words.folder); fi.value = drafts.get('c-folder') || '';
+    const earlier = $('div', 'nsearlier'); earlier.setAttribute('role', 'status');
+    const showEarlier = () => { earlier.replaceChildren(); const key = fi.value.trim().toLowerCase().replace(/[\\\\/]+$/, ''); const e = c.earlierHere.find(x => x.cwd.toLowerCase().replace(/[\\\\/]+$/, '') === key); if (!e) return;
+      const rb = $('button', 'btn quiet', c.words.latest); rb.type = 'button'; rb.onclick = () => set('c:' + e.id, 'resume'); earlier.append($('span', 'hint', e.count + ' ' + c.words.earlier), rb); };
+    fi.oninput = () => { drafts.set('c-folder', fi.value); showEarlier(); };
+    const folders = c.folders.length ? sel([{ value: '', label: c.words.recent }, ...c.folders.slice(0, 12).map(d => ({ value: d, label: d }))], c.words.recent) : null;
+    if (folders) folders.onchange = () => { if (folders.value) { fi.value = folders.value; drafts.set('c-folder', fi.value); showEarlier(); fi.focus(); } };
+    const fbox = $('div', 'nsrow'); fbox.append(fi); if (folders) fbox.appendChild(folders);
     const md = sel(c.models, c.words.model), ef = sel(c.efforts, c.words.effort);
-    const ms = $('textarea', 'memedit'); ms.id = 'in-c-msg'; ms.placeholder = c.words.message; ms.setAttribute('aria-label', c.words.message); ms.value = drafts.get('c-msg') || ''; ms.oninput = () => drafts.set('c-msg', ms.value);
-    const go = $('button', 'btn primary', c.words.start); go.type = 'submit'; nf.append(nm, fi, md, ef, ms, go);
+    const ms = $('textarea'); ms.id = 'in-c-msg'; ms.rows = 1; ms.placeholder = c.words.message; ms.setAttribute('aria-label', c.words.message); ms.value = drafts.get('c-msg') || '';
+    const grow = () => { ms.style.height = 'auto'; ms.style.height = Math.min(ms.scrollHeight, 160) + 'px'; };
+    ms.oninput = () => { drafts.set('c-msg', ms.value); grow(); };
+    const go = $('button', 'btn primary', c.words.startNew); go.type = 'submit';
+    nf.append(field(c.words.machine, nm), field(c.words.folder, fbox), earlier, field(c.words.model, md), field(c.words.effort, ef), field(c.words.message, ms), go);
     nf.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('c-folder'); drafts.delete('c-msg'); set('c.start', JSON.stringify({ cwd: v, model: md.value, effort: ef.value, message: ms.value })); };
-    w.appendChild(nf);
-    if (c.folders.length) { const fl = $('div', 'memtools'); for (const d of c.folders.slice(0, 6)) { const b = $('button', 'btn quiet', d); b.onclick = () => { fi.value = d; drafts.set('c-folder', d); fi.focus(); }; fl.appendChild(b); } w.appendChild(fl); }
+    w.appendChild(nf); showEarlier(); grow();
   }
   if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
   if (c.remaining > 0) { const mb = $('button', 'btn quiet', c.words.more + ' (' + c.remaining + ')'); mb.onclick = () => set('c.more', null); w.appendChild(mb); }
@@ -212,7 +222,7 @@ function catalogRow(c) {
   const t = $('div', 'text'); const name = $(c.state === 'running' ? 'button' : 'div', 'sname', c.label);
   if (c.state === 'running') name.onclick = () => set(c.id, null);
   const meta = $('div', 'hint'); meta.append(document.createTextNode([c.project, c.machine, c.stateLabel, c.when, c.source].filter(Boolean).join(' \\u00b7 ')));
-  t.append(name, meta); r.append(dot, t);
+  t.append(name, meta); if (c.note) t.appendChild($('div', 'hint', c.note)); r.append(dot, t);
   if (c.resumeLabel) { const b = $('button', 'btn', c.resumeLabel); b.setAttribute('aria-label', c.resumeLabel + ' ' + c.label); b.onclick = () => set(c.id, 'resume'); r.appendChild(b); }
   return r;
 }
