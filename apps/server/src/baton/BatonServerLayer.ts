@@ -23,6 +23,9 @@ import * as BatonDatabase from "./BatonDatabase.ts";
 import * as BatonEngine from "./BatonEngine.ts";
 import * as BatonJobReactor from "./BatonJobReactor.ts";
 import * as BatonJobService from "./BatonJobService.ts";
+import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
+import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
+import * as BatonMemoryService from "./BatonMemoryService.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
@@ -61,6 +64,11 @@ const servicesInner = IntentService.layer.pipe(
       // socket reaches every other client's subscription.
       WorkSessionService.layer,
       BatonJobService.layer.pipe(Layer.provide(WorkSessionService.layer)),
+      BatonMemoryService.layer,
+      BatonMemoryLearning.layer.pipe(
+        Layer.provide(BatonMemoryService.layer),
+        Layer.provide(BatonOneShot.layer),
+      ),
       readClaudeAccountInstances,
       AccountPoolService.layer,
       ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),
@@ -84,9 +92,11 @@ export const workers = Layer.effectDiscard(
     yield* (yield* SynopsisReactor.BatonSynopsisReactor).start();
     yield* (yield* OrchestrationReactor.BatonOrchestrationReactor).start();
     yield* (yield* BatonJobReactor.BatonJobReactor).start();
+    yield* (yield* BatonMemoryReactor.BatonMemoryReactor).start();
   }),
 ).pipe(
   Layer.provideMerge(BatonJobReactor.layer),
+  Layer.provideMerge(BatonMemoryReactor.layer),
   Layer.provideMerge(AccountRotationReactor.layer),
   // Every live Claude Code session as a T3 thread, for T3's official apps (D83).
   Layer.provideMerge(LiveSessionMirror.layer),

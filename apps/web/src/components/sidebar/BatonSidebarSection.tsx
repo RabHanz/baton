@@ -9,6 +9,7 @@ import {
   batonDesktopBridge,
   type BatonFleetEntry,
   type BatonJobBridgeRequest,
+  type BatonMemoryBridgeRequest,
   type EnvironmentId,
   type ProjectId,
   type ScopedThreadRef,
@@ -16,6 +17,7 @@ import {
 import type { ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, type ReactNode } from "react";
 import { batonUsageSummaries } from "../../batonUsage";
 
@@ -71,6 +73,21 @@ export function BatonSidebarSection(props: {
   }, [usage]);
   const quiet = { reportFailure: false } as const;
   const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
+  const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
+  const memorySearch = useAtomCommand(batonWorkSessions.memorySearch, quiet);
+  const memoryAdd = useAtomCommand(batonWorkSessions.memoryAdd, quiet);
+  const memoryEdit = useAtomCommand(batonWorkSessions.memoryEdit, quiet);
+  const memoryPin = useAtomCommand(batonWorkSessions.memoryPin, quiet);
+  const memoryForget = useAtomCommand(batonWorkSessions.memoryForget, quiet);
+  const memoryAccept = useAtomCommand(batonWorkSessions.memoryAccept, quiet);
+  const memoryRecall = useAtomCommand(batonWorkSessions.memoryRecall, quiet);
+  const memoryUsed = useAtomCommand(batonWorkSessions.memoryUsed, quiet);
+  const memoryExport = useAtomCommand(batonWorkSessions.memoryExport, quiet);
+  const memoryLearn = useAtomCommand(batonWorkSessions.memoryLearn, quiet);
+  const memoryImport = useAtomCommand(batonWorkSessions.memoryImport, quiet);
+  const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
+  const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
+  const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
@@ -218,6 +235,68 @@ export function BatonSidebarSection(props: {
         );
     }
   };
+  /** The desktop assistant's memory calls: the memory RPCs, with a refusal's reason kept in plain words. */
+  /**
+   * Memory between the servers this window is connected to (MEMORY.md section 6): for each pair, ask
+   * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
+   */
+  const syncMemory = async (): Promise<unknown> => {
+    type Reply<V> =
+      | { readonly _tag: "Success"; readonly value: V }
+      | { readonly _tag: "Failure" };
+    const call = async <V,>(run: unknown, environmentId: EnvironmentId, input: unknown) =>
+      (await (
+        run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
+      )({ environmentId, input: input as never }));
+    const hellos = (
+      await Promise.all(
+        fleet.environmentIds.map(async (environmentId) => {
+          const reply = await call<{ origin: string; cursors: Record<string, string> }>(
+            memorySyncHello,
+            environmentId,
+            {},
+          );
+          return reply._tag === "Success" ? [{ environmentId, ...reply.value }] : [];
+        }),
+      )
+    ).flat();
+    // Two connections to the same server count once.
+    const servers = hellos.filter((h, i) => hellos.findIndex((o) => o.origin === h.origin) === i);
+    let applied = 0;
+    for (const to of servers) {
+      for (const from of servers) {
+        if (to.origin === from.origin) continue;
+        const pulled = await call<{ origin: string; changes: ReadonlyArray<unknown>; upTo: string }>(
+          memorySyncPull,
+          from.environmentId,
+          { since: to.cursors[from.origin] ?? null },
+        );
+        if (pulled._tag !== "Success") continue;
+        const pushed = await call<{ applied: number }>(memorySyncPush, to.environmentId, {
+          from: pulled.value.origin,
+          changes: pulled.value.changes,
+          upTo: pulled.value.upTo,
+        });
+        if (pushed._tag === "Success") applied += pushed.value.applied;
+      }
+    }
+    return { servers: servers.length, applied };
+  };
+  const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
+    if (request.op === "sync") return syncMemory();
+    const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn, import: memoryImport };
+    type Settled =
+      | { readonly _tag: "Success"; readonly value: unknown }
+      | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0]);
+    const run = commands[request.op] as unknown as (call: {
+      readonly environmentId: typeof primary;
+      readonly input: never;
+    }) => Promise<Settled>;
+    const result = await run({ environmentId: primary, input: request.args as never });
+    if (result._tag === "Success") return result.value;
+    const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
+    throw new Error(typeof reason === "string" ? reason : "Memory did not answer. Nothing changed.");
+  };
   const primaryEntries = fleets.find((entry) => entry.environmentId === primary)?.fleet?.entries;
 
   return (
@@ -232,6 +311,7 @@ export function BatonSidebarSection(props: {
         )}
         onRan={() => undefined}
         onJob={onJob}
+        onMemory={onMemory}
       />
       <BatonProjectsBlock
         environmentIds={fleet.environmentIds}

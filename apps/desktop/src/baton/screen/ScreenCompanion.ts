@@ -88,6 +88,8 @@ import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
+import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { createMemorySync } from "../memory/memorySync.ts";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -209,7 +211,14 @@ export interface AssistantActions {
     near: { readonly x: number; readonly y: number },
     /** The whole window with the keyboard, not only what is near the point (the assistant's click by name). */
     anywhere?: boolean,
-  ) => Promise<{ readonly x: number; readonly y: number; readonly name: string } | null>;
+  ) => Promise<{
+    readonly x: number;
+    readonly y: number;
+    readonly name: string;
+    /** The control's size in desktop points, when the tree gave it. */
+    readonly width?: number;
+    readonly height?: number;
+  } | null>;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
   readonly uiTree?: () => Promise<{
     readonly window: string;
@@ -256,6 +265,8 @@ export interface AssistantActions {
   readonly sessionName?: (idOrName: string) => string | null;
   /** Start or stop dictation into the focused field. */
   readonly dictation?: (on: boolean) => Promise<string>;
+  /** The server's memory (D150), through the window; rejects with a reason in plain words. */
+  readonly memory?: (op: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 /** One turn's timings in ms, for the report. Words are never written here. */
@@ -278,6 +289,8 @@ export interface ScreenCompanion {
     | { readonly kind: "refused"; readonly reply: string }
   >;
   readonly setActions: (actions: AssistantActions) => void;
+  /** Memory sync between servers (D150): off by default; the Memory tab switches it and runs it now. */
+  readonly memorySync: ReturnType<typeof createMemorySync>;
   /** A lesson or a drive is running. */
   readonly active: () => boolean;
   /** Silences what is queued and what an answer has yet to say. */
@@ -357,6 +370,8 @@ export const startScreenCompanion = (input: {
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** Tells the pill what is going on; null when it stops. */
   readonly onActivity?: (label: string | null, caption?: string) => void;
+  /** A short sound for a lesson or drive: start, a step done, waiting, error, finished. */
+  readonly onCue?: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** The answer's words were cancelled by him: the pill goes too. */
   readonly onDismissed?: () => void;
 }): ScreenCompanion => {
@@ -404,7 +419,7 @@ export const startScreenCompanion = (input: {
     return picked.env;
   };
 
-  const overlay = createPointerOverlay(input.platform);
+  const overlay = createPointerOverlay(input.platform, (id) => cardAction(id));
   const speech = queueSpeech(input.speak);
   /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
   let hushes = 0;
@@ -456,6 +471,22 @@ export const startScreenCompanion = (input: {
     return chromeSeen.check;
   };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
+  // The server's store answers when the window does (`actions` arrives late); his notes folder otherwise.
+  const memory = createDesktopMemory({
+    call: (op, args) =>
+      actions?.memory === undefined
+        ? Promise.reject(new Error("Memory is not reachable yet."))
+        : actions.memory(op, args),
+    notes,
+  });
+  let stopMemorySync: (() => void) | null = null;
+  const memorySync = createMemorySync({
+    file: NodePath.join(input.stateDir, "baton-memory.json"),
+    call: (op, args) =>
+      actions?.memory === undefined
+        ? Promise.reject(new Error("Memory is not reachable yet."))
+        : actions.memory(op, args),
+  });
   /** A reply is kept in full and logged in full, whatever route made it. */
   const converse = (
     route: ConversationRoute,
@@ -567,6 +598,35 @@ export const startScreenCompanion = (input: {
       end();
     }
     void wipe();
+  };
+
+  const FINISHED_CARD_MS = 12_000;
+  /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
+  const finishedCard = async (kicker: string, text: string, bubble: string | null) => {
+    const mine = ++showing;
+    input.onCue?.("finished");
+    await overlay.card({
+      kicker,
+      text,
+      state: "done",
+      actions: [{ id: "close", label: "Close", primary: true }],
+    });
+    if (bubble !== null) void overlay.bubble(bubble.slice(0, 140));
+    setTimeout(() => mine === showing && void wipe(), FINISHED_CARD_MS).unref();
+  };
+  const STEP_ACTIONS = [
+    { id: "again", label: "Say it again" },
+    { id: "skip", label: "Skip" },
+    { id: "stop", label: "Stop" },
+  ] as const;
+  /** A button on a step card: the same as saying it. */
+  const cardAction = (id: string) => {
+    if (id === "again") {
+      if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
+    } else if (id === "skip") {
+      if (run?.mode === "teach") void teachStep("he skipped this step.").catch(fail);
+    } else if (id === "stop") stop();
+    else if (id === "close") void wipe();
   };
 
   /** A card that stays until something replaces it: a step, a plan, a thought. */
@@ -709,6 +769,7 @@ export const startScreenCompanion = (input: {
   const pointAt = async (
     point: ReturnType<typeof parseReply>["point"],
     shots: ReadonlyArray<ScreenShot>,
+    badge?: number,
   ): Promise<void> => {
     if (!pointable(point)) return;
     const shot = shotFor(shots, point.screen);
@@ -717,7 +778,13 @@ export const startScreenCompanion = (input: {
     // The accessibility tree has the real rectangle; the model's pixels only say where to look.
     const found = point.label === null ? null : await actions?.locate?.(point.label, guess);
     input.onTrace?.({ pointedAt: found ?? guess, snapped: found != null });
-    const here = await overlay.point(found ?? guess, found?.name ?? point.label);
+    // The ring is sized to the real control; with only the model's guess it is a plain circle.
+    const here = await overlay.point(found ?? guess, found?.name ?? point.label, {
+      ...(found?.width !== undefined && found.height !== undefined
+        ? { size: { width: found.width, height: found.height } }
+        : {}),
+      ...(badge === undefined ? {} : { badge }),
+    });
     if (!here) input.onActivity?.("Pointing", "on your other screen");
   };
 
@@ -786,7 +853,7 @@ export const startScreenCompanion = (input: {
       {
         title: prompt.title,
         detail: prompt.detail,
-        buttons: ["Do it", "Not now"],
+        buttons: ["Go ahead", "Not now"],
         cancel: 1,
         scoped: true,
       },
@@ -981,7 +1048,10 @@ export const startScreenCompanion = (input: {
       }
       lesson.step += 1;
       // The step on screen stays readable while the next one is worked out.
-      if (lesson.step === 1) void show("Lesson", "Looking at your screen");
+      if (lesson.step === 1) {
+        input.onCue?.("start");
+        void show("Lesson", "Looking at your screen");
+      } else if (note !== undefined) input.onCue?.("stepDone");
       input.onActivity?.("Checking", `Step ${lesson.step}`);
       const captured = await capture();
       // What this step was judged against: any change from here on is his doing.
@@ -1006,16 +1076,23 @@ export const startScreenCompanion = (input: {
       });
       if (reply.done) {
         say(reply.spoken);
-        linger("Done", reply.spoken);
+        await finishedCard(
+          `Finished · ${lesson.step} ${lesson.step === 1 ? "step" : "steps"}`,
+          "That is all of it.",
+          reply.spoken,
+        );
         return end();
       }
       say(reply.spoken);
-      await pointAt(reply.point, shots);
+      await pointAt(reply.point, shots, lesson.step);
       await show(
-        `Step ${lesson.step}`,
+        `Step ${lesson.step} · waiting for you`,
         reply.spoken,
-        "Do it and I'll notice, or say next. Stop ends the lesson.",
+        "Do it and I'll notice, or say next.",
+        { state: "waiting", actions: STEP_ACTIONS },
       );
+      void overlay.waiting();
+      input.onCue?.("waiting");
       watch(lesson, baseline, reply.spoken);
     } finally {
       lesson.busy = false;
@@ -1173,9 +1250,9 @@ export const startScreenCompanion = (input: {
       ? 0
       : await askHandsFree(
           {
-            title: plan.title,
-            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
-            buttons: ["Run it", "Not now"],
+            title: `Want me to ${plan.title.charAt(0).toLowerCase()}${plan.title.slice(1).replace(/[.?!]$/, "")}?`,
+            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nYou watch. Esc takes it back (so does saying stop, or the Stop button). The numbered dots are where it will click; if a window moves under a click, it asks first.`,
+            buttons: ["Go ahead", "Not now"],
             cancel: 1,
             scoped: true,
           },
@@ -1198,7 +1275,7 @@ export const startScreenCompanion = (input: {
                   ? "This plan types nothing itself."
                   : `Tessaya would type:\n\n${shell.typed.join("\n")}`
               }`,
-              buttons: ["Type it", "Not now"],
+              buttons: ["Go ahead", "Not now"],
               cancel: 1,
               scoped: true,
             },
@@ -1215,6 +1292,7 @@ export const startScreenCompanion = (input: {
       if (run === current) input.onNote?.("drive_outcome", { goal, outcome: "he said no" });
       return finish();
     }
+    input.onCue?.("start");
     await sleep(350); // the prompt leaves the screen first
     const afterPrompt = await fingerprint();
     input.onTrace?.({
@@ -1280,14 +1358,11 @@ export const startScreenCompanion = (input: {
             m.n - 1 < i ? { ...m, state: "done" } : m.n - 1 === i ? { ...m, state: "now" } : m,
           ),
         );
-        input.onActivity?.("Driving", `Step ${i + 1} of ${plan.actions.length}`);
-        void show(
-          `Step ${i + 1} of ${plan.actions.length}`,
-          describeAction(action),
-          "Esc or Stop ends it.",
-          {
-            dots: { at: i, of: plan.actions.length },
-          },
+        if (i > 0) input.onCue?.("stepDone");
+        // While it drives he watches the screen, not a card: the pill says which step and how to take it back.
+        input.onActivity?.(
+          "Driving",
+          `Step ${i + 1} of ${plan.actions.length} · ${describeAction(action).slice(0, 48)} · Esc takes it back`,
         );
       },
       verify: async (action, i) => {
@@ -1316,7 +1391,25 @@ export const startScreenCompanion = (input: {
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
-    linger("Drive", message);
+    if (result.kind === "finished") {
+      await finishedCard(
+        `Finished · ${plan.actions.length} of ${plan.actions.length}`,
+        plan.title,
+        null,
+      );
+    } else {
+      // Plain words, never a raw error; the way out is on the card.
+      const mine = ++showing;
+      input.onCue?.("error");
+      await overlay.card({
+        kicker: "Stopped",
+        text: message,
+        hint: "Nothing else was changed.",
+        state: "error",
+        actions: [{ id: "close", label: "Close", primary: true }],
+      });
+      setTimeout(() => mine === showing && void wipe(), FINISHED_CARD_MS).unref();
+    }
     finish();
   };
 
@@ -1442,7 +1535,7 @@ export const startScreenCompanion = (input: {
         {
           title: p.title,
           detail: p.detail,
-          buttons: ["Do it", "Not now"],
+          buttons: ["Go ahead", "Not now"],
           cancel: 1,
           scoped: true,
         },
@@ -1587,9 +1680,9 @@ export const startScreenCompanion = (input: {
     dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
     memory: async (query) => {
       const hits = conversation.search(query);
-      const kept = notes.search(query);
+      const kept = await memory.search(query);
       const found = [
-        ...kept.map((n) => `his note [id: ${n.id}]: ${n.text}`),
+        ...kept,
         ...hits.map(
           (t) =>
             `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
@@ -1597,8 +1690,10 @@ export const startScreenCompanion = (input: {
       ];
       return found.length === 0 ? "Nothing earlier matches." : found.join("\n\n");
     },
-    remember: async (text) => `Kept as a note [id: ${notes.add(text).id}].`,
-    forget: async (id) => (notes.remove(id) ? "Forgotten." : "There is no note by that id."),
+    remember: (text) => memory.remember(text),
+    forget: (id) => memory.forget(id),
+    pin: (id, pinned) => memory.pin(id, pinned),
+    used: () => memory.used(),
     jobs: async (op, args) => actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
     target: async (label, workSessionId) => {
       conversation.add({
@@ -1637,8 +1732,14 @@ export const startScreenCompanion = (input: {
       conversation,
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
-      notes: () => notesBlock(notes.list()),
+      notes: async () => {
+        const standing = await memory.standing();
+        return standing === "" ? notesBlock(notes.list()) : standing;
+      },
+      recall: (text) => memory.forSentence(text),
+      learn: (said, reply) => memory.learn(said, reply, agentTaint.on()),
       beginTurn: () => {
+        memory.beginTurn();
         agentTaint.reset();
         agentTools.length = 0;
         agentDecisions.length = 0;
@@ -1827,8 +1928,10 @@ export const startScreenCompanion = (input: {
 
   return {
     said,
+    memorySync,
     setActions: (next) => {
       actions = next;
+      stopMemorySync ??= memorySync.start();
     },
     active: () => runningMode() !== null,
     hush,
@@ -1883,7 +1986,7 @@ export const startScreenCompanion = (input: {
     controls: () => [
       {
         id: "s.output",
-        section: "Answers",
+        section: "Answers and voice",
         label: "How Tessaya answers",
         kind: "choice",
         value: settings.output,
@@ -1894,7 +1997,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.volume",
-        section: "Answers",
+        section: "Answers and voice",
         label: "Speaking volume",
         hint: "How loud Tessaya speaks, apart from your system volume.",
         kind: "choice",
@@ -1907,7 +2010,7 @@ export const startScreenCompanion = (input: {
       },
       {
         id: "s.voice",
-        section: "Answers",
+        section: "Answers and voice",
         label: "Voice",
         hint: "Quick is smaller and less accurate. System uses your computer's voice.",
         kind: "choice",
@@ -1943,7 +2046,6 @@ export const startScreenCompanion = (input: {
         hint: "Tessaya keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
         kind: "toggle",
         on: settings.oneAssistant,
-        more: true,
       },
       {
         id: "s.chrome",
@@ -1969,7 +2071,6 @@ export const startScreenCompanion = (input: {
         hint: "Applies once Use my Chrome is on. Reading is routine; every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson. Off, social sites are refused.",
         kind: "toggle",
         on: settings.socialOn,
-        more: true,
       },
       {
         id: "s.act",
@@ -2017,7 +2118,6 @@ export const startScreenCompanion = (input: {
         hint: "Off, Tessaya asks before it looks at your screen.",
         kind: "toggle",
         on: settings.captureApproval === "always",
-        more: true,
       },
     ],
     needsBrainChoice: () => !settings.brainChosen,
@@ -2074,6 +2174,7 @@ export const startScreenCompanion = (input: {
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
     dispose: () => {
+      stopMemorySync?.();
       agent?.dispose();
       void agentMcp?.close();
       end();

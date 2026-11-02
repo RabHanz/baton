@@ -15,6 +15,7 @@ import {
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
+  BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
@@ -48,6 +49,9 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
+import { importFolder } from "./BatonMemoryImport.ts";
+import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
+import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
@@ -73,6 +77,8 @@ export type BatonServices =
   | AdoptedSessionService
   | BatonEngine
   | BatonJobService
+  | BatonMemoryService
+  | BatonMemoryLearning
   | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves
@@ -342,6 +348,88 @@ export const make = Effect.gen(function* () {
       run(
         Effect.flatMap(BatonJobService, (jobs) =>
           Effect.map(jobs.revoke(input.id, input.channel), (terms) => ({ terms })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.list]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.list(input), (items) => ({ items })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.search]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.search(input), (hits) => ({ hits })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.add]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.add(input), (item) => ({ item })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.edit]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.edit(input.id, input), (item) => ({ item })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.pin]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.pin(input.id, input.pinned), (item) => ({ item })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.forget]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.forget(input.id), (forgotten) => ({ forgotten })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.accept]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.accept(input.id), (item) => ({ item })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.recall]: (input) =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.recall(input))),
+    [BATON_MEMORY_WS_METHODS.used]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.used(input.turnRef), (items) => ({ items })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.learn]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryLearning, (learning) =>
+          learning.learn({
+            origin: "turn",
+            said: input.said,
+            reply: input.reply,
+            sourceRef: input.turnRef ?? null,
+            tainted: input.tainted,
+            project: input.project ?? null,
+          }),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
+    [BATON_MEMORY_WS_METHODS.syncHello]: () =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.syncHello)),
+    [BATON_MEMORY_WS_METHODS.syncPull]: (input) =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.changesSince(input.since))),
+    [BATON_MEMORY_WS_METHODS.syncPush]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.applyChanges(input.from, input.changes, input.upTo), (applied) => ({
+            applied,
+          })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.export]: () =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.exportMarkdown, (markdown) => ({ markdown })),
         ),
       ),
     [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>

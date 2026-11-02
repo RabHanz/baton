@@ -240,6 +240,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         stopSpeech: speaker.cancel,
         holdEscape,
         onActivity: (label, caption) => voice?.onActivity(label, caption),
+        onCue: (name) => voice?.cue(name),
         onDismissed: () => voice?.onDismissed(),
       });
     } catch (cause) {

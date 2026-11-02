@@ -16,6 +16,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_LIVE_WS_METHODS,
+  BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
@@ -68,6 +69,25 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_JOB_WS_METHODS.jobSchedule]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobSplit]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.subscribeWorkSessions]: AuthOrchestrationReadScope,
+  // Memory (D150): reading and searching are reads. Every write is operate-level, and so is
+  // recall, which records that the items were used.
+  [BATON_MEMORY_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_MEMORY_WS_METHODS.search]: AuthOrchestrationReadScope,
+  [BATON_MEMORY_WS_METHODS.used]: AuthOrchestrationReadScope,
+  [BATON_MEMORY_WS_METHODS.export]: AuthOrchestrationReadScope,
+  // Reads files from a folder on this machine and writes memory: an operate act.
+  [BATON_MEMORY_WS_METHODS.import]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.syncHello]: AuthOrchestrationReadScope,
+  [BATON_MEMORY_WS_METHODS.syncPull]: AuthOrchestrationReadScope,
+  [BATON_MEMORY_WS_METHODS.syncPush]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.add]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.edit]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.pin]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.forget]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.accept]: AuthOrchestrationOperateScope,
+  [BATON_MEMORY_WS_METHODS.recall]: AuthOrchestrationOperateScope,
+  // Each call spends a cheap-model turn on his subscription.
+  [BATON_MEMORY_WS_METHODS.learn]: AuthOrchestrationOperateScope,
   // A rule starts provider sessions and messages threads when it fires, so
   // creating or re-enabling one is an operate-level act even though the RPC
   // itself only writes a row. Reading the rules is a read.

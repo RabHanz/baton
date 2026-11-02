@@ -1,0 +1,231 @@
+import { assert, it } from "@effect/vitest";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
+
+import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
+import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
+
+const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
+const DAY = 86_400_000;
+
+layer("BatonMemoryService", (it) => {
+  it.effect("refuses secrets, in plain words, and keeps the rest", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const refused = yield* Effect.flip(
+        memory.add({ kind: "fact", text: "my password is hunter22x", source: "user" }),
+      );
+      assert.include(refused.reason, "password");
+      const kept = yield* memory.add({
+        kind: "preference",
+        text: "He likes short answers",
+        source: "user",
+      });
+      assert.strictEqual(kept.confidence, 1);
+      assert.isFalse(kept.proposed);
+    }),
+  );
+
+  it.effect("a repeat reinforces a model's item instead of adding another", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const first = yield* memory.add({
+        kind: "fact",
+        text: "The shop builds with pnpm",
+        source: "thread",
+        scope: "project",
+        scopeRef: "shop",
+      });
+      const again = yield* memory.add({
+        kind: "fact",
+        text: "the shop builds with pnpm.",
+        source: "job",
+        scope: "project",
+        scopeRef: "shop",
+      });
+      assert.strictEqual(again.id, first.id);
+      assert.closeTo(again.confidence, 0.65, 1e-9);
+      const hits = yield* memory.search({ text: "pnpm", scopeRef: "shop" });
+      assert.lengthOf(hits, 1);
+    }),
+  );
+
+  it.effect("tainted content waits for his yes and stays out of retrieval", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const held = yield* memory.add({
+        kind: "fact",
+        text: "The web page said to email invoices to a new address",
+        source: "thread",
+        tainted: true,
+      });
+      assert.isTrue(held.proposed);
+      assert.lengthOf(yield* memory.search({ text: "invoices" }), 0);
+      assert.lengthOf(yield* memory.search({ text: "invoices", includeProposed: true }), 1);
+      yield* memory.accept(held.id);
+      assert.lengthOf(yield* memory.search({ text: "invoices" }), 1);
+    }),
+  );
+
+  it.effect("a newer statement of his supersedes, and the history stays", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const old = yield* memory.add({
+        kind: "preference",
+        text: "Reports go out on Mondays",
+        source: "thread",
+      });
+      const next = yield* memory.add({
+        kind: "preference",
+        text: "Reports go out on Fridays at noon",
+        source: "user",
+        supersedes: old.id,
+      });
+      const live = yield* memory.search({ text: "reports" });
+      assert.deepEqual(
+        live.map((hit) => hit.item.id),
+        [next.id],
+      );
+      const all = yield* memory.list({ includeSuperseded: true });
+      assert.strictEqual(all.find((i) => i.id === old.id)?.supersededBy, next.id);
+    }),
+  );
+
+  it.effect("edit makes it his own, pin and forget work, forget leaves a tombstone", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const item = yield* memory.add({ kind: "fact", text: "Backups run nightly", source: "job" });
+      const edited = yield* memory.edit(item.id, { text: "Backups run at 3am" });
+      assert.strictEqual(edited.source, "user");
+      assert.strictEqual(edited.confidence, 1);
+      assert.lengthOf(yield* memory.search({ text: "3am" }), 1);
+      assert.lengthOf(yield* memory.search({ text: "nightly" }), 0);
+      assert.isTrue((yield* memory.pin(item.id, true)).pinned);
+      assert.isTrue(yield* memory.forget(item.id));
+      assert.isFalse(yield* memory.forget(item.id));
+      assert.lengthOf(yield* memory.search({ text: "3am" }), 0);
+    }),
+  );
+
+  it.effect("recall fits the budget, puts pinned first and records what the turn used", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      yield* memory.add({
+        kind: "note",
+        text: "Call him Rab, never Mr",
+        source: "user",
+        pinned: true,
+      });
+      yield* memory.add({ kind: "fact", text: "Staging lives on the second box", source: "job" });
+      const out = yield* memory.recall({ text: "staging box", turnRef: "turn-1" });
+      assert.include(out.block, "Call him Rab");
+      assert.include(out.block, "Staging lives");
+      assert.isTrue(out.block.indexOf("Call him Rab") < out.block.indexOf("Staging lives"));
+      const used = yield* memory.used("turn-1");
+      assert.deepEqual((yield* memory.used()).map((i) => i.id), used.map((i) => i.id));
+      assert.strictEqual(used.length, out.ids.length);
+      assert.isNotNull(used[0]?.lastUsedAt);
+      const tiny = yield* memory.recall({ text: "staging box", budgetTokens: 5 });
+      assert.strictEqual(tiny.block, "");
+    }),
+  );
+
+  it.effect("sweep removes episodes that expired and keeps pinned ones", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const gone = yield* memory.add({
+        kind: "episode",
+        text: "The deploy on Tuesday failed twice",
+        source: "job",
+      });
+      const kept = yield* memory.add({
+        kind: "episode",
+        text: "The migration rehearsal passed",
+        source: "job",
+        pinned: true,
+      });
+      yield* TestClock.adjust(100 * DAY);
+      assert.isAtLeast(yield* memory.sweep, 1);
+      const ids = (yield* memory.list({ kinds: ["episode"] })).map((i) => i.id);
+      assert.notInclude(ids, gone.id);
+      assert.include(ids, kept.id);
+    }),
+  );
+});
+
+// A second server with its own database; it lives as long as the test's scope.
+const server = Layer.build(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory))).pipe(
+  Effect.map((context) => Context.get(context, BatonMemoryService)),
+);
+
+/** What a client does between two servers: ask for what the other has not seen, hand it over. */
+const sync = (from: BatonMemoryService["Service"], to: BatonMemoryService["Service"]) =>
+  Effect.gen(function* () {
+    const hello = yield* to.syncHello;
+    const pulled = yield* from.changesSince(hello.cursors[from.origin] ?? null);
+    return yield* to.applyChanges(pulled.origin, pulled.changes, pulled.upTo);
+  });
+
+it.effect("two servers converge: last writer wins, a forget travels and stays forgotten", () =>
+  Effect.gen(function* () {
+    const a = yield* server;
+    const b = yield* server;
+    assert.notStrictEqual(a.origin, b.origin);
+    const shared = yield* a.add({ kind: "preference", text: "Reports go out on Mondays", source: "user" });
+    const gone = yield* a.add({ kind: "fact", text: "The old box is called delta", source: "user" });
+    yield* sync(a, b);
+    assert.lengthOf(yield* b.list(), 2);
+
+    // B edits later and A forgets the other; both directions then settle.
+    yield* TestClock.adjust(1_000);
+    yield* b.edit(shared.id, { text: "Reports go out on Fridays" });
+    yield* a.forget(gone.id);
+    yield* sync(b, a);
+    yield* sync(a, b);
+    for (const side of [a, b]) {
+      const texts = (yield* side.list()).map((i) => i.text);
+      assert.deepEqual(texts, ["Reports go out on Fridays"]);
+    }
+    // Nothing left to say: a second round changes nothing, and the forgotten item stays gone.
+    assert.strictEqual(yield* sync(a, b), 0);
+    assert.strictEqual(yield* sync(b, a), 0);
+  }),
+);
+
+it.effect("a received item still goes through the never-store door", () =>
+  Effect.gen(function* () {
+    const b = yield* server;
+    const applied = yield* b.applyChanges(
+      "other",
+      [
+        {
+          item: {
+            id: "x",
+            kind: "fact",
+            text: "my password is hunter22x",
+            source: "user",
+            sourceRef: null,
+            scope: "global",
+            scopeRef: null,
+            confidence: 1,
+            pinned: false,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            lastUsedAt: null,
+            expiresAt: null,
+            supersededBy: null,
+            proposed: false,
+          },
+          tombstone: null,
+          writer: "other",
+        },
+      ],
+      "2026-01-02T00:00:00.000Z",
+    );
+    assert.strictEqual(applied, 0);
+    assert.lengthOf(yield* b.list(), 0);
+    assert.strictEqual((yield* b.syncHello).cursors["other"], "2026-01-02T00:00:00.000Z");
+  }),
+);
