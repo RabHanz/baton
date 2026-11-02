@@ -10,6 +10,7 @@ import * as NodePath from "node:path";
 import {
   changedPixels,
   clipboardText,
+  clipLog,
   makeHost,
   ps,
   setClipboardText,
@@ -485,6 +486,30 @@ await task(
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
   },
 );
+
+// Diagnostic: Ctrl+C after typing, with different pauses, and every clipboard command the driver made.
+await task("diag-copy", "Diagnose Ctrl+C", async (t) => {
+  const notes: string[] = [];
+  for (const pause of [0, 150, 400, 700, 1200, 2500]) {
+    await t.launch("notepad.exe", [], "Notepad");
+    await t.waitTree(/notepad/i);
+    await setClipboardText("SENTINEL");
+    clipLog.length = 0;
+    await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
+    await sleep(pause);
+    await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
+    await t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" });
+    const seen: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      await sleep(300);
+      seen.push(`[${await clipboardText()}]`);
+    }
+    notes.push(`pause ${pause}: ${seen.join("")} log: ${clipLog.slice(0, 14).join(", ")}`);
+    await t.cleanup();
+  }
+  t.evidence = notes.join(" || ");
+  for (const n of notes) console.log(`DIAG ${n}`);
+});
 
 host.dispose();
 const passed = results.filter((r) => r.result === "pass").length;
