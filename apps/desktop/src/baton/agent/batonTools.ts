@@ -38,6 +38,12 @@ export interface ToolHost {
   readonly type: (text: string) => Promise<string>;
   readonly press: (keys: ReadonlyArray<string>) => Promise<string>;
   readonly sessions: () => Promise<string>;
+  /** Every session on every machine, stopped ones too: find, bring back, start. */
+  readonly catalog?: {
+    readonly find: (query: string) => Promise<string>;
+    readonly resume: (sessionId: string) => Promise<string>;
+    readonly start: (cwd: string, machine: string) => Promise<string>;
+  };
   readonly session: (id: string) => Promise<string>;
   readonly send: (id: string, text: string) => Promise<string>;
   readonly fleet: () => Promise<string>;
@@ -325,6 +331,38 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     description: "List the live sessions on every connected machine: project, name, state, box.",
     inputSchema: object({}),
     run: async () => ({ text: await host.sessions() }),
+  },
+  {
+    name: "sessions_find",
+    description:
+      "Find coding sessions on every connected machine, running or stopped, by words from the title, folder or machine (empty lists the newest). Older ones come from the history index. Gives each one's id, state and whether it can be resumed.",
+    inputSchema: object({ query: { type: "string", maxLength: 200 } }),
+    run: async (a) => ({
+      text: (await host.catalog?.find(typeof a["query"] === "string" ? a["query"].slice(0, 200) : "")) ?? "The session list is not ready yet.",
+    }),
+  },
+  {
+    name: "session_resume",
+    description:
+      "Bring a stopped session back in its own folder on its own machine, with its history. Sends nothing. Name it by the id from sessions_find.",
+    inputSchema: object({ id: { type: "string", maxLength: 200 } }, ["id"]),
+    run: async (a) => ({
+      text: (await host.catalog?.resume(str(a, "id", 200))) ?? "The session list is not ready yet.",
+    }),
+  },
+  {
+    name: "session_new",
+    description:
+      "Start a new Claude session in a folder, on a machine (empty machine means the first listed). He is asked first.",
+    inputSchema: object(
+      { cwd: { type: "string", maxLength: 500 }, machine: { type: "string", maxLength: 80 } },
+      ["cwd"],
+    ),
+    run: async (a) => ({
+      text:
+        (await host.catalog?.start(str(a, "cwd", 500), typeof a["machine"] === "string" ? a["machine"].slice(0, 80) : "")) ??
+        "The session list is not ready yet.",
+    }),
   },
   {
     name: "session_show",
