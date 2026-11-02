@@ -596,6 +596,10 @@ export const layerStatic = (input: {
   readonly launch?: (launch: BatonThreadLaunch) => ThreadId | null;
   readonly sent?: Array<{ readonly threadId: ThreadId; readonly text: string }>;
   readonly messages?: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }>;
+  /** Runs per thread, for the job caps. */
+  readonly runs?: ReadonlyMap<string, ReadonlyArray<{ readonly status: string }>>;
+  /** Collects the threads that were interrupted. */
+  readonly interrupted?: Array<ThreadId>;
 }) =>
   Layer.succeed(BatonEngine, {
     threadShells: Effect.succeed(input.shells ?? []),
@@ -616,11 +620,15 @@ export const layerStatic = (input: {
     switchProvider: () => Effect.void,
     setThreadSelection: () => Effect.void,
     setInteractionMode: () => Effect.void,
-    interruptThread: () => Effect.succeed(true),
+    interruptThread: ({ threadId }) =>
+      Effect.sync(() => {
+        input.interrupted?.push(threadId);
+        return true;
+      }),
     settleThread: () => Effect.succeed(true),
     writeEvents: (write) => Effect.succeed(write.events.length),
     threadMessages: () => Effect.succeed([]),
-    threadRuns: () => Effect.succeed([]),
+    threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),
     runtimeRequestStatus: () => Effect.succeed(null),
     turnItem: () => Effect.succeed(null),
     activeProviderThread: () => Effect.succeed(null),

@@ -12,6 +12,7 @@ import * as Layer from "effect/Layer";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   agreeJob,
+  enforceCaps,
   noticePlan,
   refineJob,
   releaseWaiting,
@@ -29,6 +30,8 @@ const launched: BatonThreadLaunch[] = [];
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
 const shells: OrchestrationV2ThreadShell[] = [];
 const messages: Array<{ role: "user" | "assistant"; text: string }> = [];
+const interrupted: ThreadId[] = [];
+const runs = new Map<string, ReadonlyArray<{ status: string }>>();
 const BRIEF = [
   "Job brief",
   "The job: x",
@@ -66,6 +69,8 @@ const layer = it.layer(
       sent,
       shells,
       messages,
+      runs,
+      interrupted,
     }),
   ).pipe(Layer.provideMerge(workSessionLayer), Layer.provideMerge(SqlitePersistenceMemory)),
 );
@@ -324,5 +329,47 @@ layer("BatonJobFlow", (it) => {
         assert.include(text, "- Report: not started.");
         assert.include(text, "2 of 3 failed or did not start");
       }),
+  );
+
+  it.effect("stops an agreed job whose worker has used its turns, once, and says why", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BatonJobService;
+      const id = WorkSessionId.make("job-cap-1");
+      const { threadId } = yield* startJob({
+        id,
+        projectId: ProjectId.make("project-site"),
+        title: "Capped",
+        goal: "Do the thing",
+        permissions: { folders: [], projects: [], tools: ["read"] },
+        limits: { workerTurns: 2, wallClockMinutes: 600 },
+        modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+        runtimeMode: "approval-required",
+      });
+      shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+      yield* jobs.planReady(id);
+      yield* agreeJob(id);
+      const entry = (state: string) =>
+        [
+          {
+            workSessionId: id,
+            title: "Capped",
+            lifecycle: "active",
+            state,
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [{ threadId }],
+            synopsis: null,
+          },
+        ] as never;
+      interrupted.length = 0;
+      runs.set(threadId, [{ status: "completed" }, { status: "queued" }]);
+      assert.deepStrictEqual(yield* enforceCaps(entry("working")), []);
+      runs.set(threadId, [{ status: "completed" }, { status: "running" }, { status: "cancelled" }]);
+      assert.deepStrictEqual(yield* enforceCaps(entry("working")), [id]);
+      assert.deepStrictEqual(interrupted, [threadId]);
+      // Once stopped it is not working, so a second sweep leaves it alone.
+      assert.deepStrictEqual(yield* enforceCaps(entry("idle")), []);
+      const terms = yield* jobs.terms(id);
+      assert.isTrue(terms?.revisions.some((r) => r.text.includes("reached its turns limit")));
+    }),
   );
 });
