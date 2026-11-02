@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MARK_SMALL_PATH, TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
+import { MARK_MASTER_PATH, MARK_REVERSED_PATH, TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { brandMarkSvg, markSvg, withTrayState } from "./trayMark.ts";
 
 const px = (buf: Buffer, size: number, x: number, y: number) => [
@@ -17,9 +17,10 @@ describe("the tray mark's art", () => {
       }
     }
   });
-  it("draws the sidebar mark from the hinted cut in the page's ink", () => {
-    expect(MARK_SMALL_PATH).toMatch(/^M[\d.]+[ ,][\d.]+L/);
-    expect(brandMarkSvg()).toContain(MARK_SMALL_PATH);
+  it("draws the window's mark from the master and its reversed cut, in the page's ink", () => {
+    expect(MARK_MASTER_PATH).toMatch(/^M[\d.]+[ ,][\d.]+L/);
+    expect(brandMarkSvg()).toContain(MARK_MASTER_PATH);
+    expect(brandMarkSvg()).toContain(MARK_REVERSED_PATH);
     expect(brandMarkSvg()).toContain("currentColor");
   });
 });

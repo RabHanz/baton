@@ -7,6 +7,7 @@
  * display, kept out of screenshots by content protection (Windows, macOS) or hidden for the
  * capture (Linux). Windows go after two idle minutes, so this layer never stops the app quitting.
  */
+import { protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -173,7 +174,7 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
     });
     // Made on the primary's scale; set again so a 125 % display's window is the display's size.
     win.setBounds(display.bounds);
-    win.setContentProtection(true);
+    protectFromCapture(win);
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     const bottom = display.bounds.y + display.bounds.height;
     const inset = bottom - (display.workArea.y + display.workArea.height) + CARD_ABOVE_WORK_AREA;
