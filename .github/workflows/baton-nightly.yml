@@ -1,0 +1,138 @@
+name: Baton nightly
+
+# The self-check: every night, and on demand, the proofs that say whether Tessaya still works, on the latest release and on
+# main. One status file (nightly.json) is kept as an artifact and committed to the baton/status branch (never main). The Now
+# page reads it. It opens no issue and sends no notification: a failing check is a red job and a line in the file.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: baton-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName // ""')" >> "$GITHUB_OUTPUT"
+
+  # Memory retrieval evals, the employee spine and the intent harness: unit-level, so they run on the Linux runner.
+  checks:
+    name: checks on ${{ matrix.ref }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: [main, release]
+    steps:
+      # No release yet means no release run: its checks stay "skipped" in the file.
+      - id: gate
+        run: echo "go=${{ matrix.ref == 'main' || needs.plan.outputs.tag != '' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.go == 'true'
+        with:
+          ref: ${{ matrix.ref == 'release' && needs.plan.outputs.tag || 'main' }}
+          fetch-depth: 1
+      # An old release may predate the setup action; use main's.
+      - name: Use main's setup action
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          git fetch --depth 1 origin main
+          git checkout FETCH_HEAD -- .github/actions/setup-ci-deps
+      - uses: ./.github/actions/setup-ci-deps
+        if: steps.gate.outputs.go == 'true'
+      - name: Run the checks
+        if: steps.gate.outputs.go == 'true'
+        run: |
+          mkdir -p out
+          run_one() { # <name> <test file under apps/server>
+            local name="$1" file="$2"
+            if [ ! -f "apps/server/${file%% *}" ]; then echo "skipped: $file is not in this build"; printf '%s\t%s\n' "$name" skipped >> out/lines; return; fi
+            if (cd apps/server && vp test run "$file"); then printf '%s\t%s\n' "$name" success >> out/lines; else printf '%s\t%s\n' "$name" failure >> out/lines; fi
+          }
+          run_one "memory evals" src/baton/BatonMemoryEval.test.ts
+          run_one "employee spine" src/baton/BatonEmployeeSpine.test.ts
+          run_one "intent harness" "src/baton/IntentInterpreter.test.ts src/baton/IntentService.test.ts"
+          node -e 'const l=require("fs").readFileSync("out/lines","utf8").trim().split("\n").map(x=>x.split("\t"));require("fs").writeFileSync("out/result.json",JSON.stringify(Object.fromEntries(l)))'
+          cat out/result.json
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.go == 'true'
+        with:
+          name: checks-${{ matrix.ref }}
+          path: out/result.json
+
+  voice-main:
+    uses: ./.github/workflows/baton-voice-proof.yml
+    with:
+      tag: ""
+      stranger: true
+      require_wake: true
+
+  voice-release:
+    needs: plan
+    if: needs.plan.outputs.tag != ''
+    uses: ./.github/workflows/baton-voice-proof.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+      stranger: true
+      require_wake: true
+
+  hands:
+    uses: ./.github/workflows/baton-hands-loop.yml
+
+  report:
+    needs: [plan, checks, voice-main, voice-release, hands]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+        continue-on-error: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build nightly.json
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          RESULTS_DIR: results
+          MAIN_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: mkdir -p results && node scripts/baton/nightly-status.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-status
+          path: nightly.json
+      # The status branch holds only this file's history; it is never merged anywhere.
+      - name: Commit to the status branch
+        run: |
+          cp nightly.json "$RUNNER_TEMP/nightly.json"
+          git config user.name "tessaya-nightly"
+          git config user.email "tessaya-nightly@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin baton/status >/dev/null 2>&1; then
+            git fetch --depth 1 origin baton/status && git checkout -B baton/status FETCH_HEAD
+          else
+            git checkout --orphan baton/status && git rm -rf . >/dev/null
+          fi
+          cp "$RUNNER_TEMP/nightly.json" nightly.json
+          git add nightly.json
+          git commit -m "nightly $(date -u +%F)" || exit 0
+          git push origin baton/status
