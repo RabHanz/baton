@@ -58,6 +58,8 @@ const fromAsk = (r: AskRow): PhoneAsk => ({
   error: r.error,
 });
 
+/** A question can carry this many answers; the cloud card needs one per assistant-and-account, then Deny and Decide later. */
+export const MAX_BUTTONS = 8;
 const ButtonsJson = Schema.fromJsonString(Schema.Array(Schema.String));
 const encodeButtons = Schema.encodeSync(ButtonsJson);
 const decodeButtons = Schema.decodeSync(ButtonsJson);
@@ -201,7 +203,7 @@ export const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     yield* sql`
       INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, status, answer, created_at, expires_at)
-      VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, 4))},
+      VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, MAX_BUTTONS))},
               ${prompt.yes}, ${prompt.cancel}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS})
     `.pipe(Effect.orDie);
   });
@@ -308,8 +310,9 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
       const detail = str(a["detail"], 4000);
       const buttons = Array.isArray(a["buttons"])
         ? a["buttons"]
-            .filter((b): b is string => typeof b === "string" && b.length <= 60)
-            .slice(0, 4)
+            .filter((b): b is string => typeof b === "string")
+            .map((b) => b.slice(0, 60))
+            .slice(0, MAX_BUTTONS)
         : [];
       const yes = Number(a["yes"]);
       const cancel = Number(a["cancel"]);

@@ -3,6 +3,9 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
+import { serveCloudCall } from "@t3tools/baton-shared/cloud/hub";
+import { fileStores } from "@t3tools/baton-shared/cloud/nodeExec";
 import type { Exec, ExecResult } from "@t3tools/baton-shared/cloud/types";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -11,7 +14,7 @@ import { createCloud, DEFAULT_CLOUD, NOT_SET_UP, type CloudSettings } from "./cl
 
 type Call = { file: string; args: ReadonlyArray<string>; env?: Readonly<Record<string, string>> };
 
-const rig = (over: Partial<CloudSettings> = {}, pressed = 0) => {
+const rig = (over: Partial<CloudSettings> = {}, pressed: number | ReadonlyArray<number> = 0) => {
   const calls: Call[] = [];
   const asked: string[] = [];
   const exec: Exec = async (file, args, o) => {
@@ -26,7 +29,7 @@ const rig = (over: Partial<CloudSettings> = {}, pressed = 0) => {
     exec,
     dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
     hub: null,
-    ask: async (q) => (asked.push(q.detail), pressed),
+    ask: async (q) => (asked.push(`${q.title} | ${q.buttons.join(" / ")}`), typeof pressed === "number" ? pressed : (pressed[asked.length - 1] ?? q.cancel)),
     changed: () => undefined,
     now: () => 1_000,
   });
@@ -87,7 +90,7 @@ describe("cloud tasks in the desktop", () => {
     await no.cloud.tool.dispatch(task);
     expect(await no.cloud.tool.approve("L-1", "me@example.org")).toBe("Left as it was. Nothing was approved.");
     expect(no.calls.some((c) => c.args[0] === "--cloud")).toBe(false);
-    expect(no.asked[0]).toContain("Approve this cloud task on Claude, account me@example.org");
+    expect(no.asked[0]).toContain("Approve a cloud task?");
     const yes = rig({}, 0);
     await yes.cloud.tool.dispatch(task);
     expect(await yes.cloud.tool.approve("L-1", "someone@else.org")).toContain("I cannot approve on someone@else.org");
@@ -118,7 +121,7 @@ describe("cloud tasks in the desktop", () => {
     for (const jargon of ["SSH", "forced command", "tailnet", "Tailscale", "key file"]) expect(visible.includes(jargon)).toBe(false);
     expect(ids(rows)).not.toContain("cl.set.sshHost");
     expect(ids(cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "ssh" }))).toContain("cl.set.sshHost");
-    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual(["cl.set.on", "cl.off"]);
+    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual(["cl.set.on", "setup.cloud.github", "setup.cloud.always", "cl.off"]);
   });
 
   it("shows an assistant that reports no usage as unknown, never zero", async () => {
@@ -130,5 +133,116 @@ describe("cloud tasks in the desktop", () => {
     const account = rows.find((r) => r.id.startsWith("cl.a.claude:L-1:"));
     expect(account).toMatchObject({ hint: "usage unknown" });
     expect(await cloud.tool.usage()).toContain("usage unknown");
+  });
+
+  it("with the pop-up on, asks one question with a button per open choice, then asks to confirm, then runs once", async () => {
+    const { cloud, calls, asked } = rig({ askPopup: true }, [0, 0]);
+    await cloud.tool.dispatch(task);
+    await cloud.settled();
+    expect(asked[0]).toContain("Cloud task waiting: Fix the flaky test");
+    expect(asked[0]).toContain("Claude - me@example.org (usage unknown) / Codex - This computer's Codex login (usage unknown) / Deny / Decide later");
+    expect(asked[1]).toContain("Approve on me@example.org?");
+    expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
+    await cloud.refresh();
+    await cloud.settled();
+    expect(asked).toHaveLength(2);
+  });
+
+  it("with the pop-up on, Deny and Decide later run nothing, and Back asks again", async () => {
+    const deny = rig({ askPopup: true }, [2]);
+    await deny.cloud.tool.dispatch(task);
+    await deny.cloud.settled();
+    expect(deny.cloud.view().requests[0]!.state).toBe("denied");
+    const later = rig({ askPopup: true }, [3]);
+    await later.cloud.tool.dispatch(task);
+    await later.cloud.settled();
+    expect(later.cloud.view().requests[0]!.state).toBe("awaiting-director");
+    const back = rig({ askPopup: true }, [0, 1, 3]);
+    await back.cloud.tool.dispatch(task);
+    await back.cloud.settled();
+    expect(back.asked).toHaveLength(3);
+    expect(back.calls.some((c) => c.args[0] === "--cloud")).toBe(false);
+  });
+
+  it("does not pop anything up while the setting is off", async () => {
+    const { cloud, asked } = rig({}, 0);
+    await cloud.tool.dispatch(task);
+    await cloud.settled();
+    expect(asked).toHaveLength(0);
+  });
+
+  it("through a hub: the other computer holds the logins and starts the work; this one only asks and shows the card", async () => {
+    const hubCalls: string[] = [];
+    const hubExec: Exec = async (_file, args) => {
+      hubCalls.push(args.join(" "));
+      return { code: 0, stderr: "", stdout: args[0] === "auth" ? '{"loggedIn":true,"email":"hub@example.org"}' : args[0] === "--cloud" ? "https://claude.ai/code/hub_1" : "" };
+    };
+    const providers = buildLocalProviders(hubExec, fileStores(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hub-"))), {});
+    const localExec: Exec = async () => {
+      throw new Error("the local computer must not run the harness");
+    };
+    const cloud = createCloud({
+      settings: () => ({ ...DEFAULT_CLOUD, on: true, transport: "hub", hubEnv: "env-2" }),
+      exec: localExec,
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+      hub: (op, provider, args) => serveCloudCall(providers, { op, provider, args }),
+      environments: async () => [{ id: "env-2", label: "Workshop" }],
+      ask: async (q) => q.cancel,
+      changed: () => undefined,
+      now: () => 1,
+    });
+    await cloud.tool.dispatch(task);
+    expect(cloud.view().environments).toEqual([{ id: "env-2", label: "Workshop" }]);
+    const picker = cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "hub", hubEnv: "env-2" }).find((r) => r.id === "cl.set.hubEnv");
+    expect(picker).toMatchObject({ kind: "choice", value: "env-2" });
+    expect(picker?.kind === "choice" && picker.options.map((o) => o.label)).toEqual(["The one this window is on", "Workshop"]);
+    await cloud.click("cl.p.claude:L-1:claude");
+    await cloud.click("cl.a.claude:L-1:hub@example.org");
+    expect(hubCalls.some((c) => c.startsWith("--cloud"))).toBe(false);
+    await cloud.click("cl.ok.claude:L-1");
+    expect(hubCalls.filter((c) => c.startsWith("--cloud"))).toHaveLength(1);
+    expect(cloud.view().requests[0]).toMatchObject({ state: "running", account: "hub@example.org" });
+  });
+
+  it("says plainly when there is no connection to the hub", async () => {
+    const cloud = createCloud({
+      settings: () => ({ ...DEFAULT_CLOUD, on: true, transport: "hub" }),
+      exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+      hub: null,
+      ask: async (q) => q.cancel,
+      changed: () => undefined,
+      now: () => 1,
+    });
+    await cloud.refresh();
+    expect(cloud.view().error).toBe("There is no connection to a computer that runs cloud tasks.");
+    expect(await cloud.tool.dispatch(task)).toContain("No cloud provider is ready");
+  });
+
+  it("tests the connection: each account with its use and login, starts nothing, and says why when nothing answers", async () => {
+    const { cloud, calls } = rig();
+    await cloud.test();
+    const lines = cloud.view().tested!;
+    expect(lines.map((l) => l.line)).toEqual([
+      "The connection works.",
+      "Claude me@example.org: usage unknown",
+      "Codex This computer's Codex login: usage unknown",
+    ]);
+    expect(lines[0]).toEqual({ ok: true, line: "The connection works." });
+    expect(calls.some((c) => c.args[0] === "--cloud" || c.args[1] === "exec")).toBe(false);
+    const rows = cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true });
+    expect(ids(rows)).toContain("cl.test");
+    expect(ids(rows).filter((i) => i.startsWith("cl.testrow."))).toHaveLength(lines.length);
+    const down = createCloud({
+      settings: () => ({ ...DEFAULT_CLOUD, on: true, transport: "hub" }),
+      exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+      hub: null,
+      ask: async (q) => q.cancel,
+      changed: () => undefined,
+      now: () => 1,
+    });
+    await down.test();
+    expect(down.view().tested).toEqual([{ ok: false, line: "Nothing answered. There is no connection to a computer that runs cloud tasks." }]);
   });
 });

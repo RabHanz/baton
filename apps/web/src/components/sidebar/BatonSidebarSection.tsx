@@ -11,6 +11,7 @@ import {
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
   type BatonPhoneBridgeRequest,
+  type BatonCloudBridgeRequest,
   type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
@@ -84,6 +85,8 @@ export function BatonSidebarSection(props: {
   const weaveTick = useAtomCommand(batonWorkSessions.weaveTick, quiet);
   const handoffJob = useAtomCommand(batonWorkSessions.handoff, quiet);
   const phoneCall = useAtomCommand(batonWorkSessions.phoneCall, quiet);
+  const cloudRead = useAtomCommand(batonWorkSessions.cloudRead, quiet);
+  const cloudAct = useAtomCommand(batonWorkSessions.cloudAct, quiet);
   const commitmentsList = useAtomCommand(batonWorkSessions.commitmentsList, quiet);
   const commitmentsUpsert = useAtomCommand(batonWorkSessions.commitmentsUpsert, quiet);
   const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
@@ -369,6 +372,16 @@ export function BatonSidebarSection(props: {
       typeof reason === "string" ? reason : "Weaving did not answer. Nothing was sent.",
     );
   };
+  const onCloud = async (request: BatonCloudBridgeRequest): Promise<unknown> => {
+    if (request.op === "environments") {
+      return fleet.environmentIds.map((id) => ({ id, label: fleet.resolveEnvironmentLabel(id) ?? id }));
+    }
+    // Only an environment this window is actually connected to can be asked.
+    const target = fleet.environmentIds.find((id) => id === request.environmentId) ?? primary;
+    const result = await (request.op === "read" ? cloudRead : cloudAct)({ environmentId: target, input: request.args as never });
+    if (result._tag === "Success") return result.value;
+    return { ok: false, error: "The computer that runs cloud tasks did not answer." };
+  };
   const onPhone = async (request: BatonPhoneBridgeRequest): Promise<unknown> => {
     const result = await phoneCall({
       environmentId: primary,
@@ -441,6 +454,7 @@ export function BatonSidebarSection(props: {
         onCommitments={onCommitments}
         onWeave={onWeave}
         onPhone={onPhone}
+        onCloud={onCloud}
       />
       <BatonProjectsBlock
         environmentIds={fleet.environmentIds}

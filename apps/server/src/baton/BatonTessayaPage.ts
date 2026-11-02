@@ -49,6 +49,7 @@ nav button[aria-selected=true]{background:var(--accent);color:var(--on);border-c
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px}
 .card h2{font-size:16px;margin:0 0 2px}
 .soft{color:var(--soft);font-size:14px;margin:2px 0}
+.col{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 button.act{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);font:inherit}
 button.act.primary{background:var(--accent);color:var(--on)}
@@ -114,7 +115,13 @@ export const SCRIPT = `"use strict";
       if (!state.approvals.length) view.appendChild(el("p", "soft", "Nothing is waiting for your yes."));
       state.approvals.forEach(function (a) {
         var c = el("div", "card"); c.appendChild(el("h2", "", a.title)); c.appendChild(el("p", "", a.action)); c.appendChild(el("p", "soft", "Would use: " + a.permission));
-        if (a.answerable) {
+        if (a.answerable && a.buttons) {
+          var cr = el("div", "col");
+          a.buttons.forEach(function (label, i) {
+            cr.appendChild(act(label, i === a.buttons.length - 1 ? "" : "primary", function () { return api("POST", "approvals/" + encodeURIComponent(a.id), { choice: i, action: a.action }); }));
+          });
+          c.appendChild(cr);
+        } else if (a.answerable) {
           var r = el("div", "row");
           r.appendChild(act("Approve", "primary", function () { return api("POST", "approvals/" + encodeURIComponent(a.id), { decision: "approve", action: a.action }); }));
           r.appendChild(act("Deny", "", function () { return api("POST", "approvals/" + encodeURIComponent(a.id), { decision: "deny", action: a.action }); }));

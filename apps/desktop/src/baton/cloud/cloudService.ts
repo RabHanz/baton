@@ -4,8 +4,8 @@
  * the approval card's clicks. The rules are in `@t3tools/baton-shared/cloud`; this holds state and I/O.
  */
 import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
-import { CARD_START, fromSpoken, reduceCard, type CardEvent, type CardState } from "@t3tools/baton-shared/cloud/card";
-import { claudeSsh } from "@t3tools/baton-shared/cloud/claudeSsh";
+import { CARD_START, fromSpoken, offerQuestion, reduceCard, type CardEvent, type CardState } from "@t3tools/baton-shared/cloud/card";
+import { sshProviders } from "@t3tools/baton-shared/cloud/sshShell";
 import { hubProvider, type CloudOp, type Described } from "@t3tools/baton-shared/cloud/hub";
 import { providerChoices, type ProviderChoice } from "@t3tools/baton-shared/cloud/registry";
 import { STUBS } from "@t3tools/baton-shared/cloud/stubs";
@@ -21,6 +21,7 @@ import {
   type Usage,
 } from "@t3tools/baton-shared/cloud/types";
 import { fileStores } from "@t3tools/baton-shared/cloud/nodeExec";
+import { text } from "../home/strings.ts";
 
 export interface CloudSettings {
   readonly on: boolean;
@@ -32,8 +33,15 @@ export interface CloudSettings {
   /** Key file paths, never keys. */
   readonly machineKey: string;
   readonly approverKey: string;
+  /** Names of vault items holding the keys instead of files; the vault wins when both are set. */
+  readonly machineKeyVault: string;
+  readonly approverKeyVault: string;
+  /** Which connected computer runs cloud tasks (transport 2); empty is the one this window is on. */
+  readonly hubEnv: string;
   /** A run that uses more than this many points of its own provider's weekly figure is flagged. */
   readonly capPoints: number;
+  /** Also ask with a pop-up (mirrored to a paired phone) for each waiting task. */
+  readonly askPopup: boolean;
 }
 
 export const DEFAULT_CLOUD: CloudSettings = {
@@ -44,7 +52,11 @@ export const DEFAULT_CLOUD: CloudSettings = {
   sshUser: "",
   machineKey: "",
   approverKey: "",
+  machineKeyVault: "",
+  approverKeyVault: "",
+  hubEnv: "",
   capPoints: 2,
+  askPopup: false,
 };
 
 export type HubCall = (op: CloudOp, provider: ProviderId | "", args: Readonly<Record<string, unknown>>) => Promise<Outcome<unknown>>;
@@ -56,10 +68,14 @@ export interface CloudDeps {
   readonly dir: string;
   /** The connection to the computer that runs cloud tasks (transport 2); null when there is none. */
   readonly hub: HubCall | null;
+  /** The computers this window is connected to, for the picker. */
+  readonly environments?: () => Promise<ReadonlyArray<{ readonly id: string; readonly label: string }>>;
   /** The Director's yes, on a dialog the assistant cannot click: the index of the button he pressed. */
-  readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number }) => Promise<number>;
+  readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number; everywhere?: boolean }) => Promise<number>;
   readonly changed: () => void;
   readonly now: () => number;
+  /** A key from the vault for one call (Hello-gated), or null when no vault key is named. */
+  readonly vaultKey?: (name: string, why: string) => Promise<{ readonly ok: true; readonly path: string; readonly done: () => void } | { readonly ok: false; readonly error: string }>;
 }
 
 export const NOT_SET_UP = "Cloud tasks are not set up on this computer. Turn them on under Cloud.";
@@ -75,6 +91,9 @@ export interface CloudView {
   readonly error: string | null;
   readonly loadedAt: number | null;
   readonly cards: ReadonlyMap<string, CardState>;
+  readonly environments: ReadonlyArray<{ readonly id: string; readonly label: string }>;
+  /** The last connection test, in lines for a person; null before one is run. */
+  readonly tested: ReadonlyArray<{ readonly ok: boolean; readonly line: string }> | null;
 }
 
 export const requestKey = (r: Pick<CloudRequest, "provider" | "id">): string => `${r.provider}:${r.id}`;
@@ -87,17 +106,37 @@ export const createCloud = (deps: CloudDeps) => {
   let loadedAt: number | null = null;
   const cards = new Map<string, CardState>();
   let hubProviders: ReadonlyArray<CloudProvider> = [];
+  let environments: ReadonlyArray<{ readonly id: string; readonly label: string }> = [];
+  let tested: ReadonlyArray<{ readonly ok: boolean; readonly line: string }> | null = null;
 
   // Built once per set of settings, because a harness remembers who is signed in between calls.
   let built: { readonly sig: string; readonly list: ReadonlyArray<CloudProvider> } | null = null;
   const providers = (): ReadonlyArray<CloudProvider> => {
     const s = deps.settings();
     if (s.transport === "hub") return hubProviders;
-    const sig = JSON.stringify([s.transport, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey]);
+    const sig = JSON.stringify([s.transport, s.hubEnv, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey, s.machineKeyVault, s.approverKeyVault]);
     if (built?.sig === sig) return built.list;
     const list =
       s.transport === "ssh"
-        ? [claudeSsh({ host: s.sshHost, user: s.sshUser, machineKey: s.machineKey, approverKey: s.approverKey }, deps.exec), ...STUBS]
+        ? sshProviders(
+            {
+              host: s.sshHost,
+              user: s.sshUser,
+              machineKey: s.machineKey,
+              approverKey: s.approverKey,
+              ...(deps.vaultKey === undefined || (s.machineKeyVault === "" && s.approverKeyVault === "")
+                ? {}
+                : {
+                    keyFor: async (role: "machine" | "approver") => {
+                      const name = role === "machine" ? s.machineKeyVault : s.approverKeyVault;
+                      if (name === "") return null;
+                      const used = await deps.vaultKey!(name, role === "approver" ? "Approve a cloud task" : "Send a cloud task");
+                      return used.ok ? { path: used.path, done: used.done } : { error: used.error };
+                    },
+                  }),
+            },
+            deps.exec,
+          )
         : [...buildLocalProviders(deps.exec, fileStores(deps.dir), { codexEnv: s.codexEnv }).values(), ...STUBS];
     built = { sig, list };
     return list;
@@ -111,7 +150,7 @@ export const createCloud = (deps: CloudDeps) => {
   const view = (): CloudView => {
     const s = deps.settings();
     const list = providers();
-    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards };
+    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards, environments, tested };
   };
 
   const refresh = async (): Promise<void> => {
@@ -119,6 +158,7 @@ export const createCloud = (deps: CloudDeps) => {
     if (!s.on) return;
     error = null;
     if (s.transport === "hub") {
+      environments = (await deps.environments?.().catch(() => [])) ?? [];
       if (deps.hub === null) {
         error = "There is no connection to a computer that runs cloud tasks.";
         hubProviders = [];
@@ -137,25 +177,29 @@ export const createCloud = (deps: CloudDeps) => {
     const found: Partial<Record<ProviderId, Detection>> = {};
     const reqs: CloudRequest[] = [];
     const uses: Usage[] = [];
-    // Providers that keep their requests in Tessaya's own list share that one list: ask it once.
+    // Every assistant of one transport shares one list of requests: ask for it once.
     let askedShared = false;
     for (const p of list) {
       found[p.id] = await p.detect();
       if (p.setup().state !== "ready" || found[p.id]?.signedIn !== true) continue;
-      if (p.approval === "local") {
-        if (askedShared) continue;
-        askedShared = true;
+      // One transport, one list of requests, whichever assistant is asked.
+      if (askedShared) {
+        const u = await p.usage();
+        if (u.ok) uses.push(...u.value.filter((x) => !uses.some((y) => y.provider === x.provider && y.account === x.account)));
+        continue;
       }
+      askedShared = true;
       const l = await p.list({});
       if (l.ok) reqs.push(...l.value.filter((r) => !reqs.some((x) => x.id === r.id && x.provider === r.provider)));
       else error = error ?? l.error;
       const u = await p.usage();
-      if (u.ok) uses.push(...u.value);
+      if (u.ok) uses.push(...u.value.filter((x) => !uses.some((y) => y.provider === x.provider && y.account === x.account)));
     }
     detections = found;
     requests = reqs;
     usage = uses;
     loadedAt = deps.now();
+    offerNew();
     // A card whose request is gone or answered forgets its state.
     for (const k of cards.keys()) if (!reqs.some((r) => requestKey(r) === k && r.state === "awaiting-director")) cards.delete(k);
     deps.changed();
@@ -183,11 +227,93 @@ export const createCloud = (deps: CloudDeps) => {
     return done.ok ? { ok: true, value: null } : { ok: false, error: done.error };
   };
 
+  /** The ones already put to him as a question, so each is asked once. */
+  const offered = new Set<string>();
+  /**
+   * One question with a button for each open assistant and account; choosing one asks to confirm; only
+   * then does anything start. The question is also mirrored to a paired phone, which never holds a key.
+   */
+  const offer = async (r: CloudRequest): Promise<void> => {
+    const key = requestKey(r);
+    for (let round = 0; round < 5; round += 1) {
+      const q = offerQuestion(view().choices, {
+        pick: (label, account, usage) => text("cloud.offer.pick", { label, account, usage }),
+        deny: text("cloud.offer.deny"),
+        later: text("cloud.offer.later"),
+      });
+      if (q.picks.length === 2) return;
+      const pressed = await deps.ask({
+        title: text("cloud.offer.title", { task: r.task ?? r.id }),
+        detail: describeRequest(r) + (r.fromWeb ? `\n\n${text("cloud.fromweb")}` : ""),
+        buttons: q.buttons,
+        cancel: q.cancel,
+        armMs: 1_500,
+        everywhere: true,
+      });
+      const pick = q.picks[pressed] ?? { kind: "later" as const };
+      if (pick.kind === "later") return;
+      if (pick.kind === "deny") {
+        const p = find(r.provider);
+        if ((await p?.deny(r.id, "denied by the Director"))?.ok === true) cardEvent(key, { type: "deny" });
+        await refresh();
+        return;
+      }
+      cardEvent(key, { type: "provider", provider: pick.provider });
+      cardEvent(key, { type: "account", account: pick.account });
+      const yes = await deps.ask({
+        title: text("cloud.offer.confirmTitle", { account: pick.account }),
+        detail: describeRequest(r),
+        buttons: [text("cloud.offer.approve"), text("cloud.offer.back")],
+        cancel: 1,
+        armMs: 1_500,
+        everywhere: true,
+      });
+      if (yes === 0) {
+        await runApprove(key);
+        return;
+      }
+      cards.delete(key);
+    }
+  };
+  const inflight: Promise<void>[] = [];
+  const offerNew = (): void => {
+    if (!deps.settings().askPopup) return;
+    for (const r of requests) {
+      const key = requestKey(r);
+      if (r.state !== "awaiting-director" || offered.has(key)) continue;
+      offered.add(key);
+      inflight.push(offer(r).catch(() => undefined));
+    }
+  };
+
+  /** Asks every assistant for its accounts and use. Starts nothing. */
+  const test = async (): Promise<void> => {
+    tested = null;
+    deps.changed();
+    await refresh();
+    const lines: Array<{ ok: boolean; line: string }> = [];
+    if (error !== null) lines.push({ ok: false, line: text("cloud.test.none", { why: error }) });
+    for (const p of providers()) {
+      if (detections[p.id]?.signedIn !== true) continue;
+      for (const u of usage.filter((x) => x.provider === p.id)) {
+        const usageText = u.rejected ? "rejected" : u.weeklyPercent === null ? "usage unknown" : `${u.weeklyPercent}% used${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`;
+        lines.push({ ok: !u.rejected && u.login !== "expired" && u.login !== "not-logged-in", line: text("cloud.test.account", { provider: p.label, account: u.account, usage: usageText, login: u.login === undefined ? "" : text("cloud.test.login", { login: u.login }) }) });
+      }
+    }
+    if (lines.length === 0) lines.push({ ok: false, line: text("cloud.test.none", { why: Object.values(detections).map((d) => d?.line).filter(Boolean).join(" ") }) });
+    else if (lines.every((l) => l.ok)) lines.unshift({ ok: true, line: text("cloud.test.ok") });
+    tested = lines;
+    deps.changed();
+  };
+
   const guard = (): string | null => (deps.settings().on ? null : NOT_SET_UP);
 
   return {
     view,
     refresh,
+    test,
+    /** Resolves when every question put to him has been answered or left. */
+    settled: async (): Promise<void> => void (await Promise.all(inflight.splice(0))),
     /** A click on the card: ids are `cl.p|a|ok|deny:<provider>:<id>[:<provider or account>]`. */
     click: async (cardId: string): Promise<void> => {
       const m = /^cl\.(p|a|ok|deny)\.([a-z]+):([^:]+)(?::(.+))?$/.exec(cardId);
