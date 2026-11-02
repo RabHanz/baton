@@ -96,6 +96,15 @@ export const createAgentGate = (input: {
   };
 }): Gate => {
   let pageHost: string | null = null;
+  /** Sessions already messaged with his yes, per job: later weaves in the same job are routine. */
+  const weaveApproved = new Set<string>();
+  const weaveKey = (c: ToolCall): string | null => {
+    const job = c.input["job"];
+    const to = c.input["session"];
+    return typeof job === "string" && job !== "" && typeof to === "string"
+      ? `${job}|${to.toLowerCase()}`
+      : null;
+  };
   const socialAt: number[] = [];
   const HOUR = 3_600_000;
   return async (call) => {
@@ -124,6 +133,8 @@ export const createAgentGate = (input: {
           }
         : {}),
       actWithoutAsking: input.actWithoutAsking(),
+      weaveStanding:
+        name === "weave_send" && weaveKey(call) !== null && weaveApproved.has(weaveKey(call)!),
       tainted: input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope)),
       ...(focus === null ? {} : { focusedShell: focus.shell }),
       textIsHis:
@@ -133,6 +144,7 @@ export const createAgentGate = (input: {
           name === "job_split" ||
           name === "job_refine" ||
           name === "memory_remember" ||
+          name === "weave_send" ||
           chromeCall) &&
         input.textIsHis(text),
     });
@@ -141,6 +153,10 @@ export const createAgentGate = (input: {
     const after = () => {
       if (name === "click" || name === "click_element") input.taint.noteField(fieldOf(call.input));
       if (name === "press_keys" || name === "session_send") input.taint.clearTyping();
+      if (name === "weave_send") {
+        const key = weaveKey(call);
+        if (key !== null) weaveApproved.add(key);
+      }
     };
     const logSocial = (outcome: string) => {
       if (!social || callHost === null || input.chrome === undefined) return;

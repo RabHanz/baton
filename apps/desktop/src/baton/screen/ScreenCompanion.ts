@@ -268,6 +268,8 @@ export interface AssistantActions {
       | "commit_list"
       | "notices_stop"
       | "notices_resume"
+      | "weave_send"
+      | "weave_list"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
