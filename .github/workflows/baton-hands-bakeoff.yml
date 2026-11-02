@@ -1,0 +1,97 @@
+name: Baton hands bake-off
+
+# Issue #52, measured: the current hands against ported ideas on the same twelve tasks, three runs each, on a real
+# Windows desktop. The planner is scripted (a runner has no model login), so this measures the tool path and the
+# model turns a planner would spend; results are in docs/baton/research/computer-use-sota-2026-11-03.md.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["baton/hands-sota**"]
+    paths:
+      [
+        "scripts/baton/hands-ci/**",
+        "native/baton-dictation/src/**",
+        ".github/workflows/baton-hands-bakeoff.yml",
+      ]
+
+permissions:
+  contents: read
+
+jobs:
+  sidecar:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: native/baton-dictation/target
+          key: sidecar-${{ runner.os }}-${{ hashFiles('native/baton-dictation/Cargo.lock', 'native/baton-dictation/src/**') }}
+          restore-keys: sidecar-${{ runner.os }}-
+      - name: Build the UI Automation sidecar
+        shell: bash
+        env:
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sidecar
+          path: native/baton-dictation/target/release/baton-dictation.exe
+
+  run:
+    needs: sidecar
+    name: ${{ matrix.variant }} #${{ matrix.rep }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # base: the old per-property UI Automation reads and coordinate clicks. cache: one cached read per element.
+        # invoke: cache plus acting through the control's own pattern. batch: invoke plus several steps per turn.
+        variant: [base, cache, invoke, batch]
+        rep: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidecar
+          path: sidecar
+      - name: Run the task set
+        shell: bash
+        env:
+          SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
+          HANDS_OUT: ${{ github.workspace }}/hands-${{ matrix.variant }}-${{ matrix.rep }}
+          BATON_UIA_CACHE: ${{ matrix.variant == 'base' && '0' || '1' }}
+          HANDS_INVOKE: ${{ (matrix.variant == 'invoke' || matrix.variant == 'batch') && '1' || '0' }}
+          HANDS_BATCH: ${{ matrix.variant == 'batch' && '1' || '0' }}
+        run: |
+          mkdir -p "$HANDS_OUT"
+          node scripts/baton/hands-ci/run.ts 2>&1 | tee "$HANDS_OUT/run.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hands-${{ matrix.variant }}-${{ matrix.rep }}
+          path: hands-${{ matrix.variant }}-${{ matrix.rep }}
+
+  report:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hands-*
+          path: bakeoff
+      - name: Table
+        run: node scripts/baton/hands-ci/bakeoff-report.ts bakeoff | tee -a "$GITHUB_STEP_SUMMARY"

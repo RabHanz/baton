@@ -3,7 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { buildBatonTools, type ToolHost } from "./batonTools.ts";
 
-const host = (log: string[]): ToolHost => ({
+const host = (log: string[], windows: string[] = ["w1"]): ToolHost => ({
+  windowKey: async () => windows.shift() ?? "w1",
   capture: async () => ({ text: "shot" }),
   remember: async () => "kept",
   forget: async () => "gone",
@@ -54,5 +55,50 @@ describe("the assistant's tool table", () => {
     await tools.get("scroll")!.run({ amount: 99, why: "w" });
     await tools.get("click")!.run({ x: 3, y: 4, double: true, why: "w" });
     expect(log).toEqual(["wait_for Save 10", "scroll 10", "click 3,4 double"]);
+  });
+
+  describe("act_batch", () => {
+    const batch = (log: string[], windows?: string[]) =>
+      new Map(buildBatonTools(host(log, windows)).map((t) => [t.name, t])).get("act_batch")!;
+    const click = (label: string) => ({ tool: "click_element", args: { label, why: "w" } });
+
+    it("runs the steps in order and ends with the window's controls", async () => {
+      const log: string[] = [];
+      const out = await batch(log).run({
+        steps: [click("Help"), { tool: "type_text", args: { text: "hi", why: "w" } }],
+      });
+      expect(log).toEqual(["element Help", "type hi"]);
+      expect(out.text).toContain("Button: Save");
+    });
+
+    it("stops when the window with the keyboard changes, and says so", async () => {
+      const log: string[] = [];
+      // start, then the check before step 2 sees another window
+      const out = await batch(log, ["w1", "w2"]).run({ steps: [click("Save"), click("Ok")] });
+      expect(log).toEqual(["element Save"]);
+      expect(out.text).toContain("Stopped before step 2");
+    });
+
+    it("stops at the first failure and treats a wait_for timeout as one", async () => {
+      const log: string[] = [];
+      const tools = buildBatonTools({
+        ...host(log),
+        waitFor: async () => 'No control named "X" appeared in 3 seconds.',
+      });
+      const run = tools.find((t) => t.name === "act_batch")!.run;
+      const out = await run({
+        steps: [{ tool: "wait_for", args: { label: "X", seconds: 3 } }, click("Never")],
+      });
+      expect(out.text).toContain("FAILED");
+      expect(log).toEqual([]);
+    });
+
+    it("refuses a step that is not batchable and is absent without window tracking", async () => {
+      await expect(batch([]).run({ steps: [{ tool: "drag", args: {} }] })).rejects.toThrow(
+        "steps must be",
+      );
+      const { windowKey: _omit, ...bare } = host([]);
+      expect(buildBatonTools(bare).some((t) => t.name === "act_batch")).toBe(false);
+    });
   });
 });

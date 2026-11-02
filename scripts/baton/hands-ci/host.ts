@@ -136,6 +136,10 @@ public static class Diff { public static int Count(string a, string b) {
 export const clipboardText = () => clipboard.readText();
 export const setClipboardText = (text: string) => clipboard.writeText(text);
 
+/** What the bake-off counts: element clicks, those a pattern did with no pointer, coordinate clicks that landed on something else. */
+export const stats = { clicks: 0, invoked: 0, covered: 0, treeBytes: 0 };
+const INVOKE = process.env["HANDS_INVOKE"] === "1";
+
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
   readonly shot: (name: string) => Promise<string>;
@@ -147,7 +151,7 @@ export const makeHost = (outDir: string): Host => {
   NodeFS.mkdirSync(outDir, { recursive: true });
   let shots = 0;
   const here = { x: 512, y: 384 };
-  const located = async (label: string) => {
+  const located = async (label: string, invoke = false) => {
     const found = await side([
       "locate",
       "--label",
@@ -157,9 +161,16 @@ export const makeHost = (outDir: string): Host => {
       "--y",
       String(here.y),
       "--foreground",
+      ...(invoke ? ["--invoke"] : []),
     ]);
     return found["found"] === true
-      ? { x: Number(found["x"]), y: Number(found["y"]), name: String(found["name"] ?? label) }
+      ? {
+          x: Number(found["x"]),
+          y: Number(found["y"]),
+          name: String(found["name"] ?? label),
+          covered: found["covered"] === true,
+          invoked: typeof found["invoked"] === "string" ? found["invoked"] : null,
+        }
       : null;
   };
   const shot = async (name: string) => {
@@ -168,6 +179,7 @@ export const makeHost = (outDir: string): Host => {
     return file;
   };
   const host: ToolHost = {
+    windowKey: async () => String((await side(["foreground"]))["window"]),
     capture: async () => {
       const file = await shot("capture");
       return {
@@ -179,14 +191,22 @@ export const makeHost = (outDir: string): Host => {
       const tree = await side(["ui_tree"]);
       if (typeof tree["error"] === "string")
         throw new Error(`The window's controls can't be read: ${tree["error"]}`);
-      return `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
+      const text = `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
+      stats.treeBytes += text.length;
+      return text;
     },
     clickElement: async (label, double) => {
-      const found = await located(label);
+      const found = await located(label, INVOKE && !double);
       if (found === null)
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
+      stats.clicks += 1;
+      if (found.invoked !== null) {
+        stats.invoked += 1;
+        return `Pressed ${found.name} (${found.invoked}, no pointer).`;
+      }
+      if (found.covered) stats.covered += 1;
       await driver.clickAt(found, "left", double ? 2 : 1);
       return `Clicked ${found.name}.`;
     },
