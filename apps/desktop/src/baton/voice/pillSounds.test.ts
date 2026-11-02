@@ -14,6 +14,16 @@ describe("the cue sounds", () => {
     }
   });
 
+  it("the five guided cues are as loud as each other and under 400 ms", () => {
+    const names = ["start", "stepDone", "waiting", "error", "finished"] as const;
+    const db = names.map((name) => {
+      const w = renderSound(PILL_SOUNDS[name], 48_000);
+      return 10 * Math.log10(w.reduce((s, v) => s + v * v, 0) / w.length);
+    });
+    expect(Math.max(...db) - Math.min(...db)).toBeLessThan(1.5);
+    for (const name of names) expect(soundMs(name), name).toBeLessThan(400);
+  });
+
   it("say what happened by their shape: start rises, an error falls, finished resolves upward in three", () => {
     const hz = (name: PillSound) => PILL_SOUNDS[name].map((n) => n.hz);
     expect(hz("start")[1]!).toBeGreaterThan(hz("start")[0]!);

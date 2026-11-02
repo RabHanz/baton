@@ -41,9 +41,9 @@ export const PILL_SOUNDS: Record<PillSound, ReadonlyArray<PillNote>> = {
     { hz: 659.25, at: 0.07, len: 0.15, gain: 0.04 },
   ],
   // One step is done: a soft tick.
-  stepDone: [{ hz: 880, at: 0, len: 0.07, gain: 0.03 }],
+  stepDone: [{ hz: 880, at: 0, len: 0.07, gain: 0.049 }],
   // Waiting for him: one low soft note.
-  waiting: [{ hz: 392, at: 0, len: 0.16, gain: 0.03 }],
+  waiting: [{ hz: 392, at: 0, len: 0.16, gain: 0.04 }],
   // All done: three notes that resolve.
   finished: [
     { hz: 523.25, at: 0, len: 0.1, gain: 0.04 },
