@@ -411,8 +411,19 @@ export type PhoneMirror = (question: {
 }) => { readonly answer: Promise<number>; readonly close: () => void } | null;
 const PHONE_SETTLE_STEPS = 40;
 
+const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["catalog"]> => {
+  const NOT_READY = "The session list is not ready yet.";
+  return {
+    find: async (q) => (await get()?.find(q)) ?? NOT_READY,
+    resume: async (id) => (await get()?.resume(id)) ?? NOT_READY,
+    start: async (cwd, machine) => (await get()?.start(cwd, machine)) ?? NOT_READY,
+  };
+};
+
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
+  /** The sessions catalog, which starts after this does: asked for at each use. */
+  readonly catalog?: () => ToolHost["catalog"];
   /** Bring Tessaya's window forward, on a tab when it can (the vault asks to be unlocked there). */
   readonly onOpenTab?: (tab: string) => void;
   readonly platform: string;
@@ -1978,6 +1989,7 @@ export const startScreenCompanion = (input: {
       return "Pressed.";
     },
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
+    ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),
     session: async (id) => {
       const name = actions?.sessionName?.(id) ?? null;
       if (name === null || actions === null)

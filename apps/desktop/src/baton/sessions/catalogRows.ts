@@ -199,7 +199,45 @@ export const createCatalog = (input: {
     folders = await input.service.folders(environmentId).catch(() => []);
     input.onChange();
   };
+  const wordsOf = (row: CatalogRow): string =>
+    `${row.title} | ${row.project} on ${row.machine} | ${row.state}${row.canResume ? "" : " (cannot be resumed)"} | id ${row.sessionId}`;
+  /** The same moves as the window, for the assistant: find, bring back, start. Each answers in plain words. */
+  const tools = {
+    find: async (query: string): Promise<string> => {
+      const found = (await input.service.list(query).catch(() => null)) ?? rows;
+      const hits = found.filter((r) => query.trim() === "" || matches(r, query)).slice(0, 15);
+      return hits.length === 0 ? "No session matches that." : hits.map(wordsOf).join("\n");
+    },
+    resume: async (sessionId: string): Promise<string> => {
+      const row = rows.find((r) => r.sessionId === sessionId);
+      if (row === undefined) return "There is no session by that id. Use sessions_find.";
+      if (row.state === "running") return `${row.title} is already running.`;
+      if (!row.canResume) return row.detail ?? "That session cannot be resumed.";
+      set({ id: row.id, state: "resuming" });
+      try {
+        await input.service.resume(row);
+        set({ id: row.id, state: "running" });
+        input.service.open(row);
+        return `${row.title} is running again on ${row.machine}.`;
+      } catch {
+        set({ id: row.id, state: "failed" });
+        return `${row.title} could not be resumed on ${row.machine}.`;
+      }
+    },
+    start: async (cwd: string, machine: string): Promise<string> => {
+      const target = rows.find((r) => machine === "" || r.machine.toLowerCase() === machine.toLowerCase())?.environmentId;
+      if (target === undefined) return "I do not know that machine. Use sessions_find to see them.";
+      try {
+        await input.service.create({ environmentId: target, cwd });
+        await refresh();
+        return `A new session is starting in ${cwd}.`;
+      } catch {
+        return `A session could not be started in ${cwd}.`;
+      }
+    },
+  };
   return {
+    tools,
     refresh,
     controls: () => catalogControls({ rows, view, now: now(), folders, status, loaded }),
     /** An action from the window; true when it was the catalog's. */
