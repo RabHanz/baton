@@ -20,6 +20,7 @@ import {
   projectForDirectory,
   sentFromT3,
   sweepVictims,
+  unreadPrompt,
 } from "./LiveSessionMirror.ts";
 
 const project = (id: string, workspaceRoot: string, canonicalKey?: string) => ({
@@ -347,5 +348,13 @@ describe("media that only appears in text is not shown", () => {
     const second = liveMedia(reply(dir, { touched: [shot], shown })).text;
     expect(first).toMatch(/!\[shot\.png\]/);
     expect(second).toBe("Done.");
+  });
+
+  it("a waiting session with nothing readable still gets a question in its thread", () => {
+    const plain = unreadPrompt({ sessionId: "s1", herdrPane: null }, "");
+    expect(plain.options.map((o) => o.label)).toEqual(["Bring it into Herdr"]);
+    const pane = unreadPrompt({ sessionId: "s1", herdrPane: "p1" }, "Proceed? (y/n)");
+    expect(pane.question).toContain("Proceed? (y/n)");
+    expect(pane.options.map((o) => o.label)).toEqual(["I'll answer it in the terminal"]);
   });
 });
