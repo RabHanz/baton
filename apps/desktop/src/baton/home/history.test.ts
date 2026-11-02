@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { openState } from "./pageStates.ts";
