@@ -30,6 +30,7 @@ import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
 import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
 import * as BatonMemoryService from "./BatonMemoryService.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
+import * as BatonTessayaRoutes from "./BatonTessayaRoutes.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
 import * as IntentExecutor from "./IntentExecutorLive.ts";
@@ -108,3 +109,6 @@ export const workers = Layer.effectDiscard(
   // Every live Claude Code session as a T3 thread, for T3's official apps (D83).
   Layer.provideMerge(LiveSessionMirror.layer),
 );
+
+/** The phone page at /tessaya and its API. */
+export const routes = BatonTessayaRoutes.routes;

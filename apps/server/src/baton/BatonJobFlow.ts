@@ -353,6 +353,24 @@ export const stopJob = Effect.fn("BatonJobFlow.stop")(function* (id: WorkSession
   return yield* (yield* BatonEngine).interruptThread({ tag: "job", threadId });
 });
 
+/** His retry (from the phone or the window): the same message an automatic retry sends, if the job may be retried. */
+export const retryJob = Effect.fn("BatonJobFlow.retry")(function* (id: WorkSessionId) {
+  const jobs = yield* BatonJobService;
+  const fleet = yield* FleetQuery.getFleet({});
+  const card = (yield* jobs.view({ entries: fleet.entries })).find((c) => c.workSessionId === id);
+  if (card === undefined) return "There is no such job.";
+  const refusal = retryRefusal(card);
+  if (refusal !== null) return refusal;
+  const threadId = yield* threadOf(id);
+  if (threadId === null) return "That job has no worker to ask.";
+  const entry = fleet.entries.find((e) => e.workSessionId === id);
+  const text = retryText(card, "he asked for another try", entry?.synopsis?.currentAction ?? null);
+  const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+  yield* jobs.refine(id, { by: "him", at, via: "text", text });
+  yield* (yield* BatonEngine).sendMessage({ tag: "job", threadId, text });
+  return "Asked it to try again.";
+});
+
 /**
  * A job that has been agreed runs again on a schedule in its own thread, so each run reports where
  * the first one did. Schedules are T3's own scheduled tasks (D145); null takes the schedule off.

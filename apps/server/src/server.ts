@@ -740,6 +740,7 @@ const layerMakeRoutes = Layer.mergeAll(
     GuestHttp.layer,
     DeviceHubProxy.layer,
     ServerBrowserStream.routeLayer,
+    BatonServerLayer.routes,
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,
   ),
