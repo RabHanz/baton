@@ -4,7 +4,7 @@ The apps and client-runtime depend on @t3tools/baton-contracts and @t3tools/bato
 onnxruntime-node (packages/baton-voice) is allowed to skip its install script.
 
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 886ccf3cd798fd6621826addc11c62fe2fad36f0..7acea656ed2a8afb23902dad69ba035544101a66 100644
+index 68321456683eb2b1757468a416e819757121002b..7603290d54d86800b6e185cb308cba330afbd1f5 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -15,6 +15,9 @@
@@ -26,10 +26,12 @@ index 886ccf3cd798fd6621826addc11c62fe2fad36f0..7acea656ed2a8afb23902dad69ba0355
      "react-grab": "^0.1.32",
      "tldts": "catalog:"
 diff --git a/apps/desktop/resources/installer.nsh b/apps/desktop/resources/installer.nsh
-index 092f641c3359fb58bf2232132e9bd4ef0491ac56..f5220812e480b44af08e3c4423b5b17346117e91 100644
+index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78afba301d2 100644
 --- a/apps/desktop/resources/installer.nsh
 +++ b/apps/desktop/resources/installer.nsh
-@@ -1,4 +1,15 @@
+@@ -31,6 +31,17 @@
+ !macroend
+ 
  !macro customInstall
 +  ; Renamed from Baton: the exe is now Tessaya.exe, so drop the old shortcuts, and point a login
 +  ; entry (if there was one) at it, under the one name the app itself uses.
@@ -46,7 +48,7 @@ index 092f641c3359fb58bf2232132e9bd4ef0491ac56..f5220812e480b44af08e3c4423b5b173
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d83868530f 100644
+index a49c3856864f1566947e5b715f32b9d028fe531c..4b9c9ae0a392e0bfa821469e39a0e882ed17c5d5 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -68,6 +68,8 @@
@@ -59,7 +61,7 @@ index f5c1c6521812ed2993ac3a46b5aac1ed7d1f17a6..00f58acb948cafbf4f07e199f20e71d8
      "@t3tools/contracts": "workspace:*",
      "@t3tools/mobile-highlights-native": "file:./modules/t3-highlights",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 789d612e6fe3b7af16c7bd384e5c1b5bbe8141eb..2ec97f7b116bba923bd350ee4ff45c0ae008f03b 100644
+index 5d6c7e8d460581a704c28d7c6644c4b518d9dab0..76cb569bbb9f8a6f4b9b0092a50a800d109965b9 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -40,6 +40,8 @@
@@ -72,7 +74,7 @@ index 789d612e6fe3b7af16c7bd384e5c1b5bbe8141eb..2ec97f7b116bba923bd350ee4ff45c0a
      "@t3tools/provider-acp-registry": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/apps/web/package.json b/apps/web/package.json
-index b2ad7e1c687449d64780456c722cb7db43996098..85c229aedc9462e64a5c88d62ad458f00ba2332c 100644
+index 3cb58dec9cd6c337e0af1682c4ef87eba7f147b4..7ce1356a0d86b9959a5898c3228b0b7603b6daf8 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
 @@ -31,6 +31,8 @@
@@ -85,11 +87,11 @@ index b2ad7e1c687449d64780456c722cb7db43996098..85c229aedc9462e64a5c88d62ad458f0
      "@t3tools/contracts": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/knip.jsonc b/knip.jsonc
-index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e10181ba7e04b 100644
+index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f092589f361a08 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
-@@ -34,6 +34,8 @@
-         "sign-macos.ts",
+@@ -35,6 +35,8 @@
+         "prepare-server-compile-cache.cjs",
          "smoke-desktop-app.ts",
          "verify-windows-desktop-artifact.ts",
 +        // Baton's labs, proofs and evals are run by hand from the command line.
@@ -97,7 +99,7 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
        ],
        "ignoreDependencies": ["agent-device", "esbuild"],
        // The `t3` npm package's files: copied into the package, never imported.
-@@ -47,6 +49,8 @@
+@@ -48,6 +50,8 @@
          "src/bin.ts!",
          "src/claude-history-worker.ts!",
          "scripts/cli.ts",
@@ -106,7 +108,7 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -56,7 +60,12 @@
+@@ -57,7 +61,12 @@
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -120,8 +122,8 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
        // Keep the transitive Effect runtime pinned for standalone npm installs.
        // The Vite+ web build prerequisite.
        // Native and disk-loaded provider packages stay external to the bundle; the
-@@ -64,8 +73,13 @@
-       "ignoreDependencies": ["@effect/platform-node-shared", "@t3tools/web", "@napi-rs/keyring"],
+@@ -70,8 +79,13 @@
+       ],
      },
      "apps/desktop": {
 +      // Baton's modules export for their tests.
@@ -134,7 +136,7 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
          "gnome-extension/extension.js!",
          "src/electron/WindowsForegroundFocusWorker.ts!",
          "src/snapShot/GlobalShiftShortcutWorker.ts!",
-@@ -82,7 +96,8 @@
+@@ -89,7 +103,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -144,7 +146,7 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -91,13 +106,20 @@
+@@ -98,13 +113,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -166,7 +168,7 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -140,6 +162,9 @@
+@@ -147,6 +169,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -177,10 +179,10 @@ index c2093737fd942a5df426390570e3c5d40fcfccbe..03b4309cb5916be2d846bd937d9e1018
        "includeEntryExports": true,
        "entry": ["test/fixtures/*.ts"],
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index 9600ad7ad356d0e842193bfe06e1e83d6deaaa45..13caf79ca6c140e7c764fdfcbd95166b7a62640b 100644
+index d1b48e1d76f4f4eec09424703b03cde988717316..130c0b327e62918f9e93c3db8f734c80b8c361c8 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -522,6 +522,7 @@
+@@ -526,6 +526,7 @@
    },
    "dependencies": {
      "@pierre/diffs": "catalog:",
@@ -202,10 +204,10 @@ index be4d3c29ea763a8294a8ab765fcc46abd5096003..2a19711255896c99c97f0f757a8dd988
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..aeadbdfdd060f13ecffd09e06f4a7985d5ed1bbe 100644
+index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5bc6897b0a 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
-@@ -54,6 +54,8 @@ import {
+@@ -55,6 +55,8 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
@@ -214,7 +216,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..aeadbdfdd060f13ecffd09e06f4a7985
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -156,6 +158,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -157,6 +159,10 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -225,7 +227,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..aeadbdfdd060f13ecffd09e06f4a7985
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1263,6 +1269,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1267,6 +1273,21 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -247,9 +249,9 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..aeadbdfdd060f13ecffd09e06f4a7985
        }),
      ),
    );
-@@ -1745,3 +1766,15 @@ it.effect.skipIf(!symlinksSupported)("rebases packaged links into the isolated t
-     );
-   }).pipe(Effect.provide(NodeServices.layer)),
+@@ -1803,3 +1824,15 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+     assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
+   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
 +
 +it("batonSidecarBuild builds the sidecar for each platform and arch, joining a universal mac build", () => {
@@ -264,7 +266,7 @@ index a4cef9ba03b8d1bf93a0e9ccc624af871048da9e..aeadbdfdd060f13ecffd09e06f4a7985
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..02877ee1d01be89e049e5c2de39bc2b2fc9c3048 100644
+index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..2f797418b3e4cc8507679cfb90f22e1e4c9cd90c 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -422,7 +424,7 @@ index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..02877ee1d01be89e049e5c2de39bc2b2
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2782,6 +2895,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2783,6 +2896,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -430,7 +432,7 @@ index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..02877ee1d01be89e049e5c2de39bc2b2
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3400,6 +3514,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3401,6 +3515,20 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -451,7 +453,7 @@ index 3a8686f248f0a09c17b5e9c2e93d6f82e298e2bc..02877ee1d01be89e049e5c2de39bc2b2
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3761,6 +3889,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3762,6 +3890,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
