@@ -86,7 +86,7 @@ import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
-import { checkChrome, realProbe, type ChromeCheck } from "./chromeCheck.ts";
+import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -426,12 +426,29 @@ export const startScreenCompanion = (input: {
   const conversation =
     input.conversation ??
     createConversationLog({ file: NodePath.join(input.stateDir, "baton-conversation.ndjson") });
-  let chromeSeen: { readonly at: number; readonly check: ChromeCheck } | null = null;
-  /** Reading a folder and a pipe name is cheap, but the window asks often. */
-  const chromeStatus = (fresh = false): ChromeCheck => {
-    if (fresh || chromeSeen === null || Date.now() - chromeSeen.at > 10_000) {
-      chromeSeen = { at: Date.now(), check: checkChrome(realProbe(input.platform)) };
+  // The Chrome check never runs on the render path and never blocks or throws: it runs off to the side, gives up
+  // after a few seconds, and the window shows the last answer.
+  let chromeSeen: { readonly at: number; readonly check: ChromeCheck } = {
+    at: 0,
+    check: { state: "not-connected", message: "Checking Chrome..." },
+  };
+  let chromeChecking = false;
+  const refreshChrome = async (): Promise<ChromeCheck> => {
+    if (chromeChecking) return chromeSeen.check;
+    chromeChecking = true;
+    try {
+      chromeSeen = {
+        at: Date.now(),
+        check: await checkChromeWithin(realProbe(input.platform), 4_000),
+      };
+    } finally {
+      chromeChecking = false;
     }
+    return chromeSeen.check;
+  };
+  /** The last answer, and a fresh look started in the background when it is old. */
+  const chromeStatus = (): ChromeCheck => {
+    if (Date.now() - chromeSeen.at > 10_000) void refreshChrome();
     return chromeSeen.check;
   };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
@@ -1810,13 +1827,16 @@ export const startScreenCompanion = (input: {
     dismiss,
     warm: () => {
       // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.
-      if (!settings.browserChromeSet && chromeStatus(true).state === "ready") {
-        dropOperator();
-        save({ browserChrome: true, browserChromeSet: true });
-        linger(
-          "Tessaya",
-          "Chrome is connected, so the assistant can use it. Turn it off under Assistant if you would rather not.",
-        );
+      if (!settings.browserChromeSet) {
+        void refreshChrome().then((check) => {
+          if (check.state !== "ready" || settings.browserChromeSet) return;
+          dropOperator();
+          save({ browserChrome: true, browserChromeSet: true });
+          linger(
+            "Tessaya",
+            "Chrome is connected, so the assistant can use it. Turn it off under Assistant if you would rather not.",
+          );
+        });
       }
       if (settings.oneAssistant) agentOf().warm();
       warmRouter();
@@ -2032,12 +2052,15 @@ export const startScreenCompanion = (input: {
         dropOperator();
         save({ oneAssistant: value === true });
       } else if (id === "s.chromeCheck") {
-        chromeStatus(true);
+        void refreshChrome();
       } else if (id === "s.chrome") {
         dropOperator();
         save({ browserChrome: value === true, browserChromeSet: true });
-        if (value === true && chromeStatus(true).state !== "ready")
-          linger("Tessaya", chromeStatus().message);
+        if (value === true) {
+          void refreshChrome().then((check) => {
+            if (check.state !== "ready") linger("Tessaya", check.message);
+          });
+        }
       } else if (id === "s.social") save({ socialOn: value === true });
       else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
