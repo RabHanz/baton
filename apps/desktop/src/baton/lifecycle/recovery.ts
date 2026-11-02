@@ -86,7 +86,8 @@ export const createRecoveryFiles = (logDir: string, stateDir: string) => {
     heartbeatFile,
     readHeartbeat: (): Heartbeat | null => readJson<Heartbeat | null>(heartbeatFile, null),
     writeHeartbeat: (beat: Heartbeat): void => writeJson(heartbeatFile, beat),
-    readMarks: (): ReadonlyArray<Interrupted> => readJson<ReadonlyArray<Interrupted>>(marksFile, []),
+    readMarks: (): ReadonlyArray<Interrupted> =>
+      readJson<ReadonlyArray<Interrupted>>(marksFile, []),
     writeMarks: (marks: ReadonlyArray<Interrupted>): void => writeJson(marksFile, marks),
   };
 };

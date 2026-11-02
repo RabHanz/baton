@@ -58,7 +58,10 @@ export const useDecision = (input: {
 }): UseDecision => {
   const { item } = input;
   if (item.policy.mode === "self") {
-    return { kind: "refuse", why: `${item.name} is financial, so you type it yourself; I never fill it in.` };
+    return {
+      kind: "refuse",
+      why: `${item.name} is financial, so you type it yourself; I never fill it in.`,
+    };
   }
   if (item.policy.mode === "never") {
     return { kind: "refuse", why: `${item.name} is set so that only you can use it.` };

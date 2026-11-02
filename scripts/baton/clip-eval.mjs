@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* oxlint-disable t3code/namespace-node-imports, t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 // Scores whether his vocabulary would have fixed the words he later corrected, on the offline set the
 // History builds: every turn he corrected in the field (raw words, what Baton wrote, what he changed
 // it to). Word error is measured against his fix, before and after the vocabulary's near-miss

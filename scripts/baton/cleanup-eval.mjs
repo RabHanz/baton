@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* oxlint-disable oxc/no-accumulating-spread, t3code/namespace-node-imports, t3code/no-low-value-comments, unicorn/no-useless-spread -- Baton file predating the rule (D82) */
 // Scores Baton's dictation clean-up against real messages. The corpus (his own words) stays OUT of
 // the repo: pass its path. Each message is degraded the way a recogniser's raw output reads
 // (no punctuation or capitals, fillers, a false start, a "scratch that" self-correction), cleaned

@@ -29,7 +29,7 @@ short list. Nothing here decides the licence or any legal question: those are th
 `.github/SECURITY.md` tells people to report a vulnerability through the repository's **Security** tab. That button exists only when
 private vulnerability reporting is on. Nothing in the code can turn it on; the repository owner does:
 
-1. Open the repository on GitHub, then **Settings** and, in the left list under *Security*, **Advanced Security** (older layouts:
+1. Open the repository on GitHub, then **Settings** and, in the left list under _Security_, **Advanced Security** (older layouts:
    **Code security and analysis**).
 2. Find **Private vulnerability reporting** and press **Enable**.
 
@@ -43,18 +43,19 @@ Live state of each, with who must act.
 
 1. **Licence (Director).** Not chosen; this note does not choose. What each choice means for what ships today:
 
-   | Shipped piece | Licence it carries | If MIT | If a stricter (non-commercial or source-available) licence |
-   | ------------- | ------------------ | ------ | ---------------------------------------------------------- |
-   | Tessaya's own code | its own | MIT is free to choose | free to choose |
-   | Electron, ONNX Runtime, Silero VAD, whisper.cpp, Handy crates, Rust crates, Clicky-derived code | MIT / Apache-2.0 | compatible, notices kept | compatible, notices kept |
-   | Fonts (Newsreader, Schibsted Grotesk) | SIL OFL 1.1 | fine (not sold alone, names kept) | fine |
-   | `melspectrogram.onnx`, `embedding_model.onnx` | CC BY-NC-SA 4.0 (openWakeWord README) | **cannot ship under a commercial MIT product as they are**: non-commercial and share-alike; ship without them, replace them, or get the author's permission | allowed only if the whole product stays non-commercial; share-alike applies to the model files (and adaptations of them) |
-   | `sebastian`, `alfred`, `freya`, `onyx` wake models | trained on sets that include non-commercial data | **same as above**: retrain clean or drop; the default words Sebastian and Alfred are among them | allowed if non-commercial |
-   | Tessaya wake model | not shipped yet (`models/` has no `tessaya.onnx`); the clean training workflow exists | clean CC BY / public-domain sets, attribution in the notices | same |
-   | Parakeet (CC BY 4.0), Pocket TTS weights (CC BY 4.0) | downloaded on first use, not redistributed by Tessaya | fine with attribution | fine with attribution |
-   | The Anthropic and OpenAI terms for driving a user's login | separate from the licence | still blocks (item 3) | still blocks |
+   | Shipped piece                                                                                   | Licence it carries                                                                    | If MIT                                                                                                                                                      | If a stricter (non-commercial or source-available) licence                                                               |
+   | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+   | Tessaya's own code                                                                              | its own                                                                               | MIT is free to choose                                                                                                                                       | free to choose                                                                                                           |
+   | Electron, ONNX Runtime, Silero VAD, whisper.cpp, Handy crates, Rust crates, Clicky-derived code | MIT / Apache-2.0                                                                      | compatible, notices kept                                                                                                                                    | compatible, notices kept                                                                                                 |
+   | Fonts (Newsreader, Schibsted Grotesk)                                                           | SIL OFL 1.1                                                                           | fine (not sold alone, names kept)                                                                                                                           | fine                                                                                                                     |
+   | `melspectrogram.onnx`, `embedding_model.onnx`                                                   | CC BY-NC-SA 4.0 (openWakeWord README)                                                 | **cannot ship under a commercial MIT product as they are**: non-commercial and share-alike; ship without them, replace them, or get the author's permission | allowed only if the whole product stays non-commercial; share-alike applies to the model files (and adaptations of them) |
+   | `sebastian`, `alfred`, `freya`, `onyx` wake models                                              | trained on sets that include non-commercial data                                      | **same as above**: retrain clean or drop; the default words Sebastian and Alfred are among them                                                             | allowed if non-commercial                                                                                                |
+   | Tessaya wake model                                                                              | not shipped yet (`models/` has no `tessaya.onnx`); the clean training workflow exists | clean CC BY / public-domain sets, attribution in the notices                                                                                                | same                                                                                                                     |
+   | Parakeet (CC BY 4.0), Pocket TTS weights (CC BY 4.0)                                            | downloaded on first use, not redistributed by Tessaya                                 | fine with attribution                                                                                                                                       | fine with attribution                                                                                                    |
+   | The Anthropic and OpenAI terms for driving a user's login                                       | separate from the licence                                                             | still blocks (item 3)                                                                                                                                       | still blocks                                                                                                             |
 
    Decision needed first; then the models above follow from it.
+
 2. **Wake models.** Unchanged: the shared feature models still sit under CC BY-NC-SA, and the four older words under mixed data.
    The clean training pipeline for the word Tessaya exists (`WAKE_TRAINING_CLEAN.md`, `baton-wake-train.yml`) and has not
    produced a shipped model. The default set still names given names; the voice lane decides the neutral set.

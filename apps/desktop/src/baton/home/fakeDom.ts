@@ -1,3 +1,4 @@
+/* oxlint-disable unicorn/no-useless-spread -- Baton file predating the rule (D82) */
 /**
  * A small stand-in for the browser, enough to run the window's page script in Node and read what it
  * drew. It is not a DOM: no layout, no selectors beyond what the script uses, events are recorded and
@@ -50,12 +51,17 @@ export class FakeElement extends FakeNode {
     const list = () => self.className.split(/\s+/).filter(Boolean);
     return {
       add: (...c: string[]) => void (self.className = [...new Set([...list(), ...c])].join(" ")),
-      remove: (...c: string[]) => void (self.className = list().filter((x) => !c.includes(x)).join(" ")),
+      remove: (...c: string[]) =>
+        void (self.className = list()
+          .filter((x) => !c.includes(x))
+          .join(" ")),
       contains: (c: string) => list().includes(c),
       toggle: (c: string, force?: boolean) => {
         const has = list().includes(c);
         const want = force ?? !has;
-        self.className = (want ? [...new Set([...list(), c])] : list().filter((x) => x !== c)).join(" ");
+        self.className = (want ? [...new Set([...list(), c])] : list().filter((x) => x !== c)).join(
+          " ",
+        );
         return want;
       },
     };
@@ -141,9 +147,7 @@ export class FakeElement extends FakeNode {
   get textContent(): string {
     return this.raw !== null
       ? this.raw.replace(/<[^>]*>/g, "")
-      : this.children
-          .map((c) => (c instanceof FakeText ? c.data : c.textContent))
-          .join("");
+      : this.children.map((c) => (c instanceof FakeText ? c.data : c.textContent)).join("");
   }
   set innerHTML(v: string) {
     this.children = [];
@@ -151,14 +155,14 @@ export class FakeElement extends FakeNode {
   }
   get innerHTML(): string {
     if (this.raw !== null) return this.raw;
-    return this.children
-      .map((c) => (c instanceof FakeText ? c.data : c.outerHTML))
-      .join("");
+    return this.children.map((c) => (c instanceof FakeText ? c.data : c.outerHTML)).join("");
   }
   get outerHTML(): string {
     const attrs = [...this.attrs].map(([k, v]) => ` ${k}="${v}"`).join("");
     const cls = this.className === "" ? "" : ` class="${this.className}"`;
-    return VOID.has(this.tagName) ? `<${this.tagName}${cls}${attrs}>` : `<${this.tagName}${cls}${attrs}>${this.innerHTML}</${this.tagName}>`;
+    return VOID.has(this.tagName)
+      ? `<${this.tagName}${cls}${attrs}>`
+      : `<${this.tagName}${cls}${attrs}>${this.innerHTML}</${this.tagName}>`;
   }
   addEventListener(type: string, fn: (e: unknown) => void) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
@@ -247,7 +251,10 @@ export const openWindowPage = async (script: string, state: unknown) => {
   const errors: string[] = [];
   const context = NodeVM.createContext({
     document: doc,
-    localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) },
+    localStorage: {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     addEventListener() {},
     requestAnimationFrame: () => 0,
@@ -262,11 +269,18 @@ export const openWindowPage = async (script: string, state: unknown) => {
     JSON,
     Math,
   });
-  Object.assign(context, { window: context, __BATON_STATE__: state, TESSAYA_STING: { dark: "", light: "" } });
+  Object.assign(context, {
+    window: context,
+    __BATON_STATE__: state,
+    TESSAYA_STING: { dark: "", light: "" },
+  });
   // The script's own start-up promise has no catch; its failure is a failure of the page.
   const onRejection = (reason: unknown) => void errors.push(`page failed: ${String(reason)}`);
   process.on("unhandledRejection", onRejection);
-  NodeVM.runInContext(`${script}\n;globalThis.__ready = get().catch(e => { console.error('page failed: ' + e); });`, context);
+  NodeVM.runInContext(
+    `${script}\n;globalThis.__ready = get().catch(e => { console.error('page failed: ' + e); });`,
+    context,
+  );
   await (context as { __ready: Promise<void> }).__ready;
   await new Promise((r) => setImmediate(r));
   process.off("unhandledRejection", onRejection);

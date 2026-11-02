@@ -53,7 +53,9 @@ describe("refuseToStore", () => {
 
   it("keeps private pack text out", () => {
     const pack = "always frame the job as a job to be done before you brief any worker";
-    expect(refuseToStore("note: always frame the job as a job to be done before you brief", [pack])).toContain("pack");
+    expect(
+      refuseToStore("note: always frame the job as a job to be done before you brief", [pack]),
+    ).toContain("pack");
     expect(refuseToStore("he likes tea", [pack])).toBeNull();
   });
 });
@@ -79,7 +81,9 @@ describe("decay and conflicts", () => {
     const model = item({ id: "m", confidence: 0.95, updatedAt: "2026-01-09T00:00:00.000Z" });
     const his = item({ id: "h", source: "user", confidence: 1 });
     expect(winner(model, his).id).toBe("h");
-    expect(winner(his, item({ id: "h2", source: "user", updatedAt: "2026-01-05T00:00:00.000Z" })).id).toBe("h2");
+    expect(
+      winner(his, item({ id: "h2", source: "user", updatedAt: "2026-01-05T00:00:00.000Z" })).id,
+    ).toBe("h2");
   });
   it("sees the same item through small rewording", () => {
     expect(similarity("He prefers short answers", "he prefers short answers.")).toBe(1);
@@ -106,24 +110,60 @@ describe("memoryBlock", () => {
 });
 
 describe("applyDecision", () => {
-  const held = (over: { item?: MemoryItem | null; tombstone?: { id: string; deletedAt: string; origin: string } | null; writer?: string | null }) => ({
+  const held = (over: {
+    item?: MemoryItem | null;
+    tombstone?: { id: string; deletedAt: string; origin: string } | null;
+    writer?: string | null;
+  }) => ({
     item: over.item ?? null,
     tombstone: over.tombstone ?? null,
     writer: over.writer ?? null,
   });
   it("last writer wins, with the writer as the tie-break, and an echo is ignored", () => {
     const newer = item({ updatedAt: "2026-02-01T00:00:00.000Z" });
-    expect(applyDecision(held({ item: item(), writer: "a" }), { item: newer, tombstone: null, writer: "b" })).toBe("apply");
-    expect(applyDecision(held({ item: newer, writer: "a" }), { item: item(), tombstone: null, writer: "b" })).toBe("ignore");
-    expect(applyDecision(held({ item: item(), writer: "a" }), { item: item(), tombstone: null, writer: "b" })).toBe("apply");
-    expect(applyDecision(held({ item: item(), writer: "b" }), { item: item(), tombstone: null, writer: "b" })).toBe("ignore");
+    expect(
+      applyDecision(held({ item: item(), writer: "a" }), {
+        item: newer,
+        tombstone: null,
+        writer: "b",
+      }),
+    ).toBe("apply");
+    expect(
+      applyDecision(held({ item: newer, writer: "a" }), {
+        item: item(),
+        tombstone: null,
+        writer: "b",
+      }),
+    ).toBe("ignore");
+    expect(
+      applyDecision(held({ item: item(), writer: "a" }), {
+        item: item(),
+        tombstone: null,
+        writer: "b",
+      }),
+    ).toBe("apply");
+    expect(
+      applyDecision(held({ item: item(), writer: "b" }), {
+        item: item(),
+        tombstone: null,
+        writer: "b",
+      }),
+    ).toBe("ignore");
   });
   it("a tombstone beats an older item and an old item cannot resurrect", () => {
     const stone = { id: "a", deletedAt: "2026-03-01T00:00:00.000Z", origin: "b" };
-    expect(applyDecision(held({ item: item() }), { item: null, tombstone: stone, writer: "b" })).toBe("apply");
-    expect(applyDecision(held({ tombstone: stone }), { item: item(), tombstone: null, writer: "b" })).toBe("ignore");
     expect(
-      applyDecision(held({ item: item({ updatedAt: "2026-04-01T00:00:00.000Z" }) }), { item: null, tombstone: stone, writer: "b" }),
+      applyDecision(held({ item: item() }), { item: null, tombstone: stone, writer: "b" }),
+    ).toBe("apply");
+    expect(
+      applyDecision(held({ tombstone: stone }), { item: item(), tombstone: null, writer: "b" }),
+    ).toBe("ignore");
+    expect(
+      applyDecision(held({ item: item({ updatedAt: "2026-04-01T00:00:00.000Z" }) }), {
+        item: null,
+        tombstone: stone,
+        writer: "b",
+      }),
     ).toBe("ignore");
   });
 });
@@ -134,27 +174,56 @@ describe("learning files", () => {
       "---\nkind: learning\nproject: shop\nconfidence: 0.8\n---\n# Title\n- Retry the upload once\n- Never skip the dry run\n",
     );
     expect(drafts).toEqual([
-      { kind: "learning", text: "Retry the upload once", scope: "project", scopeRef: "shop", confidence: 0.8 },
-      { kind: "learning", text: "Never skip the dry run", scope: "project", scopeRef: "shop", confidence: 0.8 },
+      {
+        kind: "learning",
+        text: "Retry the upload once",
+        scope: "project",
+        scopeRef: "shop",
+        confidence: 0.8,
+      },
+      {
+        kind: "learning",
+        text: "Never skip the dry run",
+        scope: "project",
+        scopeRef: "shop",
+        confidence: 0.8,
+      },
     ]);
   });
   it("reads a Claude-style memory file by its type", () => {
     expect(
-      parseLearningFile("---\nname: voice\ndescription: x\nmetadata:\n  type: user\n---\nHe says Freya as FRAY-uh.\n"),
+      parseLearningFile(
+        "---\nname: voice\ndescription: x\nmetadata:\n  type: user\n---\nHe says Freya as FRAY-uh.\n",
+      ),
     ).toEqual([
-      { kind: "preference", text: "He says Freya as FRAY-uh.", scope: "global", scopeRef: null, confidence: 0.6 },
+      {
+        kind: "preference",
+        text: "He says Freya as FRAY-uh.",
+        scope: "global",
+        scopeRef: null,
+        confidence: 0.6,
+      },
     ]);
   });
   it("reads a plain file as one global learning", () => {
     expect(parseLearningFile("# Heading\nKeep the cache warm.\n")).toEqual([
-      { kind: "learning", text: "Keep the cache warm.", scope: "global", scopeRef: null, confidence: 0.6 },
+      {
+        kind: "learning",
+        text: "Keep the cache warm.",
+        scope: "global",
+        scopeRef: null,
+        confidence: 0.6,
+      },
     ]);
   });
 });
 
 describe("exportMarkdown", () => {
   it("lists live items only", () => {
-    const md = exportMarkdown([item({ text: "kept", pinned: true }), item({ id: "b", text: "old", supersededBy: "a" })]);
+    const md = exportMarkdown([
+      item({ text: "kept", pinned: true }),
+      item({ id: "b", text: "old", supersededBy: "a" }),
+    ]);
     expect(md).toContain("- [fact, pinned] kept");
     expect(md).not.toContain("old");
   });
@@ -166,7 +235,12 @@ describe("whyRemembered", () => {
       "You told me this on 2026-01-01. It is in your words. You pinned it, so it stays. I have not used it in an answer yet.",
     );
     const model = whyRemembered(
-      item({ source: "job", confidence: 0.65, lastUsedAt: "2026-02-03T10:00:00.000Z", expiresAt: "2026-03-01T00:00:00.000Z" }),
+      item({
+        source: "job",
+        confidence: 0.65,
+        lastUsedAt: "2026-02-03T10:00:00.000Z",
+        expiresAt: "2026-03-01T00:00:00.000Z",
+      }),
     );
     expect(model).toContain("I learned this from a finished job on 2026-01-01.");
     expect(model).toContain("65% sure");

@@ -15,7 +15,12 @@ const item = (over: Partial<VaultItem> = {}): VaultItem => ({
 });
 
 describe("useDecision", () => {
-  const base = { target: "github.com", grants: new Map<string, number>(), now: 1000, tainted: false };
+  const base = {
+    target: "github.com",
+    grants: new Map<string, number>(),
+    now: 1000,
+    tainted: false,
+  };
   it("asks by default and refuses financial and never-items", () => {
     expect(useDecision({ ...base, item: item() }).kind).toBe("ask");
     expect(useDecision({ ...base, item: item({ policy: { mode: "self" } }) }).kind).toBe("refuse");
@@ -34,13 +39,20 @@ describe("useDecision", () => {
 describe("scrubText", () => {
   it("removes the value and its common encodings", () => {
     const value = "fake-test-value-1234";
-    const text = [value, encodeURIComponent("a b" + value), btoa(value), JSON.stringify({ k: value })].join(" | ");
+    const text = [
+      value,
+      encodeURIComponent("a b" + value),
+      btoa(value),
+      JSON.stringify({ k: value }),
+    ].join(" | ");
     const out = scrubText(text, [{ name: "github", value }]);
     expect(out).not.toContain(value);
     expect(out).not.toContain(btoa(value));
     expect(out).toContain("[vault:github]");
   });
   it("leaves other text alone", () => {
-    expect(scrubText("nothing here", [{ name: "x", value: "fake-test-value-1234" }])).toBe("nothing here");
+    expect(scrubText("nothing here", [{ name: "x", value: "fake-test-value-1234" }])).toBe(
+      "nothing here",
+    );
   });
 });

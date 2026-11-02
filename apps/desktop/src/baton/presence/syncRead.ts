@@ -17,15 +17,24 @@ export type RunGit = (cwd: string, args: ReadonlyArray<string>) => Promise<strin
 
 const runGit: RunGit = (cwd, args) =>
   new Promise((resolve, reject) =>
-    NodeChildProcess.execFile("git", ["-C", cwd, ...args], { timeout: 8_000, windowsHide: true }, (error, stdout) =>
-      error === null ? resolve(stdout) : reject(error),
+    NodeChildProcess.execFile(
+      "git",
+      ["-C", cwd, ...args],
+      { timeout: 8_000, windowsHide: true },
+      (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
     ),
   );
 
-export const readLocalBehind = async (repoDir: string | undefined, git: RunGit = runGit): Promise<number | null> => {
+export const readLocalBehind = async (
+  repoDir: string | undefined,
+  git: RunGit = runGit,
+): Promise<number | null> => {
   if (repoDir === undefined || repoDir === "") return null;
   try {
-    const pin = NodeFS.readFileSync(NodePath.join(repoDir, "vendor-patches", "t3code", "PIN"), "utf8").trim();
+    const pin = NodeFS.readFileSync(
+      NodePath.join(repoDir, "vendor-patches", "t3code", "PIN"),
+      "utf8",
+    ).trim();
     const n = Number((await git(repoDir, ["rev-list", "--count", `${pin}..upstream/main`])).trim());
     return Number.isFinite(n) ? n : null;
   } catch {
@@ -38,18 +47,38 @@ interface PrRow {
   readonly title: string;
   readonly url: string;
   readonly headRefName: string;
-  readonly statusCheckRollup?: ReadonlyArray<{ conclusion?: string | null; status?: string | null; state?: string | null }>;
+  readonly statusCheckRollup?: ReadonlyArray<{
+    conclusion?: string | null;
+    status?: string | null;
+    state?: string | null;
+  }>;
 }
 
 export const readSyncPr = async (repo: string, run: RunGh): Promise<SyncPr | null> => {
   try {
     const rows = JSON.parse(
-      await run(["pr", "list", "-R", repo, "--state", "open", "--limit", "30", "--json", "number,title,url,headRefName,statusCheckRollup"]),
+      await run([
+        "pr",
+        "list",
+        "-R",
+        repo,
+        "--state",
+        "open",
+        "--limit",
+        "30",
+        "--json",
+        "number,title,url,headRefName,statusCheckRollup",
+      ]),
     ) as ReadonlyArray<PrRow>;
     const pr = rows.find((r) => r.headRefName.startsWith("baton/sync-"));
     return pr === undefined
       ? null
-      : { number: pr.number, url: pr.url, title: pr.title, checks: summariseChecks(pr.statusCheckRollup ?? []) };
+      : {
+          number: pr.number,
+          url: pr.url,
+          title: pr.title,
+          checks: summariseChecks(pr.statusCheckRollup ?? []),
+        };
   } catch {
     return null;
   }
@@ -66,7 +95,10 @@ export const createSyncExtraCache = (
   now: () => number = Date.now,
 ) => {
   let at = Number.NEGATIVE_INFINITY;
-  let held: { readonly localBehind: number | null; readonly pr: SyncPr | null } = { localBehind: null, pr: null };
+  let held: { readonly localBehind: number | null; readonly pr: SyncPr | null } = {
+    localBehind: null,
+    pr: null,
+  };
   return async () => {
     if (now() - at < CACHE_MS) return held;
     at = now();

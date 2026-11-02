@@ -10,10 +10,19 @@ describe("the phone page files", () => {
     expect(HTML).not.toMatch(/<script>/);
   });
   it("is installable: a manifest whose start page is inside its scope, with the Woad icon set", () => {
-    const m = JSON.parse(MANIFEST) as { start_url: string; scope: string; display: string; icons: Array<{ src: string; purpose?: string }> };
+    const m = JSON.parse(MANIFEST) as {
+      start_url: string;
+      scope: string;
+      display: string;
+      icons: Array<{ src: string; purpose?: string }>;
+    };
     expect(m.start_url.startsWith(m.scope)).toBe(true);
     expect(m.display).toBe("standalone");
-    expect(m.icons.map((i) => i.src)).toEqual(["/icon-192.png", "/icon-512.png", "/maskable-512.png"]);
+    expect(m.icons.map((i) => i.src)).toEqual([
+      "/icon-192.png",
+      "/icon-512.png",
+      "/maskable-512.png",
+    ]);
   });
   it("sets text only through textContent, never innerHTML", () => {
     expect(SCRIPT).not.toContain("innerHTML");

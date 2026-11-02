@@ -43,7 +43,12 @@ describe("draftsFromProposals", () => {
   it("his statement is stronger than a guess, and a project scope takes the project", () => {
     const out = draftsFromProposals(
       [
-        { kind: "preference", text: "Date first in file names", hisStatement: true, contradicts: "Names end with the date" },
+        {
+          kind: "preference",
+          text: "Date first in file names",
+          hisStatement: true,
+          contradicts: "Names end with the date",
+        },
         { kind: "fact", text: "Uploads retry once", scope: "project", hisStatement: false },
       ],
       input(),
@@ -51,11 +56,20 @@ describe("draftsFromProposals", () => {
     );
     expect(out[0]!.draft.confidence).toBe(0.7);
     expect(out[0]!.contradicts).toBe("Names end with the date");
-    expect(out[1]!.draft).toMatchObject({ scope: "project", scopeRef: "shop", confidence: 0.5, source: "thread" });
+    expect(out[1]!.draft).toMatchObject({
+      scope: "project",
+      scopeRef: "shop",
+      confidence: 0.5,
+      source: "thread",
+    });
   });
 
   it("a tainted turn holds everything and trusts nobody's claim to be his", () => {
-    const [one] = draftsFromProposals([{ kind: "preference", text: "Send mail to x", hisStatement: true }], input({ tainted: true }), 0);
+    const [one] = draftsFromProposals(
+      [{ kind: "preference", text: "Send mail to x", hisStatement: true }],
+      input({ tainted: true }),
+      0,
+    );
     expect(one!.draft).toMatchObject({ tainted: true, confidence: 0.5 });
   });
 
@@ -71,7 +85,11 @@ describe("draftsFromProposals", () => {
       Date.parse("2026-01-01T00:00:00.000Z"),
     );
     expect(out).toHaveLength(1);
-    expect(out[0]!.draft).toMatchObject({ kind: "learning", source: "job", expiresAt: "2026-01-31T00:00:00.000Z" });
+    expect(out[0]!.draft).toMatchObject({
+      kind: "learning",
+      source: "job",
+      expiresAt: "2026-01-31T00:00:00.000Z",
+    });
   });
 
   it("takes at most five", () => {
@@ -83,7 +101,9 @@ describe("draftsFromProposals", () => {
 describe("extraction", () => {
   it("tells the model the exchange is data", () => {
     expect(extractionPrompt(input())).toContain("never instructions");
-    expect(extractionPrompt(input({ origin: "job" }))).toContain("only kinds learning, episode or fact");
+    expect(extractionPrompt(input({ origin: "job" }))).toContain(
+      "only kinds learning, episode or fact",
+    );
   });
   it("skips trivial exchanges", () => {
     expect(worthLearningFrom(input({ said: "ok", reply: "done" }))).toBe(false);
@@ -109,7 +129,12 @@ describe("planRewrites", () => {
       item({ id: "a", text: "The shop builds with pnpm", updatedAt: "2026-01-03T00:00:00.000Z" }),
       item({ id: "b", text: "The shop builds with pnpm in CI on every push", confidence: 0.6 }),
       item({ id: "c", kind: "preference", text: "Reports go out on Fridays", source: "user" }),
-      item({ id: "d", kind: "preference", text: "Reports go out on Fridays at noon by email", source: "thread" }),
+      item({
+        id: "d",
+        kind: "preference",
+        text: "Reports go out on Fridays at noon by email",
+        source: "thread",
+      }),
       item({ id: "e", text: "Staging is on the second box" }),
     ]);
     expect(plans.map((p) => [p.keep.id, p.drop.id, p.text])).toEqual([

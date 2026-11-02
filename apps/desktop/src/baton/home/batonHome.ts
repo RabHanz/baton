@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Baton's own window: a settings home with a few plain choices up front and the raw ones behind

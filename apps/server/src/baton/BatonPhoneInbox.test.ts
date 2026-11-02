@@ -30,7 +30,10 @@ layer("BatonPhoneInbox", (it) => {
   it.effect("refuses an empty, huge or id-less ask in words", () =>
     Effect.gen(function* () {
       const inbox = yield* BatonPhoneInbox;
-      assert.deepEqual(yield* inbox.post({ id: "client-bbbb-0001", text: "   " }), { ok: false, why: "Say something." });
+      assert.deepEqual(yield* inbox.post({ id: "client-bbbb-0001", text: "   " }), {
+        ok: false,
+        why: "Say something.",
+      });
       assert.isFalse((yield* inbox.post({ id: "client-bbbb-0001", text: "x".repeat(2001) })).ok);
       assert.isFalse((yield* inbox.post({ id: "bad id!", text: "hello" })).ok);
     }),
@@ -50,48 +53,66 @@ layer("BatonPhoneInbox", (it) => {
     }),
   );
 
-  it.effect("an ask waits while the desktop is away, then expires; a taken one comes back after its lease", () =>
-    Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
-      // Earlier tests in this file took asks at clock zero.
-      yield* TestClock.adjust(CONNECTED_MS + 1);
-      assert.isFalse(yield* inbox.connected);
-      yield* inbox.post({ id: "client-dddd-0001", text: "wait for me" });
-      yield* TestClock.adjust(ASK_TTL_MS - 1000);
-      assert.strictEqual((yield* inbox.get("client-dddd-0001"))?.status, "queued");
-      yield* TestClock.adjust(2000);
-      assert.strictEqual((yield* inbox.get("client-dddd-0001"))?.status, "expired");
-      assert.isNull(yield* inbox.take);
+  it.effect(
+    "an ask waits while the desktop is away, then expires; a taken one comes back after its lease",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        // Earlier tests in this file took asks at clock zero.
+        yield* TestClock.adjust(CONNECTED_MS + 1);
+        assert.isFalse(yield* inbox.connected);
+        yield* inbox.post({ id: "client-dddd-0001", text: "wait for me" });
+        yield* TestClock.adjust(ASK_TTL_MS - 1000);
+        assert.strictEqual((yield* inbox.get("client-dddd-0001"))?.status, "queued");
+        yield* TestClock.adjust(2000);
+        assert.strictEqual((yield* inbox.get("client-dddd-0001"))?.status, "expired");
+        assert.isNull(yield* inbox.take);
 
-      yield* inbox.post({ id: "client-dddd-0002", text: "lease" });
-      assert.strictEqual((yield* inbox.take)?.id, "client-dddd-0002");
-      assert.isTrue(yield* inbox.connected);
-      yield* TestClock.adjust(CONNECTED_MS + 1);
-      assert.isFalse(yield* inbox.connected);
-      yield* TestClock.adjust(ASK_LEASE_MS);
-      assert.strictEqual((yield* inbox.get("client-dddd-0002"))?.status, "queued");
-    }),
+        yield* inbox.post({ id: "client-dddd-0002", text: "lease" });
+        assert.strictEqual((yield* inbox.take)?.id, "client-dddd-0002");
+        assert.isTrue(yield* inbox.connected);
+        yield* TestClock.adjust(CONNECTED_MS + 1);
+        assert.isFalse(yield* inbox.connected);
+        yield* TestClock.adjust(ASK_LEASE_MS);
+        assert.strictEqual((yield* inbox.get("client-dddd-0002"))?.status, "queued");
+      }),
   );
 
-  it.effect("a question the desktop mirrors can be answered once from the phone, and the desktop sees it", () =>
-    Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
-      yield* inbox.mirror({ id: "prompt-1", title: "Run it?", detail: "Click Save in Notes", buttons: ["Go ahead", "Not now"], yes: 0, cancel: 1 });
-      const [shown] = yield* inbox.pending;
-      assert.strictEqual(shown?.detail, "Click Save in Notes");
-      assert.isNull(yield* inbox.promptAnswer("prompt-1"));
-      assert.isFalse(yield* inbox.answerPrompt("prompt-1", 5));
-      assert.isTrue(yield* inbox.answerPrompt("prompt-1", 0));
-      assert.isFalse(yield* inbox.answerPrompt("prompt-1", 1));
-      assert.strictEqual(yield* inbox.promptAnswer("prompt-1"), 0);
-      assert.lengthOf(yield* inbox.pending, 0);
-    }),
+  it.effect(
+    "a question the desktop mirrors can be answered once from the phone, and the desktop sees it",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        yield* inbox.mirror({
+          id: "prompt-1",
+          title: "Run it?",
+          detail: "Click Save in Notes",
+          buttons: ["Go ahead", "Not now"],
+          yes: 0,
+          cancel: 1,
+        });
+        const [shown] = yield* inbox.pending;
+        assert.strictEqual(shown?.detail, "Click Save in Notes");
+        assert.isNull(yield* inbox.promptAnswer("prompt-1"));
+        assert.isFalse(yield* inbox.answerPrompt("prompt-1", 5));
+        assert.isTrue(yield* inbox.answerPrompt("prompt-1", 0));
+        assert.isFalse(yield* inbox.answerPrompt("prompt-1", 1));
+        assert.strictEqual(yield* inbox.promptAnswer("prompt-1"), 0);
+        assert.lengthOf(yield* inbox.pending, 0);
+      }),
   );
 
   it.effect("a mirrored question nobody answers is dropped", () =>
     Effect.gen(function* () {
       const inbox = yield* BatonPhoneInbox;
-      yield* inbox.mirror({ id: "prompt-2", title: "t", detail: "d", buttons: ["a", "b"], yes: 0, cancel: 1 });
+      yield* inbox.mirror({
+        id: "prompt-2",
+        title: "t",
+        detail: "d",
+        buttons: ["a", "b"],
+        yes: 0,
+        cancel: 1,
+      });
       yield* TestClock.adjust(121_000);
       assert.lengthOf(yield* inbox.pending, 0);
       assert.isFalse(yield* inbox.answerPrompt("prompt-2", 0));

@@ -123,7 +123,11 @@ const SOLID = /^\s*[─━]{8,}\s*$/;
 const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
 const CUSTOM = /^(?:type something|other)\.?$/i;
 const DROPPED = /^chat about this$/i;
-const clean = (text) => text.replace(/^[\s│┃|]+/, "").replace(/\s+/g, " ").trim();
+const clean = (text) =>
+  text
+    .replace(/^[\s│┃|]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 /** The tab bar of a multi-question form: each question's name and whether it is answered (☒). */
 const tabsOf = (line) =>
@@ -169,7 +173,10 @@ export function parseReviewScreen(lines) {
   }
   const tabLine = lines.slice(Math.max(0, top - 2), top + 1).find((l) => /^\s*←/.test(l));
   const question = "Ready to submit your answers?";
-  const context = answers.map((a) => `${a.question} → ${a.answer}`).join(" · ").slice(0, 600);
+  const context = answers
+    .map((a) => `${a.question} → ${a.answer}`)
+    .join(" · ")
+    .slice(0, 600);
   return {
     question,
     header: "Review your answers",
@@ -191,7 +198,9 @@ export function parseReviewScreen(lines) {
  * order (`index`), so an answer is arrows from the highlighted one plus Enter.
  */
 export function parsePanePrompt(screen) {
-  const lines = String(screen ?? "").replace(/\r/g, "").split("\n");
+  const lines = String(screen ?? "")
+    .replace(/\r/g, "")
+    .split("\n");
   const review = parseReviewScreen(lines);
   if (review !== null) return review;
   let footer = -1;
@@ -217,17 +226,28 @@ export function parsePanePrompt(screen) {
   if (first < 0 || !ordered) {
     // Unnumbered options (the folder-trust dialog): the highlighted line and its neighbours.
     options.length = 0;
-    const marked = lines.slice(Math.max(0, footer - 20), footer).findLastIndex((l) => /^\s*❯\s/.test(l));
+    const marked = lines
+      .slice(Math.max(0, footer - 20), footer)
+      .findLastIndex((l) => /^\s*❯\s/.test(l));
     if (marked < 0) return null;
     const at = Math.max(0, footer - 20) + marked;
     const indent = lines[at].indexOf("❯");
     const isOption = (l) =>
-      l.trim().length > 0 && (l.slice(indent).startsWith("❯ ") || l.slice(0, indent + 2).trim() === "");
+      l.trim().length > 0 &&
+      (l.slice(indent).startsWith("❯ ") || l.slice(0, indent + 2).trim() === "");
     let top = at;
-    while (top - 1 >= 0 && isOption(lines[top - 1]) && /^\s+$/.test(lines[top - 1].slice(0, indent + 2)))
+    while (
+      top - 1 >= 0 &&
+      isOption(lines[top - 1]) &&
+      /^\s+$/.test(lines[top - 1].slice(0, indent + 2))
+    )
       top -= 1;
     let bottom = at;
-    while (bottom + 1 < footer && isOption(lines[bottom + 1]) && /^\s+$/.test(lines[bottom + 1].slice(0, indent + 2)))
+    while (
+      bottom + 1 < footer &&
+      isOption(lines[bottom + 1]) &&
+      /^\s+$/.test(lines[bottom + 1].slice(0, indent + 2))
+    )
       bottom += 1;
     for (let i = top; i <= bottom; i += 1)
       options.push({
@@ -264,7 +284,8 @@ export function parsePanePrompt(screen) {
     .filter((l) => l.length > 0);
   // A multi-question form puts its tabs on one line: ← ☐ Chrome ☒ Connectors ✔ Submit →
   const tabs = context.length > 0 && /^←/.test(context[0]) ? tabsOf(context.shift()) : null;
-  const tabbed = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
+  const tabbed =
+    context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
   // A tabbed form's header is its tabs, so the card says which question of how many this is.
   const header =
     tabs !== null && tabs.length > 1
@@ -304,7 +325,9 @@ export function answerKeys(prompt, answer) {
   if (target === null || target === undefined) return null;
   const delta = target - prompt.selected;
   const arrows = Array.from({ length: Math.abs(delta) }, () => (delta > 0 ? "down" : "up"));
-  return option === undefined ? { keys: arrows, text: wanted } : { keys: [...arrows, "enter"], text: null };
+  return option === undefined
+    ? { keys: arrows, text: wanted }
+    : { keys: [...arrows, "enter"], text: null };
 }
 
 /** What T3 sends back for an answered question: "<question>\n<answer>". */
@@ -403,13 +426,15 @@ const BLOCKED_NOTE =
 // session under ~/.t3/baton/live-queue, so a restart does not lose it; a drainer delivers it when the
 // pane takes input. The turn never waits for it (T3 would queue every later send behind it).
 
-const QUEUE_DIR = process.env.BATON_LIVE_QUEUE_DIR ?? NodePath.join(NodeOS.homedir(), ".t3", "baton", "live-queue");
+const QUEUE_DIR =
+  process.env.BATON_LIVE_QUEUE_DIR ?? NodePath.join(NodeOS.homedir(), ".t3", "baton", "live-queue");
 const QUEUE_TRIES = Number(process.env.BATON_LIVE_QUEUE_TRIES ?? 6);
 const QUEUE_EVERY_MS = Number(process.env.BATON_LIVE_QUEUE_EVERY_MS ?? 3_000);
 /** A session gone this long with messages waiting is not coming back soon: they are handed back. */
 const QUEUE_GONE_TRIES = Number(process.env.BATON_LIVE_QUEUE_GONE_TRIES ?? 10);
 
-const queueFile = (dir, sessionId) => NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
+const queueFile = (dir, sessionId) =>
+  NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
 
 export function readQueue(dir, sessionId) {
   try {
@@ -465,7 +490,11 @@ export async function drainSession(dir, sessionId, deps) {
   const all = readQueue(dir, sessionId);
   if (all.some((item) => item.kind === "note")) {
     for (const item of all) if (item.kind === "note") deps.say(sessionId, String(item.text));
-    writeQueue(dir, sessionId, all.filter((item) => item.kind !== "note"));
+    writeQueue(
+      dir,
+      sessionId,
+      all.filter((item) => item.kind !== "note"),
+    );
   }
   const items = readQueue(dir, sessionId);
   if (items.length === 0) return;
@@ -503,7 +532,10 @@ export async function drainSession(dir, sessionId, deps) {
 
 /** The prompt on the pane's screen now, or null. */
 export async function readPanePrompt(paneRef) {
-  const read = await run(HERDR, herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]));
+  const read = await run(
+    HERDR,
+    herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]),
+  );
   return read.ok ? parsePanePrompt(read.out) : null;
 }
 
@@ -522,7 +554,13 @@ export async function answerPrompt(sessionId, paneRef, text) {
     const at = paneRef.indexOf("~");
     const session = at < 0 ? [] : ["--session", paneRef.slice(0, at)];
     await sleep(300);
-    await run(HERDR, [...session, "pane", "send-text", at < 0 ? paneRef : paneRef.slice(at + 1), plan.text]);
+    await run(HERDR, [
+      ...session,
+      "pane",
+      "send-text",
+      at < 0 ? paneRef : paneRef.slice(at + 1),
+      plan.text,
+    ]);
     await run(HERDR, herdrArgs(paneRef, "send-keys", ["enter"]));
   }
   for (let i = 0; i < PROMPT_CLEAR_TRIES; i += 1) {
@@ -653,7 +691,10 @@ async function prompt(params) {
   if (live === null) {
     say(
       sessionId,
-      lostNote("that Claude Code session is not running on this machine now.", promptText(params.prompt).trim()),
+      lostNote(
+        "that Claude Code session is not running on this machine now.",
+        promptText(params.prompt).trim(),
+      ),
     );
     return { stopReason: "end_turn" };
   }
@@ -661,7 +702,10 @@ async function prompt(params) {
     // A plain-terminal session (often one he drives through Remote Control) cannot take typed
     // input from outside, and moving it into Herdr restarts it. That only happens when asked.
     if (!isAdoptRequest(promptText(params.prompt))) {
-      say(sessionId, `${notSentNote(live)}\n\nYour message was: "${promptText(params.prompt).trim()}"`);
+      say(
+        sessionId,
+        `${notSentNote(live)}\n\nYour message was: "${promptText(params.prompt).trim()}"`,
+      );
       return { stopReason: "end_turn" };
     }
     const adopted = await adopt(sessionId, live);
@@ -689,7 +733,15 @@ async function prompt(params) {
     // Messages already waiting go first: this one joins the end so the order he typed is kept.
     if (live.status === "waiting" || readQueue(QUEUE_DIR, sessionId).length > 0) {
       const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
-      say(sessionId, queuedNote(live.status === "waiting" ? "the session is waiting on a question." : "earlier messages are still waiting.", count));
+      say(
+        sessionId,
+        queuedNote(
+          live.status === "waiting"
+            ? "the session is waiting on a question."
+            : "earlier messages are still waiting.",
+          count,
+        ),
+      );
       startDrainer();
       return { stopReason: "end_turn" };
     }
@@ -706,7 +758,9 @@ async function prompt(params) {
       say(
         sessionId,
         queuedNote(
-          failure === BLOCKED_NOTE ? "the session is waiting on a question." : "Herdr did not take it yet.",
+          failure === BLOCKED_NOTE
+            ? "the session is waiting on a question."
+            : "Herdr did not take it yet.",
           count,
         ),
       );
@@ -730,7 +784,9 @@ function startDrainer() {
   const tick = async () => {
     const names = queuedSessions(QUEUE_DIR);
     for (const name of names) {
-      await drainSession(QUEUE_DIR, name.slice(0, -".json".length), drainDeps).catch(() => undefined);
+      await drainSession(QUEUE_DIR, name.slice(0, -".json".length), drainDeps).catch(
+        () => undefined,
+      );
     }
     if (queuedSessions(QUEUE_DIR).length === 0) {
       clearInterval(drainer);
@@ -802,9 +858,14 @@ function main() {
   lines.on("close", () => process.exit(0));
 }
 
-if (process.argv[1] && NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  NodeURL.fileURLToPath(import.meta.url) === NodePath.resolve(process.argv[1])
+) {
   // `--pane-prompt <pane>`: the server's mirror reads a waiting session's prompt through this (D88).
   if (process.argv[2] === "--pane-prompt" && process.argv[3])
-    readPanePrompt(process.argv[3]).then((found) => process.stdout.write(`${JSON.stringify(found)}\n`));
+    readPanePrompt(process.argv[3]).then((found) =>
+      process.stdout.write(`${JSON.stringify(found)}\n`),
+    );
   else main();
 }
