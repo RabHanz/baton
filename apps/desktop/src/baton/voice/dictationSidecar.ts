@@ -30,6 +30,8 @@ export interface DictationConfig {
   readonly language: string | null;
   /** The sidecar leaves the paste to the desktop, which cleans the text up first. */
   readonly cleanup: boolean;
+  /** Two quick taps of the hold key keep the microphone open until the next press. */
+  readonly latch?: boolean;
   /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
   readonly mouse?: string | null;
 }
