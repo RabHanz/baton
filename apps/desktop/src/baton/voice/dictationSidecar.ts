@@ -30,6 +30,8 @@ export interface DictationConfig {
   readonly language: string | null;
   /** The sidecar leaves the paste to the desktop, which cleans the text up first. */
   readonly cleanup: boolean;
+  /** Two quick taps of the hold key keep the microphone open until the next press. */
+  readonly latch?: boolean;
   /** The input-bindings file the sidecar's mouse hook reads; null or empty means no hook. */
   readonly mouse?: string | null;
 }
@@ -74,6 +76,8 @@ export type DictationEvent =
   | { readonly ev: "binding"; readonly id: string }
   | { readonly ev: "recording"; readonly app?: string; readonly title?: string }
   | { readonly ev: "transcribing" }
+  /** The speech model is being read from disk; one line a second while it is, so a slow load is told from a hang. */
+  | { readonly ev: "loading"; readonly elapsedMs: number }
   | { readonly ev: "idle" }
   | { readonly ev: "error"; readonly message: string }
   /** The paste chord went out and nothing read the clipboard. */
@@ -102,6 +106,8 @@ export interface DictationSidecar {
   readonly cancel: () => void;
   readonly devices: () => Promise<ReadonlyArray<SidecarDevice>>;
   readonly transcribe: (wavPath: string) => Promise<string>;
+  /** Loads the speech model now. Resolves with the load time in ms; waits as long as the load shows progress. */
+  readonly preload: () => Promise<number>;
   readonly paste: (text: string) => Promise<void>;
   /** False when that window is no longer the focused one, and nothing was pasted. */
   readonly pasteInto: (text: string, target: number) => Promise<boolean>;
@@ -160,6 +166,8 @@ export const focusedFrom = (event: Readonly<Record<string, unknown>>): FocusedAp
 };
 
 const CALL_TIMEOUT_MS = 120_000;
+/** A model load that has said nothing for this long is stuck; while it says "loading" every second, a call waits for it. */
+export const LOAD_SILENCE_MS = 30_000;
 /** A process that lived this long was working, so its next failure starts the backoff again. */
 export const HEALTHY_RUN_MS = 30_000;
 
@@ -180,7 +188,13 @@ export const startDictationSidecar = (input: {
   let disposed = false;
   let lastConfig: DictationConfig | null = null;
   let nextId = 0;
-  type Pending = { resolve: (value: never) => void; reject: (error: Error) => void };
+  type Pending = {
+    resolve: (value: never) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+    /** Waiting on the model: each "loading" line gives it more time. */
+    readonly onLoad: boolean;
+  };
   const pending = new Map<number, Pending>();
   let deviceWaiters: Array<(devices: ReadonlyArray<SidecarDevice>) => void> = [];
   let failures = 0;
@@ -192,16 +206,31 @@ export const startDictationSidecar = (input: {
     const entry = id === null || id === undefined ? undefined : pending.get(id);
     if (entry === undefined) return;
     pending.delete(id as number);
+    clearTimeout(entry.timer);
     if (result.error !== undefined) entry.reject(new Error(result.error));
     else entry.resolve(result.value as never);
   };
-  const call = <T>(message: Record<string, unknown>): Promise<T> =>
+  const arm = (id: number, ms: number): ReturnType<typeof setTimeout> =>
+    setTimeout(() => settle(id, { error: "Dictation did not answer." }), ms);
+  const call = <T>(message: Record<string, unknown>, onLoad = false): Promise<T> =>
     new Promise<T>((resolve, reject) => {
       const id = ++nextId;
-      pending.set(id, { resolve: resolve as (value: never) => void, reject });
+      pending.set(id, {
+        resolve: resolve as (value: never) => void,
+        reject,
+        timer: arm(id, onLoad ? LOAD_SILENCE_MS + CALL_TIMEOUT_MS : CALL_TIMEOUT_MS),
+        onLoad,
+      });
       send({ ...message, id });
-      setTimeout(() => settle(id, { error: "Dictation did not answer." }), CALL_TIMEOUT_MS);
     });
+  /** The model is loading and says so: everything waiting on it waits on, as long as it keeps saying so. */
+  const loadingHeard = () => {
+    for (const [id, entry] of pending) {
+      if (!entry.onLoad) continue;
+      clearTimeout(entry.timer);
+      entry.timer = arm(id, LOAD_SILENCE_MS + CALL_TIMEOUT_MS);
+    }
+  };
 
   const spawn = () => {
     const proc = NodeChildProcess.spawn(input.binary, ["serve"], { windowsHide: true });
@@ -226,6 +255,17 @@ export const startDictationSidecar = (input: {
         deviceWaiters.forEach((resolve) => resolve(devices));
         deviceWaiters = [];
         return;
+      }
+      if (event["ev"] === "loading") {
+        loadingHeard();
+        return input.onEvent(event as unknown as DictationEvent);
+      }
+      if (event["ev"] === "model_ready") {
+        const error = typeof event["error"] === "string" ? event["error"] : undefined;
+        return settle(
+          event["id"] as number,
+          error === undefined ? { value: event["loadMs"] } : { error },
+        );
       }
       if (event["ev"] === "pasted") {
         const error = typeof event["error"] === "string" ? event["error"] : undefined;
@@ -293,7 +333,8 @@ export const startDictationSidecar = (input: {
         deviceWaiters.push(resolve);
         send({ cmd: "devices" });
       }),
-    transcribe: (wav) => call<string>({ cmd: "transcribe", wav }),
+    transcribe: (wav) => call<string>({ cmd: "transcribe", wav }, true),
+    preload: () => call<number>({ cmd: "load" }, true),
     paste: (text) => call<void>({ cmd: "paste", text }),
     pasteInto: (text, target) => call<boolean>({ cmd: "paste", text, target }),
     foreground: () => call<FocusedApp>({ cmd: "foreground" }),

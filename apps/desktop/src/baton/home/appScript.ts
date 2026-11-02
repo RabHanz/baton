@@ -63,7 +63,7 @@ const TABS = ['home','now','snippets','insights','scratchpad','style','transform
 const INTRO = {};
 for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','cloud','dictation','tools','memory','vault','history','assistant','voice','screen','usage','trust','help','checks']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = false, modal = null, S = null, query = '';
-let aboutSeen = false;
+let aboutSeen = false, bellOpen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
 function control(c) {
@@ -320,7 +320,6 @@ function sayWords(words) { return words.length ? 'Say ' + words.slice(0, 2).join
 function wakeLine(words) { return words.length ? words.join(', ') : 'Off'; }
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
-  const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
   p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
   const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
   const sub = $('p', 'lede');
@@ -454,6 +453,8 @@ function hact(t, action) {
   ipc.invoke('baton-history:act', t.id, action).then(r => {
     hbusy.delete(t.id);
     if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id);
+    else if (r && r.playback) { hplay(r.playback); }
+    else if (r && r.reported) { hnote = 'Saved a report you can read and attach to an issue. Nothing was sent. It is in the folder that just opened.'; }
     else if (r && r.failed) { hnote = r.failed; }
     else if (retry && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
     else if (action.indexOf('use_version') === 0 && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hnote = 'Now using that version.'; }
@@ -461,6 +462,8 @@ function hact(t, action) {
     render();
   });
 }
+let haudio = null;
+function hplay(url) { if (haudio) { haudio.pause(); haudio = null; } haudio = new Audio(url); haudio.onended = () => { haudio = null; hnote = ''; render(); }; hnote = 'Playing the recording.'; haudio.play().catch(() => { hnote = 'The recording could not be played.'; render(); }); render(); }
 const STATUS = { ok: 'Tidied', raw: 'Inserted as heard', failed: 'Clean-up failed', none: 'Heard' };
 function recordings(p) {
   const keep = find('v.keepVoice'), space = find('v.keepSpace');
@@ -543,10 +546,13 @@ function historyPage(p) {
       if (meta) body.appendChild($('div', 'hint', meta));
       const acts = $('div', 'hacts');
       const mk = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
+      const pl = (t.menu || []).find(i => i.id === 'play');
+      if (pl && pl.enabled) acts.appendChild(mk(haudio ? 'Stop playing' : 'Play recording', () => { if (haudio) { haudio.pause(); haudio = null; hnote = ''; render(); } else hact(t, 'play'); }));
       acts.appendChild(mk('Copy as heard', () => hact(t, 'copy_raw')));
       if (t.cleaned) acts.appendChild(mk(t.kind === 'spoken' ? 'Copy reply' : 'Copy written', () => hact(t, 'copy_cleaned')));
       if (rt && rt.enabled) acts.appendChild(mk(hbusy.has(t.id) ? 'Retrying' : 'Retry transcript', () => hact(t, 'retry_transcript')));
       if ((t.menu || []).some(i => i.id === 'retry')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
+      acts.appendChild(mk('Report this transcript', () => hact(t, 'report')));
       if (hask === t.id) { acts.append($('span', 'hint', 'Delete this for good?'), mk('Delete', () => hact(t, 'delete'), 'primary'), mk('Keep', () => { hask = null; render(); })); }
       else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
       body.appendChild(acts); wrap.appendChild(body);
@@ -792,6 +798,8 @@ function palOpenNow() {
   };
   box.append(input, list); veil.appendChild(box); document.body.appendChild(veil); input.focus();
 }
+addEventListener('click', () => { if (bellOpen) { bellOpen = false; render(); } });
+addEventListener('keydown', e => { if (e.key === 'Escape' && bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palOpen) palClose(); else palOpenNow(); } }, true);
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
@@ -819,7 +827,12 @@ function render(state) {
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); stt.setAttribute('role', 'status'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
-  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
+  const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
+  if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Alerts'); pop.appendChild($('b', null, 'Alerts'));
+    if (need) { const b = $('button', 'btn', need + (need === 1 ? ' session needs you' : ' sessions need you')); b.onclick = () => { bellOpen = false; go('sessions'); }; pop.appendChild(b); }
+    if (up && up.lead) { const b = $('button', 'btn', 'Update ready: ' + up.button); b.onclick = () => { bellOpen = false; set('u.act', null); }; pop.appendChild(b); }
+    if (!need && !(up && up.lead)) pop.appendChild($('p', null, 'Nothing needs you right now.'));
+    top.appendChild(pop); }
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
@@ -841,5 +854,8 @@ addEventListener('keydown', e => {
 });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
+// The mark breathes only while the window is in front and seen: no animation runs in the background.
+function syncBreath() { document.documentElement.classList.toggle('live', document.hasFocus() && !document.hidden); }
+addEventListener('focus', syncBreath); addEventListener('blur', syncBreath); document.addEventListener('visibilitychange', syncBreath); syncBreath();
 get().then(s => { render(s); startSting(); });
 `;
