@@ -5,6 +5,7 @@
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
+import { isNeedsMeAsk } from "@t3tools/baton-shared/needsMe";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -243,6 +244,8 @@ export interface AssistantActions {
   readonly sessionsList?: () => string;
   /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
   readonly presence?: () => Promise<string>;
+  /** "What needs me?" from state, with no model: the top three to say and the full card. */
+  readonly needsMe?: () => Promise<{ readonly spoken: string; readonly card: string }>;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
     op:
@@ -1830,6 +1833,25 @@ export const startScreenCompanion = (input: {
     }
   };
 
+  const needsTurn = async (text: string, started: number): Promise<void> => {
+    answering += 1;
+    try {
+      input.onActivity?.("Looking");
+      const found = await actions!.needsMe!();
+      linger("Tessaya", found.card);
+      say(found.spoken);
+      conversation.add({ route: "answer", said: text, reply: found.spoken });
+      input.onNote?.("needs_turn", { said: text, totalMs: Date.now() - started });
+    } catch {
+      // The state read failed: the assistant answers instead, with its tools.
+      await agentTurn(text, started, false);
+    } finally {
+      input.onActivity?.(null);
+      answering -= 1;
+      input.onTurnEnd?.();
+    }
+  };
+
   const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
     const started = Date.now();
     voiceTurn = !typed;
@@ -1839,6 +1861,11 @@ export const startScreenCompanion = (input: {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;
+    // "What needs me?" is answered from state in a second or two, not by a model turn.
+    if (isNeedsMeAsk(text) && actions?.needsMe !== undefined && !busy) {
+      void needsTurn(text, started);
+      return { kind: "handled" };
+    }
     // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
     if (settings.oneAssistant && instantDecision(text, busy)?.route !== "control") {
       void agentTurn(text, started, direct);
