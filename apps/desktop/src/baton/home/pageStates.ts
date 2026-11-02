@@ -79,7 +79,7 @@ export const STATES: Readonly<
     controls: [
       ...catalogControls({
         rows: sampleCatalogRows(NOW),
-        view: { ...INITIAL_VIEW, creating: true, newMachine: "hetzner" },
+        view: { ...INITIAL_VIEW, creating: true, newMachine: "server" },
         now: NOW,
         folders: ["/srv/baton"],
         status: "",
