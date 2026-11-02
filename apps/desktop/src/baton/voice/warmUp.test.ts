@@ -11,7 +11,7 @@ describe("warming the voice models before the microphone opens", () => {
     const done = warmUpVoice({
       pushFrame: () => void (frames += 1),
       transcribe: async (pcm) => {
-        order.push(`transcribe ${pcm.length}`);
+        order.push(`transcribe ${pcm.length} ${pcm.some((v) => v !== 0)}`);
         await loaded;
         order.push("recogniser loaded");
         return "";
@@ -23,7 +23,7 @@ describe("warming the voice models before the microphone opens", () => {
     release();
     await done;
     expect(frames).toBeGreaterThan(50);
-    expect(order).toEqual(["scored", "transcribe 16000", "recogniser loaded", "ready"]);
+    expect(order).toEqual(["scored", "transcribe 16000 true", "recogniser loaded", "ready"]);
   });
 
   it("does not stop the start when a model fails to warm", async () => {
@@ -36,5 +36,22 @@ describe("warming the voice models before the microphone opens", () => {
         settled: async () => {},
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("finishes at its limit when the recogniser never answers for silence (0.1.30 hung here)", async () => {
+    let giveUp!: () => void;
+    const limit = new Promise<void>((resolve) => (giveUp = resolve));
+    const order: string[] = [];
+    const warm = warmUpVoice({
+      pushFrame: () => {},
+      transcribe: () => new Promise<string>(() => {}),
+      settled: () => new Promise<void>(() => {}),
+      limit: () => limit,
+    }).then(() => order.push("over"));
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    giveUp();
+    await warm;
+    expect(order).toEqual(["over"]);
   });
 });
