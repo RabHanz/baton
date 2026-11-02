@@ -401,6 +401,33 @@ describe("what Run it answers for", () => {
     expect(shellCheck(typing("hello"), "notepad.exe: notes.txt").ask).toBe(false);
   });
 
+  it("lets the approved plan cover keys that follow its own click, even when the focus is unknown", () => {
+    const planned = validateDrivePlan(
+      {
+        title: "Set the font size",
+        actions: [
+          { kind: "click", x: 10, y: 10 },
+          { kind: "press", keys: ["f"] },
+          { kind: "type", text: "20" },
+        ],
+      },
+      shots,
+    );
+    expect(shellCheck(planned, null).ask).toBe(false);
+    // Its own text is still held to the shell rules.
+    const risky = validateDrivePlan(
+      {
+        title: "x",
+        actions: [
+          { kind: "click", x: 10, y: 10 },
+          { kind: "type", text: "ssh host" },
+        ],
+      },
+      shots,
+    );
+    expect(shellCheck(risky, null).ask).toBe(true);
+  });
+
   it("asks when it cannot tell where the keys go, and in an editor's terminal", () => {
     expect(shellCheck(typing("hello"), null).ask).toBe(true);
     expect(shellCheck(typing("hello"), "Code.exe: main.ts - project").ask).toBe(true);
