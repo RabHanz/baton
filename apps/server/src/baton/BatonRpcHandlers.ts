@@ -412,6 +412,18 @@ export const make = Effect.gen(function* () {
           }),
         ),
       ),
+    [BATON_MEMORY_WS_METHODS.syncHello]: () =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.syncHello)),
+    [BATON_MEMORY_WS_METHODS.syncPull]: (input) =>
+      run(Effect.flatMap(BatonMemoryService, (memory) => memory.changesSince(input.since))),
+    [BATON_MEMORY_WS_METHODS.syncPush]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryService, (memory) =>
+          Effect.map(memory.applyChanges(input.from, input.changes, input.upTo), (applied) => ({
+            applied,
+          })),
+        ),
+      ),
     [BATON_MEMORY_WS_METHODS.export]: () =>
       run(
         Effect.flatMap(BatonMemoryService, (memory) =>

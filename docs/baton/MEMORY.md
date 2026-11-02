@@ -28,7 +28,7 @@ Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
 
 - `id` (a UUID, made where the item is born), `kind`, `text` (one short statement, at most 500 characters, the same cap
   as a note today).
-- `source`: `user` (he said it or wrote it), `thread`, `job`, `import`, `sync`; `sourceRef`: the thread, job or file it
+- `source`: `user` (he said it or wrote it), `thread`, `job`, `import`; `sourceRef`: the thread, job or file it
   came from, so "why do you think that?" has an answer.
 - `scope`: `global`, `project` or `person`; `scopeRef`: the project or person it belongs to (null for global).
 - `confidence` 0 to 1, `pinned`, `createdAt`, `updatedAt`, `lastUsedAt`, `expiresAt`, `supersededBy`.
@@ -124,20 +124,28 @@ like any other. Exports are plain markdown the user owns; they leave the machine
   `note`; the Memory tab keeps an "Open folder / Export" so he still owns plain files. Until the import runs, the desktop
   keeps reading the folder.
 
-### Sync between servers (signzart and onnyx)
+### Sync between servers (the two boxes)
 
-Last-writer-wins with tombstones, behind a setting (`memory.sync`, off by default; the peer's address and a paired
-credential are the user's to give).
+Last-writer-wins with tombstones, behind a setting (`baton-memory.json` in the state folder, `{"sync": true}`; off by
+default, switched in the Memory tab).
 
-- Each server has an `origin` id. Every change bumps `updatedAt` (milliseconds, from a hybrid clock: the larger of the wall
-  clock and the last seen stamp plus one, so skewed clocks cannot reorder one device's own edits).
-- A sync round: `memory.sync.pull(since)` returns items and tombstones whose stamp is above the cursor; the caller applies
-  them and then pushes its own changes the same way. Each side stores the peer's cursor.
-- Apply rule per id: the higher `(updatedAt, origin)` wins; a tombstone wins over an item whose `updatedAt` is not later than
-  the tombstone's `deletedAt`; `pinned`, `supersededBy` and `confidence` travel with the item. A tombstone is kept 90 days,
-  longer than any sync gap that is expected to recover.
-- Every received item passes `storable()` again. A sync never carries conversation text, only memory items.
-- A failure leaves the cursor where it was; the next round resends. Rounds are idempotent.
+- **The window carries it.** Tessaya's window is already connected to every server he uses, so it relays: servers
+  never need credentials for each other. For each ordered pair (to, from) of distinct servers it asks `to` for its
+  `cursors` (`baton.memory.syncHello`), pulls what `from` wrote since that cursor (`syncPull`) and hands it to `to`
+  (`syncPush`). The window runs a round every ten minutes and on "Sync now". A laptop whose window sees only its own
+  server simply has nothing to sync with.
+- Each server has an `origin` id (made once). Every local change sets `updatedAt` (wall clock) and `origin` on the
+  item, the writer of that version. Two boxes on NTP agree to well under a second, which is far finer than the edits
+  of one person; if clock skew ever matters, the cost is that the older of two near-simultaneous edits wins.
+- Pull returns items and tombstones stamped at or after the cursor (held proposals never leave their server), at most
+  1,000 of each; a full batch returns the last stamp as `upTo`, so the next round resumes there. Otherwise `upTo` is the
+  sender's now. Push applies and moves that peer's cursor forward only.
+- Apply rule per id: the higher `(updatedAt, writer)` wins; a tombstone wins over an item whose `updatedAt` is not
+  later than the tombstone's `deletedAt`, and a newer edit beats an older tombstone. Re-sending a version already held is
+  ignored, so rounds are idempotent and may echo. `pinned`, `supersededBy` and `confidence` travel with the item, and an
+  item keeps its original `source` (his own words stay his own).
+- Every received item passes `storable()` again. A sync carries memory items only, never conversation text.
+- A failure leaves the cursor where it was; the next round resends. Tombstones are kept (they are small).
 
 ## 7. Importing learnings
 
