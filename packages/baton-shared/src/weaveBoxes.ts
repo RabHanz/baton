@@ -4,7 +4,7 @@
  * command for a herdr call, with every argument quoted for the remote shell.
  */
 export interface WeaveHost {
-  /** What the person calls the machine: "onnyx". */
+  /** What the person calls the machine: "office". */
   readonly name: string;
   /** `user@host` or a host from ssh config. */
   readonly target: string;
