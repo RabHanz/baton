@@ -2,9 +2,12 @@
  * The page script of Baton's window (D140). Plain DOM, no framework. Text goes in with textContent
  * only; the state is data, never markup (the one innerHTML is the mark Baton itself draws, and the
  * fixed icon paths below). Outside Electron it reads `window.__BATON_STATE__`, so every tab can be
- * looked at in a browser. This string holds no backticks and no dollar-brace, on purpose.
+ * looked at in a browser. Its words come from `strings.ts` (the `STR` table on the first line); apart from that first line this string holds no backticks and no dollar-brace, on purpose.
  */
-export const APP_SCRIPT = `
+import { tableFor } from "./strings.ts";
+
+export const APP_SCRIPT = `const STR = ${JSON.stringify(tableFor("en"))};
+const L = (k, v) => { let t = STR[k] !== undefined ? STR[k] : k; if (v) for (const n in v) t = t.split("{" + n + "}").join(String(v[n])); return t; };
 const real = typeof require === 'function';
 const ipc = real ? require('electron').ipcRenderer : null;
 const get = () => real ? ipc.invoke('baton-home:get') : Promise.resolve(window.__BATON_STATE__);
@@ -55,30 +58,9 @@ if (real) {
 const GROUPS = [['Now', ['home','now','sessions','approvals','jobs']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks','help']]];
 const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]')); } catch (e) { return new Set(); } })();
 const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
-const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['scratchpad','Scratchpad'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['trust','Trust'],['checks','Checks'],['help','Help']];
-const INTRO = {
-  scratchpad: ['Scratchpad', 'Quick notes you speak or type, kept on this computer and searchable.'],
-  insights: ['Insights', 'How much you dictate, how fast, what Tessaya fixed and where. Worked out on this computer from your History; compared only with your own past.'],
-  style: ['Style', 'How formal Tessaya writes for each kind of app, and how much it tidies what you say.'],
-  transforms: ['Transforms', 'Rewrite selected text with a named prompt: Polish, Prompt engineer, Shorten, Translate, or your own. By shortcut or by voice, with an undo.'],
-  snippets: ['Snippets', 'Say a short cue and the full text lands in the field: an email address, a link, a prompt you reuse.'],
-  now: ['Now', 'What needs you, what Tessaya is keeping track of and doing, what it learned today, and what it held back and why.'],
-  sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
-  approvals: ['Approvals', 'Everything waiting for your yes, with what it would do and what it would use. High-risk actions still ask you aloud when they happen.'],
-  jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
-  dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
-  tools: ['Skills and tools', 'The plugins, skills and servers that Claude Code and Codex already have. Tessaya adds none of its own. A plugin switch changes Claude Code\u2019s own setting and applies to its next session.'],
-  memory: ['Memory', 'What Tessaya remembers about you and your work, and what it learned. Search it, correct it, pin what must never fade, or forget it. Forgetting a memory never touches Tessaya itself.'],
-  vault: ['Vault', 'Passwords, keys and private notes, encrypted on this computer. Tessaya can use a secret for you without ever seeing it, and every use is logged here. Banking passwords you always type yourself.'],
-  history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
-  assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
-  voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
-  screen: ['Screen', 'When Tessaya may look at your screen, and how to stop it.'],
-  usage: ['Usage', 'How much of each account is left.'],
-  trust: ['Trust', 'Everything Tessaya may do on your behalf, when it last did it, and a button to take each back. Below, a record of what it did.'],
-  help: ['Help', 'What you can say, the keys, and what to try when a check fails. Press Ctrl+K anywhere to search everything.'],
-  checks: ['Checks', 'See what is wrong without reading a log.']
-};
+const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','dictation','history','memory','vault','tools','assistant','voice','screen','usage','trust','checks','help'].map(id => [id, L('tab.' + id)]);
+const INTRO = {};
+for (const id of ['scratchpad','insights','style','transforms','snippets','now','sessions','approvals','jobs','dictation','tools','memory','vault','history','assistant','voice','screen','usage','trust','help','checks']) INTRO[id] = [L('intro.' + id + '.title'), L('intro.' + id + '.text')];
 let cur = 'home', collapsed = false, modal = null, S = null, query = '';
 let aboutSeen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
@@ -608,7 +590,7 @@ function tabPage(p) {
   if (cur === 'checks') { if (!items.some(c => c.kind === 'check')) { const e = $('div', 'empty', 'Nothing has run yet. Press Run checks.'); e.style.marginTop = '16px'; p.appendChild(e); } const x = S.extra || {}; if ((x.lifecycle || []).length) { p.appendChild($('h2', null, 'Why Tessaya last went down')); const g = $('div', 'group'); for (const l of x.lifecycle) { const r = $('div', 'kv'); r.append($('div', null, l.text), $('time', 'hint', clock(l.at))); g.appendChild(r); } p.appendChild(g); } }
 }
 
-const MODAL = [['General', 'general'], ['System', 'system'], ['Keyboard and mouse', 'keys'], ['Account', 'account'], ['Updates', 'updates'], ['About', 'about']];
+const MODAL = ['general','system','keys','account','updates','about'].map(id => [L('modal.' + id), id]);
 let capturing = null, capNote = '';
 function keyName(e) { const k = e.key; if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'Dead', 'Unidentified'].includes(k)) return null; const m = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Enter: 'Return', Escape: 'Escape' }; return m[k] || (k.length === 1 ? k.toUpperCase() : k); }
 function accel(e) { const k = keyName(e); if (!k) return null; const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Meta'].filter(Boolean); return mods.concat([k]).join('+'); }
@@ -678,7 +660,7 @@ function modalPage(b) {
   else if (modal === 'setup') setupPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', 'Run the setup guide again'); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); }
+  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); }
 }
 let setupStep = 0, setupAuto = false, meterTimer = null;
 function stopMeter() { if (meterTimer) { clearInterval(meterTimer); meterTimer = null; } }
@@ -686,7 +668,7 @@ function setupFinish() { stopMeter(); const was = S && S.extra && S.extra.setup 
 function setupPage(b) {
   const sp = (S.extra || {}).setup; if (!sp) return;
   const step = sp.steps[setupStep]; if (!step) return;
-  b.appendChild($('p', 'hint', 'Step ' + (setupStep + 1) + ' of ' + sp.steps.length));
+  b.appendChild($('p', 'hint', L('wizard.step', { n: setupStep + 1, total: sp.steps.length })));
   b.appendChild($('h1', null, step.title));
   const lead = $('p', 'hint', step.text); lead.style.marginBottom = '14px'; b.appendChild(lead);
   const list = [];
@@ -703,10 +685,10 @@ function setupPage(b) {
     const t = $('textarea', 'trybox'); t.setAttribute('aria-label', 'Try dictation here'); t.placeholder = 'Hold ' + (sp.hold || 'your key') + ' and speak'; b.appendChild(t);
   }
   const foot = $('div', 'wizfoot');
-  const back = $('button', 'btn quiet', 'Back'); back.disabled = setupStep === 0; back.onclick = () => { setupStep -= 1; render(); };
+  const back = $('button', 'btn quiet', L('wizard.back')); back.disabled = setupStep === 0; back.onclick = () => { setupStep -= 1; render(); };
   const last = setupStep === sp.steps.length - 1;
-  const skip = $('button', 'btn quiet', last ? 'Close' : 'Skip the rest'); skip.onclick = setupFinish;
-  const next = $('button', 'btn primary', last ? 'Finish' : 'Next'); next.onclick = () => { if (last) setupFinish(); else { setupStep += 1; render(); } };
+  const skip = $('button', 'btn quiet', last ? L('wizard.close') : L('wizard.skip')); skip.onclick = setupFinish;
+  const next = $('button', 'btn primary', last ? L('wizard.finish') : L('wizard.next')); next.onclick = () => { if (last) setupFinish(); else { setupStep += 1; render(); } };
   const mid = $('div', 'wizmid'); mid.append(back, skip); foot.append(mid, next); b.appendChild(foot);
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
@@ -774,7 +756,7 @@ function paletteItems() {
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
   cmd('Run the playbooks now', 'The ones you have switched on', () => set('trust.playbooks-run', null));
-  cmd('Run the setup guide again', '', () => { const sp = (S.extra || {}).setup; if (sp) { setupStep = 0; modal = 'setup'; render(); } });
+  cmd(L('wizard.rerun'), '', () => { const sp = (S.extra || {}).setup; if (sp) { setupStep = 0; modal = 'setup'; render(); } });
   for (const c of S.controls) {
     if (c.id.indexOf('trust.playbook:') === 0) cmd((c.on ? 'Turn off playbook: ' : 'Turn on playbook: ') + c.label, 'Unattended work, never sends or spends', () => set(c.id, !c.on));
     else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });
