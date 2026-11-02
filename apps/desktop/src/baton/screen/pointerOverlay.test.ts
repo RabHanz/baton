@@ -36,3 +36,13 @@ describe("what is drawn round a control", () => {
     expect(shapeFor({ width: 120, height: 200 })).toBe("box");
   });
 });
+
+describe("the step card", () => {
+  it("has buttons that report by id, a waiting state, an error state and a finished state, and a bubble", () => {
+    expect(OVERLAY_DOCUMENT).toContain("baton:card:act:");
+    for (const state of ["waiting", "error", "done"])
+      expect(OVERLAY_DOCUMENT).toContain(`#card.${state}`);
+    expect(OVERLAY_DOCUMENT).toContain("window.bubble=");
+    expect(OVERLAY_DOCUMENT).toContain("<kbd>Esc</kbd> stops");
+  });
+});
