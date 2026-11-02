@@ -119,3 +119,34 @@ describe("grabbing the pill", () => {
     expect(cursorOverCapsule({ x: 1922, y: 82 + 5 }, window, capsule)).toBe(false);
   });
 });
+
+describe("dragging the pill twice", () => {
+  const area = { x: 0, y: 0, width: 1920, height: 1040 };
+  const size = { width: 735, height: 91 };
+  const m = { top: 10, bottom: 44 };
+  it("grabs where it now is, and a drag back up moves it again", () => {
+    const start = { x: 592, y: 82 };
+    const down = snapPosition(
+      area,
+      size,
+      { x: start.x, y: start.y + 300 },
+      { bypass: false, margins: m },
+    );
+    expect(down.y).toBeGreaterThan(start.y + 200);
+    const capsule = { x: 302, y: 26, width: 132, height: 41 };
+    expect(
+      cursorOverCapsule(
+        { x: down.x + 368, y: down.y + 46 },
+        { ...size, x: down.x, y: down.y },
+        capsule,
+      ),
+    ).toBe(true);
+    const up = snapPosition(
+      area,
+      size,
+      { x: down.x, y: down.y - 300 },
+      { bypass: false, margins: m },
+    );
+    expect(up.y).toBeLessThan(down.y - 200);
+  });
+});

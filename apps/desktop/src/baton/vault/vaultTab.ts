@@ -7,7 +7,12 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { VAULT_CATEGORIES, auditLine, type VaultCategory, type VaultPolicy } from "@t3tools/baton-shared/vault";
+import {
+  VAULT_CATEGORIES,
+  auditLine,
+  type VaultCategory,
+  type VaultPolicy,
+} from "@t3tools/baton-shared/vault";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import { CLIPBOARD_CLEAR_MS } from "./vaultHost.ts";
@@ -16,12 +21,17 @@ import { VaultError, type Vault } from "./vaultStore.ts";
 
 export const REVEAL_MS = 15_000;
 
-const reason = (e: unknown): string => (e instanceof VaultError || e instanceof Error ? e.message : "That did not work.");
+const reason = (e: unknown): string =>
+  e instanceof VaultError || e instanceof Error ? e.message : "That did not work.";
 
 export const createVaultTab = (input: {
   readonly vault: Vault;
   readonly hello: (message: string) => Promise<HelloResult>;
-  readonly clipboard: { readonly read: () => string; readonly write: (t: string) => void; readonly clear: () => void };
+  readonly clipboard: {
+    readonly read: () => string;
+    readonly write: (t: string) => void;
+    readonly clear: () => void;
+  };
   readonly audit: (line: string) => void;
   readonly readAudit: () => ReadonlyArray<string>;
   readonly stateDir: string;
@@ -37,7 +47,16 @@ export const createVaultTab = (input: {
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
   const note = (name: string, how: string, outcome: "revealed" | "copied") =>
-    input.audit(auditLine({ at: new Date(now()).toISOString(), name, purpose: "himself", target: "vault window", how, outcome }));
+    input.audit(
+      auditLine({
+        at: new Date(now()).toISOString(),
+        name,
+        purpose: "himself",
+        target: "vault window",
+        how,
+        outcome,
+      }),
+    );
   const hide = () => {
     shown = null;
     clearTimeout(hideTimer);
@@ -92,25 +111,37 @@ export const createVaultTab = (input: {
       input.refresh();
     } else if (id === "vt.add") {
       guard(() => {
-        const f = JSON.parse(text) as { name: string; label: string; category: string; value: string };
-        const category = (VAULT_CATEGORIES as ReadonlyArray<string>).includes(f.category) ? (f.category as VaultCategory) : "key";
+        const f = JSON.parse(text) as {
+          name: string;
+          label: string;
+          category: string;
+          value: string;
+        };
+        const category = (VAULT_CATEGORIES as ReadonlyArray<string>).includes(f.category)
+          ? (f.category as VaultCategory)
+          : "key";
         input.vault.add({ name: f.name, label: f.label, category, value: f.value });
         status = `Saved ${f.name}.`;
       });
     } else if ((target = after("vt.reveal")) !== null) {
-      void confirmed("Show a secret from the Tessaya vault").then((ok) => {
-        const item = ok ? input.vault.valueOf(target!) : null;
-        if (item === null) return say(ok ? "There is no such secret." : "Windows Hello did not confirm it is you.");
-        shown = { id: item.id, value: item.value };
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => {
-          hide();
+      void confirmed("Show a secret from the Tessaya vault")
+        .then((ok) => {
+          const item = ok ? input.vault.valueOf(target!) : null;
+          if (item === null)
+            return say(
+              ok ? "There is no such secret." : "Windows Hello did not confirm it is you.",
+            );
+          shown = { id: item.id, value: item.value };
+          clearTimeout(hideTimer);
+          hideTimer = setTimeout(() => {
+            hide();
+            input.refresh();
+          }, REVEAL_MS);
+          hideTimer.unref();
+          note(item.name, "reveal", "revealed");
           input.refresh();
-        }, REVEAL_MS);
-        hideTimer.unref();
-        note(item.name, "reveal", "revealed");
-        input.refresh();
-      }).catch((e: unknown) => say(reason(e)));
+        })
+        .catch((e: unknown) => say(reason(e)));
     } else if ((target = after("vt.copy")) !== null) {
       guard(() => {
         const item = input.vault.valueOf(target!);
@@ -173,26 +204,24 @@ export const createVaultTab = (input: {
       if (!unlocked) return [bar];
       return [
         bar,
-        ...input.vault.list().map(
-          (i): HomeControl => ({
-            id: `vt:${i.id}`,
-            section: "Secrets",
-            label: i.name,
-            hint: `${i.label === "" ? i.category : i.label} · ${i.category} · ${
-              i.policy.mode === "self"
-                ? "you type it yourself"
-                : i.policy.mode === "never"
-                  ? "only you may use it"
-                  : i.policy.mode === "domain"
-                    ? `allowed for a site for ${i.policy.minutes} minutes after a yes`
-                    : "asks you each time"
-            }`,
-            kind: "vaultItem",
-            policy: i.policy.mode === "domain" ? `domain:${i.policy.minutes}` : i.policy.mode,
-            locked: i.policy.mode === "self",
-            revealed: shown?.id === i.id ? shown.value : null,
-          }),
-        ),
+        ...input.vault.list().map((i): HomeControl => ({
+          id: `vt:${i.id}`,
+          section: "Secrets",
+          label: i.name,
+          hint: `${i.label === "" ? i.category : i.label} · ${i.category} · ${
+            i.policy.mode === "self"
+              ? "you type it yourself"
+              : i.policy.mode === "never"
+                ? "only you may use it"
+                : i.policy.mode === "domain"
+                  ? `allowed for a site for ${i.policy.minutes} minutes after a yes`
+                  : "asks you each time"
+          }`,
+          kind: "vaultItem",
+          policy: i.policy.mode === "domain" ? `domain:${i.policy.minutes}` : i.policy.mode,
+          locked: i.policy.mode === "self",
+          revealed: shown?.id === i.id ? shown.value : null,
+        })),
       ];
     },
   };

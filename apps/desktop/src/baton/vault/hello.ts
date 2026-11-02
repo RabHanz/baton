@@ -38,4 +38,5 @@ export const windowsHello = (
         (_error, stdout) => resolve(stdout),
       ),
     ),
-): Promise<HelloResult> => (platform === "win32" ? run(SCRIPT(message)).then(parseHello) : Promise.resolve("unavailable"));
+): Promise<HelloResult> =>
+  platform === "win32" ? run(SCRIPT(message)).then(parseHello) : Promise.resolve("unavailable");

@@ -36,7 +36,14 @@ const state = (over: Partial<MemoryTabState>): MemoryTabState => ({
 
 describe("memoryControls", () => {
   const items = [
-    item({ id: "1", kind: "preference", text: "Short answers", source: "user", confidence: 1, pinned: true }),
+    item({
+      id: "1",
+      kind: "preference",
+      text: "Short answers",
+      source: "user",
+      confidence: 1,
+      pinned: true,
+    }),
     item({ id: "2", text: "Staging is on the second box", scope: "project", scopeRef: "shop" }),
     item({ id: "3", text: "Invoices go to a new host", proposed: true }),
     item({ id: "4", text: "Old rule", supersededBy: "1" }),
@@ -45,13 +52,11 @@ describe("memoryControls", () => {
   it("counts by kind, groups rows under kinds and says where each came from", () => {
     const [bar, ...rows] = memoryControls(state({ items, usedIds: new Set(["2"]) }));
     expect(bar).toMatchObject({ kind: "memoryBar", usedCount: 1 });
-    expect((bar as unknown as { kinds: Array<{ value: string; count: number }> }).kinds.map((k) => `${k.value}:${k.count}`)).toEqual([
-      "all:2",
-      "preference:1",
-      "fact:1",
-      "held:1",
-      "replaced:1",
-    ]);
+    expect(
+      (bar as unknown as { kinds: Array<{ value: string; count: number }> }).kinds.map(
+        (k) => `${k.value}:${k.count}`,
+      ),
+    ).toEqual(["all:2", "preference:1", "fact:1", "held:1", "replaced:1"]);
     expect(rows.map((r) => [r.id, r.section])).toEqual([
       ["m:1", "Preferences"],
       ["m:2", "Facts"],
@@ -62,7 +67,9 @@ describe("memoryControls", () => {
 
   it("filters by kind, search, held, replaced and used", () => {
     const ids = (s: Partial<MemoryTabState>) =>
-      memoryControls(state({ items, ...s })).filter((c) => c.kind === "memory").map((c) => c.id);
+      memoryControls(state({ items, ...s }))
+        .filter((c) => c.kind === "memory")
+        .map((c) => c.id);
     expect(ids({ filter: "fact" })).toEqual(["m:2"]);
     expect(ids({ query: "staging box" })).toEqual(["m:2"]);
     expect(ids({ filter: "held" })).toEqual(["m:3"]);
@@ -71,8 +78,13 @@ describe("memoryControls", () => {
   });
 
   it("says plainly when there is nothing", () => {
-    expect(memoryControls(state({}))[1]).toMatchObject({ id: "m.empty", label: "Nothing remembered yet" });
-    expect(memoryControls(state({ items, query: "zzz" }))[1]).toMatchObject({ label: "Nothing matches" });
+    expect(memoryControls(state({}))[1]).toMatchObject({
+      id: "m.empty",
+      label: "Nothing remembered yet",
+    });
+    expect(memoryControls(state({ items, query: "zzz" }))[1]).toMatchObject({
+      label: "Nothing matches",
+    });
   });
 
   it("reads the id out of an action", () => {

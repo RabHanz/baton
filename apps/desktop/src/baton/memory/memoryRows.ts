@@ -54,7 +54,9 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
       count: live.filter((i) => i.kind === value).length,
     })).filter((k) => k.count > 0),
     ...(held.length > 0 ? [{ value: "held", label: "Waiting for you", count: held.length }] : []),
-    ...(replaced.length > 0 ? [{ value: "replaced", label: "Replaced", count: replaced.length }] : []),
+    ...(replaced.length > 0
+      ? [{ value: "replaced", label: "Replaced", count: replaced.length }]
+      : []),
   ];
   const bar: HomeControl = {
     id: "m.bar",
@@ -74,7 +76,10 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
   const pool = s.filter === "held" ? held : s.filter === "replaced" ? replaced : live;
   const words = s.query.toLowerCase().split(/\s+/).filter(Boolean);
   const shown = pool
-    .filter((i) => s.filter === "all" || s.filter === "held" || s.filter === "replaced" || i.kind === s.filter)
+    .filter(
+      (i) =>
+        s.filter === "all" || s.filter === "held" || s.filter === "replaced" || i.kind === s.filter,
+    )
     .filter((i) => !s.usedOnly || s.usedIds.has(i.id))
     .filter((i) => matches(i, words));
 

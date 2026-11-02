@@ -194,7 +194,7 @@ import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
-import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
+import { FRESH_WAKE_WORDS, WAKE_MODEL_PENDING, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
@@ -2978,6 +2978,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: `Wake word: ${wake.word}`,
         kind: "toggle" as const,
         on: wake.enabled,
+        ...(wake.word === WAKE_MODEL_PENDING
+          ? { disabled: true, hint: "Coming: model training. It cannot wake yet." }
+          : {}),
       })),
       {
         id: "v.direct",
@@ -3240,8 +3243,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: "Pill position",
         hint: "Or drag it: it lines up on a grid and snaps to centre, top and bottom. Hold Alt or Shift to place it freely. Right-click it for the same places.",
         kind: "choice",
-        value: pill.place(),
-        options: PLACES.map((p) => ({ value: p.id, label: p.label })),
+        value: pill.placed() ? pill.place() : settings.pillEdge === "top" ? "top" : "taskbar",
+        options: [
+          ...PLACES.map((p) => ({ value: p.id, label: p.label })),
+          { value: "taskbar", label: "Above the taskbar" },
+        ],
       },
       {
         id: "v.pillMove",
@@ -3351,17 +3357,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         placeholder: resetPrompt,
         addLabel: "Erase",
       })),
-      {
-        id: "v.pillEdge",
-        section: "On screen",
-        label: "Where the pill sits",
-        kind: "choice",
-        value: settings.pillEdge,
-        options: [
-          { value: "bottom", label: "Above the taskbar" },
-          { value: "top", label: "At the top" },
-        ],
-      },
       {
         id: "v.login",
         section: "On screen",
@@ -3828,11 +3823,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         history?.update(turn.id, { audio: null });
       }
       render();
+    } else if (id === "v.pillPlace" && value === "taskbar") {
+      save({ pillEdge: "bottom" });
+      pill.setEdge("bottom");
+      pill.putBack();
     } else if (
       id === "v.pillPlace" &&
       typeof value === "string" &&
       PLACES.some((p) => p.id === value)
     ) {
+      save({ pillEdge: value === "top" ? "top" : "bottom" });
       pill.moveTo(value as PlaceId);
     } else if (id === "v.pillHide") {
       save({
@@ -3890,9 +3890,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.pillRest") {
       save({ pillAtRest: on });
       pill.setRest(on);
-    } else if (id === "v.pillEdge" && (value === "top" || value === "bottom")) {
-      save({ pillEdge: value });
-      pill.setEdge(value);
     } else if (id === "v.login") {
       save({ openAtLogin: on });
       setLoginItem(Electron.app, input.loginEntry, on);

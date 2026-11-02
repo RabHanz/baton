@@ -51,7 +51,12 @@ export const createMemoryTab = (input: {
         items?: ReadonlyArray<MemoryItem>;
       } | null;
       usedIds = new Set((used?.items ?? []).map((i) => i.id));
-      pullOn = ((await input.call("pull", { action: "status" }).catch(() => null)) as { enabled?: boolean } | null)?.enabled === true;
+      pullOn =
+        (
+          (await input.call("pull", { action: "status" }).catch(() => null)) as {
+            enabled?: boolean;
+          } | null
+        )?.enabled === true;
     } catch {
       items = null;
     } finally {
@@ -109,7 +114,13 @@ export const createMemoryTab = (input: {
       status = value === true ? "Sync is on." : "Sync is off.";
       input.refresh();
     } else if (id === "m.pullOn") {
-      void run("pull", { action: value === true ? "enable" : "disable" }, value === true ? "Pulling learnings daily; they wait for your yes." : "Not pulling learnings.");
+      void run(
+        "pull",
+        { action: value === true ? "enable" : "disable" },
+        value === true
+          ? "Pulling learnings daily; they wait for your yes."
+          : "Not pulling learnings.",
+      );
     } else if (id === "m.pull") {
       void input
         .call("pull", { action: "run" })
@@ -124,7 +135,11 @@ export const createMemoryTab = (input: {
     } else if ((target = memoryIdOf(id, "m.edit")) !== null) {
       void run("edit", { id: target, text }, "Saved.");
     } else if ((target = memoryIdOf(id, "m.pin")) !== null) {
-      void run("pin", { id: target, pinned: value === true }, value === true ? "Pinned." : "Unpinned.");
+      void run(
+        "pin",
+        { id: target, pinned: value === true },
+        value === true ? "Pinned." : "Unpinned.",
+      );
     } else if ((target = memoryIdOf(id, "m.forget")) !== null) {
       void run("forget", { id: target }, "Forgotten.");
     } else if ((target = memoryIdOf(id, "m.accept")) !== null) {

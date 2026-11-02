@@ -198,6 +198,10 @@ export interface VoicePill {
   readonly showMove: () => void;
   /** The named place it is nearest to, for the settings control. */
   readonly place: () => PlaceId;
+  /** Whether he (or Settings) has put it somewhere on this display. */
+  readonly placed: () => boolean;
+  /** Forgets the saved place: back to the default edge. */
+  readonly putBack: () => void;
   /** Where the pill is, or would appear: what the vocabulary toast sits beside. */
   readonly anchor: () => Electron.Rectangle;
   readonly state: () => TurnState;
@@ -262,6 +266,7 @@ export const createVoicePill = (input: {
   let markerPlace: PlaceId | null = null;
   let capsule = { x: 302, y: 26, width: 132, height: 41 };
   let takingMouse = false;
+  let overTicks = 0;
   let hitTimer: ReturnType<typeof setInterval> | null = null;
   let moveTimer: ReturnType<typeof setTimeout> | null = null;
   const trace = (record: Record<string, unknown>) => {
@@ -289,7 +294,8 @@ export const createVoicePill = (input: {
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
     const over = cursorOverCapsule(cursor, b, capsule);
-    if (over === takingMouse) return;
+    const stale = over && ++overTicks % 12 === 0;
+    if (over === takingMouse && !stale) return;
     takingMouse = over;
     if (over) target.setIgnoreMouseEvents(false);
     else target.setIgnoreMouseEvents(true, { forward: true });
@@ -360,6 +366,8 @@ export const createVoicePill = (input: {
   const stopDrag = (save: boolean, reason = "up") => {
     if (dragTimer === null) return;
     if (moveTimer !== null) armMove();
+    // A new grab starts from a clean mouse state: the next hit test switches it on again.
+    takingMouse = false;
     clearInterval(dragTimer);
     dragTimer = null;
     closeMarkers();
@@ -741,6 +749,18 @@ export const createVoicePill = (input: {
       raise();
       call("window.pill.move()");
       armMove();
+    },
+    placed: () => {
+      const b = this_anchor();
+      return spots[displayKey(Electron.screen.getDisplayMatching(b))] !== undefined;
+    },
+    putBack: () => {
+      const display = Electron.screen.getDisplayMatching(this_anchor());
+      const { [displayKey(display)]: _gone, ...rest } = spots;
+      spots = rest;
+      saveSpots();
+      if (window !== null && !window.isDestroyed())
+        window.setBounds({ ...placeFor(display), width: WIDTH, height: HEIGHT });
     },
     place: () => {
       const b = this_anchor();
