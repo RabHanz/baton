@@ -3749,6 +3749,9 @@ marker's version with its own: a different version logs `replaced-by-update {fro
 
 **Overlays in recordings.** Every overlay window (pointer, cards, pill and its markers, toasts, the companion windows) is created through `protectFromCapture`: protected from every screen capture in a normal run, as designed, and visible to capture only when BATON_TEST_DIR is set, so a recording of a test run shows them (`captureProtection.ts`, one rule in one place).
 
+## D149 — Semi-sentient presence: awareness, commitments, initiative, self-state, "what needs me"
+
+See `SEMI_SENTIENT.md`. Decided: presence is state and tools of the one assistant (D143), not a second brain; "what needs me?" is the first piece because it is Stage 5's test; awareness is off by default per source with a rolling in-memory window and a deny-list; initiative produces offers (Yes/Later/Never) and never acts without a standing permission; read-only sources (ledger labels through `gh`, a deadlines file) are settings and empty by default. A job or session that finished and nobody opened is a need (the watch's unseen limit is 60 minutes, down from 240).
 ## D150 — One memory: layers, a server store, a learning loop (design in `MEMORY.md`)
 
 Memory is one table of short items (kind, scope, source, confidence, pinned, expiry, superseded-by) in the server's database, searched with FTS5, written through one door that refuses secrets, banking details and private-pack text, filled by a cheap-model extractor after turns and jobs (nothing from tainted content without his yes), injected into the one assistant under a token budget, and spread between servers by last-writer-wins with tombstones behind a setting. Embeddings stay off until FTS proves insufficient. The shared types and pure rules are `packages/baton-shared/src/memory.ts`; other lanes (presence, commitments) call `MemoryClient`.
