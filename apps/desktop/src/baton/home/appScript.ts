@@ -752,9 +752,12 @@ function setupPage(b) {
   const mid = $('div', 'wizmid'); mid.append(back, skip); foot.append(mid, next); b.appendChild(foot);
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
-function setRegion(el, build) {
+function setRegion(el, build, keepId) {
   const next = document.createElement('div'); build(next);
   if (next.innerHTML === el.innerHTML) return false;
+  // The mark is carried over, not rebuilt, so a refresh does not restart its slow breathing.
+  const old = keepId && el.querySelector('#' + keepId), fresh = keepId && next.querySelector('#' + keepId);
+  if (old && fresh && old.innerHTML === fresh.innerHTML) fresh.replaceWith(old);
   el.replaceChildren(...next.childNodes); return true;
 }
 let shownModal = null, lastSig = '', modalOpener = null;
@@ -873,7 +876,7 @@ function render(state) {
   const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
   const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
   foot.append(t3, st); side.appendChild(foot);
-  });
+  }, 'mark');
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);

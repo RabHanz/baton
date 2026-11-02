@@ -1,0 +1,54 @@
+name: Tessaya sidebar logo smoothness
+
+# The real Home window on a Windows desktop: the sidebar logo is watched while the sidebar is rebuilt, and its frames are diffed.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["baton/c-logo-calm**"]
+
+permissions:
+  contents: read
+
+jobs:
+  click:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch the Electron binary
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - name: Install ffmpeg for the recording
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y > /dev/null || echo "no ffmpeg, so no clip"
+      - name: Bundle the harness
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
+          mkdir -p node_modules/.cache/baton-smoke
+          "$esbuild" src/baton/screen/smoke/logoSmooth.ts --bundle --platform=node --format=cjs \
+            --external:electron --external:onnxruntime-node --log-level=warning \
+            --outfile=node_modules/.cache/baton-smoke/logoSmooth.cjs
+      - name: Watch the logo, recorded
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          PROOF_OUT: ${{ github.workspace }}/logo-smooth-out
+        run: |
+          mkdir -p "$PROOF_OUT"
+          timeout 300 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/logoSmooth.cjs 2>&1 | tee "$PROOF_OUT/run.log"; echo "exit=${PIPESTATUS[0]}" >> "$PROOF_OUT/run.log"
+          cat "$PROOF_OUT/results.md" >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logo-smooth
+          path: logo-smooth-out
+          if-no-files-found: warn
