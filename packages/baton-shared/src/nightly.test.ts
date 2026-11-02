@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildNightly, nightlyRow, parseNightly, resultOf } from "./nightly.ts";
+import { buildNightly, nightlyRow, parseNightly, parseSync, resultOf, syncRow } from "./nightly.ts";
 
 const NOW = Date.parse("2026-11-03T06:00:00Z");
 const status = (outcomes: Record<string, string | undefined>) =>
@@ -30,5 +30,19 @@ describe("the nightly status file", () => {
     expect(bad.why).toContain("voice proof on baton-v0.1.40");
     expect(nightlyRow(null, NOW).state).toBe("unknown");
     expect(nightlyRow(status({ "memory evals": "success" }), NOW + 3 * 86_400_000)).toMatchObject({ state: "limited" });
+  });
+});
+
+describe("the sync debt row", () => {
+  const sync = (over: Record<string, unknown>) => parseSync(JSON.stringify({ at: "2026-11-03T03:00:00Z", result: "merged", ok: true, behindCommits: 12, conflictingFiles: [], ...over }));
+  it("shows how far behind, and names the files when the last run stopped", () => {
+    expect(syncRow(sync({}), NOW)).toMatchObject({ state: "works" });
+    expect(syncRow(sync({}), NOW).why).toContain("12 commits behind");
+    const stopped = syncRow(sync({ result: "conflict", ok: false, behindCommits: 700, conflictingFiles: ["a/ChatView.tsx"] }), NOW);
+    expect(stopped.state).toBe("limited");
+    expect(stopped.why).toContain("700 commits behind");
+    expect(stopped.why).toContain("a/ChatView.tsx");
+    expect(syncRow(null, NOW).state).toBe("unknown");
+    expect(parseSync("{}")).toBeNull();
   });
 });

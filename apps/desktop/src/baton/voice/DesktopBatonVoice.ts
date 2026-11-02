@@ -222,7 +222,7 @@ import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { createPhoneRelay, nextPollMs } from "../phone/phoneRelay.ts";
 import { createNightlyCache } from "../presence/nightlyRead.ts";
-import { nightlyRow } from "@t3tools/baton-shared/nightly";
+import { nightlyRow, syncRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
@@ -3065,7 +3065,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .slice(0, 5)
       .map((m) => m.text);
     const probed = await probe(settings.claudeBinary);
-    const nightly = await readLastNightly();
+    const { nightly, sync } = await readLastNightly();
     const state = initiative.state();
     nowData = {
       loaded: true,
@@ -3091,6 +3091,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           server: jobsCache !== null,
         }),
         nightlyRow(nightly, Date.now()),
+        syncRow(sync, Date.now()),
       ],
       weaves:
         (
