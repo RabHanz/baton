@@ -78,7 +78,13 @@ export const answerCatalogRequest = async (
   if (request.kind === "catalogCreate") {
     const answer = await commands.create({
       environmentId: env(request.environmentId),
-      input: { cwd: request.cwd, agent: "claude" },
+      input: {
+        cwd: request.cwd,
+        agent: "claude",
+        ...(request.model === undefined ? {} : { model: request.model }),
+        ...(request.effort === undefined ? {} : { effort: request.effort }),
+        ...(request.message === undefined ? {} : { message: request.message }),
+      },
     });
     if (answer._tag !== "Success" || answer.value === undefined)
       return NO("That session could not be started.");

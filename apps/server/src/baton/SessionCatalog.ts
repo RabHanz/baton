@@ -33,11 +33,23 @@ export interface CatalogPorts {
   readonly history: (query: string) => Promise<ReadonlyArray<HistoryHit>>;
   readonly dirExists: (dir: string) => boolean;
   /** `baton <args>`; the program's own output (it says which Herdr session and pane it used). */
-  readonly baton: (args: ReadonlyArray<string>) => Promise<{ readonly ok: boolean; readonly out: string }>;
+  readonly baton: (
+    args: ReadonlyArray<string>,
+  ) => Promise<{ readonly ok: boolean; readonly out: string }>;
   /** Types the text into a Herdr pane and submits it. */
   readonly type: (pane: string, text: string) => Promise<boolean>;
   /** Machines with no Herdr: brings the session back as a T3 thread resuming that id, sending nothing. */
-  readonly thread?: (sessionId: string, cwd: string) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  readonly thread?: (
+    sessionId: string,
+    cwd: string,
+  ) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  /** Machines with no Herdr: starts a new session in a folder as a T3 thread, with a model, an effort and a first message. */
+  readonly launch?: (input: {
+    readonly cwd: string;
+    readonly model?: string;
+    readonly effort?: string;
+    readonly message?: string;
+  }) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
   /** What the Herdr pane shows now (the last lines), to explain a session that never became ready. */
   readonly screen?: (session: string, pane: string) => Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
@@ -46,7 +58,8 @@ export interface CatalogPorts {
 
 export const READY_TIMEOUT_MS = 45_000;
 const POLL_MS = 500;
-const TRUST = /Is this a project you created or one you trust|trust this folder|Do you trust the files/i;
+const TRUST =
+  /Is this a project you created or one you trust|trust this folder|Do you trust the files/i;
 
 /** The sentence for a session that did not become ready: Claude's folder-trust question gets named, because it waits for a person. */
 export const notReadyReason = (screen: string, where: string): string =>
@@ -54,7 +67,11 @@ export const notReadyReason = (screen: string, where: string): string =>
     ? `Claude Code is asking whether to trust this folder, and waits for you to choose in Herdr (${where}). Choose, then resume again.`
     : "It was started in Herdr but did not become ready within 45 seconds. Your messages are kept; try Resume again.";
 
-const basename = (path: string): string => path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? path;
+const basename = (path: string): string =>
+  path
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .pop() ?? path;
 
 const ready = (s: ClaudeLiveSession | undefined): boolean =>
   s !== undefined && s.herdrPane !== null && s.status !== "busy";
@@ -83,12 +100,19 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     state: "running",
     source: "live",
     canResume: false,
-    detail: s.herdrPane === null ? "It is running in a plain terminal. Bring it into Herdr to send to it from here." : null,
+    detail:
+      s.herdrPane === null
+        ? "It is running in a plain terminal. Bring it into Herdr to send to it from here."
+        : null,
     waiting: waiting.get(s.sessionId)?.length ?? 0,
   });
 
   const stoppedRow = (t: TranscriptInfo): BatonCatalogSession => {
-    const state: BatonCatalogState = resuming.has(t.sessionId) ? "resuming" : failed.has(t.sessionId) ? "failed" : "stopped";
+    const state: BatonCatalogState = resuming.has(t.sessionId)
+      ? "resuming"
+      : failed.has(t.sessionId)
+        ? "failed"
+        : "stopped";
     const cwdOk = t.cwd !== null && ports.dirExists(t.cwd);
     return {
       id: t.sessionId,
@@ -101,7 +125,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       state,
       source: "transcript",
       canResume: cwdOk,
-      detail: failed.get(t.sessionId) ?? (cwdOk ? null : "Its folder is not on this machine, so it cannot be resumed here."),
+      detail:
+        failed.get(t.sessionId) ??
+        (cwdOk ? null : "Its folder is not on this machine, so it cannot be resumed here."),
       waiting: waiting.get(t.sessionId)?.length ?? 0,
     };
   };
@@ -112,7 +138,11 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     const transcripts = await ports.transcripts(600);
     const byId = new Map<string, BatonCatalogSession>();
     for (const t of transcripts) byId.set(t.sessionId, stoppedRow(t));
-    for (const s of liveSessions) byId.set(s.sessionId, { ...liveRow(s), ...(byId.get(s.sessionId) === undefined ? {} : { title: byId.get(s.sessionId)!.title }) });
+    for (const s of liveSessions)
+      byId.set(s.sessionId, {
+        ...liveRow(s),
+        ...(byId.get(s.sessionId) === undefined ? {} : { title: byId.get(s.sessionId)!.title }),
+      });
     const q = (input.query ?? "").trim().toLowerCase();
     // Older sessions live in the history index; it is only searched when words are given.
     const hits = new Set<string>();
@@ -131,20 +161,30 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
           state: "stopped",
           source: "history",
           canResume: false,
-          detail: "Its transcript is no longer on this machine, so it can be read in the history but not resumed.",
+          detail:
+            "Its transcript is no longer on this machine, so it can be read in the history but not resumed.",
           waiting: 0,
         });
       }
     }
-    let rows = [...byId.values()].filter((r) => q === "" || `${r.title} ${r.project} ${r.cwd ?? ""} ${r.account ?? ""}`.toLowerCase().includes(q) || hits.has(r.id));
-    rows.sort((a, b) => Date.parse(b.lastActivityAt ?? "") - Date.parse(a.lastActivityAt ?? "") || 0);
-    if (input.before !== undefined) rows = rows.filter((r) => r.lastActivityAt !== null && r.lastActivityAt < input.before!);
+    let rows = [...byId.values()].filter(
+      (r) =>
+        q === "" ||
+        `${r.title} ${r.project} ${r.cwd ?? ""} ${r.account ?? ""}`.toLowerCase().includes(q) ||
+        hits.has(r.id),
+    );
+    rows.sort(
+      (a, b) => Date.parse(b.lastActivityAt ?? "") - Date.parse(a.lastActivityAt ?? "") || 0,
+    );
+    if (input.before !== undefined)
+      rows = rows.filter((r) => r.lastActivityAt !== null && r.lastActivityAt < input.before!);
     return { machine: ports.machine, sessions: rows.slice(0, limit), more: rows.length > limit };
   };
 
   const folders = async (input: { query?: string }) => {
     const seen = new Map<string, { cwd: string; project: string; lastActivityAt: string | null }>();
-    for (const s of await ports.live()) seen.set(s.cwd, { cwd: s.cwd, project: basename(s.cwd), lastActivityAt: s.updatedAt });
+    for (const s of await ports.live())
+      seen.set(s.cwd, { cwd: s.cwd, project: basename(s.cwd), lastActivityAt: s.updatedAt });
     for (const t of await ports.transcripts(600)) {
       if (t.cwd === null || seen.has(t.cwd)) continue;
       seen.set(t.cwd, { cwd: t.cwd, project: basename(t.cwd), lastActivityAt: t.lastActivityAt });
@@ -153,7 +193,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     return {
       folders: [...seen.values()]
         .filter((f) => ports.dirExists(f.cwd) && (q === "" || f.cwd.toLowerCase().includes(q)))
-        .sort((a, b) => Date.parse(b.lastActivityAt ?? "") - Date.parse(a.lastActivityAt ?? "") || 0)
+        .sort(
+          (a, b) => Date.parse(b.lastActivityAt ?? "") - Date.parse(a.lastActivityAt ?? "") || 0,
+        )
         .slice(0, 60),
     };
   };
@@ -164,12 +206,18 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   };
   const whyNot = async (out: string): Promise<string> => {
     const at = whereOf(out);
-    const screen = at === null || ports.screen === undefined ? "" : await ports.screen(at.session, at.pane).catch(() => "");
+    const screen =
+      at === null || ports.screen === undefined
+        ? ""
+        : await ports.screen(at.session, at.pane).catch(() => "");
     return notReadyReason(screen, at === null ? "its pane" : `herdr --session ${at.session}`);
   };
 
   /** Polls until the session is in a Herdr pane and not mid-turn, or says why not. */
-  const untilReady = async (sessionId: string, timeoutMs: number): Promise<ClaudeLiveSession | null> => {
+  const untilReady = async (
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<ClaudeLiveSession | null> => {
     const started = ports.now();
     for (;;) {
       const found = (await ports.live()).find((s) => s.sessionId === sessionId);
@@ -187,11 +235,27 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     if (live !== undefined) {
       return live.herdrPane !== null
         ? { state: "running" as const, pane: live.herdrPane, detail: null }
-        : { state: "failed" as const, pane: null, detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here." };
+        : {
+            state: "failed" as const,
+            pane: null,
+            detail:
+              "It is running in a plain terminal. Bring it into Herdr to send to it from here.",
+          };
     }
     const cwd = await cwdOf(sessionId, given);
-    if (cwd === null) return { state: "failed" as const, pane: null, detail: "I do not know which folder this conversation was in, and its transcript is not on this machine." };
-    if (!ports.dirExists(cwd)) return { state: "failed" as const, pane: null, detail: `The folder ${cwd} is not on this machine.` };
+    if (cwd === null)
+      return {
+        state: "failed" as const,
+        pane: null,
+        detail:
+          "I do not know which folder this conversation was in, and its transcript is not on this machine.",
+      };
+    if (!ports.dirExists(cwd))
+      return {
+        state: "failed" as const,
+        pane: null,
+        detail: `The folder ${cwd} is not on this machine.`,
+      };
     if (ports.thread !== undefined) {
       const opened = await ports.thread(sessionId, cwd);
       return "threadId" in opened
@@ -200,7 +264,11 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     }
     const out = await ports.baton(["--resume", sessionId, cwd]);
     if (!/running in (\S+) pane (\S+)/.test(out.out)) {
-      return { state: "failed" as const, pane: null, detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
+      return {
+        state: "failed" as const,
+        pane: null,
+        detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.`,
+      };
     }
     const up = await untilReady(sessionId, READY_TIMEOUT_MS);
     return up === null
@@ -211,7 +279,8 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   /** Idempotent: a resume already running is the one the caller waits on. */
   const resume = (input: { sessionId: string; cwd?: string }): Promise<ResumeResult> => {
     const existing = resuming.get(input.sessionId);
-    if (existing !== undefined) return Promise.resolve({ state: "resuming" as const, pane: null, detail: null });
+    if (existing !== undefined)
+      return Promise.resolve({ state: "resuming" as const, pane: null, detail: null });
     const job = doResume(input.sessionId, input.cwd).then(async (r) => {
       resuming.delete(input.sessionId);
       if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
@@ -237,31 +306,94 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
         ? { state: "running" as const, delivered: true, detail: null }
         : { state: "failed" as const, delivered: false, detail: "Herdr did not take the message." };
     }
-    if (live !== undefined) return { state: "failed" as const, delivered: false, detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here." };
+    if (live !== undefined)
+      return {
+        state: "failed" as const,
+        delivered: false,
+        detail: "It is running in a plain terminal. Bring it into Herdr to send to it from here.",
+      };
     // Stopped: keep the message, bring it back, and let the resume deliver it.
     waiting.set(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
-    const result = await resume({ sessionId: input.sessionId, ...(input.cwd === undefined ? {} : { cwd: input.cwd }) });
+    const result = await resume({
+      sessionId: input.sessionId,
+      ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+    });
     if (result.state === "running" && result.pane === null) {
-      return { state: "running" as const, delivered: false, detail: "It is open as a thread here. Send your message in that thread." };
+      return {
+        state: "running" as const,
+        delivered: false,
+        detail: "It is open as a thread here. Send your message in that thread.",
+      };
     }
-    if (result.state === "running") return { state: "running" as const, delivered: true, detail: null };
-    if (result.state === "resuming") return { state: "resuming" as const, delivered: false, detail: "It is resuming; your message is kept and goes when it is ready." };
-    return { state: "failed" as const, delivered: false, detail: `${result.detail ?? "It could not be resumed."} Your message is kept.` };
+    if (result.state === "running")
+      return { state: "running" as const, delivered: true, detail: null };
+    if (result.state === "resuming")
+      return {
+        state: "resuming" as const,
+        delivered: false,
+        detail: "It is resuming; your message is kept and goes when it is ready.",
+      };
+    return {
+      state: "failed" as const,
+      delivered: false,
+      detail: `${result.detail ?? "It could not be resumed."} Your message is kept.`,
+    };
   };
 
-  const create = async (input: { cwd: string }) => {
-    if (!ports.dirExists(input.cwd)) return { state: "failed" as const, sessionId: null, pane: null, detail: `The folder ${input.cwd} is not on this machine.` };
+  const create = async (input: {
+    cwd: string;
+    model?: string;
+    effort?: string;
+    message?: string;
+  }) => {
+    if (!ports.dirExists(input.cwd))
+      return {
+        state: "failed" as const,
+        sessionId: null,
+        pane: null,
+        detail: `The folder ${input.cwd} is not on this machine.`,
+      };
+    if (ports.launch !== undefined) {
+      const launched = await ports.launch(input);
+      return "threadId" in launched
+        ? {
+            state: "running" as const,
+            sessionId: null,
+            pane: null,
+            detail: null,
+            threadId: launched.threadId,
+          }
+        : { state: "failed" as const, sessionId: null, pane: null, detail: launched.detail };
+    }
     const before = new Set((await ports.live()).map((s) => s.sessionId));
     const out = await ports.baton([input.cwd, "claude"]);
     if (!/running in (\S+) pane (\S+)/.test(out.out)) {
-      return { state: "failed" as const, sessionId: null, pane: null, detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
+      return {
+        state: "failed" as const,
+        sessionId: null,
+        pane: null,
+        detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.`,
+      };
     }
     const started = ports.now();
     for (;;) {
-      const fresh = (await ports.live()).find((s) => !before.has(s.sessionId) && s.cwd === input.cwd && s.herdrPane !== null);
-      if (fresh !== undefined) return { state: "running" as const, sessionId: fresh.sessionId, pane: fresh.herdrPane, detail: null };
+      const fresh = (await ports.live()).find(
+        (s) => !before.has(s.sessionId) && s.cwd === input.cwd && s.herdrPane !== null,
+      );
+      if (fresh !== undefined)
+        return {
+          state: "running" as const,
+          sessionId: fresh.sessionId,
+          pane: fresh.herdrPane,
+          detail: null,
+        };
       if (ports.now() - started >= READY_TIMEOUT_MS) {
-        return { state: "failed" as const, sessionId: null, pane: null, detail: await whyNot(out.out) };
+        return {
+          state: "failed" as const,
+          sessionId: null,
+          pane: null,
+          detail: await whyNot(out.out),
+        };
       }
       await ports.sleep(POLL_MS);
     }

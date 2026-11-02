@@ -89,12 +89,29 @@ export const createBridgeCatalogService = (input: {
       }
       if (state === "failed" || state === "resuming") throw new Error("not resumed");
     },
-    create: async ({ environmentId, cwd }) => {
+    create: async ({ environmentId, cwd, model, effort, message }) => {
       const answer = await input.bridge.request(
-        { kind: "catalogCreate", environmentId, cwd },
+        {
+          kind: "catalogCreate",
+          environmentId,
+          cwd,
+          ...(model === undefined ? {} : { model }),
+          ...(effort === undefined ? {} : { effort }),
+          ...(message === undefined ? {} : { message }),
+        },
         RESUME_WAIT_MS,
       );
       if (answer === null || !answer.ok) throw new Error("not started");
+      // A machine with no Herdr starts a thread: show it.
+      try {
+        const threadId = (JSON.parse(answer.detail) as { threadId?: unknown }).threadId;
+        if (typeof threadId === "string") {
+          input.openMainWindow();
+          void input.bridge.request({ kind: "open", environmentId, threadId }, OPEN_WAIT_MS);
+        }
+      } catch {
+        // The session is started either way.
+      }
     },
     folders: async (environmentId) => {
       const answer = await input.bridge.request(
