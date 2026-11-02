@@ -219,6 +219,8 @@ import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
+import { createNightlyCache } from "../presence/nightlyRead.ts";
+import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
@@ -2983,6 +2985,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // The Now page (D149): read every few minutes, not on every redraw, because it can call gh.
   let nowData: NowData = EMPTY_NOW;
   const probe = createProbes({});
+  const readLastNightly = createNightlyCache("RabHanz/baton");
   const refreshNow = async (): Promise<void> => {
     const at = Date.now();
     // Asking the server goes through the T3 window and would open it: only while it is already open.
@@ -3009,6 +3012,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .slice(0, 5)
       .map((m) => m.text);
     const probed = await probe(settings.claudeBinary);
+    const nightly = await readLastNightly();
     const state = initiative.state();
     nowData = {
       loaded: true,
@@ -3026,12 +3030,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       learned: learned ?? [],
       declined: state.declined.slice(-8).toReversed(),
       muted: state.never.map((topic) => ({ topic, title: state.titles[topic] ?? topic })),
-      capabilities: capabilities({
-        network: probed.network,
-        claude: probed.claude,
-        speechModel: sidecar !== null && parakeetPath !== null,
-        server: jobsCache !== null,
-      }),
+      capabilities: [
+        ...capabilities({
+          network: probed.network,
+          claude: probed.claude,
+          speechModel: sidecar !== null && parakeetPath !== null,
+          server: jobsCache !== null,
+        }),
+        nightlyRow(nightly, Date.now()),
+      ],
       weaves:
         (
           (windowUp
