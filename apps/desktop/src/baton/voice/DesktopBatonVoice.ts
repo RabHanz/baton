@@ -63,6 +63,13 @@ import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
+import { parseWeaveHosts } from "@t3tools/baton-shared/weaveBoxes";
+import {
+  parseTrustLogs,
+  trustAction,
+  trustControls,
+  type TrustFilter,
+} from "../trust/trustRows.ts";
 import { expandSnippets, exportSnippets } from "@t3tools/baton-shared/snippets";
 import {
   checkTransformOutput,
@@ -2861,6 +2868,40 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setInterval(() => void refreshNow().catch(() => undefined), NOW_REFRESH_MS).unref();
   setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
 
+  let trustFilter: TrustFilter = "all";
+  const trustData = () => {
+    const on = (id: string) =>
+      input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
+    return {
+      screenAlways: on("s.capture"),
+      chrome: on("s.chrome"),
+      social: on("s.social"),
+      act: on("s.act"),
+      vault: !vaultState.vault.exists()
+        ? ("none" as const)
+        : vaultState.vault.isUnlocked()
+          ? ("unlocked" as const)
+          : ("locked" as const),
+      grants: (jobsCache ?? []).flatMap((j) =>
+        j.terms.grants
+          .filter((g) => g.revokedAt === null)
+          .map((g) => ({
+            jobId: j.workSessionId,
+            title: j.title,
+            channel: g.channel,
+            since: g.grantedAt,
+          })),
+      ),
+      weaveHosts: parseWeaveHosts(input.env["BATON_WEAVE_HOSTS"]).hosts.map((h) => h.name),
+      entries: parseTrustLogs({
+        turns: tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")),
+        social: tailOf(NodePath.join(input.stateDir, "social-actions.ndjson")),
+        vault: tailOf(vaultState.auditFile),
+      }),
+      filter: trustFilter,
+    };
+  };
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -2876,6 +2917,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...nowControls(nowData, Date.now()),
+      ...trustControls(trustData(), Date.now()),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
@@ -3739,6 +3781,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? ""
           : "A built-in cannot be removed; replace it with your own of the same name.";
       } else if (act?.kind === "reset") transforms.reset();
+    } else if (id.startsWith("trust.")) {
+      const act = trustAction(id, value);
+      if (act?.kind === "filter") trustFilter = act.filter;
+      else if (act?.kind === "revoke") {
+        if (act.what === "vault") vaultState.vault.lock();
+        else {
+          const toggle = { screen: "s.capture", chrome: "s.chrome", social: "s.social", act: "s.act" }[
+            act.what
+          ];
+          input.extras?.applySetting(toggle, false);
+        }
+      } else if (act?.kind === "grant") {
+        void requestKept({
+          kind: "job",
+          op: "revoke",
+          args: { id: act.jobId, channel: act.channel },
+        })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      }
     } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
     else if (id.startsWith("now.")) {
       const act = nowAction(id);
