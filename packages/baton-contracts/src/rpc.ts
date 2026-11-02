@@ -106,6 +106,16 @@ import {
   BatonJobTermsResult,
 } from "./jobs.ts";
 import {
+  BATON_WEAVE_WS_METHODS,
+  BatonWeaveError,
+  BatonWeaveListInput,
+  BatonWeaveListResult,
+  BatonWeaveSendInput,
+  BatonWeaveSendResult,
+  BatonWeaveTickInput,
+  BatonWeaveTickResult,
+} from "./weave.ts";
+import {
   BATON_COMMITMENT_WS_METHODS,
   BatonCommitmentError,
   BatonCommitmentListInput,
@@ -311,6 +321,23 @@ const WsBatonCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert, 
   payload: BatonCommitmentUpsertInput,
   success: BatonCommitmentUpsertResult,
   error: CommitmentErrors,
+});
+
+const WeaveErrors = Schema.Union([BatonWeaveError, EnvironmentAuthorizationError]);
+const WsBatonWeaveSendRpc = Rpc.make(BATON_WEAVE_WS_METHODS.send, {
+  payload: BatonWeaveSendInput,
+  success: BatonWeaveSendResult,
+  error: WeaveErrors,
+});
+const WsBatonWeaveListRpc = Rpc.make(BATON_WEAVE_WS_METHODS.list, {
+  payload: BatonWeaveListInput,
+  success: BatonWeaveListResult,
+  error: WeaveErrors,
+});
+const WsBatonWeaveTickRpc = Rpc.make(BATON_WEAVE_WS_METHODS.tick, {
+  payload: BatonWeaveTickInput,
+  success: BatonWeaveTickResult,
+  error: WeaveErrors,
 });
 
 const MemoryErrors = Schema.Union([BatonMemoryRefusedError, EnvironmentAuthorizationError]);
@@ -571,6 +598,9 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobScheduleRpc,
   WsBatonJobSplitRpc,
   WsBatonWatchGetRpc,
+  WsBatonWeaveSendRpc,
+  WsBatonWeaveListRpc,
+  WsBatonWeaveTickRpc,
   WsBatonCommitmentListRpc,
   WsBatonCommitmentUpsertRpc,
   WsBatonMemoryListRpc,

@@ -276,7 +276,8 @@ export interface BatonDesktopBridge {
           }
         | BatonJobBridgeRequest
         | BatonMemoryBridgeRequest
-        | BatonCommitmentBridgeRequest,
+        | BatonCommitmentBridgeRequest
+        | BatonWeaveBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
   /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
@@ -338,5 +339,12 @@ export interface BatonMemoryBridgeRequest {
 export interface BatonCommitmentBridgeRequest {
   readonly kind: "commitments";
   readonly op: "list" | "upsert";
+  readonly args: Readonly<Record<string, unknown>>;
+}
+
+/** The desktop assistant's weave calls (D149), answered by the window with `baton.weave.*`. */
+export interface BatonWeaveBridgeRequest {
+  readonly kind: "weave";
+  readonly op: "send" | "list" | "tick";
   readonly args: Readonly<Record<string, unknown>>;
 }
