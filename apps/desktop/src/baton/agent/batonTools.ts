@@ -4,9 +4,13 @@
  * does through the host. The host is the companion and the voice side; this file holds no Electron
  * and no I/O of its own, so each tool's arguments are checked here, before anything is touched.
  */
+import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-shared/operator";
+
 import type { BatonTool, ToolOutput } from "./batonMcp.ts";
 
 export interface ToolHost {
+  /** Names the window with the keyboard; a batch stops when it changes. Without it there is no batch tool. */
+  readonly windowKey?: () => Promise<string>;
   readonly capture: () => Promise<ToolOutput>;
   readonly uiTree: () => Promise<string>;
   readonly clickElement: (label: string, double: boolean) => Promise<string>;
@@ -162,7 +166,7 @@ const SCREEN = {
 };
 const POINT = { type: "integer", description: "Pixels in the screenshot's own coordinates." };
 
-export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
+const buildBaseTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
   {
     name: "screen_capture",
     description:
@@ -338,7 +342,10 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "Find coding sessions on every connected machine, running or stopped, by words from the title, folder or machine (empty lists the newest). Older ones come from the history index. Gives each one's id, state and whether it can be resumed.",
     inputSchema: object({ query: { type: "string", maxLength: 200 } }),
     run: async (a) => ({
-      text: (await host.catalog?.find(typeof a["query"] === "string" ? a["query"].slice(0, 200) : "")) ?? "The session list is not ready yet.",
+      text:
+        (await host.catalog?.find(
+          typeof a["query"] === "string" ? a["query"].slice(0, 200) : "",
+        )) ?? "The session list is not ready yet.",
     }),
   },
   {
@@ -360,8 +367,10 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     ),
     run: async (a) => ({
       text:
-        (await host.catalog?.start(str(a, "cwd", 500), typeof a["machine"] === "string" ? a["machine"].slice(0, 80) : "")) ??
-        "The session list is not ready yet.",
+        (await host.catalog?.start(
+          str(a, "cwd", 500),
+          typeof a["machine"] === "string" ? a["machine"].slice(0, 80) : "",
+        )) ?? "The session list is not ready yet.",
     }),
   },
   {
@@ -1039,3 +1048,66 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     },
   },
 ];
+
+/** Several steps in one window for one model turn (UFO's speculative batch, browser-use's page-change stop). */
+const batchTool = (host: ToolHost, table: ReadonlyArray<BatonTool>): BatonTool => ({
+  name: "act_batch",
+  description: `Run up to ${MAX_BATCH_STEPS} steps in order inside the window with the keyboard, for a sequence you are sure of (open a menu and pick an item, press calculator keys, type and save). Steps are ${[...BATCH_STEP_TOOLS].join(", ")}, each as {tool, args}. It stops at the first failure or when the window with the keyboard changes (a dialog or another app), says which steps ran, and ends with the window's controls: check them. Each step is judged as if you made it alone.`,
+  inputSchema: object(
+    {
+      steps: {
+        type: "array",
+        minItems: 1,
+        maxItems: MAX_BATCH_STEPS,
+        items: object({ tool: { enum: [...BATCH_STEP_TOOLS] }, args: { type: "object" } }, [
+          "tool",
+          "args",
+        ]),
+      },
+    },
+    ["steps"],
+  ),
+  run: async (a) => {
+    const steps = batchSteps({ steps: a["steps"] });
+    if (steps === null)
+      throw new Error(
+        `steps must be one to ${MAX_BATCH_STEPS} of ${[...BATCH_STEP_TOOLS].join(", ")}.`,
+      );
+    const key = host.windowKey;
+    if (key === undefined) throw new Error("Batching is not available here.");
+    let start = await key();
+    const lines: string[] = [];
+    for (const [i, step] of steps.entries()) {
+      const label = `${i + 1}. ${step.tool}`;
+      const tool = table.find((t) => t.name === step.tool);
+      if (tool === undefined) throw new Error(`No tool named ${step.tool}.`);
+      // wait_for says a window change is expected: it skips the check and re-anchors on the new window.
+      if (i > 0 && step.tool !== "wait_for" && (await key()) !== start) {
+        lines.push(`Stopped before step ${i + 1}: the window with the keyboard changed.`);
+        break;
+      }
+      try {
+        const out = await tool.run(step.input);
+        const said = out.text ?? "";
+        // wait_for reports a timeout as text, not an error; in a batch that is a failure.
+        if (step.tool === "wait_for") {
+          if (/appeared in/.test(said)) throw new Error(said);
+          start = await key();
+        }
+        lines.push(`${label}: ${said}`);
+      } catch (error) {
+        lines.push(
+          `${label} FAILED: ${(error as Error).message}`,
+          "The remaining steps did not run.",
+        );
+        break;
+      }
+    }
+    return { text: `${lines.join("\n")}\n---\n${await host.uiTree()}` };
+  },
+});
+
+export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => {
+  const base = buildBaseTools(host);
+  return host.windowKey === undefined ? base : [...base, batchTool(host, base)];
+};

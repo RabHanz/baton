@@ -136,6 +136,9 @@ public static class Diff { public static int Count(string a, string b) {
 export const clipboardText = () => clipboard.readText();
 export const setClipboardText = (text: string) => clipboard.writeText(text);
 
+/** What the bake-off counts besides time: the size of what the tree calls returned. */
+export const stats = { treeBytes: 0 };
+
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
   readonly shot: (name: string) => Promise<string>;
@@ -168,6 +171,7 @@ export const makeHost = (outDir: string): Host => {
     return file;
   };
   const host: ToolHost = {
+    windowKey: async () => String((await side(["foreground"]))["window"]),
     capture: async () => {
       const file = await shot("capture");
       return {
@@ -179,7 +183,9 @@ export const makeHost = (outDir: string): Host => {
       const tree = await side(["ui_tree"]);
       if (typeof tree["error"] === "string")
         throw new Error(`The window's controls can't be read: ${tree["error"]}`);
-      return `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
+      const text = `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
+      stats.treeBytes += text.length;
+      return text;
     },
     clickElement: async (label, double) => {
       const found = await located(label);
