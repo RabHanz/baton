@@ -6,7 +6,8 @@
 param(
   [Parameter(Mandatory)][string]$Out,
   [int]$Seconds = 60,
-  [switch]$Enforce
+  [switch]$Enforce,
+  [switch]$OnlyStarved
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force $Out | Out-Null
@@ -104,6 +105,7 @@ function Start-App([string]$list) {
 }
 
 $results = @()
+if (-not $OnlyStarved) {
 # idle: running, voice off
 Set-Voice $false; $app = Start-App $null
 $results += Measure-App 'idle' $app 25 $Seconds; Stop-Tree $app
@@ -117,35 +119,44 @@ $results += Measure-App 'dictation' $app 60 $Seconds; Stop-Tree $app
 Set-Voice $true; $app = Start-App $turns
 $results += Measure-App 'assistant-turn' $app 60 $Seconds; Stop-Tree $app
 
-# starved start: one core shared with one busy loop; the voice start must still finish and still hear the first phrase
-$starved = $null
-$cores = [Environment]::ProcessorCount
-Set-Voice $true
-Remove-Item $log -ErrorAction SilentlyContinue
-$env:BATON_TEST_WAV = $starve; $env:BATON_TEST_DIR = (Join-Path $Out 'shots')
-$burners = 1..1 | ForEach-Object { $b = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '(Get-Process -Id $PID).ProcessorAffinity = 1; while ($true) { }' -PassThru; $b }
-$wrapper = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "(Get-Process -Id `$PID).ProcessorAffinity = 1; & '$exe'" -PassThru
-$t0 = Get-Date; $loopAt = $null; $heard = $false; $deadline = $t0.AddSeconds(420)
-while ((Get-Date) -lt $deadline) {
-  Start-Sleep -Seconds 3
-  if (Test-Path $log) {
-    $seen = Get-Content $log -Raw -ErrorAction SilentlyContinue
-    if ($null -eq $loopAt -and $seen -match '"step":"loop-started"') { $loopAt = ((Get-Date) - $t0).TotalSeconds }
-    if ($seen -match 'wake_only|agent_turn|"kind":"turn"') { $heard = $true; break }
-  }
 }
-$seen = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
-$steps = ([regex]::Matches($seen, '"step":"([a-z-]+)"') | ForEach-Object { $_.Groups[1].Value }) -join ' '
-Copy-Item $log (Join-Path $Out 'starved-voice-turns.ndjson') -ErrorAction SilentlyContinue
-Get-ChildItem (Join-Path $userdata 'logs') -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName (Join-Path $Out ('starved-' + $_.Name)) -ErrorAction SilentlyContinue }
-$burners | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
-Stop-Tree $wrapper
-$starved = [pscustomobject]@{ cores = $cores; loopStartedSeconds = if ($null -eq $loopAt) { $null } else { [math]::Round($loopAt, 0) }; firstPhraseHeard = $heard; steps = $steps }
 
-$report = [pscustomobject]@{ at = (Get-Date).ToUniversalTime().ToString('o'); phases = $results; starved = $starved }
+# starved start: one core shared with one busy loop; the voice start must still finish and still hear the first phrase.
+# Run twice: as shipped, and with BATON_THREADS=1 as a control (the sidecar's threads spin-wait on each other, so two on one core crawl).
+$cores = [Environment]::ProcessorCount
+function Invoke-Starved([string]$label, [string]$threads) {
+  Set-Voice $true
+  Remove-Item $log -ErrorAction SilentlyContinue
+  $env:BATON_TEST_WAV = $starve; $env:BATON_TEST_DIR = (Join-Path $Out 'shots')
+  if ($threads) { $env:BATON_THREADS = $threads } else { Remove-Item Env:BATON_THREADS -ErrorAction SilentlyContinue }
+  $burners = 1..1 | ForEach-Object { Start-Process pwsh -ArgumentList '-NoProfile', '-Command', '(Get-Process -Id $PID).ProcessorAffinity = 1; while ($true) { }' -PassThru }
+  $wrapper = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "(Get-Process -Id `$PID).ProcessorAffinity = 1; & '$exe'" -PassThru
+  $t0 = Get-Date; $loopAt = $null; $heard = $false; $deadline = $t0.AddSeconds(420)
+  while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 3
+    if (Test-Path $log) {
+      $seen = Get-Content $log -Raw -ErrorAction SilentlyContinue
+      if ($null -eq $loopAt -and $seen -match '"step":"loop-started"') { $loopAt = ((Get-Date) - $t0).TotalSeconds }
+      if ($seen -match 'wake_only|agent_turn|"kind":"turn"') { $heard = $true; break }
+    }
+  }
+  $seen = if (Test-Path $log) { Get-Content $log -Raw } else { '' }
+  $steps = ([regex]::Matches($seen, '"step":"([a-z-]+)"') | ForEach-Object { $_.Groups[1].Value }) -join ' '
+  Copy-Item $log (Join-Path $Out "$label-voice-turns.ndjson") -ErrorAction SilentlyContinue
+  Get-ChildItem (Join-Path $userdata 'logs') -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName (Join-Path $Out ("$label-" + $_.Name)) -ErrorAction SilentlyContinue }
+  $burners | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+  Stop-Tree $wrapper
+  Remove-Item Env:BATON_THREADS -ErrorAction SilentlyContinue
+  [pscustomobject]@{ label = $label; cores = $cores; threads = $(if ($threads) { $threads } else { 'default' }); loopStartedSeconds = $(if ($null -eq $loopAt) { $null } else { [math]::Round($loopAt, 0) }); firstPhraseHeard = $heard; steps = $steps }
+}
+$starved = Invoke-Starved 'starved' ''
+$starvedOne = Invoke-Starved 'starved-1thread' '1'
+
+$report = [pscustomobject]@{ at = (Get-Date).ToUniversalTime().ToString('o'); phases = $results; starved = $starved; starvedOneThread = $starvedOne }
 $report | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $Out 'resource.json')
 $md = @('| Phase | CPU avg % of one core | CPU p95 | RSS avg MB | RSS max MB | GPU avg % | Processes |', '| --- | --- | --- | --- | --- | --- | --- |')
 foreach ($r in $results) { $md += "| $($r.phase) | $($r.cpuAvg) | $($r.cpuP95) | $($r.rssMBAvg) | $($r.rssMBMax) | $(if ($null -eq $r.gpuAvg) { 'n/a' } else { $r.gpuAvg }) | $($r.processes) |" }
+$md += ''; $md += "Control with BATON_THREADS=1: loop-started after $($starvedOne.loopStartedSeconds) s, first phrase heard: $($starvedOne.firstPhraseHeard). Steps: $($starvedOne.steps)"
 $md += ''; $md += "Starved start ($cores cores, one shared with one busy loop): loop-started after $($starved.loopStartedSeconds) s, first phrase heard: $($starved.firstPhraseHeard). Steps: $($starved.steps)"
 $md | Out-String | Write-Host
 if ($env:GITHUB_STEP_SUMMARY) { Add-Content $env:GITHUB_STEP_SUMMARY ($md -join "`n") }
