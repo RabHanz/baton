@@ -220,7 +220,7 @@ import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
-import { createPhoneRelay } from "../phone/phoneRelay.ts";
+import { createPhoneRelay, nextPollMs } from "../phone/phoneRelay.ts";
 import { createNightlyCache } from "../presence/nightlyRead.ts";
 import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
@@ -1505,8 +1505,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         : input.extras.askFromPhone(text),
   });
   input.extras?.setPhoneMirror?.(phoneRelay.mirror);
-  const phoneTimer = setInterval(() => void phoneRelay.tick(), PHONE_POLL_MS);
-  phoneTimer.unref();
+  let phoneQuiet = 0;
+  const phoneLoop = async (): Promise<void> => {
+    const outcome = await phoneRelay.tick();
+    phoneQuiet = outcome === "idle" || outcome === "away" ? phoneQuiet + 1 : 0;
+    setTimeout(() => void phoneLoop(), nextPollMs(phoneQuiet)).unref();
+  };
+  setTimeout(() => void phoneLoop(), PHONE_POLL_MS).unref();
   const voiceIntent = makeVoiceIntentClient({
     request: requestKept,
     injection,
@@ -2370,16 +2375,39 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
     step("core-made");
     // Models load on first use: do it now, before the microphone opens, so the first phrase is not lost.
-    note = "Starting: loading the speech models.";
-    render();
+    // Honest and live: how many of the two models are ready and how long it has taken, so a slow computer shows a
+    // start that is working, not one that is stuck. The microphone opens only after this (or its generous limit).
+    const warmStarted = Date.now();
+    let modelsReady = 0;
+    const showWarm = () => {
+      note = `Starting: loading the speech models (${modelsReady} of 2 ready, ${Math.round((Date.now() - warmStarted) / 1000)} s).`;
+      render();
+    };
+    showWarm();
+    const warmTicker = setInterval(showWarm, 1_000);
     const warming = core;
     const warmSidecar = sidecar;
     const warmed = await warmUpVoice({
       pushFrame: (frame) => warming.pushAudio(frame),
       transcribe: (pcm) => makeSidecarStt(warmSidecar).transcribe(pcm),
       settled: () => warming.idle(),
-    });
+      onStage: (ready) => {
+        modelsReady = ready;
+        showWarm();
+      },
+    }).finally(() => clearInterval(warmTicker));
     note = null;
+    if (!warmed) {
+      const slow = "Still loading the speech models. The first thing you say may take a little longer to be heard.";
+      note = slow;
+      render();
+      setTimeout(() => {
+        if (note === slow) {
+          note = null;
+          render();
+        }
+      }, 20_000).unref();
+    }
     step(warmed ? "warm-done" : "warm-timeout");
     // With BATON_TEST_WAV set, recorded files stand in for the microphone; unset, nothing changes.
     const testSource = process.env["BATON_TEST_WAV"];

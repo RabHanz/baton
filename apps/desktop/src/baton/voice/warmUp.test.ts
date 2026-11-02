@@ -26,6 +26,20 @@ describe("warming the voice models before the microphone opens", () => {
     expect(order).toEqual(["scored", "transcribe 16000 true", "recogniser loaded", "ready"]);
   });
 
+  it("reports each stage as it finishes, so a slow start can say how far it is", async () => {
+    const seen: Array<[number, number]> = [];
+    await warmUpVoice({
+      pushFrame: () => {},
+      transcribe: async () => "",
+      settled: async () => {},
+      onStage: (ready, total) => void seen.push([ready, total]),
+    });
+    expect(seen).toEqual([
+      [1, 2],
+      [2, 2],
+    ]);
+  });
+
   it("does not stop the start when a model fails to warm", async () => {
     await expect(
       warmUpVoice({
