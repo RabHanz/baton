@@ -86,7 +86,7 @@ body{display:flex;align-items:center;justify-content:center}
 #mk{display:none;width:20px;height:20px;flex:none}
 #p[data-mark=on] #mk{display:block}
 #w{display:none;align-items:center;gap:2px;height:14px;flex:none}
-#w i{display:block;width:2px;height:2px;border-radius:1px;background:var(--bar,#fff);transition:height .09s linear}
+#w i{display:block;width:2px;height:12px;border-radius:1px;background:var(--bar,#fff);transform:scaleY(.17);transition:transform .09s linear;will-change:transform}
 #p[data-wave=on] #w{display:flex}
 #d{display:none;align-items:center;gap:4px;height:14px;flex:none}
 #d b{display:block;width:4px;height:4px;border-radius:50%;background:#fff;opacity:.25;animation:step 1350ms steps(1,end) infinite}
@@ -117,7 +117,7 @@ const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.clone
 const bars=Array.from({length:BARS},()=>{const b=document.createElement('i');$('w').appendChild(b);return b;});
 const shape=bars.map((_,i)=>{const h=Math.abs((BARS-1)/2-i);return Math.max(.25,1-h*h/18);});
 let ctx=null,live=false,tick=0;
-const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=calm?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.height=(2+10*shape[i]*n*wobble).toFixed(1)+'px';});};
+const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=calm?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.transform='scaleY('+((2+10*shape[i]*n*wobble)/12).toFixed(3)+')';});};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
 const isClick=${isPillClick.toString()};
