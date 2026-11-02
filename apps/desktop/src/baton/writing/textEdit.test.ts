@@ -1,3 +1,4 @@
+import { parseTextCommand } from "@t3tools/baton-shared/textCommand";
 import { DEFAULT_TRANSFORMS } from "@t3tools/baton-shared/transforms";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -71,5 +72,44 @@ describe("the Transforms area", () => {
       kind: "remove",
       id: "formal",
     });
+  });
+});
+
+describe("command mode on the text", () => {
+  it("presses keys for navigation and offers undo for a deleted word", async () => {
+    const { edit, log } = rig(null, "x");
+    const sel = parseTextCommand("select the previous paragraph")!;
+    expect(await edit.command(sel)).toBe("Selected the previous paragraph.");
+    expect(log).toEqual(["press ctrl+shift+up"]);
+    log.length = 0;
+    expect(await edit.command(parseTextCommand("delete the last word")!)).toContain("Deleted the last word.");
+    expect(log).toEqual(["press ctrl+shift+left", "press backspace"]);
+    log.length = 0;
+    expect(await edit.undo()).toBe("Undone with the app's own undo.");
+    expect(log).toEqual(["press ctrl+z"]);
+  });
+  it("deletes the last sentence by reading the paragraph before the caret", async () => {
+    const texts = ["One. Two. Three."];
+    const log: string[] = [];
+    const edit = createTextEdit({
+      copySelection: async () => {
+        // The first read finds no selection; after the paragraph is selected it finds the text.
+        const had = log.includes("press ctrl+shift+up");
+        return had ? texts[0]! : null;
+      },
+      replaceSelection: async (t) => void log.push(`paste ${t}`),
+      press: async (k) => void log.push(`press ${k.join("+")}`),
+      setClipboard: () => undefined,
+      ask: async () => "",
+      now: () => 0,
+    });
+    expect(await edit.command(parseTextCommand("delete the last sentence")!)).toContain("Deleted the last sentence");
+    expect(log).toEqual(["press ctrl+shift+up", "paste One. Two."]);
+  });
+  it("rewrites the selection with the spoken instruction, and asks him to select when nothing is", async () => {
+    const ok = rig("this is a very long winded sentence indeed", "This is a long sentence.");
+    expect(await ok.edit.command(parseTextCommand("make this more concise")!)).toContain("Done.");
+    expect(ok.log).toEqual(["paste This is a long sentence."]);
+    expect(await rig(null, "x").edit.command(parseTextCommand("make this shorter")!)).toContain("Select the text first");
   });
 });
