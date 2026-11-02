@@ -49,6 +49,7 @@ const INTRO = {
   checks: ['Checks', 'See what is wrong without reading a log.']
 };
 let cur = 'home', collapsed = false, modal = null, S = null;
+let aboutSeen = false;
 const open = new Set(), shown = new Set(), drafts = new Map(), changing = new Set();
 
 function control(c) {
@@ -180,8 +181,19 @@ function banner(kind, em, title, text, btn, onclick) {
 function dayLabel(iso) { const d = new Date(iso), t = new Date(); const same = (a, b) => a.toDateString() === b.toDateString(); const y = new Date(t); y.setDate(t.getDate() - 1); return same(d, t) ? 'Today' : same(d, y) ? 'Yesterday' : d.toLocaleDateString([], { month: 'long', day: 'numeric' }); }
 function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 
+// The wake sting plays once when the window opens and when About opens, on every mark that is up, then each rests on its still.
+let stingUntil = 0;
+function startSting() {
+  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  stingUntil = Date.now() + 2100; render(); setTimeout(render, 2150);
+}
+function markHtml() {
+  if (Date.now() < stingUntil && window.TESSAYA_STING) { const dark = document.documentElement.dataset.theme === 'dark'; return '<img alt="" style="width:100%;height:100%;display:block" src="data:image/webp;base64,' + (dark ? TESSAYA_STING.dark : TESSAYA_STING.light) + '">'; }
+  return S.status.brandMark || S.status.mark;
+}
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
+  const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
   const h = $('h1'); h.append(document.createTextNode(greeting() + '. '));
   if (words.length) { h.appendChild($('em', null, 'Say ')); words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); }
   else h.appendChild($('em', null, 'The wake word is off. Say Wake now, or hold your dictation key.'));
@@ -495,7 +507,7 @@ function modalPage(b) {
   else if (modal === 'keys') bindingsPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
+  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
 function setRegion(el, build) {
@@ -529,7 +541,7 @@ function syncModal() {
   setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
-function closeModal() { modal = null; render(); }
+function closeModal() { modal = null; aboutSeen = false; render(); }
 function go(t) { cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 function render(state) {
@@ -538,7 +550,7 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = S.status.brandMark || S.status.mark; brand.append(mk, $('b', null, 'Tessaya'), $('span', 'plan', 'Local')); side.appendChild(brand);
+  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); 
   for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   side.appendChild(nav); side.appendChild($('div', 'spacer'));
@@ -560,5 +572,5 @@ function render(state) {
 addEventListener('keydown', e => { if (e.key === 'Escape' && modal) closeModal(); });
 if (real) ipc.on('baton-home:state', (_e, s) => render(s));
 if (real) ipc.on('baton-home:theme', (_e, t) => { document.documentElement.dataset.theme = t; });
-get().then(s => render(s));
+get().then(s => { render(s); startSting(); });
 `;
