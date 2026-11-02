@@ -89,7 +89,7 @@ export const makeLiveBox = (
         })),
     })),
     readOutput: () => Effect.succeed({ available: false, detail: "no pane", output: "" }),
-    sendInput: ({ session, text }) =>
+    sendInput: ({ session, text }: { session: { location: { pane: string } }; text: string }) =>
       Effect.sync(() => {
         const n = appendLiveQueue(dir(), session.location.pane, { text, shown: text.slice(0, 200) });
         return {

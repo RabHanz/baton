@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalDateInEffect:off
 /**
  * Writes into the live-thread message queue that `scripts/baton/live/baton-live-acp.mjs` drains:
  * one JSON file per Claude session id under `~/.t3/baton/live-queue`. A text item is typed into the
