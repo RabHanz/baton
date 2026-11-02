@@ -67,7 +67,14 @@ const sidecarLocate = (name) => {
   return null;
 };
 
-export const locate = (name) => sidecarLocate(name) ?? psLocate(name);
+/** "A|B|C": the first name the window has; Calculator's buttons are named differently on different Windows. */
+export const locate = (names) => {
+  for (const name of names.split("|")) {
+    const found = sidecarLocate(name) ?? psLocate(name);
+    if (found !== null) return found;
+  }
+  return null;
+};
 
 if (process.argv[2] === "--locate") {
   console.log(JSON.stringify(locate(process.argv[3] ?? "")));

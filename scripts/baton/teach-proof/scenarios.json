@@ -197,33 +197,33 @@
     "steps": [
       {
         "say": "Click 1.",
-        "point": "One",
-        "act": [["click", "One"]]
+        "point": "1|One",
+        "act": [["click", "1|One"]]
       },
       {
         "say": "Click 2.",
-        "point": "Two",
-        "act": [["click", "Two"]]
+        "point": "2|Two",
+        "act": [["click", "2|Two"]]
       },
       {
         "say": "Click multiply.",
-        "point": "Multiply by",
-        "act": [["click", "Multiply by"]]
+        "point": "Multiply by|Multiply|\u00d7|*",
+        "act": [["click", "Multiply by|Multiply|\u00d7|*"]]
       },
       {
         "say": "Click 3.",
-        "point": "Three",
-        "act": [["click", "Three"]]
+        "point": "3|Three",
+        "act": [["click", "3|Three"]]
       },
       {
         "say": "Click 4.",
-        "point": "Four",
-        "act": [["click", "Four"]]
+        "point": "4|Four",
+        "act": [["click", "4|Four"]]
       },
       {
         "say": "Click equals.",
-        "point": "Equals",
-        "act": [["click", "Equals"]]
+        "point": "Equals|=|Equal",
+        "act": [["click", "Equals|=|Equal"]]
       }
     ],
     "done": "The answer is 408.",
@@ -244,32 +244,32 @@
       "actions": [
         {
           "kind": "click",
-          "t": "One",
+          "t": "1|One",
           "why": "One"
         },
         {
           "kind": "click",
-          "t": "Two",
+          "t": "2|Two",
           "why": "Two"
         },
         {
           "kind": "click",
-          "t": "Multiply by",
+          "t": "Multiply by|Multiply|\u00d7|*",
           "why": "Multiply by"
         },
         {
           "kind": "click",
-          "t": "Three",
+          "t": "3|Three",
           "why": "Three"
         },
         {
           "kind": "click",
-          "t": "Four",
+          "t": "4|Four",
           "why": "Four"
         },
         {
           "kind": "click",
-          "t": "Equals",
+          "t": "Equals|=|Equal",
           "why": "Equals"
         }
       ]
@@ -291,22 +291,22 @@
       "actions": [
         {
           "kind": "click",
-          "t": "Seven",
+          "t": "7|Seven",
           "why": "7"
         },
         {
           "kind": "click",
-          "t": "Plus",
+          "t": "Plus|+|Add",
           "why": "plus"
         },
         {
           "kind": "click",
-          "t": "Eight",
+          "t": "8|Eight",
           "why": "8"
         },
         {
           "kind": "click",
-          "t": "Equals",
+          "t": "Equals|=|Equal",
           "why": "equals"
         }
       ]
@@ -607,23 +607,23 @@
     "steps": [
       {
         "say": "Click 7.",
-        "point": "Seven",
-        "act": [["click", "Seven"]]
+        "point": "7|Seven",
+        "act": [["click", "7|Seven"]]
       },
       {
         "say": "Click plus.",
-        "point": "Plus",
-        "act": [["click", "Plus"]]
+        "point": "Plus|+|Add",
+        "act": [["click", "Plus|+|Add"]]
       },
       {
         "say": "Click 8.",
-        "point": "Eight",
-        "act": [["click", "Eight"]]
+        "point": "8|Eight",
+        "act": [["click", "8|Eight"]]
       },
       {
         "say": "Click equals.",
-        "point": "Equals",
-        "act": [["click", "Equals"]]
+        "point": "Equals|=|Equal",
+        "act": [["click", "Equals|=|Equal"]]
       }
     ],
     "done": "The answer is 15.",
