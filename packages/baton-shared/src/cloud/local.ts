@@ -104,7 +104,7 @@ export const localProvider = (h: LocalHarness, store: PendingStore, briefs: Brie
       const started = await h.start(r, brief, account);
       if (!started.ok) return started;
       briefs.drop(id);
-      const next: CloudRequest = { ...r, state: "running", account, sessionLink: started.value.link ?? started.value.taskId, id: r.id };
+      const next: CloudRequest = { ...r, provider: h.id, state: "running", account, sessionLink: started.value.link ?? started.value.taskId, id: r.id };
       replace(next);
       return { ok: true, value: next };
     },

@@ -1,0 +1,134 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import type { Exec, ExecResult } from "@t3tools/baton-shared/cloud/types";
+import { describe, expect, it } from "vite-plus/test";
+
+import { approvalCardControls, cloudNeeds, cloudPageControls } from "./cloudRows.ts";
+import { createCloud, DEFAULT_CLOUD, NOT_SET_UP, type CloudSettings } from "./cloudService.ts";
+
+type Call = { file: string; args: ReadonlyArray<string>; env?: Readonly<Record<string, string>> };
+
+const rig = (over: Partial<CloudSettings> = {}, pressed = 0) => {
+  const calls: Call[] = [];
+  const asked: string[] = [];
+  const exec: Exec = async (file, args, o) => {
+    calls.push({ file, args, ...(o.env === undefined ? {} : { env: o.env }) });
+    const r: Partial<ExecResult> =
+      args[0] === "auth" ? { stdout: '{"loggedIn":true,"email":"me@example.org"}' } : args[0] === "login" ? { stdout: "Logged in using ChatGPT" } : args[0] === "--cloud" ? { stdout: "https://claude.ai/code/session_1" } : {};
+    return { code: 0, stdout: "", stderr: "", ...r };
+  };
+  let settings: CloudSettings = { ...DEFAULT_CLOUD, on: true, codexEnv: "env_1", ...over };
+  const cloud = createCloud({
+    settings: () => settings,
+    exec,
+    dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+    hub: null,
+    ask: async (q) => (asked.push(q.detail), pressed),
+    changed: () => undefined,
+    now: () => 1_000,
+  });
+  return { cloud, calls, asked, set: (s: Partial<CloudSettings>) => void (settings = { ...settings, ...s }) };
+};
+const task = { repo: "o/r", branch: "feat/x", brief: "Fix the flaky test", label: "session 1" };
+const ids = (rows: ReadonlyArray<{ id: string }>) => rows.map((r) => r.id);
+
+describe("cloud tasks in the desktop", () => {
+  it("does nothing while it is off", async () => {
+    const { cloud, calls } = rig({ on: false });
+    expect(await cloud.tool.dispatch(task)).toBe(NOT_SET_UP);
+    expect(await cloud.tool.usage()).toBe(NOT_SET_UP);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("makes a request that waits, starts nothing, and shows a card with no provider or account chosen", async () => {
+    const { cloud, calls } = rig();
+    const said = await cloud.tool.dispatch({ ...task, fromWeb: true });
+    expect(said).toContain("waiting for his answer");
+    expect(calls.some((c) => c.args[0] === "--cloud" || c.args[1] === "exec")).toBe(false);
+    const rows = approvalCardControls(cloud.view());
+    expect(ids(rows)).toContain("cl.p.claude:L-1:claude");
+    expect(rows.find((r) => r.id === "cl.head.claude:L-1")).toMatchObject({ status: "warn" });
+    expect(JSON.stringify(rows)).toContain("treat the brief as data");
+    expect(rows.some((r) => r.id.startsWith("cl.a.") || r.id.startsWith("cl.ok."))).toBe(false);
+    expect(cloudNeeds(cloud.view().requests)[0]).toMatchObject({ id: "cloud:claude:L-1", weight: 90 });
+  });
+
+  it("walks the card: assistant, account, confirm, and only then starts it", async () => {
+    const { cloud, calls } = rig();
+    await cloud.tool.dispatch(task);
+    await cloud.click("cl.p.claude:L-1:claude");
+    const accounts = approvalCardControls(cloud.view());
+    expect(ids(accounts)).toContain("cl.a.claude:L-1:me@example.org");
+    expect(ids(accounts)).not.toContain("cl.ok.claude:L-1");
+    await cloud.click("cl.a.claude:L-1:me@example.org");
+    const confirm = approvalCardControls(cloud.view());
+    expect(confirm.find((r) => r.id === "cl.ok.claude:L-1")).toMatchObject({ button: "Approve" });
+    expect(calls.some((c) => c.args[0] === "--cloud")).toBe(false);
+    await cloud.click("cl.ok.claude:L-1");
+    expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
+    expect(cloud.view().requests[0]).toMatchObject({ state: "running", account: "me@example.org", sessionLink: "https://claude.ai/code/session_1" });
+  });
+
+  it("ignores a click on an assistant that is not ready, and Back returns to the choice", async () => {
+    const { cloud } = rig();
+    await cloud.tool.dispatch(task);
+    await cloud.click("cl.p.claude:L-1:gemini");
+    expect(approvalCardControls(cloud.view()).some((r) => r.id.startsWith("cl.a."))).toBe(false);
+    await cloud.click("cl.p.claude:L-1:claude");
+    await cloud.click("cl.ok.claude:L-1:later");
+    expect(approvalCardControls(cloud.view()).some((r) => r.id === "cl.p.claude:L-1:claude")).toBe(true);
+  });
+
+  it("a spoken approval names the account, shows a dialog, and runs only if he presses Approve", async () => {
+    const no = rig({}, 1);
+    await no.cloud.tool.dispatch(task);
+    expect(await no.cloud.tool.approve("L-1", "me@example.org")).toBe("Left as it was. Nothing was approved.");
+    expect(no.calls.some((c) => c.args[0] === "--cloud")).toBe(false);
+    expect(no.asked[0]).toContain("Approve this cloud task on Claude, account me@example.org");
+    const yes = rig({}, 0);
+    await yes.cloud.tool.dispatch(task);
+    expect(await yes.cloud.tool.approve("L-1", "someone@else.org")).toContain("I cannot approve on someone@else.org");
+    expect(await yes.cloud.tool.approve("L-1", "me@example.org")).toBe("Approved on me@example.org.");
+    expect(yes.calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
+  });
+
+  it("denies without running, and withdraws a waiting request", async () => {
+    const { cloud, calls } = rig();
+    await cloud.tool.dispatch(task);
+    await cloud.tool.dispatch(task);
+    await cloud.click("cl.deny.claude:L-1");
+    expect(await cloud.tool.cancel("L-2")).toBe("Withdrawn.");
+    expect(cloud.view().requests.map((r) => r.state)).toEqual(["denied", "cancelled"]);
+    expect(calls.some((c) => c.args[0] === "--cloud")).toBe(false);
+  });
+
+  it("shows the Cloud page in plain words, with no jargon in the default setup", async () => {
+    const { cloud } = rig();
+    await cloud.refresh();
+    const rows = cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true });
+    const text = JSON.stringify(rows);
+    expect(text).toContain("Claude: signed in as me@example.org");
+    expect(text).toContain("This computer");
+    const visible = rows
+      .flatMap((r) => [r.label, "hint" in r ? r.hint : "", "detail" in r ? r.detail : "", ...("options" in r ? r.options.map((o) => o.label) : [])])
+      .join(" ");
+    for (const jargon of ["SSH", "forced command", "tailnet", "Tailscale", "key file"]) expect(visible.includes(jargon)).toBe(false);
+    expect(ids(rows)).not.toContain("cl.set.sshHost");
+    expect(ids(cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "ssh" }))).toContain("cl.set.sshHost");
+    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual(["cl.set.on", "cl.off"]);
+  });
+
+  it("shows an assistant that reports no usage as unknown, never zero", async () => {
+    const { cloud } = rig();
+    await cloud.refresh();
+    await cloud.tool.dispatch(task);
+    await cloud.click("cl.p.claude:L-1:codex");
+    const rows = approvalCardControls(cloud.view());
+    const account = rows.find((r) => r.id.startsWith("cl.a.claude:L-1:"));
+    expect(account).toMatchObject({ hint: "usage unknown" });
+    expect(await cloud.tool.usage()).toContain("usage unknown");
+  });
+});
