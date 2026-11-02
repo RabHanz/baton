@@ -1,0 +1,18 @@
+{
+  "about": "The rules: a newer statement replaces the old, held proposals stay out, a pinned item of his outranks a model's.",
+  "items": [
+    { "key": "vault", "kind": "fact", "text": "The API key lives in the vault", "source": "thread" },
+    { "key": "standup-old", "kind": "preference", "text": "Old standup was at nine", "source": "thread" },
+    { "key": "standup-new", "kind": "preference", "text": "Standup is at ten now", "source": "user", "supersedes": "standup-old" },
+    { "key": "reviews", "kind": "decision", "text": "Pull requests need two reviews", "source": "thread", "tainted": true },
+    { "key": "weekend-mail", "kind": "preference", "text": "Never email clients on weekends", "source": "user", "pinned": true },
+    { "key": "weekend-deploys", "kind": "fact", "text": "Weekend deploys are frozen", "source": "thread" }
+  ],
+  "cases": [
+    { "query": "standup", "top": "standup-new", "absent": ["standup-old"] },
+    { "query": "pull requests reviews", "absent": ["reviews"], "count": 0 },
+    { "query": "weekend", "top": "weekend-mail", "present": ["weekend-deploys"] },
+    { "query": "vault", "top": "vault" },
+    { "query": "email", "top": "weekend-mail", "absent": ["vault"] }
+  ]
+}

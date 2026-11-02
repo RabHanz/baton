@@ -1,0 +1,18 @@
+{
+  "about": "Learnings and corrections from work, including a repeat that must reinforce one item and not add another.",
+  "items": [
+    { "key": "acme", "kind": "correction", "text": "Do not call the supplier Acme, the name is Acme Industrial", "source": "user" },
+    { "key": "invoice", "kind": "learning", "text": "Learned that the supplier needs the invoice before shipping starts", "source": "job" },
+    { "key": "invoice-again", "kind": "learning", "text": "learned that the supplier needs the invoice before shipping starts.", "source": "job" },
+    { "key": "printer", "kind": "learning", "text": "Learned that the printer jams on thick paper", "source": "job" },
+    { "key": "sam", "kind": "correction", "text": "He is called Sam, not Samuel", "source": "user" },
+    { "key": "notes", "kind": "note", "text": "Meeting notes go in the notes folder", "source": "thread" }
+  ],
+  "cases": [
+    { "query": "supplier invoice shipping", "top": "invoice" },
+    { "query": "printer paper", "top": "printer" },
+    { "query": "Samuel", "top": "sam" },
+    { "query": "invoice", "count": 1 },
+    { "query": "notes folder", "top": "notes" }
+  ]
+}

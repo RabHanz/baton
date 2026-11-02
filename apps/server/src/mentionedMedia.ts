@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -21,7 +22,7 @@ const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
 };
-const MAX_PER_MESSAGE = 6;
+const MAX_PER_MESSAGE = 4;
 
 const real = (path: string): string | null => {
   try {
@@ -50,9 +51,12 @@ export const resolveMedia = (input: {
   readonly touched?: ReadonlyArray<string>;
   /** Other folders the thread owns: its worktree, scratch space, the attachment store. */
   readonly roots?: ReadonlyArray<string>;
+  /** Folders whose files are never shown again: the attachment store already holds them. */
+  readonly exclude?: ReadonlyArray<string>;
 }): ReadonlyArray<ResolvedMedia> => {
   const cwd = real(input.cwd);
   if (cwd === null) return [];
+  const excluded = (input.exclude ?? []).flatMap((r) => real(r) ?? []);
   const home = NodeOS.homedir();
   const roots = [cwd, ...(input.roots ?? []), NodeOS.tmpdir(), "/tmp"].flatMap(
     (r) => real(r) ?? [],
@@ -67,6 +71,7 @@ export const resolveMedia = (input: {
     const file = real(resolve(candidate));
     if (file === null || seen.has(file)) continue;
     seen.add(file);
+    if (excluded.some((dir) => file.startsWith(`${dir}${NodePath.sep}`))) continue;
     try {
       const stat = NodeFS.statSync(file);
       if (!stat.isFile()) continue;
@@ -95,6 +100,8 @@ export const attachMarkdown = (input: {
   readonly threadId: string;
   readonly messageId: string;
   readonly media: ReadonlyArray<ResolvedMedia>;
+  /** Content hashes already shown in this thread: the same picture is never attached twice. */
+  readonly shown?: Set<string>;
 }): ReadonlyArray<string> => {
   const lines: string[] = [];
   input.media.forEach(({ file, size, verdict }, index) => {
@@ -106,6 +113,9 @@ export const attachMarkdown = (input: {
     if (verdict.verdict !== "attach") return;
     try {
       const bytes = NodeFS.readFileSync(file);
+      const hash = NodeCrypto.createHash("sha256").update(bytes).digest("hex");
+      if (input.shown?.has(hash)) return;
+      input.shown?.add(hash);
       const id = createDeterministicAttachmentId(
         input.threadId,
         chatAttachmentStableKey(input.messageId, index, bytes),
@@ -144,6 +154,9 @@ export const withMentionedMedia = (input: {
   readonly touched?: ReadonlyArray<string>;
   readonly roots?: ReadonlyArray<string>;
 }): string => {
-  const lines = attachMarkdown({ ...input, media: resolveMedia(input) });
+  const lines = attachMarkdown({
+    ...input,
+    media: resolveMedia({ ...input, exclude: [input.attachmentsDir] }),
+  });
   return lines.length === 0 ? input.text : `${input.text}\n\n${lines.join("\n\n")}`;
 };

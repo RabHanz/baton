@@ -96,6 +96,9 @@ type JobOp =
   | "commit_list"
   | "notices_stop"
   | "notices_resume"
+  | "trust_show"
+  | "activity_today"
+  | "permission_off"
   | "weave_send"
   | "weave_list"
   | "text_transform"
@@ -577,6 +580,27 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "He said stop telling him about something ('stop telling me about the nightly build'). Silences the offers whose title matches the words, until notices_resume. Say what was silenced.",
     inputSchema: object({ about: { type: "string", maxLength: 200 } }, ["about"]),
     run: async (a) => ({ text: await host.jobs("notices_stop", { about: str(a, "about", 200) }) }),
+  },
+  {
+    name: "trust_show",
+    description:
+      "What Tessaya may do right now, in plain words, and when each was last used: screen, Chrome, social, vault, standing job permissions, playbooks. Use it for 'show me what you can access'. The Trust page shows the same.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("trust_show", {}) }),
+  },
+  {
+    name: "activity_today",
+    description:
+      "What Tessaya did on his behalf today (actions, social, vault uses, messages to sessions, playbooks). Use it for 'what did you do today?'.",
+    inputSchema: object({}),
+    run: async () => ({ text: await host.jobs("activity_today", {}) }),
+  },
+  {
+    name: "permission_off",
+    description:
+      "Take a permission back when he asks ('turn off Chrome'): screen, chrome, social, act (without asking) or vault (locks it). Only ever turns things off; turning one on is for him in the Trust page.",
+    inputSchema: object({ what: { type: "string", maxLength: 60 } }, ["what"]),
+    run: async (a) => ({ text: await host.jobs("permission_off", { what: str(a, "what", 60) }) }),
   },
   {
     name: "notices_resume",

@@ -175,7 +175,7 @@ function wakeRow(items) {
   { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
   return wrap;
 }
-const memEditing = new Set();
+const memEditing = new Set(), memWhy = new Set();
 function memoryRow(c) {
   const id = c.id.slice(2), wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text');
   if (memEditing.has(c.id)) {
@@ -185,8 +185,11 @@ function memoryRow(c) {
     const cancel = $('button', 'btn quiet', 'Cancel'); cancel.onclick = () => { done(); render(); };
     const acts = $('div', 'memacts'); acts.append(save, cancel); t.append(a, acts); r.appendChild(t); wrap.appendChild(r); return wrap;
   }
-  t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint)); r.appendChild(t);
+  t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint));
+  if (memWhy.has(c.id) && c.why) { const y = $('div', 'hint', c.why); y.setAttribute('role', 'status'); t.appendChild(y); }
+  r.appendChild(t);
   const acts = $('div', 'memacts');
+  if (c.why) { const wy = $('button', 'btn quiet', memWhy.has(c.id) ? 'Hide why' : 'Why?'); wy.setAttribute('aria-expanded', String(memWhy.has(c.id))); wy.onclick = () => { if (memWhy.has(c.id)) memWhy.delete(c.id); else memWhy.add(c.id); render(); }; acts.appendChild(wy); }
   if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set('m.accept:' + id, null); acts.appendChild(keep); }
   else if (c.section !== 'Replaced') {
     const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
@@ -228,7 +231,7 @@ function vaultBar(c) {
   const w = $('div', 'rowwrap stack vaultbar');
   if (c.recovery) {
     const k = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Your recovery key'), $('div', 'hint', 'Print it or save it somewhere safe. It is shown once and is the only way in if you forget the passphrase.')); const pre = $('div', 'hpre vaultkey', c.recovery); t.appendChild(pre);
-    const ok = $('button', 'btn primary', 'I have saved it'); ok.onclick = () => set('vt.recoveryDone', null); k.append(t, ok); w.appendChild(k);
+    const sv = $('button', 'btn', 'Save as a file'); sv.onclick = () => set('vt.recoverySave', null); const pr = $('button', 'btn', 'Print'); pr.onclick = () => set('vt.recoveryPrint', null); const ok = $('button', 'btn primary', 'I have saved it'); ok.onclick = () => set('vt.recoveryDone', null); const bx = $('div', 'memacts'); bx.append(sv, pr, ok); k.append(t, bx); w.appendChild(k);
   }
   if (c.state === 'none') {
     w.appendChild(vtForm([vtInput('vt-new', 'Choose a passphrase (8 or more characters)', 'password')], { label: 'Make the vault', primary: true }, () => { const v = drafts.get('vt-new') || ''; drafts.delete('vt-new'); set('vt.create', v); }));
