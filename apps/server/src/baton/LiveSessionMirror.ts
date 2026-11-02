@@ -28,6 +28,7 @@
  * costs a directory read plus one `stat` per live session. Upgrade to fs.watch if ticks show up.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -522,6 +523,56 @@ const readRange = (path: string, from: number, to: number): string => {
   }
 };
 
+const MEDIA_LINE = /^!\[[^\]]*\]\(<([^>]+)>\)$/;
+
+/**
+ * Replies in order, each media line dropped when an earlier reply already showed the same file
+ * (by content), so threads that repeated one image on every reply read clean. Returns only the
+ * replies whose text changed.
+ */
+export const withoutRepeatedMedia = (
+  replies: ReadonlyArray<{ readonly id: string; readonly text: string }>,
+  fingerprint: (path: string) => string | null,
+): ReadonlyArray<{ readonly id: string; readonly text: string }> => {
+  const seen = new Set<string>();
+  const changed: Array<{ id: string; text: string }> = [];
+  for (const reply of replies) {
+    const lines = reply.text.split("\n");
+    const kept = lines.filter((line) => {
+      const path = MEDIA_LINE.exec(line)?.[1];
+      const key = path === undefined ? null : fingerprint(path);
+      if (key === null) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (kept.length !== lines.length) {
+      changed.push({
+        id: reply.id,
+        text: kept
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim(),
+      });
+    }
+  }
+  return changed;
+};
+
+/** What a transcript message shows: a reply takes the screenshots and touched files gathered since the last reply, once. */
+export const nextReply = (
+  follow: { touched: Set<string>; shots: Array<LiveTranscriptImage> },
+  message: LiveTranscriptMessage,
+): { readonly message: LiveTranscriptMessage; readonly touched: ReadonlyArray<string> } => {
+  if (message.role !== "assistant") return { message, touched: [] };
+  const shown =
+    follow.shots.length > 0
+      ? { ...message, images: [...(message.images ?? []), ...follow.shots] }
+      : message;
+  follow.shots = [];
+  return { message: shown, touched: takeTouched(follow) };
+};
+
 /** The files a reply shows are the ones tools touched since the last reply: taken once, so no later reply repeats them. */
 export const takeTouched = (follow: { touched: Set<string> }): ReadonlyArray<string> => {
   const taken = [...follow.touched];
@@ -998,20 +1049,18 @@ const make = Effect.gen(function* () {
           if (history) follow.open = run;
           follow.target = run.id;
         }
+        const reply = nextReply(follow, message);
         events.push(
           ...messageEvents(
             follow.threadId,
             session.sessionId,
-            message.role === "assistant" && follow.shots.length > 0
-              ? { ...message, images: [...(message.images ?? []), ...follow.shots] }
-              : message,
+            reply.message,
             follow.target,
             undefined,
             session.cwd,
-            message.role === "assistant" ? takeTouched(follow) : [],
+            reply.touched,
           ),
         );
-        if (message.role === "assistant") follow.shots = [];
       }
       if (events.length > 0) yield* engine.writeEvents({ events });
     });
@@ -1315,6 +1364,38 @@ const make = Effect.gen(function* () {
       const known = new Set(
         mirrored.map((m) => String(m.id).slice(String(m.id).lastIndexOf(":") + 1)),
       );
+      // Threads that repeated one image on every reply are cleaned once, here.
+      const cleaned = withoutRepeatedMedia(
+        mirrored
+          .filter((m) => m.role === "assistant")
+          .map((m) => ({ id: String(m.id), text: m.text })),
+        (path) => {
+          try {
+            return NodeCrypto.createHash("sha256").update(NodeFS.readFileSync(path)).digest("hex");
+          } catch {
+            return null;
+          }
+        },
+      );
+      if (cleaned.length > 0) {
+        yield* engine.writeEvents({
+          events: cleaned.flatMap((fix) => {
+            const old = mirrored.find((m) => String(m.id) === fix.id)!;
+            return messageEvents(
+              threadId,
+              session.sessionId,
+              {
+                uuid: fix.id.slice(fix.id.lastIndexOf(":") + 1),
+                role: "assistant",
+                text: fix.text,
+                createdAt: DateTime.formatIso(old.createdAt),
+              },
+              old.runId ?? null,
+              { text: fix.text, attachments: old.attachments ?? [] },
+            ).map((event) => ({ ...event, id: EventId.make(`${event.id}:dedupe`) }));
+          }),
+        });
+      }
       // An existing thread only takes what is newer than its newest message: anything older
       // written now would sort after it.
       const newest = mirrored.reduce(
