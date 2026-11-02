@@ -9,6 +9,7 @@ import * as NodePath from "node:path";
 
 import {
   changedPixels,
+  clipboardRaw,
   clipboardText,
   clipLog,
   makeHost,
@@ -490,7 +491,7 @@ await task(
 // Diagnostic: Ctrl+C after typing, with different pauses, and every clipboard command the driver made.
 await task("diag-copy", "Diagnose Ctrl+C", async (t) => {
   const notes: string[] = [];
-  for (const pause of [0, 150, 400, 700, 1200, 2500]) {
+  for (const pause of [0, 700]) {
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
     await setClipboardText("SENTINEL");
@@ -498,13 +499,14 @@ await task("diag-copy", "Diagnose Ctrl+C", async (t) => {
     await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
     await sleep(pause);
     await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
+    const at = Date.now();
     await t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" });
     const seen: string[] = [];
-    for (let i = 0; i < 5; i += 1) {
-      await sleep(300);
-      seen.push(`[${await clipboardText()}]`);
+    for (let i = 0; i < 16; i += 1) {
+      seen.push(`+${Date.now() - at}ms ${await clipboardRaw()}`);
+      await sleep(400);
     }
-    notes.push(`pause ${pause}: ${seen.join("")} log: ${clipLog.slice(0, 14).join(", ")}`);
+    notes.push(`pause ${pause}: ${seen.join(" | ")} log: ${clipLog.slice(0, 8).join(", ")}`);
     await t.cleanup();
   }
   t.evidence = notes.join(" || ");

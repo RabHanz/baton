@@ -137,6 +137,14 @@ public static class Diff { public static int Count(string a, string b) {
 
 /** For tests that read or set the clipboard themselves, through the same helper. */
 export const clipboardText = () => clipboard.readText();
+/** The helper's raw answer, so an error is not mistaken for an empty clipboard. */
+export const clipboardRaw = async () => {
+  try {
+    return `ok:${Buffer.from(await clip("get"), "base64").toString("utf8")}`;
+  } catch (error) {
+    return `${(error as Error).message.slice(0, 80)}`;
+  }
+};
 export const setClipboardText = (text: string) => clipboard.writeText(text);
 
 export interface Host {
