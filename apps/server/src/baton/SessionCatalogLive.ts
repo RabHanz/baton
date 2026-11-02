@@ -99,6 +99,10 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
       ),
     ),
   type,
+  screen: (session, pane) =>
+    new Promise((resolve) =>
+      NodeChildProcess.execFile("herdr", ["--session", session, "agent", "read", pane, "--source", "visible", "--lines", "25"], { timeout: 8_000, windowsHide: true }, (_e, stdout) => resolve(stdout)),
+    ),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   now: () => Date.now(),
 });

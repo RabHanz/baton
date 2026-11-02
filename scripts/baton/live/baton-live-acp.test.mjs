@@ -10,6 +10,8 @@ import * as NodeURL from "node:url";
 
 import {
   isAdoptRequest,
+  isAnswerInTerminal,
+  screenTail,
   notSentNote,
   isAppContinuation,
   promptText,
@@ -127,6 +129,10 @@ NodeTest.test("a plain-terminal session is only moved into Herdr when asked", ()
   NodeAssert.equal(isAdoptRequest("bring into Herdr"), true);
   NodeAssert.equal(isAdoptRequest(" Bring it into herdr. "), true);
   NodeAssert.equal(isAdoptRequest("please fix the build"), false);
+  NodeAssert.equal(isAdoptRequest("It waits in its terminal.\nBring it into Herdr"), true);
+  NodeAssert.equal(isAnswerInTerminal("Waiting in its terminal:\nProceed?\nI'll answer it in the terminal"), true);
+  NodeAssert.equal(isAnswerInTerminal("yes"), false);
+  NodeAssert.equal(screenTail("a\n\n  \nb  \nc", 2), "b\nc");
   const note = notSentNote({ remoteControl: true, status: "idle" });
   NodeAssert.match(note, /^Not sent\./);
   NodeAssert.match(note, /Remote Control/);
@@ -497,6 +503,15 @@ NodeTest.test("resuming says plainly when the folder is unknown or gone, and tim
   const slow = stoppedMachine({ findLive: () => null });
   NodeAssert.match((await resumeSession("s9", slow.deps)).error, /did not become ready within 45 seconds/);
   NodeAssert.equal(slow.batonCalls.length, 1);
+});
+
+NodeTest.test("a session waiting on Claude's folder-trust question is named, not just 'not ready'", async () => {
+  const { deps } = stoppedMachine({
+    findLive: () => null,
+    screenOf: async () => "Quick safety check: Is this a project you created or one you trust?\n Yes, I trust this folder",
+  });
+  const out = await resumeSession("s10", deps);
+  NodeAssert.match(out.error, /asking whether to trust this folder.*herdr --session fab-shop/);
 });
 
 NodeTest.test("'resume' on its own is a request to bring it back, not a message to send", () => {

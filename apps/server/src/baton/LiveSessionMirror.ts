@@ -181,6 +181,52 @@ const readPanePrompt = (pane: string): Effect.Effect<PanePrompt | null> => {
   });
 };
 
+/** The last lines on a waiting pane, from the agent script's `--pane-screen`; empty when it cannot be read. */
+const readPaneScreen = (pane: string): Effect.Effect<string> => {
+  const node = findNode();
+  const script = agentScript();
+  if (node === null || !NodeFS.existsSync(script)) return Effect.succeed("");
+  return Effect.callback<string>((resume) => {
+    NodeChildProcess.execFile(node, [script, "--pane-screen", pane], { timeout: 10_000 }, (error, stdout) => {
+      if (error !== null) return resume(Effect.succeed(""));
+      try {
+        resume(Effect.succeed((JSON.parse(stdout) as { text?: string }).text ?? ""));
+      } catch {
+        resume(Effect.succeed(""));
+      }
+    });
+  });
+};
+
+/**
+ * A session that is waiting but whose prompt cannot be read as options (a plain terminal, or a screen the reader does not
+ * know) still gets a question in its thread, so the thread never says "waiting" and shows nothing.
+ */
+export const unreadPrompt = (session: { sessionId: string; herdrPane: string | null }, screen: string): PanePrompt =>
+  session.herdrPane === null
+    ? {
+        key: `plain:${session.sessionId}`,
+        header: "In the terminal",
+        context: "",
+        question:
+          "Claude Code is waiting on a question in its terminal. It is not running in Herdr, so Tessaya cannot read the question from here.",
+        options: [
+          {
+            label: "Bring it into Herdr",
+            description: "Restarts it with the same conversation, in Herdr, so the question can be answered here.",
+          },
+        ],
+        customIndex: null,
+      }
+    : {
+        key: `screen:${session.sessionId}:${screen.length}:${screen.slice(-40)}`,
+        header: "In the terminal",
+        context: "",
+        question: screen === "" ? "Claude Code is waiting on something in its terminal that Tessaya could not read as a question." : `Claude Code is waiting in its terminal:\n${screen}`,
+        options: [{ label: "I'll answer it in the terminal", description: "Open the pane in Herdr and answer it there." }],
+        customIndex: null,
+      };
+
 const isStep = (entry: LiveTranscriptMessage | LiveToolStep): entry is LiveToolStep =>
   "kind" in entry;
 
@@ -1220,10 +1266,17 @@ const make = Effect.gen(function* () {
    */
   const relayPrompt = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
-      const found =
+      const read =
         session.status === "waiting" && session.herdrPane !== null
           ? yield* readPanePrompt(session.herdrPane)
           : null;
+      // Waiting with nothing readable to show is still a question in the thread (not "waiting" and silence).
+      const found =
+        read !== null && read.options.length > 0
+          ? read
+          : session.status === "waiting"
+            ? unreadPrompt(session, session.herdrPane === null ? "" : yield* readPaneScreen(session.herdrPane))
+            : null;
       if (follow.ask !== null && follow.ask.key === found?.key) return;
       const now = yield* DateTime.now;
       if (follow.ask !== null) {
@@ -1270,8 +1323,8 @@ const make = Effect.gen(function* () {
       const question = [found.context, found.question]
         .filter((part) => part.length > 0)
         .join(". ")
-        .replace(/\s+/g, " ")
-        .slice(0, 800);
+        .replace(/[ \t]+/g, " ")
+        .slice(0, 1_200);
       const request = {
         id: requestId,
         nodeId,
