@@ -117,7 +117,7 @@ export class BatonMemoryService extends Context.Service<
       readonly turnRef?: string | undefined;
     }) => Effect.Effect<MemoryRecall>;
     readonly markUsed: (turnRef: string, ids: ReadonlyArray<string>) => Effect.Effect<void>;
-    readonly used: (turnRef: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
+    readonly used: (turnRef?: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
     readonly exportMarkdown: Effect.Effect<string>;
     /** Deletes what expired or faded; returns how many. */
     readonly sweep: Effect.Effect<number>;
@@ -387,11 +387,14 @@ export const make = Effect.gen(function* () {
     return out;
   });
 
-  const used = Effect.fn("BatonMemoryService.used")(function* (turnRef: string) {
+  const used = Effect.fn("BatonMemoryService.used")(function* (turnRef?: string) {
     const rows = yield* sql<ItemRow>`
       SELECT i.* FROM fabric_memory_uses u
       JOIN fabric_memory_items i ON i.id = u.item_id
-      WHERE u.turn_ref = ${turnRef}
+      WHERE u.turn_ref = COALESCE(
+        ${turnRef ?? null},
+        (SELECT turn_ref FROM fabric_memory_uses ORDER BY at DESC, rowid DESC LIMIT 1)
+      )
       ORDER BY i.pinned DESC, i.updated_at DESC
     `.pipe(Effect.orDie);
     return rows.map(fromRow);

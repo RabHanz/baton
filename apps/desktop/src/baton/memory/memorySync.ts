@@ -47,3 +47,5 @@ export const createMemorySync = (input: {
     },
   };
 };
+
+export type MemorySync = ReturnType<typeof createMemorySync>;
