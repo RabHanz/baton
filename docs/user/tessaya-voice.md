@@ -1,0 +1,17 @@
+# Voice
+
+Talk to Tessaya instead of typing.
+
+## Start
+
+Turn on **Listen for my wake word** on the Voice page. Say a wake word (the ones that are on are listed there; each is a switch) and then your request, in the same breath or after a pause. It listens for about eight seconds for you to start, and a conversation stays open for 30 seconds after each answer, so follow-ups need no wake word.
+
+## Good to know
+
+- **Stop** it by saying "stop", "quiet", "enough" or "cancel" while it talks. It hears those with no wake word and nothing else said over its voice.
+- **Mute** from the tray; the microphone is off while muted.
+- **Written only** (tray, Answers) shows every answer on screen and plays nothing.
+- A wake word that has no model on this computer stays off.
+- On Linux and macOS the voice starts and hears the test phrase; the hold-to-dictate key and pasting into other apps were not tried there.
+
+Related: [Dictation](./tessaya-dictation.md).

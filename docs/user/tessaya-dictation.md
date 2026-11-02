@@ -1,0 +1,15 @@
+# Dictation
+
+Turn speech into text in any app.
+
+## Start
+
+Hold **Ctrl+Alt+Space**, speak, release. The text is typed where your cursor is. **Ctrl+Alt+Shift+Space** toggles it on and off instead of holding. The keys appear after the speech model has downloaded (Voice page, or tick Always listening). Say "dictate" to dictate by voice and "stop dictating" to end it.
+
+## Good to know
+
+- **Tidy what I said** removes filler words and fixes punctuation. Turn it off on the Dictation page if you want your words exactly.
+- **Writing style per app** lets chat apps stay casual and documents stay formal.
+- It learns words from your edits; they are listed on the Dictation page.
+- The last transcript is kept there in case a paste went to the wrong place. Dictated text never goes to the assistant as a command.
+- On the phone there is no dictation into other apps (phones do not allow it); use the phone keyboard's own dictation.
