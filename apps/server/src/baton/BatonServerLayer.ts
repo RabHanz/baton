@@ -75,8 +75,11 @@ const servicesInner = IntentService.layer.pipe(
       BatonCommitmentService.layer,
       BatonPhoneInbox.layer,
       BatonCloudService.layer,
+      // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
+      // on a machine with no Herdr found no way to start a thread.
       BatonSessionCatalogService.layer.pipe(
         Layer.provide(AdoptedSessionService.layer.pipe(Layer.provide(HerdrAdapter.layer))),
+        Layer.provide(BatonEngine.layer),
       ),
       BatonWeaveService.layer.pipe(
         Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
