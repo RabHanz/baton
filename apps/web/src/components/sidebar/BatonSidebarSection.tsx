@@ -84,6 +84,7 @@ export function BatonSidebarSection(props: {
   const memoryUsed = useAtomCommand(batonWorkSessions.memoryUsed, quiet);
   const memoryExport = useAtomCommand(batonWorkSessions.memoryExport, quiet);
   const memoryLearn = useAtomCommand(batonWorkSessions.memoryLearn, quiet);
+  const memoryImport = useAtomCommand(batonWorkSessions.memoryImport, quiet);
   const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
   const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
@@ -283,7 +284,7 @@ export function BatonSidebarSection(props: {
   };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
     if (request.op === "sync") return syncMemory();
-    const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn };
+    const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn, import: memoryImport };
     type Settled =
       | { readonly _tag: "Success"; readonly value: unknown }
       | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0]);

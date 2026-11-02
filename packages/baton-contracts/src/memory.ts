@@ -18,6 +18,7 @@ export const BATON_MEMORY_WS_METHODS = {
   used: "baton.memory.used",
   export: "baton.memory.export",
   learn: "baton.memory.learn",
+  import: "baton.memory.import",
   syncHello: "baton.memory.syncHello",
   syncPull: "baton.memory.syncPull",
   syncPush: "baton.memory.syncPush",
@@ -164,3 +165,12 @@ export const BatonMemorySyncPushInput = Schema.Struct({
   upTo: Schema.String,
 });
 export const BatonMemorySyncPushResult = Schema.Struct({ applied: Schema.Number });
+
+/** A folder of markdown learnings on the server's machine, read and never written (MEMORY.md section 7). */
+export const BatonMemoryImportInput = Schema.Struct({ folder: TrimmedNonEmptyString });
+export const BatonMemoryImportResult = Schema.Struct({
+  files: Schema.Number,
+  added: Schema.Number,
+  refused: Schema.Number,
+  unchanged: Schema.Number,
+});
