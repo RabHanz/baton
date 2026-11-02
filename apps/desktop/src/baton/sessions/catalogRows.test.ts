@@ -109,7 +109,11 @@ describe("a resume shows Resuming... until the thread is live", () => {
       folders: async () => [],
       open: (row) => void opened.push(row.id),
     };
-    const { tools, refresh } = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    const { tools, refresh } = createCatalog({
+      service,
+      onChange: () => undefined,
+      now: () => NOW,
+    });
     await refresh();
     expect(await tools.find("digest")).toContain("Fix the weekly digest");
     expect(await tools.find("zzzz")).toBe("No session matches that.");
@@ -119,5 +123,39 @@ describe("a resume shows Resuming... until the thread is live", () => {
     expect(await tools.start("/work/new", "nowhere")).toContain("do not know that machine");
     expect(await tools.start("/work/new", "")).toContain("starting in /work/new");
     expect(created).toHaveLength(1);
+  });
+});
+
+describe("New session", () => {
+  it("passes the folder, model, effort and first message to the service", async () => {
+    const created: unknown[] = [];
+    const service: CatalogService = {
+      list: async () => rows,
+      resume: async () => undefined,
+      create: async (target) => void created.push(target),
+      folders: async () => [],
+      open: () => undefined,
+    };
+    const catalog = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    await catalog.refresh();
+    catalog.apply(
+      "c.start",
+      JSON.stringify({
+        cwd: "C:\\work\\loom",
+        model: "opus",
+        effort: "high",
+        message: "Read BRIEF.md",
+      }),
+    );
+    await Promise.resolve();
+    expect(created).toEqual([
+      {
+        environmentId: "laptop",
+        cwd: "C:\\work\\loom",
+        model: "opus",
+        effort: "high",
+        message: "Read BRIEF.md",
+      },
+    ]);
   });
 });
