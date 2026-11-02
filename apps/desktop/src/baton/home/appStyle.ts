@@ -41,10 +41,20 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 #app.collapsed{grid-template-columns:0 1fr}
 #side{background:var(--side);display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
 #app.collapsed #side{visibility:hidden}
-.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
-.brand #mark{width:30px;height:30px;display:block;flex:none;color:var(--ink)}
+.brand{display:flex;align-items:center;gap:12px;padding:0 6px 20px}
+.brand #mark{width:56px;height:56px;display:block;flex:none;color:var(--ink)}
+.brand .bt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.mk .on-dark{display:none}
+[data-theme=dark] .mk .on-light{display:none}
+[data-theme=dark] .mk .on-dark{display:inline}
+#page{position:relative}
+.homemark{position:absolute;right:36px;top:30px;width:72px;height:72px;color:var(--ink);opacity:.92}
+.homemark svg{width:100%;height:100%;display:block}
+.aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink)}
+.aboutmark svg{width:100%;height:100%;display:block}
 .brand #mark svg{width:100%;height:100%;display:block}
-.brand b{font:600 20px var(--serif);letter-spacing:-.01em}
+.brand .plan{margin:0;border:0;background:none;padding:0;font-weight:500;color:var(--faint);font-variant-numeric:tabular-nums}
+.brand b{font:600 26px/1.05 var(--serif);letter-spacing:-.01em}
 .plan{margin-left:auto;font:600 11px var(--sans);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px;color:var(--soft);background:var(--panel)}
 nav{display:flex;flex-direction:column;gap:2px}
 .nav{display:flex;align-items:center;gap:11px;border:0;background:transparent;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--soft);font-weight:500;transition:background .15s,color .15s}
