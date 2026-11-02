@@ -291,6 +291,8 @@ export interface AssistantActions {
       | "text_command"
       | "note_add"
       | "note_search"
+      | "retry"
+      | "handoff"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;

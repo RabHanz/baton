@@ -87,6 +87,8 @@ type JobOp =
   | "text_command"
   | "note_add"
   | "note_search"
+  | "retry"
+  | "handoff"
   | "split";
 
 type Args = Readonly<Record<string, unknown>>;
@@ -598,6 +600,12 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
           items: { enum: ["read", "edit", "shell", "web", "sessions"] },
           maxItems: 5,
         },
+        report_every_minutes: {
+          type: "number",
+          minimum: 0,
+          maximum: 1440,
+          description: "A progress report in the job's record this often while it runs; 0 is off; 60 if not given.",
+        },
       },
       ["title", "goal", "project"],
     ),
@@ -608,6 +616,34 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
         project: str(a, "project", 200),
         folders: strings(a, "folders"),
         tools: strings(a, "tools"),
+        ...(a["report_every_minutes"] === undefined
+          ? {}
+          : { reportEveryMinutes: Math.max(0, Math.min(1440, num(a, "report_every_minutes"))) }),
+      }),
+    }),
+  },
+  {
+    name: "job_retry",
+    description:
+      "Try a failed job's worker again, with the reason it failed so it does not repeat the same step. Only an agreed job that failed or hit a limit, and only within its retry budget (two unless the job says otherwise). Raise a hit limit first with job_refine (widens true).",
+    inputSchema: object({ id: { type: "string" }, reason: { type: "string", maxLength: 400 } }, ["id", "reason"]),
+    run: async (a) => ({
+      text: await host.jobs("retry", { id: str(a, "id", 200), reason: str(a, "reason", 400) }),
+    }),
+  },
+  {
+    name: "job_handoff",
+    description:
+      "Hand a job to another worker: the same thread continues on another provider or account (the instance's name from the Assistant page, such as a Codex or another Claude account). He is asked first. Say why in note; it is sent to the new worker.",
+    inputSchema: object(
+      { id: { type: "string" }, instance: { type: "string" }, note: { type: "string", maxLength: 1000 } },
+      ["id", "instance"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("handoff", {
+        id: str(a, "id", 200),
+        instance: str(a, "instance", 200),
+        ...(typeof a["note"] === "string" ? { note: a["note"].slice(0, 1000) } : {}),
       }),
     }),
   },
