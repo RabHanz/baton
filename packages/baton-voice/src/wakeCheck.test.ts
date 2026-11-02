@@ -102,4 +102,24 @@ describe("the second check before a wake from sleep", () => {
     expect(checks).toBe(1);
     expect(r.events.filter((e) => e.type === "wake")).toHaveLength(wakesBefore);
   });
+
+  it("does not let its own voice barge in, and a fire over speech must be heard", async () => {
+    const r = rig(async () => false);
+    r.core.noteSpoken("Sebastian, your build is done");
+    r.core.setSpeaking(true);
+    r.push(1);
+    r.wake();
+    r.push(0.2);
+    expect(r.events.some((e) => e.type === "barge_in" || e.type === "wake")).toBe(false);
+    expect(r.events.some((e) => e.type === "dropped" && e.reason === "own voice")).toBe(true);
+    const other = rig(async () => false);
+    other.core.noteSpoken("The build is done");
+    other.core.setSpeaking(true);
+    other.push(1);
+    other.wake();
+    other.push(0.1);
+    await new Promise((resolve) => setImmediate(resolve));
+    other.push(0.2);
+    expect(other.events.some((e) => e.type === "barge_in")).toBe(false);
+  });
 });
