@@ -230,6 +230,11 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloud.test.login": ", login {login}",
     "cloud.test.none": "Nothing answered. {why}",
     "cloud.test.ok": "The connection works.",
+    "alerts.title": "Alerts",
+    "alerts.none": "Nothing needs you right now.",
+    "alerts.one": "{n} session needs you",
+    "alerts.many": "{n} sessions need you",
+    "alerts.update": "Update ready: {name}",
   },
 };
 
