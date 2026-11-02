@@ -1,4 +1,3 @@
-/* oxlint-disable shadcn/no-raw-colors, shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
  * Baton's projects in T3's own sidebar vocabulary (D72): one entry per project across both boxes
  * and every account, its live sessions as rows shaped like upstream's thread rows, T3's status
@@ -35,6 +34,7 @@ import { Textarea } from "../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openThreadInSplit } from "../panes/batonPanesStore";
 import { BatonContinueWith, type HandoffTarget } from "./BatonContinueWith";
+import { answerCatalogRequest } from "./batonCatalogRequests";
 
 export interface BatonProjectsBlockProps {
   readonly environmentIds: readonly EnvironmentId[];
@@ -101,10 +101,36 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
     batonDesktopBridge()?.setBatonSessions?.(JSON.parse(summaries));
   }, [summaries]);
   const sendToPane = useAtomCommand(batonWorkSessions.herdrSend, { reportFailure: false });
+  const catalogList = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
+  const catalogResume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
+  const catalogCreate = useAtomCommand(batonWorkSessions.sessionsCreate, { reportFailure: false });
+  const catalogFolders = useAtomCommand(batonWorkSessions.sessionsFolders, {
+    reportFailure: false,
+  });
+  const catalogDeps = useRef({
+    commands: {
+      list: catalogList,
+      resume: catalogResume,
+      create: catalogCreate,
+      folders: catalogFolders,
+    },
+    environmentIds: props.environmentIds as ReadonlyArray<string>,
+    label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,
+  });
   const answerWindow = useRef({ open: props.onOpenThreadById, send: sendToPane });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the shell's handler on the latest callbacks
   useEffect(() => {
     answerWindow.current = { open: props.onOpenThreadById, send: sendToPane };
+    catalogDeps.current = {
+      commands: {
+        list: catalogList,
+        resume: catalogResume,
+        create: catalogCreate,
+        folders: catalogFolders,
+      },
+      environmentIds: props.environmentIds as ReadonlyArray<string>,
+      label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,
+    };
   });
   // Baton's window asks this sidebar to open a thread or type to a pane: the same handlers a click uses.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the desktop shell outside React
@@ -113,6 +139,10 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
     if (subscribe === undefined || sessionListenerClaimed) return;
     sessionListenerClaimed = true;
     const unsubscribe = subscribe(async (request) => {
+      const catalog = await answerCatalogRequest(request, catalogDeps.current as never);
+      if (catalog !== null) return catalog;
+      if (request.kind !== "open" && request.kind !== "send")
+        return { ok: false, detail: "Not understood." };
       if (request.kind === "open") {
         answerWindow.current.open(request.environmentId as EnvironmentId, request.threadId);
         return { ok: true, detail: "Opened." };
