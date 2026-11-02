@@ -10,6 +10,9 @@ const settings = {
   awarenessJobs: false,
   initiativeMode: "written",
   initiativePerHour: 3,
+  needsRepos: ["o/a"],
+  ciRepos: [],
+  needsDeadlinesFile: null,
 } as const;
 
 describe("the Presence settings", () => {
@@ -22,10 +25,25 @@ describe("the Presence settings", () => {
     for (const r of rows) expect(tabOf(r.id)).toBe("settings");
   });
   it("turns a control into a settings patch and refuses a value it does not offer", () => {
-    expect(presencePatch("pr.awWindow", true)).toEqual({ awarenessWindow: true });
-    expect(presencePatch("pr.initiative", "spoken")).toEqual({ initiativeMode: "spoken" });
-    expect(presencePatch("pr.initiative", "loud")).toBeNull();
-    expect(presencePatch("pr.perHour", "5")).toEqual({ initiativePerHour: 5 });
-    expect(presencePatch("pr.perHour", "99")).toBeNull();
+    expect(presencePatch("pr.awWindow", true, settings)).toEqual({ awarenessWindow: true });
+    expect(presencePatch("pr.initiative", "spoken", settings)).toEqual({
+      initiativeMode: "spoken",
+    });
+    expect(presencePatch("pr.initiative", "loud", settings)).toBeNull();
+    expect(presencePatch("pr.perHour", "5", settings)).toEqual({ initiativePerHour: 5 });
+    expect(presencePatch("pr.perHour", "99", settings)).toBeNull();
+  });
+
+  it("adds and removes list rows, accepting a pasted URL and refusing nonsense", () => {
+    expect(presencePatch("pr.needsRepos:add", "https://github.com/o/b.git", settings)).toEqual({
+      needsRepos: ["o/a", "o/b"],
+    });
+    expect(presencePatch("pr.needsRepos:add", "o/a", settings)).toEqual({ needsRepos: ["o/a"] });
+    expect(presencePatch("pr.needsRepos:add", "not a repo", settings)).toBeNull();
+    expect(presencePatch("pr.needsRepos:rm", "o/a", settings)).toEqual({ needsRepos: [] });
+    expect(presencePatch("pr.deadlines:add", " C:\\x\\d.json ", settings)).toEqual({
+      needsDeadlinesFile: "C:\\x\\d.json",
+    });
+    expect(presencePatch("pr.deadlines:rm", "x", settings)).toEqual({ needsDeadlinesFile: null });
   });
 });

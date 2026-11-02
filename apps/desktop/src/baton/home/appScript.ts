@@ -173,7 +173,15 @@ function memoryBar(c) {
   if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
   return w;
 }
+function listRow(c) {
+  const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.appendChild(t);
+  for (const it of c.items) { const r = $('div', 'row'); r.appendChild($('div', 'label', it)); const b = $('button', 'btn quiet', 'Remove'); b.setAttribute('aria-label', 'Remove ' + it); b.onclick = () => set(c.id + ':rm', it); r.appendChild(b); w.appendChild(r); }
+  const add = $('div', 'row'); const inp = $('input', 'search'); inp.type = 'text'; inp.placeholder = c.placeholder; inp.setAttribute('aria-label', c.label);
+  const ab = $('button', 'btn', c.addLabel || 'Add'); const go = () => { const v = inp.value.trim(); if (v) set(c.id + ':add', v); };
+  ab.onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') go(); }; add.append(inp, ab); w.appendChild(add); return w;
+}
 function row(c) {
+  if (c.kind === 'list') return listRow(c);
   if (c.kind === 'memory') return memoryRow(c);
   if (c.kind === 'memoryBar') return memoryBar(c);
   // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.

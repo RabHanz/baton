@@ -8,6 +8,9 @@ export interface PresenceSettings {
   readonly awarenessJobs: boolean;
   readonly initiativeMode: "off" | "written" | "spoken";
   readonly initiativePerHour: number;
+  readonly needsRepos: ReadonlyArray<string>;
+  readonly ciRepos: ReadonlyArray<string>;
+  readonly needsDeadlinesFile: string | null;
 }
 
 const AWARE = "Presence: what I may know right now";
@@ -69,21 +72,77 @@ export const presenceControls = (s: PresenceSettings): ReadonlyArray<HomeControl
     options: PER_HOUR.map((n) => ({ value: String(n), label: String(n) })),
   },
   {
-    id: "pr.watch",
+    id: "pr.needsRepos",
     section: WATCH,
-    label: "Repositories and deadlines to read",
-    hint: "Read-only. Set needsRepos (issue labels), ciRepos (failed builds) and needsDeadlinesFile in the settings file; the window cannot take typed lists yet.",
-    kind: "action",
-    button: "Open settings file",
+    label: "Ledgers to read for 'what needs me'",
+    hint: "Repositories whose open issues labelled ledger:money-blocker or ledger:blocked-on-director count. Read-only, through gh.",
+    kind: "list",
+    items: s.needsRepos,
+    placeholder: "owner/repository",
+  },
+  {
+    id: "pr.ciRepos",
+    section: WATCH,
+    label: "Repositories whose failed builds I should raise",
+    hint: "The newest run of each workflow, read-only, through gh.",
+    kind: "list",
+    items: s.ciRepos,
+    placeholder: "owner/repository",
+  },
+  {
+    id: "pr.deadlines",
+    section: WATCH,
+    label: "Deadlines file",
+    hint: "A JSON file with a rows list, each with an id, what and due (YYYY-MM-DD). Adding a path replaces the current one.",
+    kind: "list",
+    items: s.needsDeadlinesFile === null ? [] : [s.needsDeadlinesFile],
+    placeholder: "Full path to the file",
+    addLabel: "Set",
   },
 ];
+
+export const REPO_MAX = 20;
+const REPO = /^[\w.-]+\/[\w.-]+$/;
+
+/** "https://github.com/o/r" or "o/r.git" are accepted and reduced to "o/r". */
+export const parseRepo = (text: string): string | null => {
+  const clean = text
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "");
+  return REPO.test(clean) ? clean : null;
+};
+
+const listPatch = (
+  current: ReadonlyArray<string>,
+  op: "add" | "rm",
+  value: string,
+): ReadonlyArray<string> | null => {
+  if (op === "rm") return current.filter((x) => x !== value);
+  const repo = parseRepo(value);
+  if (repo === null || current.length >= REPO_MAX) return null;
+  return current.includes(repo) ? current : [...current, repo];
+};
 
 /** The settings patch a Presence control means, or null for an id or value that is not one. */
 export const presencePatch = (
   id: string,
   value: string | boolean | null,
+  current: PresenceSettings,
 ): Partial<PresenceSettings> | null => {
   const on = value === true;
+  const list = /^pr\.(needsRepos|ciRepos|deadlines):(add|rm)$/.exec(id);
+  if (list !== null) {
+    if (typeof value !== "string" || value === "" || value.length > 500) return null;
+    const op = list[2] as "add" | "rm";
+    if (list[1] === "deadlines") {
+      return op === "rm" ? { needsDeadlinesFile: null } : { needsDeadlinesFile: value.trim() };
+    }
+    const key = list[1] === "needsRepos" ? "needsRepos" : "ciRepos";
+    const next = listPatch(current[key], op, value);
+    return next === null ? null : { [key]: next };
+  }
   switch (id) {
     case "pr.awWindow":
       return { awarenessWindow: on };
