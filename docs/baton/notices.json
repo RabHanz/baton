@@ -1,0 +1,32 @@
+{
+  "comment": "Every third-party thing Tessaya's own code ships or downloads must have an entry here AND be named in THIRD_PARTY_NOTICES.md. scripts/baton/check-notices.mjs fails CI when a dependency, crate, model file or font is missing. Upstream T3 Code's own dependencies are covered by third-party-licenses.config.json.",
+  "licenceFiles": {
+    "MIT": "docs/baton/licences/MIT.txt",
+    "Apache-2.0": "docs/baton/licences/Apache-2.0.txt",
+    "CC-BY-4.0": "docs/baton/licences/CC-BY-4.0.txt",
+    "CC-BY-NC-SA-4.0": "docs/baton/licences/CC-BY-NC-SA-4.0.txt",
+    "OFL-1.1-newsreader": "docs/baton/licences/OFL-newsreader.txt",
+    "OFL-1.1-schibsted-grotesk": "docs/baton/licences/OFL-schibsted-grotesk.txt"
+  },
+  "entries": {
+    "npm:onnxruntime-node": { "name": "ONNX Runtime (onnxruntime-node)", "licence": "MIT", "holder": "Microsoft Corporation", "mention": "onnxruntime-node" },
+    "npm:electron": { "name": "Electron", "licence": "MIT", "holder": "Electron contributors; GitHub Inc.", "mention": "Electron", "file": "docs/baton/licences/MIT-electron.txt" },
+    "crate:transcribe-cpp": { "name": "transcribe-cpp", "licence": "MIT", "holder": "handy-computer", "mention": "transcribe-cpp" },
+    "crate:handy-recorder": { "name": "handy-recorder", "licence": "MIT", "holder": "handy-computer", "mention": "handy-recorder" },
+    "crate:handy-keys": { "name": "handy-keys", "licence": "MIT", "holder": "handy-computer", "mention": "handy-keys" },
+    "crate:enigo": { "name": "enigo", "licence": "MIT", "holder": "the enigo authors", "mention": "enigo" },
+    "crate:hound": { "name": "hound", "licence": "Apache-2.0", "holder": "Ruud van Asseldonk", "mention": "hound" },
+    "crate:serde": { "name": "serde", "licence": "MIT OR Apache-2.0", "holder": "Erick Tryzelaar, David Tolnay", "mention": "serde" },
+    "crate:serde_json": { "name": "serde_json", "licence": "MIT OR Apache-2.0", "holder": "Erick Tryzelaar, David Tolnay", "mention": "serde_json" },
+    "crate:windows": { "name": "windows (windows-rs)", "licence": "MIT OR Apache-2.0", "holder": "Microsoft Corporation", "mention": "windows-rs" },
+    "model:melspectrogram.onnx": { "name": "openWakeWord melspectrogram model", "licence": "CC-BY-NC-SA-4.0", "holder": "David Scripka (openWakeWord v0.5.1)", "mention": "melspectrogram.onnx" },
+    "model:embedding_model.onnx": { "name": "openWakeWord embedding model", "licence": "CC-BY-NC-SA-4.0", "holder": "David Scripka (openWakeWord v0.5.1)", "mention": "embedding_model.onnx" },
+    "model:silero_vad.onnx": { "name": "Silero VAD v6.2.3", "licence": "MIT", "holder": "Silero Team", "mention": "silero_vad.onnx" },
+    "model:sebastian.onnx": { "name": "Tessaya wake model: Sebastian", "licence": "CC-BY-NC-SA-4.0", "holder": "trained here on third-party data", "mention": "sebastian.onnx" },
+    "model:alfred.onnx": { "name": "Tessaya wake model: Alfred", "licence": "CC-BY-NC-SA-4.0", "holder": "trained here on third-party data", "mention": "alfred.onnx" },
+    "model:freya.onnx": { "name": "Tessaya wake model: Freya", "licence": "CC-BY-NC-SA-4.0", "holder": "trained here on third-party data", "mention": "freya.onnx" },
+    "model:onyx.onnx": { "name": "Tessaya wake model: Onyx", "licence": "CC-BY-NC-SA-4.0", "holder": "trained here on third-party data", "mention": "onyx.onnx" },
+    "font:Newsreader": { "name": "Newsreader", "licence": "OFL-1.1-newsreader", "holder": "The Newsreader Project Authors", "mention": "Newsreader" },
+    "font:Schibsted Grotesk": { "name": "Schibsted Grotesk", "licence": "OFL-1.1-schibsted-grotesk", "holder": "The Schibsted-Grotesk Project Authors", "mention": "Schibsted Grotesk" }
+  }
+}
