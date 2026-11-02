@@ -34,6 +34,7 @@ import * as NodePath from "node:path";
 
 import * as ServerConfig from "../config.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
 import { modelFor } from "@t3tools/baton-shared/costRouting";
 import { BatonJobService } from "./BatonJobService.ts";
@@ -207,22 +208,51 @@ export const turnCounts = Effect.fn("BatonJobFlow.turnCounts")(function* (
   return counts;
 });
 
+/** What each worker has spent, read from its own transcript; empty when this server keeps no state folder. */
+export const spendCounts = Effect.fn("BatonJobFlow.spendCounts")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const config = yield* ServerConfig.ServerConfig;
+  const stateDir = (config as { readonly stateDir?: string }).stateDir;
+  const out = new Map<string, Spend>();
+  if (stateDir === undefined) return out;
+  const engine = yield* BatonEngine;
+  for (const entry of entries) {
+    const nativeIds: string[] = [];
+    for (const thread of entry.threads) {
+      const provider = yield* engine.activeProviderThread(thread.threadId);
+      const id = provider?.nativeThreadRef?.nativeId;
+      if (id != null) nativeIds.push(id);
+    }
+    if (nativeIds.length > 0) out.set(entry.workSessionId, spendOf({ nativeIds, stateDir }));
+  }
+  return out;
+});
+
 export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {
   const jobs = yield* BatonJobService;
   const fleet = yield* FleetQuery.getFleet({});
-  return yield* jobs.view({ entries: fleet.entries, turns: yield* turnCounts(fleet.entries) });
+  return yield* jobs.view({
+    entries: fleet.entries,
+    turns: yield* turnCounts(fleet.entries),
+    spend: yield* spendCounts(fleet.entries),
+  });
 });
 
 /**
  * The caps are enforced, not only shown: an agreed job whose worker is still going after its time or
  * turns are used up is stopped (its thread and plan stay) and a line says why. Raising the cap with a
- * refinement lets it go on. Spend is not measured per job yet, so a dollar cap is never the reason.
+ * refinement lets it go on. Spend is read from the worker's own transcript; a dollar cap trips on what could be priced.
  */
 export const enforceCaps = Effect.fn("BatonJobFlow.enforceCaps")(function* (
   entries: ReadonlyArray<BatonFleetEntry>,
 ) {
   const jobs = yield* BatonJobService;
-  const cards = yield* jobs.view({ entries, turns: yield* turnCounts(entries) });
+  const cards = yield* jobs.view({
+    entries,
+    turns: yield* turnCounts(entries),
+    spend: yield* spendCounts(entries),
+  });
   const stopped: string[] = [];
   for (const card of cards) {
     // Only a worker that is going: one waiting for him, or finished, spends nothing.

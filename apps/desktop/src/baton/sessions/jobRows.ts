@@ -25,7 +25,13 @@ export const usageLine = (j: BatonJob): string => {
   if (j.usage === undefined || j.phase !== "approved") return "";
   const mins = j.terms.limits.wallClockMinutes;
   const turns = j.terms.limits.workerTurns;
-  return `Used ${j.usage.minutes} of ${mins} min and ${j.usage.turns} of ${turns} turns.`;
+  const spend =
+    j.usage.dollars == null
+      ? j.usage.tokens === undefined
+        ? ""
+        : ` ${j.usage.tokens.toLocaleString()} tokens.`
+      : ` About $${j.usage.dollars.toFixed(2)}${j.terms.limits.dollars === null ? "" : ` of $${j.terms.limits.dollars}`}${j.usage.partial === true ? " or more" : ""}, ${(j.usage.tokens ?? 0).toLocaleString()} tokens.`;
+  return `Used ${j.usage.minutes} of ${mins} min and ${j.usage.turns} of ${turns} turns.${spend}`;
 };
 
 /** Daily is the one schedule the window offers; the assistant can set any other. */
