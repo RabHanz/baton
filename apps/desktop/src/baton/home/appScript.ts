@@ -14,27 +14,28 @@ const ICON = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
   scratchpad: '<path d="M6 4h12v16H6z"/><path d="M9 9h6M9 13h6"/>',
   insights: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
-  style: '<path d="M5 19l4-1 9-9-3-3-9 9z"/><path d="M14 6l3 3"/>',
+  style: '<path d="M4 19L9 5l5 14M6 14h6"/><path d="M17 12h4M19 12v7"/>',
   transforms: '<path d="M4 12h12M12 6l6 6-6 6"/>',
-  snippets: '<path d="M5 4h14v16H5z"/><path d="M8 9h8M8 13h5"/>',
+  snippets: '<path d="M9 5H6v14h3M15 5h3v14h-3"/><path d="M10 12h4"/>',
   now: '<circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
   sessions: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/>',
   approvals: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
-  jobs: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  jobs: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V5h6v3M3 13h18"/>',
   dictation: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   assistant: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/>',
   voice: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
   screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-  usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
-  tools: '<path d="M14 6l4 4-8 8H6v-4z"/><path d="M13 7l4 4"/>',
-  memory: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 11h8M8 15h8"/>',
+  usage: '<path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/>',
+  tools: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+  memory: '<path d="M12 4l9 5-9 5-9-5z"/><path d="M3 14l9 5 9-5"/>',
   vault: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   side: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 21h4"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',
+  fold: '<path d="M6 9l6 6 6-6"/>',
   chev: '<path d="M1 1l4 4 4-4"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
@@ -49,6 +50,9 @@ if (real) {
     if (p) set('tf.file', p);
   });
 }
+const GROUPS = [['Now', ['home','now','sessions','approvals','jobs']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','checks']]];
+const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]')); } catch (e) { return new Set(); } })();
+const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
 const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['scratchpad','Scratchpad'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   scratchpad: ['Scratchpad', 'Quick notes you speak or type, kept on this computer and searchable.'],
@@ -133,7 +137,18 @@ function session(c) {
   }
   r.append(dot, t); return r;
 }
+const openPrompts = new Set();
+function promptCheck(c) {
+  const r = $('div', 'row'); r.style.alignItems = 'flex-start';
+  const t = $('div', 'text'); t.style.cssText = 'flex:1;min-width:0'; t.appendChild($('div', 'label', c.label));
+  const open = openPrompts.has(c.id); const p = $('div', 'hint prompt' + (open ? ' open' : ''), c.detail); t.appendChild(p);
+  const side = $('div'); side.style.cssText = 'display:flex;gap:8px;flex:none';
+  if (c.detail.length > 140) { const m = $('button', 'btn quiet', open ? 'Show less' : 'Show all'); m.setAttribute('aria-expanded', String(open)); m.onclick = () => { if (open) openPrompts.delete(c.id); else openPrompts.add(c.id); render(); }; side.appendChild(m); }
+  const e = $('button', 'btn quiet', 'Edit'); e.onclick = () => { drafts.set('tr.list', c.label.split(':')[0] + ' = ' + c.detail); render(); const i = document.getElementById('in-tr.list'); if (i) { i.scrollIntoView({ block: 'center' }); i.focus(); } }; side.appendChild(e);
+  r.append(t, side); return r;
+}
 function check(c) {
+  if (c.id.startsWith('tr.key:') && c.detail) return promptCheck(c);
   const r = $('div', 'row'); r.style.justifyContent = 'flex-start';
   const g = $('span', 'glyph ' + c.status, c.status === 'ok' ? '\\u2713' : c.status === 'warn' ? '!' : '\\u00d7');
   g.setAttribute('aria-label', c.status === 'ok' ? 'Fine' : c.status === 'warn' ? 'Worth a look' : 'Needs fixing');
@@ -201,7 +216,8 @@ function listRow(c) {
   const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.appendChild(t);
   for (const it of c.items) { const r = $('div', 'row'); r.appendChild($('div', 'label', it)); const b = $('button', 'btn quiet', 'Remove'); b.setAttribute('aria-label', 'Remove ' + it); b.onclick = () => set(c.id + ':rm', it); r.appendChild(b); w.appendChild(r); }
   const add = $('div', 'row'); const inp = $('input', 'search'); inp.type = 'text'; inp.placeholder = c.placeholder; inp.setAttribute('aria-label', c.label);
-  const ab = $('button', 'btn', c.addLabel || 'Add'); const go = () => { const v = inp.value.trim(); if (v) set(c.id + ':add', v); };
+  inp.id = 'in-' + c.id; inp.value = drafts.get(c.id) || ''; inp.oninput = () => drafts.set(c.id, inp.value);
+  const ab = $('button', 'btn', c.addLabel || 'Add'); const go = () => { const v = inp.value.trim(); if (v) { drafts.delete(c.id); set(c.id + ':add', v); } };
   ab.onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') go(); }; add.append(inp, ab); w.appendChild(add); return w;
 }
 function vtInput(id, ph, type) { const i = $('input'); i.type = type || 'text'; i.id = 'in-' + id; i.placeholder = ph; i.setAttribute('aria-label', ph); i.autocomplete = 'off'; i.value = drafts.get(id) || ''; i.oninput = () => drafts.set(id, i.value); return i; }
@@ -616,6 +632,14 @@ function bindingsPage(b) {
   const n = $('p', 'hint', 'A button you do not set here passes through to your apps unchanged. Keys that another app already uses may not register.'); n.style.marginTop = '12px'; b.appendChild(n);
 }
 addEventListener('keydown', e => {
+  const t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) { const q = document.getElementById('q'); if (q) { e.preventDefault(); q.focus(); } return; }
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && t && t.closest && t.closest('#navlist')) {
+    const items = [...document.querySelectorAll('#navlist button')], i = items.indexOf(t); if (i < 0) return;
+    e.preventDefault(); const n = items[Math.min(items.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))]; if (n) n.focus();
+  }
+});
+addEventListener('keydown', e => {
   if (!capturing) return;
   e.preventDefault(); e.stopPropagation();
   if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) { capturing = null; capNote = ''; render(); return; }
@@ -685,9 +709,14 @@ function render(state) {
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
   const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
-  const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages');
-  for (const [id, label] of TABS) { const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, label)); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
-  side.appendChild(nav); side.appendChild($('div', 'spacer'));
+  const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages'); nav.id = 'navlist';
+  const names = Object.fromEntries(TABS);
+  for (const [gname, ids] of GROUPS) {
+    const folded = foldedGroups.has(gname); const gl = $('button', 'glabel'); gl.setAttribute('aria-expanded', String(!folded)); gl.append($('span', null, gname), icon('fold', 14));
+    gl.onclick = () => { if (foldedGroups.has(gname)) foldedGroups.delete(gname); else foldedGroups.add(gname); saveFolded(); render(); }; nav.appendChild(gl);
+    for (const id of ids) { if (folded && cur !== id) continue; const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+  }
+  side.appendChild(nav);
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
   const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
   const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');

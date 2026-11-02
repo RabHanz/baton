@@ -61,6 +61,12 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .brand b{font:600 26px/1.05 var(--serif);letter-spacing:-.01em}
 .plan{margin-left:auto;font:600 11px var(--sans);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px;color:var(--soft);background:var(--panel)}
 nav{display:flex;flex-direction:column;gap:2px}
+#navlist{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-bottom:18px;-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 22px),transparent)}
+.glabel{display:flex;align-items:center;justify-content:space-between;border:0;background:transparent;width:100%;padding:14px 10px 4px;font:600 12px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--faint);cursor:pointer}
+.glabel:first-child{padding-top:2px}
+.glabel svg{transition:transform .15s}
+.glabel[aria-expanded=false] svg{transform:rotate(-90deg)}
+.glabel:hover{color:var(--ink)}
 .nav{display:flex;align-items:center;gap:11px;border:0;background:transparent;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--soft);font-weight:500;transition:background .15s,color .15s}
 .nav:hover{background:var(--hover);color:var(--ink)}
 .nav[aria-current=page]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
@@ -118,7 +124,7 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 .stat span{color:var(--soft)}
 .stat.kvr{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .stat b.sm{font:600 14px var(--sans);margin:0;color:var(--ink)}
-.day{font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:24px 0 8px}
+.day{font:600 12px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:24px 0 8px}
 .day.first{margin-top:0}
 .log{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
 .log .li{display:grid;grid-template-columns:78px 1fr auto;gap:14px;padding:12px 16px;border-top:1px solid var(--line);align-items:baseline}
@@ -137,6 +143,7 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 .text{min-width:0}
 .label{font-weight:600}
 .hint{color:var(--soft);font-size:13px;margin-top:1px}
+.prompt{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}.prompt.open{display:block;-webkit-line-clamp:unset}
 .more{display:grid;grid-template-rows:0fr;transition:grid-template-rows .24s var(--ease)}
 .more>div{overflow:hidden;min-height:0}
 .group.open .more{grid-template-rows:1fr}
@@ -201,7 +208,7 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 @keyframes fadeout{from{opacity:1}to{opacity:0}}
 #modal{width:min(820px,calc(100vw - 48px));height:min(540px,calc(100vh - 48px));background:var(--panel);border-radius:16px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden;animation:rise .22s var(--ease) both}
 #mnav{background:var(--sunk);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
-#mnav h4{font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}
+#mnav h4{font:600 12px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}
 #mnav .nav{padding:7px 10px}
 #mnav .ver{margin-top:auto;padding:10px;color:var(--faint);font-size:12px}
 #mbody{padding:26px 32px;overflow:auto;position:relative}
@@ -265,8 +272,8 @@ body{font-size:14px}
 h1{font:400 38px/1.08 var(--serif);letter-spacing:-.02em;margin:0 0 6px}
 h1 em{font-style:italic;color:var(--accent-text)}
 .lede{font:italic 400 17px/1.5 var(--serif);color:var(--soft);margin:0 0 26px;max-width:58ch}
-.dateline{font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
-h2{display:flex;align-items:baseline;gap:10px;font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:38px 0 12px}
+.dateline{font:600 12px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+h2{display:flex;align-items:baseline;gap:10px;font:600 12px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:38px 0 12px}
 #page{counter-reset:sec}
 h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color:var(--faint);font-variant-numeric:tabular-nums}
 #panel{border-radius:6px;box-shadow:none}
