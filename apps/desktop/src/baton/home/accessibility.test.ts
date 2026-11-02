@@ -1,0 +1,50 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import { PILL_DOCUMENT } from "../voice/voicePill.ts";
+import { APP_CSS } from "./appStyle.ts";
+import { APP_SCRIPT } from "./appScript.ts";
+import { HOME_DOCUMENT } from "./homeDocument.ts";
+
+describe("the window's accessibility", () => {
+  it("has landmarks, a skip link and a named navigation", () => {
+    expect(HOME_DOCUMENT).toContain('<a class="skip" href="#panel">');
+    expect(HOME_DOCUMENT).toContain('<aside id="side" aria-label="Sidebar">');
+    expect(HOME_DOCUMENT).toContain('<main id="panel"');
+    expect(HOME_DOCUMENT).toContain('<header id="top">');
+    expect(APP_SCRIPT).toContain("nav.setAttribute('aria-label', 'Tessaya pages')");
+    expect(APP_SCRIPT).toContain("setAttribute('aria-current', 'page')");
+  });
+  it("makes the settings dialog modal: named, focus moved in and back, Tab kept inside, Escape closes", () => {
+    expect(APP_SCRIPT).toContain("setAttribute('aria-modal', 'true')");
+    expect(APP_SCRIPT).toContain("modalOpener = document.activeElement");
+    expect(APP_SCRIPT).toContain("modalOpener.focus()");
+    expect(APP_SCRIPT).toContain("e.key === 'Tab' && modal");
+    expect(APP_SCRIPT).toContain("e.key === 'Escape' && modal");
+  });
+  it("shows a focus ring on every kind of control and honours reduced motion", () => {
+    for (const kind of ["button", "select", "input", "textarea", "a", "[tabindex]"]) {
+      expect(APP_CSS).toContain(`${kind}:focus-visible`);
+    }
+    expect(APP_CSS).toContain("@media (prefers-reduced-motion:reduce)");
+    // An outline may be removed only on a rule that is itself about focus, where something else shows it.
+    const css = APP_CSS.replace(/url\([^)]*\)/g, "url()");
+    const bare = [...css.matchAll(/([^{}]+)\{([^{}]*outline:\s*(?:none|0)\b[^{}]*)\}/g)].filter(
+      (m) => !m[1]!.includes(":focus"),
+    );
+    expect(bare.map((m) => m[1])).toEqual([]);
+  });
+  it("gives a switch, a radio and an icon button an accessible name", () => {
+    // Every script-made icon button is given an aria-label right after it is made.
+    const made = [...APP_SCRIPT.matchAll(/(\w+) = \$\('button', 'ibtn'\);/g)].map((m) => m[1]!);
+    expect(made.length).toBeGreaterThanOrEqual(5);
+    for (const v of made) expect(APP_SCRIPT).toContain(`${v}.setAttribute('aria-label'`);
+    expect(APP_SCRIPT).toContain("setAttribute('role', 'switch')");
+    expect(APP_SCRIPT).toContain("setAttribute('role', 'radio')");
+  });
+  it("announces the pill's state to a screen reader, in words, and stops moving for reduced motion", () => {
+    expect(PILL_DOCUMENT).toContain('role="status" aria-live="polite"');
+    expect(PILL_DOCUMENT).toContain('<span id="sr" class="sr"></span>');
+    expect(PILL_DOCUMENT).toContain("$('sr').textContent=v.label");
+    expect(PILL_DOCUMENT).toContain("@media (prefers-reduced-motion:reduce)");
+  });
+});
