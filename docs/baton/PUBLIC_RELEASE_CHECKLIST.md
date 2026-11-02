@@ -24,6 +24,19 @@ short list. Nothing here decides the licence or any legal question: those are th
 - **The vault and memory keep secrets out of logs, History and prompts** (VAULT.md, MEMORY.md); public-release safe by design, no
   secret in the repository or any test.
 
+## Repository setting to switch on (owner, two clicks)
+
+`.github/SECURITY.md` tells people to report a vulnerability through the repository's **Security** tab. That button exists only when
+private vulnerability reporting is on. Nothing in the code can turn it on; the repository owner does:
+
+1. Open the repository on GitHub, then **Settings** and, in the left list under *Security*, **Advanced Security** (older layouts:
+   **Code security and analysis**).
+2. Find **Private vulnerability reporting** and press **Enable**.
+
+Check it: the **Security** tab now shows **Report a vulnerability**, and the issue chooser's "Security problem" link
+(`.github/ISSUE_TEMPLATE/config.yml`) opens a private advisory form. Until then the policy's fallback applies (open an issue that
+only asks for a private channel).
+
 ## Still blocks a public release
 
 Live state of each, with who must act.

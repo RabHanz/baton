@@ -7,6 +7,26 @@ name: Tessaya voice proof
 # also proves what a person who is not the maintainer gets: a clean machine, a first run, nothing private, and an
 # uninstall that leaves the user's data (scripts/baton/stranger-proof.ps1).
 on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        default: ""
+      stranger:
+        type: boolean
+        default: true
+      require_wake:
+        type: boolean
+        default: true
+      smoke_only:
+        type: boolean
+        default: false
+      smoke_args:
+        type: string
+        default: ""
+      smoke_env:
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       tag:
