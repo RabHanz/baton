@@ -51,4 +51,24 @@ describe("the Now area", () => {
     expect(nowAction("now.allow:ws:a")).toEqual({ kind: "allow", topic: "ws:a" });
     expect(nowAction("now.c:ab12:later")).toEqual({ kind: "commitment", id: "ab12", drop: true });
   });
+
+  it("lists what works and what does not, with the notification policy", () => {
+    const rows = nowControls(
+      {
+        ...EMPTY_NOW,
+        loaded: true,
+        capabilities: [
+          { name: "Answers", state: "off", why: "Needs the internet, which is not available." },
+          { name: "Snippets", state: "works", why: "Kept here." },
+        ],
+      },
+      0,
+    );
+    expect(rows.find((r) => r.id === "now.cap:0")).toMatchObject({ status: "bad" });
+    expect(rows.find((r) => r.id === "now.cap:1")).toMatchObject({ status: "ok" });
+    expect(rows.find((r) => r.id === "now.cap.summary")).toMatchObject({
+      label: "1 of 2 things are unavailable right now; the rest work.",
+      detail: "Tessaya never sends push notifications; everything arrives here or is said aloud.",
+    });
+  });
 });
