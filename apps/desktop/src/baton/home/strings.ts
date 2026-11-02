@@ -194,6 +194,11 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloud.card.retry": "Try again",
     "cloud.need.title": "Approve a cloud task: {task}",
     "cloud.need.why": "It runs nothing until you pick an assistant and an account.",
+    "alerts.title": "Alerts",
+    "alerts.none": "Nothing needs you right now.",
+    "alerts.one": "{n} session needs you",
+    "alerts.many": "{n} sessions need you",
+    "alerts.update": "Update ready: {name}",
   },
 };
 
