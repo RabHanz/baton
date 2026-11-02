@@ -1397,6 +1397,8 @@ export const startScreenCompanion = (input: {
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   const agentTools: string[] = [];
+  /** What the gate decided about each call this turn: allowed, he said yes, he said no, refused. */
+  const agentDecisions: Array<{ readonly tool: string; readonly outcome: string }> = [];
   const agentGate = createAgentGate({
     actWithoutAsking: () => settings.actWithoutAsking,
     chrome: {
@@ -1428,7 +1430,10 @@ export const startScreenCompanion = (input: {
         p.noOnExpiry,
       )) === 0,
     record: (entry) => {
-      if (typeof entry["tool"] === "string") agentTools.push(entry["tool"]);
+      if (typeof entry["tool"] === "string") {
+        agentTools.push(entry["tool"]);
+        agentDecisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+      }
       input.onAction?.({ by: "assistant", ...entry });
     },
   });
@@ -1614,6 +1619,7 @@ export const startScreenCompanion = (input: {
       beginTurn: () => {
         agentTaint.reset();
         agentTools.length = 0;
+        agentDecisions.length = 0;
         leftPointer = null;
       },
     });
@@ -1628,6 +1634,7 @@ export const startScreenCompanion = (input: {
     let firstAudioAt: number | null = null;
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
+      input.onNote?.("agent_turn_start", { said: text });
       input.onActivity?.("Thinking");
       void show("Thinking", text);
       const reply = await agentOf().say(
@@ -1642,8 +1649,10 @@ export const startScreenCompanion = (input: {
       input.onActivity?.(null);
       linger("Tessaya", reply);
       input.onNote?.("agent_turn", {
+        ok: true,
         said: text,
         reply,
+        decisions: [...agentDecisions],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
@@ -1651,6 +1660,16 @@ export const startScreenCompanion = (input: {
         route: "agent",
       });
     } catch (error) {
+      // Every turn leaves its line, a failed one too, with what the tools did before it stopped.
+      input.onNote?.("agent_turn", {
+        ok: false,
+        said: text,
+        error: error instanceof Error ? error.message : String(error),
+        totalMs: Date.now() - started,
+        tools: [...agentTools],
+        decisions: [...agentDecisions],
+        route: "agent",
+      });
       // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
       if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
       input.onNote?.("agent_fallback", {
