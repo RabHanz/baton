@@ -11,6 +11,10 @@ export type CatalogState = "running" | "stopped" | "resuming" | "failed";
 
 export interface CatalogRow {
   readonly id: string;
+  /** The Claude session id on that machine (`id` is unique across machines). */
+  readonly sessionId: string;
+  /** Why it cannot be resumed, or why it failed, in plain words. */
+  readonly detail: string | null;
   readonly environmentId: string;
   /** The machine's display name. */
   readonly machine: string;
@@ -160,7 +164,7 @@ export const catalogControls = (input: {
     stateLabel: STATE_WORDS[r.state],
     resumeLabel:
       r.state === "stopped" || r.state === "failed" ? (r.canResume ? "Resume" : null) : null,
-    source: r.source === "history" ? "From history" : "",
+    source: r.detail ?? (r.source === "history" ? "From history" : ""),
   }));
   return [bar, ...list];
 };
@@ -202,8 +206,20 @@ export const createCatalog = (input: {
     apply: (id: string, value: string | boolean | null): boolean => {
       if (!id.startsWith("c.") && !id.startsWith("c:")) return false;
       const text = typeof value === "string" ? value : "";
-      if (id === "c.query") view = { ...view, query: text, shown: CATALOG_PAGE };
-      else if (id === "c.machine") view = { ...view, machine: text || "all", shown: CATALOG_PAGE };
+      if (id === "c.query") {
+        view = { ...view, query: text, shown: CATALOG_PAGE };
+        // The history index is only searched with words, so a typed query asks the service for more rows.
+        if (text.trim().length >= 3)
+          void input.service
+            .list(text)
+            .then((found) => {
+              const have = new Set(rows.map((r) => r.id));
+              rows = [...rows, ...found.filter((r) => !have.has(r.id))];
+              input.onChange();
+            })
+            .catch(() => undefined);
+      } else if (id === "c.machine")
+        view = { ...view, machine: text || "all", shown: CATALOG_PAGE };
       else if (id === "c.state")
         view = {
           ...view,
@@ -266,6 +282,8 @@ export const sampleCatalogRows = (now: number): CatalogRow[] => {
     ["server", "Build server", "/srv/old-site", "Old landing page", 60 * 24 * 12, "stopped"],
   ].map(([env, machine, cwd, title, min, state], i) => ({
     id: `s${i}`,
+    sessionId: `s${i}`,
+    detail: null,
     environmentId: String(env),
     machine: String(machine),
     project: String(cwd).split(/[\\/]/).at(-1) ?? "",
@@ -291,6 +309,8 @@ export const mockCatalogService = (): CatalogService => {
       rows = [
         {
           id: `n${rows.length}`,
+          sessionId: `n${rows.length}`,
+          detail: null,
           environmentId,
           machine: rows.find((r) => r.environmentId === environmentId)?.machine ?? environmentId,
           project: cwd.split(/[\\/]/).at(-1) ?? cwd,
