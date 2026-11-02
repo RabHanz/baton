@@ -650,7 +650,15 @@ export async function resumeSession(sessionId, deps) {
   for (;;) {
     const live = deps.findLive(sessionId);
     if (live !== null && live.pane !== null && live.status !== "busy") return { live };
-    if (deps.now() - started >= READY_MS) return { error: "It was started in Herdr but did not become ready within 45 seconds." };
+    if (deps.now() - started >= READY_MS) {
+      const at = /running in (\S+) pane (\S+)/.exec(out.out);
+      const screen = at === null || deps.screenOf === undefined ? "" : await deps.screenOf(at[1], at[2]).catch(() => "");
+      return {
+        error: /Is this a project you created or one you trust|trust this folder|Do you trust the files/i.test(screen)
+          ? `Claude Code is asking whether to trust this folder, and waits for you to choose in Herdr (herdr --session ${at[1]}). Choose, then resume again.`
+          : "It was started in Herdr but did not become ready within 45 seconds.",
+      };
+    }
     await deps.sleep(500);
   }
 }
@@ -896,6 +904,8 @@ const resumeDeps = {
   },
   baton: (args) => run(BATON, args, 45_000).then((r) => ({ ok: r.ok, out: r.out })),
   findLive: findLiveSession,
+  screenOf: async (session, pane) =>
+    (await run("herdr", ["--session", session, "agent", "read", pane, "--source", "visible", "--lines", "25"], 8_000)).out,
   sleep,
   now: () => Date.now(),
 };

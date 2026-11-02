@@ -499,6 +499,15 @@ NodeTest.test("resuming says plainly when the folder is unknown or gone, and tim
   NodeAssert.equal(slow.batonCalls.length, 1);
 });
 
+NodeTest.test("a session waiting on Claude's folder-trust question is named, not just 'not ready'", async () => {
+  const { deps } = stoppedMachine({
+    findLive: () => null,
+    screenOf: async () => "Quick safety check: Is this a project you created or one you trust?\n Yes, I trust this folder",
+  });
+  const out = await resumeSession("s10", deps);
+  NodeAssert.match(out.error, /asking whether to trust this folder.*herdr --session fab-shop/);
+});
+
 NodeTest.test("'resume' on its own is a request to bring it back, not a message to send", () => {
   for (const ok of ["resume", "Resume it", "resume this session.", " RESUME "]) NodeAssert.equal(isResumeRequest(ok), true, ok);
   for (const no of ["resume the work on tests", "please resume", "bring into herdr"]) NodeAssert.equal(isResumeRequest(no), false, no);

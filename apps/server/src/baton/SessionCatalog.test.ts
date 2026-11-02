@@ -61,6 +61,18 @@ describe("sending to a stopped session", () => {
     expect(row).toMatchObject({ state: "failed", waiting: 1 });
   });
 
+  it("names Claude's folder-trust question when that is what the session is waiting on", async () => {
+    const { catalog, typed } = machine({
+      live: async () => [],
+      screen: async () => " Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder",
+    });
+    const sent = await catalog.send({ sessionId: ID, text: "hello" });
+    expect(sent.detail).toContain("asking whether to trust this folder");
+    expect(sent.detail).toContain("herdr --session fab-shop");
+    expect(sent.detail).toContain("Your message is kept.");
+    expect(typed).toEqual([]);
+  });
+
   it("times out with a readable reason when it starts but never becomes ready", async () => {
     const { catalog } = machine({ live: async () => [] });
     const sent = await catalog.send({ sessionId: ID, text: "hello" });
