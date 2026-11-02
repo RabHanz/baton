@@ -59,7 +59,7 @@ const toShot = (spot, text) => {
 };
 const point = (name, label, text) => {
   const at = toShot(locate(name), text);
-  return at ? `[POINT:${at.x},${at.y}:${label}]` : "[POINT:none]";
+  return at ? `[POINT:${at.x},${at.y}:${label}:0.95]` : "[POINT:none]";
 };
 
 let turn = 0;
@@ -67,10 +67,10 @@ const answer = (text) => {
   turn += 1;
   const imageText = text;
   if (mode === "teach") {
-    if (turn === 1) return `Open the Format menu. ${point("Format", "Format menu", imageText)}`;
+    if (turn === 1) return `Open the Format menu. ${point("Format", "Format", imageText)}`;
     if (turn === 2) return `Choose Font. ${point("Font...", "Font", imageText)}`;
     if (turn === 3)
-      return `Set the size to ${SIZE}, then press Enter. ${point("Size:", `Size: ${SIZE}`, imageText)}`;
+      return `Set the size to ${SIZE}, then press Enter. ${point("Size:", "Size", imageText)}`;
     return `All done, the text is now ${SIZE} point. [DONE]`;
   }
   if (/just ran/i.test(text)) return "[OK]";
