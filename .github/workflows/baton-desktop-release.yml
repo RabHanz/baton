@@ -92,7 +92,7 @@ jobs:
       - name: Install Linux desktop build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsecret-1-dev pkg-config imagemagick build-essential
+          sudo apt-get install -y libsecret-1-dev pkg-config imagemagick build-essential cmake libasound2-dev libx11-dev libxi-dev libxtst-dev libxdo-dev libxkbcommon-dev libevdev-dev libclang-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:
