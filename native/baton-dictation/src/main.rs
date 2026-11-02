@@ -119,46 +119,100 @@ struct Job {
     language: Option<String>,
 }
 
-const TAP_MAX: Duration = Duration::from_millis(300);
-const DOUBLE_TAP_GAP: Duration = Duration::from_millis(400);
+// The timings and the table are docs/baton/fixtures/double-tap.json; packages/baton-voice/src/doubleTap.ts is the same machine in
+// TypeScript, and both test suites replay the one table.
+const SHORT_TAP_MS: f64 = 200.0;
+const FIRST_PRESS_MS: f64 = 350.0;
+const GAP_MS: f64 = 350.0;
+const HOLD_MS: f64 = 600.0;
 
-/// What the hold key's press or release asks of the recorder.
-#[derive(Debug, PartialEq)]
-enum TapAction {
-    Begin,
-    Finish,
-    Nothing,
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Phase {
+    Idle,
+    Tapped { up_at: f64 },
+    Holding { down_at: f64, after_tap: bool },
+    Latched,
+    LatchedDown,
 }
 
-/// Hold to talk, or tap twice to keep talking: the second quick tap latches the microphone open, and the next press ends it.
-#[derive(Default)]
-struct DoubleTap {
-    pressed_at: Option<Instant>,
-    /// When a short tap was released: a press soon after is the second tap.
-    tapped_at: Option<Instant>,
-    latched: bool,
+/// What the hold key asks of the recorder. Latch and Unlatch change nothing the recorder sees.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Out {
+    Start,
+    Stop,
+    Cancel,
+    Latch,
+    Unlatch,
 }
 
-impl DoubleTap {
-    fn press(&mut self, now: Instant, enabled: bool) -> TapAction {
-        if self.latched {
-            *self = DoubleTap::default();
-            return TapAction::Finish;
+/// Hold to talk, or tap twice to keep talking: a short tap is cancelled, a second quick tap latches the microphone open, and
+/// the next press ends it. Times are milliseconds from any start; events out of order or out of place are ignored.
+#[derive(Debug)]
+struct PushToTalk {
+    phase: Phase,
+    last_at: f64,
+}
+
+impl Default for PushToTalk {
+    fn default() -> Self {
+        PushToTalk { phase: Phase::Idle, last_at: f64::NEG_INFINITY }
+    }
+}
+
+impl PushToTalk {
+    fn step(&mut self, down: bool, at: f64, double_tap: bool) -> Vec<Out> {
+        if !at.is_finite() || at < self.last_at {
+            return vec![];
         }
-        let again = enabled && self.tapped_at.is_some_and(|t| now.duration_since(t) <= DOUBLE_TAP_GAP);
-        self.pressed_at = Some(now);
-        self.tapped_at = None;
-        self.latched = again;
-        TapAction::Begin
+        if down {
+            return match self.phase {
+                Phase::Idle | Phase::Tapped { .. } => {
+                    let after_tap = double_tap && matches!(self.phase, Phase::Tapped { up_at } if at - up_at <= GAP_MS);
+                    self.phase = Phase::Holding { down_at: at, after_tap };
+                    self.last_at = at;
+                    vec![Out::Start]
+                }
+                Phase::Latched => {
+                    self.phase = Phase::LatchedDown;
+                    self.last_at = at;
+                    vec![]
+                }
+                _ => vec![],
+            };
+        }
+        match self.phase {
+            Phase::Holding { down_at, after_tap } => {
+                self.last_at = at;
+                if !double_tap {
+                    self.phase = Phase::Idle;
+                    return vec![Out::Stop];
+                }
+                let held = at - down_at;
+                if after_tap && held <= HOLD_MS {
+                    self.phase = Phase::Latched;
+                    return vec![Out::Latch];
+                }
+                let out = if held < SHORT_TAP_MS { Out::Cancel } else { Out::Stop };
+                self.phase = if !after_tap && held < FIRST_PRESS_MS { Phase::Tapped { up_at: at } } else { Phase::Idle };
+                vec![out]
+            }
+            Phase::LatchedDown => {
+                self.phase = Phase::Idle;
+                self.last_at = at;
+                vec![Out::Unlatch, Out::Stop]
+            }
+            _ => vec![],
+        }
     }
 
-    fn release(&mut self, now: Instant) -> TapAction {
-        if self.latched {
-            return TapAction::Nothing;
+    fn name(&self) -> &'static str {
+        match self.phase {
+            Phase::Idle => "idle",
+            Phase::Tapped { .. } => "tapped",
+            Phase::Holding { .. } => "holding",
+            Phase::Latched => "latched",
+            Phase::LatchedDown => "latchedDown",
         }
-        let short = self.pressed_at.take().is_some_and(|p| now.duration_since(p) <= TAP_MAX);
-        self.tapped_at = if short { Some(now) } else { None };
-        TapAction::Finish
     }
 }
 
@@ -671,7 +725,8 @@ fn serve() {
     let mut enigo = None;
     let mut recording: Option<Recording> = None;
     let mut held = false;
-    let mut taps = DoubleTap::default();
+    let mut taps = PushToTalk::default();
+    let clock = Instant::now();
     let mut toggle_down = false;
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
@@ -771,7 +826,7 @@ fn serve() {
                                     if recording.take().is_some() {
                                         let _ = job_tx.send(Work::Abort);
                                         held = false;
-                                        taps = DoubleTap::default();
+                                        taps = PushToTalk::default();
                                         emit(json!({"ev": "idle"}));
                                     }
                                     keys = None;
@@ -834,7 +889,7 @@ fn serve() {
                         recording = None;
                         let _ = job_tx.send(Work::Abort);
                         held = false;
-                        taps = DoubleTap::default();
+                        taps = PushToTalk::default();
                         emit(json!({"ev": "idle"}));
                     }
                     "transcribe" => {
@@ -871,21 +926,27 @@ fn serve() {
                     _ => {}
                 }
             }
-            Msg::Key { hold: true, pressed: true } => match taps.press(Instant::now(), config.latch) {
-                TapAction::Begin => {
-                    held = true;
-                    begin(&config, &mut recording, &tx, &job_tx);
-                }
-                TapAction::Finish => {
-                    held = false;
-                    finish(&mut recording, &job_tx, true);
-                }
-                TapAction::Nothing => {}
-            },
-            Msg::Key { hold: true, pressed: false } => {
-                if held && taps.release(Instant::now()) == TapAction::Finish {
-                    held = false;
-                    finish(&mut recording, &job_tx, true);
+            Msg::Key { hold: true, pressed } => {
+                let at = clock.elapsed().as_secs_f64() * 1000.0;
+                for out in taps.step(pressed, at, config.latch) {
+                    match out {
+                        Out::Start => {
+                            held = true;
+                            begin(&config, &mut recording, &tx, &job_tx);
+                        }
+                        Out::Stop => {
+                            held = false;
+                            finish(&mut recording, &job_tx, true);
+                        }
+                        // An accidental tap: what little was heard is dropped, not transcribed.
+                        Out::Cancel => {
+                            held = false;
+                            recording = None;
+                            let _ = job_tx.send(Work::Abort);
+                            emit(json!({"ev": "idle"}));
+                        }
+                        Out::Latch | Out::Unlatch => {}
+                    }
                 }
             }
             Msg::Key { hold: false, pressed: true } => {
@@ -904,7 +965,7 @@ fn serve() {
                 recording = None;
                 let _ = job_tx.send(Work::Abort);
                 held = false;
-                taps = DoubleTap::default();
+                taps = PushToTalk::default();
                 emit(json!({"ev": "error", "message": message}));
             }
             Msg::Finished { id, dictated, target, result } => match result {
@@ -1090,38 +1151,38 @@ fn main() {
 mod tests {
     use super::*;
 
+    /// The same table the TypeScript reducer replays (docs/baton/fixtures/double-tap.json): one set of timings, two implementations.
     #[test]
-    fn a_double_tap_keeps_the_microphone_open_until_the_next_press() {
-        let t0 = Instant::now();
-        let ms = |n: u64| t0 + Duration::from_millis(n);
-        let mut taps = DoubleTap::default();
-        assert_eq!(taps.press(ms(0), true), TapAction::Begin);
-        assert_eq!(taps.release(ms(100)), TapAction::Finish, "a first short tap ends as a hold would");
-        assert_eq!(taps.press(ms(300), true), TapAction::Begin, "the second tap begins again");
-        assert_eq!(taps.release(ms(380)), TapAction::Nothing, "and its release does not end it");
-        assert_eq!(taps.press(ms(5_000), true), TapAction::Finish, "the next press ends it");
-        assert_eq!(taps.release(ms(5_050)), TapAction::Finish);
-        assert_eq!(taps.press(ms(9_000), true), TapAction::Begin, "and the key is an ordinary hold again");
-    }
-
-    #[test]
-    fn slow_taps_and_long_holds_never_latch_and_the_setting_can_be_off() {
-        let t0 = Instant::now();
-        let ms = |n: u64| t0 + Duration::from_millis(n);
-        let mut taps = DoubleTap::default();
-        taps.press(ms(0), true);
-        taps.release(ms(1_000));
-        assert_eq!(taps.press(ms(1_100), true), TapAction::Begin);
-        assert_eq!(taps.release(ms(1_150)), TapAction::Finish, "a long hold before it is not a tap");
-        taps.press(ms(10_000), true);
-        taps.release(ms(10_100));
-        taps.press(ms(10_900), true);
-        assert_eq!(taps.release(ms(10_950)), TapAction::Finish, "a second tap after a long gap is a hold");
-        let mut off = DoubleTap::default();
-        off.press(ms(0), false);
-        off.release(ms(50));
-        off.press(ms(100), false);
-        assert_eq!(off.release(ms(150)), TapAction::Finish, "with the setting off it never latches");
+    fn the_push_to_talk_machine_replays_the_shared_timing_table() {
+        let fixture: Value = serde_json::from_str(include_str!("../../../docs/baton/fixtures/double-tap.json")).unwrap();
+        let t = &fixture["timings"];
+        assert_eq!(
+            [t["shortTapMs"].as_f64(), t["firstPressMs"].as_f64(), t["gapMs"].as_f64(), t["holdMs"].as_f64()],
+            [Some(SHORT_TAP_MS), Some(FIRST_PRESS_MS), Some(GAP_MS), Some(HOLD_MS)]
+        );
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(cases.len() >= 18);
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let double_tap = case["doubleTap"].as_bool().unwrap();
+            let mut machine = PushToTalk::default();
+            let mut outputs: Vec<&str> = vec![];
+            for event in case["events"].as_array().unwrap() {
+                let down = event["type"].as_str().unwrap() == "down";
+                for out in machine.step(down, event["at"].as_f64().unwrap(), double_tap) {
+                    outputs.push(match out {
+                        Out::Start => "start",
+                        Out::Stop => "stop",
+                        Out::Cancel => "cancel",
+                        Out::Latch => "latch",
+                        Out::Unlatch => "unlatch",
+                    });
+                }
+            }
+            let expected: Vec<&str> = case["outputs"].as_array().unwrap().iter().map(|o| o.as_str().unwrap()).collect();
+            assert_eq!(outputs, expected, "{name}: outputs");
+            assert_eq!(machine.name(), case["phase"].as_str().unwrap(), "{name}: phase");
+        }
     }
 
     #[test]
