@@ -23,6 +23,7 @@ const ICON = {
   usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
   tools: '<path d="M14 6l4 4-8 8H6v-4z"/><path d="M13 7l4 4"/>',
   memory: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 11h8M8 15h8"/>',
+  vault: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
@@ -34,7 +35,7 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['now','Now'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['now','Now'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
   now: ['Now', 'What needs you, what Tessaya is keeping track of and doing, what it learned today, and what it held back and why.'],
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
@@ -43,6 +44,7 @@ const INTRO = {
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
   tools: ['Skills and tools', 'The plugins, skills and servers that Claude Code and Codex already have. Tessaya adds none of its own. A plugin switch changes Claude Code\u2019s own setting and applies to its next session.'],
   memory: ['Memory', 'What Tessaya remembers about you and your work, and what it learned. Search it, correct it, pin what must never fade, or forget it. Forgetting a memory never touches Tessaya itself.'],
+  vault: ['Vault', 'Passwords, keys and private notes, encrypted on this computer. Tessaya can use a secret for you without ever seeing it, and every use is logged here. Banking passwords you always type yourself.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
@@ -180,7 +182,54 @@ function listRow(c) {
   const ab = $('button', 'btn', c.addLabel || 'Add'); const go = () => { const v = inp.value.trim(); if (v) set(c.id + ':add', v); };
   ab.onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') go(); }; add.append(inp, ab); w.appendChild(add); return w;
 }
+function vtInput(id, ph, type) { const i = $('input'); i.type = type || 'text'; i.id = 'in-' + id; i.placeholder = ph; i.setAttribute('aria-label', ph); i.autocomplete = 'off'; i.value = drafts.get(id) || ''; i.oninput = () => drafts.set(id, i.value); return i; }
+function vtForm(fields, button, run) { const f = $('form', 'vocab'); f.append(...fields); const b = $('button', 'btn' + (button.primary ? ' primary' : ' quiet'), button.label); b.type = 'submit'; f.appendChild(b); f.onsubmit = e => { e.preventDefault(); run(); }; return f; }
+function vaultBar(c) {
+  const w = $('div', 'rowwrap stack vaultbar');
+  if (c.recovery) {
+    const k = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Your recovery key'), $('div', 'hint', 'Print it or save it somewhere safe. It is shown once and is the only way in if you forget the passphrase.')); const pre = $('div', 'hpre vaultkey', c.recovery); t.appendChild(pre);
+    const ok = $('button', 'btn primary', 'I have saved it'); ok.onclick = () => set('vt.recoveryDone', null); k.append(t, ok); w.appendChild(k);
+  }
+  if (c.state === 'none') {
+    w.appendChild(vtForm([vtInput('vt-new', 'Choose a passphrase (8 or more characters)', 'password')], { label: 'Make the vault', primary: true }, () => { const v = drafts.get('vt-new') || ''; drafts.delete('vt-new'); set('vt.create', v); }));
+  } else if (c.state === 'locked') {
+    w.appendChild(vtForm([vtInput('vt-pass', 'Passphrase', 'password')], { label: 'Unlock', primary: true }, () => { const v = drafts.get('vt-pass') || ''; drafts.delete('vt-pass'); set('vt.unlock', v); }));
+    const alt = $('div', 'memtools');
+    const hb = $('button', 'btn quiet', 'Unlock with Windows Hello'); hb.onclick = () => set('vt.unlockHello', null); alt.appendChild(hb); w.appendChild(alt);
+    w.appendChild(vtForm([vtInput('vt-rec', 'Or a recovery key', 'password')], { label: 'Use recovery key' }, () => { const v = drafts.get('vt-rec') || ''; drafts.delete('vt-rec'); set('vt.unlockRecovery', v); }));
+  } else {
+    const cat = $('select'); cat.id = 'in-vt-cat'; cat.setAttribute('aria-label', 'What kind'); for (const k of ['login', 'key', 'note', 'id', 'file', 'financial']) { const o = $('option', null, k); o.value = k; cat.appendChild(o); }
+    const nm = vtInput('vt-name', 'Name, like github'), lb = vtInput('vt-label', 'A note to yourself (optional)'), vl = vtInput('vt-value', 'The secret', 'password');
+    w.appendChild(vtForm([nm, lb, cat, vl], { label: 'Add', primary: true }, () => { const v = { name: nm.value.trim(), label: lb.value, category: cat.value, value: vl.value }; ['vt-name', 'vt-label', 'vt-value'].forEach(d => drafts.delete(d)); set('vt.add', JSON.stringify(v)); }));
+    w.appendChild($('div', 'hint memstatus', 'Passwords of banks and cards can be kept here, but Tessaya will never fill them in: you type those yourself.'));
+  }
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  if (c.state === 'unlocked') {
+    const tools = $('div', 'memtools'); const lk = $('button', 'btn', 'Lock now'); lk.onclick = () => set('vt.lock', null); tools.appendChild(lk); w.appendChild(tools);
+    w.appendChild(vtForm([vtInput('vt-exp', 'Export passphrase', 'password')], { label: 'Export encrypted file' }, () => { const v = drafts.get('vt-exp') || ''; drafts.delete('vt-exp'); set('vt.export', v); }));
+    const ip = vtInput('vt-imp', 'Path of an exported file'), iw = vtInput('vt-imppw', 'Its passphrase', 'password');
+    w.appendChild(vtForm([ip, iw], { label: 'Import' }, () => { const v = { path: ip.value.trim(), passphrase: iw.value }; drafts.delete('vt-imp'); drafts.delete('vt-imppw'); set('vt.import', JSON.stringify(v)); }));
+  }
+  if ((c.activity || []).length) {
+    w.appendChild($('h3', 'vaulthead', 'Activity'));
+    for (const line of c.activity) { let e = null; try { e = JSON.parse(line); } catch (x) { e = null; } if (!e) continue; const r = $('div', 'kv'); r.append($('div', null, e.name + ' \u00b7 ' + e.outcome + ' \u00b7 ' + (e.target || '') + (e.purpose ? ' \u00b7 ' + e.purpose : '')), $('time', 'hint', clock(e.at))); w.appendChild(r); }
+  }
+  return w;
+}
+function vaultItem(c) {
+  const wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text'); t.append($('div', 'label', c.label), $('div', 'hint', c.hint));
+  if (c.revealed !== null) { const v = $('div', 'hpre vaultkey', c.revealed); v.setAttribute('role', 'status'); t.appendChild(v); }
+  r.appendChild(t); const acts = $('div', 'memacts'), id = c.id.slice(3);
+  const rv = $('button', 'btn quiet', 'Reveal'); rv.onclick = () => set('vt.reveal:' + id, null);
+  const cp = $('button', 'btn quiet', 'Copy'); cp.onclick = () => set('vt.copy:' + id, null);
+  acts.append(rv, cp);
+  if (!c.locked) { const sel = $('select'); sel.setAttribute('aria-label', 'Who may use ' + c.label); for (const [v, l] of [['ask', 'Ask me each time'], ['domain:10', 'Allow a site for 10 minutes'], ['never', 'Only me']]) { const o = $('option', null, l); o.value = v; o.selected = v === c.policy; sel.appendChild(o); } sel.onchange = () => set('vt.policy:' + id, sel.value); acts.appendChild(sel); }
+  const dl = $('button', 'btn quiet', 'Delete'); dl.onclick = () => set('vt.delete:' + id, null); acts.appendChild(dl);
+  r.appendChild(acts); wrap.appendChild(r); return wrap;
+}
 function row(c) {
+  if (c.kind === 'vaultBar') return vaultBar(c);
+  if (c.kind === 'vaultItem') return vaultItem(c);
   if (c.kind === 'list') return listRow(c);
   if (c.kind === 'memory') return memoryRow(c);
   if (c.kind === 'memoryBar') return memoryBar(c);
@@ -624,6 +673,7 @@ function render(state) {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
+  const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
