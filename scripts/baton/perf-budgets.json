@@ -1,0 +1,10 @@
+{
+  "note": "null means measured but not yet asserted; numbers are set from docs/baton/PERF.md after a run on the Windows runner",
+  "phases": {
+    "idle": { "cpuAvg": null, "rssMBMax": null },
+    "wake-listen": { "cpuAvg": null, "rssMBMax": null },
+    "dictation": { "cpuAvg": null, "rssMBMax": null },
+    "assistant-turn": { "cpuAvg": null, "rssMBMax": null }
+  },
+  "starved": { "loopStartedSeconds": 240 }
+}
