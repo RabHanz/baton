@@ -1,7 +1,7 @@
 import type { BatonJob } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { jobAction, jobControls } from "./jobRows.ts";
+import { jobAction, jobControls, usageLine } from "./jobRows.ts";
 
 const job = (
   id: string,
@@ -44,5 +44,18 @@ describe("the Jobs area", () => {
     expect(jobAction(jobs, "ja:b")).toMatchObject({ kind: "answer" });
     expect(jobAction(jobs, "js:c")).toMatchObject({ kind: "schedule", scheduled: true });
     expect(jobAction(jobs, "j:zzz")).toBeNull();
+  });
+});
+
+describe("what a job has used", () => {
+  it("says minutes and turns against the caps once agreed, and nothing before", () => {
+    const j = {
+      phase: "approved",
+      usage: { minutes: 42, turns: 11 },
+      terms: { limits: { wallClockMinutes: 120, workerTurns: 40 } },
+    } as unknown as BatonJob;
+    expect(usageLine(j)).toBe("Used 42 of 120 min and 11 of 40 turns.");
+    expect(usageLine({ ...j, phase: "awaiting_agreement" } as BatonJob)).toBe("");
+    expect(usageLine({ ...j, usage: undefined } as unknown as BatonJob)).toBe("");
   });
 });

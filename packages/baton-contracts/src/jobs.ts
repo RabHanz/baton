@@ -130,6 +130,8 @@ export const BatonJob = Schema.Struct({
   /** "time", "turns" or "spend" when a cap has been reached; null while it is within them. */
   phase: BatonJobPhase,
   limitReached: Schema.NullOr(Schema.Literals(["time", "turns", "spend"])),
+  /** What the job has used so far, against its caps. Absent from an older server. */
+  usage: Schema.optionalKey(Schema.Struct({ minutes: Schema.Number, turns: Schema.Number })),
   terms: BatonJobTerms,
 });
 export type BatonJob = typeof BatonJob.Type;
