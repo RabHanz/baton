@@ -162,7 +162,11 @@ void Electron.app.whenReady().then(async () => {
   const clickOn = async (name: string) => {
     const at = await locate(name);
     if (at !== null) await driver.clickAt(Electron.screen.screenToDipPoint(at), "left", 1);
-    else note("locate.failed", { name });
+    else {
+      // The open Format menu takes its accelerator letter.
+      note("locate.failed", { name });
+      if (name === "Font...") await driver.press(["f"]);
+    }
   };
   const pill = createVoicePill({
     cueGain: () => 0,
@@ -242,9 +246,9 @@ void Electron.app.whenReady().then(async () => {
     await sleep(2500);
     note("scenario", { name: "drive" });
     void companion.said("drive: set the Notepad font size to 20", { direct: false });
-    let pressed = false;
-    for (let i = 0; i < 240 && !pressed; i += 1) {
-      await sleep(250);
+    // Every question the drive asks is answered with its first button, the way he would, after a pause to read it.
+    let pressed = 0;
+    const answer = async (): Promise<boolean> => {
       for (const win of Electron.BrowserWindow.getAllWindows()) {
         if (win.isDestroyed() || !win.isVisible()) continue;
         const rect = (await win.webContents
@@ -254,17 +258,23 @@ void Electron.app.whenReady().then(async () => {
           .catch(() => null)) as { x: number; y: number; t: string } | null;
         if (rect === null) continue;
         note("approval", { button: rect.t });
-        await sleep(3500);
+        await sleep(3000);
         const bounds = win.getBounds();
         await driver.clickAt({ x: bounds.x + rect.x, y: bounds.y + rect.y }, "left", 1);
-        pressed = true;
-        break;
+        pressed += 1;
+        return true;
       }
+      return false;
+    };
+    let ended = "";
+    for (let i = 0; i < 480 && !/Finished|Stopped/.test(ended); i += 1) {
+      if (!(await answer())) await sleep(250);
+      ended = await cardKicker();
     }
-    const end = await until((k) => /Finished|Stopped/.test(k), 120_000);
+    const end = ended;
     note("drive.end", { kicker: end });
     await sleep(6000);
-    results["drive"] = { approvalPressed: pressed, end };
+    results["drive"] = { approvalsPressed: pressed, end };
     await stopClip((Date.now() - began) / 1000);
   }
 
