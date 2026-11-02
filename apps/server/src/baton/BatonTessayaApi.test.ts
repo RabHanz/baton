@@ -1,6 +1,8 @@
 import type { PhoneState } from "@t3tools/baton-shared/phone";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
+
 import { handlePhone, OPERATE_SCOPE, READ_SCOPE, type PhoneDeps } from "./BatonTessayaApi.ts";
 
 const state: PhoneState = {
@@ -9,6 +11,7 @@ const state: PhoneState = {
   approvals: [
     { id: "p:j1", kind: "plan", title: "Site", action: "Start the work as planned", permission: "x", ref: "j1", answerable: true },
     { id: "s:k", kind: "session", title: "Sess", action: "Answer its question", permission: "x", ref: "k", answerable: false },
+    { id: "d:pr1", kind: "prompt", title: "Run it?", action: "Click Save in Notes", permission: "Asked on your computer", ref: "pr1", answerable: true, yes: 0, cancel: 1 },
   ],
   now: [],
   jobs: [
@@ -17,18 +20,29 @@ const state: PhoneState = {
     { id: "bad", title: "B", status: "failed", canStop: false, canRetry: true, retryWhy: null },
   ],
   weaves: [],
+  desktop: { connected: true },
+  asks: [],
 };
-const make = () => {
+const make = (connected = true) => {
   const calls: string[] = [];
+  const asks = new Map<string, PhoneAsk>();
   const deps: PhoneDeps = {
     state: async () => state,
     agree: async (id) => void calls.push(`agree ${id}`),
     stop: async (id) => (calls.push(`stop ${id}`), true),
     retry: async (id) => (calls.push(`retry ${id}`), "Asked it to try again."),
-    say: async (t) => (calls.push(`say ${t}`), "ok"),
+    ask: async (id, text) => {
+      if (text.trim() === "") return { ok: false, why: "Say something." };
+      const ask: PhoneAsk = asks.get(id) ?? { id, text: text.trim(), source: "phone", status: "queued", createdAt: 0, expiresAt: 1, spoken: null, card: null, error: null };
+      if (!asks.has(id)) calls.push(`ask ${text.trim()}`);
+      asks.set(id, ask);
+      return { ok: true, ask };
+    },
+    askGet: async (id) => ({ ask: asks.get(id) ?? null, connected }),
+    answerPrompt: async (id, index) => (calls.push(`prompt ${id} ${index}`), id === "pr1"),
     transcribe: async () => ({ ok: true, text: "what needs me" }),
   };
-  return { deps, calls };
+  return { deps, calls, asks };
 };
 const read = new Set([READ_SCOPE]);
 const operate = new Set([READ_SCOPE, OPERATE_SCOPE]);
@@ -48,7 +62,7 @@ describe("the phone API", () => {
     const { deps, calls } = make();
     expect((await handlePhone(deps, { method: "GET", path: "state", scopes: read })).status).toBe(200);
     expect((await handlePhone(deps, { method: "GET", path: "state", scopes: new Set() })).status).toBe(403);
-    for (const path of ["approvals/p:j1", "jobs/run/stop", "say", "voice"]) {
+    for (const path of ["approvals/p:j1", "jobs/run/stop", "ask", "voice"]) {
       expect((await handlePhone(deps, { method: "POST", path, scopes: read, json: { decision: "approve", text: "x" }, bytes: wav() })).status).toBe(403);
     }
     expect(calls).toEqual([]);
@@ -76,12 +90,30 @@ describe("the phone API", () => {
     expect(calls).toEqual(["stop run", "retry bad"]);
   });
 
-  it("sends typed words and heard words to the one assistant, showing what was heard", async () => {
-    const { deps, calls } = make();
-    expect((await handlePhone(deps, { method: "POST", path: "say", scopes: operate, json: { text: "  what is running " } })).json).toEqual({ reply: "ok" });
-    expect((await handlePhone(deps, { method: "POST", path: "voice", scopes: operate, bytes: wav() })).json).toEqual({ heard: "what needs me", reply: "ok" });
+  it("queues typed and heard words for the desktop with a client id, once, and tells him when the computer is away", async () => {
+    const { deps, calls, asks } = make(false);
+    const post = (json: unknown) => handlePhone(deps, { method: "POST", path: "ask", scopes: operate, json });
+    const first = await post({ id: "client-1234", text: "  what is running " });
+    expect(first).toMatchObject({ status: 202, json: { id: "client-1234", status: "queued", line: "Your computer is not connected; it will answer when it is back." } });
+    await post({ id: "client-1234", text: "what is running" });
+    expect((await post({ id: "client-1234", text: "   " })).status).toBe(400);
+    expect(calls).toEqual(["ask what is running"]);
+    asks.set("client-1234", { ...asks.get("client-1234")!, status: "answered", card: "Two jobs are running." });
+    expect((await handlePhone(deps, { method: "GET", path: "ask/client-1234", scopes: read })).json).toMatchObject({ status: "answered", line: "Two jobs are running." });
+    expect((await handlePhone(deps, { method: "GET", path: "ask/nope", scopes: read })).status).toBe(404);
+    const heard = await handlePhone(deps, { method: "POST", path: "voice", scopes: operate, bytes: wav(), clientId: "voice-client-1" });
+    expect(heard).toMatchObject({ status: 202, json: { heard: "what needs me", id: "voice-client-1" } });
     expect((await handlePhone(deps, { method: "POST", path: "voice", scopes: operate, bytes: new Uint8Array(100) })).status).toBe(400);
-    expect(calls).toEqual(["say what is running", "say what needs me"]);
+  });
+
+  it("carries a question the desktop is asking to the phone and back: the exact text, the right button, once", async () => {
+    const { deps, calls } = make();
+    const post = (decision: string, action = "Click Save in Notes") =>
+      handlePhone(deps, { method: "POST", path: "approvals/d:pr1", scopes: operate, json: { decision, action } });
+    expect((await post("approve")).status).toBe(200);
+    expect((await post("deny")).status).toBe(200);
+    expect((await post("approve", "Delete everything")).status).toBe(409);
+    expect(calls).toEqual(["prompt pr1 0", "prompt pr1 1"]);
   });
 
   it("says 501 when the server cannot transcribe", async () => {

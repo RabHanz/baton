@@ -76,13 +76,13 @@ button.act.primary{background:var(--accent);color:var(--on)}
 
 export const SCRIPT = `"use strict";
 (function () {
-  var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["jobs", "Jobs"], ["weave", "Weave"]];
+  var TABS = [["needs", "Needs me"], ["approvals", "Approvals"], ["now", "Now"], ["jobs", "Jobs"], ["weave", "Weave"], ["asked", "Asked"]];
   var tab = "needs", state = null, said = "", denied = false;
   var view = document.getElementById("view"), tabs = document.getElementById("tabs");
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function api(method, path, body, raw) {
     var init = { method: method, credentials: "same-origin", headers: {} };
-    if (raw) { init.body = body; init.headers["content-type"] = "audio/wav"; }
+    if (raw) { init.body = body; init.headers["content-type"] = "audio/wav"; init.headers["x-client-id"] = newId(); }
     else if (body !== undefined) { init.body = JSON.stringify(body); init.headers["content-type"] = "application/json"; }
     return fetch("/tessaya/api/" + path, init).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) { j.status = r.status; return j; });
@@ -105,6 +105,7 @@ export const SCRIPT = `"use strict";
   function draw() {
     drawTabs(); view.textContent = "";
     if (denied) { var c = el("div", "card"); c.appendChild(el("h2", "", "This phone is not paired")); c.appendChild(el("p", "soft", "Open this server's normal address on this phone and pair it there first. Then come back to /tessaya.")); view.appendChild(c); return; }
+    if (state && !state.desktop.connected) view.appendChild(el("p", "soft", "Your computer is not connected. Asks wait for it."));
     if (said) view.appendChild(el("p", "card", said)).id = "say";
     if (!state) { view.appendChild(el("p", "soft", "Loading")); return; }
     if (tab === "needs") {
@@ -134,6 +135,9 @@ export const SCRIPT = `"use strict";
         if (r.children.length) c.appendChild(r);
         view.appendChild(c);
       });
+    } else if (tab === "asked") {
+      if (!state.asks.length) view.appendChild(el("p", "soft", "Nothing asked yet. Use the box below."));
+      state.asks.forEach(function (a) { var c = el("div", "card"); c.appendChild(el("h2", "", a.text)); c.appendChild(el("p", "", a.line)); view.appendChild(c); });
     } else if (tab === "weave") {
       if (!state.weaves.length) view.appendChild(el("p", "soft", "Nothing between sessions."));
       state.weaves.forEach(function (w) { var c = el("div", "card"); c.appendChild(el("p", "", w.line)); c.appendChild(el("p", "soft", w.status)); view.appendChild(c); });
@@ -146,10 +150,24 @@ export const SCRIPT = `"use strict";
       draw();
     }).catch(function () { said = "The server did not answer."; draw(); });
   }
+  function newId() { var a = new Uint8Array(12); crypto.getRandomValues(a); return "c-" + Array.prototype.map.call(a, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
+  var watching = null;
+  function watch(id) {
+    watching = id; var tries = 0;
+    (function poll() {
+      if (watching !== id) return;
+      api("GET", "ask/" + encodeURIComponent(id)).then(function (j) {
+        if (watching !== id) return;
+        if (j.line) { said = j.line; draw(); }
+        if (j.status === "answered" || j.status === "failed" || j.status === "expired") { watching = null; load(); return; }
+        if (++tries < 90) setTimeout(poll, 3000);
+      });
+    })();
+  }
   function send(text) {
     if (!text) return;
-    said = "Sending"; draw();
-    api("POST", "say", { text: text }).then(function (j) { said = j.reply || j.message || ""; draw(); load(); });
+    var id = newId(); said = "Sending"; draw();
+    api("POST", "ask", { id: id, text: text }).then(function (j) { said = j.line || j.message || ""; draw(); load(); if (j.id) watch(j.id); });
   }
   document.getElementById("send").onclick = function () { var i = document.getElementById("ask"); var t = i.value.trim(); i.value = ""; send(t); };
   document.getElementById("ask").onkeydown = function (e) { if (e.key === "Enter") document.getElementById("send").click(); };
@@ -185,8 +203,8 @@ export const SCRIPT = `"use strict";
         stream.getTracks().forEach(function (t) { t.stop(); }); talk.classList.remove("rec"); talk.textContent = "Talk";
         said = "Listening done. Working on it"; draw();
         wavOf(new Blob(chunks)).then(function (wav) { return api("POST", "voice", wav, true); }).then(function (j) {
-          said = j.heard ? "You said: " + j.heard + "\\n\\n" + (j.reply || "") : (j.message || "Nothing came back.");
-          draw(); load();
+          said = j.heard ? "You said: " + j.heard + "\\n\\n" + (j.line || "") : (j.message || "Nothing came back.");
+          draw(); load(); if (j.id) watch(j.id);
         }).catch(function () { said = "That recording could not be sent."; draw(); });
       };
       rec.start();
