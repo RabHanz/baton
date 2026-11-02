@@ -23,7 +23,14 @@ describe("intent quality", () => {
   it("is a real spread of what he says", () => {
     expect(rows.length).toBeGreaterThanOrEqual(200);
     expect(new Set(rows.map((r) => r.say.toLowerCase())).size).toBe(rows.length);
-    for (const tag of ["dismissal", "near-miss ask", "status", "high risk", "answer", "dictation trigger"]) {
+    for (const tag of [
+      "dismissal",
+      "near-miss ask",
+      "status",
+      "high risk",
+      "answer",
+      "dictation trigger",
+    ]) {
       expect(rows.filter((r) => r.tag === tag).length).toBeGreaterThanOrEqual(10);
     }
   });

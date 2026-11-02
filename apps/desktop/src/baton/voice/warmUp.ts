@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 // @effect-diagnostics globalTimers:off
 /**
  * Models load on first use: the wake scorer and the speech detector on the first frames, the recogniser on
@@ -41,15 +42,21 @@ export interface WarmUpInput {
  * models really are ready, however long that takes on this computer (never rejects; a failed load settles it too, since
  * nothing more can be waited for), so audio heard in the meantime can be held and played in, not lost.
  */
-export const startWarmUp = (input: WarmUpInput): { readonly result: Promise<boolean>; readonly complete: Promise<void> } => {
+export const startWarmUp = (
+  input: WarmUpInput,
+): { readonly result: Promise<boolean>; readonly complete: Promise<void> } => {
   const limit =
-    input.limit ?? (() => new Promise<void>((resolve) => setTimeout(resolve, WARM_LIMIT_MS).unref()));
+    input.limit ??
+    (() => new Promise<void>((resolve) => setTimeout(resolve, WARM_LIMIT_MS).unref()));
   let ready = 0;
   const stage = () => input.onStage?.((ready += 1), 2);
   let complete: Promise<void>;
   try {
     for (let i = 0; i < WARM_FRAMES; i += 1) input.pushFrame(new Int16Array(FRAME_SAMPLES));
-    complete = Promise.all([input.settled().then(stage), input.transcribe(warmClip()).then(stage)]).then(() => undefined);
+    complete = Promise.all([
+      input.settled().then(stage),
+      input.transcribe(warmClip()).then(stage),
+    ]).then(() => undefined);
   } catch {
     complete = Promise.reject(new Error("warm-up failed to start"));
   }

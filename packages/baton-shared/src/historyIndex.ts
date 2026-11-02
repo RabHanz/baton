@@ -33,13 +33,18 @@ export const askHistory = (
     ),
 ): Promise<HistoryAnswer> => {
   const script = env[HISTORY_ENV];
-  if (script === undefined || script.trim() === "") return Promise.resolve({ ok: false, why: NOT_HERE });
+  if (script === undefined || script.trim() === "")
+    return Promise.resolve({ ok: false, why: NOT_HERE });
   let args: string[];
   if (ask.session !== undefined) {
-    if (!SESSION.test(ask.session)) return Promise.resolve({ ok: false, why: "That is not a session id." });
+    if (!SESSION.test(ask.session))
+      return Promise.resolve({ ok: false, why: "That is not a session id." });
     args = ["show", ask.session];
   } else {
-    const words = (ask.query ?? "").split(/\s+/).filter((w) => w !== "" && !w.startsWith("-")).slice(0, 12);
+    const words = (ask.query ?? "")
+      .split(/\s+/)
+      .filter((w) => w !== "" && !w.startsWith("-"))
+      .slice(0, 12);
     if (words.length === 0) return Promise.resolve({ ok: false, why: "Say what to search for." });
     args = words;
   }
@@ -60,18 +65,28 @@ const ID = /\b([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{8})\b/i;
 const QUOTE_MAX = 300;
 
 // The index prints `2026-10-04T13:55  <role>  <project>  <session> [agent <id>]`, then the hit indented on the next line.
-const HEADER = /^\d{4}-\d\d-\d\dT\d\d:\d\d\s+(\S+)\s+(\S+)\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(?:\s+agent\s+\S+)?\s*$/i;
+const HEADER =
+  /^\d{4}-\d\d-\d\dT\d\d:\d\d\s+(\S+)\s+(\S+)\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})(?:\s+agent\s+\S+)?\s*$/i;
 // Tool output and thinking are file dumps, not lessons.
 const NOISE_ROLES = new Set(["tool_result", "tool_use", "thinking", "system", "meta"]);
 
 /** `-home-user-shop` is the project the session ran in; the tail after the box's path prefix is the venture. */
 const ventureOf = (project: string): string | null => {
-  const name = project.replace(/^-home-[^-]+-/, "").replace(/^-mnt-HC-Volume-\d+-dev-/, "").replace(/^-+/, "").toLowerCase();
+  const name = project
+    .replace(/^-home-[^-]+-/, "")
+    .replace(/^-mnt-HC-Volume-\d+-dev-/, "")
+    .replace(/^-+/, "")
+    .toLowerCase();
   return /^[a-z0-9][a-z0-9_-]{1,39}$/.test(name) && name !== "prompts" ? name : null;
 };
 
 const tidy = (text: string): string =>
-  text.replace(/^\s*\[[a-z_]+\]\s*/i, "").replace(/\s+/g, " ").replace(/^[\s:|\-–]+/, "").trim().slice(0, QUOTE_MAX);
+  text
+    .replace(/^\s*\[[a-z_]+\]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s:|\-–]+/, "")
+    .trim()
+    .slice(0, QUOTE_MAX);
 
 /** One finding per hit. Reads the index's header-then-snippet blocks; any other line that names a session is taken whole. */
 export const parseLearnings = (output: string, max = 20): ReadonlyArray<FoundLearning> => {
@@ -97,7 +112,11 @@ export const parseLearnings = (output: string, max = 20): ReadonlyArray<FoundLea
     if (/^\s/.test(line) && i > 0 && HEADER.test(lines[i - 1]!)) continue;
     const id = ID.exec(line)?.[1];
     if (id === undefined) continue;
-    add(id, tidy(line.replace(ID, "")), /venture[:=\s]+([A-Za-z0-9_-]{2,40})/i.exec(line)?.[1]?.toLowerCase() ?? null);
+    add(
+      id,
+      tidy(line.replace(ID, "")),
+      /venture[:=\s]+([A-Za-z0-9_-]{2,40})/i.exec(line)?.[1]?.toLowerCase() ?? null,
+    );
   }
   return out;
 };

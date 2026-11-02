@@ -26,7 +26,9 @@ describe("watching the fleet", () => {
         entry("slow", "working", 50),
         entry("ask", "needs_input", 45),
         entry("freshAsk", "needs_input", 5),
-        entry("bad", "failed", 2, { synopsis: { currentAction: "ran the tests", recentFindings: [] } }),
+        entry("bad", "failed", 2, {
+          synopsis: { currentAction: "ran the tests", recentFindings: [] },
+        }),
         entry("seen", "done_unseen", 300),
         entry("fresh", "done_unseen", 10),
         entry("settled", "failed", 90, { lifecycle: "settled" }),

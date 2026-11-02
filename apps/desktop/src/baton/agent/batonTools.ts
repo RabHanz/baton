@@ -863,7 +863,9 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
     inputSchema: object(
       {
         id: { type: "string" },
-        channel: { enum: ["start", "retry", "email", "social", "chat", "pr_comment", "other_public"] },
+        channel: {
+          enum: ["start", "retry", "email", "social", "chat", "pr_comment", "other_public"],
+        },
       },
       ["id", "channel"],
     ),

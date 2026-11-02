@@ -27,7 +27,11 @@ export const SYNC_STALL_MS = 24 * 3_600_000;
 
 /** One word from a pull request's check rollup (GitHub's statusCheckRollup, checks and statuses alike). */
 export const summariseChecks = (
-  rollup: ReadonlyArray<{ readonly conclusion?: string | null; readonly status?: string | null; readonly state?: string | null }>,
+  rollup: ReadonlyArray<{
+    readonly conclusion?: string | null;
+    readonly status?: string | null;
+    readonly state?: string | null;
+  }>,
 ): ChecksState => {
   if (rollup.length === 0) return "none";
   const failed = (c: (typeof rollup)[number]) =>
@@ -42,7 +46,13 @@ export const summariseChecks = (
 
 const ago = (ms: number): string => {
   const m = Math.max(0, Math.round(ms / 60_000));
-  return m < 1 ? "just now" : m < 120 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+  return m < 1
+    ? "just now"
+    : m < 120
+      ? `${m} min ago`
+      : m < 2880
+        ? `${Math.round(m / 60)} h ago`
+        : `${Math.round(m / 1440)} days ago`;
 };
 
 const behindOf = (s: SyncState): number | null => s.localBehind ?? s.status?.behindCommits ?? null;
@@ -95,14 +105,20 @@ export const syncNeeds = (s: SyncState, now: number): ReadonlyArray<NeedItem> =>
 export const syncCapability = (
   s: SyncState,
   now: number,
-): { readonly name: string; readonly state: "works" | "limited" | "unknown"; readonly why: string } => {
+): {
+  readonly name: string;
+  readonly state: "works" | "limited" | "unknown";
+  readonly why: string;
+} => {
   const name = "Upstream sync";
   if (s.status === null && s.localBehind === null && s.pr === null) {
     return { name, state: "unknown", why: "Unknown: the last sync result could not be read here." };
   }
   const behind = behindOf(s);
   const parts = [
-    behind === null ? "Commits behind upstream: unknown." : `${behind} commits behind upstream${s.localBehind === null ? " (as of the last run)" : ""}.`,
+    behind === null
+      ? "Commits behind upstream: unknown."
+      : `${behind} commits behind upstream${s.localBehind === null ? " (as of the last run)" : ""}.`,
     s.status === null
       ? "The last run could not be read."
       : `The last run was ${ago(now - Date.parse(s.status.at))}: ${s.status.result}.`,

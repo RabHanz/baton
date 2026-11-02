@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
  * Scores audio with the product's own openWakeWord code. Two ways in:
  *   node wake-score.mjs --models DIR --words a,b,c --list files.txt --out scores.jsonl

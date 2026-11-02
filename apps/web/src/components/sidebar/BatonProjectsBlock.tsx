@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-raw-colors, shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
  * Baton's projects in T3's own sidebar vocabulary (D72): one entry per project across both boxes
  * and every account, its live sessions as rows shaped like upstream's thread rows, T3's status

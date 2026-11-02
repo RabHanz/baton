@@ -478,42 +478,44 @@ layer("BatonJobFlow", (it) => {
       }),
   );
 
-  it.effect("retries a failed worker by itself only under a standing retry permission, inside the budget", () =>
-    Effect.gen(function* () {
-      const jobs = yield* BatonJobService;
-      const id = WorkSessionId.make("job-retry-1");
-      const { threadId } = yield* startJob({
-        id,
-        projectId: ProjectId.make("project-site"),
-        title: "Flaky",
-        goal: "Do the thing",
-        permissions: { folders: [], projects: [], tools: ["read"] },
-        limits: { retries: 1 },
-        modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
-        runtimeMode: "approval-required",
-      });
-      shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
-      yield* jobs.planReady(id);
-      yield* agreeJob(id);
-      const failed = [
-        {
-          workSessionId: id,
+  it.effect(
+    "retries a failed worker by itself only under a standing retry permission, inside the budget",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const id = WorkSessionId.make("job-retry-1");
+        const { threadId } = yield* startJob({
+          id,
+          projectId: ProjectId.make("project-site"),
           title: "Flaky",
-          lifecycle: "active",
-          state: "failed",
-          needsUser: false,
-          updatedAt: "2026-11-03T10:00:00.000Z",
-          threads: [{ threadId }],
-          synopsis: null,
-        },
-      ] as never;
-      assert.deepStrictEqual(yield* autoRetry(failed), [], "off unless he gave it");
-      yield* jobs.grant(id, "retry");
-      const before = sent.length;
-      assert.deepStrictEqual(yield* autoRetry(failed), [id]);
-      assert.include(sent.at(-1)?.text ?? "", "Retry 1 of 1");
-      assert.strictEqual(sent.length, before + 1);
-      assert.deepStrictEqual(yield* autoRetry(failed), [], "the budget of one is spent");
-    }),
+          goal: "Do the thing",
+          permissions: { folders: [], projects: [], tools: ["read"] },
+          limits: { retries: 1 },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+        yield* jobs.planReady(id);
+        yield* agreeJob(id);
+        const failed = [
+          {
+            workSessionId: id,
+            title: "Flaky",
+            lifecycle: "active",
+            state: "failed",
+            needsUser: false,
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [{ threadId }],
+            synopsis: null,
+          },
+        ] as never;
+        assert.deepStrictEqual(yield* autoRetry(failed), [], "off unless he gave it");
+        yield* jobs.grant(id, "retry");
+        const before = sent.length;
+        assert.deepStrictEqual(yield* autoRetry(failed), [id]);
+        assert.include(sent.at(-1)?.text ?? "", "Retry 1 of 1");
+        assert.strictEqual(sent.length, before + 1);
+        assert.deepStrictEqual(yield* autoRetry(failed), [], "the budget of one is spent");
+      }),
   );
 });

@@ -6,14 +6,14 @@ Run it: `gh workflow run baton-wake-train.yml -R RabHanz/baton --ref main -f wor
 
 ## What changes with CLEAN=1
 
-| Part | Before | Clean |
-| --- | --- | --- |
+| Part                                 | Before                                                                                | Clean                                                                                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Positive voices (Piper TTS, British) | vctk, aru, semaine, alba, jenny_dioco, northern_english_male, southern_english_female | vctk (CC BY 4.0), aru (CC BY 4.0), alba (CC BY 4.0), cori (public domain). Dropped: semaine (CC BY-NC-SA), northern_english_male and southern_english_female (CC BY-SA), jenny_dioco and alan ("see the page", unverified) |
-| American top-up voices | LibriTTS-R generator (CC BY 4.0) | same |
-| Room impulses | MIT environmental impulse responses | same |
-| Background audio | AudioSet clips (YouTube, per-clip terms) | MUSAN noise and music (CC BY 4.0) |
-| Negative features | openWakeWord's ACAV100M features (YouTube audio) | computed here from LibriSpeech train-clean-100 speech (CC BY 4.0) plus MUSAN |
-| Validation | openWakeWord's validation set | LibriSpeech dev and test-clean plus held-out MUSAN noise |
+| American top-up voices               | LibriTTS-R generator (CC BY 4.0)                                                      | same                                                                                                                                                                                                                       |
+| Room impulses                        | MIT environmental impulse responses                                                   | same                                                                                                                                                                                                                       |
+| Background audio                     | AudioSet clips (YouTube, per-clip terms)                                              | MUSAN noise and music (CC BY 4.0)                                                                                                                                                                                          |
+| Negative features                    | openWakeWord's ACAV100M features (YouTube audio)                                      | computed here from LibriSpeech train-clean-100 speech (CC BY 4.0) plus MUSAN                                                                                                                                               |
+| Validation                           | openWakeWord's validation set                                                         | LibriSpeech dev and test-clean plus held-out MUSAN noise                                                                                                                                                                   |
 
 ## Still open
 

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * Windows Hello as a consent gate (D151). Electron cannot reach a platform authenticator through WebAuthn,

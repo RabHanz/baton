@@ -5,7 +5,13 @@
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 
 import { buildApprovals, type Approval } from "./approvals.ts";
-import { needsFromApprovals, needsFromFindings, needsFromJobs, rankNeeds, type NeedItem } from "./needsMe.ts";
+import {
+  needsFromApprovals,
+  needsFromFindings,
+  needsFromJobs,
+  rankNeeds,
+  type NeedItem,
+} from "./needsMe.ts";
 import { retryRefusal } from "./jobReport.ts";
 import { askLine, type PhoneAsk, type PhonePrompt } from "./phoneRelay.ts";
 import type { WeaveRecord } from "./weave.ts";
@@ -44,7 +50,11 @@ export interface PhoneState {
   readonly approvals: ReadonlyArray<PhoneApproval>;
   readonly now: ReadonlyArray<string>;
   readonly jobs: ReadonlyArray<PhoneJobRow>;
-  readonly weaves: ReadonlyArray<{ readonly id: string; readonly line: string; readonly status: string }>;
+  readonly weaves: ReadonlyArray<{
+    readonly id: string;
+    readonly line: string;
+    readonly status: string;
+  }>;
   /** Whether the desktop assistant is there to answer what the phone asks. */
   readonly desktop: { readonly connected: boolean };
   readonly asks: ReadonlyArray<PhoneAskRow>;
@@ -84,22 +94,41 @@ export const buildPhoneState = (input: {
     yes: p.yes,
     cancel: p.cancel,
   }));
-  const approvals = [...mirrored, ...plans.map((a): PhoneApproval => ({ ...a, answerable: a.kind === "plan" }))];
+  const approvals = [
+    ...mirrored,
+    ...plans.map((a): PhoneApproval => ({ ...a, answerable: a.kind === "plan" })),
+  ];
   const needs = rankNeeds(
     [
-      ...mirrored.map((p): NeedItem => ({ id: p.id, source: "approval", title: p.title, why: p.action.slice(0, 200), weight: 90, ref: p.ref })),
+      ...mirrored.map((p): NeedItem => ({
+        id: p.id,
+        source: "approval",
+        title: p.title,
+        why: p.action.slice(0, 200),
+        weight: 90,
+        ref: p.ref,
+      })),
       ...needsFromApprovals(plans),
       ...needsFromJobs(input.jobs, input.now),
       ...needsFromFindings(input.findings),
     ],
     input.now,
   );
-  const doing = input.jobs.filter((j) => j.phase === "approved" && j.group !== "failed" && j.limitReached === null && RUNNING.has(String(j.state)));
+  const doing = input.jobs.filter(
+    (j) =>
+      j.phase === "approved" &&
+      j.group !== "failed" &&
+      j.limitReached === null &&
+      RUNNING.has(String(j.state)),
+  );
   return {
     badge: needs.length,
     needs,
     approvals,
-    now: doing.length === 0 ? ["Nothing is running right now."] : doing.map((j) => `${j.title}: ${statusOf(j)}`),
+    now:
+      doing.length === 0
+        ? ["Nothing is running right now."]
+        : doing.map((j) => `${j.title}: ${statusOf(j)}`),
     jobs: input.jobs.map((j) => {
       const retryWhy = retryRefusal(j);
       return {
@@ -112,7 +141,12 @@ export const buildPhoneState = (input: {
       };
     }),
     desktop: { connected: input.desktopConnected ?? false },
-    asks: (input.asks ?? []).map((a) => ({ id: a.id, text: a.text, status: a.status, line: askLine(a, input.desktopConnected ?? false) })),
+    asks: (input.asks ?? []).map((a) => ({
+      id: a.id,
+      text: a.text,
+      status: a.status,
+      line: askLine(a, input.desktopConnected ?? false),
+    })),
     weaves: input.weaves.slice(0, 30).map((w) => ({
       id: w.id,
       line: `${w.from} to ${w.toLabel}: ${w.text.slice(0, 160)}`,
@@ -133,11 +167,14 @@ export const parseDecision = (value: unknown): PhoneDecision | null =>
 export const WAV_MAX_BYTES = 6 * 1024 * 1024;
 export const checkWav = (bytes: Uint8Array): string | null => {
   if (bytes.byteLength < 44) return "That recording is empty.";
-  if (bytes.byteLength > WAV_MAX_BYTES) return "That recording is too long. Keep it under three minutes.";
+  if (bytes.byteLength > WAV_MAX_BYTES)
+    return "That recording is too long. Keep it under three minutes.";
   const text = (from: number, to: number) => String.fromCharCode(...bytes.subarray(from, to));
   if (text(0, 4) !== "RIFF" || text(8, 12) !== "WAVE") return "That is not a WAV recording.";
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return view.getUint16(22, true) === 1 && view.getUint32(24, true) === 16_000 && view.getUint16(34, true) === 16
+  return view.getUint16(22, true) === 1 &&
+    view.getUint32(24, true) === 16_000 &&
+    view.getUint16(34, true) === 16
     ? null
     : "The recording must be 16 kHz mono 16-bit.";
 };

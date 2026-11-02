@@ -22,23 +22,48 @@ describe("reading the sync state", () => {
     expect(seen[0]).toEqual(["rev-list", "--count", "abc123..upstream/main"]);
     expect(await readLocalBehind(undefined, async () => "1")).toBeNull();
     expect(await readLocalBehind("/no/such/checkout", async () => "1")).toBeNull();
-    expect(await readLocalBehind(repo(), async () => { throw new Error("no upstream remote"); })).toBeNull();
+    expect(
+      await readLocalBehind(repo(), async () => {
+        throw new Error("no upstream remote");
+      }),
+    ).toBeNull();
   });
 
   it("finds the open sync PR among the others and sums its checks", async () => {
     const rows = [
       { number: 1, title: "feat: x", url: "u1", headRefName: "baton/c-x", statusCheckRollup: [] },
-      { number: 292, title: "sync: upstream to abc", url: "u2", headRefName: "baton/sync-abc", statusCheckRollup: [{ conclusion: "SUCCESS" }, { conclusion: "FAILURE" }] },
+      {
+        number: 292,
+        title: "sync: upstream to abc",
+        url: "u2",
+        headRefName: "baton/sync-abc",
+        statusCheckRollup: [{ conclusion: "SUCCESS" }, { conclusion: "FAILURE" }],
+      },
     ];
-    expect(await readSyncPr("o/r", async () => JSON.stringify(rows))).toEqual({ number: 292, url: "u2", title: "sync: upstream to abc", checks: "fail" });
+    expect(await readSyncPr("o/r", async () => JSON.stringify(rows))).toEqual({
+      number: 292,
+      url: "u2",
+      title: "sync: upstream to abc",
+      checks: "fail",
+    });
     expect(await readSyncPr("o/r", async () => "[]")).toBeNull();
-    expect(await readSyncPr("o/r", async () => { throw new Error("offline"); })).toBeNull();
+    expect(
+      await readSyncPr("o/r", async () => {
+        throw new Error("offline");
+      }),
+    ).toBeNull();
   });
 
   it("asks at most every ten minutes", async () => {
     let calls = 0;
     let t = 0;
-    const cache = createSyncExtraCache("o/r", undefined, async () => (calls++, "[]"), undefined, () => t);
+    const cache = createSyncExtraCache(
+      "o/r",
+      undefined,
+      async () => (calls++, "[]"),
+      undefined,
+      () => t,
+    );
     await cache();
     t = 5 * 60_000;
     await cache();

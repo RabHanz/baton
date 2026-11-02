@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /** Writes the diagnostics file to Tessaya's state folder. Nothing is sent anywhere. */
 import * as NodeFS from "node:fs";
