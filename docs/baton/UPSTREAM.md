@@ -299,6 +299,25 @@ were the fix sessions' answers, but each was cut from a main that had since move
 merged them within a day. Every night added hundreds of upstream commits. The lines `fatal: ... not our ref` in the log come from
 `git checkout <sha> -- .` visiting the vendored `.repos` gitlinks; they are noise.
 
+**State after the catch-up (2026-11-02).** The pin is `47f2c8d29e` (upstream's tip that morning). It moved in two merge commits that keep upstream's
+history as the second parent (#284 to `fa31b66bbb`, which reused #144's resolution of the 0008 patches, and #291 to `47f2c8d29e`; #55 and #144
+are closed). Three things the catch-up taught:
+
+- **Lint was never gated.** `baton-ci` ran typecheck and tests only, so lint errors piled up on main (115 by the time it was looked at) and the
+  fix session's "lint fails the same way before the sync" was true. #299 made lint green (file-level disables on 47 Baton files, formatting on
+  122) and added a Lint step to `baton-ci`.
+- **The sync gates do not build the Windows installer.** Upstream's new check that the packaged payload has at most 80 files failed the installer
+  build at 81 (Baton's voice files). Only the voice-proof job, which builds the installer, caught it (#300 raised the limit in patch 0001). A
+  future sync should be followed by that job before a release tag is cut.
+- **`baton-ci` runs only Baton's own tests on an upstream wave.** A sync changes hundreds of upstream test files; those need browsers and tools
+  the runner lacks, so past 150 changed test files only Baton-named ones run.
+
+**The exit 2 of 2026-11-01 and its 7.4 GB peak.** Exit 2 is the "patch needs a human" code: 0008-claude-account-limits and 0008-web-panes
+conflicted. The 7.4 GB peak is the gates stage (`gates.sh --install --build`: install, the whole monorepo's typecheck and build, with the tests
+of seven packages) running next to whatever else the box was doing; it was not measured by profiling here. Mitigations in place: `nice`, the
+disk guard before starting, and the run happening at 22:30 UTC. If it recurs, build only what the series touches (the desktop, server and web
+bundles) instead of every package, and keep other builders' local gates off the box during the window.
+
 **What would remove the manual step.** Fewer lines in upstream-rewritten files: each Baton edit in `ChatView.tsx`, `Sidebar.tsx` and the
 usage components is a future conflict, so new Baton work should live in new files with a one-line hook (the patch README says the same).
 
