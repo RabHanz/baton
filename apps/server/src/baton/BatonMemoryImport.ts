@@ -37,24 +37,36 @@ const markdownFiles = (root: string): ReadonlyArray<string> => {
   return found.toSorted();
 };
 
+/** The file's text, or null when it is too big or cannot be read; never throws. */
+const readSmallFile = (file: string): string | null => {
+  try {
+    return NodeFS.statSync(file).size > MAX_BYTES ? null : NodeFS.readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+};
+
 export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function* (folder: string) {
   const memory = yield* BatonMemoryService;
   if (!NodePath.isAbsolute(folder)) {
     return yield* new BatonMemoryRefusedError({ reason: "give the full path of the folder" });
   }
-  const files = yield* Effect.try({
-    try: () => markdownFiles(folder),
-    catch: () => new BatonMemoryRefusedError({ reason: "that folder cannot be read" }),
+  const listed = yield* Effect.sync(() => {
+    try {
+      return markdownFiles(folder);
+    } catch {
+      return null;
+    }
   });
+  if (listed === null) {
+    return yield* new BatonMemoryRefusedError({ reason: "that folder cannot be read" });
+  }
+  const files: ReadonlyArray<string> = listed;
   let added = 0;
   let refused = 0;
   let unchanged = 0;
   for (const file of files) {
-    const text = yield* Effect.try({
-      try: () =>
-        NodeFS.statSync(file).size > MAX_BYTES ? null : NodeFS.readFileSync(file, "utf8"),
-      catch: () => null,
-    }).pipe(Effect.orElseSucceed(() => null));
+    const text = readSmallFile(file);
     if (text === null) {
       refused++;
       continue;
