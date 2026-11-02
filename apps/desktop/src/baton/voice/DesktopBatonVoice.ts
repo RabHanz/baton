@@ -6,6 +6,7 @@
  * Windows first (D97, D106): capture, speech and paste are `baton-dictation`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -214,6 +215,8 @@ import {
   type PlaybookId,
 } from "../presence/playbooks.ts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
+import { terminalPlan } from "../cloud/terminal.ts";
+import type { ProviderId } from "@t3tools/baton-shared/cloud/types";
 import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudService.ts";
 import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
@@ -4210,6 +4213,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "q.setupDone") {
       save({ setupDone: true });
       NodeFS.rmSync(setupMarker, { force: true });
+    } else if (id === "setup.cloud.github") {
+      void Electron.shell.openExternal("https://github.com/apps/claude");
+    } else if (id.startsWith("cl.signin.")) {
+      const command = cloud.view().detections[id.slice("cl.signin.".length) as ProviderId]?.signInCommand ?? "";
+      const plan = terminalPlan(process.platform, command);
+      if (plan !== null) {
+        try {
+          NodeChildProcess.spawn(plan.file, [...plan.args], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+        } catch {
+          input.extras?.notice(`Open a terminal and run: ${command}`);
+        }
+      }
     } else if (id === "setup.hold") {
       if (typeof value === "string" && HOLD_KEY_CHOICES.includes(value)) {
         const checked = checkInput({ type: "key", accelerator: value });

@@ -17,6 +17,16 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
   const section = text("cloud.section.where");
   const out: HomeControl[] = [
     { id: "cl.set.on", section, label: text("cloud.on.label"), hint: text("cloud.on.hint"), kind: "toggle", on: s.on },
+    {
+      id: "setup.cloud.github",
+      section,
+      label: text("setup.cloud.github"),
+      hint: text("setup.cloud.githubHint"),
+      kind: "action",
+      button: text("setup.cloud.githubButton"),
+      more: true,
+    },
+    { id: "setup.cloud.always", section, label: text("setup.cloud.always"), kind: "check", status: "ok", detail: text("setup.cloud.alwaysDetail"), more: true },
   ];
   if (!s.on) {
     return [...out, { id: "cl.off", section, label: text("cloud.off.label"), kind: "check", status: "ok", detail: text("cloud.off.detail") }];
@@ -83,6 +93,9 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
       status: d?.signedIn === true ? "ok" : "warn",
       detail: d?.signInCommand == null ? "" : text("cloud.signin", { command: d.signInCommand }),
     });
+    if (d?.signInCommand != null) {
+      out.push({ id: `cl.signin.${p.id}`, section: assistants, label: text("cloud.signin.label", { name: p.label }), kind: "action", button: text("cloud.signin.button") });
+    }
   }
   if (v.error !== null) out.push({ id: "cl.err", section: assistants, label: text("cloud.error"), kind: "check", status: "warn", detail: v.error });
   out.push({ id: "cl.refresh", section: assistants, label: text("cloud.refresh.label"), kind: "action", button: text("cloud.refresh.button") });
