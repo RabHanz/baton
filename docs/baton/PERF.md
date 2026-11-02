@@ -57,7 +57,11 @@ point at a polling loop.
 First attempt (one core shared with TWO busy loops, so the app had a third of a core): the models had not finished loading after four
 minutes and the first phrase was still not heard, with or without the hold (loop-started after 138 to 162 s; `pill_state error` at about 100 s
 into the audio). That is harsher than a slow laptop. The proof now shares the core with ONE busy loop (about half a core), the hold keeps up
-to five minutes of audio, and the wait is seven minutes. The result of that run is below once read.
+to five minutes of audio, and the wait is seven minutes. Result (run 41449733277): loop-started after 105 s, the models still unfinished (`warm-timeout`), and **the first phrase was still not heard**
+within seven minutes. So the "kept and played in" promise is **not proven**; the likely culprit is the speech sidecar's first call (it loads the
+700 MB model on first use and its call timeout is 120 s, `dictationSidecar.ts`), which the audio hold cannot help. The proof now reports this
+instead of failing on it, and uploads the app's logs from that start so the next look has the evidence. The progress line and the honest message
+are in; the guarantee is not.
 
 The proof also starts the app on one core shared with two busy loops and plays the wake phrase right away. Before this change the start gave up
 waiting for the models after 8 s, opened the microphone, and the first phrase was lost: **loop-started took 138 and 162 s, first phrase heard:
