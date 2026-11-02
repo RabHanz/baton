@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -9,7 +9,6 @@ import { createVaultTab } from "./vaultTab.ts";
 import { createVault } from "./vaultStore.ts";
 
 const FAKE = "fake-test-value-1234";
-const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const make = (hello: "verified" | "declined" | "unavailable" = "verified") => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-vtab-"));
