@@ -13,7 +13,7 @@ import * as Electron from "electron";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 
 import { loadDocument } from "../voice/loadDocument.ts";
-import { COMPANION_CSS } from "./companionStyle.ts";
+import { CARD_ABOVE_WORK_AREA, COMPANION_CSS } from "./companionStyle.ts";
 
 export const OVERLAY_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
 html,body{width:100%;height:100%;overflow:hidden;font-size:15px}
@@ -196,8 +196,6 @@ export interface PointerOverlay {
 }
 
 const IDLE_CLOSE_MS = 120_000;
-/** The card clears the taskbar and the pill beneath it. */
-const CARD_ABOVE_WORK_AREA = 72;
 const RETREAT_MS = 900;
 
 export const createPointerOverlay = (

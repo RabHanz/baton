@@ -86,6 +86,10 @@ describe("one overlay family, one dialog family", () => {
       4,
     );
   });
+  it("cards and prompts share one clearance above the pill", () => {
+    for (const f of ["pointerOverlay.ts", "companionWindows.ts"])
+      expect(source("screen", f)).toContain("CARD_ABOVE_WORK_AREA");
+  });
   it("cues have one path: the companion reports them, the pill plays them", () => {
     expect(source("screen", "ScreenCompanion.ts")).not.toMatch(/AudioContext|new Audio\(/);
   });
