@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   claudeProjectSlug,
   isComposerEcho,
+  stripT3Wrappers,
   parseLiveToolSteps,
   parseLiveTranscriptLine,
   splitTranscriptChunk,
@@ -116,6 +117,14 @@ describe("a live transcript read as messages", () => {
     expect(claudeProjectSlug("/home/onnyx/VentureOS/.worktrees/x")).toBe(
       "-home-onnyx-VentureOS--worktrees-x",
     );
+  });
+
+  it("strips T3's own wrappers and matches the terminal's echo of a phone message", () => {
+    const echo =
+      '<pasted_content id="711a"> [Image: IMG_9489.png; ref=9e6a1b68] why is it saying this? <t3_context version="1"><context kind="image" id="x"/></t3_context> @/home/u/att/x.png';
+    expect(stripT3Wrappers(echo)).toBe("why is it saying this?");
+    expect(isComposerEcho(echo, "why is it saying this?")).toBe(true);
+    expect(stripT3Wrappers("see @/etc/hosts for details")).toBe("see @/etc/hosts for details");
   });
 
   it("recognises the composer's message when attachments were appended to it", () => {

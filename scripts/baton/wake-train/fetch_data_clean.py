@@ -87,15 +87,19 @@ def clips_from(paths, hours):
     return np.stack(out)
 
 
-def to_features(clips, batch=64):
+def to_features(clips, batch=64, stream=False):
     feats = AudioFeatures(inference_framework="onnx", device="cpu")
     rows = []
     for i in range(0, len(clips), batch):
         e = feats.embed_clips(clips[i : i + batch], batch_size=batch)  # (n, frames, 96)
         for item in e:
+            if stream:
+                rows.append(item)
+                continue
             for s in range(0, item.shape[0] - 15, 8):
                 rows.append(item[s : s + 16])
-    return np.stack(rows).astype(np.float16)
+    # the trainer slides its own windows over a (frames, 96) validation stream and needs float32
+    return np.concatenate(rows).astype(np.float32) if stream else np.stack(rows).astype(np.float16)
 
 
 def libri(part, name):
@@ -114,7 +118,7 @@ print("negative features done", flush=True)
 dev = libri("dev-clean", "dev-clean") + libri("test-clean", "test-clean")
 random.shuffle(dev)
 np.save("clean_validation_features.npy", np.concatenate([
-    to_features(clips_from(dev, 4)),
-    to_features(clips_from(sorted(held_noise.glob("*.wav")), 2)),
+    to_features(clips_from(dev, 4), stream=True),
+    to_features(clips_from(sorted(held_noise.glob("*.wav")), 2), stream=True),
 ]))
 print("validation features done", flush=True)

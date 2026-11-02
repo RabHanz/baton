@@ -10,6 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   endedMirrorThreads,
   liveMedia,
+  mediaPathsOf,
   nextReply,
   takeTouched,
   withoutRepeatedMedia,
@@ -307,5 +308,44 @@ describe("media across a turn's replies", () => {
       (path) => bytes[path] ?? null,
     );
     expect(fix).toEqual([{ id: "m2", text: "two\n\n![t](</a/3.png>)" }]);
+  });
+});
+
+describe("media that only appears in text is not shown", () => {
+  const reply = (dir: string, extra: object) => ({
+    attachmentsDir: NodePath.join(dir, "att"),
+    threadId: "t",
+    messageId: "m",
+    cwd: dir,
+    message: {
+      uuid: "u",
+      role: "assistant" as const,
+      text: "Done.",
+      createdAt: "2026-01-01T00:00:00Z",
+    },
+    ...extra,
+  });
+
+  it("takes media only from Read, Write and Edit, never from a command that prints paths", () => {
+    const listing = "grep -r x /home/dev/.t3/userdata/attachments/a.mp4 b.jpg c.png";
+    expect(mediaPathsOf("Bash", { command: listing })).toEqual([]);
+    expect(mediaPathsOf("Read", { file_path: "/w/shot.png" })).toEqual(["/w/shot.png"]);
+    expect(mediaPathsOf("Edit", { file_path: "/w/notes.md" })).toEqual([]);
+  });
+
+  it("never re-attaches a file already in the attachment store, nor the same bytes twice", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "again-"));
+    const att = NodePath.join(dir, "att");
+    NodeFS.mkdirSync(att);
+    const stored = NodePath.join(att, "old.png");
+    const shot = NodePath.join(dir, "shot.png");
+    NodeFS.writeFileSync(stored, Buffer.from("a"));
+    NodeFS.writeFileSync(shot, Buffer.from("b"));
+    expect(liveMedia(reply(dir, { touched: [stored] })).text).toBe("Done.");
+    const shown = new Set<string>();
+    const first = liveMedia(reply(dir, { touched: [shot], shown })).text;
+    const second = liveMedia(reply(dir, { touched: [shot], shown })).text;
+    expect(first).toMatch(/!\[shot\.png\]/);
+    expect(second).toBe("Done.");
   });
 });
