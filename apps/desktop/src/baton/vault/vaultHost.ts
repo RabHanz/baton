@@ -29,7 +29,7 @@ export interface VaultHostPorts {
   /** Types into the focused field. */
   readonly type: (text: string) => Promise<void>;
   readonly clipboard: {
-    readonly read: () => string;
+    readonly read: () => string | Promise<string>;
     readonly write: (text: string) => void;
     readonly clear: () => void;
   };
@@ -138,7 +138,9 @@ export const createVaultHost = (ports: VaultHostPorts) => {
         } else if (args.how === "paste") {
           ports.clipboard.write(item.value);
           setTimeout(() => {
-            if (ports.clipboard.read() === item.value) ports.clipboard.clear();
+            void Promise.resolve(ports.clipboard.read()).then((now) => {
+              if (now === item.value) ports.clipboard.clear();
+            });
           }, CLIPBOARD_CLEAR_MS).unref();
           said = `${item.name} is on the clipboard and will be cleared in 10 seconds. Paste it now.`;
         } else {
