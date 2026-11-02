@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 // D94 proof, read-only: the Claude tiles at three widths, across every environment passed, the tile's
 // switch rows, and Open in split plus Alt+click. It never presses Switch.
 //   node limits-tiles-proof.mjs <frame-dir> <base-url> <pair-url-file> [<extra-pair-url-file>...]

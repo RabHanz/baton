@@ -10,12 +10,12 @@ engine counter: this runner has none, so it reads 0.
 
 Two runs of the same job: the released build `baton-v0.1.39`, and a build of main.
 
-| Phase | What runs | CPU avg % (release / main) | CPU p95 | RSS avg MB | RSS max MB | Processes |
-| --- | --- | --- | --- | --- | --- | --- |
-| idle | app up, voice off | 2.28 / 0.66 | 16.7 / 2.1 | 855 / 523 | 1022 / 850 | 10 |
-| wake-listen | voice on, listening to silence | 3.07 / 1.52 | 7.7 / 5.2 | 2113 / 1768 | 2236 / 2158 | 13 |
-| dictation | the dictate phrase on repeat | 45.6 / 23.7 | 215 / 82 | 2990 / 2713 | 3120 / 3017 | 16-18 |
-| assistant turn | the question on repeat (no login here) | 22.9 / 12.8 | 202 / 102 | 3059 / 2685 | 3211 / 3020 | 16 |
+| Phase          | What runs                              | CPU avg % (release / main) | CPU p95    | RSS avg MB  | RSS max MB  | Processes |
+| -------------- | -------------------------------------- | -------------------------- | ---------- | ----------- | ----------- | --------- |
+| idle           | app up, voice off                      | 2.28 / 0.66                | 16.7 / 2.1 | 855 / 523   | 1022 / 850  | 10        |
+| wake-listen    | voice on, listening to silence         | 3.07 / 1.52                | 7.7 / 5.2  | 2113 / 1768 | 2236 / 2158 | 13        |
+| dictation      | the dictate phrase on repeat           | 45.6 / 23.7                | 215 / 82   | 2990 / 2713 | 3120 / 3017 | 16-18     |
+| assistant turn | the question on repeat (no login here) | 22.9 / 12.8                | 202 / 102  | 3059 / 2685 | 3211 / 3020 | 16        |
 
 Read with care: one run each, a shared runner, and the release-versus-main gap in the idle row is largely start-up noise (the release's idle
 p95 is 16.7%, so something was still settling).
@@ -38,12 +38,12 @@ The goal was idle under 2% of one core and under 450 MB across processes.
 `scripts/baton/perf-budgets.json` holds regression guards about 30% above these first numbers, enforced by the `perf_enforce` input of
 the voice-proof workflow (off by default until a few more runs show the noise). They stop things getting worse; they do not claim the goal.
 
-| Phase | CPU avg % | RSS max MB |
-| --- | --- | --- |
-| idle | 3 | 1200 |
-| wake-listen | 5 | 2800 |
-| dictation | 60 | 3600 |
-| assistant turn | 40 | 3600 |
+| Phase          | CPU avg % | RSS max MB |
+| -------------- | --------- | ---------- |
+| idle           | 3         | 1200       |
+| wake-listen    | 5         | 2800       |
+| dictation      | 60        | 3600       |
+| assistant turn | 40        | 3600       |
 
 ## Polling and timers (what was checked)
 

@@ -8,7 +8,8 @@ import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.t
 
 const layer = it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)));
 const env = { BATON_HISTORY_SEARCH: "/x/search.sh" };
-const out = "cc828d1b  venture: shopfront  Learned the supplier needs the invoice before shipping starts\n";
+const out =
+  "cc828d1b  venture: shopfront  Learned the supplier needs the invoice before shipping starts\n";
 
 layer("learnings pull", (it) => {
   it.effect("proposes quotes with their session, held for his yes, once", () =>

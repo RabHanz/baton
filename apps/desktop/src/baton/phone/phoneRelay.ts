@@ -14,7 +14,8 @@ const POLL_MS = 1_500;
  * How long to wait before looking at the inbox again: quick while things are happening, slower the longer nothing does. A phone ask
  * after a quiet hour waits at most the longest delay, still inside the server's 45 s "connected" window.
  */
-export const nextPollMs = (quietTicks: number): number => (quietTicks < 12 ? 5_000 : quietTicks < 60 ? 15_000 : 30_000);
+export const nextPollMs = (quietTicks: number): number =>
+  quietTicks < 12 ? 5_000 : quietTicks < 60 ? 15_000 : 30_000;
 
 export const createPhoneRelay = (input: {
   readonly call: PhoneCall;
@@ -38,13 +39,16 @@ export const createPhoneRelay = (input: {
       } catch {
         return "away";
       }
-      if (item === null || typeof item.id !== "string" || typeof item.text !== "string") return "idle";
+      if (item === null || typeof item.id !== "string" || typeof item.text !== "string")
+        return "idle";
       try {
         const reply = await input.run(item.text);
         await input.call("answer", { id: item.id, spoken: reply.spoken, card: reply.card });
         return "answered";
       } catch {
-        await input.call("fail", { id: item.id, message: "Tessaya could not do that just now." }).catch(() => undefined);
+        await input
+          .call("fail", { id: item.id, message: "Tessaya could not do that just now." })
+          .catch(() => undefined);
         return "failed";
       }
     } finally {

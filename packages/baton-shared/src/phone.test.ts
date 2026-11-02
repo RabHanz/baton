@@ -22,19 +22,30 @@ const job = (over: Record<string, unknown>) =>
 describe("buildPhoneState", () => {
   const state = buildPhoneState({
     jobs: [
-      job({ workSessionId: "plan", title: "Plan me", phase: "awaiting_agreement", state: "needs_approval" }),
+      job({
+        workSessionId: "plan",
+        title: "Plan me",
+        phase: "awaiting_agreement",
+        state: "needs_approval",
+      }),
       job({ workSessionId: "run", title: "Running one" }),
       job({ workSessionId: "bad", title: "Broken", group: "failed", state: "idle" }),
     ],
-    findings: [{ workSessionId: "s1", title: "Session", kind: "unanswered", minutes: 12 } as WatchFinding],
+    findings: [
+      { workSessionId: "s1", title: "Session", kind: "unanswered", minutes: 12 } as WatchFinding,
+    ],
     weaves: [],
     now: NOW,
   });
 
   it("lists the plan as an approval he can answer, with the exact action, and counts the badge", () => {
-    expect(state.approvals).toMatchObject([{ ref: "plan", action: "Start the work as planned", answerable: true }]);
+    expect(state.approvals).toMatchObject([
+      { ref: "plan", action: "Start the work as planned", answerable: true },
+    ]);
     expect(state.badge).toBe(state.needs.length);
-    expect(state.needs.map((n) => n.id)).toEqual(expect.arrayContaining(["ws:plan", "ws:bad", "ws:s1"]));
+    expect(state.needs.map((n) => n.id)).toEqual(
+      expect.arrayContaining(["ws:plan", "ws:bad", "ws:s1"]),
+    );
   });
 
   it("offers Stop on a running job and Retry only where it is allowed, saying why not", () => {
@@ -49,7 +60,9 @@ describe("buildPhoneState", () => {
 
 describe("the small checks", () => {
   it("labels the buttons with the exact action and reads only approve or deny", () => {
-    expect(decisionLabel({ action: "Start the work as planned" }, "deny")).toBe("Deny: Start the work as planned");
+    expect(decisionLabel({ action: "Start the work as planned" }, "deny")).toBe(
+      "Deny: Start the work as planned",
+    );
     expect(parseDecision("approve")).toBe("approve");
     expect(parseDecision("yes please")).toBeNull();
   });

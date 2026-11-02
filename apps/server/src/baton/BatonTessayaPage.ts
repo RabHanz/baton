@@ -1,4 +1,3 @@
-/* oxlint-disable t3code/no-low-value-comments -- Baton file */
 /**
  * The phone page's files, served by BatonTessayaRoutes at /tessaya. Plain HTML and one script: no build step, nothing
  * fetched from elsewhere, text always set with textContent. The icons are the web app's own (/icon-192.png and friends).

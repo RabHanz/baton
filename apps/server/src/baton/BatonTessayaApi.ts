@@ -21,7 +21,9 @@ export interface PhoneDeps {
   readonly retry: (id: string) => Promise<string>;
   /** Leaves words for the desktop assistant, as the user's own (source phone); a repeat of the same id asks once. */
   readonly ask: (id: string, text: string) => Promise<PostResult>;
-  readonly askGet: (id: string) => Promise<{ readonly ask: PhoneAsk | null; readonly connected: boolean }>;
+  readonly askGet: (
+    id: string,
+  ) => Promise<{ readonly ask: PhoneAsk | null; readonly connected: boolean }>;
   /** Answers a question the desktop mirrored: the button index. False if it was already answered. */
   readonly answerPrompt: (id: string, index: number) => Promise<boolean>;
   readonly transcribe: (wav: Uint8Array) => Promise<Transcription>;
@@ -49,15 +51,30 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
   const parts = req.path.split("/").filter((p) => p !== "");
   const mutating = req.method !== "GET";
   if (!req.scopes.has(mutating ? OPERATE_SCOPE : READ_SCOPE)) {
-    return say(403, mutating ? "This phone may look but not act. Pair it with operate access." : "This phone may not read that.");
+    return say(
+      403,
+      mutating
+        ? "This phone may look but not act. Pair it with operate access."
+        : "This phone may not read that.",
+    );
   }
   const body = (req.json ?? {}) as Record<string, unknown>;
 
-  if (req.method === "GET" && parts[0] === "state" && parts.length === 1) return { status: 200, json: { ...(await deps.state()) } };
+  if (req.method === "GET" && parts[0] === "state" && parts.length === 1)
+    return { status: 200, json: { ...(await deps.state()) } };
   if (req.method === "GET" && parts[0] === "ask" && parts.length === 2) {
     const { ask, connected } = await deps.askGet(parts[1]!);
     if (ask === null) return say(404, "No such request.");
-    return { status: 200, json: { id: ask.id, status: ask.status, line: askLine(ask, connected), spoken: ask.spoken, card: ask.card } };
+    return {
+      status: 200,
+      json: {
+        id: ask.id,
+        status: ask.status,
+        line: askLine(ask, connected),
+        spoken: ask.spoken,
+        card: ask.card,
+      },
+    };
   }
   if (req.method !== "POST") return say(404, "No such page.");
 
@@ -68,15 +85,25 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
     const approval = now.approvals.find((a) => a.id === parts[1]);
     if (approval === undefined) return say(404, "That is no longer waiting for you.");
     if (approval.kind === "prompt" && approval.yes !== undefined && approval.cancel !== undefined) {
-      if (body["action"] !== approval.action) return say(409, "It changed since you looked. Look again.");
-      const took = await deps.answerPrompt(approval.ref, decision === "approve" ? approval.yes : approval.cancel);
-      return took ? say(200, decision === "approve" ? "Approved. Your computer carries on." : "Denied.") : say(409, "It was already answered on your computer.");
+      if (body["action"] !== approval.action)
+        return say(409, "It changed since you looked. Look again.");
+      const took = await deps.answerPrompt(
+        approval.ref,
+        decision === "approve" ? approval.yes : approval.cancel,
+      );
+      return took
+        ? say(200, decision === "approve" ? "Approved. Your computer carries on." : "Denied.")
+        : say(409, "It was already answered on your computer.");
     }
     if (!approval.answerable) return say(409, "Only you can answer that one, in its thread.");
-    if (body["action"] !== approval.action) return say(409, "It changed since you looked. Look again.");
+    if (body["action"] !== approval.action)
+      return say(409, "It changed since you looked. Look again.");
     if (decision === "approve") await deps.agree(approval.ref);
     else await deps.stop(approval.ref);
-    return say(200, decision === "approve" ? "Approved. It starts now." : "Denied. It was stopped.");
+    return say(
+      200,
+      decision === "approve" ? "Approved. It starts now." : "Denied. It was stopped.",
+    );
   }
 
   if (parts[0] === "jobs" && parts.length === 3) {
@@ -96,11 +123,17 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
     const made = await deps.ask(typeof id === "string" ? id : "", words);
     if (!made.ok) return say(400, made.why);
     const connected = (await deps.askGet(made.ask.id)).connected;
-    return { status: 202, json: { id: made.ask.id, status: made.ask.status, line: askLine(made.ask, connected) } };
+    return {
+      status: 202,
+      json: { id: made.ask.id, status: made.ask.status, line: askLine(made.ask, connected) },
+    };
   };
 
   if (parts[0] === "ask" && parts.length === 1) {
-    return post(body["id"], typeof body["text"] === "string" ? body["text"].slice(0, TEXT_MAX) : "");
+    return post(
+      body["id"],
+      typeof body["text"] === "string" ? body["text"].slice(0, TEXT_MAX) : "",
+    );
   }
 
   if (parts[0] === "voice" && parts.length === 1) {
@@ -108,7 +141,8 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
     const bad = checkWav(wav);
     if (bad !== null) return say(400, bad);
     const heard = await deps.transcribe(wav);
-    if (!heard.ok) return say(heard.why.startsWith("Voice is not available") ? 501 : 422, heard.why);
+    if (!heard.ok)
+      return say(heard.why.startsWith("Voice is not available") ? 501 : 422, heard.why);
     // What was heard is shown with the answer, so a mishearing is visible.
     const queued = await post(req.clientId, heard.text);
     return { status: queued.status, json: { heard: heard.text, ...queued.json } };

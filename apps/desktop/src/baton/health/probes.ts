@@ -1,3 +1,4 @@
+/* oxlint-disable no-unneeded-ternary, t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /** The few facts "what works right now" needs, each checked quickly and remembered for a minute. */
 import * as NodeChildProcess from "node:child_process";

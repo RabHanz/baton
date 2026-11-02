@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
  * Choosing the model and reasoning effort of a Claude Code session that is already running in a
  * terminal. The session is told with its own slash commands, typed into its Herdr pane, and the

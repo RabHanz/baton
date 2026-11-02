@@ -1,11 +1,36 @@
 {
   "about": "His own preferences, global scope. Each query is asked the way he would, and one preference should come first.",
   "items": [
-    { "key": "short", "kind": "preference", "text": "Keep answers short and skip the preamble", "source": "user" },
-    { "key": "reports", "kind": "preference", "text": "Reports go out on Fridays at noon", "source": "user" },
-    { "key": "spelling", "kind": "preference", "text": "Use British spelling in every document", "source": "user" },
-    { "key": "meetings", "kind": "preference", "text": "Never schedule meetings before ten in the morning", "source": "user" },
-    { "key": "commits", "kind": "preference", "text": "Commit messages are plain English without emoji", "source": "user" }
+    {
+      "key": "short",
+      "kind": "preference",
+      "text": "Keep answers short and skip the preamble",
+      "source": "user"
+    },
+    {
+      "key": "reports",
+      "kind": "preference",
+      "text": "Reports go out on Fridays at noon",
+      "source": "user"
+    },
+    {
+      "key": "spelling",
+      "kind": "preference",
+      "text": "Use British spelling in every document",
+      "source": "user"
+    },
+    {
+      "key": "meetings",
+      "kind": "preference",
+      "text": "Never schedule meetings before ten in the morning",
+      "source": "user"
+    },
+    {
+      "key": "commits",
+      "kind": "preference",
+      "text": "Commit messages are plain English without emoji",
+      "source": "user"
+    }
   ],
   "cases": [
     { "query": "preamble in answers", "top": "short" },

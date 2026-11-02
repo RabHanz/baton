@@ -8,7 +8,19 @@ body:
     id: area
     attributes:
       label: Area
-      options: [Voice, Dictation, Screen companion, Jobs and approvals, Memory, Vault, History, Phone page, Install or update, Other]
+      options:
+        [
+          Voice,
+          Dictation,
+          Screen companion,
+          Jobs and approvals,
+          Memory,
+          Vault,
+          History,
+          Phone page,
+          Install or update,
+          Other,
+        ]
     validations:
       required: true
   - type: dropdown

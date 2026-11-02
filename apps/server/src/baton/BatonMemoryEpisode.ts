@@ -18,9 +18,17 @@ export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(functio
     said.length === 0 ? null : `Talked about: ${said.slice(0, 6).join("; ")}.`,
     jobs.length === 0
       ? null
-      : `Jobs: ${jobs.slice(0, 4).map((j) => `${j.goal.slice(0, 50)} (${j.phase.replace("_", " ")})`).join("; ")}.`,
+      : `Jobs: ${jobs
+          .slice(0, 4)
+          .map((j) => `${j.goal.slice(0, 50)} (${j.phase.replace("_", " ")})`)
+          .join("; ")}.`,
   ].filter((x): x is string => x !== null);
   return yield* memory
-    .add({ kind: "episode", text: `${day}. ${parts.join(" ")}`.slice(0, 500), source: "job", sourceRef: `day:${day}` })
+    .add({
+      kind: "episode",
+      text: `${day}. ${parts.join(" ")}`.slice(0, 500),
+      source: "job",
+      sourceRef: `day:${day}`,
+    })
     .pipe(Effect.orElseSucceed(() => null));
 });

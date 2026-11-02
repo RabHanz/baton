@@ -18,7 +18,11 @@ describe("help page", () => {
     expect(rows.find((r) => r.id === "help.say:needs_me")?.label).toBe('"What needs me?"');
     const t = rows.find((r) => r.id === "help.trouble:mic");
     expect(t?.kind === "check" && t.detail).toContain(TROUBLE["mic"]!);
-    const none = helpControls({ tools: [], bindings: [], checks: [{ id: "mic", title: "Mic", status: "ok", detail: "" }] });
+    const none = helpControls({
+      tools: [],
+      bindings: [],
+      checks: [{ id: "mic", title: "Mic", status: "ok", detail: "" }],
+    });
     expect(none.some((r) => r.id === "help.trouble:none")).toBe(true);
   });
 });

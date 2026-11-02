@@ -70,7 +70,10 @@ export class BatonPhoneInbox extends Context.Service<
   BatonPhoneInbox,
   {
     /** The phone posts; a repeat of the same client id returns the first (a retry never asks twice). */
-    readonly post: (input: { readonly id: string; readonly text: string }) => Effect.Effect<PostResult>;
+    readonly post: (input: {
+      readonly id: string;
+      readonly text: string;
+    }) => Effect.Effect<PostResult>;
     readonly get: (id: string) => Effect.Effect<PhoneAsk | null>;
     readonly recent: (limit: number) => Effect.Effect<ReadonlyArray<PhoneAsk>>;
     /** The desktop takes the oldest waiting ask (null when none), and is counted as connected. */
@@ -114,16 +117,25 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
 
-  const post = Effect.fn("BatonPhoneInbox.post")(function* (input: { readonly id: string; readonly text: string }) {
+  const post = Effect.fn("BatonPhoneInbox.post")(function* (input: {
+    readonly id: string;
+    readonly text: string;
+  }) {
     const trimmed = input.text.trim();
-    if (!CLIENT_ID.test(input.id)) return { ok: false as const, why: "That request had no valid id." };
+    if (!CLIENT_ID.test(input.id))
+      return { ok: false as const, why: "That request had no valid id." };
     if (trimmed === "") return { ok: false as const, why: "Say something." };
-    if (trimmed.length > ASK_TEXT_MAX) return { ok: false as const, why: "That is too long. Keep it short." };
+    if (trimmed.length > ASK_TEXT_MAX)
+      return { ok: false as const, why: "That is too long. Keep it short." };
     yield* sweep;
     const again = yield* read(input.id);
     if (again !== null) return { ok: true as const, ask: again };
     const now = yield* Clock.currentTimeMillis;
-    const waiting = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM fabric_phone_asks WHERE status IN ('queued','taken')`.pipe(Effect.orDie);
+    const waiting = yield* sql<{
+      n: number;
+    }>`SELECT COUNT(*) AS n FROM fabric_phone_asks WHERE status IN ('queued','taken')`.pipe(
+      Effect.orDie,
+    );
     if ((waiting[0]?.n ?? 0) >= QUEUE_MAX) {
       return { ok: false as const, why: "Too many asks are waiting. Let your computer catch up." };
     }
@@ -143,7 +155,9 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.orDie);
     const row = rows[0];
     if (row === undefined) return null;
-    yield* sql`UPDATE fabric_phone_asks SET status = 'taken', taken_at = ${now} WHERE id = ${row.id}`.pipe(Effect.orDie);
+    yield* sql`UPDATE fabric_phone_asks SET status = 'taken', taken_at = ${now} WHERE id = ${row.id}`.pipe(
+      Effect.orDie,
+    );
     return (yield* read(row.id))!;
   });
 
@@ -154,7 +168,10 @@ export const make = Effect.gen(function* () {
 
   const recent = Effect.fn("BatonPhoneInbox.recent")(function* (limit: number) {
     yield* sweep;
-    const rows = yield* sql<AskRow>`SELECT * FROM fabric_phone_asks ORDER BY created_at DESC, id DESC LIMIT ${limit}`.pipe(Effect.orDie);
+    const rows =
+      yield* sql<AskRow>`SELECT * FROM fabric_phone_asks ORDER BY created_at DESC, id DESC LIMIT ${limit}`.pipe(
+        Effect.orDie,
+      );
     return rows.map(fromAsk);
   });
 
@@ -175,8 +192,10 @@ export const make = Effect.gen(function* () {
     return true;
   });
 
-  const answer = (id: string, spoken: string, card: string) => settle(id, "answered", spoken.slice(0, 4000), card.slice(0, 4000), null);
-  const fail = (id: string, message: string) => settle(id, "failed", null, null, message.slice(0, 500));
+  const answer = (id: string, spoken: string, card: string) =>
+    settle(id, "answered", spoken.slice(0, 4000), card.slice(0, 4000), null);
+  const fail = (id: string, message: string) =>
+    settle(id, "failed", null, null, message.slice(0, 500));
 
   const mirror = Effect.fn("BatonPhoneInbox.mirror")(function* (prompt: PhonePrompt) {
     const now = yield* Clock.currentTimeMillis;
@@ -189,36 +208,50 @@ export const make = Effect.gen(function* () {
 
   const pending = Effect.gen(function* () {
     yield* sweep;
-    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE status = 'pending' ORDER BY created_at`.pipe(Effect.orDie);
-    return rows.map(
-      (r): PhonePrompt => ({
-        id: r.id,
-        title: r.title,
-        detail: r.detail,
-        buttons: decodeButtons(r.buttons),
-        yes: r.yes,
-        cancel: r.cancel,
-      }),
-    );
+    const rows =
+      yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE status = 'pending' ORDER BY created_at`.pipe(
+        Effect.orDie,
+      );
+    return rows.map((r): PhonePrompt => ({
+      id: r.id,
+      title: r.title,
+      detail: r.detail,
+      buttons: decodeButtons(r.buttons),
+      yes: r.yes,
+      cancel: r.cancel,
+    }));
   });
 
-  const answerPrompt = Effect.fn("BatonPhoneInbox.answerPrompt")(function* (id: string, index: number) {
+  const answerPrompt = Effect.fn("BatonPhoneInbox.answerPrompt")(function* (
+    id: string,
+    index: number,
+  ) {
     yield* sweep;
-    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id} AND status = 'pending'`.pipe(Effect.orDie);
+    const rows =
+      yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id} AND status = 'pending'`.pipe(
+        Effect.orDie,
+      );
     const row = rows[0];
     const buttons = row === undefined ? 0 : decodeButtons(row.buttons).length;
-    if (row === undefined || !Number.isInteger(index) || index < 0 || index >= buttons) return false;
-    yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index} WHERE id = ${id}`.pipe(Effect.orDie);
+    if (row === undefined || !Number.isInteger(index) || index < 0 || index >= buttons)
+      return false;
+    yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index} WHERE id = ${id}`.pipe(
+      Effect.orDie,
+    );
     return true;
   });
 
   const promptAnswer = Effect.fn("BatonPhoneInbox.promptAnswer")(function* (id: string) {
-    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id}`.pipe(Effect.orDie);
+    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id}`.pipe(
+      Effect.orDie,
+    );
     return rows[0]?.status === "answered" ? rows[0].answer : null;
   });
 
   const closePrompt = Effect.fn("BatonPhoneInbox.closePrompt")(function* (id: string) {
-    yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE id = ${id} AND status = 'pending'`.pipe(Effect.orDie);
+    yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE id = ${id} AND status = 'pending'`.pipe(
+      Effect.orDie,
+    );
   });
 
   return BatonPhoneInbox.of({
@@ -239,7 +272,8 @@ export const make = Effect.gen(function* () {
 
 export const layer = Layer.effect(BatonPhoneInbox, make);
 
-const str = (v: unknown, max: number): string | null => (typeof v === "string" && v.length > 0 && v.length <= max ? v : null);
+const str = (v: unknown, max: number): string | null =>
+  typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
 
 /** The desktop's calls (`baton.phone.call`): every argument is checked here, whatever the window sent. */
 export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: BatonPhoneCallInput) {
@@ -254,21 +288,38 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
     }
     case "answer":
     case "fail": {
-      const text = input.op === "answer" ? str(a["card"], 4000) ?? str(a["spoken"], 4000) : str(a["message"], 500);
+      const text =
+        input.op === "answer"
+          ? (str(a["card"], 4000) ?? str(a["spoken"], 4000))
+          : str(a["message"], 500);
       if (id === null || text === null) return yield* bad();
       const done =
         input.op === "answer"
-          ? yield* inbox.answer(id, typeof a["spoken"] === "string" ? a["spoken"] : text, typeof a["card"] === "string" ? a["card"] : text)
+          ? yield* inbox.answer(
+              id,
+              typeof a["spoken"] === "string" ? a["spoken"] : text,
+              typeof a["card"] === "string" ? a["card"] : text,
+            )
           : yield* inbox.fail(id, text);
       return { value: done };
     }
     case "prompt": {
       const title = str(a["title"], 200);
       const detail = str(a["detail"], 4000);
-      const buttons = Array.isArray(a["buttons"]) ? a["buttons"].filter((b): b is string => typeof b === "string" && b.length <= 60).slice(0, 4) : [];
+      const buttons = Array.isArray(a["buttons"])
+        ? a["buttons"]
+            .filter((b): b is string => typeof b === "string" && b.length <= 60)
+            .slice(0, 4)
+        : [];
       const yes = Number(a["yes"]);
       const cancel = Number(a["cancel"]);
-      if (id === null || title === null || detail === null || buttons.length < 2 || ![yes, cancel].every((n) => Number.isInteger(n) && n >= 0 && n < buttons.length)) {
+      if (
+        id === null ||
+        title === null ||
+        detail === null ||
+        buttons.length < 2 ||
+        ![yes, cancel].every((n) => Number.isInteger(n) && n >= 0 && n < buttons.length)
+      ) {
         return yield* bad();
       }
       yield* inbox.mirror({ id, title, detail, buttons, yes, cancel });

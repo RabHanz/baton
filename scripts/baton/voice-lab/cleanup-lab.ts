@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
  * Runs the real clean-up on the laptop, on his own `claude`: the written cases, then his stored

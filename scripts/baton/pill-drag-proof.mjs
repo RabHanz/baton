@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* oxlint-disable t3code/namespace-node-imports -- Baton file predating the rule (D82) */
 // Proves a pill drag survives the cursor outrunning the capsule: pointerdown, then 30 moves of 20 px
 // in x and y while the capsule slides away behind the cursor, must keep the drag going until the
 // pointer is released. Run: node scripts/baton/pill-drag-proof.mjs [path-to-a-voicePill.ts]

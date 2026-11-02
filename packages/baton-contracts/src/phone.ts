@@ -7,7 +7,14 @@ import * as Schema from "effect/Schema";
 
 export const BATON_PHONE_WS_METHODS = { call: "baton.phone.call" } as const;
 
-export const BATON_PHONE_OPS = ["take", "answer", "fail", "prompt", "promptPoll", "promptClose"] as const;
+export const BATON_PHONE_OPS = [
+  "take",
+  "answer",
+  "fail",
+  "prompt",
+  "promptPoll",
+  "promptClose",
+] as const;
 
 export const BatonPhoneCallInput = Schema.Struct({
   op: Schema.Literals(BATON_PHONE_OPS),
