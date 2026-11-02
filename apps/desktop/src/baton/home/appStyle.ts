@@ -52,8 +52,6 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 [data-theme=dark] .mk .on-light{display:none}
 [data-theme=dark] .mk .on-dark{display:inline}
 #page{position:relative}
-.homemark{position:absolute;right:36px;top:30px;width:72px;height:72px;color:var(--ink);opacity:.92}
-.homemark svg{width:100%;height:100%;display:block}
 .aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink)}
 .aboutmark svg{width:100%;height:100%;display:block}
 .brand #mark svg{width:100%;height:100%;display:block}
@@ -125,6 +123,8 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 .stat.kvr{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .stat b.sm{font:600 14px var(--sans);margin:0;color:var(--ink)}
 .day{font:600 12px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:24px 0 8px}
+.dayhead{display:block;width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer}
+.dayhead:focus-visible{outline:2px solid var(--blue-soft,currentColor);outline-offset:2px}
 .day.first{margin-top:0}
 .log{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
 .log .li{display:grid;grid-template-columns:78px 1fr auto;gap:14px;padding:12px 16px;border-top:1px solid var(--line);align-items:baseline}
@@ -325,4 +325,11 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .skip{position:absolute;left:8px;top:-48px;z-index:100;background:var(--ink);color:var(--on-ink);padding:8px 12px;border-radius:var(--r);font-weight:600;text-decoration:none}.skip:focus{top:8px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 #panel:focus{outline:none}
+:root{--dur-instant:80ms;--dur-quick:140ms;--dur-base:220ms;--dur-slow:420ms;--dur-hero:900ms;--stagger:28ms;--ease-out:cubic-bezier(.16,1,.3,1);--ease-spring:linear(0,.55 12%,.93 26%,1.04 40%,.99 60%,1)}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.035);opacity:.92}}
+html.live .brand #mark{animation:breathe 6s ease-in-out infinite;will-change:transform,opacity}
+#top button,#top input,#top select,#top a,#top .state,#top .pop{-webkit-app-region:no-drag}
+#top{position:relative}
+.pop{position:absolute;right:6px;top:46px;z-index:30;width:280px;padding:12px 14px;border:1px solid var(--line-strong);background:var(--panel);border-radius:12px;box-shadow:0 18px 40px -16px rgba(0,0,0,.4)}
+.pop b{display:block;margin-bottom:6px}.pop p{margin:0;color:var(--soft)}.pop .btn{margin-top:8px;display:block;width:100%}
 `;

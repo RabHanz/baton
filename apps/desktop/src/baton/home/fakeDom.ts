@@ -242,6 +242,10 @@ export class FakeDocument {
     return null;
   }
   addEventListener() {}
+  hidden = false;
+  hasFocus() {
+    return true;
+  }
 }
 
 /** Runs the page script against `state` and returns a way to switch tabs and read each page's text. */
@@ -305,6 +309,18 @@ export const openWindowPage = async (script: string, state: unknown) => {
       return doc.getElementById("mbody")?.textContent ?? "";
     },
     closeModal: () => run("closeModal()"),
+    /** Runs a line in the page, for tests that need to set its state. */
+    exec: run,
+    /** Every element in the page, with the page's own classes. */
+    elements: (): ReadonlyArray<FakeElement> => {
+      const found: FakeElement[] = [];
+      const walk = (e: FakeElement) => {
+        found.push(e);
+        for (const c of e.children) if (c instanceof FakeElement) walk(c);
+      };
+      walk(doc.documentElement);
+      return found;
+    },
     all: () => doc.documentElement.textContent,
   };
 };

@@ -1,9 +1,12 @@
 // A stand-in for `claude` on a CI runner (no model login exists there): it speaks the same stream-json lines the
-// companion reads and answers teach and drive turns from a script, finding Notepad's controls through UI Automation
-// at answer time so the pointer lands on the real control. Also `node fake-claude.mjs --locate "<name>"` for the harness.
+// companion reads and answers teach and drive turns from a script (scenarios.json, picked by PROOF_SCENARIO; with
+// none, the single Notepad font-size script below). Controls are found by name through the real UI Automation
+// sidecar (SIDECAR) at answer time, so the pointer lands on the real control.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeReadline from "node:readline";
+
+const SCREEN_W = Number(process.env["PROOF_SCREEN_W"] ?? 1024);
 
 const LOCATE = `$ErrorActionPreference='Stop'
 Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes,System.Windows.Forms
@@ -17,10 +20,10 @@ for($i=0;$i -lt 20;$i++){
   Start-Sleep -Milliseconds 300}
 exit 1`;
 
-// Notepad is moved to 120,90 on a 1024x768 runner desktop: where its menu bar sits when UI Automation cannot say.
+// Notepad is moved to 120,90 on a 1024x768 runner desktop: where its menu bar sits when nothing else can say.
 const FALLBACK = { Format: { x: 219, y: 130, w: 40, h: 20, sw: 1024, sh: 768 } };
 
-export const locate = (name) => {
+const psLocate = (name) => {
   try {
     const out = NodeChildProcess.execFileSync(
       "powershell.exe",
@@ -33,12 +36,48 @@ export const locate = (name) => {
       },
     );
     return JSON.parse(out.trim());
-  } catch (error) {
-    process.stderr.write(
-      `locate ${name} failed: ${String(error.stderr ?? error.message).slice(0, 300)}\n`,
-    );
+  } catch {
     return FALLBACK[name] ?? null;
   }
+};
+
+/** The sidecar looks in the window with the keyboard, and in the menus and dialogs of the same process. */
+const sidecarLocate = (name, attempts = 3) => {
+  const exe = process.env["SIDECAR"];
+  if (!exe) return null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const out = NodeChildProcess.execFileSync(
+        exe,
+        ["locate", "--label", name, "--x", "0", "--y", "0", "--foreground"],
+        {
+          encoding: "utf8",
+          timeout: 20_000,
+          windowsHide: true,
+        },
+      );
+      const found = JSON.parse(out.trim().split("\n").at(-1));
+      if (found.found)
+        return { x: found.x, y: found.y, w: found.width, h: found.height, sw: SCREEN_W };
+    } catch {
+      /* try again */
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 700);
+  }
+  return null;
+};
+
+/** "A|B|C": the first name the window has; Calculator's buttons are named differently on different Windows. */
+export const locate = (names) => {
+  const list = names.split("|");
+  for (const [i, name] of list.entries()) {
+    // Only the last name is worth waiting for: the others are guesses at what this Windows calls the control.
+    const found =
+      sidecarLocate(name, i === list.length - 1 ? 3 : 1) ??
+      (process.env["SIDECAR"] ? null : psLocate(name));
+    if (found !== null) return found;
+  }
+  return null;
 };
 
 if (process.argv[2] === "--locate") {
@@ -49,8 +88,18 @@ if (process.argv[2] === "--locate") {
 const flag = (name) => process.argv[process.argv.indexOf(name) + 1];
 const system = NodeFS.readFileSync(flag("--system-prompt-file"), "utf8");
 const mode = /drive mode/i.test(system) ? "drive" : "teach";
+const scenario =
+  (process.env["PROOF_SCENARIO"] ?? "") === ""
+    ? null
+    : JSON.parse(NodeFS.readFileSync(new URL("./scenarios.json", import.meta.url), "utf8")).find(
+        (x) => x.id === process.env["PROOF_SCENARIO"],
+      );
 const SIZE = process.env["PROOF_TEACH_SIZE"] ?? "16";
 const DRIVE_SIZE = process.env["PROOF_DRIVE_SIZE"] ?? "20";
+const expand = (text) =>
+  text
+    .replaceAll("{TEMPURL}", (process.env["TEMP"] ?? "").replaceAll("\\", "/"))
+    .replaceAll("{TEMP}", process.env["TEMP"] ?? "");
 
 const toShot = (spot, text) => {
   const dims = /image dimensions:\s*(\d+)x(\d+)/i.exec(text);
@@ -58,23 +107,38 @@ const toShot = (spot, text) => {
   return spot ? { x: Math.round(spot.x * scale), y: Math.round(spot.y * scale) } : null;
 };
 const point = (name, label, text) => {
-  const at = toShot(locate(name), text);
+  const at = name === null ? null : toShot(locate(name), text);
   return at ? `[POINT:${at.x},${at.y}:${label}:0.95]` : "[POINT:none]";
 };
 
 let turn = 0;
+const answerScenario = (text) => {
+  if (mode === "teach") {
+    const step = scenario.steps[turn - 1];
+    if (step === undefined) return `${scenario.done} [DONE]`;
+    return `${step.say} ${point(step.point, step.point ?? "here", text)}`;
+  }
+  if (/just ran/i.test(text)) return "[OK]";
+  const actions = scenario.plan.actions.map((a) => {
+    if (a.t === undefined) return a.text === undefined ? a : { ...a, text: expand(a.text) };
+    const at = toShot(locate(a.t), text) ?? { x: 100, y: 60 };
+    return { ...a, t: undefined, ...at };
+  });
+  return `${scenario.plan.spoken}\n\n\`\`\`baton-drive\n${JSON.stringify({ title: scenario.plan.title, actions })}\n\`\`\``;
+};
+
 const answer = (text) => {
   turn += 1;
-  const imageText = text;
+  if (scenario !== null) return answerScenario(text);
   if (mode === "teach") {
-    if (turn === 1) return `Open the Format menu. ${point("Format", "Format", imageText)}`;
-    if (turn === 2) return `Choose Font. ${point("Font...", "Font", imageText)}`;
+    if (turn === 1) return `Open the Format menu. ${point("Format", "Format", text)}`;
+    if (turn === 2) return `Choose Font. ${point("Font...", "Font", text)}`;
     if (turn === 3)
-      return `Set the size to ${SIZE}, then press Enter. ${point("Size:", "Size", imageText)}`;
+      return `Set the size to ${SIZE}, then press Enter. ${point("Size:", "Size", text)}`;
     return `All done, the text is now ${SIZE} point. [DONE]`;
   }
   if (/just ran/i.test(text)) return "[OK]";
-  const format = toShot(locate("Format"), imageText) ?? { x: 100, y: 60 };
+  const format = toShot(locate("Format"), text) ?? { x: 100, y: 60 };
   const plan = {
     title: `Set the font size to ${DRIVE_SIZE}`,
     actions: [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { holdFramesUntil, startWarmUp, warmUpVoice } from "./warmUp.ts";
+import { compactQuiet, holdFramesUntil, startWarmUp, warmUpVoice } from "./warmUp.ts";
 
 describe("warming the voice models before the microphone opens", () => {
   it("scores silent frames and transcribes silence, and finishes only when both have", async () => {
@@ -90,32 +90,78 @@ describe("warming the voice models before the microphone opens", () => {
 });
 
 describe("holding what is heard while the models load", () => {
-  it("plays the held audio in order once ready, then passes frames straight through", async () => {
+  const frame = (n: number, loud = true) =>
+    Int16Array.from({ length: 320 }, () => (loud ? n * 1000 : 0));
+
+  it("plays the held audio in order, at the speed it was said, then passes frames straight through", async () => {
     const got: number[] = [];
+    const slept: number[] = [];
     let go!: () => void;
     const ready = new Promise<void>((resolve) => (go = resolve));
-    const core = { pushAudio: (f: Int16Array) => void got.push(f[0]!), other: () => "kept" };
-    const held = holdFramesUntil(core, ready);
-    held.pushAudio(Int16Array.of(1));
-    held.pushAudio(Int16Array.of(2));
+    let finished!: () => void;
+    const drained = new Promise<void>((resolve) => (finished = resolve));
+    const core = { pushAudio: (f: Int16Array) => void got.push(f[0]! / 1000), other: () => "kept" };
+    const held = holdFramesUntil(core, ready, 15_000, {
+      sleep: async (ms) => void slept.push(ms),
+      played: () => queueMicrotask(() => void 0),
+    });
+    held.pushAudio(frame(1));
+    held.pushAudio(frame(2));
     expect(got).toEqual([]);
     go();
     await ready;
-    await Promise.resolve();
-    held.pushAudio(Int16Array.of(3));
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    held.pushAudio(frame(3));
+    finished();
+    await drained;
     expect(got).toEqual([1, 2, 3]);
+    expect(slept).toEqual([20, 20]);
     expect(held.other()).toBe("kept");
+  });
+
+  it("keeps frames that arrive while it plays, in order", async () => {
+    const got: number[] = [];
+    let go!: () => void;
+    const ready = new Promise<void>((resolve) => (go = resolve));
+    let held!: { pushAudio: (f: Int16Array) => void };
+    const core = { pushAudio: (f: Int16Array) => void got.push(f[0]! / 1000) };
+    held = holdFramesUntil(core, ready, 15_000, {
+      sleep: async () => {
+        // Time passes during the replay: a live frame arrives.
+        if (!got.includes(9)) held.pushAudio(frame(9));
+      },
+    });
+    held.pushAudio(frame(1));
+    go();
+    await ready;
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    expect(got).toEqual([1, 9]);
   });
 
   it("keeps only the newest frames when the wait is very long", async () => {
     const got: number[] = [];
     let go!: () => void;
     const ready = new Promise<void>((resolve) => (go = resolve));
-    const held = holdFramesUntil({ pushAudio: (f: Int16Array) => void got.push(f[0]!) }, ready, 2);
-    for (const n of [1, 2, 3, 4]) held.pushAudio(Int16Array.of(n));
+    const held = holdFramesUntil(
+      { pushAudio: (f: Int16Array) => void got.push(f[0]! / 1000) },
+      ready,
+      2,
+      { sleep: async () => {} },
+    );
+    for (const n of [1, 2, 3, 4]) held.pushAudio(frame(n));
     go();
     await ready;
-    await Promise.resolve();
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
     expect(got).toEqual([3, 4]);
+  });
+
+  it("cuts a long quiet stretch to 1.2 s so the replay does not wait through minutes of silence", () => {
+    const speech = frame(1);
+    const quiet = frame(0, false);
+    const frames = [speech, ...Array.from({ length: 3_000 }, () => quiet), speech];
+    const out = compactQuiet(frames);
+    expect(out.length).toBe(2 + 60);
+    expect(out[0]).toBe(speech);
+    expect(out.at(-1)).toBe(speech);
   });
 });

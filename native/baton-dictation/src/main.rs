@@ -85,6 +85,9 @@ struct Config {
     /// The desktop cleans the text up first, then pastes it with `target`.
     #[serde(default)]
     cleanup: bool,
+    /// Two quick taps of the hold key keep the microphone open until the next press.
+    #[serde(default)]
+    latch: bool,
 }
 
 enum Msg {
@@ -116,12 +119,133 @@ struct Job {
     language: Option<String>,
 }
 
+// The timings and the table are docs/baton/fixtures/double-tap.json; packages/baton-voice/src/doubleTap.ts is the same machine in
+// TypeScript, and both test suites replay the one table.
+const SHORT_TAP_MS: f64 = 200.0;
+const FIRST_PRESS_MS: f64 = 350.0;
+const GAP_MS: f64 = 350.0;
+const HOLD_MS: f64 = 600.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Phase {
+    Idle,
+    Tapped { up_at: f64 },
+    Holding { down_at: f64, after_tap: bool },
+    Latched,
+    LatchedDown,
+}
+
+/// What the hold key asks of the recorder. Latch and Unlatch change nothing the recorder sees.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Out {
+    Start,
+    Stop,
+    Cancel,
+    Latch,
+    Unlatch,
+}
+
+/// Hold to talk, or tap twice to keep talking: a short tap is cancelled, a second quick tap latches the microphone open, and
+/// the next press ends it. Times are milliseconds from any start; events out of order or out of place are ignored.
+#[derive(Debug)]
+struct PushToTalk {
+    phase: Phase,
+    last_at: f64,
+}
+
+impl Default for PushToTalk {
+    fn default() -> Self {
+        PushToTalk { phase: Phase::Idle, last_at: f64::NEG_INFINITY }
+    }
+}
+
+impl PushToTalk {
+    fn step(&mut self, down: bool, at: f64, double_tap: bool) -> Vec<Out> {
+        if !at.is_finite() || at < self.last_at {
+            return vec![];
+        }
+        if down {
+            return match self.phase {
+                Phase::Idle | Phase::Tapped { .. } => {
+                    let after_tap = double_tap && matches!(self.phase, Phase::Tapped { up_at } if at - up_at <= GAP_MS);
+                    self.phase = Phase::Holding { down_at: at, after_tap };
+                    self.last_at = at;
+                    vec![Out::Start]
+                }
+                Phase::Latched => {
+                    self.phase = Phase::LatchedDown;
+                    self.last_at = at;
+                    vec![]
+                }
+                _ => vec![],
+            };
+        }
+        match self.phase {
+            Phase::Holding { down_at, after_tap } => {
+                self.last_at = at;
+                if !double_tap {
+                    self.phase = Phase::Idle;
+                    return vec![Out::Stop];
+                }
+                let held = at - down_at;
+                if after_tap && held <= HOLD_MS {
+                    self.phase = Phase::Latched;
+                    return vec![Out::Latch];
+                }
+                let out = if held < SHORT_TAP_MS { Out::Cancel } else { Out::Stop };
+                self.phase = if !after_tap && held < FIRST_PRESS_MS { Phase::Tapped { up_at: at } } else { Phase::Idle };
+                vec![out]
+            }
+            Phase::LatchedDown => {
+                self.phase = Phase::Idle;
+                self.last_at = at;
+                vec![Out::Unlatch, Out::Stop]
+            }
+            _ => vec![],
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self.phase {
+            Phase::Idle => "idle",
+            Phase::Tapped { .. } => "tapped",
+            Phase::Holding { .. } => "holding",
+            Phase::Latched => "latched",
+            Phase::LatchedDown => "latchedDown",
+        }
+    }
+}
+
 enum Work {
     Clip(Job),
+    /// Load the model now, so the first real phrase does not wait behind it.
+    Load { id: Option<u64>, model: PathBuf },
     Begin { model: PathBuf, language: Option<String> },
     Audio(Vec<f32>),
     End { target: Option<isize>, released: Instant },
     Abort,
+}
+
+/// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
+/// one-core job, a limited VM, the starved-start proof) would still be given threads for four.
+fn usable_cores() -> usize {
+    let std_cores = thread::available_parallelism().map_or(4, |n| n.get());
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessAffinityMask};
+        let (mut process, mut system) = (0usize, 0usize);
+        // SAFETY: both out-pointers are valid for the duration of the call.
+        if unsafe { GetProcessAffinityMask(GetCurrentProcess(), &mut process, &mut system) }.is_ok() && process != 0 {
+            return (process.count_ones() as usize).min(std_cores.max(1));
+        }
+    }
+    std_cores
+}
+
+/// Half the cores, at least two, but never more threads than cores: ggml's threads wait for each other by spinning, so two
+/// threads on one core (a one-core machine, or the app pinned to one) can crawl for minutes instead of seconds.
+fn default_threads(cores: usize) -> i32 {
+    (cores / 2).max(2).min(cores.max(1)) as i32
 }
 
 fn load(model: &Path) -> Result<(Session, u64), String> {
@@ -130,7 +254,7 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
     let n_threads = std::env::var("BATON_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| thread::available_parallelism().map_or(4, |n| (n.get() / 2).max(2) as i32));
+        .unwrap_or_else(|| default_threads(usable_cores()));
     let session = Model::load(model)
         .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
@@ -227,7 +351,27 @@ fn ensure_loaded(loaded: &mut Option<(PathBuf, Session)>, model: &Path) -> Resul
         return Ok(0);
     }
     *loaded = None;
-    let (session, ms) = load(model)?;
+    // A load on a busy computer can take minutes. The desktop cannot tell that from a hang unless it hears this: one line a
+    // second while the file is read, so it waits for as long as the load is making progress and no longer.
+    let done = Arc::new(AtomicBool::new(false));
+    {
+        let done = done.clone();
+        thread::spawn(move || {
+            let started = Instant::now();
+            while !done.load(Ordering::Relaxed) {
+                emit(json!({"ev": "loading", "elapsedMs": started.elapsed().as_millis() as u64}));
+                for _ in 0..10 {
+                    if done.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+            }
+        });
+    }
+    let result = load(model);
+    done.store(true, Ordering::Relaxed);
+    let (session, ms) = result?;
     *loaded = Some((model.to_path_buf(), session));
     Ok(ms)
 }
@@ -258,6 +402,13 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>) {
                     })
                 });
                 let _ = out.send(Msg::Finished { id: job.id, dictated: job.dictated, target: job.target, result });
+            }
+            Ok(Work::Load { id, model }) => {
+                let line = match ensure_loaded(&mut loaded, &model) {
+                    Ok(load_ms) => json!({"ev": "model_ready", "id": id, "loadMs": load_ms}),
+                    Err(error) => json!({"ev": "model_ready", "id": id, "error": error}),
+                };
+                emit(line);
             }
             Ok(Work::Begin { model, language }) => {
                 live = Some(match ensure_loaded(&mut loaded, &model) {
@@ -596,6 +747,8 @@ fn serve() {
     let mut enigo = None;
     let mut recording: Option<Recording> = None;
     let mut held = false;
+    let mut taps = PushToTalk::default();
+    let clock = Instant::now();
     let mut toggle_down = false;
     emit(json!({"ev": "ready", "devices": devices_json()}));
 
@@ -695,6 +848,7 @@ fn serve() {
                                     if recording.take().is_some() {
                                         let _ = job_tx.send(Work::Abort);
                                         held = false;
+                                        taps = PushToTalk::default();
                                         emit(json!({"ev": "idle"}));
                                     }
                                     keys = None;
@@ -710,6 +864,15 @@ fn serve() {
                         }
                     }
                     "devices" => emit(json!({"ev": "devices", "devices": devices_json()})),
+                    "load" => {
+                        let id = value["id"].as_u64();
+                        match &config.model {
+                            Some(model) => {
+                                let _ = job_tx.send(Work::Load { id, model: model.clone() });
+                            }
+                            None => emit(json!({"ev": "model_ready", "id": id, "error": "no model configured"})),
+                        }
+                    }
                     "foreground" => {
                         let window = foreground_window();
                         let (app, title) = window_app(window);
@@ -748,6 +911,7 @@ fn serve() {
                         recording = None;
                         let _ = job_tx.send(Work::Abort);
                         held = false;
+                        taps = PushToTalk::default();
                         emit(json!({"ev": "idle"}));
                     }
                     "transcribe" => {
@@ -784,14 +948,27 @@ fn serve() {
                     _ => {}
                 }
             }
-            Msg::Key { hold: true, pressed: true } => {
-                held = true;
-                begin(&config, &mut recording, &tx, &job_tx);
-            }
-            Msg::Key { hold: true, pressed: false } => {
-                if held {
-                    held = false;
-                    finish(&mut recording, &job_tx, true);
+            Msg::Key { hold: true, pressed } => {
+                let at = clock.elapsed().as_secs_f64() * 1000.0;
+                for out in taps.step(pressed, at, config.latch) {
+                    match out {
+                        Out::Start => {
+                            held = true;
+                            begin(&config, &mut recording, &tx, &job_tx);
+                        }
+                        Out::Stop => {
+                            held = false;
+                            finish(&mut recording, &job_tx, true);
+                        }
+                        // An accidental tap: what little was heard is dropped, not transcribed.
+                        Out::Cancel => {
+                            held = false;
+                            recording = None;
+                            let _ = job_tx.send(Work::Abort);
+                            emit(json!({"ev": "idle"}));
+                        }
+                        Out::Latch | Out::Unlatch => {}
+                    }
                 }
             }
             Msg::Key { hold: false, pressed: true } => {
@@ -810,6 +987,7 @@ fn serve() {
                 recording = None;
                 let _ = job_tx.send(Work::Abort);
                 held = false;
+                taps = PushToTalk::default();
                 emit(json!({"ev": "error", "message": message}));
             }
             Msg::Finished { id, dictated, target, result } => match result {
@@ -994,6 +1172,45 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn threads_are_half_the_cores_but_never_more_than_the_cores() {
+        assert_eq!([1, 2, 3, 4, 8, 16].map(default_threads), [1, 2, 2, 2, 4, 8]);
+    }
+
+    /// The same table the TypeScript reducer replays (docs/baton/fixtures/double-tap.json): one set of timings, two implementations.
+    #[test]
+    fn the_push_to_talk_machine_replays_the_shared_timing_table() {
+        let fixture: Value = serde_json::from_str(include_str!("../../../docs/baton/fixtures/double-tap.json")).unwrap();
+        let t = &fixture["timings"];
+        assert_eq!(
+            [t["shortTapMs"].as_f64(), t["firstPressMs"].as_f64(), t["gapMs"].as_f64(), t["holdMs"].as_f64()],
+            [Some(SHORT_TAP_MS), Some(FIRST_PRESS_MS), Some(GAP_MS), Some(HOLD_MS)]
+        );
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(cases.len() >= 18);
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let double_tap = case["doubleTap"].as_bool().unwrap();
+            let mut machine = PushToTalk::default();
+            let mut outputs: Vec<&str> = vec![];
+            for event in case["events"].as_array().unwrap() {
+                let down = event["type"].as_str().unwrap() == "down";
+                for out in machine.step(down, event["at"].as_f64().unwrap(), double_tap) {
+                    outputs.push(match out {
+                        Out::Start => "start",
+                        Out::Stop => "stop",
+                        Out::Cancel => "cancel",
+                        Out::Latch => "latch",
+                        Out::Unlatch => "unlatch",
+                    });
+                }
+            }
+            let expected: Vec<&str> = case["outputs"].as_array().unwrap().iter().map(|o| o.as_str().unwrap()).collect();
+            assert_eq!(outputs, expected, "{name}: outputs");
+            assert_eq!(machine.name(), case["phase"].as_str().unwrap(), "{name}: phase");
+        }
+    }
 
     #[test]
     fn hotkeys_come_as_nothing_one_key_or_a_list() {

@@ -48,3 +48,59 @@ describe("the window's accessibility", () => {
     expect(PILL_DOCUMENT).toContain("@media (prefers-reduced-motion:reduce)");
   });
 });
+
+describe("the top bar takes clicks", () => {
+  it("keeps the drag region to empty space: every control inside #top is no-drag", () => {
+    expect(APP_CSS).toMatch(/#top\{[^}]*-webkit-app-region:drag/);
+    const rule = APP_CSS.match(/(#top [^{}]*)\{-webkit-app-region:no-drag\}/)?.[1] ?? "";
+    for (const selector of ["#top button", "#top input", "#top select", "#top a", "#top .state"]) {
+      expect(rule).toContain(selector);
+    }
+  });
+});
+
+describe("the mark shows once", () => {
+  it("is not drawn a second time on Home", () => {
+    expect(APP_SCRIPT).not.toContain("homemark");
+    expect(APP_CSS).not.toContain("homemark");
+  });
+});
+
+describe("the mark breathes only while the window is in front", () => {
+  it("animates transform and opacity only, behind the live gate, and the gate follows focus and visibility", () => {
+    expect(APP_CSS).toMatch(/@keyframes breathe\{[^@]*transform:scale\(1\.035\)/);
+    expect(APP_CSS).not.toMatch(/(?<!html\.live )\.brand #mark\{[^}]*animation:/);
+    expect(APP_CSS).toMatch(/html\.live \.brand #mark\{animation:breathe 6s/);
+    for (const event of ["'focus'", "'blur'", "'visibilitychange'"]) expect(APP_SCRIPT).toContain(event);
+    expect(APP_CSS).toMatch(/prefers-reduced-motion:reduce\)\{\*\{[^}]*animation:none/);
+  });
+});
+
+describe("motion stays cheap", () => {
+  // Two one-shot layout transitions predate the rule (sidebar collapse, group fold): they run once per click.
+  const ONE_SHOT_LAYOUT = new Set(["grid-template-columns", "grid-template-rows"]);
+  const LAYOUT = /^(?:width|height|min-|max-|margin|padding|top|left|right|bottom|grid-|flex|font|line-height|border-width|gap)/;
+
+  it("never animates a layout property, apart from the two known one-shots", () => {
+    const bad = [...APP_CSS.matchAll(/transition:([^;}]*)/g)]
+      .flatMap((m) => m[1]!.split(","))
+      .map((part) => part.trim().split(/\s+/)[0]!)
+      .filter((property) => LAYOUT.test(property) && !ONE_SHOT_LAYOUT.has(property));
+    expect(bad).toEqual([]);
+    for (const m of APP_CSS.matchAll(/@keyframes [\w-]+\{(.*?\}\})/g)) {
+      expect(m[1]).not.toMatch(/(?:width|height|margin|padding|top|left|right|bottom)\s*:/);
+    }
+  });
+
+  it("gates every infinite animation behind the live class", () => {
+    for (const rule of APP_CSS.matchAll(/([^{}]+)\{[^{}]*animation:[^;}]*infinite[^{}]*\}/g)) {
+      expect(rule[1]).toMatch(/html\.live /);
+    }
+  });
+
+  it("has one set of duration and easing tokens", () => {
+    for (const token of ["--dur-instant", "--dur-quick", "--dur-base", "--dur-slow", "--dur-hero", "--stagger", "--ease-spring"]) {
+      expect(APP_CSS).toContain(`${token}:`);
+    }
+  });
+});

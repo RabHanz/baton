@@ -33,6 +33,7 @@ import {
 } from "@t3tools/baton-shared/dictationCleanup";
 import {
   createVoiceRouter,
+  encodeWav,
   type BatonVoiceCore,
   type SttProvider,
   type VoiceCoreEvent,
@@ -99,7 +100,8 @@ import {
   STYLE_CATEGORIES,
 } from "@t3tools/baton-shared/writingStyle";
 import { computeDeepInsights } from "@t3tools/baton-shared/insightsDeep";
-import { insightControls } from "../writing/insightRows.ts";
+import { computeVoiceProfile } from "@t3tools/baton-shared/voiceProfile";
+import { insightControls, voiceProfileControls } from "../writing/insightRows.ts";
 import { previewOf, searchNotes } from "@t3tools/baton-shared/scratchpad";
 import { createScratchStore } from "../writing/scratchStore.ts";
 import { SCRATCH_HOTKEY, scratchAction, scratchControls } from "../writing/scratchRows.ts";
@@ -223,6 +225,12 @@ import { createCloud, DEFAULT_CLOUD, type CloudSettings } from "../cloud/cloudSe
 import { approvalCardControls, cloudNeeds, cloudPageControls } from "../cloud/cloudRows.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
+import {
+  CONNECTOR_INFO,
+  parseConnectorSource,
+  reviewConnector,
+  type ConnectorKind,
+} from "@t3tools/baton-shared/connectors";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import {
   fileToEdit,
@@ -255,6 +263,7 @@ import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, modelShipped, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
+import { parseGlass, parseMotion, type Glass, type Motion } from "../home/look.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -341,7 +350,16 @@ import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
 import { wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
-import { NO_RECORDING, retryPlan, rowMenu, useVersion, withRetry } from "./historyRetry.ts";
+import {
+  hasRecording,
+  NO_RECORDING,
+  retryPlan,
+  rowMenu,
+  useVersion,
+  withRetry,
+} from "./historyRetry.ts";
+import { buildTranscriptReport } from "./transcriptReport.ts";
+import { boostCore, quietThreshold } from "@t3tools/baton-shared/quietSpeech";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -388,6 +406,9 @@ interface VoiceSettings {
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   /** Baton's window: System follows Windows. */
   readonly appearance: Appearance;
+  /** Motion and glass (Settings, General); the system can ask for less on top of this. */
+  readonly motion: Motion;
+  readonly glass: Glass;
   /** The soft cues when listening starts, when a turn ends, after a long wait and on an error. */
   readonly cues: CueLevel;
   /** Hold-key dictation plays no cue unless he asks. */
@@ -402,6 +423,10 @@ interface VoiceSettings {
   readonly verifyWake: boolean;
   /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
   readonly learnWords: boolean;
+  /** For whispering or a far mic: audio is lifted and wake thresholds lowered. Off by default. */
+  readonly quietSpeech: boolean;
+  /** Two quick taps of the dictation key keep the microphone open until the next press. */
+  readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
   readonly keepVoice: boolean;
   readonly keepDays: number;
@@ -483,6 +508,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
   appearance: "system",
+  motion: "full",
+  glass: "on",
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
@@ -490,6 +517,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   conversationOpenMs: 30_000,
   verifyWake: true,
   learnWords: true,
+  quietSpeech: false,
+  doubleTap: true,
   keepVoice: false,
   keepDays: 30,
   keepCapGb: 2,
@@ -567,7 +596,11 @@ export const readSettings = (path: string): VoiceSettings => {
       wakeWords,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
+      quietSpeech: saved["quietSpeech"] === true,
+      doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
+      motion: parseMotion(saved["motion"]),
+      glass: parseGlass(saved["glass"]),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -979,6 +1012,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Worked out from History at most every half minute; Home redraws far more often. */
   let deepAt = 0;
   let deepValue: ReturnType<typeof computeDeepInsights> | null = null;
+  let profileValue: ReturnType<typeof computeVoiceProfile> = null;
   const deepInsights = () => {
     if (history === null) return null;
     if (Date.now() - deepAt > 30_000) {
@@ -986,6 +1020,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       deepValue = turns.some((t) => t.kind === "dictation")
         ? computeDeepInsights(turns, Date.now())
         : null;
+      profileValue = computeVoiceProfile(turns);
       deepAt = Date.now();
     }
     return deepValue;
@@ -1212,6 +1247,36 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       history.remove(id);
       for (const path of clipPaths(turn.audio ?? "")) NodeFS.rmSync(path, { force: true });
       return { deleted: true };
+    } else if (action === "play") {
+      // The kept clips, joined, as a WAV the page plays itself: nothing leaves this computer.
+      if (!hasRecording(turn)) return { failed: NO_RECORDING };
+      try {
+        const parts: Int16Array[] = [];
+        for (const path of clipPaths(turn.audio ?? "")) {
+          parts.push(await encoder.decode(NodeFS.readFileSync(path)));
+        }
+        const pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+        let at = 0;
+        for (const p of parts) {
+          pcm.set(p, at);
+          at += p.length;
+        }
+        return {
+          playback: `data:audio/wav;base64,${Buffer.from(encodeWav(pcm)).toString("base64")}`,
+        };
+      } catch {
+        return { failed: "That recording could not be played" };
+      }
+    } else if (action === "report") {
+      const file = NodePath.join(input.stateDir, "reports", `transcript-${id}.md`);
+      NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+      NodeFS.writeFileSync(
+        file,
+        buildTranscriptReport(turn, { version: input.appVersion, platform: input.platform }),
+        { mode: 0o600 },
+      );
+      Electron.shell.showItemInFolder(file);
+      return { reported: file };
     } else if (action === "retry_transcript") {
       // Not while he is dictating, and one at a time. The original stays as it was if this fails.
       if (retrying !== null || dictatingByVoice || releaseRecordingEscape !== null) {
@@ -1685,7 +1750,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs: jobsCache ?? [],
         sessions: input.sessions?.rows() ?? [],
         findings: await watchFindings(),
-        extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now()), ...cloudLoginsNeeds(cloudNow(), Date.now())],
+        extra: [
+          ...needsFromCommitments(commitments.list(), Date.now()),
+          ...syncNeeds(syncNow, Date.now()),
+          ...cloudLoginsNeeds(cloudNow(), Date.now()),
+        ],
         config: needsConfig(),
         external: externalNeeds,
         now: Date.now(),
@@ -1746,11 +1815,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           fromWeb: args["from_web_or_file"] === true,
         });
       }
-      if (op === "cloud_status") return cloud.tool.status(String(args["id"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
-      if (op === "cloud_list") return cloud.tool.list(args["mine"] === true, typeof args["label"] === "string" ? args["label"] : undefined);
-      if (op === "cloud_cancel") return cloud.tool.cancel(String(args["id"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
+      if (op === "cloud_status")
+        return cloud.tool.status(
+          String(args["id"] ?? ""),
+          typeof args["provider"] === "string" ? args["provider"] : undefined,
+        );
+      if (op === "cloud_list")
+        return cloud.tool.list(
+          args["mine"] === true,
+          typeof args["label"] === "string" ? args["label"] : undefined,
+        );
+      if (op === "cloud_cancel")
+        return cloud.tool.cancel(
+          String(args["id"] ?? ""),
+          typeof args["provider"] === "string" ? args["provider"] : undefined,
+        );
       if (op === "cloud_usage") return cloud.tool.usage();
-      if (op === "cloud_approve") return cloud.tool.approve(String(args["id"] ?? ""), String(args["account"] ?? ""), typeof args["provider"] === "string" ? args["provider"] : undefined);
+      if (op === "cloud_approve")
+        return cloud.tool.approve(
+          String(args["id"] ?? ""),
+          String(args["account"] ?? ""),
+          typeof args["provider"] === "string" ? args["provider"] : undefined,
+        );
       if (op === "trust_show") return describeTrust(trustData(), Date.now());
       if (op === "activity_today") return describeToday(trustData().entries, new Date());
       if (op === "permission_off") {
@@ -1770,7 +1856,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
-          extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now()), ...cloudLoginsNeeds(cloudNow(), Date.now())],
+          extra: [
+            ...needsFromCommitments(commitments.list(), Date.now()),
+            ...syncNeeds(syncNow, Date.now()),
+            ...cloudLoginsNeeds(cloudNow(), Date.now()),
+          ],
           config: needsConfig(),
           external: externalNeeds,
           now: Date.now(),
@@ -1974,6 +2064,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       paste: settings.paste,
       language: settings.language,
       cleanup: true,
+      latch: settings.doubleTap,
       mouse: NodePath.join(input.stateDir, "voice", "input-bindings.json"),
     });
   };
@@ -2095,7 +2186,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "ask") tray("Ask Tessaya…");
     else if (id === "clear") tray("Clear the screen");
   };
+  /** How long the sidecar has been reading the speech model, from its "loading" lines (0 when it is not). */
+  let speechLoadMs = 0;
   const onDictation = (event: DictationEvent) => {
+    if (event.ev === "loading") {
+      if (speechLoadMs === 0) step("speech-model-loading");
+      speechLoadMs = event.elapsedMs;
+      return;
+    }
     if (event.ev === "binding") return onBinding(event.id);
     if (event.ev === "configured") mouseHookReady = event.mouse === true;
     setRecording(event.ev === "recording");
@@ -2397,7 +2495,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     core = await input.makeCore({
       intent: voiceIntent,
       onReply: flash,
-      settings,
+      settings: settings.quietSpeech
+        ? {
+            ...settings,
+            wakeWords: settings.wakeWords.map((w) => ({
+              ...w,
+              threshold: quietThreshold(w.threshold),
+            })),
+          }
+        : settings,
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
@@ -2436,7 +2542,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmStarted = Date.now();
     let modelsReady = 0;
     const showWarm = () => {
-      note = `Starting: loading the speech models (${modelsReady} of 2 ready, ${Math.round((Date.now() - warmStarted) / 1000)} s).`;
+      const total = Math.round((Date.now() - warmStarted) / 1000);
+      const reading =
+        speechLoadMs > 0
+          ? `, reading the speech model for ${Math.round(speechLoadMs / 1000)} s`
+          : "";
+      note = `Starting: loading the speech models (${modelsReady} of 2 ready${reading}, ${total} s).${total > 30 ? " This computer is busy; it is still working." : ""}`;
       render();
     };
     showWarm();
@@ -2445,7 +2556,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmSidecar = sidecar;
     const warm = startWarmUp({
       pushFrame: (frame) => warming.pushAudio(frame),
-      transcribe: (pcm) => makeSidecarStt(warmSidecar).transcribe(pcm),
+      // Read the model first, on its own call that waits as long as the sidecar says it is loading, so the first real
+      // phrase never sits behind a load that a fixed timer gave up on.
+      transcribe: async (pcm) => {
+        const loadMs = await warmSidecar.preload();
+        step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
+        speechLoadMs = 0;
+        return makeSidecarStt(warmSidecar).transcribe(pcm);
+      },
       settled: () => warming.idle(),
       onStage: (ready) => {
         modelsReady = ready;
@@ -2461,8 +2579,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         "Still loading the speech models. What you say now is kept and heard as soon as they are ready.";
       note = slow;
       render();
-      startCore = holdFramesUntil(core, warm.complete);
+      startCore = holdFramesUntil(core, warm.complete, 15_000, {
+        first: () => step("first-audio-frame", { sinceWarmStartMs: Date.now() - warmStarted }),
+        played: (frames) =>
+          step("held-audio-played", { frames, sinceWarmStartMs: Date.now() - warmStarted }),
+      });
       void warm.complete.then(() => {
+        step("warm-complete", { sinceWarmStartMs: Date.now() - warmStarted });
         if (note === slow) {
           note = null;
           render();
@@ -2497,7 +2620,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
-      core: startCore,
+      core: boostCore(startCore, () => settings.quietSpeech),
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
         state = next;
@@ -2643,6 +2766,44 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } catch (error) {
       tell(
         `Not added: ${error instanceof Error ? error.message : "the address could not be read"}`,
+      );
+    }
+  };
+  /** A calendar, mail or chat server: the card shows the exact command, and `claude mcp add` runs only after his yes. */
+  const addConnector = async (kind: ConnectorKind, address: string): Promise<void> => {
+    const tell = (text: string) => input.extras?.notice(text);
+    const plan = parseConnectorSource(kind, address);
+    if (!plan.ok) return tell(`Not connected: ${plan.why}`);
+    const exists = harnessItems().some((i) => i.kind === "mcp" && i.name === plan.name);
+    const card = reviewConnector(kind, plan, exists);
+    const answer = await (input.extras?.ask({
+      ...card,
+      buttons: ["Connect", "Cancel"],
+      cancel: 1,
+      expiresMs: 5 * 60_000,
+    }) ?? Promise.resolve(1));
+    if (answer !== 0) return tell("Not connected.");
+    try {
+      await new Promise<void>((resolve, reject) =>
+        NodeChildProcess.execFile(
+          settings.claudeBinary,
+          [...plan.argv],
+          { timeout: 60_000, windowsHide: true },
+          (error, _stdout, stderr) =>
+            error === null
+              ? resolve()
+              : reject(new Error(stderr.trim().split("\n").at(-1) ?? error.message)),
+        ),
+      );
+      forgetFiles();
+      harnessItems.reset();
+      home.refresh();
+      tell(
+        `Connected ${CONNECTOR_INFO[kind].label.toLowerCase()} (${plan.name}). Claude Code signs you in the first time it uses it.`,
+      );
+    } catch (error) {
+      tell(
+        `Not connected: ${error instanceof Error ? error.message : "Claude Code did not accept it"}`,
       );
     }
   };
@@ -3352,6 +3513,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
+      ...voiceProfileControls(profileValue),
       {
         id: "d.import",
         section: "Vocabulary files",
@@ -3583,6 +3745,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         options: languageOptions(settings.speechModel),
       },
       {
+        id: "v.doubleTap",
+        section: "Dictation",
+        label: "Double-tap to keep talking",
+        hint: "Tap the dictation key twice, quickly, and Tessaya keeps listening after you let go. Press the key once more to finish. Holding it still works as before.",
+        kind: "toggle",
+        on: settings.doubleTap,
+      },
+      {
         id: "v.learnWords",
         section: "Dictation",
         label: "Learn words from my edits",
@@ -3661,6 +3831,32 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "dark", label: "Dark" },
         ],
       },
+      {
+        id: "v.motion",
+        section: "Appearance",
+        label: "Motion",
+        hint: "Full plays every animation. Reduced keeps the small ones. Off stops them. Full follows the system when it asks for less.",
+        kind: "choice",
+        value: settings.motion,
+        options: [
+          { value: "full", label: "Full" },
+          { value: "reduced", label: "Reduced" },
+          { value: "off", label: "Off" },
+        ],
+      },
+      {
+        id: "v.glass",
+        section: "Appearance",
+        label: "Glass effects",
+        hint: "The see-through window material. On follows the system when transparency effects are off.",
+        kind: "choice",
+        value: settings.glass,
+        options: [
+          { value: "on", label: "On" },
+          { value: "reduced", label: "Reduced" },
+          { value: "off", label: "Off" },
+        ],
+      },
 
       {
         id: "v.audition",
@@ -3715,6 +3911,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           value: String(ms),
           label: `${ms / 1000} s`,
         })),
+      },
+      {
+        id: "v.quietSpeech",
+        section: "Wake and listening",
+        label: "Quiet speech",
+        hint: "For whispering or a microphone far away: Tessaya lifts what it hears and accepts a fainter wake word. It also lifts room noise and lets in more false wakes, so leave it off otherwise.",
+        kind: "toggle",
+        on: settings.quietSpeech,
       },
       {
         id: "v.verifyWake",
@@ -4248,6 +4452,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (/^cl\.(p|a|ok|deny)\./.test(id)) {
       void cloud.click(id).catch(() => undefined);
     } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
+    else if (id === "cl.test") void cloud.test().catch(() => undefined);
     else if (id === "cl.set.on") saveCloud({ on });
     else if (id === "cl.set.ask") saveCloud({ askPopup: on });
     else if (id === "cl.set.hubEnv" && typeof value === "string") saveCloud({ hubEnv: value });
@@ -4265,7 +4470,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       void Electron.shell.openExternal("https://github.com/apps/claude");
     } else if (id.startsWith("cl.signin.")) {
       const command = cloud.view().detections[id.slice("cl.signin.".length) as ProviderId]?.signInCommand ?? "";
-      const plan = terminalPlan(process.platform, command);
+      const plan = terminalPlan(input.platform, command);
       if (plan !== null) {
         try {
           NodeChildProcess.spawn(plan.file, [...plan.args], { detached: true, stdio: "ignore", windowsHide: false }).unref();
@@ -4471,12 +4676,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.motion") save({ motion: parseMotion(value) });
+    else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
-    else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
+    else if (id === "v.doubleTap") {
+      save({ doubleTap: on });
+      configureDictation();
+    } else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
-    else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
+    else if (id === "v.quietSpeech") {
+      save({ quietSpeech: on });
+      void relisten();
+    } else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
     else if (id === "v.listenAfterWake" && LISTEN_AFTER_WAKE_MS.includes(Number(value))) {
       save({ wakeListenMs: Number(value) });
     } else if (id === "v.conversation" && CONVERSATION_MS.includes(Number(value))) {
@@ -4502,6 +4715,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       setLoginItem(Electron.app, input.loginEntry, on);
     } else if (id === "k.addskill:add" && typeof value === "string") {
       void addSkillFrom(value);
+    } else if (/^k\.conn\.(calendar|mail|chat):add$/.test(id) && typeof value === "string") {
+      void addConnector(id.split(".")[2]!.split(":")[0] as ConnectorKind, value);
     } else if (id === "v.diag") {
       try {
         const file = makeDiagnosticsFile({
@@ -4547,6 +4762,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
     },
     appearance: () => settings.appearance,
+    look: () => ({ motion: settings.motion, glass: settings.glass }),
+    quietLaunch: () => Electron.app.getLoginItemSettings().wasOpenedAtLogin === true,
     level: () => micNow,
   });
   // First run after an update: the list was just resolved and rewritten, so the window is told once more.

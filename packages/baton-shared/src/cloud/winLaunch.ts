@@ -1,9 +1,6 @@
 /**
- * How to start a program safely, whatever the system. On Linux and macOS the name and the argument list
- * go straight through. On Windows a program installed with npm is a `.cmd` shim, and handing a brief to
- * cmd.exe would let its text be read as commands; so the shim is read, and the node script it runs is
- * started directly with the argument list. If that is not possible, a command is only run through cmd
- * when every argument is plain.
+ * Starts a program safely on any system. On Windows an npm program is a .cmd shim: its node script is run
+ * directly with the argument list, so a task description is never read by cmd.
  */
 export interface LaunchEnv {
   readonly platform: string;

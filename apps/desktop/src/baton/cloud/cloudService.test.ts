@@ -218,4 +218,31 @@ describe("cloud tasks in the desktop", () => {
     expect(cloud.view().error).toBe("There is no connection to a computer that runs cloud tasks.");
     expect(await cloud.tool.dispatch(task)).toContain("No cloud provider is ready");
   });
+
+  it("tests the connection: each account with its use and login, starts nothing, and says why when nothing answers", async () => {
+    const { cloud, calls } = rig();
+    await cloud.test();
+    const lines = cloud.view().tested!;
+    expect(lines.map((l) => l.line)).toEqual([
+      "The connection works.",
+      "Claude me@example.org: usage unknown",
+      "Codex This computer's Codex login: usage unknown",
+    ]);
+    expect(lines[0]).toEqual({ ok: true, line: "The connection works." });
+    expect(calls.some((c) => c.args[0] === "--cloud" || c.args[1] === "exec")).toBe(false);
+    const rows = cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true });
+    expect(ids(rows)).toContain("cl.test");
+    expect(ids(rows).filter((i) => i.startsWith("cl.testrow."))).toHaveLength(lines.length);
+    const down = createCloud({
+      settings: () => ({ ...DEFAULT_CLOUD, on: true, transport: "hub" }),
+      exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+      dir: NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "cloud-")),
+      hub: null,
+      ask: async (q) => q.cancel,
+      changed: () => undefined,
+      now: () => 1,
+    });
+    await down.test();
+    expect(down.view().tested).toEqual([{ ok: false, line: "Nothing answered. There is no connection to a computer that runs cloud tasks." }]);
+  });
 });

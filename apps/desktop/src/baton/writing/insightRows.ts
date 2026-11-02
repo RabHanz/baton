@@ -1,6 +1,7 @@
 // @effect-diagnostics globalDate:off
 /** The Insights area of the window, from what the turn log already holds. */
 import { describeSpeed, type DeepInsights } from "@t3tools/baton-shared/insightsDeep";
+import { describeProfile, type VoiceProfile } from "@t3tools/baton-shared/voiceProfile";
 
 import type { HomeControl } from "../home/batonHome.ts";
 
@@ -74,3 +75,18 @@ export const insightControls = (d: DeepInsights | null): ReadonlyArray<HomeContr
         }))),
   ];
 };
+
+const VOICE = "Your voice";
+
+/** The Voice Profile report: how he dictates, from History alone. Nothing when there is no dictation yet. */
+export const voiceProfileControls = (p: VoiceProfile | null): ReadonlyArray<HomeControl> =>
+  p === null
+    ? []
+    : describeProfile(p).map((line, i): HomeControl => ({
+        id: `in.voice:${i}`,
+        section: VOICE,
+        label: line.label,
+        kind: "check",
+        status: "ok",
+        detail: line.detail,
+      }));
