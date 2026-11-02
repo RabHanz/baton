@@ -7,7 +7,7 @@
  * display, kept out of screenshots by content protection (Windows, macOS) or hidden for the
  * capture (Linux). Windows go after two idle minutes, so this layer never stops the app quitting.
  */
-import { protectFromCapture } from "../captureProtection.ts";
+import { overlaysVisibleToCapture, protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -366,7 +366,9 @@ export const createPointerOverlay = (
     },
     clear,
     hiddenFor: async (fn) => {
-      if (platform === "win32" || platform === "darwin") return fn();
+      // Content protection keeps the layer out of a capture, unless a test run turned it off to record itself.
+      if ((platform === "win32" || platform === "darwin") && !overlaysVisibleToCapture())
+        return fn();
       const visible = [...windows.values()].filter(
         ({ win }) => !win.isDestroyed() && win.isVisible(),
       );
