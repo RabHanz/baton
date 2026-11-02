@@ -30,6 +30,10 @@ printf 'wake.wav 4000\n30000\n' > "$out/wav/list.txt"; cp "$wav" "$out/wav/wake.
 export BATON_TEST_WAV="$out/wav/list.txt" BATON_TEST_DIR="$out/shots"
 "${run[@]}" > "$out/app.log" 2>&1 &
 pid=$!
+# Tessaya starts in the tray with no window; a second launch means "show me Tessaya", which opens it, and the app
+# records the page it draws.
+sleep 25
+"${run[@]}" > "$out/app2.log" 2>&1 &
 log="$userdata/logs/voice-turns.ndjson"
 for _ in $(seq 1 40); do
   sleep 3
