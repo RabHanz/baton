@@ -16,6 +16,7 @@ const setup = (
     tainted?: boolean;
     yes?: boolean;
     run?: (c: string, e: Record<string, string>) => Promise<string>;
+    hello?: "verified" | "declined" | "unavailable";
   } = {},
 ) => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-vhost-"));
@@ -42,6 +43,7 @@ const setup = (
     audit: (l) => void audit.push(l),
     askToUnlock: unlock,
     pending: createPendingSecret(),
+    ...(over.hello === undefined ? {} : { hello: async () => over.hello! }),
     ...(over.run === undefined ? {} : { run: over.run }),
   });
   return { host, vault, typed, audit, asked, unlock, clip: () => clip };
@@ -49,6 +51,15 @@ const setup = (
 const use = { name: "github", purpose: "sign in", target: "github.com", how: "type" as const };
 
 describe("vault_use", () => {
+  it("needs Windows Hello after his yes: declined uses nothing, verified or unavailable goes on", async () => {
+    const no = setup({ hello: "declined" });
+    expect(await no.host.use(use)).toContain("Windows Hello did not confirm");
+    expect(no.typed).toEqual([]);
+    expect(no.audit.join("")).toContain('"outcome":"declined"');
+    const ok = setup({ hello: "verified" });
+    await ok.host.use(use);
+    expect(ok.typed).toEqual([FAKE]);
+  });
   it("lists names without values, and injects without the model seeing the value", async () => {
     const t = setup();
     const listed = await t.host.list();

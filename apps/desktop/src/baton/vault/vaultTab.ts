@@ -37,6 +37,10 @@ export const createVaultTab = (input: {
   readonly stateDir: string;
   readonly refresh: () => void;
   readonly reveal: (path: string) => void;
+  /** Asks where to save the recovery key and writes it there; the path, or null if he cancelled. */
+  readonly saveRecovery?: (key: string) => Promise<string | null>;
+  /** Prints the recovery key; true if it went to a printer. */
+  readonly printRecovery?: (key: string) => Promise<boolean>;
   readonly now?: () => number;
 }) => {
   const now = input.now ?? Date.now;
@@ -45,6 +49,7 @@ export const createVaultTab = (input: {
   let helloOk = true;
   let shown: { id: string; value: string } | null = null;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
+  let copied: string | null = null;
 
   const note = (name: string, how: string, outcome: "revealed" | "copied") =>
     input.audit(
@@ -60,6 +65,15 @@ export const createVaultTab = (input: {
   const hide = () => {
     shown = null;
     clearTimeout(hideTimer);
+  };
+  /** Clears the clipboard only if it still holds what the vault put there. */
+  const clearCopied = () => {
+    const mine = copied;
+    copied = null;
+    if (mine !== null)
+      void Promise.resolve(input.clipboard.read()).then((now) => {
+        if (now === mine) input.clipboard.clear();
+      });
   };
   const say = (s: string) => {
     status = s;
@@ -86,6 +100,18 @@ export const createVaultTab = (input: {
     const after = (id2: string) => (id.startsWith(`${id2}:`) ? id.slice(id2.length + 1) : null);
     if (id === "vt.create") {
       guard(() => void (recovery = input.vault.create(text).recoveryKey));
+    } else if (id === "vt.recoverySave" || id === "vt.recoveryPrint") {
+      const key = recovery;
+      const task =
+        key === null
+          ? undefined
+          : id === "vt.recoverySave"
+            ? input.saveRecovery?.(key).then((p) => (p === null ? "" : `Saved to ${p}. Keep it off this computer.`))
+            : input.printRecovery?.(key).then((ok) => (ok ? "Sent to the printer." : ""));
+      void (task ?? Promise.resolve("That is not available here."))
+        .then((m) => void (status = m))
+        .catch((e: unknown) => void (status = reason(e)))
+        .finally(input.refresh);
     } else if (id === "vt.recoveryDone") {
       recovery = null;
       input.refresh();
@@ -143,18 +169,20 @@ export const createVaultTab = (input: {
         })
         .catch((e: unknown) => say(reason(e)));
     } else if ((target = after("vt.copy")) !== null) {
-      guard(() => {
-        const item = input.vault.valueOf(target!);
-        if (item === null) throw new VaultError("There is no such secret.");
-        input.clipboard.write(item.value);
-        setTimeout(() => {
-          void Promise.resolve(input.clipboard.read()).then((now) => {
-            if (now === item.value) input.clipboard.clear();
-          });
-        }, CLIPBOARD_CLEAR_MS).unref();
-        note(item.name, "copy", "copied");
-        status = "Copied. It clears from the clipboard in 10 seconds.";
-      });
+      void confirmed("Copy a secret from the Tessaya vault")
+        .then((ok) => {
+          const item = ok ? input.vault.valueOf(target!) : null;
+          if (item === null)
+            return say(
+              ok ? "There is no such secret." : "Windows Hello did not confirm it is you.",
+            );
+          input.clipboard.write(item.value);
+          copied = item.value;
+          setTimeout(() => clearCopied(), CLIPBOARD_CLEAR_MS).unref();
+          note(item.name, "copy", "copied");
+          say("Copied. It clears from the clipboard in 10 seconds.");
+        })
+        .catch((e: unknown) => say(reason(e)));
     } else if ((target = after("vt.policy")) !== null) {
       guard(() => {
         const policy: VaultPolicy = text.startsWith("domain:")
@@ -188,8 +216,12 @@ export const createVaultTab = (input: {
 
   return {
     act,
-    /** Locking closes any value on show. */
-    onLock: hide,
+    /** Locking, however it happens, closes any value on show, clears what we copied and redraws at once. */
+    onLock: () => {
+      hide();
+      clearCopied();
+      input.refresh();
+    },
     controls: (): ReadonlyArray<HomeControl> => {
       const unlocked = input.vault.isUnlocked();
       const bar: HomeControl = {
