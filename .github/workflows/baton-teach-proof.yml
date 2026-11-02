@@ -1,0 +1,57 @@
+name: Tessaya teach and drive proof
+
+# The real companion and the real overlay on a Windows desktop (design: docs/baton/research/teach-mode-2026-11-02.md).
+# A scripted `claude` answers (a runner has no model login); the task is Notepad's font size, once taught (the harness
+# is the user) and once driven (the harness presses Go ahead). Each is recorded as an mp4 with a six-frame contact sheet.
+on:
+  workflow_dispatch:
+  push:
+    branches: [baton/teach-proof]
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch the Electron binary
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - name: Install ffmpeg for the recordings
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y > /dev/null || echo "no ffmpeg, so no clips"
+      - name: Bundle the harness
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
+          mkdir -p node_modules/.cache/baton-smoke
+          "$esbuild" src/baton/screen/smoke/teachProof.ts --bundle --platform=node --format=cjs \
+            --external:electron --external:onnxruntime-node --log-level=warning \
+            --outfile=node_modules/.cache/baton-smoke/teachProof.cjs
+      - name: Run teach and drive, recorded
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          PROOF_OUT: ${{ github.workspace }}/teach-proof-out
+          PROOF_FAKE: ${{ github.workspace }}/scripts/baton/teach-proof/fake-claude.mjs
+          HANDS_RECORD: "1"
+        run: |
+          mkdir -p "$PROOF_OUT"
+          timeout 600 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/teachProof.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
+          cat "$PROOF_OUT/results.json" || echo "no results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: teach-proof
+          path: teach-proof-out
