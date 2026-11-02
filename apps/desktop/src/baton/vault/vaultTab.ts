@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
  * The Vault tab's state and actions (D151). The window draws `controls()` and reports clicks to `act`.
  * A value reaches the window only when he asks to reveal it, only after Windows Hello where it exists,

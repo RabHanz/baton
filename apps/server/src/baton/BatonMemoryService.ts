@@ -1,3 +1,4 @@
+// @effect-diagnostics tryCatchInEffectGen:off preferSchemaOverJson:off cryptoRandomUUIDInEffect:off flatMapConditionalToFilterOrFail:off
 /**
  * Memory (D150, docs/baton/MEMORY.md): short items about him and his work, searchable, with a
  * single door that refuses what must never be kept. The desktop tools, the windows, a phone and

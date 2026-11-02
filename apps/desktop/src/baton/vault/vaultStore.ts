@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
  * The vault (D151, docs/baton/VAULT.md): one encrypted file, locked until he opens it, locking itself
  * when idle. Nothing here writes a value anywhere but into that file as ciphertext.
