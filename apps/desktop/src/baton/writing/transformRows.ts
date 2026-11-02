@@ -27,6 +27,14 @@ export const transformControls = (
     lead: true,
   },
   {
+    id: "tr.command",
+    section: ON,
+    label: "Command mode: edit by voice",
+    hint: 'Say "make this more concise", "fix the grammar", "delete the last sentence" or "select the previous paragraph" and Tessaya does it to your selection or the text before the caret. Off until you turn it on. "Undo that" takes the last one back.',
+    kind: "toggle",
+    on: s.command === true,
+  },
+  {
     id: "tr.auto",
     section: ON,
     label: "Apply one to every dictation",
@@ -80,6 +88,7 @@ export const transformControls = (
 
 export const transformAction = (id: string, value: string | boolean | null) => {
   if (id === "tr.enabled") return { kind: "enabled", on: value === true } as const;
+  if (id === "tr.command") return { kind: "command", on: value === true } as const;
   if (id === "tr.auto" && typeof value === "string") {
     return { kind: "auto", id: value === "none" ? null : value } as const;
   }
