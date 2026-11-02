@@ -60,6 +60,15 @@ describe("playbooks", () => {
     expect(log.briefs).toBe(1);
   });
 
+  it("says nothing aloud while silenced, and still reminds once it ends", async () => {
+    const { log, ops } = fakes();
+    const quiet = await runPlaybooks(input({ quiet: true }), ops);
+    expect(log.said).toEqual([]);
+    expect(quiet.did.some((d) => d.id === "waiting_remind")).toBe(false);
+    await runPlaybooks(input({ state: quiet.state }), ops);
+    expect(log.said).toHaveLength(1);
+  });
+
   it("builds no brief before six", async () => {
     const { log, ops } = fakes();
     await runPlaybooks(input({ hour: 5 }), ops);

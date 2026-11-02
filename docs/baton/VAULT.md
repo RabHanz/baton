@@ -39,11 +39,12 @@ ciphertext only, and only if sync is switched on for the vault file; nothing els
 - **Passkey.** WebAuthn with a platform authenticator would let Windows Hello itself guard the key. Electron's
   `BrowserWindow` does not expose Windows Hello to `navigator.credentials` reliably, so Tessaya does not rely on it. The
   fallback is the one above: a passphrase for the cryptography, plus a Windows Hello consent prompt
-  (`UserConsentVerifier`, through a small PowerShell call) before the DPAPI-wrapped key is used, and before any reveal.
+  (`UserConsentVerifier`, through a small PowerShell call) before the DPAPI-wrapped key is used, and before any reveal, copy or assistant use (after his yes). Where Hello is not set up, the unlocked vault is the proof.
   **The limit, stated plainly:** the Hello prompt is a gate the app enforces, not a cryptographic secret; the passphrase and
   the recovery key are the cryptographic protection. A passkey can replace the gate when Electron supports it.
 - **Auto-lock** after ten idle minutes (adjustable) and when the screen locks or the machine sleeps. Locking zeroes the
-  in-memory key and clears the clipboard if Tessaya put something there.
+  in-memory key, closes any value on show, clears the clipboard if Tessaya put something there, and redraws the Vault tab at once, idle locks included.
+- **Recovery key at creation:** shown once with Save as a file (a save dialog, so he can put it on a USB stick) and Print.
 - **Export and import** is the vault file re-wrapped under an export passphrase; import asks for it and merges by name.
 - No plaintext is ever written to a log, History, memory, the conversation file or a thread. The audit log records the
   name, purpose, target, outcome and time of every use, never the value.
