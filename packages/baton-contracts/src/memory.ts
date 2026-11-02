@@ -19,6 +19,7 @@ export const BATON_MEMORY_WS_METHODS = {
   export: "baton.memory.export",
   learn: "baton.memory.learn",
   import: "baton.memory.import",
+  pull: "baton.memory.pull",
   syncHello: "baton.memory.syncHello",
   syncPull: "baton.memory.syncPull",
   syncPush: "baton.memory.syncPush",
@@ -174,4 +175,15 @@ export const BatonMemoryImportResult = Schema.Struct({
   added: Schema.Number,
   refused: Schema.Number,
   unchanged: Schema.Number,
+});
+
+/** The scheduled pull of learnings from the history index; what it finds is held for his yes (D150). */
+export const BatonMemoryPullInput = Schema.Struct({
+  action: Schema.Literals(["status", "enable", "disable", "run"]),
+});
+export const BatonMemoryPullResult = Schema.Struct({
+  enabled: Schema.Boolean,
+  found: Schema.Number,
+  held: Schema.Number,
+  message: Schema.String,
 });

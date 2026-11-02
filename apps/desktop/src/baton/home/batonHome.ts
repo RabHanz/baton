@@ -110,6 +110,8 @@ export type HomeControl =
       readonly usedOnly: boolean;
       readonly usedCount: number;
       readonly syncOn: boolean;
+      /** The daily pull of learnings from the history index (held for his yes). */
+      readonly pullOn: boolean;
       readonly status: string;
     })
   /** The Vault area's header: make, unlock, lock, add, export, import, and the activity log (D151). */
