@@ -9,6 +9,7 @@ Turn on **Listen for my wake word** on the Voice page. Say a wake word (the ones
 ## Good to know
 
 - **Stop** it by saying "stop", "quiet", "enough" or "cancel" while it talks. It hears those with no wake word and nothing else said over its voice.
+- **Quiet speech** (Voice page) is for whispering or a faraway microphone: Tessaya lifts what it hears and accepts a fainter wake word. It also lifts room noise and allows more false wakes, so it is off until you turn it on.
 - **Mute** from the tray; the microphone is off while muted.
 - **Written only** (tray, Answers) shows every answer on screen and plays nothing.
 - A wake word that has no model on this computer stays off.

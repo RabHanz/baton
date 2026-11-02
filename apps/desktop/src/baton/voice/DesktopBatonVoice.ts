@@ -346,6 +346,7 @@ import {
   withRetry,
 } from "./historyRetry.ts";
 import { buildTranscriptReport } from "./transcriptReport.ts";
+import { boostCore, quietThreshold } from "@t3tools/baton-shared/quietSpeech";
 import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
@@ -406,6 +407,8 @@ interface VoiceSettings {
   readonly verifyWake: boolean;
   /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
   readonly learnWords: boolean;
+  /** For whispering or a far mic: audio is lifted and wake thresholds lowered. Off by default. */
+  readonly quietSpeech: boolean;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
   readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -496,6 +499,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   conversationOpenMs: 30_000,
   verifyWake: true,
   learnWords: true,
+  quietSpeech: false,
   doubleTap: true,
   keepVoice: false,
   keepDays: 30,
@@ -574,6 +578,7 @@ export const readSettings = (path: string): VoiceSettings => {
       wakeWords,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
+      quietSpeech: saved["quietSpeech"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
     };
@@ -2454,7 +2459,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     core = await input.makeCore({
       intent: voiceIntent,
       onReply: flash,
-      settings,
+      settings: settings.quietSpeech
+        ? {
+            ...settings,
+            wakeWords: settings.wakeWords.map((w) => ({
+              ...w,
+              threshold: quietThreshold(w.threshold),
+            })),
+          }
+        : settings,
       stt: makeSidecarStt(sidecar),
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
@@ -2565,7 +2578,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     note = choice.kind === "default" && settings.pinnedLabel !== null ? choice.reason : null;
     loop = await startVoiceLoop({
       audio,
-      core: startCore,
+      core: boostCore(startCore, () => settings.quietSpeech),
       deviceId: choiceDeviceId(choice),
       onState: (next) => {
         state = next;
@@ -3772,6 +3785,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         })),
       },
       {
+        id: "v.quietSpeech",
+        section: "Wake and listening",
+        label: "Quiet speech",
+        hint: "For whispering or a microphone far away: Tessaya lifts what it hears and accepts a fainter wake word. It also lifts room noise and lets in more false wakes, so leave it off otherwise.",
+        kind: "toggle",
+        on: settings.quietSpeech,
+      },
+      {
         id: "v.verifyWake",
         section: "Wake and listening",
         label: "Check the wake word before waking",
@@ -4532,7 +4553,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
-    else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
+    else if (id === "v.quietSpeech") {
+      save({ quietSpeech: on });
+      void relisten();
+    } else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
     else if (id === "v.listenAfterWake" && LISTEN_AFTER_WAKE_MS.includes(Number(value))) {
       save({ wakeListenMs: Number(value) });
     } else if (id === "v.conversation" && CONVERSATION_MS.includes(Number(value))) {
