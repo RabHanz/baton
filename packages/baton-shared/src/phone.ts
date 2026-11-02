@@ -36,6 +36,8 @@ export interface PhoneApproval extends Omit<Approval, "kind"> {
   readonly cancel?: number;
   /** A question with more than two answers (the cloud card): one button each, none preselected. */
   readonly buttons?: ReadonlyArray<string>;
+  /** A phone may answer only if its session holds this permission. */
+  readonly needs?: "cloud-approve";
 }
 
 export interface PhoneAskRow {
@@ -96,6 +98,7 @@ export const buildPhoneState = (input: {
     yes: p.yes,
     cancel: p.cancel,
     ...(p.buttons.length > 2 ? { buttons: p.buttons } : {}),
+    ...(p.needs === undefined ? {} : { needs: p.needs }),
   }));
   const approvals = [
     ...mirrored,

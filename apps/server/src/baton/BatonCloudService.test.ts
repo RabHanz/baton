@@ -25,6 +25,20 @@ it.layer(layer.pipe(Layer.provide(config)))("BatonCloudService", (it) => {
     }),
   );
 
+  it.effect("keeps approve and deny to their own door, away from the act door", () =>
+    Effect.gen(function* () {
+      const cloud = yield* BatonCloudService;
+      const refused = { ok: false, error: "That request is not allowed here." };
+      assert.deepStrictEqual(yield* cloud.call({ op: "approve", provider: "claude", args: {} }, "act"), refused);
+      assert.deepStrictEqual(yield* cloud.call({ op: "deny", provider: "claude", args: {} }, "act"), refused);
+      assert.deepStrictEqual(yield* cloud.call({ op: "dispatch", provider: "claude", args: {} }, "approve"), refused);
+      assert.deepStrictEqual(
+        yield* cloud.call({ op: "approve", provider: "gemini", args: {} }, "approve"),
+        { ok: false, error: "That cloud provider is not set up on the computer that runs cloud tasks." },
+      );
+    }),
+  );
+
   it.effect("says plainly when the hub does not have the provider", () =>
     Effect.gen(function* () {
       const cloud = yield* BatonCloudService;

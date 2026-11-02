@@ -42,6 +42,7 @@ interface PromptRow {
   readonly buttons: string;
   readonly yes: number;
   readonly cancel: number;
+  readonly needs: string | null;
   readonly status: string;
   readonly answer: number | null;
 }
@@ -202,9 +203,9 @@ export const make = Effect.gen(function* () {
   const mirror = Effect.fn("BatonPhoneInbox.mirror")(function* (prompt: PhonePrompt) {
     const now = yield* Clock.currentTimeMillis;
     yield* sql`
-      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, status, answer, created_at, expires_at)
+      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, needs, status, answer, created_at, expires_at)
       VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, MAX_BUTTONS))},
-              ${prompt.yes}, ${prompt.cancel}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS})
+              ${prompt.yes}, ${prompt.cancel}, ${prompt.needs ?? null}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS})
     `.pipe(Effect.orDie);
   });
 
@@ -221,6 +222,7 @@ export const make = Effect.gen(function* () {
       buttons: decodeButtons(r.buttons),
       yes: r.yes,
       cancel: r.cancel,
+      ...(r.needs === "cloud-approve" ? { needs: "cloud-approve" as const } : {}),
     }));
   });
 
@@ -325,7 +327,7 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
       ) {
         return yield* bad();
       }
-      yield* inbox.mirror({ id, title, detail, buttons, yes, cancel });
+      yield* inbox.mirror({ id, title, detail, buttons, yes, cancel, ...(a["needs"] === "cloud-approve" ? { needs: "cloud-approve" as const } : {}) });
       return { value: true };
     }
     case "promptPoll":
