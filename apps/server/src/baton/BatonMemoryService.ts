@@ -138,6 +138,9 @@ export class BatonMemoryService extends Context.Service<
       changes: ReadonlyArray<MemoryChange>,
       upTo: string,
     ) => Effect.Effect<number>;
+    /** Notes what he talked about today (a few words), for the day's episode. */
+    readonly noteTalk: (day: string, text: string) => Effect.Effect<void>;
+    readonly talks: (day: string) => Effect.Effect<ReadonlyArray<string>>;
     /** Remembers `value` under `key`; true when it differs from what was there, so work is done once. */
     readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
@@ -414,6 +417,25 @@ export const make = Effect.gen(function* () {
     return gone.length;
   });
 
+  const MAX_TALKS = 12;
+  const talks = Effect.fn("BatonMemoryService.talks")(function* (day: string) {
+    const rows = yield* sql<{ value: string }>`
+      SELECT value FROM fabric_memory_meta WHERE key = ${`talks:${day}`}
+    `.pipe(Effect.orDie);
+    try {
+      return rows[0] === undefined ? [] : (JSON.parse(rows[0].value) as string[]);
+    } catch {
+      return [];
+    }
+  });
+  const noteTalk = Effect.fn("BatonMemoryService.noteTalk")(function* (day: string, text: string) {
+    const held = yield* talks(day);
+    if (held.length >= MAX_TALKS) return;
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`talks:${day}`}, ${JSON.stringify([...held, text.trim().replace(/\s+/g, " ").slice(0, 80)])})`.pipe(
+      Effect.orDie,
+    );
+  });
+
   const noteOnce = Effect.fn("BatonMemoryService.noteOnce")(function* (key: string, value: string) {
     const rows = yield* sql<{
       value: string;
@@ -546,6 +568,8 @@ export const make = Effect.gen(function* () {
     exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
     sweep,
     noteOnce,
+    noteTalk,
+    talks,
     syncHello,
     changesSince,
     applyChanges,
