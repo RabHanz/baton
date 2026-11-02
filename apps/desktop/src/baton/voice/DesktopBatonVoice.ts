@@ -59,6 +59,7 @@ import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { answerNeeds } from "../presence/needsAnswer.ts";
+import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
@@ -232,6 +233,11 @@ interface VoiceSettings {
   readonly quietHours: string;
   readonly briefMode: "off" | "written" | "spoken";
   /** Repositories whose ledger labels count in "what needs me" (read-only, gh), and a deadlines file. */
+  /** What the assistant may know of his state: each off until he turns it on (D149). */
+  readonly awarenessWindow: boolean;
+  readonly awarenessIdle: boolean;
+  readonly awarenessFocus: boolean;
+  readonly awarenessJobs: boolean;
   readonly needsRepos: ReadonlyArray<string>;
   readonly needsDeadlinesFile: string | null;
   /** The day (local) the morning brief was last given, so it comes once. */
@@ -284,6 +290,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   noticeMode: "written",
   quietHours: "22-8",
   briefMode: "written",
+  awarenessWindow: false,
+  awarenessIdle: false,
+  awarenessFocus: false,
+  awarenessJobs: false,
   needsRepos: [],
   needsDeadlinesFile: null,
   briefDay: null,
@@ -341,6 +351,7 @@ const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
+const AWARENESS_SAMPLE_MS = 30_000;
 /** Changes this close together make one tray and window update. */
 const RENDER_COALESCE_MS = 40;
 
@@ -1122,8 +1133,33 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     bus: desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }),
     now: Date.now(),
   });
+  const awareness = createAwareness({
+    switches: () => ({
+      window: settings.awarenessWindow,
+      idle: settings.awarenessIdle,
+      focus: settings.awarenessFocus,
+      jobs: settings.awarenessJobs,
+    }),
+    foreground: async () => {
+      const app = await sidecar?.foreground();
+      return app === undefined || app.exe.length === 0 ? null : `${app.exe}: ${app.title}`;
+    },
+    idleSeconds: () => Electron.powerMonitor.getSystemIdleTime(),
+    focusSession: () =>
+      input.sessions?.rows().find((r) => r.key === focusedWorkSessionId)?.session ?? null,
+    runningJobs: () => (jobsCache ?? []).filter((j) => j.group === "running").map((j) => j.title),
+    doing: () =>
+      buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] })
+        .slice(0, 3)
+        .map((a) => `waiting for his answer: ${a.title}`),
+    now: () => Date.now(),
+  });
+  setInterval(() => {
+    if (awareness.active()) void awareness.sample().catch(() => undefined);
+  }, AWARENESS_SAMPLE_MS).unref();
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
+    presence: () => awareness.describe(),
     sessionsList: () => {
       const rows = input.sessions?.rows() ?? [];
       return rows.length === 0
