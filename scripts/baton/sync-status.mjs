@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* oxlint-disable t3code/namespace-node-imports -- Baton file predating the rule (D82) */
 // The daily upstream sync's one status file: what happened and, when it stopped, exactly where.
 // node scripts/baton/sync-status.mjs --result merged|conflict|gates|deploy|nothing|disk [--pin sha] [--to sha] [--behind n]
 //   [--days n] [--patches "a.patch b.patch"] [--files "path path"] [--pr url] [--log file] > upstream-sync.json
@@ -8,7 +9,8 @@ import { pathToFileURL } from "node:url";
 const HINTS = {
   merged: "Synced, gates green, merged. Deploy follows.",
   nothing: "Baton is on upstream's tip.",
-  conflict: "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR.",
+  conflict:
+    "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR.",
   gates: "The series applied but a gate failed. The branch is pushed; read the gates log.",
   deploy: "Merged, but the deploy did not hold and was rolled back.",
   disk: "Skipped: the volume is below its free-space floor.",
@@ -36,7 +38,8 @@ const num = (v) => (v === undefined || v === "" ? null : Number(v));
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const args = {};
-  for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^--/, "")] = process.argv[i + 1];
+  for (let i = 2; i < process.argv.length; i += 2)
+    args[process.argv[i].replace(/^--/, "")] = process.argv[i + 1];
   console.log(
     JSON.stringify(
       syncStatus({

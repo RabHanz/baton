@@ -189,7 +189,13 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
-import { applyRestore, planBackup, previewRestore, writeBackup, type RestorePreview } from "../backup/backup.ts";
+import {
+  applyRestore,
+  planBackup,
+  previewRestore,
+  writeBackup,
+  type RestorePreview,
+} from "../backup/backup.ts";
 import { backupControls } from "../backup/backupRows.ts";
 import {
   CONTINUE_TEXT,
@@ -201,7 +207,12 @@ import {
 } from "../lifecycle/recovery.ts";
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { helpControls } from "../help/helpRows.ts";
-import { createPlaybookStore, PLAYBOOKS, runPlaybooks, type PlaybookId } from "../presence/playbooks.ts";
+import {
+  createPlaybookStore,
+  PLAYBOOKS,
+  runPlaybooks,
+  type PlaybookId,
+} from "../presence/playbooks.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
@@ -221,8 +232,10 @@ import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
 import { createPhoneRelay, nextPollMs } from "../phone/phoneRelay.ts";
-import { createNightlyCache } from "../presence/nightlyRead.ts";
-import { nightlyRow, syncRow } from "@t3tools/baton-shared/nightly";
+import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
+import { createSyncExtraCache } from "../presence/syncRead.ts";
+import { syncCapability, syncNeeds, type SyncState } from "@t3tools/baton-shared/syncState";
+import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
@@ -646,7 +659,9 @@ export interface VoiceCoreHooks {
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
   /** The phone's words run as a typed ask; the reply comes back. */
-  readonly askFromPhone?: (text: string) => Promise<{ readonly spoken: string; readonly card: string }>;
+  readonly askFromPhone?: (
+    text: string,
+  ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly setPhoneMirror?: (mirror: PhoneMirror | null) => void;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
@@ -1645,7 +1660,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs: jobsCache ?? [],
         sessions: input.sessions?.rows() ?? [],
         findings: await watchFindings(),
-        extra: needsFromCommitments(commitments.list(), Date.now()),
+        extra: [
+          ...needsFromCommitments(commitments.list(), Date.now()),
+          ...syncNeeds(syncNow, Date.now()),
+        ],
         config: needsConfig(),
         external: externalNeeds,
         now: Date.now(),
@@ -1700,7 +1718,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "activity_today") return describeToday(trustData().entries, new Date());
       if (op === "permission_off") {
         const what = permissionFromWords(String(args["what"] ?? ""));
-        if (what === null) return "I do not know which permission that is. Ask for trust_show to see them.";
+        if (what === null)
+          return "I do not know which permission that is. Ask for trust_show to see them.";
         applyHome(`trust.revoke:${what}`, null);
         return `Turned off: ${what}. You can turn it back on in the Trust page.`;
       }
@@ -1714,7 +1733,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
-          extra: needsFromCommitments(commitments.list(), Date.now()),
+          extra: [
+            ...needsFromCommitments(commitments.list(), Date.now()),
+            ...syncNeeds(syncNow, Date.now()),
+          ],
           config: needsConfig(),
           external: externalNeeds,
           now: Date.now(),
@@ -2401,7 +2423,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     // A slow computer: the microphone opens, what is said is kept, and it is heard the moment the models are ready.
     let startCore = core;
     if (!warmed) {
-      const slow = "Still loading the speech models. What you say now is kept and heard as soon as they are ready.";
+      const slow =
+        "Still loading the speech models. What you say now is kept and heard as soon as they are ready.";
       note = slow;
       render();
       startCore = holdFramesUntil(core, warm.complete);
@@ -2617,7 +2640,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         defaultPath: "tessaya-recovery-key.txt",
       });
       if (r.canceled || r.filePath === undefined) return null;
-      NodeFS.writeFileSync(r.filePath, `Tessaya vault recovery key\n\n${key}\n\nIt is the only way in if the passphrase is forgotten. Keep it off this computer.\n`, { mode: 0o600 });
+      NodeFS.writeFileSync(
+        r.filePath,
+        `Tessaya vault recovery key\n\n${key}\n\nIt is the only way in if the passphrase is forgotten. Keep it off this computer.\n`,
+        { mode: 0o600 },
+      );
       return r.filePath;
     },
     printRecovery: async (key) => {
@@ -2782,7 +2809,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     hour: () => new Date().getHours(),
     policy: () =>
       settings.initiativeMode === "off" ||
-      silenced(new Date()) || mainContents === null || mainContents.isDestroyed()
+      silenced(new Date()) ||
+      mainContents === null ||
+      mainContents.isDestroyed()
         ? null
         : {
             ...DEFAULT_POLICY,
@@ -2834,7 +2863,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let interruptedNow: ReadonlyArray<Interrupted> = recovery.readMarks();
   let recovered = false;
   const beatNow = (running: boolean): void => {
-    const cards = (jobsCache ?? []).map((j) => ({ id: j.workSessionId, title: j.title, group: j.group }));
+    const cards = (jobsCache ?? []).map((j) => ({
+      id: j.workSessionId,
+      title: j.title,
+      group: j.group,
+    }));
     if (jobsCache !== null) {
       let marks = recovery.readMarks();
       if (!recovered) {
@@ -2855,7 +2888,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobsCache === null
           ? (previousBeat?.jobsRunning ?? [])
           : cards.filter((c) => c.group === "running").map((c) => ({ id: c.id, title: c.title })),
-      approvalsWaiting: buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }).length,
+      approvalsWaiting: buildApprovals({
+        jobs: jobsCache ?? [],
+        sessions: input.sessions?.rows() ?? [],
+      }).length,
     });
   };
   setInterval(() => beatNow(true), 30_000).unref();
@@ -2885,11 +2921,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       {
         look: (offer) => startLook(offer, true),
-        brief: async () =>
-          morningBrief({ jobs, findings, now, extra: briefExtra() }),
+        brief: async () => morningBrief({ jobs, findings, now, extra: briefExtra() }),
         say: (text) => input.extras?.announce(text, true),
         note: async (id, text) => {
-          await requestKept({ kind: "job", op: "refine", args: { id, text, via: "text", note: true } });
+          await requestKept({
+            kind: "job",
+            op: "refine",
+            args: { id, text, via: "text", note: true },
+          });
         },
       },
     );
@@ -3043,16 +3082,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let nowData: NowData = EMPTY_NOW;
   const probe = createProbes({});
   const readLastNightly = createNightlyCache("RabHanz/baton");
+  const readSyncExtra = createSyncExtraCache("RabHanz/baton", input.env["BATON_REPO_DIR"], runGh);
+  /** Last read of the upstream sync; the rows below use it, and a failed read leaves it unknown. */
+  let syncNow: SyncState = { localBehind: null, status: null, pr: null };
   const refreshNow = async (): Promise<void> => {
     const at = Date.now();
     // Asking the server goes through the T3 window and would open it: only while it is already open.
     const windowUp = mainContents !== null && !mainContents.isDestroyed();
     const jobs = jobsCache ?? [];
+    const last = await readLastNightly();
+    syncNow = { ...(await readSyncExtra()), status: last.sync };
     const { ranked, unreadable } = await collectNeeds({
       jobs,
       sessions: input.sessions?.rows() ?? [],
       findings: windowUp ? await watchFindings() : [],
-      extra: needsFromCommitments(commitments.list(), at),
+      extra: [...needsFromCommitments(commitments.list(), at), ...syncNeeds(syncNow, at)],
       config: needsConfig(),
       external: externalNeeds,
       now: at,
@@ -3069,7 +3113,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .slice(0, 5)
       .map((m) => m.text);
     const probed = await probe(settings.claudeBinary);
-    const { nightly, sync } = await readLastNightly();
+    const { nightly } = last;
     const state = initiative.state();
     nowData = {
       loaded: true,
@@ -3095,7 +3139,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           server: jobsCache !== null,
         }),
         nightlyRow(nightly, Date.now()),
-        syncRow(sync, Date.now()),
+        syncCapability(syncNow, Date.now()),
       ],
       weaves:
         (
@@ -3131,7 +3175,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const plan = planBackup(input.stateDir, exported?.markdown ?? null);
     const count = writeBackup(picked.filePath, plan);
     backupNote = `Saved ${count} files to ${picked.filePath}.${
-      exported === null ? " Server memory was not included (open the sessions window and export again)." : ""
+      exported === null
+        ? " Server memory was not included (open the sessions window and export again)."
+        : ""
     }${plan.skipped.length === 0 ? "" : ` Left out: ${plan.skipped.map((x) => `${x.name} (${x.why})`).join("; ")}.`}`;
   };
   const backupChoose = async (): Promise<void> => {
@@ -3209,7 +3255,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         checks: checks ?? [],
       }),
       ...backupControls(
-        backupPreview === null ? null : { file: NodePath.basename(backupPreview.file), rows: backupPreview.rows },
+        backupPreview === null
+          ? null
+          : { file: NodePath.basename(backupPreview.file), rows: backupPreview.rows },
         backupNote,
       ),
       setupHoldControl(settings.holdKey),
@@ -4096,8 +4144,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           : "A built-in cannot be removed; replace it with your own of the same name.";
       } else if (act?.kind === "reset") transforms.reset();
     } else if (id.startsWith("bk.")) {
-      if (id === "bk.export") void backupExport().catch((e) => void (backupNote = String(e))).finally(pushHome);
-      else if (id === "bk.restore") void backupChoose().catch((e) => void (backupNote = String(e))).finally(pushHome);
+      if (id === "bk.export")
+        void backupExport()
+          .catch((e) => void (backupNote = String(e)))
+          .finally(pushHome);
+      else if (id === "bk.restore")
+        void backupChoose()
+          .catch((e) => void (backupNote = String(e)))
+          .finally(pushHome);
       else if (id === "bk.apply" && backupPreview !== null) {
         const n = applyRestore(backupPreview, input.stateDir);
         backupNote = `Restored ${n} file(s). Restart Tessaya to use all of them; yours were kept as .bak.`;
@@ -4113,7 +4167,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (typeof value === "string" && HOLD_KEY_CHOICES.includes(value)) {
         const checked = checkInput({ type: "key", accelerator: value });
         if (checked.ok) {
-          save({ bindings: withBinding(settings.bindings, "hold", [{ type: "key", accelerator: value }]) });
+          save({
+            bindings: withBinding(settings.bindings, "hold", [{ type: "key", accelerator: value }]),
+          });
           applyBindings();
         }
       }
@@ -4123,14 +4179,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const act = trustAction(id, value);
       if (act?.kind === "filter") trustFilter = act.filter;
       else if (act?.kind === "playbook") {
-        if (PLAYBOOKS.some((p) => p.id === act.id)) playbookStore.setOn(act.id as PlaybookId, act.on);
-      }
-      else if (act?.kind === "revoke") {
+        if (PLAYBOOKS.some((p) => p.id === act.id))
+          playbookStore.setOn(act.id as PlaybookId, act.on);
+      } else if (act?.kind === "revoke") {
         if (act.what === "vault") vaultState.vault.lock();
         else {
-          const toggle = { screen: "s.capture", chrome: "s.chrome", social: "s.social", act: "s.act" }[
-            act.what
-          ];
+          const toggle = {
+            screen: "s.capture",
+            chrome: "s.chrome",
+            social: "s.social",
+            act: "s.act",
+          }[act.what];
           input.extras?.applySetting(toggle, false);
         }
       } else if (act?.kind === "grant") {

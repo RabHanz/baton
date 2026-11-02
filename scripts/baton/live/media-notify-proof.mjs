@@ -1,4 +1,4 @@
-/* oxlint-disable t3code/no-low-value-comments, t3code/no-real-time-wait-in-tests -- Baton proof script */
+/* oxlint-disable t3code/no-low-value-comments -- Baton proof script */
 // Prove D85 through T3's own web client, read-only on the thread it is pointed at:
 //
 //   node scripts/baton/live/media-notify-proof.mjs <pairUrlFile> <outPrefix> <width> <step>...

@@ -47,7 +47,9 @@ const check = (id: string, bad: boolean): HomeControl => ({
   fix: "Plug one in.",
 });
 
-export const STATES: Readonly<Record<string, { controls: ReadonlyArray<HomeControl>; extra?: object }>> = {
+export const STATES: Readonly<
+  Record<string, { controls: ReadonlyArray<HomeControl>; extra?: object }>
+> = {
   loading: {
     controls: [
       ...nowControls(EMPTY_NOW, NOW),
@@ -76,7 +78,9 @@ export const STATES: Readonly<Record<string, { controls: ReadonlyArray<HomeContr
       ...helpControls({
         tools: [],
         bindings: [],
-        checks: [{ id: "mic", title: "Microphone", status: "bad", detail: "No microphone was found." }],
+        checks: [
+          { id: "mic", title: "Microphone", status: "bad", detail: "No microphone was found." },
+        ],
       }),
       ...backupControls(null, "That is not a zip file."),
     ],
@@ -87,7 +91,12 @@ export const STATES: Readonly<Record<string, { controls: ReadonlyArray<HomeContr
         {
           ...EMPTY_NOW,
           loaded: true,
-          capabilities: capabilities({ network: false, claude: false, speechModel: false, server: false }),
+          capabilities: capabilities({
+            network: false,
+            claude: false,
+            speechModel: false,
+            server: false,
+          }),
         },
         NOW,
       ),
@@ -118,8 +127,12 @@ export const sweepPages = async (): Promise<ReadonlyArray<string>> => {
       ...state,
       controls: state.controls.map((c) => ({ ...c, tab: tabOf(c.id) })),
     });
-    for (const e of page.errors) found.push(`${name}: the page failed: ${e.split("\n").slice(0, 4).join(" | ")}`);
-    const seen: Array<[string, string]> = [["side", page.textOf("side")], ["top", page.textOf("top")]];
+    for (const e of page.errors)
+      found.push(`${name}: the page failed: ${e.split("\n").slice(0, 4).join(" | ")}`);
+    const seen: Array<[string, string]> = [
+      ["side", page.textOf("side")],
+      ["top", page.textOf("top")],
+    ];
     for (const { id } of TABS) seen.push([`tab ${id}`, page.show(id)]);
     for (const m of MODALS) {
       seen.push([`dialog ${m}`, page.openModal(m)]);
@@ -127,9 +140,14 @@ export const sweepPages = async (): Promise<ReadonlyArray<string>> => {
     }
     for (const [where, text] of seen) {
       const hit = BAD.exec(text);
-      if (hit !== null) found.push(`${name}, ${where}: shows "${hit[0]}" in "${text.slice(Math.max(0, hit.index - 40), hit.index + 40)}"`);
+      if (hit !== null)
+        found.push(
+          `${name}, ${where}: shows "${hit[0]}" in "${text.slice(Math.max(0, hit.index - 40), hit.index + 40)}"`,
+        );
     }
-    for (const e of page.errors) if (!found.some((f) => f.includes(e.split("\n").slice(0, 4).join(" | ")!))) found.push(`${name}: ${e.split("\n").slice(0, 4).join(" | ")}`);
+    for (const e of page.errors)
+      if (!found.some((f) => f.includes(e.split("\n").slice(0, 4).join(" | ")!)))
+        found.push(`${name}: ${e.split("\n").slice(0, 4).join(" | ")}`);
   }
   return found;
 };

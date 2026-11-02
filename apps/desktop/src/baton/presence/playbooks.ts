@@ -1,3 +1,4 @@
+/* oxlint-disable no-unused-vars -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * Playbooks: narrow standing permissions for work Tessaya does unattended, all off until he turns one
@@ -9,7 +10,12 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
-import { triggersFromCi, triggersFromFindings, type CiRun, type Trigger } from "@t3tools/baton-shared/initiative";
+import {
+  triggersFromCi,
+  triggersFromFindings,
+  type CiRun,
+  type Trigger,
+} from "@t3tools/baton-shared/initiative";
 
 export type PlaybookId = "ci_look" | "morning_brief" | "waiting_remind" | "job_summary";
 
@@ -129,7 +135,9 @@ export const runPlaybooks = async (
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
     await attempt("waiting_remind", `wait:${f.workSessionId}`, async () => {
-      ops.say(`${f.title} has been waiting for you for about ${Math.round(f.minutes / 60)} hour${f.minutes >= 120 ? "s" : ""}.`);
+      ops.say(
+        `${f.title} has been waiting for you for about ${Math.round(f.minutes / 60)} hour${f.minutes >= 120 ? "s" : ""}.`,
+      );
       return `Reminded you about ${f.title}.`;
     });
   }
@@ -143,7 +151,10 @@ export const runPlaybooks = async (
         u === undefined || u === null
           ? ""
           : ` It ran ${u.minutes} min and ${u.turns} turns${u.dollars == null ? "" : `, about $${u.dollars.toFixed(2)}`}.`;
-      await ops.note(job.workSessionId, `Finished: ${job.title}.${used} Summary written by Tessaya.`);
+      await ops.note(
+        job.workSessionId,
+        `Finished: ${job.title}.${used} Summary written by Tessaya.`,
+      );
       return `Summarised ${job.title}.`;
     });
   }
@@ -168,6 +179,7 @@ export const createPlaybookStore = (dir: string) => {
   return {
     load,
     save,
-    setOn: (id: PlaybookId, on: boolean): void => save({ ...load(), on: { ...load().on, [id]: on } }),
+    setOn: (id: PlaybookId, on: boolean): void =>
+      save({ ...load(), on: { ...load().on, [id]: on } }),
   };
 };

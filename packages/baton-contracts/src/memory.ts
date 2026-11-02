@@ -111,7 +111,9 @@ export const BatonMemoryRecallResult = Schema.Struct({
   ids: Schema.Array(Schema.String),
 });
 /** No `turnRef` means the most recent turn that used any memory. */
-export const BatonMemoryUsedInput = Schema.Struct({ turnRef: Schema.optionalKey(TrimmedNonEmptyString) });
+export const BatonMemoryUsedInput = Schema.Struct({
+  turnRef: Schema.optionalKey(TrimmedNonEmptyString),
+});
 export const BatonMemoryExportResult = Schema.Struct({ markdown: Schema.String });
 
 /** Said in plain words to him: "that looks like a password, so I did not keep it". */

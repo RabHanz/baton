@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
  * The model and reasoning effort of a Claude Code session running in a terminal, changed from the
  * thread. The session is told with its own `/model` and `/effort` commands in its Herdr pane, and

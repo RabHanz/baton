@@ -5,7 +5,11 @@
  * If this breaks, something between "hand it a job" and "it reports back" broke.
  */
 import { ProjectId, WorkSessionId } from "@t3tools/baton-contracts";
-import { ProviderInstanceId, type OrchestrationV2ThreadShell, type ThreadId } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  type OrchestrationV2ThreadShell,
+  type ThreadId,
+} from "@t3tools/contracts";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -52,7 +56,13 @@ layer("employee spine", (it) => {
         title: "Spine job",
         goal: "Fix the flaky test",
         permissions: { folders: [], projects: [], tools: ["read"] },
-        limits: { retries: 2, reportEveryMinutes: 1, workerTurns: 3, wallClockMinutes: 600, dollars: 1 },
+        limits: {
+          retries: 2,
+          reportEveryMinutes: 1,
+          workerTurns: 3,
+          wallClockMinutes: 600,
+          dollars: 1,
+        },
         modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
         runtimeMode: "approval-required",
       });
@@ -66,7 +76,14 @@ layer("employee spine", (it) => {
             needsUser: false,
             updatedAt: "2026-11-03T10:00:00.000Z",
             threads: [{ threadId }],
-            synopsis: { currentAction: "running the tests", recentFindings: [], changedFiles: [], next: [], validation: [], needsUser: false },
+            synopsis: {
+              currentAction: "running the tests",
+              recentFindings: [],
+              changedFiles: [],
+              next: [],
+              validation: [],
+              needsUser: false,
+            },
             ...extra,
           },
         ] as never;
@@ -101,7 +118,11 @@ layer("employee spine", (it) => {
       assert.deepInclude(priced[0]?.usage ?? {}, { tokens: 1200, dollars: 1.5 });
 
       // The turn cap stops a worker that is still going, and says why in the record.
-      runs.set(threadId, [{ status: "completed" }, { status: "completed" }, { status: "completed" }]);
+      runs.set(threadId, [
+        { status: "completed" },
+        { status: "completed" },
+        { status: "completed" },
+      ]);
       assert.deepStrictEqual(yield* enforceCaps(card("working")), [id]);
       assert.deepStrictEqual(interrupted, [threadId]);
 

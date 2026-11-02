@@ -6,17 +6,17 @@ Made with the `logo-design` skill (Design mode, Phase 1 to the concept checkpoin
 
 ## Which is which
 
-| Concept | Origin | At 64 / 32 / 16 px |
-| --- | --- | --- |
-| Wave B (recommended) | Generated idea (Codex image tool), traced, then redrawn by hand from its measured bars: two bowls of five horizontal bars with a gap between | Reads as a B at 64 px; at 32 px it is a B-ish bar stack; at 16 px it is a blur |
-| Wave B, small cut | Hand-drawn: six thick bars in two bowls of three | Holds at 16 px as a bar stack, reads as a B only when you know |
-| Fine wave B | Generated, traced only, **unfinished**: hair-fine tapering lines | Beautiful at 256 px, mush below 64. Shown for the idea; not a candidate as drawn |
-| Baton and beat | Hand-drawn: a conductor's baton with its beat dot | Holds at every size; reads as a wand or a pen before a baton |
-| One-stroke B | Generated idea, hand-redrawn: one line starting at a solid dot, open middle bar | A B at every size; the lightest weight, so thin at 16 px |
-| Downbeat | Hand-drawn: open ring with the beat dot | The cleanest at 16 px; a spinner to some eyes |
-| Handoff | Hand-drawn: two points and a line passing between them | Holds; says "connected", not "Baton" |
-| Solid B | Hand-drawn: bold geometric B in two halves | The strongest small and the plainest |
-| Echo B | Hand-drawn: a B of nested outlines | A B at 64 px and up; clogs at 16 px |
+| Concept              | Origin                                                                                                                                       | At 64 / 32 / 16 px                                                               |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Wave B (recommended) | Generated idea (Codex image tool), traced, then redrawn by hand from its measured bars: two bowls of five horizontal bars with a gap between | Reads as a B at 64 px; at 32 px it is a B-ish bar stack; at 16 px it is a blur   |
+| Wave B, small cut    | Hand-drawn: six thick bars in two bowls of three                                                                                             | Holds at 16 px as a bar stack, reads as a B only when you know                   |
+| Fine wave B          | Generated, traced only, **unfinished**: hair-fine tapering lines                                                                             | Beautiful at 256 px, mush below 64. Shown for the idea; not a candidate as drawn |
+| Baton and beat       | Hand-drawn: a conductor's baton with its beat dot                                                                                            | Holds at every size; reads as a wand or a pen before a baton                     |
+| One-stroke B         | Generated idea, hand-redrawn: one line starting at a solid dot, open middle bar                                                              | A B at every size; the lightest weight, so thin at 16 px                         |
+| Downbeat             | Hand-drawn: open ring with the beat dot                                                                                                      | The cleanest at 16 px; a spinner to some eyes                                    |
+| Handoff              | Hand-drawn: two points and a line passing between them                                                                                       | Holds; says "connected", not "Baton"                                             |
+| Solid B              | Hand-drawn: bold geometric B in two halves                                                                                                   | The strongest small and the plainest                                             |
+| Echo B               | Hand-drawn: a B of nested outlines                                                                                                           | A B at 64 px and up; clogs at 16 px                                              |
 
 ## Recommendation
 

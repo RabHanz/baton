@@ -22,7 +22,11 @@ const BLUR =
 async function launch() {
   const app = await electron.launch({
     executablePath: electronPath,
-    args: [NodePath.join(desktop, "dist-electron/main.cjs"), "--no-sandbox", `--user-data-dir=${userData}`],
+    args: [
+      NodePath.join(desktop, "dist-electron/main.cjs"),
+      "--no-sandbox",
+      `--user-data-dir=${userData}`,
+    ],
     cwd: desktop,
     env: { ...process.env, T3CODE_HOME: home, ELECTRON_RUN_AS_NODE: undefined },
     timeout: 120_000,
@@ -36,11 +40,22 @@ async function launch() {
 async function mainPage(app) {
   for (let waited = 0; waited < 180; waited += 2) {
     for (const page of app.windows()) {
-      if ((await page.locator("li[data-thread-item]").count().catch(() => 0)) > 0) return page;
+      if (
+        (await page
+          .locator("li[data-thread-item]")
+          .count()
+          .catch(() => 0)) > 0
+      )
+        return page;
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error(`no thread list; windows: ${app.windows().map((p) => p.url()).join(" ")}`);
+  throw new Error(
+    `no thread list; windows: ${app
+      .windows()
+      .map((p) => p.url())
+      .join(" ")}`,
+  );
 }
 const detachedPage = (app) => app.windows().find((page) => page.url().includes("batonWindow="));
 const shot = async (page, name) => {
@@ -67,12 +82,18 @@ await child.waitForSelector('[data-testid="baton-pane-a"]', { timeout: 60_000 })
 await child.waitForTimeout(3000);
 check("detach opens a second BrowserWindow", app.windows().length >= 2, child.url().slice(0, 60));
 check("it has the desktop bridge", await child.evaluate(() => window.desktopBridge !== undefined));
-check("it reads threads from the same backend", (await child.locator("li[data-thread-item]").count()) > 0);
+check(
+  "it reads threads from the same backend",
+  (await child.locator("li[data-thread-item]").count()) > 0,
+);
 const target = { x: 300, y: 120, width: 900, height: 640 };
-await app.evaluate(({ BrowserWindow }, { url, bounds }) => {
-  const window = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
-  window.setBounds(bounds);
-}, { url: child.url(), bounds: target });
+await app.evaluate(
+  ({ BrowserWindow }, { url, bounds }) => {
+    const window = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL() === url);
+    window.setBounds(bounds);
+  },
+  { url: child.url(), bounds: target },
+);
 await child.waitForTimeout(1500);
 await shot(page, "21-desktop-main-after-detach");
 await shot(child, "22-desktop-detached");
@@ -108,7 +129,10 @@ if (restored !== undefined) {
   await restored.locator('[data-testid^="baton-pane-attach-"]').first().click();
   await closed;
   await page.waitForTimeout(2500);
-  check("attach closes it and the main window holds the thread", (await page.locator("section[data-focused]").count()) === 2);
+  check(
+    "attach closes it and the main window holds the thread",
+    (await page.locator("section[data-focused]").count()) === 2,
+  );
   await shot(page, "24-desktop-reattached");
   await page.waitForTimeout(800);
   const after = JSON.parse(NodeFS.readFileSync(stateFile, "utf8"));

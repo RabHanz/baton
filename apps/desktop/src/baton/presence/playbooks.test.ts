@@ -1,16 +1,42 @@
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { EMPTY_PLAYBOOKS, runPlaybooks, type PlaybookInput, type PlaybookOps, type PlaybookState } from "./playbooks.ts";
+import {
+  EMPTY_PLAYBOOKS,
+  runPlaybooks,
+  type PlaybookInput,
+  type PlaybookOps,
+  type PlaybookState,
+} from "./playbooks.ts";
 
 const NOW = Date.parse("2026-11-03T09:00:00Z");
 const allOn: PlaybookState = {
   ...EMPTY_PLAYBOOKS,
   on: { ci_look: true, morning_brief: true, waiting_remind: true, job_summary: true },
 };
-const ci = (runId: number) => ({ repo: "o/r", runId, name: "ci", branch: "main", conclusion: "failure", createdAt: "2026-11-03T08:00:00Z" });
-const waiting = { workSessionId: "w1", title: "Build", kind: "unanswered", minutes: 90 } as WatchFinding;
-const done = (id: string, at: string) => ({ workSessionId: id, title: id, group: "done", phase: "approved", lastActivityAt: at, usage: { minutes: 12, turns: 5, dollars: 0.5 } }) as unknown as BatonJob;
+const ci = (runId: number) => ({
+  repo: "o/r",
+  runId,
+  name: "ci",
+  branch: "main",
+  conclusion: "failure",
+  createdAt: "2026-11-03T08:00:00Z",
+});
+const waiting = {
+  workSessionId: "w1",
+  title: "Build",
+  kind: "unanswered",
+  minutes: 90,
+} as WatchFinding;
+const done = (id: string, at: string) =>
+  ({
+    workSessionId: id,
+    title: id,
+    group: "done",
+    phase: "approved",
+    lastActivityAt: at,
+    usage: { minutes: 12, turns: 5, dollars: 0.5 },
+  }) as unknown as BatonJob;
 
 const fakes = () => {
   const log = { looked: [] as string[], said: [] as string[], noted: [] as string[], briefs: 0 };
@@ -23,8 +49,14 @@ const fakes = () => {
   return { log, ops };
 };
 const input = (over: Partial<PlaybookInput> = {}): PlaybookInput => ({
-  state: allOn, now: NOW, day: "Tue", hour: 9, findings: [waiting], ci: [ci(1)],
-  jobs: [done("j1", "2026-11-03T08:30:00Z"), done("old", "2026-10-01T08:30:00Z")], ...over,
+  state: allOn,
+  now: NOW,
+  day: "Tue",
+  hour: 9,
+  findings: [waiting],
+  ci: [ci(1)],
+  jobs: [done("j1", "2026-11-03T08:30:00Z"), done("old", "2026-10-01T08:30:00Z")],
+  ...over,
 });
 
 describe("playbooks", () => {
@@ -38,7 +70,12 @@ describe("playbooks", () => {
   it("runs each switched-on playbook once for what it saw, and logs it", async () => {
     const { log, ops } = fakes();
     const first = await runPlaybooks(input(), ops);
-    expect(first.did.map((d) => d.id).toSorted()).toEqual(["ci_look", "job_summary", "morning_brief", "waiting_remind"]);
+    expect(first.did.map((d) => d.id).toSorted()).toEqual([
+      "ci_look",
+      "job_summary",
+      "morning_brief",
+      "waiting_remind",
+    ]);
     expect(log.noted).toEqual(["j1"]);
     expect(log.said).toHaveLength(1);
     const again = await runPlaybooks(input({ state: first.state }), ops);
@@ -48,14 +85,22 @@ describe("playbooks", () => {
 
   it("keeps to the budget per day", async () => {
     const { log, ops } = fakes();
-    const r = await runPlaybooks(input({ ci: [1, 2, 3, 4, 5].map((n) => ({ ...ci(n), repo: `o/r${n}` })) }), ops);
+    const r = await runPlaybooks(
+      input({ ci: [1, 2, 3, 4, 5].map((n) => ({ ...ci(n), repo: `o/r${n}` })) }),
+      ops,
+    );
     expect(log.looked).toHaveLength(3);
     expect(r.state.runs.filter((x) => x.id === "ci_look")).toHaveLength(3);
   });
 
   it("records a failing op and still runs the others", async () => {
     const { log, ops } = fakes();
-    const r = await runPlaybooks(input(), { ...ops, look: async () => { throw new Error("no gh"); } });
+    const r = await runPlaybooks(input(), {
+      ...ops,
+      look: async () => {
+        throw new Error("no gh");
+      },
+    });
     expect(r.did.find((d) => d.id === "ci_look")?.text).toContain("Failed: no gh");
     expect(log.briefs).toBe(1);
   });

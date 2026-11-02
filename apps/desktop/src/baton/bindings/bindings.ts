@@ -1,3 +1,4 @@
+/* oxlint-disable oxc/no-accumulating-spread -- Baton file predating the rule (D82) */
 /**
  * Keyboard and mouse bindings (D141). One row per action; an unset row uses the action's default,
  * a row set to null is switched off on purpose. Saved in the voice settings file as

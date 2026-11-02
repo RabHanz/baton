@@ -1,20 +1,54 @@
 // @effect-diagnostics globalDate:off
 import { describe, expect, it } from "vite-plus/test";
 
-import { lastUsed, parseTrustLogs, trustAction, trustControls, type TrustData } from "./trustRows.ts";
+import {
+  lastUsed,
+  parseTrustLogs,
+  trustAction,
+  trustControls,
+  type TrustData,
+} from "./trustRows.ts";
 
 const NOW = Date.parse("2026-11-03T12:00:00Z");
 const turns = [
   { at: "2026-11-03T11:00:00Z", kind: "action", tool: "screen_capture", outcome: "allowed" },
-  { at: "2026-11-03T11:30:00Z", kind: "action", tool: "weave_send", action: "to build", outcome: "allowed" },
+  {
+    at: "2026-11-03T11:30:00Z",
+    kind: "action",
+    tool: "weave_send",
+    action: "to build",
+    outcome: "allowed",
+  },
   { at: "2026-11-03T11:40:00Z", kind: "turn", transcript: "never shown" },
-  { at: "2026-11-03T10:00:00Z", kind: "action", tool: "mcp__claude-in-chrome__navigate", outcome: "refused" },
+  {
+    at: "2026-11-03T10:00:00Z",
+    kind: "action",
+    tool: "mcp__claude-in-chrome__navigate",
+    outcome: "refused",
+  },
 ]
   .map((l) => JSON.stringify(l))
   .join("\n");
-const play = JSON.stringify({ at: "2026-11-03T07:00:00Z", kind: "playbook", playbook: "ci_look", text: "ci on x: started" });
-const social = JSON.stringify({ at: "2026-11-03T09:00:00Z", host: "x.com", tool: "click", action: "post", outcome: "asked" });
-const vault = JSON.stringify({ at: "2026-11-03T08:00:00Z", name: "github", purpose: "login", target: "github.com", outcome: "used" });
+const play = JSON.stringify({
+  at: "2026-11-03T07:00:00Z",
+  kind: "playbook",
+  playbook: "ci_look",
+  text: "ci on x: started",
+});
+const social = JSON.stringify({
+  at: "2026-11-03T09:00:00Z",
+  host: "x.com",
+  tool: "click",
+  action: "post",
+  outcome: "asked",
+});
+const vault = JSON.stringify({
+  at: "2026-11-03T08:00:00Z",
+  name: "github",
+  purpose: "login",
+  target: "github.com",
+  outcome: "used",
+});
 
 const data = (over: Partial<TrustData> = {}): TrustData => ({
   screenAlways: true,
@@ -58,7 +92,11 @@ describe("trust page", () => {
   it("lists each playbook as a toggle that is off until turned on", () => {
     const row = trustControls(data(), NOW).find((c) => c.id === "trust.playbook:ci_look");
     expect(row?.kind === "toggle" && row.on).toBe(false);
-    expect(trustAction("trust.playbook:ci_look", true)).toEqual({ kind: "playbook", id: "ci_look", on: true });
+    expect(trustAction("trust.playbook:ci_look", true)).toEqual({
+      kind: "playbook",
+      id: "ci_look",
+      on: true,
+    });
   });
 
   it("filters the log", () => {

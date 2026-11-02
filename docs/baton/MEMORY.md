@@ -10,14 +10,14 @@ one assistant), D146 (plain editable notes) and D148 (the neutral pack).
 
 ## 1. The layers
 
-| Layer | What it holds | Where it lives | Lifetime |
-| --- | --- | --- | --- |
-| Working | The current turn and the last few: target, focused window, what was just said | the assistant's own context (D143) | one session |
-| Conversation | Every turn, verbatim, with route and target (D142) | `baton-conversation.ndjson` in the state folder | kept; searched by text |
-| Episodic | What happened: a job finished, a session crashed, a thing was tried and worked or failed | memory store, kind `episode` | decays, expires |
-| Semantic | Facts and preferences: how he writes, what he likes, decisions made, corrections he gave | memory store, kinds `preference`, `fact`, `decision`, `correction` | long, reinforced by repetition |
-| Project and people | What is true of one project or one person: stack, owners, conventions, who is who | memory store, scope `project` or `person` | long, tied to a reference |
-| Learnings | What worked or failed in a venture or a job, in a form that changes the next attempt | memory store, kind `learning`, plus imported folders | long, ranked by use |
+| Layer              | What it holds                                                                            | Where it lives                                                     | Lifetime                       |
+| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------ |
+| Working            | The current turn and the last few: target, focused window, what was just said            | the assistant's own context (D143)                                 | one session                    |
+| Conversation       | Every turn, verbatim, with route and target (D142)                                       | `baton-conversation.ndjson` in the state folder                    | kept; searched by text         |
+| Episodic           | What happened: a job finished, a session crashed, a thing was tried and worked or failed | memory store, kind `episode`                                       | decays, expires                |
+| Semantic           | Facts and preferences: how he writes, what he likes, decisions made, corrections he gave | memory store, kinds `preference`, `fact`, `decision`, `correction` | long, reinforced by repetition |
+| Project and people | What is true of one project or one person: stack, owners, conventions, who is who        | memory store, scope `project` or `person`                          | long, tied to a reference      |
+| Learnings          | What worked or failed in a venture or a job, in a form that changes the next attempt     | memory store, kind `learning`, plus imported folders               | long, ranked by use            |
 
 Working and conversation memory stay where they are; the store is the new layer under the other four. One table holds
 them all, because retrieval must rank across them in one query ("what do you remember about X?").

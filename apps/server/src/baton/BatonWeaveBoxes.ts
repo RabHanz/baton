@@ -91,7 +91,10 @@ export const makeLiveBox = (
     readOutput: () => Effect.succeed({ available: false, detail: "no pane", output: "" }),
     sendInput: ({ session, text }: { session: { location: { pane: string } }; text: string }) =>
       Effect.sync(() => {
-        const n = appendLiveQueue(dir(), session.location.pane, { text, shown: text.slice(0, 200) });
+        const n = appendLiveQueue(dir(), session.location.pane, {
+          text,
+          shown: text.slice(0, 200),
+        });
         return {
           delivered: true,
           detail: `queued (${n} waiting); typed when the session is in a Herdr pane`,

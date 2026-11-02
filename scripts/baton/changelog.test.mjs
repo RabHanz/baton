@@ -10,7 +10,12 @@ NodeTest.test("groups by the conventional word and lists newest day first", () =
     [
       { number: 2, title: "fix(a): second", mergedAt: "2026-11-02T10:00:00Z", baseRefName: "main" },
       { number: 1, title: "feat: first", mergedAt: "2026-11-01T10:00:00Z", baseRefName: "main" },
-      { number: 3, title: "feat: not on main", mergedAt: "2026-11-02T10:00:00Z", baseRefName: "other" },
+      {
+        number: 3,
+        title: "feat: not on main",
+        mergedAt: "2026-11-02T10:00:00Z",
+        baseRefName: "other",
+      },
     ],
     "o/r",
   );

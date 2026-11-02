@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/namespace-node-imports -- Baton file predating the rule (D82) */
 /**
  * Dictation's paste and stop paths against real Windows windows, on his desktop, with no microphone.
  * Only Notepad windows of its own are touched, and it closes them.
