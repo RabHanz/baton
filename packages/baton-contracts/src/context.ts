@@ -274,7 +274,8 @@ export interface BatonDesktopBridge {
             readonly text: string;
             readonly focusedWorkSessionId: string | null;
           }
-        | BatonJobBridgeRequest,
+        | BatonJobBridgeRequest
+        | BatonMemoryBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
   /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
@@ -309,5 +310,23 @@ export interface BatonJobBridgeRequest {
     | "stop"
     | "schedule"
     | "split";
+  readonly args: Readonly<Record<string, unknown>>;
+}
+
+/** The desktop's memory calls (D150), answered by the window with `baton.memory.*`; the server checks every argument. */
+export interface BatonMemoryBridgeRequest {
+  readonly kind: "memory";
+  readonly op:
+    | "list"
+    | "search"
+    | "add"
+    | "edit"
+    | "pin"
+    | "forget"
+    | "accept"
+    | "recall"
+    | "used"
+    | "export"
+    | "learn";
   readonly args: Readonly<Record<string, unknown>>;
 }
