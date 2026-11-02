@@ -147,6 +147,10 @@ export class BatonJobService extends Context.Service<
     readonly view: (input: {
       readonly entries: ReadonlyArray<BatonFleetEntry>;
       readonly turns?: ReadonlyMap<string, number>;
+      readonly spend?: ReadonlyMap<
+        string,
+        { readonly tokens: number; readonly dollars: number | null; readonly partial: boolean }
+      >;
     }) => Effect.Effect<ReadonlyArray<BatonJob>>;
   }
 >()("t3/baton/BatonJobService") {}
@@ -232,6 +236,10 @@ export const make = Effect.gen(function* () {
   const view = Effect.fn("BatonJobService.view")(function* (input: {
     readonly entries: ReadonlyArray<BatonFleetEntry>;
     readonly turns?: ReadonlyMap<string, number>;
+    readonly spend?: ReadonlyMap<
+      string,
+      { readonly tokens: number; readonly dollars: number | null; readonly partial: boolean }
+    >;
   }) {
     const all = yield* sql<TermsRow>`SELECT * FROM fabric_job_terms`.pipe(Effect.orDie);
     const now = yield* Clock.currentTimeMillis;
@@ -253,10 +261,20 @@ export const make = Effect.gen(function* () {
           limitReached: limitReached(terms.limits, {
             minutes,
             turns: input.turns?.get(terms.workSessionId) ?? 0,
+            ...(input.spend?.get(terms.workSessionId)?.dollars == null
+              ? {}
+              : { dollars: input.spend.get(terms.workSessionId)!.dollars! }),
           }),
           usage: {
             minutes: Math.floor(minutes),
             turns: input.turns?.get(terms.workSessionId) ?? 0,
+            ...(input.spend?.has(terms.workSessionId)
+              ? {
+                  tokens: input.spend.get(terms.workSessionId)!.tokens,
+                  dollars: input.spend.get(terms.workSessionId)!.dollars,
+                  partial: input.spend.get(terms.workSessionId)!.partial,
+                }
+              : {}),
           },
           terms,
         } as BatonJob,

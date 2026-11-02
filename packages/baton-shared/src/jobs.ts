@@ -67,7 +67,7 @@ export const permissionsSummary = (
     permissions.tools.length === 0
       ? "May not use any tool."
       : `May ${list(permissions.tools.map((t) => TOOL_WORDS[t]))}${permissions.tools.includes("web") ? "" : "; no web"}.`,
-    `Stops after ${duration(limits.wallClockMinutes)} or ${limits.workerTurns} turns${limits.dollars === null ? "" : `. A $${limits.dollars} cap is noted but spend is not measured per job yet`}.`,
+    `Stops after ${duration(limits.wallClockMinutes)} or ${limits.workerTurns} turns${limits.dollars === null ? "" : `, or $${limits.dollars} of spend (as far as the worker's own log shows)`}.`,
   ];
   const live = grants.filter((g) => g.revokedAt === null);
   const standing = live
