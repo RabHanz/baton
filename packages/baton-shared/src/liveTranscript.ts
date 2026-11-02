@@ -86,6 +86,20 @@ const textOf = (content: unknown): string => {
     .join("\n");
 };
 
+/**
+ * What T3's own send path wraps around a user's words on the way into the terminal: a pasted-content
+ * tag, an `[Image: name; ref=...]` marker, the `<t3_context>` block and trailing `@/path` lines.
+ * The user's own words are what is left.
+ */
+export const stripT3Wrappers = (text: string): string =>
+  text
+    .replace(/<t3_context\b[\s\S]*?(?:<\/t3_context>|$)/g, "")
+    .replace(/<\/?pasted_content\b[^>]*>/g, "")
+    .replace(/\[Image:[^\]]*\]/g, "")
+    .replace(/(?:\s+@\/\S+)+\s*$/, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+
 const CLAUDE_INTERNAL_USER_TEXT =
   /^<(task-notification|local-command-[a-z]+|command-(name|message|args)|system-reminder|bash-(input|stdout|stderr)|user-memory-input)>/;
 
@@ -110,7 +124,7 @@ export const parseLiveTranscriptLine = (line: string): LiveTranscriptMessage | n
   const content = isRecord(message) ? message["content"] : undefined;
   const images = type === "user" ? imagesOf(content) : [];
   const sent = type === "assistant" ? sentFilesOf(content) : { files: [], caption: "" };
-  const words = textOf(content);
+  const words = type === "user" ? stripT3Wrappers(textOf(content)) : textOf(content);
   const text = words.length > 0 ? words : sent.caption;
   if (text.length === 0 && images.length === 0 && sent.files.length === 0) return null;
   // Claude Code's own plumbing recorded as user turns: background-task notices, slash-command
@@ -150,8 +164,8 @@ const normalize = (text: string): string => text.replace(/\s+/g, " ").trim();
  * copy starts with what T3 recorded.
  */
 export const isComposerEcho = (transcriptText: string, composerText: string): boolean => {
-  const sent = normalize(composerText);
-  return sent.length > 0 && normalize(transcriptText).startsWith(sent);
+  const sent = normalize(stripT3Wrappers(composerText));
+  return sent.length > 0 && normalize(stripT3Wrappers(transcriptText)).startsWith(sent);
 };
 
 /** A tool call the session made, or its result, as Claude Code wrote it (D85). */
