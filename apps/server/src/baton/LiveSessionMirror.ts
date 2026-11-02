@@ -81,7 +81,6 @@ import {
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
-import { pathsInto } from "@t3tools/shared/mediaPolicy";
 import { attachMarkdown, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -211,6 +210,8 @@ export const liveMedia = (input: {
   readonly cwd?: string;
   /** Paths the session's own tool calls used since the last user message. */
   readonly touched?: ReadonlyArray<string>;
+  /** Hashes of pictures this thread already shows. */
+  readonly shown?: Set<string>;
 }): LiveMedia => {
   const { attachmentsDir, threadId, messageId, message } = input;
   const store = (attachment: ChatAttachment, bytes: Uint8Array): string | null => {
@@ -306,11 +307,12 @@ export const liveMedia = (input: {
         attachmentsDir,
         threadId,
         messageId,
+        ...(input.shown ? { shown: input.shown } : {}),
         media: resolveMedia({
           text: message.text,
           cwd: input.cwd,
           touched: input.touched ?? [],
-          roots: [attachmentsDir],
+          exclude: [attachmentsDir],
         }).filter((m) => !sentReal.has(m.file)),
       }),
     );
@@ -559,6 +561,28 @@ export const withoutRepeatedMedia = (
   return changed;
 };
 
+const MEDIA_TOOL_PATH: Record<string, string> = {
+  Read: "file_path",
+  Write: "file_path",
+  Edit: "file_path",
+  MultiEdit: "file_path",
+  NotebookEdit: "notebook_path",
+};
+
+/**
+ * The media a tool call actually handles as a file: Read, Write or Edit of an image or video. A path
+ * that only appears in a command or its output (grep, ls, a log) is text, never a file to show.
+ */
+export const mediaPathsOf = (tool: string, input: unknown): ReadonlyArray<string> => {
+  const key = MEDIA_TOOL_PATH[tool];
+  const path = key !== undefined && typeof input === "object" && input !== null
+    ? (input as Record<string, unknown>)[key]
+    : undefined;
+  if (typeof path !== "string") return [];
+  const kind = mediaKindFromPath(path);
+  return kind === "image" || kind === "video" ? [path] : [];
+};
+
 /** What a transcript message shows: a reply takes the screenshots and touched files gathered since the last reply, once. */
 export const nextReply = (
   follow: { touched: Set<string>; shots: Array<LiveTranscriptImage> },
@@ -762,6 +786,13 @@ const make = Effect.gen(function* () {
       });
     });
 
+  const shownByThread = new Map<string, Set<string>>();
+  const shownIn = (threadId: ThreadId) => {
+    let shown = shownByThread.get(threadId);
+    if (shown === undefined) shownByThread.set(threadId, (shown = new Set()));
+    return shown;
+  };
+
   const messageEvents = (
     threadId: ThreadId,
     sessionId: string,
@@ -782,6 +813,7 @@ const make = Effect.gen(function* () {
         message,
         ...(cwd ? { cwd } : {}),
         ...(touched ? { touched } : {}),
+        shown: shownIn(threadId),
       });
     const at = DateTime.makeUnsafe(message.createdAt);
     const common = {
@@ -984,8 +1016,8 @@ const make = Effect.gen(function* () {
       };
       for (const message of fresh) {
         if (isStep(message)) {
-          for (const path of pathsInto(message.kind === "use" ? message.input : message.output)) {
-            follow.touched.add(path);
+          if (message.kind === "use") {
+            for (const path of mediaPathsOf(message.name, message.input)) follow.touched.add(path);
           }
           if (message.kind === "result" && message.images !== undefined) {
             follow.shots.push(...message.images);

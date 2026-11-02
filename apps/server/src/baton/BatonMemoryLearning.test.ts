@@ -127,4 +127,18 @@ layer("BatonMemoryLearning", (it) => {
       assert.isAtMost(after, before);
     }),
   );
+
+  it.effect("the weekly pass folds near-duplicates into one item with the fuller wording", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const learning = yield* BatonMemoryLearning;
+      yield* memory.add({ kind: "fact", text: "Invoices are filed by the bookkeeper", source: "thread", scope: "project", scopeRef: "weekly" });
+      yield* memory.add({ kind: "fact", text: "Invoices are filed by the bookkeeper every Friday afternoon", source: "job", scope: "project", scopeRef: "weekly" });
+      assert.lengthOf(yield* memory.list({ scope: "project" }).pipe(Effect.map((l) => l.filter((i) => i.scopeRef === "weekly"))), 2);
+      assert.isAtLeast(yield* learning.rewriteNearDuplicates, 1);
+      const left = (yield* memory.list({ scope: "project" })).filter((i) => i.scopeRef === "weekly");
+      assert.lengthOf(left, 1);
+      assert.include(left[0]!.text, "every Friday afternoon");
+    }),
+  );
 });

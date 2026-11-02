@@ -10,6 +10,7 @@ import {
   reinforced,
   shouldDelete,
   similarity,
+  whyRemembered,
   winner,
   type MemoryItem,
 } from "./memory.ts";
@@ -156,5 +157,20 @@ describe("exportMarkdown", () => {
     const md = exportMarkdown([item({ text: "kept", pinned: true }), item({ id: "b", text: "old", supersededBy: "a" })]);
     expect(md).toContain("- [fact, pinned] kept");
     expect(md).not.toContain("old");
+  });
+});
+
+describe("whyRemembered", () => {
+  it("says where it came from, how sure, and what keeps or ends it", () => {
+    expect(whyRemembered(item({ source: "user", confidence: 1, pinned: true }))).toBe(
+      "You told me this on 2026-01-01. It is in your words. You pinned it, so it stays. I have not used it in an answer yet.",
+    );
+    const model = whyRemembered(
+      item({ source: "job", confidence: 0.65, lastUsedAt: "2026-02-03T10:00:00.000Z", expiresAt: "2026-03-01T00:00:00.000Z" }),
+    );
+    expect(model).toContain("I learned this from a finished job on 2026-01-01.");
+    expect(model).toContain("65% sure");
+    expect(model).toContain("last used it in an answer on 2026-02-03");
+    expect(model).toContain("forgotten after 2026-03-01");
   });
 });

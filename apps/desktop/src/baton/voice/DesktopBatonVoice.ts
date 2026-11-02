@@ -72,7 +72,10 @@ import {
   setupShouldShow,
 } from "../setup/firstRun.ts";
 import {
+  describeToday,
+  describeTrust,
   parseTrustLogs,
+  permissionFromWords,
   trustAction,
   trustControls,
   type TrustFilter,
@@ -185,6 +188,8 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
+import { applyRestore, planBackup, previewRestore, writeBackup, type RestorePreview } from "../backup/backup.ts";
+import { backupControls } from "../backup/backupRows.ts";
 import {
   CONTINUE_TEXT,
   createRecoveryFiles,
@@ -1657,6 +1662,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         await requestKept({ kind: "job", op: "handoff", args });
         return "Handed the job to that worker. The same thread continues there.";
       }
+      if (op === "trust_show") return describeTrust(trustData(), Date.now());
+      if (op === "activity_today") return describeToday(trustData().entries, new Date());
+      if (op === "permission_off") {
+        const what = permissionFromWords(String(args["what"] ?? ""));
+        if (what === null) return "I do not know which permission that is. Ask for trust_show to see them.";
+        applyHome(`trust.revoke:${what}`, null);
+        return `Turned off: ${what}. You can turn it back on in the Trust page.`;
+      }
       if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
       if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
       if (op === "needs") {
@@ -2537,6 +2550,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     stateDir: input.stateDir,
     refresh: () => home.refresh(),
+    saveRecovery: async (key) => {
+      const r = await Electron.dialog.showSaveDialog({
+        title: "Save the Tessaya recovery key",
+        defaultPath: "tessaya-recovery-key.txt",
+      });
+      if (r.canceled || r.filePath === undefined) return null;
+      NodeFS.writeFileSync(r.filePath, `Tessaya vault recovery key\n\n${key}\n\nIt is the only way in if the passphrase is forgotten. Keep it off this computer.\n`, { mode: 0o600 });
+      return r.filePath;
+    },
+    printRecovery: async (key) => {
+      const win = new Electron.BrowserWindow({ show: false });
+      try {
+        const page = `<body style="font:16px sans-serif"><h2>Tessaya vault recovery key</h2><p style="font:20px monospace">${key}</p><p>It is the only way in if the passphrase is forgotten.</p>`;
+        await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`);
+        return await new Promise<boolean>((resolve) =>
+          win.webContents.print({}, (ok) => resolve(ok)),
+        );
+      } finally {
+        win.destroy();
+      }
+    },
     reveal: (file) => Electron.shell.showItemInFolder(file),
   });
   const memoryTab = createMemoryTab({
@@ -3011,6 +3045,44 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
 
   let trustFilter: TrustFilter = "all";
+  let backupPreview: (RestorePreview & { readonly file: string }) | null = null;
+  let backupNote: string | null = null;
+  const backupExport = async (): Promise<void> => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const picked = await Electron.dialog.showSaveDialog({
+      defaultPath: NodePath.join(Electron.app.getPath("documents"), `tessaya-backup-${stamp}.zip`),
+      filters: [{ name: "Zip", extensions: ["zip"] }],
+    });
+    if (picked.canceled || picked.filePath === undefined) return;
+    // Server-side memory comes as the same markdown the Memory tab exports; without the window it is left out and says so.
+    const windowUp = mainContents !== null && !mainContents.isDestroyed();
+    const exported = windowUp
+      ? ((await requestKept({ kind: "memory", op: "export", args: {} }).catch(() => null)) as {
+          markdown?: string;
+        } | null)
+      : null;
+    const plan = planBackup(input.stateDir, exported?.markdown ?? null);
+    const count = writeBackup(picked.filePath, plan);
+    backupNote = `Saved ${count} files to ${picked.filePath}.${
+      exported === null ? " Server memory was not included (open the sessions window and export again)." : ""
+    }${plan.skipped.length === 0 ? "" : ` Left out: ${plan.skipped.map((x) => `${x.name} (${x.why})`).join("; ")}.`}`;
+  };
+  const backupChoose = async (): Promise<void> => {
+    const picked = await Electron.dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "Zip", extensions: ["zip"] }],
+    });
+    const file = picked.filePaths[0];
+    if (picked.canceled || file === undefined) return;
+    const preview = previewRestore(NodeFS.readFileSync(file), input.stateDir);
+    if (preview instanceof Error) {
+      backupPreview = null;
+      backupNote = preview.message;
+    } else {
+      backupPreview = { ...preview, file };
+      backupNote = null;
+    }
+  };
   const trustData = () => {
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
@@ -3061,6 +3133,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ),
       ...nowControls(nowData, Date.now()),
       ...trustControls(trustData(), Date.now()),
+      ...backupControls(
+        backupPreview === null ? null : { file: NodePath.basename(backupPreview.file), rows: backupPreview.rows },
+        backupNote,
+      ),
       setupHoldControl(settings.holdKey),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
@@ -3640,6 +3716,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     ],
   });
 
+  // Idle, sleep and screen-lock all end here: the window must show locked at once.
+  vaultState.onLock(() => vaultTab.onLock());
+
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
     if (memoryTab.act(id, value)) return;
@@ -3941,6 +4020,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? ""
           : "A built-in cannot be removed; replace it with your own of the same name.";
       } else if (act?.kind === "reset") transforms.reset();
+    } else if (id.startsWith("bk.")) {
+      if (id === "bk.export") void backupExport().catch((e) => void (backupNote = String(e))).finally(pushHome);
+      else if (id === "bk.restore") void backupChoose().catch((e) => void (backupNote = String(e))).finally(pushHome);
+      else if (id === "bk.apply" && backupPreview !== null) {
+        const n = applyRestore(backupPreview, input.stateDir);
+        backupNote = `Restored ${n} file(s). Restart Tessaya to use all of them; yours were kept as .bak.`;
+        backupPreview = null;
+        forgetFiles();
+      } else if (id === "bk.apply:later") backupPreview = null;
     } else if (id === "v.dnd") save({ doNotDisturb: on });
     else if (id === "v.snooze") toggleSnooze();
     else if (id === "q.setupDone") {

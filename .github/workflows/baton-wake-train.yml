@@ -4,6 +4,12 @@ name: Baton wake word training
 on:
   workflow_dispatch:
     inputs:
+      steps:
+        description: "Training steps (a few thousand for a smoke run that reaches validation)"
+        default: "250000"
+      samples:
+        description: "Positive clips to synthesise"
+        default: "45000"
       word:
         description: "One word to train (sebastian, alfred, freya, onyx, tessaya)"
         required: true
@@ -28,8 +34,8 @@ jobs:
       matrix:
         word: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', inputs.word)) || fromJSON('["sebastian","alfred","freya","onyx"]') }}
     env:
-      N_SAMPLES: 30000
-      STEPS: 100000
+      N_SAMPLES: ${{ github.event_name == 'workflow_dispatch' && inputs.samples || '30000' }}
+      STEPS: ${{ github.event_name == 'workflow_dispatch' && inputs.steps || '100000' }}
       CLEAN: ${{ github.event_name == 'workflow_dispatch' && inputs.clean && '1' || '0' }}
     steps:
       - uses: actions/checkout@v6

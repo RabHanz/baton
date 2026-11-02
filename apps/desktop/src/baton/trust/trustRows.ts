@@ -329,3 +329,60 @@ export const trustAction = (id: string, value: unknown): TrustAction | null => {
   const g = /^trust\.revoke:grant:(.+):([a-z_]+)$/.exec(id);
   return g === null ? null : { kind: "grant", jobId: g[1]!, channel: g[2]! };
 };
+
+/** The permissions in plain sentences, for 'show me what you can access'. */
+export const describeTrust = (data: TrustData, now: number): string => {
+  const used = lastUsed(data.entries);
+  const line = (on: boolean, name: string, key: Permission | "weave") =>
+    `${name}: ${on ? "on" : "off"}${on ? ` (${ago(used[key], now)})` : ""}.`;
+  return [
+    line(data.screenAlways, "Looking at your screen without asking", "screen"),
+    line(data.chrome, "Your Chrome", "chrome"),
+    line(data.social, "Social accounts in Chrome", "social"),
+    line(data.act, "Routine steps without asking", "act"),
+    `Vault: ${data.vault === "unlocked" ? "open" : data.vault === "locked" ? "locked" : "none"}.`,
+    data.weaveHosts.length === 0
+      ? "Messages go to this computer's sessions only."
+      : `Messages may go to ${data.weaveHosts.join(", ")}.`,
+    data.grants.length === 0
+      ? "No job holds a standing permission."
+      : `Standing permissions: ${data.grants.map((g) => `${g.title} (${CHANNEL_WORDS[g.channel] ?? g.channel})`).join("; ")}.`,
+    `By itself: ${data.playbooks.filter((p) => p.on).map((p) => p.title).join("; ") || "nothing, all playbooks are off"}.`,
+  ].join(" ");
+};
+
+/** What it did since local midnight, newest first, in a few sentences. */
+export const describeToday = (entries: ReadonlyArray<TrustEntry>, now: Date): string => {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const today = entries.filter((e) => Date.parse(e.at) >= start.getTime());
+  if (today.length === 0) return "Nothing yet today that I did on your behalf.";
+  const count = (k: TrustKind) => today.filter((e) => e.kind === k).length;
+  const parts = [
+    ["action", "actions on this computer"],
+    ["social", "social actions"],
+    ["vault", "vault uses"],
+    ["weave", "messages to other sessions"],
+    ["playbook", "things I did by myself"],
+  ] as const;
+  const counts = parts.filter(([k]) => count(k) > 0).map(([k, w]) => `${count(k)} ${w}`);
+  const latest = today.slice(0, 6).map((e) => `${e.text} (${e.outcome})`);
+  return `Today: ${counts.join(", ")}. Latest: ${latest.join("; ")}.`;
+};
+
+export const PERMISSION_WORDS: Readonly<Record<string, Permission>> = {
+  screen: "screen",
+  "screen capture": "screen",
+  chrome: "chrome",
+  browser: "chrome",
+  social: "social",
+  vault: "vault",
+  act: "act",
+  "act without asking": "act",
+};
+
+/** 'turn off Chrome' -> the permission, or null when the words match none. */
+export const permissionFromWords = (words: string): Permission | null => {
+  const w = words.toLowerCase().trim();
+  return PERMISSION_WORDS[w] ?? Object.entries(PERMISSION_WORDS).find(([k]) => w.includes(k))?.[1] ?? null;
+};
