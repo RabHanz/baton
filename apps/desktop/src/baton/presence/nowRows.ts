@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off
 /** The Now area of the window (D149): what needs him, what it keeps track of, what it is doing, learned, and held back. */
+import { degradedSummary, type Capability } from "@t3tools/baton-shared/degraded";
 import type { WeaveRecord } from "@t3tools/baton-shared/weave";
 import type { Commitment } from "@t3tools/baton-shared/commitments";
 import type { NeedItem } from "@t3tools/baton-shared/needsMe";
@@ -17,6 +18,7 @@ export interface NowData {
   readonly declined: ReadonlyArray<{ readonly title: string; readonly why: string }>;
   readonly muted: ReadonlyArray<{ readonly topic: string; readonly title: string }>;
   readonly weaves: ReadonlyArray<WeaveRecord>;
+  readonly capabilities: ReadonlyArray<Capability>;
 }
 
 export const EMPTY_NOW: NowData = {
@@ -29,6 +31,7 @@ export const EMPTY_NOW: NowData = {
   declined: [],
   muted: [],
   weaves: [],
+  capabilities: [],
 };
 
 const WHY: Record<string, string> = {
@@ -44,6 +47,7 @@ const DOING = "What I am doing";
 const LEARNED = "Learned today";
 const HELD = "Held back, and why";
 const WEAVE = "Between sessions";
+const WORKS = "What works right now";
 
 const note = (id: string, section: string, label: string, detail: string): HomeControl => ({
   id,
@@ -150,6 +154,24 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
                 ? "Delivered; no reply yet."
                 : `${w.status === "lost" ? "Not delivered" : "Waiting"}${w.reason === null ? "" : `: ${w.reason}`}`,
         }))),
+    ...(data.capabilities.length === 0
+      ? []
+      : [
+          note(
+            "now.cap.summary",
+            WORKS,
+            degradedSummary(data.capabilities),
+            "Tessaya never sends push notifications; everything arrives here or is said aloud.",
+          ),
+          ...data.capabilities.map((c, i): HomeControl => ({
+            id: `now.cap:${i}`,
+            section: WORKS,
+            label: c.name,
+            kind: "check",
+            status: c.state === "works" ? "ok" : c.state === "off" ? "bad" : "warn",
+            detail: c.why,
+          })),
+        ]),
     ...data.declined.map((d, i) => note(`now.held:${i}`, HELD, d.title, WHY[d.why] ?? d.why)),
     ...data.muted.map((m): HomeControl => ({
       id: `now.allow:${m.topic}`,
