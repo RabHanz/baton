@@ -171,7 +171,7 @@ void Electron.app.whenReady().then(async () => {
       continue;
     }
     await press("header", c);
-    if (await js("!!document.getElementById('modal')")) {
+    if (await js("typeof modal!=='undefined'&&!!modal")) {
       await sleep(700);
       const tabs = (await find("#mnav button")).length;
       for (let t = 0; t < tabs; t += 1) {
