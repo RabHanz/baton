@@ -2374,11 +2374,34 @@ export const BATON_VOICE_PAYLOAD_FILES = [
   "models/onyx.onnx",
 ] as const;
 
-// Baton voice: the wake and VAD models everywhere, the dictation sidecar on Windows.
+/** The sidecar's cargo target and cmake flags for one platform and arch. Windows keeps its static CRT build. */
+export function batonSidecarBuild(
+  platform: typeof BuildPlatform.Type,
+  arch: typeof BuildArch.Type,
+): ReadonlyArray<{ readonly rustTarget: string | null; readonly cmake: string; readonly rustflags?: string }> {
+  const avx2 = "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON";
+  if (platform === "win") {
+    return [
+      {
+        rustTarget: null,
+        cmake: `${avx2} -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`,
+        rustflags: "-C target-feature=+crt-static",
+      },
+    ];
+  }
+  if (platform === "linux") return [{ rustTarget: null, cmake: avx2 }];
+  const arm = { rustTarget: "aarch64-apple-darwin", cmake: "-DGGML_NATIVE=OFF -DCMAKE_OSX_ARCHITECTURES=arm64" };
+  const intel = { rustTarget: "x86_64-apple-darwin", cmake: `${avx2} -DCMAKE_OSX_ARCHITECTURES=x86_64` };
+  return arch === "universal" ? [arm, intel] : [arch === "arm64" ? arm : intel];
+}
+
+// Baton voice: the wake and VAD models everywhere, and the dictation sidecar built for the platform being packaged
+// (Windows, Linux x64, macOS arm64 and x64; a universal mac build joins both with lipo).
 export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   readonly repoRoot: string;
   readonly stageResourcesDir: string;
   readonly platform: typeof BuildPlatform.Type;
+  readonly arch?: typeof BuildArch.Type;
   readonly verbose: boolean;
 }) {
   const fs = yield* FileSystem.FileSystem;
@@ -2388,33 +2411,44 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
   yield* fs.makeDirectory(destination, { recursive: true });
   yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
-  if (input.platform !== "win") return;
-  const spawnCommand = yield* resolveSpawnCommand("cargo", [
-    "build",
-    "--locked",
-    "--release",
-    "--manifest-path",
-    path.join(crate, "Cargo.toml"),
-  ]);
-  yield* runCommand(
-    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-      cwd: input.repoRoot,
-      shell: spawnCommand.shell,
-      env: {
-        ...process.env,
-        // A portable floor with AVX2: the runner's CPU may be newer than the user's.
-        TRANSCRIBE_CMAKE_ARGS:
-          "-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
-        // Nothing installs the VC++ redistributable, so the exe must not need it.
-        RUSTFLAGS: "-C target-feature=+crt-static",
-      },
-    }),
-    { label: "cargo build baton-dictation", verbose: input.verbose },
-  );
-  yield* fs.copyFile(
-    path.join(crate, "target/release/baton-dictation.exe"),
-    path.join(destination, "baton-dictation.exe"),
-  );
+  const exe = input.platform === "win" ? "baton-dictation.exe" : "baton-dictation";
+  const built: string[] = [];
+  for (const build of batonSidecarBuild(input.platform, input.arch ?? "x64")) {
+    const spawnCommand = yield* resolveSpawnCommand("cargo", [
+      "build",
+      "--locked",
+      "--release",
+      ...(build.rustTarget === null ? [] : ["--target", build.rustTarget]),
+      "--manifest-path",
+      path.join(crate, "Cargo.toml"),
+    ]);
+    yield* runCommand(
+      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        cwd: input.repoRoot,
+        shell: spawnCommand.shell,
+        env: {
+          ...process.env,
+          // A portable floor with AVX2: the runner's CPU may be newer than the user's.
+          TRANSCRIBE_CMAKE_ARGS: build.cmake,
+          ...(build.rustflags === undefined ? {} : { RUSTFLAGS: build.rustflags }),
+          ...(input.platform === "mac" ? { MACOSX_DEPLOYMENT_TARGET: "11.0" } : {}),
+        },
+      }),
+      { label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`, verbose: input.verbose },
+    );
+    built.push(path.join(crate, "target", ...(build.rustTarget === null ? [] : [build.rustTarget]), "release", exe));
+  }
+  const out = path.join(destination, exe);
+  if (built.length === 1) {
+    yield* fs.copyFile(built[0]!, out);
+  } else {
+    const lipo = yield* resolveSpawnCommand("lipo", ["-create", ...built, "-output", out]);
+    yield* runCommand(ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }), {
+      label: "lipo baton-dictation",
+      verbose: input.verbose,
+    });
+  }
+  if (input.platform !== "win") yield* fs.chmod(out, 0o755);
 });
 
 export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
@@ -3859,6 +3893,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
     repoRoot,
     stageResourcesDir,
     platform: options.platform,
+    arch: options.arch,
     verbose: options.verbose,
   });
   if (options.platform === "linux") {
