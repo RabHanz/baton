@@ -35,6 +35,7 @@ import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
+import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
 import { createCatalog, mockCatalogService } from "./sessions/catalogRows.ts";
 import { createSessionsBridge } from "./sessions/sessionsBridge.ts";
 import { createEscapeKey } from "./screen/escapeKey.ts";
@@ -297,15 +298,16 @@ export const startBatonDesktop = Effect.gen(function* () {
     Electron.app.on("second-instance", () => {
       setTimeout(() => voice?.openHome(), SECOND_LAUNCH_RAISE_MS).unref();
     });
-    // Until the server's session catalog is connected here, BATON_MOCK_CATALOG shows sample rows (the proof recording).
-    const catalog =
-      (hostEnvironment["BATON_MOCK_CATALOG"] ?? "") === ""
-        ? undefined
-        : createCatalog({
-            service: mockCatalogService(),
-            onChange: () => voice?.refresh(),
-          });
-    void catalog?.refresh();
+    // Every session on every connected environment, through the T3 sidebar; BATON_MOCK_CATALOG shows sample rows instead.
+    const catalog = createCatalog({
+      service:
+        (hostEnvironment["BATON_MOCK_CATALOG"] ?? "") === ""
+          ? createBridgeCatalogService({ bridge: sessions, openMainWindow })
+          : mockCatalogService(),
+      onChange: () => voice?.refresh(),
+    });
+    setTimeout(() => void catalog.refresh(), 8_000).unref();
+    setInterval(() => void catalog.refresh(), 45_000).unref();
     voice = startDesktopBatonVoice({
       loginEntry: environment.appUserModelId,
       stateDir: environment.stateDir,
@@ -318,7 +320,7 @@ export const startBatonDesktop = Effect.gen(function* () {
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
       ...(screen === null ? {} : { extras: screen }),
       sessions,
-      ...(catalog === undefined ? {} : { catalog }),
+      catalog,
       updates: batonUpdates,
       holdEscape,
       onPillState: (phase) =>
