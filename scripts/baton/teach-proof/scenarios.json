@@ -398,6 +398,11 @@
       "spoken": "I can see the folder window. I'll make a new folder.",
       "actions": [
         {
+          "kind": "click",
+          "t": "Items View",
+          "why": "the folder"
+        },
+        {
           "kind": "press",
           "keys": ["ctrl", "shift", "n"],
           "why": "new folder"
@@ -456,10 +461,10 @@
     }
   },
   {
-    "id": "settings-about-teach",
+    "id": "settings-display-teach",
     "app": "settings",
     "mode": "teach",
-    "goal": "show me how to find the Windows edition in Settings",
+    "goal": "show me how to find the Night light setting in Settings",
     "launch": "Start-Process 'ms-settings:'; Start-Sleep 6; Start-Sleep 1; Focus 'Settings'",
     "steps": [
       {
@@ -468,26 +473,26 @@
         "act": [["click", "System"]]
       },
       {
-        "say": "Open About.",
-        "point": "About",
-        "act": [["click", "About"]]
+        "say": "Open Display.",
+        "point": "Display",
+        "act": [["click", "Display"]]
       }
     ],
-    "done": "Here is the edition.",
+    "done": "Night light is on the Display page.",
     "check": {
       "type": "tree",
-      "contains": "Device specifications|Device name"
+      "contains": "Night light"
     }
   },
   {
-    "id": "settings-about-drive",
+    "id": "settings-display-drive",
     "app": "settings",
     "mode": "drive",
-    "goal": "open the About page in Settings",
+    "goal": "open the Display page in Settings",
     "launch": "Start-Process 'ms-settings:'; Start-Sleep 6; Start-Sleep 1; Focus 'Settings'",
     "plan": {
-      "title": "Open About",
-      "spoken": "I can see Settings. I'll open System, then About.",
+      "title": "Open Display",
+      "spoken": "I can see Settings. I'll open System, then Display.",
       "actions": [
         {
           "kind": "click",
@@ -500,14 +505,14 @@
         },
         {
           "kind": "click",
-          "t": "About",
-          "why": "About"
+          "t": "Display",
+          "why": "Display"
         }
       ]
     },
     "check": {
       "type": "tree",
-      "contains": "Device specifications|Device name"
+      "contains": "Night light"
     }
   },
   {
