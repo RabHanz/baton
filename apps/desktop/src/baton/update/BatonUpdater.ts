@@ -34,6 +34,8 @@ export const createBatonUpdater = (input: {
   /** Said once, after a restart that was an update. */
   readonly backAfter: string | null;
   readonly onChange: () => void;
+  /** A version that failed to start twice: never downloaded or installed again by itself. */
+  readonly skip?: (version: string) => boolean;
 }): BatonUpdates & { readonly onState: (state: DesktopUpdateState) => void } => {
   let state = input.initial;
   let phase: Phase = { kind: "idle" };
@@ -42,11 +44,15 @@ export const createBatonUpdater = (input: {
   let timer: ReturnType<typeof setInterval> | null = null;
 
   const quiet = () => canInstallNow(input.busy());
+  const usable = (s: DesktopUpdateState): boolean => {
+    const v = s.downloadedVersion ?? s.availableVersion;
+    return v === null || !(input.skip?.(v) ?? false);
+  };
 
   const tick = () => {
     if (installing) return;
     const step = nextStep({
-      ready: isReady(state),
+      ready: isReady(state) && usable(state),
       quiet: quiet(),
       now: Date.now(),
       phase,
@@ -72,7 +78,7 @@ export const createBatonUpdater = (input: {
   };
 
   const ensureTimer = () => {
-    if (timer !== null || !isReady(state)) return;
+    if (timer !== null || !isReady(state) || !usable(state)) return;
     timer = setInterval(tick, TICK_MS);
     timer.unref();
   };
@@ -80,8 +86,8 @@ export const createBatonUpdater = (input: {
   return {
     onState: (next) => {
       state = next;
-      if (shouldDownload(next)) void input.download();
-      if (isReady(next)) {
+      if (shouldDownload(next) && usable(next)) void input.download();
+      if (isReady(next) && usable(next)) {
         ensureTimer();
         tick();
       }
