@@ -143,6 +143,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "weave_send",
   "job_retry",
   "job_handoff",
+  "skill_draft",
   "text_transform",
   "text_undo",
   "text_command",
@@ -306,6 +307,11 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return { verdict: "ask", why: "It would restart Chrome with accessibility on.", risky: true };
     case "memory_forget":
       return { verdict: "ask", why: "It would delete one of your notes." };
+    case "skill_draft":
+      // It writes a file in Tessaya's own drafts folder from a job; the text came from the job, not from a read.
+      return outgoing
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
     case "job_handoff":
       // The same work on another provider or account spends another subscription: it asks every time.
       return { verdict: "ask", why: "It would move a job to another worker or account." };
