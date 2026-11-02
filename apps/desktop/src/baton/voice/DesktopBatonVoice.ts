@@ -63,7 +63,9 @@ import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
-import { noteAction, noteControls } from "../memory/noteRows.ts";
+import { createMemorySync } from "../memory/memorySync.ts";
+import { createMemoryTab } from "../memory/memoryTab.ts";
+import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -1865,14 +1867,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }),
   );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
-  const cachedNotes = cachedFor(3_000, () => notes.list());
+  const memoryTab = createMemoryTab({
+    call: (op, args) => requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    sync: createMemorySync({
+      file: NodePath.join(input.stateDir, "baton-memory.json"),
+      call: (op, args) =>
+        requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    }),
+    notes,
+    stateDir: input.stateDir,
+    refresh: () => home.refresh(),
+    reveal: (file) => Electron.shell.showItemInFolder(file),
+  });
   const cachedPack = cachedFor(3_000, () =>
     packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
   );
   /** Files he edits by hand or through a row here: forget what was read, so the next draw is true. */
   const forgetFiles = () => {
     harnessItems.reset();
-    cachedNotes.reset();
     cachedPack.reset();
   };
   let sessionsNote: string | null = null;
@@ -2091,7 +2103,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
-      ...noteControls(cachedNotes()),
+      ...memoryTab.controls(),
       ...cachedPack(),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
@@ -2565,6 +2577,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
+    if (memoryTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
     else if (id === "q.ask" || id === "q.clear") {
       const entry = input.extras
@@ -2821,6 +2834,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     openSessions: input.openMainWindow,
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
+      if (tab === "memory") void memoryTab.load();
     },
     appearance: () => settings.appearance,
   });
