@@ -99,6 +99,13 @@ import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
 import { makeDiagnosticsFile } from "../health/diagnosticsFile.ts";
 import { capabilities } from "@t3tools/baton-shared/degraded";
 import { createProbes } from "../health/probes.ts";
+import {
+  normalizeSkillUrl,
+  parseSkill,
+  reviewCard,
+  reviewSkill,
+} from "@t3tools/baton-shared/skillReview";
+import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -132,7 +139,15 @@ import {
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
-import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
+import {
+  fileToEdit,
+  PACK_FOLDER,
+  packAction,
+  packControls,
+  packEdit,
+  savePackText,
+  useDefault,
+} from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
 import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
@@ -2193,6 +2208,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       codexDir: NodePath.join(Electron.app.getPath("home"), ".codex"),
     }),
   );
+  /** A skill from a web address: fetched, reviewed, and filed only after he says yes on the card. */
+  const addSkillFrom = async (address: string): Promise<void> => {
+    const tell = (text: string) => input.extras?.notice(text);
+    const target = normalizeSkillUrl(address);
+    if (target === null) return tell("Use an https address, or a GitHub page of a SKILL.md.");
+    try {
+      const text = await fetchSkillText(target.url);
+      const parsed = parseSkill(text, nameFromUrl(target.url));
+      if (!parsed.ok) return tell(`Not added: ${parsed.why}`);
+      const card = reviewCard({
+        host: target.host,
+        skill: parsed.skill,
+        findings: reviewSkill(parsed.skill, text),
+        exists: skillExists(claudeDir(), parsed.skill.name),
+      });
+      const answer = await (input.extras?.ask({
+        ...card,
+        buttons: ["Add it", "Cancel"],
+        cancel: 1,
+        expiresMs: 5 * 60_000,
+      }) ?? Promise.resolve(1));
+      if (answer !== 0) return tell("Not added.");
+      installSkill(claudeDir(), parsed.skill.name, text);
+      forgetFiles();
+      home.refresh();
+      tell(`Added the skill ${parsed.skill.name}. Claude Code reads it in new sessions.`);
+    } catch (error) {
+      tell(
+        `Not added: ${error instanceof Error ? error.message : "the address could not be read"}`,
+      );
+    }
+  };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   const vaultState = vaultFor(input.stateDir);
   const vaultTab = createVaultTab({
@@ -3261,6 +3308,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "p.folder") {
       NodeFS.mkdirSync(NodePath.join(input.stateDir, PACK_FOLDER), { recursive: true });
       void Electron.shell.openPath(NodePath.join(input.stateDir, PACK_FOLDER));
+    } else if (packEdit(id) !== null) {
+      const act = packEdit(id)!;
+      const dir = NodePath.join(input.stateDir, PACK_FOLDER);
+      if (act.save) {
+        const why = savePackText(dir, act.id, typeof value === "string" ? value : "");
+        input.extras?.notice(why ?? "Saved. It applies to the next job.");
+      } else useDefault(dir, act.id);
+      cachedPack.reset();
+      home.refresh();
     } else if (packAction(id) !== null) {
       const act = packAction(id)!;
       const dir = NodePath.join(input.stateDir, PACK_FOLDER);
@@ -3556,6 +3612,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.login") {
       save({ openAtLogin: on });
       setLoginItem(Electron.app, input.loginEntry, on);
+    } else if (id === "k.addskill:add" && typeof value === "string") {
+      void addSkillFrom(value);
     } else if (id === "v.diag") {
       try {
         const file = makeDiagnosticsFile({

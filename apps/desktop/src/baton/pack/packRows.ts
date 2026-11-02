@@ -46,14 +46,22 @@ export const packControls = (dir: string): ReadonlyArray<HomeControl> => {
   const row = (id: string, label: string, hint: string): HomeControl => {
     const file = fileFor(dir, id)!;
     const mine = NodeFS.existsSync(file);
+    let text = defaultText(id);
+    if (mine) {
+      try {
+        text = NodeFS.readFileSync(file, "utf8");
+      } catch {
+        // Unreadable: the default shows, and saving writes a new file.
+      }
+    }
     return {
-      id: `p:${id}`,
+      id: `p.ed:${id}`,
       section: "Operating-system pack",
       label,
-      hint: mine ? `${hint} Your file.` : `${hint} The neutral default; Edit makes it your file.`,
-      kind: "action",
-      button: "Edit",
-      ...(mine ? { secondary: "Use default" } : {}),
+      hint: mine ? `${hint} Your file.` : `${hint} The neutral default; saving makes it your file.`,
+      kind: "editor",
+      text,
+      mine,
       more: id !== "executive",
     };
   };
@@ -102,4 +110,35 @@ export const useDefault = (dir: string, id: string): boolean => {
   if (file === null || !NodeFS.existsSync(file)) return false;
   NodeFS.renameSync(file, `${file}.bak`);
   return true;
+};
+
+/** `p.ed:<id>:save` with the text, `p.ed:<id>:reset`. */
+export const packEdit = (id: string) => {
+  const m = /^p\.ed:(executive|routing|role:[a-z0-9-]+?):(save|reset)$/.exec(id);
+  return m === null ? null : ({ id: m[1]!, save: m[2] === "save" } as const);
+};
+
+export const PACK_TEXT_MAX = 40_000;
+
+/** Null when it was saved; otherwise why not, in words for him. The routing table must stay valid JSON. */
+export const savePackText = (dir: string, id: string, text: string): string | null => {
+  const file = fileFor(dir, id);
+  if (file === null) return "That is not a part of the pack.";
+  if (text.trim() === "") return "A part of the pack cannot be empty; use the default instead.";
+  if (text.length > PACK_TEXT_MAX) return "That is too long.";
+  if (id === "routing") {
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        return "The routing table must be a JSON object.";
+      }
+    } catch {
+      return "The routing table is not valid JSON, so it was not saved.";
+    }
+  }
+  NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+  // The file he had stays as a .bak until the next save.
+  if (NodeFS.existsSync(file)) NodeFS.copyFileSync(file, `${file}.bak`);
+  NodeFS.writeFileSync(file, text.endsWith("\n") ? text : `${text}\n`);
+  return null;
 };
