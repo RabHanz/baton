@@ -97,6 +97,7 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("n:")) return "sessions";
   if (/^now[:.]/.test(id)) return "now";
   if (/^trust[:.]/.test(id)) return "trust";
+  if (/^bk[:.]/.test(id)) return "history";
   if (/^sn[:.]/.test(id)) return "snippets";
   if (/^tr[:.]/.test(id)) return "transforms";
   if (/^st[:.]/.test(id)) return "style";

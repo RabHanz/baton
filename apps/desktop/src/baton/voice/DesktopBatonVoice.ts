@@ -185,6 +185,8 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
+import { applyRestore, planBackup, previewRestore, writeBackup, type RestorePreview } from "../backup/backup.ts";
+import { backupControls } from "../backup/backupRows.ts";
 import {
   CONTINUE_TEXT,
   createRecoveryFiles,
@@ -2994,6 +2996,44 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
 
   let trustFilter: TrustFilter = "all";
+  let backupPreview: (RestorePreview & { readonly file: string }) | null = null;
+  let backupNote: string | null = null;
+  const backupExport = async (): Promise<void> => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const picked = await Electron.dialog.showSaveDialog({
+      defaultPath: NodePath.join(Electron.app.getPath("documents"), `tessaya-backup-${stamp}.zip`),
+      filters: [{ name: "Zip", extensions: ["zip"] }],
+    });
+    if (picked.canceled || picked.filePath === undefined) return;
+    // Server-side memory comes as the same markdown the Memory tab exports; without the window it is left out and says so.
+    const windowUp = mainContents !== null && !mainContents.isDestroyed();
+    const exported = windowUp
+      ? ((await requestKept({ kind: "memory", op: "export", args: {} }).catch(() => null)) as {
+          markdown?: string;
+        } | null)
+      : null;
+    const plan = planBackup(input.stateDir, exported?.markdown ?? null);
+    const count = writeBackup(picked.filePath, plan);
+    backupNote = `Saved ${count} files to ${picked.filePath}.${
+      exported === null ? " Server memory was not included (open the sessions window and export again)." : ""
+    }${plan.skipped.length === 0 ? "" : ` Left out: ${plan.skipped.map((x) => `${x.name} (${x.why})`).join("; ")}.`}`;
+  };
+  const backupChoose = async (): Promise<void> => {
+    const picked = await Electron.dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [{ name: "Zip", extensions: ["zip"] }],
+    });
+    const file = picked.filePaths[0];
+    if (picked.canceled || file === undefined) return;
+    const preview = previewRestore(NodeFS.readFileSync(file), input.stateDir);
+    if (preview instanceof Error) {
+      backupPreview = null;
+      backupNote = preview.message;
+    } else {
+      backupPreview = { ...preview, file };
+      backupNote = null;
+    }
+  };
   const trustData = () => {
     const on = (id: string) =>
       input.extras?.controls().some((c) => c.id === id && c.kind === "toggle" && c.on) ?? false;
@@ -3044,6 +3084,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ),
       ...nowControls(nowData, Date.now()),
       ...trustControls(trustData(), Date.now()),
+      ...backupControls(
+        backupPreview === null ? null : { file: NodePath.basename(backupPreview.file), rows: backupPreview.rows },
+        backupNote,
+      ),
       setupHoldControl(settings.holdKey),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
@@ -3908,6 +3952,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? ""
           : "A built-in cannot be removed; replace it with your own of the same name.";
       } else if (act?.kind === "reset") transforms.reset();
+    } else if (id.startsWith("bk.")) {
+      if (id === "bk.export") void backupExport().catch((e) => void (backupNote = String(e))).finally(pushHome);
+      else if (id === "bk.restore") void backupChoose().catch((e) => void (backupNote = String(e))).finally(pushHome);
+      else if (id === "bk.apply" && backupPreview !== null) {
+        const n = applyRestore(backupPreview, input.stateDir);
+        backupNote = `Restored ${n} file(s). Restart Tessaya to use all of them; yours were kept as .bak.`;
+        backupPreview = null;
+        forgetFiles();
+      } else if (id === "bk.apply:later") backupPreview = null;
     } else if (id === "q.setupDone") {
       save({ setupDone: true });
       NodeFS.rmSync(setupMarker, { force: true });
