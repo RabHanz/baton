@@ -124,6 +124,7 @@ layer("BatonMemoryService", (it) => {
       assert.include(out.block, "Staging lives");
       assert.isTrue(out.block.indexOf("Call him Rab") < out.block.indexOf("Staging lives"));
       const used = yield* memory.used("turn-1");
+      assert.deepEqual((yield* memory.used()).map((i) => i.id), used.map((i) => i.id));
       assert.strictEqual(used.length, out.ids.length);
       assert.isNotNull(used[0]?.lastUsedAt);
       const tiny = yield* memory.recall({ text: "staging box", budgetTokens: 5 });

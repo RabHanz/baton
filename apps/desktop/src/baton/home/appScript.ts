@@ -40,7 +40,7 @@ const INTRO = {
   jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
   tools: ['Skills and tools', 'The plugins, skills and servers that Claude Code and Codex already have. Tessaya adds none of its own. A plugin switch changes Claude Code\u2019s own setting and applies to its next session.'],
-  memory: ['Memory', 'What Tessaya has been asked to remember, as plain notes. Open one to correct it, or delete it. Clearing a note never touches Tessaya itself.'],
+  memory: ['Memory', 'What Tessaya remembers about you and your work, and what it learned. Search it, correct it, pin what must never fade, or forget it. Forgetting a memory never touches Tessaya itself.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
@@ -135,7 +135,45 @@ function wakeRow(items) {
   { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
   return wrap;
 }
+const memEditing = new Set();
+function memoryRow(c) {
+  const id = c.id.slice(2), wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text');
+  if (memEditing.has(c.id)) {
+    const a = $('textarea', 'memedit'); a.id = 'in-e-' + c.id; a.maxLength = 500; a.setAttribute('aria-label', 'Edit this memory'); a.value = drafts.has('e-' + c.id) ? drafts.get('e-' + c.id) : c.label; a.oninput = () => drafts.set('e-' + c.id, a.value);
+    const done = () => { memEditing.delete(c.id); drafts.delete('e-' + c.id); };
+    const save = $('button', 'btn primary', 'Save'); save.onclick = () => { const v = a.value.trim(); done(); if (v) set('m.edit:' + id, v); else render(); };
+    const cancel = $('button', 'btn quiet', 'Cancel'); cancel.onclick = () => { done(); render(); };
+    const acts = $('div', 'memacts'); acts.append(save, cancel); t.append(a, acts); r.appendChild(t); wrap.appendChild(r); return wrap;
+  }
+  t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint)); r.appendChild(t);
+  const acts = $('div', 'memacts');
+  if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set('m.accept:' + id, null); acts.appendChild(keep); }
+  else if (c.section !== 'Replaced') {
+    const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
+    const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { memEditing.add(c.id); render(); }; acts.append(pin, ed);
+  }
+  const fg = $('button', 'btn quiet', c.held ? 'Dismiss' : 'Forget'); fg.onclick = () => set('m.forget:' + id, null); acts.appendChild(fg);
+  r.appendChild(acts); wrap.appendChild(r); return wrap;
+}
+function memoryBar(c) {
+  const w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'); q.type = 'text'; q.id = 'in-m-q'; q.placeholder = 'Search what Tessaya remembers'; q.setAttribute('aria-label', 'Search memory'); q.value = drafts.has('m-q') ? drafts.get('m-q') : c.query;
+  let tm = null; q.oninput = () => { drafts.set('m-q', q.value); clearTimeout(tm); tm = setTimeout(() => set('m.query', q.value), 250); };
+  f.onsubmit = e => { e.preventDefault(); clearTimeout(tm); set('m.query', q.value); }; f.appendChild(q); w.appendChild(f);
+  const seg = $('div', 'seg memseg'); for (const k of c.kinds) { const b = $('button', null, k.label + ' ' + k.count); b.setAttribute('aria-pressed', String(k.value === c.filter)); b.onclick = () => set('m.kind', k.value); seg.appendChild(b); } w.appendChild(seg);
+  const tools = $('div', 'memtools');
+  if (c.usedCount) { const u = $('button', 'btn quiet', 'Used in the last answer (' + c.usedCount + ')'); u.setAttribute('aria-pressed', String(c.usedOnly)); u.onclick = () => set('m.used', !c.usedOnly); tools.appendChild(u); }
+  const ex = $('button', 'btn quiet', 'Export'); ex.onclick = () => set('m.export', null); tools.appendChild(ex); w.appendChild(tools);
+  const imp = $('form', 'vocab'), fi = $('input'); fi.type = 'text'; fi.id = 'in-m-imp'; fi.placeholder = 'Import a folder of .md learnings: its full path'; fi.setAttribute('aria-label', 'Folder to import'); fi.value = drafts.get('m-imp') || ''; fi.oninput = () => drafts.set('m-imp', fi.value);
+  const ib = $('button', 'btn quiet', 'Import'); ib.type = 'submit'; imp.append(fi, ib); imp.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('m-imp'); set('m.import', v); }; w.appendChild(imp);
+  const sy = $('div', 'row'), st = $('div', 'text'); st.append($('div', 'label', 'Keep servers in step'), $('div', 'hint', 'Memory is carried between the servers this window is connected to. The last change wins, and a forgotten memory stays forgotten.'));
+  const sw = $('button', 'sw'); sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', String(c.syncOn)); sw.setAttribute('aria-label', 'Keep servers in step'); sw.onclick = () => set('m.syncOn', !c.syncOn); sy.append(st, sw);
+  if (c.syncOn) { const nb = $('button', 'btn quiet', 'Sync now'); nb.onclick = () => set('m.sync', null); sy.appendChild(nb); } w.appendChild(sy);
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  return w;
+}
 function row(c) {
+  if (c.kind === 'memory') return memoryRow(c);
+  if (c.kind === 'memoryBar') return memoryBar(c);
   // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.
   if (c.kind === 'choice' && (c.id === 's.voice' || c.options.some(o => o.note))) { const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.append(t, control(c)); return w; }
   if (c.kind === 'session') return session(c);
