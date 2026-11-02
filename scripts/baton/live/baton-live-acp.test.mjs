@@ -10,6 +10,8 @@ import * as NodeURL from "node:url";
 
 import {
   isAdoptRequest,
+  isAnswerInTerminal,
+  screenTail,
   notSentNote,
   isAppContinuation,
   promptText,
@@ -127,6 +129,10 @@ NodeTest.test("a plain-terminal session is only moved into Herdr when asked", ()
   NodeAssert.equal(isAdoptRequest("bring into Herdr"), true);
   NodeAssert.equal(isAdoptRequest(" Bring it into herdr. "), true);
   NodeAssert.equal(isAdoptRequest("please fix the build"), false);
+  NodeAssert.equal(isAdoptRequest("It waits in its terminal.\nBring it into Herdr"), true);
+  NodeAssert.equal(isAnswerInTerminal("Waiting in its terminal:\nProceed?\nI'll answer it in the terminal"), true);
+  NodeAssert.equal(isAnswerInTerminal("yes"), false);
+  NodeAssert.equal(screenTail("a\n\n  \nb  \nc", 2), "b\nc");
   const note = notSentNote({ remoteControl: true, status: "idle" });
   NodeAssert.match(note, /^Not sent\./);
   NodeAssert.match(note, /Remote Control/);
