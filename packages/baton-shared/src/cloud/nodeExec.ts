@@ -8,8 +8,23 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { launchPlan, type LaunchEnv } from "./winLaunch.ts";
 import type { BriefStore, PendingStore } from "./local.ts";
 import type { CloudRequest, Exec } from "./types.ts";
+
+const realLaunchEnv = (): LaunchEnv => ({
+  platform: process.platform,
+  path: process.env["PATH"] ?? process.env["Path"] ?? "",
+  pathext: process.env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD",
+  exists: (f) => NodeFS.existsSync(f),
+  read: (f) => {
+    try {
+      return NodeFS.readFileSync(f, "utf8");
+    } catch {
+      return null;
+    }
+  },
+});
 
 export const nodeExec: Exec = (file, args, o) =>
   new Promise((resolve) => {
@@ -17,12 +32,14 @@ export const nodeExec: Exec = (file, args, o) =>
     let err = "";
     let timedOut = false;
     let child: NodeChildProcess.ChildProcess;
+    const plan = launchPlan(file, args, realLaunchEnv());
+    if (!plan.ok) return resolve({ code: null, stdout: "", stderr: plan.error, missing: plan.error.endsWith("is not installed on this computer.") });
     try {
-      child = NodeChildProcess.spawn(file, [...args], {
+      // Never a shell string: the argument list goes to the program (a cmd shim only when every argument is plain).
+      child = NodeChildProcess.spawn(plan.file, [...plan.args], {
         env: { ...process.env, ...o.env },
         windowsHide: true,
-        // npm-installed programs are .cmd shims on Windows, which only the shell can start.
-        shell: process.platform === "win32" && !/\.exe$/i.test(file),
+        shell: plan.viaCmd,
       });
     } catch {
       return resolve({ code: null, stdout: "", stderr: "", missing: true });
