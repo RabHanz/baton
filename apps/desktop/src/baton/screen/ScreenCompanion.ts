@@ -87,6 +87,7 @@ import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
+import { createDesktopMemory } from "../memory/memoryClient.ts";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -260,6 +261,8 @@ export interface AssistantActions {
   readonly sessionName?: (idOrName: string) => string | null;
   /** Start or stop dictation into the focused field. */
   readonly dictation?: (on: boolean) => Promise<string>;
+  /** The server's memory (D150), through the window; rejects with a reason in plain words. */
+  readonly memory?: (op: string, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 /** One turn's timings in ms, for the report. Words are never written here. */
@@ -460,6 +463,14 @@ export const startScreenCompanion = (input: {
     return chromeSeen.check;
   };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
+  // The server's store answers when the window does (`actions` arrives late); his notes folder otherwise.
+  const memory = createDesktopMemory({
+    call: (op, args) =>
+      actions?.memory === undefined
+        ? Promise.reject(new Error("Memory is not reachable yet."))
+        : actions.memory(op, args),
+    notes,
+  });
   /** A reply is kept in full and logged in full, whatever route made it. */
   const converse = (
     route: ConversationRoute,
@@ -1598,9 +1609,9 @@ export const startScreenCompanion = (input: {
     dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
     memory: async (query) => {
       const hits = conversation.search(query);
-      const kept = notes.search(query);
+      const kept = await memory.search(query);
       const found = [
-        ...kept.map((n) => `his note [id: ${n.id}]: ${n.text}`),
+        ...kept,
         ...hits.map(
           (t) =>
             `${t.at.slice(0, 16).replace("T", " ")}\nhe said: ${t.said}\nyou replied: ${t.reply}`,
@@ -1608,8 +1619,10 @@ export const startScreenCompanion = (input: {
       ];
       return found.length === 0 ? "Nothing earlier matches." : found.join("\n\n");
     },
-    remember: async (text) => `Kept as a note [id: ${notes.add(text).id}].`,
-    forget: async (id) => (notes.remove(id) ? "Forgotten." : "There is no note by that id."),
+    remember: (text) => memory.remember(text),
+    forget: (id) => memory.forget(id),
+    pin: (id, pinned) => memory.pin(id, pinned),
+    used: () => memory.used(),
     jobs: async (op, args) => actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
     target: async (label, workSessionId) => {
       conversation.add({
@@ -1647,8 +1660,14 @@ export const startScreenCompanion = (input: {
       start: agentStart,
       conversation,
       clockLine: () => clockLine(new Date()),
-      notes: () => notesBlock(notes.list()),
+      notes: async () => {
+        const standing = await memory.standing();
+        return standing === "" ? notesBlock(notes.list()) : standing;
+      },
+      recall: (text) => memory.forSentence(text),
+      learn: (said, reply) => memory.learn(said, reply, agentTaint.on()),
       beginTurn: () => {
+        memory.beginTurn();
         agentTaint.reset();
         agentTools.length = 0;
         agentDecisions.length = 0;
