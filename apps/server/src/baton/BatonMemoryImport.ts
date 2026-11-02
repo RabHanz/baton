@@ -51,7 +51,8 @@ export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function
   let unchanged = 0;
   for (const file of files) {
     const text = yield* Effect.try({
-      try: () => (NodeFS.statSync(file).size > MAX_BYTES ? null : NodeFS.readFileSync(file, "utf8")),
+      try: () =>
+        NodeFS.statSync(file).size > MAX_BYTES ? null : NodeFS.readFileSync(file, "utf8"),
       catch: () => null,
     }).pipe(Effect.orElseSucceed(() => null));
     if (text === null) {

@@ -124,7 +124,10 @@ layer("BatonMemoryService", (it) => {
       assert.include(out.block, "Staging lives");
       assert.isTrue(out.block.indexOf("Call him Rab") < out.block.indexOf("Staging lives"));
       const used = yield* memory.used("turn-1");
-      assert.deepEqual((yield* memory.used()).map((i) => i.id), used.map((i) => i.id));
+      assert.deepEqual(
+        (yield* memory.used()).map((i) => i.id),
+        used.map((i) => i.id),
+      );
       assert.strictEqual(used.length, out.ids.length);
       assert.isNotNull(used[0]?.lastUsedAt);
       const tiny = yield* memory.recall({ text: "staging box", budgetTokens: 5 });
@@ -173,8 +176,16 @@ it.effect("two servers converge: last writer wins, a forget travels and stays fo
     const a = yield* server;
     const b = yield* server;
     assert.notStrictEqual(a.origin, b.origin);
-    const shared = yield* a.add({ kind: "preference", text: "Reports go out on Mondays", source: "user" });
-    const gone = yield* a.add({ kind: "fact", text: "The old box is called delta", source: "user" });
+    const shared = yield* a.add({
+      kind: "preference",
+      text: "Reports go out on Mondays",
+      source: "user",
+    });
+    const gone = yield* a.add({
+      kind: "fact",
+      text: "The old box is called delta",
+      source: "user",
+    });
     yield* sync(a, b);
     assert.lengthOf(yield* b.list(), 2);
 
