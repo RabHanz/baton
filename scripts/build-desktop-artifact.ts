@@ -2372,6 +2372,7 @@ export const BATON_VOICE_PAYLOAD_FILES = [
   "models/alfred.onnx",
   "models/freya.onnx",
   "models/onyx.onnx",
+  "models/tessaya.onnx",
 ] as const;
 
 // Baton voice: the wake and VAD models everywhere, the dictation sidecar on Windows.

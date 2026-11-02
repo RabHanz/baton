@@ -32,7 +32,7 @@ from scipy.signal import butter, fftconvolve, resample_poly, sosfilt
 CHUNK = 1280  # 80 ms at 16 kHz, what the app feeds the scorer
 COOLDOWN = 12  # chunks all words are silent after one fires (streamingScorer)
 RATE = 16000
-THRESHOLDS = {"sebastian": 0.97, "alfred": 0.9, "freya": 0.95, "onyx": 0.9}
+THRESHOLDS = {"sebastian": 0.97, "alfred": 0.9, "freya": 0.95, "onyx": 0.9, "tessaya": 0.8}
 SWEEP = [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97, 0.98, 0.99, 0.995]
 
 
