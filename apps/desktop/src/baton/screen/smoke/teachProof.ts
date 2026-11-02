@@ -17,6 +17,7 @@ import { createInputDriver } from "../inputDriver.ts";
 import { startDictationSidecar } from "../../voice/dictationSidecar.ts";
 import { startScreenCompanion } from "../ScreenCompanion.ts";
 
+let pointedAt = 0;
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "teach-proof-out");
 const fake = process.env["PROOF_FAKE"] ?? "";
 const stateDir = NodePath.join(out, "state");
@@ -203,7 +204,10 @@ void Electron.app.whenReady().then(async () => {
       pill.on({ type: "speaking", active: false });
     },
     onNote: (kind, fields) => note(`note.${kind}`, fields),
-    onTrace: (fields) => note("trace", fields),
+    onTrace: (fields) => {
+      note("trace", fields);
+      if ("pointedAt" in fields) pointedAt += 1;
+    },
     onCue: (cue) => {
       note("cue", { cue });
       pill.cue(cue);
@@ -576,7 +580,7 @@ $n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 100
     const end = await until((k) => /Finished|Stopped/.test(k), 60_000);
     note("teach.end", { kicker: end });
     await sleep(6000);
-    results["teach"] = { steps, end };
+    results["teach"] = { steps, end, pointedAt };
     companion.stop();
     await sleep(1500);
     await stopClip((Date.now() - began) / 1000);
@@ -599,7 +603,14 @@ $n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 100
     const end = ended;
     note("drive.end", { kicker: end });
     await sleep(6000);
-    results["drive"] = { approvalsPressed: pressed, end };
+    // Notepad writes its font when it closes: the proof reads the setting, not the card.
+    await ps(
+      "Get-Process notepad -EA 0 | ForEach-Object { $null = $_.CloseMainWindow() }; Start-Sleep 3",
+    );
+    const points = await ps(
+      "(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Notepad' -EA 0).iPointSize",
+    );
+    results["drive"] = { approvalsPressed: pressed, end, fontPoints: Number(points) };
     await stopClip((Date.now() - began) / 1000);
   }
 
