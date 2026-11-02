@@ -37,11 +37,21 @@ html,body{width:100%;height:100%;overflow:hidden;font-size:15px}
 #card.beside{width:400px}
 #top{display:flex;align-items:center;gap:8px;min-height:18px;margin-bottom:4px;color:var(--blue-soft);font-size:12.5px;font-weight:600}
 #dots{display:flex;gap:4px;margin-left:auto}
+#next{margin-top:8px;display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--soft)}#next:empty{display:none}#next b{color:var(--text);font-weight:600}
+#acts{margin-top:10px;display:flex;gap:8px;align-items:center}#acts:empty{display:none}
+#acts button{all:unset;padding:5px 13px;border-radius:999px;background:rgba(255,255,255,.12);color:var(--text);font-size:13px;font-weight:600;cursor:default}
+#acts button:hover{background:rgba(255,255,255,.22)}#acts button:focus-visible{outline:2px solid var(--tz-glow)}
+#acts button.go{background:var(--tz-glow);color:var(--tz-ink)}
+#acts em{margin-left:auto;font-style:normal;font-size:12px;color:var(--faint)}#acts kbd{border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:0 5px;font:inherit}
+#card.step{border:1px solid color-mix(in srgb,var(--tz-glow) 35%,transparent)}
+#card.step #t{font-size:20px;font-weight:600;line-height:1.3}
+#card.waiting #k{color:var(--tz-glow)}#card.error{border-color:rgba(217,150,43,.75)}#card.error #k{color:#F2B84B}#card.done{border-color:rgba(46,143,110,.85)}#card.done #k{color:#6FD1AE}
+#bub{position:absolute;left:0;top:0;max-width:300px;padding:8px 12px;border-radius:10px;background:#2E8F6E;color:#fff;font-size:14px;line-height:1.35;box-shadow:0 4px 14px rgba(0,0,0,.35);opacity:0;transition:opacity .2s;pointer-events:none}#bub.on{opacity:1}
 #cp{all:unset;margin-left:8px;padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.12);color:var(--text);font-size:12px;font-weight:600;cursor:default}
 #cp:hover{background:rgba(255,255,255,.22)}
 #cp:focus-visible{outline:2px solid var(--blue-soft)}
-#dots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.2)}
-#dots i.done{background:var(--blue-soft)}
+#dots i{width:22px;height:4px;border-radius:2px;background:rgba(255,255,255,.22)}
+#dots i.done{background:var(--tz-glow)}
 #dots i.now{background:#fff}
 #pg{color:var(--faint);font-weight:500;font-variant-numeric:tabular-nums}
 #t{white-space:pre-line}
@@ -52,12 +62,12 @@ html,body{width:100%;height:100%;overflow:hidden;font-size:15px}
 .mk.done{background:var(--green);color:#06281a}
 .mk.now{animation:pulse 1.1s ease-in-out 2}
 @keyframes pulse{50%{box-shadow:0 0 0 2px #fff,0 0 0 10px rgba(51,128,255,.28)}}
-@media (prefers-reduced-motion:reduce){#card,#ptr,#tag,#ring,#bd{transition:none}#ring.pulse,.mk.now{animation:none}#trail{display:none}}
+@media (prefers-reduced-motion:reduce){#card,#ptr,#tag,#ring,#bd,#bub{transition:none}#ring.pulse,.mk.now{animation:none}#trail{display:none}}
 </style></head><body>
 <div id="trail"></div>
 <svg id="ptr" viewBox="0 0 24 26"><path d="M2.5 2.5 21 12 12 14 8.5 23.5Z" fill="#14505A" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
 <div id="ring"></div><div id="bd"></div><div id="tag"></div>
-<div id="card" class="glass" role="status" aria-live="polite"><div id="top"><span id="k"></span><span id="pg"></span><span id="dots"></span><button id="cp" type="button" hidden>Copy</button></div><div id="t"></div><div id="h"></div><i id="bar"></i></div><div id="mks"></div>
+<div id="card" class="glass" role="status" aria-live="polite"><div id="top"><span id="k"></span><span id="pg"></span><span id="dots"></span><button id="cp" type="button" hidden>Copy</button></div><div id="t"></div><div id="h"></div><div id="next"></div><div id="acts"></div><i id="bar"></i></div><div id="bub"></div><div id="mks"></div>
 <script>
 const $=i=>document.getElementById(i),ptr=$('ptr'),tag=$('tag'),ring=$('ring'),card=$('card');
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -101,8 +111,12 @@ window.fly=(from,to,text,o)=>{clearTimeout(typing);landed=null;if(from)at=from;p
  flight(spot,()=>{landed=spot;mark(to,o);label(text);placeCard();setTimeout(fadeTrail,150);});};
 // Waiting for him: one soft pulse on the highlight, once.
 window.wait=()=>{if(calm||!ring.classList.contains('on'))return;ring.classList.remove('pulse');void ring.offsetWidth;ring.classList.add('pulse');};
+const acts=$('acts'),nextLine=$('next');
 window.card=(c)=>{const on=!!(c&&(c.text||c.kicker));card.classList.toggle('on',on);if(!on)return;
- $('k').textContent=c.kicker||'';$('t').textContent=c.text||'';$('h').textContent=c.hint||'';$('pg').textContent=c.page||'';$('cp').hidden=!c.text;
+ card.classList.toggle('step',!!(c.dots||c.state));for(const s of['waiting','error','done'])card.classList.toggle(s,c.state===s);
+ $('k').textContent=c.kicker||'';$('t').textContent=c.text||'';$('h').textContent=c.hint||'';$('pg').textContent=c.page||'';$('cp').hidden=!c.text||!!c.state;
+ nextLine.replaceChildren();(c.next||[]).forEach((s,i)=>{const e=document.createElement('span'),b=document.createElement('b');b.textContent=String((c.dots?c.dots.at+2:1)+i);e.append(b,' '+s);nextLine.appendChild(e);});
+ acts.replaceChildren();if(c.actions&&c.actions.length){for(const a of c.actions){const b=document.createElement('button');b.type='button';b.textContent=a.label;if(a.primary)b.className='go';b.onclick=()=>console.log('baton:card:act:'+a.id);acts.appendChild(b);}const e=document.createElement('em');e.innerHTML='<kbd>Esc</kbd> stops';acts.appendChild(e);}
  const dots=$('dots');dots.replaceChildren();if(c.dots)for(let i=0;i<c.dots.of;i++){const d=document.createElement('i');d.className=i<c.dots.at?'done':i===c.dots.at?'now':'';dots.appendChild(d);}
  $('bar').getAnimations().forEach(a=>a.cancel());placeCard();};
 // The page has no bridge to main: console lines are the message, and main answers by taking the mouse while it is over the card.
@@ -111,8 +125,9 @@ card.addEventListener('mouseleave',()=>console.log('baton:card:hover:0'));
 $('cp').onclick=()=>{console.log('baton:card:copy');$('cp').textContent='Copied';setTimeout(()=>{$('cp').textContent='Copy';},1200);};
 window.timer=(ms)=>{const b=$('bar');b.getAnimations().forEach(a=>a.cancel());b.animate([{transform:'scaleX(1)'},{transform:'scaleX(0)'}],{duration:ms,easing:'linear',fill:'forwards'});};
 window.marks=(list)=>{const box=$('mks');box.replaceChildren();for(const m of list){const e=document.createElement('div');e.className='mk'+(m.state?' '+m.state:'');e.style.left=m.x+'px';e.style.top=m.y+'px';e.textContent=m.n;box.appendChild(e);}};
-window.back=(to)=>{card.classList.remove('on');hide();landed=null;if(to&&!calm)flight(to,()=>ptr.classList.remove('on'));else ptr.classList.remove('on');};
-window.clearAll=()=>{cancelAnimationFrame(anim);clearTimeout(typing);landed=null;ptr.classList.remove('on');hide();$('trail').classList.remove('on','fade');window.card(null);window.marks([]);};
+window.bubble=(text)=>{const b=$('bub');if(!text){b.classList.remove('on');return;}b.textContent=text;const p=landed||at;b.style.left=clamp(p.x+22,12,innerWidth-312)+'px';b.style.top=clamp(p.y+30,12,innerHeight-90)+'px';b.classList.add('on');};
+window.back=(to)=>{$('bub').classList.remove('on');card.classList.remove('on');hide();landed=null;if(to&&!calm)flight(to,()=>ptr.classList.remove('on'));else ptr.classList.remove('on');};
+window.clearAll=()=>{$('bub').classList.remove('on');cancelAnimationFrame(anim);clearTimeout(typing);landed=null;ptr.classList.remove('on');hide();$('trail').classList.remove('on','fade');window.card(null);window.marks([]);};
 </script></body></html>`;
 
 export interface OverlayMarker {
@@ -130,6 +145,16 @@ export interface OverlayCard {
   readonly page?: string;
   /** Plan or lesson progress. */
   readonly dots?: { readonly at: number; readonly of: number };
+  /** The steps after this one, small, in one line. */
+  readonly next?: ReadonlyArray<string>;
+  /** Waiting for him, a problem, or finished: the card's edge and kicker say so. */
+  readonly state?: "waiting" | "error" | "done";
+  /** Buttons on the card; each reports its id through `onAction`. */
+  readonly actions?: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly primary?: boolean;
+  }>;
 }
 
 /** What is drawn at the target: the control's size from the accessibility tree, a ring or a dashed box, a step number. */
@@ -154,6 +179,8 @@ export interface PointerOverlay {
   ) => Promise<boolean>;
   /** Waiting for him: one soft pulse on the highlight, once. */
   readonly waiting: () => Promise<void>;
+  /** A short bubble at the pointer, or none: what changed, and how to undo it. */
+  readonly bubble: (text: string | null) => Promise<void>;
   /** The card: beside the pointer once it lands, otherwise low on the stage display. */
   readonly card: (card: OverlayCard | null) => Promise<void>;
   /** Run the card's countdown line, so a hold is something he can see. */
@@ -173,7 +200,10 @@ const IDLE_CLOSE_MS = 120_000;
 const CARD_ABOVE_WORK_AREA = 72;
 const RETREAT_MS = 900;
 
-export const createPointerOverlay = (platform: string): PointerOverlay => {
+export const createPointerOverlay = (
+  platform: string,
+  onAction: (id: string) => void = () => undefined,
+): PointerOverlay => {
   const windows = new Map<number, { win: Electron.BrowserWindow; ready: Promise<void> }>();
   let stage: Electron.Display | null = null;
   let shown: OverlayCard | null = null;
@@ -213,6 +243,8 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
       else if (message === "baton:card:hover:0") win.setIgnoreMouseEvents(true, { forward: true });
       else if (message === "baton:card:copy" && shown !== null)
         Electron.clipboard.writeText(shown.text);
+      else if (typeof message === "string" && message.startsWith("baton:card:act:"))
+        onAction(message.slice("baton:card:act:".length));
     });
     // Made on the primary's scale; set again so a 125 % display's window is the display's size.
     win.setBounds(display.bounds);
@@ -302,6 +334,9 @@ export const createPointerOverlay = (platform: string): PointerOverlay => {
     },
     waiting: async () => {
       if (stage !== null) await run(stage, "window.wait()");
+    },
+    bubble: async (text) => {
+      if (stage !== null) await run(stage, `window.bubble(${JSON.stringify(text)})`);
     },
     timer: async (ms) => {
       if (stage !== null) await run(stage, `window.timer(${Math.round(ms)})`);
