@@ -5,6 +5,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
 
 import {
   buildBatonTools,
@@ -26,24 +27,63 @@ export const ps = (script: string, timeoutMs = 60_000): Promise<string> =>
     );
   });
 
-const clipboard = {
-  readText: async () => {
-    try {
-      return await ps("Get-Clipboard -Raw");
-    } catch {
-      return "";
+// One long-lived PowerShell for the clipboard: a new process per read or write took about a second, long
+// enough for the paste's own restore to race with a copy made right after typing, which a real (synchronous)
+// clipboard does not do.
+const CLIP_SCRIPT = `
+Add-Type -AssemblyName System.Windows.Forms
+$u = [System.Text.Encoding]::UTF8
+function Enc($t) { if ($t -eq $null) { '' } else { [Convert]::ToBase64String($u.GetBytes($t)) } }
+function Dec($b) { $u.GetString([Convert]::FromBase64String($b)) }
+while (($line = [Console]::In.ReadLine()) -ne $null) {
+  $p = $line.Split(' ')
+  try {
+    switch ($p[0]) {
+      'get' { [Console]::Out.WriteLine('ok ' + (Enc (Get-Clipboard -Raw))) }
+      'set' { Set-Clipboard -Value (Dec $p[1]); [Console]::Out.WriteLine('ok') }
+      'clear' { [System.Windows.Forms.Clipboard]::Clear(); [Console]::Out.WriteLine('ok') }
+      'replace' {
+        if ((Get-Clipboard -Raw) -ceq (Dec $p[1])) { if ($p[2] -eq '') { [System.Windows.Forms.Clipboard]::Clear() } else { Set-Clipboard -Value (Dec $p[2]) } }
+        [Console]::Out.WriteLine('ok')
+      }
     }
+  } catch { [Console]::Out.WriteLine('err ' + $_.Exception.Message) }
+}
+`;
+const clipProc = NodeChildProcess.spawn(
+  "powershell.exe",
+  ["-NoProfile", "-NonInteractive", "-STA", "-Command", CLIP_SCRIPT],
+  {
+    stdio: ["pipe", "pipe", "ignore"],
+    windowsHide: true,
   },
+);
+const clipWaiting: Array<(line: string) => void> = [];
+NodeReadline.createInterface({ input: clipProc.stdout }).on("line", (line) =>
+  clipWaiting.shift()?.(line),
+);
+let clipChain: Promise<unknown> = Promise.resolve();
+const clip = (command: string): Promise<string> => {
+  const turn = clipChain.then(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        clipWaiting.push((line) =>
+          line.startsWith("ok") ? resolve(line.slice(3)) : reject(new Error(line)),
+        );
+        clipProc.stdin.write(`${command}\n`);
+      }),
+  );
+  clipChain = turn.catch(() => undefined);
+  return turn;
+};
+const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
+const clipboard = {
+  readText: async () => Buffer.from(await clip("get").catch(() => ""), "base64").toString("utf8"),
   writeText: async (text: string) => {
-    if (text === "") {
-      await ps(
-        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::Clear()",
-      ).catch(() => undefined);
-      return;
-    }
-    await ps(
-      `Set-Clipboard -Value ([System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(text, "utf8").toString("base64")}')))`,
-    );
+    await (text === "" ? clip("clear") : clip(`set ${b64(text)}`));
+  },
+  replaceIf: async (expected: string, next: string) => {
+    await clip(`replace ${b64(expected)} ${b64(next)}`).catch(() => undefined);
   },
 };
 
@@ -91,6 +131,10 @@ public static class Diff { public static int Count(string a, string b) {
 "@
 [Diff]::Count('${a}','${b}')`,
   ).then((s) => Number(s));
+
+/** For tests that read or set the clipboard themselves, through the same helper. */
+export const clipboardText = () => clipboard.readText();
+export const setClipboardText = (text: string) => clipboard.writeText(text);
 
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
@@ -189,6 +233,6 @@ export const makeHost = (outDir: string): Host => {
       const out = await tool.run(args);
       return out.text ?? "";
     },
-    dispose: () => driver.dispose(),
+    dispose: () => (driver.dispose(), clipProc.kill()),
   };
 };
