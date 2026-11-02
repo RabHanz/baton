@@ -175,10 +175,10 @@ export const refineJob = Effect.fn("BatonJobFlow.refine")(function* (input: Bato
   const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
   const terms = yield* jobs.refine(
     input.id,
-    { by: "him", at, via: input.via, text: input.text },
+    { by: input.note === true ? "baton" : "him", at, via: input.note === true ? "thread" : input.via, text: input.text },
     input.widens === true,
   );
-  if (terms === null) return null;
+  if (terms === null || input.note === true) return terms;
   const threadId = yield* threadOf(input.id);
   // The plan is made again with his words, word for word.
   if (threadId !== null) {

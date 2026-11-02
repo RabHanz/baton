@@ -183,7 +183,9 @@ import {
   triggersFromCommitments,
   triggersFromFindings,
   type CiRun,
+  type Trigger,
 } from "@t3tools/baton-shared/initiative";
+import { createPlaybookStore, PLAYBOOKS, runPlaybooks, type PlaybookId } from "../presence/playbooks.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
@@ -2622,6 +2624,40 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     return ciCache.runs;
   };
   const anomalies = createAnomalySource({ dir: input.stateDir, now: () => Date.now() });
+  /** A read-only look in its own thread. Unattended, it also starts at once (a read-only job can do no harm). */
+  const startLook = async (offer: Trigger, unattended: boolean): Promise<string> => {
+    const yes = offer.yes;
+    if (yes.kind !== "job") return "Nothing to start.";
+    const project =
+      yes.repo !== undefined
+        ? yes.repo.split("/")[1]
+        : input.sessions?.rows().find((r) => r.key === yes.sessionId)?.project;
+    if (project === undefined || project === "") {
+      commitments.add({
+        text: `Look into: ${offer.title}`.slice(0, 300),
+        source: "offer",
+        ...(yes.sessionId === undefined ? {} : { ref: yes.sessionId }),
+      });
+      return "I could not tell which project that is, so I noted it to look into.";
+    }
+    const started = (await requestKept({
+      kind: "job",
+      op: "start",
+      args: {
+        title: `Look into: ${offer.title}`.slice(0, 120),
+        goal: yes.goal,
+        project,
+        folders: [],
+        tools: ["read"],
+      },
+    })) as { terms?: { workSessionId?: string } | null } | null;
+    const id = started?.terms?.workSessionId;
+    if (unattended && id !== undefined) {
+      await requestKept({ kind: "job", op: "grant", args: { id, channel: "start" } });
+      return "Started a read-only look; the findings will show on the Now page.";
+    }
+    return "Started a read-only look in its own thread. Nothing changes until you agree to a plan.";
+  };
   const initiative = createInitiative({
     dir: input.stateDir,
     now: () => Date.now(),
@@ -2667,34 +2703,47 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         commitments.add({ text: yes.text, source: "offer" });
         return "I will keep track of it.";
       }
-      const project =
-        yes.repo !== undefined
-          ? yes.repo.split("/")[1]
-          : input.sessions?.rows().find((r) => r.key === yes.sessionId)?.project;
-      if (project === undefined || project === "") {
-        commitments.add({
-          text: `Look into: ${offer.title}`.slice(0, 300),
-          source: "offer",
-          ...(yes.sessionId === undefined ? {} : { ref: yes.sessionId }),
-        });
-        return "I could not tell which project that is, so I noted it to look into.";
-      }
-      await requestKept({
-        kind: "job",
-        op: "start",
-        args: {
-          title: `Look into: ${offer.title}`.slice(0, 120),
-          goal: yes.goal,
-          project,
-          folders: [],
-          tools: ["read"],
-        },
-      });
-      return "Started a read-only look in its own thread. Nothing changes until you agree to a plan.";
+      return startLook(offer, false);
     },
     tell: (text) => input.extras?.announce(text, false),
   });
   setInterval(() => void initiative.tick().catch(() => undefined), INITIATIVE_MS).unref();
+
+  // Playbooks (all off until he turns one on in Trust): narrow, budgeted, logged, and never send, post or spend.
+  const playbookStore = createPlaybookStore(input.stateDir);
+  const playbookTick = async (): Promise<void> => {
+    const state = playbookStore.load();
+    if (!Object.values(state.on).some(Boolean)) return;
+    // Reading jobs and findings goes through the T3 window, which would open it: only while it is already up.
+    const windowUp = mainContents !== null && !mainContents.isDestroyed();
+    const now = Date.now();
+    const jobs = windowUp ? (jobsCache ?? []) : [];
+    const findings = windowUp ? await watchFindings() : [];
+    const result = await runPlaybooks(
+      {
+        state,
+        now,
+        day: new Date(now).toDateString(),
+        hour: new Date(now).getHours(),
+        findings,
+        ci: windowUp ? await ciRuns() : [],
+        jobs,
+      },
+      {
+        look: (offer) => startLook(offer, true),
+        brief: async () =>
+          morningBrief({ jobs, findings, now, extra: briefExtra() }),
+        say: (text) => input.extras?.announce(text, true),
+        note: async (id, text) => {
+          await requestKept({ kind: "job", op: "refine", args: { id, text, via: "text", note: true } });
+        },
+      },
+    );
+    playbookStore.save(result.state);
+    for (const run of result.did) input.onNote?.("playbook", { playbook: run.id, text: run.text });
+    if (result.did.length > 0) void refreshNow().catch(() => undefined);
+  };
+  setInterval(() => void playbookTick().catch(() => undefined), INITIATIVE_MS).unref();
 
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
@@ -2868,6 +2917,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const state = initiative.state();
     nowData = {
       loaded: true,
+      brief: playbookStore.load().brief?.text ?? null,
       needs: ranked,
       unreadable,
       commitments: commitments.list().filter((c) => c.status === "open"),
@@ -2924,6 +2974,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             since: g.grantedAt,
           })),
       ),
+      playbooks: PLAYBOOKS.map((p) => ({ ...p, on: playbookStore.load().on[p.id] === true })),
       weaveHosts: parseWeaveHosts(input.env["BATON_WEAVE_HOSTS"]).hosts.map((h) => h.name),
       entries: parseTrustLogs({
         turns: tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")),
@@ -3828,6 +3879,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id.startsWith("trust.")) {
       const act = trustAction(id, value);
       if (act?.kind === "filter") trustFilter = act.filter;
+      else if (act?.kind === "playbook") {
+        if (PLAYBOOKS.some((p) => p.id === act.id)) playbookStore.setOn(act.id as PlaybookId, act.on);
+      }
       else if (act?.kind === "revoke") {
         if (act.what === "vault") vaultState.vault.lock();
         else {

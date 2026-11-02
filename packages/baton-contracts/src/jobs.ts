@@ -201,6 +201,8 @@ export const BatonJobRefineInput = Schema.Struct({
   via: Schema.Literals(["voice", "text"]),
   /** True when the edit adds a folder, project, tool or a longer leash: it asks for his OK again. */
   widens: Schema.optionalKey(Schema.Boolean),
+  /** True for a line in the job's record only: the worker is not told and does not take a turn. */
+  note: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonJobRefineInput = typeof BatonJobRefineInput.Type;
 

@@ -11,6 +11,7 @@ const turns = [
 ]
   .map((l) => JSON.stringify(l))
   .join("\n");
+const play = JSON.stringify({ at: "2026-11-03T07:00:00Z", kind: "playbook", playbook: "ci_look", text: "ci on x: started" });
 const social = JSON.stringify({ at: "2026-11-03T09:00:00Z", host: "x.com", tool: "click", action: "post", outcome: "asked" });
 const vault = JSON.stringify({ at: "2026-11-03T08:00:00Z", name: "github", purpose: "login", target: "github.com", outcome: "used" });
 
@@ -22,7 +23,8 @@ const data = (over: Partial<TrustData> = {}): TrustData => ({
   vault: "unlocked",
   grants: [{ jobId: "j1", title: "Site", channel: "retry", since: "2026-11-01T00:00:00Z" }],
   weaveHosts: ["office"],
-  entries: parseTrustLogs({ turns, social: `${social}\ngarbage{`, vault }),
+  playbooks: [{ id: "ci_look", title: "When a build fails", what: "Looks.", perDay: 3, on: false }],
+  entries: parseTrustLogs({ turns: `${turns}\n${play}`, social: `${social}\ngarbage{`, vault }),
   filter: "all",
   ...over,
 });
@@ -52,10 +54,17 @@ describe("trust page", () => {
     expect(ids).not.toContain("action:trust.revoke:chrome");
   });
 
+  it("lists each playbook as a toggle that is off until turned on", () => {
+    const row = trustControls(data(), NOW).find((c) => c.id === "trust.playbook:ci_look");
+    expect(row?.kind === "toggle" && row.on).toBe(false);
+    expect(trustAction("trust.playbook:ci_look", true)).toEqual({ kind: "playbook", id: "ci_look", on: true });
+  });
+
   it("filters the log", () => {
     const logRows = (filter: TrustData["filter"]) =>
       trustControls(data({ filter }), NOW).filter((c) => c.id.startsWith("trust.log:"));
-    expect(logRows("all")).toHaveLength(5);
+    expect(logRows("all")).toHaveLength(6);
+    expect(logRows("playbook")).toHaveLength(1);
     expect(logRows("vault")).toHaveLength(1);
     expect(logRows("weave")).toHaveLength(1);
   });
