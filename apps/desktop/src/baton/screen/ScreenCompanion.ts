@@ -5,6 +5,7 @@
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
+import { detectSecret } from "@t3tools/baton-shared/memory";
 import { isNeedsMeAsk } from "@t3tools/baton-shared/needsMe";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -101,6 +102,7 @@ import { askHistory } from "@t3tools/baton-shared/historyIndex";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
+import { plainError, stepLine } from "@t3tools/baton-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -818,9 +820,11 @@ export const startScreenCompanion = (input: {
     // He stopped it, and that ended the conversation under the question in flight.
     if (error instanceof SessionClosed) return;
     if (run === null && message.startsWith("Claude stopped")) return;
+    // The raw text goes to the log; what is said and shown is in plain words.
     input.onNote?.("error", { message });
-    say(message);
-    linger("Tessaya", message);
+    const plain = plainError(message);
+    say(plain);
+    linger("Tessaya", plain);
     input.onActivity?.(null);
     end();
   };
@@ -1092,7 +1096,9 @@ export const startScreenCompanion = (input: {
       );
       input.onActivity?.(null);
       if (run !== lesson) return;
-      lesson.lastSpoken = reply.spoken;
+      // The words said and the words on the card are the same short sentence; the model's longer text stays in the log.
+      const line = stepLine(reply.spoken) || reply.spoken;
+      lesson.lastSpoken = line;
       input.onTrace?.({
         teachStep: lesson.step,
         note: note ?? null,
@@ -1100,25 +1106,25 @@ export const startScreenCompanion = (input: {
         at: Date.now(),
       });
       if (reply.done) {
-        say(reply.spoken);
+        say(line);
         await finishedCard(
           `Finished · ${lesson.step} ${lesson.step === 1 ? "step" : "steps"}`,
           "That is all of it.",
-          reply.spoken,
+          line,
         );
         return end();
       }
-      say(reply.spoken);
+      say(line);
       await pointAt(reply.point, shots, lesson.step);
       await show(
         `Step ${lesson.step} · waiting for you`,
-        reply.spoken,
+        line,
         "Do it and I'll notice, or say next.",
         { state: "waiting", actions: STEP_ACTIONS },
       );
       void overlay.waiting();
       input.onCue?.("waiting");
-      watch(lesson, baseline, reply.spoken);
+      watch(lesson, baseline, line);
     } finally {
       lesson.busy = false;
     }
@@ -1264,13 +1270,13 @@ export const startScreenCompanion = (input: {
       input.onAction?.({ by: "drive", plan: plan.title, outcome: "refused" });
       return finish();
     }
-    current.lastSpoken = reply.spoken;
+    current.lastSpoken = stepLine(reply.spoken, 20) || reply.spoken;
     const marks = planMarkers(plan, shots);
     await overlay.markers(marks);
     const askFirst =
       subject !== null || !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
     input.onActivity?.(askFirst ? "Waiting for you" : "Starting", plan.title);
-    say(reply.spoken);
+    say(current.lastSpoken);
     const response = !askFirst
       ? 0
       : await askHandsFree(
@@ -1614,7 +1620,12 @@ export const startScreenCompanion = (input: {
   vaultHost = createVaultHost({
     vault: vaultState.vault,
     confirm: async (title, detail) =>
-      (await askHandsFree({ title, detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true }, title, 0, true)) === 0,
+      (await askHandsFree(
+        { title, detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true },
+        title,
+        0,
+        true,
+      )) === 0,
     type: async (text) => {
       await driverFor().type(text);
     },
@@ -1753,7 +1764,19 @@ export const startScreenCompanion = (input: {
       if (text.startsWith("- ")) linger("Memory used", text);
       return text;
     },
-    jobs: async (op, args) => actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
+    jobs: async (op, args) => {
+      // A weave never carries a secret: it is offered to the vault instead and nothing is sent.
+      if (op === "weave_send") {
+        const secret = detectSecret(String(args["text"] ?? ""));
+        if (secret !== null) {
+          return (
+            vaultHost?.offer(String(args["text"]), secret) ??
+            `That looks like ${secret}, and a weave never carries one. Nothing was sent.`
+          );
+        }
+      }
+      return actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.";
+    },
     target: async (label, workSessionId) => {
       conversation.add({
         route: "act",
@@ -2116,7 +2139,8 @@ export const startScreenCompanion = (input: {
         kind: "brain",
         value: settings.operator,
         options: brainRows(brains ?? UNKNOWN_BRAINS),
-        lead: !settings.brainChosen,
+        // A ready default needs no first-run card on Home; the Assistant page is the one place to change it.
+        lead: !settings.brainChosen && !brainRows(brains ?? UNKNOWN_BRAINS).some((r) => r.value === settings.operator && r.state === "ready"),
       },
       {
         id: "s.brainCheck",
