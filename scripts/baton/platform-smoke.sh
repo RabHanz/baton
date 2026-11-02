@@ -9,6 +9,12 @@ mkdir -p "$out/shots" "$out/wav"
 home="$(mktemp -d)"; export HOME="$home"            # a clean user: nothing of anyone's
 userdata="$HOME/.t3/userdata"; mkdir -p "$userdata"
 printf '%s' '{"enabled":true,"wakeWords":[{"word":"Sebastian","enabled":true,"threshold":0.9}]}' > "$userdata/fabric-voice.json"
+# The speech model is 740 MB. Fetch it here, once, so the app's own downloader (which has its own stall limit) is
+# not what a slow runner network tests; the app checks the hash either way.
+models="$userdata/voice/models"; mkdir -p "$models"
+curl -fL --retry 5 --retry-delay 5 -o "$models/parakeet-tdt-0.6b-v3-Q8_0.gguf" \
+  "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf" \
+  || echo "NOTE the model could not be pre-fetched; the app will try itself"
 phrase="Sebastian. What is the capital of Brazil?"
 wav="$out/wav/wake.wav"
 case "$platform" in
