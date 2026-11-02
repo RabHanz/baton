@@ -31,6 +31,7 @@ const ICON = {
   vault: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   checks: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 4M12 17h.01"/>',
   trust: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="12" cy="10" r="2.2"/><path d="M12 12.2V16"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   side: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/>',
@@ -51,10 +52,10 @@ if (real) {
     if (p) set('tf.file', p);
   });
 }
-const GROUPS = [['Now', ['home','now','sessions','approvals','jobs']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks']]];
+const GROUPS = [['Now', ['home','now','sessions','approvals','jobs']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks','help']]];
 const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]')); } catch (e) { return new Set(); } })();
 const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
-const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['scratchpad','Scratchpad'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['trust','Trust'],['checks','Checks']];
+const TABS = [['home','Home'],['now','Now'],['snippets','Snippets'],['insights','Insights'],['scratchpad','Scratchpad'],['style','Style'],['transforms','Transforms'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['trust','Trust'],['checks','Checks'],['help','Help']];
 const INTRO = {
   scratchpad: ['Scratchpad', 'Quick notes you speak or type, kept on this computer and searchable.'],
   insights: ['Insights', 'How much you dictate, how fast, what Tessaya fixed and where. Worked out on this computer from your History; compared only with your own past.'],
@@ -75,6 +76,7 @@ const INTRO = {
   screen: ['Screen', 'When Tessaya may look at your screen, and how to stop it.'],
   usage: ['Usage', 'How much of each account is left.'],
   trust: ['Trust', 'Everything Tessaya may do on your behalf, when it last did it, and a button to take each back. Below, a record of what it did.'],
+  help: ['Help', 'What you can say, the keys, and what to try when a check fails. Press Ctrl+K anywhere to search everything.'],
   checks: ['Checks', 'See what is wrong without reading a log.']
 };
 let cur = 'home', collapsed = false, modal = null, S = null, query = '';
