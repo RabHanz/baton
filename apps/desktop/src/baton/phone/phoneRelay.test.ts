@@ -41,9 +41,9 @@ describe("the desktop's phone relay", () => {
   it("mirrors a question and resolves with the phone's button; closing tells the server", async () => {
     const { relay, calls } = make({ poll: [null, 1] });
     const mirrored = relay.mirror({ title: "Run it?", detail: "Click Save", buttons: ["Go ahead", "Not now"], yes: 0, cancel: 1 });
-    expect(await mirrored.answer).toBe(1);
+    expect(await mirrored!.answer).toBe(1);
     expect(calls[0]).toEqual(["prompt", { id: "p1", title: "Run it?", detail: "Click Save", buttons: ["Go ahead", "Not now"], yes: 0, cancel: 1 }]);
-    mirrored.close();
+    mirrored!.close();
     expect(calls.at(-1)).toEqual(["promptClose", { id: "p1" }]);
   });
 });

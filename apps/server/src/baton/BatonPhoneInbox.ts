@@ -20,6 +20,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 interface AskRow {
@@ -56,6 +57,10 @@ const fromAsk = (r: AskRow): PhoneAsk => ({
   card: r.card,
   error: r.error,
 });
+
+const ButtonsJson = Schema.fromJsonString(Schema.Array(Schema.String));
+const encodeButtons = Schema.encodeSync(ButtonsJson);
+const decodeButtons = Schema.decodeSync(ButtonsJson);
 
 export type PostResult =
   | { readonly ok: true; readonly ask: PhoneAsk }
@@ -109,26 +114,25 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
 
-  const post: BatonPhoneInbox["Service"]["post"] = ({ id, text }) =>
-    Effect.gen(function* () {
-      const trimmed = text.trim();
-      if (!CLIENT_ID.test(id)) return { ok: false as const, why: "That request had no valid id." };
-      if (trimmed === "") return { ok: false as const, why: "Say something." };
-      if (trimmed.length > ASK_TEXT_MAX) return { ok: false as const, why: "That is too long. Keep it short." };
-      yield* sweep;
-      const again = yield* read(id);
-      if (again !== null) return { ok: true as const, ask: again };
-      const now = yield* Clock.currentTimeMillis;
-      const waiting = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM fabric_phone_asks WHERE status IN ('queued','taken')`.pipe(Effect.orDie);
-      if ((waiting[0]?.n ?? 0) >= QUEUE_MAX) {
-        return { ok: false as const, why: "Too many asks are waiting. Let your computer catch up." };
-      }
-      yield* sql`
-        INSERT INTO fabric_phone_asks (id, text, source, status, created_at, expires_at)
-        VALUES (${id}, ${trimmed}, 'phone', 'queued', ${now}, ${now + ASK_TTL_MS})
-      `.pipe(Effect.orDie);
-      return { ok: true as const, ask: (yield* read(id))! };
-    });
+  const post = Effect.fn("BatonPhoneInbox.post")(function* (input: { readonly id: string; readonly text: string }) {
+    const trimmed = input.text.trim();
+    if (!CLIENT_ID.test(input.id)) return { ok: false as const, why: "That request had no valid id." };
+    if (trimmed === "") return { ok: false as const, why: "Say something." };
+    if (trimmed.length > ASK_TEXT_MAX) return { ok: false as const, why: "That is too long. Keep it short." };
+    yield* sweep;
+    const again = yield* read(input.id);
+    if (again !== null) return { ok: true as const, ask: again };
+    const now = yield* Clock.currentTimeMillis;
+    const waiting = yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM fabric_phone_asks WHERE status IN ('queued','taken')`.pipe(Effect.orDie);
+    if ((waiting[0]?.n ?? 0) >= QUEUE_MAX) {
+      return { ok: false as const, why: "Too many asks are waiting. Let your computer catch up." };
+    }
+    yield* sql`
+      INSERT INTO fabric_phone_asks (id, text, source, status, created_at, expires_at)
+      VALUES (${input.id}, ${trimmed}, 'phone', 'queued', ${now}, ${now + ASK_TTL_MS})
+    `.pipe(Effect.orDie);
+    return { ok: true as const, ask: (yield* read(input.id))! };
+  });
 
   const take = Effect.gen(function* () {
     yield* sweep;
@@ -143,77 +147,93 @@ export const make = Effect.gen(function* () {
     return (yield* read(row.id))!;
   });
 
-  const settle = (id: string, status: "answered" | "failed", spoken: string | null, card: string | null, error: string | null) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const current = yield* read(id);
-      if (current === null || current.status !== "taken") return false;
-      yield* sql`
-        UPDATE fabric_phone_asks SET status = ${status}, answered_at = ${now}, spoken = ${spoken}, card = ${card}, error = ${error}
-        WHERE id = ${id}
-      `.pipe(Effect.orDie);
-      return true;
-    });
+  const get = Effect.fn("BatonPhoneInbox.get")(function* (id: string) {
+    yield* sweep;
+    return yield* read(id);
+  });
 
-  const mirror: BatonPhoneInbox["Service"]["mirror"] = (prompt) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      yield* sql`
-        INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, status, answer, created_at, expires_at)
-        VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${JSON.stringify(prompt.buttons.slice(0, 4))},
-                ${prompt.yes}, ${prompt.cancel}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS})
-      `.pipe(Effect.orDie);
-    });
+  const recent = Effect.fn("BatonPhoneInbox.recent")(function* (limit: number) {
+    yield* sweep;
+    const rows = yield* sql<AskRow>`SELECT * FROM fabric_phone_asks ORDER BY created_at DESC, id DESC LIMIT ${limit}`.pipe(Effect.orDie);
+    return rows.map(fromAsk);
+  });
+
+  const settle = Effect.fn("BatonPhoneInbox.settle")(function* (
+    id: string,
+    status: "answered" | "failed",
+    spoken: string | null,
+    card: string | null,
+    error: string | null,
+  ) {
+    const now = yield* Clock.currentTimeMillis;
+    const current = yield* read(id);
+    if (current === null || current.status !== "taken") return false;
+    yield* sql`
+      UPDATE fabric_phone_asks SET status = ${status}, answered_at = ${now}, spoken = ${spoken}, card = ${card}, error = ${error}
+      WHERE id = ${id}
+    `.pipe(Effect.orDie);
+    return true;
+  });
+
+  const answer = (id: string, spoken: string, card: string) => settle(id, "answered", spoken.slice(0, 4000), card.slice(0, 4000), null);
+  const fail = (id: string, message: string) => settle(id, "failed", null, null, message.slice(0, 500));
+
+  const mirror = Effect.fn("BatonPhoneInbox.mirror")(function* (prompt: PhonePrompt) {
+    const now = yield* Clock.currentTimeMillis;
+    yield* sql`
+      INSERT OR REPLACE INTO fabric_phone_prompts (id, title, detail, buttons, yes, cancel, status, answer, created_at, expires_at)
+      VALUES (${prompt.id}, ${prompt.title.slice(0, 200)}, ${prompt.detail.slice(0, 4000)}, ${encodeButtons(prompt.buttons.slice(0, 4))},
+              ${prompt.yes}, ${prompt.cancel}, 'pending', NULL, ${now}, ${now + PROMPT_TTL_MS})
+    `.pipe(Effect.orDie);
+  });
+
+  const pending = Effect.gen(function* () {
+    yield* sweep;
+    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE status = 'pending' ORDER BY created_at`.pipe(Effect.orDie);
+    return rows.map(
+      (r): PhonePrompt => ({
+        id: r.id,
+        title: r.title,
+        detail: r.detail,
+        buttons: decodeButtons(r.buttons),
+        yes: r.yes,
+        cancel: r.cancel,
+      }),
+    );
+  });
+
+  const answerPrompt = Effect.fn("BatonPhoneInbox.answerPrompt")(function* (id: string, index: number) {
+    yield* sweep;
+    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id} AND status = 'pending'`.pipe(Effect.orDie);
+    const row = rows[0];
+    const buttons = row === undefined ? 0 : decodeButtons(row.buttons).length;
+    if (row === undefined || !Number.isInteger(index) || index < 0 || index >= buttons) return false;
+    yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index} WHERE id = ${id}`.pipe(Effect.orDie);
+    return true;
+  });
+
+  const promptAnswer = Effect.fn("BatonPhoneInbox.promptAnswer")(function* (id: string) {
+    const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id}`.pipe(Effect.orDie);
+    return rows[0]?.status === "answered" ? rows[0].answer : null;
+  });
+
+  const closePrompt = Effect.fn("BatonPhoneInbox.closePrompt")(function* (id: string) {
+    yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE id = ${id} AND status = 'pending'`.pipe(Effect.orDie);
+  });
 
   return BatonPhoneInbox.of({
     post,
-    get: (id) => Effect.andThen(sweep, read(id)),
-    recent: (limit) =>
-      Effect.andThen(
-        sweep,
-        sql<AskRow>`SELECT * FROM fabric_phone_asks ORDER BY created_at DESC, id DESC LIMIT ${limit}`.pipe(
-          Effect.map((rows) => rows.map(fromAsk)),
-          Effect.orDie,
-        ),
-      ),
+    get,
+    recent,
     take,
-    answer: (id, spoken, card) => settle(id, "answered", spoken.slice(0, 4000), card.slice(0, 4000), null),
-    fail: (id, message) => settle(id, "failed", null, null, message.slice(0, 500)),
+    answer,
+    fail,
     connected: Effect.map(Clock.currentTimeMillis, (now) => isConnected(lastSeen, now)),
     mirror,
-    pending: Effect.andThen(
-      sweep,
-      sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE status = 'pending' ORDER BY created_at`.pipe(
-        Effect.map((rows) =>
-          rows.map((r): PhonePrompt => ({
-            id: r.id,
-            title: r.title,
-            detail: r.detail,
-            buttons: JSON.parse(r.buttons) as string[],
-            yes: r.yes,
-            cancel: r.cancel,
-          })),
-        ),
-        Effect.orDie,
-      ),
-    ),
-    answerPrompt: (id, index) =>
-      Effect.gen(function* () {
-        yield* sweep;
-        const rows = yield* sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id} AND status = 'pending'`.pipe(Effect.orDie);
-        const row = rows[0];
-        const buttons = row === undefined ? 0 : (JSON.parse(row.buttons) as string[]).length;
-        if (row === undefined || !Number.isInteger(index) || index < 0 || index >= buttons) return false;
-        yield* sql`UPDATE fabric_phone_prompts SET status = 'answered', answer = ${index} WHERE id = ${id}`.pipe(Effect.orDie);
-        return true;
-      }),
-    promptAnswer: (id) =>
-      sql<PromptRow>`SELECT * FROM fabric_phone_prompts WHERE id = ${id}`.pipe(
-        Effect.map((rows) => (rows[0]?.status === "answered" ? rows[0].answer : null)),
-        Effect.orDie,
-      ),
-    closePrompt: (id) =>
-      sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE id = ${id} AND status = 'pending'`.pipe(Effect.asVoid, Effect.orDie),
+    pending,
+    answerPrompt,
+    promptAnswer,
+    closePrompt,
   });
 });
 
