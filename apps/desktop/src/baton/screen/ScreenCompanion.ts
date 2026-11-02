@@ -340,6 +340,10 @@ export interface ScreenCompanion {
   /** He has woken Baton: starts the sessions a turn will need, which costs no quota. */
   readonly warm: () => void;
   readonly openAskBox: () => void;
+  /** The phone's words, run as a typed ask; the short reply and the card text come back instead of only being shown. */
+  readonly askFromPhone: (text: string) => Promise<{ readonly spoken: string; readonly card: string }>;
+  /** Mirrors the questions it asks him to his phone; null stops. The first answer, here or there, counts. */
+  readonly setPhoneMirror: (mirror: PhoneMirror | null) => void;
   /** A reply from outside the assistant, shown in full when answers are written only. */
   readonly notice: (text: string) => void;
   /** An unprompted line: a card, and aloud when asked and spoken answers are on. */
@@ -385,6 +389,16 @@ type Run =
     };
 
 const LOOK_REPLY = "[LOOK]";
+
+/** A question on its way to the phone: resolves with the button index if the phone answers first. */
+export type PhoneMirror = (question: {
+  readonly title: string;
+  readonly detail: string;
+  readonly buttons: ReadonlyArray<string>;
+  readonly yes: number;
+  readonly cancel: number;
+}) => { readonly answer: Promise<number>; readonly close: () => void } | null;
+const PHONE_SETTLE_STEPS = 40;
 
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
@@ -471,7 +485,12 @@ export const startScreenCompanion = (input: {
   };
   /** When the current speech began, for how much reading it has already covered. */
   let spokenFrom: number | null = null;
+  /** While the phone's ask runs, what the assistant says and shows is kept for the phone as well. */
+  let phoneCapture: { readonly spoken: string[]; card: string | null } | null = null;
+  let phoneTurn = false;
+  let phoneMirror: PhoneMirror | null = null;
   const say = (text: string) => {
+    if (phoneCapture !== null && text.trim().length > 0) phoneCapture.spoken.push(text.trim());
     if (settings.output === "written" || text.trim().length === 0) return;
     spokenFrom ??= Date.now();
     speech.add(text);
@@ -691,6 +710,7 @@ export const startScreenCompanion = (input: {
    * without waiting: the turn is over, only the words remain.
    */
   const linger = (kicker: string, text: string, hint = ""): void => {
+    if (phoneCapture !== null && text.trim().length > 0) phoneCapture.card = text.trim();
     const mine = ++showing;
     const pages = pageText(text);
     const current = () => mine === showing;
@@ -733,7 +753,7 @@ export const startScreenCompanion = (input: {
    * The box, and on a voice turn the same question aloud, so no step needs his hands. Whichever he
    * answers first counts; a question that runs out leaves the box up.
    */
-  const askHandsFree = async (
+  const askLocal = async (
     box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
     spoken: string,
     yes = 0,
@@ -756,6 +776,31 @@ export const startScreenCompanion = (input: {
     windows.closePrompt();
     await boxed;
     return outcome;
+  };
+
+  /** The same question, also offered to his phone when it is connected; the first answer counts and the other box comes down. */
+  const askHandsFree = async (
+    box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
+    spoken: string,
+    yes = 0,
+    noOnExpiry = false,
+  ): Promise<number> => {
+    const shown = phoneTurn ? { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` } : box;
+    const mirrored =
+      box.buttons.length < 2
+        ? null
+        : (phoneMirror?.({ title: box.title, detail: shown.detail, buttons: box.buttons, yes, cancel: box.cancel }) ?? null);
+    const local = askLocal(shown, spoken, yes, noOnExpiry);
+    if (mirrored === null) return local;
+    const first = await Promise.race([
+      local.then((index) => ({ index })),
+      mirrored.answer.then((phone) => ({ phone })),
+    ]);
+    mirrored.close();
+    if ("index" in first) return first.index;
+    windows.closePrompt(true);
+    await local;
+    return first.phone;
   };
 
   /** His yes for a capture, or false. `forWhat` names the lesson or drive the yes covers. */
@@ -2152,6 +2197,21 @@ export const startScreenCompanion = (input: {
     linger("Tessaya", reply);
   };
 
+  const askFromPhone = async (text: string) => {
+    const mine: { spoken: string[]; card: string | null } = { spoken: [], card: null };
+    phoneCapture = mine;
+    phoneTurn = true;
+    try {
+      await typed(text);
+      for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1) await sleep(500);
+    } finally {
+      phoneCapture = null;
+      phoneTurn = false;
+    }
+    const spoken = mine.spoken.join(" ").trim();
+    return { spoken, card: mine.card ?? (spoken === "" ? "Done. There was nothing to say." : spoken) };
+  };
+
   const windows = createCompanionWindows({
     output: () => settings.output,
     setOutput: (output) => save({ output }),
@@ -2210,6 +2270,10 @@ export const startScreenCompanion = (input: {
       }
     },
     openAskBox,
+    askFromPhone,
+    setPhoneMirror: (mirror) => {
+      phoneMirror = mirror;
+    },
     notice: (text) => {
       if (text.trim().length > 0) linger("Tessaya", text);
     },

@@ -17,6 +17,7 @@ import {
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
   BATON_COMMITMENT_WS_METHODS,
+  BATON_PHONE_WS_METHODS,
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -146,6 +147,10 @@ export function createBatonWorkSessionAtoms<R, E>(
     commitmentsUpsert: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:commitments-upsert",
       tag: BATON_COMMITMENT_WS_METHODS.upsert,
+    }),
+    phoneCall: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:phone-call",
+      tag: BATON_PHONE_WS_METHODS.call,
     }),
     /** Memory (D150): the desktop assistant's remember, recall and forget. */
     memoryList: createEnvironmentRpcCommand(runtime, {

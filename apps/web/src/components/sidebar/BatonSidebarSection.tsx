@@ -10,6 +10,7 @@ import {
   type BatonFleetEntry,
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
+  type BatonPhoneBridgeRequest,
   type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
@@ -79,6 +80,7 @@ export function BatonSidebarSection(props: {
   const weaveList = useAtomCommand(batonWorkSessions.weaveList, quiet);
   const weaveTick = useAtomCommand(batonWorkSessions.weaveTick, quiet);
   const handoffJob = useAtomCommand(batonWorkSessions.handoff, quiet);
+  const phoneCall = useAtomCommand(batonWorkSessions.phoneCall, quiet);
   const commitmentsList = useAtomCommand(batonWorkSessions.commitmentsList, quiet);
   const commitmentsUpsert = useAtomCommand(batonWorkSessions.commitmentsUpsert, quiet);
   const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
@@ -331,6 +333,15 @@ export function BatonSidebarSection(props: {
       typeof reason === "string" ? reason : "Weaving did not answer. Nothing was sent.",
     );
   };
+  const onPhone = async (request: BatonPhoneBridgeRequest): Promise<unknown> => {
+    const result = await phoneCall({
+      environmentId: primary,
+      input: { op: request.op, args: request.args } as never,
+    });
+    if (result._tag === "Success") return (result.value as { value: unknown }).value;
+    const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
+    throw new Error(typeof reason === "string" ? reason : "The phone relay did not answer.");
+  };
   const onCommitments = async (request: BatonCommitmentBridgeRequest): Promise<unknown> => {
     const run = (request.op === "list" ? commitmentsList : commitmentsUpsert) as unknown as (call: {
       readonly environmentId: typeof primary;
@@ -393,6 +404,7 @@ export function BatonSidebarSection(props: {
         onMemory={onMemory}
         onCommitments={onCommitments}
         onWeave={onWeave}
+        onPhone={onPhone}
       />
       <BatonProjectsBlock
         environmentIds={fleet.environmentIds}

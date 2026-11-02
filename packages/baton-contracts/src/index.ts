@@ -12,6 +12,7 @@ export * from "./sessionState.ts";
 export * from "./synopsis.ts";
 export * from "./jobs.ts";
 export * from "./commitments.ts";
+export * from "./phone.ts";
 export * from "./memory.ts";
 export * from "./weave.ts";
 export * from "./watch.ts";

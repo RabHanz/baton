@@ -7,6 +7,7 @@ import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 import { buildApprovals, type Approval } from "./approvals.ts";
 import { needsFromApprovals, needsFromFindings, needsFromJobs, rankNeeds, type NeedItem } from "./needsMe.ts";
 import { retryRefusal } from "./jobReport.ts";
+import { askLine, type PhoneAsk, type PhonePrompt } from "./phoneRelay.ts";
 import type { WeaveRecord } from "./weave.ts";
 
 export interface PhoneJobRow {
@@ -19,9 +20,21 @@ export interface PhoneJobRow {
   readonly canRetry: boolean;
 }
 
-export interface PhoneApproval extends Approval {
-  /** Only a job's plan can be answered here; a session's question is answered in its thread. */
+export interface PhoneApproval extends Omit<Approval, "kind"> {
+  /** A "prompt" is a question the desktop is asking him right now, mirrored here. */
+  readonly kind: Approval["kind"] | "prompt";
+  /** A job's plan or a mirrored question can be answered here; a session's question is answered in its thread. */
   readonly answerable: boolean;
+  /** For a mirrored question: which button means yes and which means no. */
+  readonly yes?: number;
+  readonly cancel?: number;
+}
+
+export interface PhoneAskRow {
+  readonly id: string;
+  readonly text: string;
+  readonly status: string;
+  readonly line: string;
 }
 
 export interface PhoneState {
@@ -32,6 +45,9 @@ export interface PhoneState {
   readonly now: ReadonlyArray<string>;
   readonly jobs: ReadonlyArray<PhoneJobRow>;
   readonly weaves: ReadonlyArray<{ readonly id: string; readonly line: string; readonly status: string }>;
+  /** Whether the desktop assistant is there to answer what the phone asks. */
+  readonly desktop: { readonly connected: boolean };
+  readonly asks: ReadonlyArray<PhoneAskRow>;
 }
 
 const RUNNING = new Set(["starting", "working", "monitoring"]);
@@ -52,11 +68,27 @@ export const buildPhoneState = (input: {
   readonly findings: ReadonlyArray<WatchFinding>;
   readonly weaves: ReadonlyArray<WeaveRecord>;
   readonly now: number;
+  readonly prompts?: ReadonlyArray<PhonePrompt>;
+  readonly asks?: ReadonlyArray<PhoneAsk>;
+  readonly desktopConnected?: boolean;
 }): PhoneState => {
-  const approvals = buildApprovals({ jobs: input.jobs, sessions: [] }).map((a): PhoneApproval => ({ ...a, answerable: a.kind === "plan" }));
+  const plans = buildApprovals({ jobs: input.jobs, sessions: [] });
+  const mirrored = (input.prompts ?? []).map((p): PhoneApproval => ({
+    id: `d:${p.id}`,
+    kind: "prompt",
+    title: p.title,
+    action: p.detail,
+    permission: "Asked on your computer; the first answer counts",
+    ref: p.id,
+    answerable: true,
+    yes: p.yes,
+    cancel: p.cancel,
+  }));
+  const approvals = [...mirrored, ...plans.map((a): PhoneApproval => ({ ...a, answerable: a.kind === "plan" }))];
   const needs = rankNeeds(
     [
-      ...needsFromApprovals(approvals),
+      ...mirrored.map((p): NeedItem => ({ id: p.id, source: "approval", title: p.title, why: p.action.slice(0, 200), weight: 90, ref: p.ref })),
+      ...needsFromApprovals(plans),
       ...needsFromJobs(input.jobs, input.now),
       ...needsFromFindings(input.findings),
     ],
@@ -79,6 +111,8 @@ export const buildPhoneState = (input: {
         canRetry: retryWhy === null,
       };
     }),
+    desktop: { connected: input.desktopConnected ?? false },
+    asks: (input.asks ?? []).map((a) => ({ id: a.id, text: a.text, status: a.status, line: askLine(a, input.desktopConnected ?? false) })),
     weaves: input.weaves.slice(0, 30).map((w) => ({
       id: w.id,
       line: `${w.from} to ${w.toLabel}: ${w.text.slice(0, 160)}`,

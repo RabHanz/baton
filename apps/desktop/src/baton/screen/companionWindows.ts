@@ -259,8 +259,9 @@ export const createCompanionWindows = (input: {
     ask,
     /** The thing it was asking about has ended. */
     showStop,
-    closePrompt: () => {
-      if (promptBox?.scoped === true) promptBox.done(promptBox.cancel);
+    /** Scoped prompts come down with their lesson or drive; `force` also takes down one the phone just answered. */
+    closePrompt: (force = false) => {
+      if (promptBox !== null && (force || promptBox.scoped)) promptBox.done(promptBox.cancel);
     },
     dispose: () => {
       closeAsk();
