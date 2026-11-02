@@ -49,6 +49,10 @@ if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
   "$sidecar" devices 2>&1 | head -5; echo "devices exit=${PIPESTATUS[0]}"
   printf '{"cmd":"devices"}\n' | ( "$sidecar" serve 2>&1 & p=$!; sleep 8; kill $p 2>/dev/null ) | head -8
 fi
+if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
+  echo "--- sidecar transcribes the phrase alone ---"
+  "$sidecar" transcribe --model "$models/parakeet-tdt-0.6b-v3-Q8_0.gguf" "$wav" 2>&1 | head -6; echo "transcribe exit=${PIPESTATUS[0]}"
+fi
 export BATON_TEST_WAV="$out/wav/list.txt" BATON_TEST_DIR="$out/shots"
 "${run[@]}" > "$out/app.log" 2>&1 &
 pid=$!
@@ -85,7 +89,7 @@ if [ "$platform" = macos ]; then
   codesign --verify --deep --strict --verbose=2 "$HOME/Tessaya.app" 2>&1 | tail -6
   codesign -dv "$sidecar" 2>&1 | tail -4
   echo "--- why the kernel killed it (if it did) ---"
-  log show --style compact --last 10m --predicate '(process == "kernel" OR process == "amfid" OR process == "syspolicyd") AND (eventMessage CONTAINS[c] "Tessaya" OR eventMessage CONTAINS[c] "baton-dictation" OR eventMessage CONTAINS[c] "Code Signature" OR eventMessage CONTAINS[c] "AMFI")' 2>&1 | tail -25
+  log show --style compact --last 10m --predicate '(process == "kernel" OR process == "amfid" OR process == "syspolicyd" OR process == "ReportCrash" OR process == "launchd") AND (eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "SIGKILL" OR eventMessage CONTAINS[c] "Tessaya" OR eventMessage CONTAINS[c] "baton-dictation" OR eventMessage CONTAINS[c] "Code Signature" OR eventMessage CONTAINS[c] "AMFI")' 2>&1 | tail -25
   # A native crash leaves no line in our logs, but macOS writes a report.
   mkdir -p "$out/crash"; cp /Users/runner/Library/Logs/DiagnosticReports/* "$out/crash/" 2>/dev/null || true
   ls "$out/crash" | head -5 | sed 's/^/crash report: /'
