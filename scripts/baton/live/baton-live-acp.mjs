@@ -264,7 +264,15 @@ export function parsePanePrompt(screen) {
     .filter((l) => l.length > 0);
   // A multi-question form puts its tabs on one line: ← ☐ Chrome ☒ Connectors ✔ Submit →
   const tabs = context.length > 0 && /^←/.test(context[0]) ? tabsOf(context.shift()) : null;
-  const header = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
+  const tabbed = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
+  // A tabbed form's header is its tabs, so the card says which question of how many this is.
+  const header =
+    tabs !== null && tabs.length > 1
+      ? tabs
+          .filter((tab) => !tab.submit)
+          .map((tab) => (tab.answered ? `${tab.label} ✓` : tab.label))
+          .join(" · ")
+      : tabbed;
   const visible = options.filter((o) => !CUSTOM.test(o.label) && !DROPPED.test(o.label));
   const custom = options.find((o) => CUSTOM.test(o.label));
   return {

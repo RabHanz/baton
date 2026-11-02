@@ -341,6 +341,7 @@ NodeTest.test("a question in a real multi-question form has its tabs, and free t
     prompt.options.map((o) => o.label),
     ["Red", "Green"],
   );
+  NodeAssert.equal(prompt.header, "Colour · Size");
   NodeAssert.equal(prompt.customIndex, 2);
   NodeAssert.deepEqual(answerKeys(prompt, "green"), { keys: ["down", "enter"], text: null });
   NodeAssert.deepEqual(answerKeys(prompt, "Extra large, please"), {
