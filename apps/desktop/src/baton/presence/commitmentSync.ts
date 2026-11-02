@@ -11,7 +11,10 @@ import {
 
 import type { CommitmentStore } from "./commitmentStore.ts";
 
-export type CommitmentCall = (op: "list" | "upsert", args: Record<string, unknown>) => Promise<unknown>;
+export type CommitmentCall = (
+  op: "list" | "upsert",
+  args: Record<string, unknown>,
+) => Promise<unknown>;
 
 export const createCommitmentSync = (input: {
   readonly store: CommitmentStore;
@@ -24,7 +27,9 @@ export const createCommitmentSync = (input: {
       if (running) return null;
       running = true;
       try {
-        const reply = (await input.call("list", {})) as { items?: ReadonlyArray<Commitment> } | null;
+        const reply = (await input.call("list", {})) as {
+          items?: ReadonlyArray<Commitment>;
+        } | null;
         const remote = reply?.items ?? [];
         const local = input.store.list();
         const merged = mergeCommitments(local, remote);

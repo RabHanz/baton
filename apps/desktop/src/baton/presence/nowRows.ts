@@ -1,5 +1,6 @@
 // @effect-diagnostics globalDate:off
 /** The Now area of the window (D149): what needs him, what it keeps track of, what it is doing, learned, and held back. */
+import type { WeaveRecord } from "@t3tools/baton-shared/weave";
 import type { Commitment } from "@t3tools/baton-shared/commitments";
 import type { NeedItem } from "@t3tools/baton-shared/needsMe";
 
@@ -15,6 +16,7 @@ export interface NowData {
   readonly learned: ReadonlyArray<string>;
   readonly declined: ReadonlyArray<{ readonly title: string; readonly why: string }>;
   readonly muted: ReadonlyArray<{ readonly topic: string; readonly title: string }>;
+  readonly weaves: ReadonlyArray<WeaveRecord>;
 }
 
 export const EMPTY_NOW: NowData = {
@@ -26,6 +28,7 @@ export const EMPTY_NOW: NowData = {
   learned: [],
   declined: [],
   muted: [],
+  weaves: [],
 };
 
 const WHY: Record<string, string> = {
@@ -40,6 +43,7 @@ const KEEP = "Keeping track of";
 const DOING = "What I am doing";
 const LEARNED = "Learned today";
 const HELD = "Held back, and why";
+const WEAVE = "Between sessions";
 
 const note = (id: string, section: string, label: string, detail: string): HomeControl => ({
   id,
@@ -124,6 +128,28 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
           ),
         ]
       : data.learned.map((l, i) => note(`now.learned:${i}`, LEARNED, l, ""))),
+    ...(data.weaves.length === 0
+      ? [
+          note(
+            "now.noweave",
+            WEAVE,
+            "No messages yet",
+            "When Tessaya messages one session for another, it is listed here with what came back.",
+          ),
+        ]
+      : data.weaves.slice(0, 10).map((w): HomeControl => ({
+          id: `now.weave:${w.id}`,
+          section: WEAVE,
+          label: `To ${w.toLabel}: ${w.text.slice(0, 90)}`,
+          kind: "check",
+          status: w.status === "lost" ? "bad" : w.status === "queued" ? "warn" : "ok",
+          detail:
+            w.status === "replied"
+              ? `Replied: ${(w.reply ?? "").slice(0, 200)}`
+              : w.status === "delivered"
+                ? "Delivered; no reply yet."
+                : `${w.status === "lost" ? "Not delivered" : "Waiting"}${w.reason === null ? "" : `: ${w.reason}`}`,
+        }))),
     ...data.declined.map((d, i) => note(`now.held:${i}`, HELD, d.title, WHY[d.why] ?? d.why)),
     ...data.muted.map((m): HomeControl => ({
       id: `now.allow:${m.topic}`,

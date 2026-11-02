@@ -171,6 +171,22 @@ describe("Baton's own tools (D143)", () => {
     const commit = { tool: "mcp__baton__commit_add", input: { text: "check the deploy" } };
     expect(judgeToolCall(commit, off).verdict).toBe("allow");
     expect(judgeToolCall(commit, read).verdict).toBe("ask");
+    const weave = {
+      tool: "mcp__baton__weave_send",
+      input: { session: "build", text: "rerun the tests", job: "j1" },
+    };
+    expect(judgeToolCall(weave, off).verdict).toBe("ask");
+    expect(judgeToolCall(weave, { ...off, weaveStanding: true }).verdict).toBe("allow");
+    expect(judgeToolCall(weave, { ...off, weaveStanding: true, tainted: true }).verdict).toBe(
+      "ask",
+    );
+    expect(
+      judgeToolCall(
+        { ...weave, input: { ...weave.input, text: "my password is hunter22x" } },
+        { ...off, weaveStanding: true },
+      ).verdict,
+    ).toBe("deny");
+    expect(judgeToolCall({ tool: "mcp__baton__weave_list", input: {} }, off).verdict).toBe("allow");
     expect(judgeToolCall({ tool: "mcp__baton__commit_list", input: {} }, read).verdict).toBe(
       "allow",
     );
