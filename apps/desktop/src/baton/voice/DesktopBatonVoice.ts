@@ -2712,7 +2712,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .toReversed()
       .slice(0, 5);
     return {
-      wakeWords: settings.wakeWords.filter((w) => w.enabled).map((w) => w.word),
+      wakeWords: settings.wakeWords
+        .filter((w) => w.enabled && modelShipped(w.word))
+        .map((w) => w.word),
       activity,
       stats: {
         turns: today.turns,
