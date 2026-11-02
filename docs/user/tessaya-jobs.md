@@ -1,0 +1,15 @@
+# Jobs and approvals
+
+Give Tessaya a task and let a coding agent do it in the background.
+
+## Start
+
+Say or type what you want done as a job ("fix the failing build in the shop project"). A worker makes a plan first. The plan appears under **Approvals** with the exact thing your yes would allow and the permissions it would use. Agree and it starts; decline and it stops.
+
+## Good to know
+
+- **Approvals** is the one list of everything waiting for your yes: job plans, questions a session asked you, held memory suggestions, the vault asking to use a secret.
+- A job has limits (time, turns, optionally money). It stops at them and tells you; raise a limit to let it go on.
+- **Stop** ends a running turn; the job and its notes stay. **Retry** is offered only for a job that failed and has retries left, and says why not otherwise.
+- A job that a restart interrupted shows a Continue button.
+- **What needs me** (the Now page) ranks what to look at first: failures, questions, stalled work.
