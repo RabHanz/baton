@@ -120,3 +120,26 @@ export const createDesktopMemory = (input: {
 };
 
 export type DesktopMemory = ReturnType<typeof createDesktopMemory>;
+
+/**
+ * `MemoryClient` (the interface other lanes call: presence, commitments) over the window's memory
+ * calls. Every method rejects with the server's reason in plain words when it refuses.
+ */
+export const createMemoryClient = (call: MemoryCall): MemoryClient => {
+  const item = async (op: string, args: Record<string, unknown>) =>
+    ((await call(op, args)) as { item: MemoryItem }).item;
+  return {
+    list: async (query) =>
+      ((await call("list", { ...query })) as { items: ReadonlyArray<MemoryItem> }).items,
+    search: async (query) =>
+      ((await call("search", { ...query })) as { hits: ReadonlyArray<MemoryHit> }).hits,
+    add: (draft) => item("add", { ...draft }),
+    edit: (id, patch) => item("edit", { id, ...patch }),
+    pin: (id, pinned) => item("pin", { id, pinned }),
+    forget: async (id) => ((await call("forget", { id })) as { forgotten: boolean }).forgotten,
+    accept: (id) => item("accept", { id }),
+    recall: async (context) =>
+      (await call("recall", { ...context })) as { block: string; ids: ReadonlyArray<string> },
+    exportMarkdown: async () => ((await call("export", {})) as { markdown: string }).markdown,
+  };
+};
