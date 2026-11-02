@@ -29,3 +29,12 @@ than as "nothing needs you".
 
 A file with no `asOf`, or one older than 24 hours, is ignored and the answer says so. The reader
 lives in `packages/baton-shared/src/needsFeeds.ts`.
+
+## Tessaya's own heartbeat
+
+Tessaya writes `baton-heartbeat.json` in its log folder every 30 seconds: `at`, `pid`, `version`,
+`running` (false in the last write of a clean exit), `state`, `jobsRunning` and `approvalsWaiting`.
+A manager can read it: a `running: true` file older than two minutes means Tessaya is down.
+On the next start, jobs the last heartbeat saw running that are neither running nor finished are
+listed on the Now page as interrupted, each with a Continue button. Messages between sessions and
+commitments are stored durably and resume by themselves.
