@@ -208,9 +208,9 @@ interface VoiceSettings {
   /** How long a pause must last before a spoken turn is over, in ms; unfinished words get longer. */
   readonly waitMs: number;
   /** How long it listens after the wake word with nothing said, in ms. */
-  readonly listenAfterWakeMs: number;
+  readonly wakeListenMs: number;
   /** How long the conversation stays open after a reply, in ms. */
-  readonly conversationMs: number;
+  readonly conversationOpenMs: number;
   /** Recognise the audio before a wake and wake only when the wake word is in it. */
   readonly verifyWake: boolean;
   /** Words he fixes after Tessaya writes them, and names he keeps using, join his vocabulary. */
@@ -266,8 +266,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
-  listenAfterWakeMs: 15_000,
-  conversationMs: 60_000,
+  wakeListenMs: 8_000,
+  conversationOpenMs: 30_000,
   verifyWake: true,
   learnWords: true,
   keepVoice: false,
@@ -332,9 +332,9 @@ const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
-/** The choices offered for how long it listens; the defaults are the middle and the second. */
-export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [8_000, 15_000, 30_000];
-export const CONVERSATION_MS: ReadonlyArray<number> = [30_000, 60_000, 120_000];
+/** The choices for how long it listens. Eight seconds and 30 s are the defaults; the wait covers only the start of speech. */
+export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [4_000, 6_000, 8_000, 12_000];
+export const CONVERSATION_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000, 120_000];
 const BRIEF_HOUR = 8;
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
@@ -1630,8 +1630,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       onEvent: onCoreEvent,
       waitMs: () => clampWait(settings.waitMs),
       listening: () => ({
-        commandWindowMs: settings.listenAfterWakeMs,
-        conversationMs: settings.conversationMs,
+        commandWindowMs: LISTEN_AFTER_WAKE_MS.includes(settings.wakeListenMs)
+          ? settings.wakeListenMs
+          : 8_000,
+        conversationMs: CONVERSATION_MS.includes(settings.conversationOpenMs)
+          ? settings.conversationOpenMs
+          : 30_000,
       }),
       verifyWake: async (pcm, word) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
@@ -2321,9 +2325,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.listenAfterWake",
         section: "Listening",
         label: "Listen after waking",
-        hint: "How long Tessaya waits for you to speak after the wake word before giving up.",
+        hint: "How long Tessaya waits for you to START speaking after the wake word. Once you have started, it listens until you stop, however long that is.",
         kind: "choice",
-        value: String(settings.listenAfterWakeMs),
+        value: String(settings.wakeListenMs),
         options: LISTEN_AFTER_WAKE_MS.map((ms) => ({ value: String(ms), label: `${ms / 1000} s` })),
       },
       {
@@ -2332,7 +2336,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: "Keep the conversation open",
         hint: "After a reply you can answer without the wake word for this long.",
         kind: "choice",
-        value: String(settings.conversationMs),
+        value: String(settings.conversationOpenMs),
         options: CONVERSATION_MS.map((ms) => ({
           value: String(ms),
           label: ms < 60_000 ? `${ms / 1000} s` : `${ms / 60_000} min`,
@@ -2696,9 +2700,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.verifyWake") save({ verifyWake: on });
     else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
     else if (id === "v.listenAfterWake" && LISTEN_AFTER_WAKE_MS.includes(Number(value))) {
-      save({ listenAfterWakeMs: Number(value) });
+      save({ wakeListenMs: Number(value) });
     } else if (id === "v.conversation" && CONVERSATION_MS.includes(Number(value))) {
-      save({ conversationMs: Number(value) });
+      save({ conversationOpenMs: Number(value) });
     } else if (
       id === "v.notice" &&
       (value === "off" || value === "written" || value === "spoken")
