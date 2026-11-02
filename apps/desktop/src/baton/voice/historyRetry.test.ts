@@ -49,14 +49,22 @@ describe("retry transcript", () => {
 });
 
 describe("the row menu", () => {
-  it("offers Copy, Copy as heard, Undo AI edit, Retry transcript and Delete", () => {
+  it("offers Copy, Copy as heard, Undo AI edit, Play, Retry transcript, Report and Delete", () => {
     expect(rowMenu(turn(), false).map((i) => [i.id, i.enabled])).toEqual([
       ["copy", true],
       ["copy_raw", true],
       ["undo_ai", true],
+      ["play", true],
       ["retry_transcript", true],
+      ["report", true],
       ["delete", true],
     ]);
+  });
+
+  it("greys Play with the reason when no recording was kept, but always allows a report", () => {
+    const menu = rowMenu(turn({ audio: null }), false);
+    expect(menu.find((i) => i.id === "play")).toMatchObject({ enabled: false, note: NO_RECORDING });
+    expect(menu.find((i) => i.id === "report")?.enabled).toBe(true);
   });
 
   it("greys Retry transcript with the reason when there is no recording, and while one is running", () => {
