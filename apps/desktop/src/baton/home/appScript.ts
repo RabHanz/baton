@@ -194,10 +194,12 @@ function markHtml() {
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
   const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
-  const h = $('h1'); h.append(document.createTextNode(greeting() + '. '));
-  if (words.length) { h.appendChild($('em', null, 'Say ')); words.slice(0, 2).forEach((w, i) => { if (i) h.append(document.createTextNode(' or ')); h.appendChild(chipEl(w)); }); h.append(document.createTextNode(' to talk.')); }
-  else h.appendChild($('em', null, 'The wake word is off. Say Wake now, or hold your dictation key.'));
-  p.appendChild(h);
+  p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
+  const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
+  const sub = $('p', 'lede');
+  if (words.length) { sub.append(document.createTextNode('Say ')); words.slice(0, 2).forEach((w, i) => { if (i) sub.append(document.createTextNode(' or ')); sub.appendChild($('em', null, w)); }); sub.append(document.createTextNode(' to talk.')); }
+  else sub.textContent = 'The wake word is off. Say Wake now, or hold your dictation key.';
+  p.appendChild(sub);
   const q = $('div', 'quick');
   const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
   const en = find('v.enabled'), mu = find('v.muted');
@@ -438,7 +440,8 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   const items = tabControls(cur);
-  if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet. Start one in Claude Code or T3 and it appears here.'));
+  const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
+  if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);

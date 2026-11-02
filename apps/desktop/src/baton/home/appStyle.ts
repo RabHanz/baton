@@ -1,3 +1,5 @@
+import { FONT_FACES } from "./fonts.ts";
+
 /**
  * The look of Baton's window (D140): a warm cream ground, a sidebar of tabs, one raised panel for
  * the page, a serif for what is said to him and a plain sans for everything he operates. One accent,
@@ -6,27 +8,29 @@
  */
 /** The dark theme: a warm near-black ground, panels one step lighter, hairline rules, edge light instead of shadow. */
 export const DARK_TOKENS = `[data-theme=dark]{
-  --ground:#121110;--side:#161513;--panel:#1b1a17;--sunk:#211f1c;--ink:#ece8df;--soft:#aaa59a;--faint:#8f8a7f;
-  --line:#2c2a26;--line-strong:#403d37;--accent:#5FB3B3;--accent-deep:#12292D;--accent-wash:#163035;--accent-ink:#0F1B1E;
-  --warn:#e3a553;--warn-wash:#35280f;--bad:#f08a80;--bad-wash:#3b1f1c;
-  --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2c2a26;--accent-edge:#2D5A5F;--accent-text:#5FB3B3;
-  --focus:#5FB3B3;--on-ink:#14130f;--on-deep:#EEEDE4;--on-deep-soft:#9FD0D0;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
+  --ground:#111214;--side:#15161a;--panel:#1a1b1f;--sunk:#202127;--ink:#ebebe8;--soft:#a6a8b0;--faint:#8c8f98;
+  --line:#2a2c32;--line-strong:#3b3e46;--accent:#5FB3B3;--accent-deep:#12292D;--accent-wash:#163035;--accent-ink:#0F1B1E;
+  --warn:#e3a553;--warn-wash:#33270f;--bad:#f08a80;--bad-wash:#3b1f1c;
+  --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2a2c32;--accent-edge:#2D5A5F;--accent-text:#5FB3B3;
+  --focus:#5FB3B3;--on-ink:#15161a;--on-deep:#EEEDE4;--on-deep-soft:#9FD0D0;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
   --panel-shadow:inset 0 1px 0 rgba(255,255,255,.05);--veil:rgba(0,0,0,.6);
-  --modal-shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.7);--arrow:%23aaa59a;color-scheme:dark;
+  --modal-shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.7);--arrow:%23a6a8b0;color-scheme:dark;
 }`;
 
 export const APP_CSS = `
+${FONT_FACES}
+/* Bone paper, near-black ink, one Woad accent; amber stays for "needs you", red for errors. */
 :root{
-  --ground:#f3f0e8;--side:#efebe2;--panel:#fffdf8;--sunk:#f7f4ec;--ink:#1c1b18;--soft:#66625a;--faint:#9a958a;
-  --line:#e9e4d9;--line-strong:#d8d2c4;--accent:#14505A;--accent-deep:#0E3A42;--accent-wash:#E3EEEF;--accent-ink:#ffffff;
-  --warn:#b4691f;--warn-wash:#f8ead6;--bad:#b3423a;--bad-wash:#f6e1de;
-  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Cambria,Georgia,serif;
-  --sans:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
-  --ease:cubic-bezier(.2,.8,.2,1);--r:14px;
-  --hover:rgba(28,27,24,.05);--row-hover:rgba(255,253,248,.7);--quiet:#ece8dd;--accent-edge:#B7D2D5;--accent-text:#14505A;
-  --focus:#14505A;--on-ink:#ffffff;--on-deep:#EEEDE4;--on-deep-soft:#BFD6D8;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
-  --panel-shadow:0 1px 0 rgba(28,27,24,.03),0 12px 32px -22px rgba(28,27,24,.25);--veil:rgba(28,27,24,.38);
-  --modal-shadow:0 30px 80px -20px rgba(28,27,24,.45);--arrow:%2366625a;color-scheme:light;
+  --ground:#ebe9e4;--side:#e5e3dd;--panel:#f8f7f4;--sunk:#f1efea;--ink:#17181b;--soft:#565961;--faint:#666972;
+  --line:#dedbd4;--line-strong:#c9c5bc;--accent:#14505A;--accent-deep:#0E3A42;--accent-wash:#E3EEEF;--accent-ink:#ffffff;
+  --warn:#9a5a12;--warn-wash:#f6e8d2;--bad:#a3342c;--bad-wash:#f4e0dd;
+  --serif:"Newsreader",Georgia,"Iowan Old Style",Cambria,serif;
+  --sans:"Schibsted Grotesk","Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);--r:6px;
+  --hover:rgba(23,24,27,.05);--row-hover:rgba(248,247,244,.7);--quiet:#e6e4de;--accent-edge:#B7D2D5;--accent-text:#14505A;
+  --focus:#14505A;--on-ink:#ffffff;--on-deep:#EEEDE4;--on-deep-soft:#BFD6D8;--btn-deep-bg:#f8f7f4;--btn-deep-fg:#17181b;
+  --panel-shadow:none;--veil:rgba(23,24,27,.38);
+  --modal-shadow:0 30px 80px -20px rgba(23,24,27,.45);--arrow:%23565961;color-scheme:light;
 }
 ${DARK_TOKENS}
 *{box-sizing:border-box}
@@ -255,4 +259,36 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 .rechead[aria-expanded=true] svg{transform:rotate(180deg)}
 .insight{display:flex;justify-content:space-between;gap:12px;padding:6px 0;color:var(--soft)}
 .chipx{display:inline-flex;align-items:center;gap:4px}
+
+/* Its own voice: editorial type, hairline rules instead of cards, one ink-blue accent. */
+body{font-size:14px}
+h1{font:400 38px/1.08 var(--serif);letter-spacing:-.02em;margin:0 0 6px}
+h1 em{font-style:italic;color:var(--accent-text)}
+.lede{font:italic 400 17px/1.5 var(--serif);color:var(--soft);margin:0 0 26px;max-width:58ch}
+.dateline{font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+h2{display:flex;align-items:baseline;gap:10px;font:600 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:38px 0 12px}
+#page{counter-reset:sec}
+h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color:var(--faint);font-variant-numeric:tabular-nums}
+#panel{border-radius:6px;box-shadow:none}
+.nav{border-radius:6px;position:relative}
+.nav[aria-current=page]{background:transparent;box-shadow:none;color:var(--ink);font-weight:600}
+.nav[aria-current=page]::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:2px;background:var(--accent)}
+.state{background:transparent;border-radius:6px}
+.group,.log,.stats{background:transparent;border:0;border-radius:0;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line);overflow:visible}
+.group>.row,.rowwrap>.row,.log .li,.stat{padding-left:2px;padding-right:2px}
+.group.open,.group{overflow:visible}
+.stats{padding:0 2px}
+.stat b{font-variant-numeric:tabular-nums}
+.banner{background:transparent;color:var(--ink);border-radius:0;border-left:3px solid var(--accent);padding:4px 0 4px 18px;margin:24px 0 8px}
+.banner.warn{background:transparent;border-left-color:var(--warn)}
+.banner h3{font:400 22px/1.25 var(--serif)}
+.banner p,.banner.warn p{color:var(--soft)}
+.banner .btn{background:transparent;color:var(--ink);border:1px solid var(--line-strong)}
+.banner .btn:hover{border-color:var(--ink)}
+.pill{border-radius:6px;font-weight:500}
+.btn{border-radius:6px}
+.seg,.seg button{border-radius:6px}
+.sidecard{border-radius:6px}
+.log time,.hrow time{font-variant-numeric:tabular-nums}
+:focus-visible{outline-color:var(--focus)}
 `;
