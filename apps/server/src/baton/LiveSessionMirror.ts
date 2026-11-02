@@ -187,14 +187,19 @@ const readPaneScreen = (pane: string): Effect.Effect<string> => {
   const script = agentScript();
   if (node === null || !NodeFS.existsSync(script)) return Effect.succeed("");
   return Effect.callback<string>((resume) => {
-    NodeChildProcess.execFile(node, [script, "--pane-screen", pane], { timeout: 10_000 }, (error, stdout) => {
-      if (error !== null) return resume(Effect.succeed(""));
-      try {
-        resume(Effect.succeed((JSON.parse(stdout) as { text?: string }).text ?? ""));
-      } catch {
-        resume(Effect.succeed(""));
-      }
-    });
+    NodeChildProcess.execFile(
+      node,
+      [script, "--pane-screen", pane],
+      { timeout: 10_000 },
+      (error, stdout) => {
+        if (error !== null) return resume(Effect.succeed(""));
+        try {
+          resume(Effect.succeed((JSON.parse(stdout) as { text?: string }).text ?? ""));
+        } catch {
+          resume(Effect.succeed(""));
+        }
+      },
+    );
   });
 };
 
@@ -202,7 +207,10 @@ const readPaneScreen = (pane: string): Effect.Effect<string> => {
  * A session that is waiting but whose prompt cannot be read as options (a plain terminal, or a screen the reader does not
  * know) still gets a question in its thread, so the thread never says "waiting" and shows nothing.
  */
-export const unreadPrompt = (session: { sessionId: string; herdrPane: string | null }, screen: string): PanePrompt =>
+export const unreadPrompt = (
+  session: { sessionId: string; herdrPane: string | null },
+  screen: string,
+): PanePrompt =>
   session.herdrPane === null
     ? {
         key: `plain:${session.sessionId}`,
@@ -213,7 +221,8 @@ export const unreadPrompt = (session: { sessionId: string; herdrPane: string | n
         options: [
           {
             label: "Bring it into Herdr",
-            description: "Restarts it with the same conversation, in Herdr, so the question can be answered here.",
+            description:
+              "Restarts it with the same conversation, in Herdr, so the question can be answered here.",
           },
         ],
         customIndex: null,
@@ -222,8 +231,16 @@ export const unreadPrompt = (session: { sessionId: string; herdrPane: string | n
         key: `screen:${session.sessionId}:${screen.length}:${screen.slice(-40)}`,
         header: "In the terminal",
         context: "",
-        question: screen === "" ? "Claude Code is waiting on something in its terminal that Tessaya could not read as a question." : `Claude Code is waiting in its terminal:\n${screen}`,
-        options: [{ label: "I'll answer it in the terminal", description: "Open the pane in Herdr and answer it there." }],
+        question:
+          screen === ""
+            ? "Claude Code is waiting on something in its terminal that Tessaya could not read as a question."
+            : `Claude Code is waiting in its terminal:\n${screen}`,
+        options: [
+          {
+            label: "I'll answer it in the terminal",
+            description: "Open the pane in Herdr and answer it there.",
+          },
+        ],
         customIndex: null,
       };
 
@@ -293,6 +310,12 @@ export const liveMedia = (input: {
       mimeType: image.mimeType,
       sizeBytes: bytes.length,
     };
+    // A reply shows a picture once: by its bytes, whether it came as a tool's image block or as the file the tool read.
+    if (message.role === "assistant" && input.shown !== undefined) {
+      const hash = NodeCrypto.createHash("sha256").update(bytes).digest("hex");
+      if (input.shown.has(hash)) return;
+      input.shown.add(hash);
+    }
     const copy = store(attachment, bytes);
     if (copy === null) return;
     // A reply's pictures (tool screenshots) ride in its markdown; a user message's are T3 attachments.
@@ -1085,7 +1108,7 @@ const make = Effect.gen(function* () {
         if (message.role === "user") {
           const echo = composerSent.find(
             (sent) =>
-              isComposerEcho(message.text, sent.text) &&
+              isComposerEcho(message.text, sent.text, (sent.attachments?.length ?? 0) > 0) &&
               Math.abs(DateTime.toEpochMillis(sent.createdAt) - Date.parse(message.createdAt)) <
                 15 * 60_000,
           );
@@ -1275,7 +1298,10 @@ const make = Effect.gen(function* () {
         read !== null && read.options.length > 0
           ? read
           : session.status === "waiting"
-            ? unreadPrompt(session, session.herdrPane === null ? "" : yield* readPaneScreen(session.herdrPane))
+            ? unreadPrompt(
+                session,
+                session.herdrPane === null ? "" : yield* readPaneScreen(session.herdrPane),
+              )
             : null;
       if (follow.ask !== null && follow.ask.key === found?.key) return;
       const now = yield* DateTime.now;
