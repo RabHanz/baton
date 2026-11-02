@@ -292,6 +292,7 @@ export interface AssistantActions {
       | "note_add"
       | "note_search"
       | "retry"
+      | "skill_draft"
       | "handoff"
       | "split",
     args: Readonly<Record<string, unknown>>,

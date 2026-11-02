@@ -27,12 +27,13 @@ describe("the Jobs area", () => {
       job("c", "running", "approved", "task-1"),
     ];
     const rows = jobControls(jobs);
-    expect(rows.map((r) => r.id)).toEqual(["j:b", "ja:b", "j:c", "js:c", "j:a", "js:a"]);
+    expect(rows.map((r) => r.id)).toEqual(["j:b", "ja:b", "j:c", "js:c", "j:a", "jk:a", "js:a"]);
     expect(rows[0]).toMatchObject({ button: "Approve", secondary: "Stop", lead: true });
     expect(rows[1]).toMatchObject({ kind: "session", canSend: true });
     expect(rows[2]).toMatchObject({ button: "Open T3", secondary: "Stop" });
     expect(rows[3]).toMatchObject({ button: "Turn off", more: true });
-    expect(rows[5]).toMatchObject({ button: "Run daily" });
+    expect(rows[5]).toMatchObject({ button: "Draft a skill" });
+    expect(rows[6]).toMatchObject({ button: "Run daily" });
   });
   it("maps an action back to its job and what it asks for", () => {
     const jobs = [
@@ -64,11 +65,19 @@ describe("employee flows in the Jobs area", () => {
     } as unknown as BatonJob;
     const rows = jobControls([failed]);
     expect(rows.map((r) => r.id)).toContain("jr:f");
-    expect(rows.find((r) => r.id === "j:f")?.hint).toContain("Last report: f has run 2 h. Doing: x.");
+    expect(rows.find((r) => r.id === "j:f")?.hint).toContain(
+      "Last report: f has run 2 h. Doing: x.",
+    );
     expect(jobAction([failed], "jr:f")).toMatchObject({ kind: "retry", id: "f" });
     const spent = {
       ...failed,
-      terms: { ...failed.terms, revisions: [{ at: "t", text: "Retry 1 of 2: a" }, { at: "t", text: "Retry 2 of 2: b" }] },
+      terms: {
+        ...failed.terms,
+        revisions: [
+          { at: "t", text: "Retry 1 of 2: a" },
+          { at: "t", text: "Retry 2 of 2: b" },
+        ],
+      },
     } as unknown as BatonJob;
     expect(jobControls([spent]).map((r) => r.id)).not.toContain("jr:f");
   });
