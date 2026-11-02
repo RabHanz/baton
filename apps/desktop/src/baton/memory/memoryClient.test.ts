@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createDesktopMemory } from "./memoryClient.ts";
+import { createDesktopMemory, createMemoryClient } from "./memoryClient.ts";
 import type { NotesStore } from "./memoryNotes.ts";
 
 const notes = (): NotesStore =>
@@ -52,5 +52,22 @@ describe("desktop memory", () => {
     await vi.advanceTimersByTimeAsync(900);
     expect(await pending).toBe("");
     vi.useRealTimers();
+  });
+});
+
+describe("the MemoryClient other lanes call", () => {
+  it("maps each method to its server call and unwraps the answer", async () => {
+    const calls: Array<[string, Record<string, unknown>]> = [];
+    const client = createMemoryClient(async (op, args) => {
+      calls.push([op, args]);
+      return { item: { id: "a" }, items: [{ id: "a" }], hits: [], forgotten: true, markdown: "# m", block: "", ids: [] };
+    });
+    expect((await client.add({ kind: "fact", text: "x", source: "user" })).id).toBe("a");
+    expect(await client.forget("a")).toBe(true);
+    expect(await client.list({ kinds: ["fact"] })).toHaveLength(1);
+    expect(await client.exportMarkdown()).toBe("# m");
+    await client.pin("a", true);
+    expect(calls.map(([op]) => op)).toEqual(["add", "forget", "list", "export", "pin"]);
+    expect(calls[4]![1]).toEqual({ id: "a", pinned: true });
   });
 });
