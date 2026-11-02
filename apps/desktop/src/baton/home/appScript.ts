@@ -430,7 +430,8 @@ function tabPage(p) {
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   const items = tabControls(cur);
-  if (cur === 'sessions' && !items.length) p.appendChild($('div', 'empty', 'No sessions yet. Start one in Claude Code or T3 and it appears here.'));
+  const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
+  if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
   for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);
