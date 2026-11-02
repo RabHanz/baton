@@ -1,6 +1,11 @@
 /** The Jobs area of Baton's window (D145): job cards as window rows, grouped by where each job is. */
 import type { BatonJob } from "@t3tools/baton-contracts";
-import { REPORT_MARK, retryBudget, retriesUsed, retryRefusal } from "@t3tools/baton-shared/jobReport";
+import {
+  REPORT_MARK,
+  retryBudget,
+  retriesUsed,
+  retryRefusal,
+} from "@t3tools/baton-shared/jobReport";
 
 import type { HomeControl } from "../home/batonHome.ts";
 
@@ -86,6 +91,18 @@ export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeCo
                 } as const,
               ]
             : []),
+          ...(group === "done" && j.phase === "approved"
+            ? [
+                {
+                  id: `jk:${j.workSessionId}`,
+                  section: SECTION[group],
+                  label: `${j.title}: save this as a skill`,
+                  hint: "Writes a draft SKILL.md from what the job did, for you to read and edit. Nothing is installed by itself.",
+                  kind: "action",
+                  button: "Draft a skill",
+                } as const,
+              ]
+            : []),
           ...(j.phase === "approved" && retryRefusal(j) === null
             ? [
                 {
@@ -119,7 +136,7 @@ export const jobControls = (jobs: ReadonlyArray<BatonJob>): ReadonlyArray<HomeCo
 
 /** What a row's action is about: approval, stop, the schedule, or an answer typed in. */
 export const jobAction = (jobs: ReadonlyArray<BatonJob>, id: string) => {
-  const match = /^(j|ja|js|jr):(.+?)(:later)?$/.exec(id);
+  const match = /^(j|ja|js|jr|jk):(.+?)(:later)?$/.exec(id);
   const job = match === null ? undefined : jobs.find((j) => j.workSessionId === match[2]);
   if (match === null || job === undefined) return null;
   const kind = match[1];
@@ -128,13 +145,15 @@ export const jobAction = (jobs: ReadonlyArray<BatonJob>, id: string) => {
     kind:
       kind === "ja"
         ? "answer"
-        : kind === "jr"
-          ? "retry"
-          : kind === "js"
-            ? "schedule"
-            : match[3] === undefined
-            ? "primary"
-            : "stop",
+        : kind === "jk"
+          ? "draft"
+          : kind === "jr"
+            ? "retry"
+            : kind === "js"
+              ? "schedule"
+              : match[3] === undefined
+                ? "primary"
+                : "stop",
     approve: job.phase === "awaiting_agreement",
     scheduled: job.terms.scheduleTaskId !== null,
   } as const;
