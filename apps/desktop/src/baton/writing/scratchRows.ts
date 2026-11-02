@@ -41,6 +41,14 @@ export const scratchControls = (
       placeholder: "Words to find",
       addLabel: "Search",
     },
+    {
+      id: "tf.pick",
+      section: "Transcribe a file",
+      label: "Turn a recording into a note",
+      hint: "Choose an audio file, or drop one on this window. WAV works as it is; MP3, M4A, OGG and others need ffmpeg installed. The words are saved as a note and copied; nothing leaves this computer.",
+      kind: "action",
+      button: "Choose a file",
+    },
     ...(shown.length === 0
       ? [
           {
@@ -52,24 +60,24 @@ export const scratchControls = (
             detail: "",
           } as const,
         ]
-      : shown.map(
-          (n): HomeControl => ({
-            id: `sc:${n.id}`,
-            section: "Notes",
-            label: previewOf(n.text),
-            hint: new Date(n.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
-            kind: "action",
-            button: "Copy",
-            secondary: "Delete",
-          }),
-        )),
+      : shown.map((n): HomeControl => ({
+          id: `sc:${n.id}`,
+          section: "Notes",
+          label: previewOf(n.text),
+          hint: new Date(n.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+          kind: "action",
+          button: "Copy",
+          secondary: "Delete",
+        }))),
   ];
 };
 
 /** `sc.new:add` the text, `sc.search:add` and `:rm`, `sc.hotkey`, `sc:<id>` Copy and `sc:<id>:later` Delete. */
 export const scratchAction = (id: string, value: string | boolean | null) => {
-  if (id === "sc.new:add" && typeof value === "string") return { kind: "add", text: value } as const;
-  if (id === "sc.search:add" && typeof value === "string") return { kind: "search", query: value } as const;
+  if (id === "sc.new:add" && typeof value === "string")
+    return { kind: "add", text: value } as const;
+  if (id === "sc.search:add" && typeof value === "string")
+    return { kind: "search", query: value } as const;
   if (id === "sc.search:rm") return { kind: "search", query: "" } as const;
   if (id === "sc.hotkey") return { kind: "hotkey", on: value === true } as const;
   const n = /^sc:([A-Za-z0-9-]+)(:later)?$/.exec(id);

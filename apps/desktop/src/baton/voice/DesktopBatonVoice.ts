@@ -88,6 +88,8 @@ import {
   IMPORT_MAX_BYTES,
   importDictionary,
 } from "@t3tools/baton-shared/dictionaryIO";
+import { ACCEPTED_EXTENSIONS, baseName, transcriptTitle } from "@t3tools/baton-shared/audioFile";
+import { ffmpegToWav, transcribeFile } from "../writing/fileTranscribe.ts";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -3309,6 +3311,50 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const note = scratch.notes().find((n) => n.id === act.id);
         if (note !== undefined) void Electron.clipboard.writeText(note.text);
       } else if (act?.kind === "delete") scratch.remove(act.id);
+    } else if (id === "tf.pick" || id === "tf.file") {
+      const run = (file: string) => {
+        if (sidecar === null || parakeetPath === null) {
+          input.extras?.notice("The speech model is not ready on this computer yet.");
+          return;
+        }
+        input.extras?.notice(`Transcribing ${baseName(file)}...`);
+        void transcribeFile(file, {
+          readFile: (p) => NodeFS.promises.readFile(p),
+          toWav: ffmpegToWav,
+          transcribe: (pcm) => makeSidecarStt(sidecar!).transcribe(pcm),
+          progress: (done, total) => {
+            if (total > 1)
+              input.extras?.notice(
+                `Transcribing ${baseName(file)}: ${done} of ${total} minutes...`,
+              );
+          },
+        }).then((out) => {
+          if (!out.ok) return void input.extras?.notice(out.why);
+          try {
+            scratch.add(`${transcriptTitle(file)}\n\n${out.text}`);
+          } catch {
+            // Too long for a note: the clipboard still has it.
+          }
+          void Electron.clipboard.writeText(out.text);
+          input.extras?.notice(
+            `${transcriptTitle(file)} is in your Scratchpad and on the clipboard.`,
+          );
+          render();
+        });
+      };
+      if (id === "tf.file" && typeof value === "string") run(value);
+      else {
+        void Electron.dialog
+          .showOpenDialog({
+            properties: ["openFile"],
+            filters: [{ name: "Audio", extensions: ACCEPTED_EXTENSIONS.map((e) => e.slice(1)) }],
+          })
+          .then((picked) => {
+            const file = picked.filePaths[0];
+            if (!picked.canceled && file !== undefined) run(file);
+          })
+          .catch(() => undefined);
+      }
     } else if (id.startsWith("st.")) {
       const act = styleAction(id, value);
       if (act?.kind === "style") styles.set(act.category, act.style);
