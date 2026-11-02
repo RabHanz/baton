@@ -36,6 +36,8 @@ export interface CatalogPorts {
   readonly baton: (args: ReadonlyArray<string>) => Promise<{ readonly ok: boolean; readonly out: string }>;
   /** Types the text into a Herdr pane and submits it. */
   readonly type: (pane: string, text: string) => Promise<boolean>;
+  /** Machines with no Herdr: brings the session back as a T3 thread resuming that id, sending nothing. */
+  readonly thread?: (sessionId: string, cwd: string) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
 }
@@ -52,6 +54,7 @@ export interface ResumeResult {
   readonly state: BatonCatalogState;
   readonly pane: string | null;
   readonly detail: string | null;
+  readonly threadId?: string;
 }
 
 export const createSessionCatalog = (ports: CatalogPorts) => {
@@ -170,6 +173,12 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     const cwd = await cwdOf(sessionId, given);
     if (cwd === null) return { state: "failed" as const, pane: null, detail: "I do not know which folder this conversation was in, and its transcript is not on this machine." };
     if (!ports.dirExists(cwd)) return { state: "failed" as const, pane: null, detail: `The folder ${cwd} is not on this machine.` };
+    if (ports.thread !== undefined) {
+      const opened = await ports.thread(sessionId, cwd);
+      return "threadId" in opened
+        ? { state: "running" as const, pane: null, detail: null, threadId: opened.threadId }
+        : { state: "failed" as const, pane: null, detail: opened.detail };
+    }
     const out = await ports.baton(["--resume", sessionId, cwd]);
     if (!/running in (\S+) pane (\S+)/.test(out.out)) {
       return { state: "failed" as const, pane: null, detail: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
@@ -194,6 +203,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
         waiting.delete(input.sessionId);
         for (const text of queued) await ports.type(r.pane, text);
       }
+      if (r.state === "running" && r.pane === null) waiting.delete(input.sessionId);
       return r;
     });
     resuming.set(input.sessionId, job);
@@ -212,6 +222,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     // Stopped: keep the message, bring it back, and let the resume deliver it.
     waiting.set(input.sessionId, [...(waiting.get(input.sessionId) ?? []), input.text]);
     const result = await resume({ sessionId: input.sessionId, ...(input.cwd === undefined ? {} : { cwd: input.cwd }) });
+    if (result.state === "running" && result.pane === null) {
+      return { state: "running" as const, delivered: false, detail: "It is open as a thread here. Send your message in that thread." };
+    }
     if (result.state === "running") return { state: "running" as const, delivered: true, detail: null };
     if (result.state === "resuming") return { state: "resuming" as const, delivered: false, detail: "It is resuming; your message is kept and goes when it is ready." };
     return { state: "failed" as const, delivered: false, detail: `${result.detail ?? "It could not be resumed."} Your message is kept.` };
