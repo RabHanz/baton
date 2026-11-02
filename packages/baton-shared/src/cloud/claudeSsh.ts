@@ -1,5 +1,5 @@
 /**
- * Claude over the central dispatch shell (transport 3, the fleet's advanced one): the VentureOS
+ * Claude over the central dispatch shell (transport 3, the fleet's advanced one): the central
  * `cloud-dispatch-shell` contract in docs/baton/CLOUD_DISPATCH.md. One key per caller reaches only the
  * allowed subcommands; approve and deny need a second, approver key. Arguments are an argument list,
  * values are restricted to characters that need no quoting, and the brief travels on stdin.
