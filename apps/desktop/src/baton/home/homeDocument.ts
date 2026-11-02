@@ -7,7 +7,7 @@ import { WINDOW_STING_DARK, WINDOW_STING_LIGHT } from "./windowMotionArt.ts";
  * `appScript.ts` from the state the main process sends. Outside Electron it reads
  * `window.__BATON_STATE__`, so a browser can show every tab.
  */
-export const HOME_DOCUMENT = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Tessaya</title><style>${APP_CSS}</style></head><body><div id="app"><aside id="side"></aside><div id="main"><header id="top"></header><main id="panel"><div id="page"></div></main></div></div><script>window.TESSAYA_STING=${JSON.stringify({ dark: WINDOW_STING_DARK, light: WINDOW_STING_LIGHT })};</script><script>${APP_SCRIPT}</script></body></html>`;
+export const HOME_DOCUMENT = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Tessaya</title><style>${APP_CSS}</style></head><body><a class="skip" href="#panel">Skip to the page</a><div id="app"><aside id="side" aria-label="Sidebar"></aside><div id="main"><header id="top"></header><main id="panel" tabindex="-1" aria-label="Tessaya"><div id="page"></div></main></div></div><script>window.TESSAYA_STING=${JSON.stringify({ dark: WINDOW_STING_DARK, light: WINDOW_STING_LIGHT })};</script><script>${APP_SCRIPT}</script></body></html>`;
 
 /** The page for a theme: the attribute is on the root before anything paints, so there is no flash. */
 export const homeDocumentFor = (theme: "light" | "dark"): string =>
