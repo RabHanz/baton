@@ -29,6 +29,7 @@ const state = (over: Partial<MemoryTabState>): MemoryTabState => ({
   usedIds: new Set(),
   usedOnly: false,
   syncOn: false,
+  pullOn: false,
   status: "",
   ...over,
 });

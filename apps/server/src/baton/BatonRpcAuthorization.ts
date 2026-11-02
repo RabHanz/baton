@@ -85,6 +85,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_MEMORY_WS_METHODS.export]: AuthOrchestrationReadScope,
   // Reads files from a folder on this machine and writes memory: an operate act.
   [BATON_MEMORY_WS_METHODS.import]: AuthOrchestrationOperateScope,
+  // Runs the history script on this machine and writes held proposals.
+  [BATON_MEMORY_WS_METHODS.pull]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.syncHello]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.syncPull]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.syncPush]: AuthOrchestrationOperateScope,

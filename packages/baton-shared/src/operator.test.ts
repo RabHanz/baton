@@ -211,6 +211,7 @@ describe("Baton's own tools (D143)", () => {
       "memory_search",
       "memory_used",
       "vault_list",
+      "history_search",
       "memory_pin",
       "dictation_start",
       "jobs_list",

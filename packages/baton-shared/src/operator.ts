@@ -97,6 +97,7 @@ const BATON_QUIET = new Set([
   "memory_search",
   "memory_used",
   "vault_list",
+  "history_search",
   "memory_pin",
   "remember_target",
   "wait",
@@ -152,6 +153,7 @@ export const READS_OUTSIDE = new Set([
   "screen_capture",
   "ui_tree",
   "session_show",
+  "history_search",
   // Another session's reply is data from outside, whatever it says.
   "weave_list",
 ]);
