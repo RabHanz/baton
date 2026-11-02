@@ -60,7 +60,7 @@ jobs:
           run_one() { # <name> <test file under apps/server>
             local name="$1" file="$2"
             if [ ! -f "apps/server/${file%% *}" ]; then echo "skipped: $file is not in this build"; printf '%s\t%s\n' "$name" skipped >> out/lines; return; fi
-            if (cd apps/server && vp test run "$file"); then printf '%s\t%s\n' "$name" success >> out/lines; else printf '%s\t%s\n' "$name" failure >> out/lines; fi
+            if (cd apps/server && vp test run $file); then printf '%s\t%s\n' "$name" success >> out/lines; else printf '%s\t%s\n' "$name" failure >> out/lines; fi
           }
           run_one "memory evals" src/baton/BatonMemoryEval.test.ts
           run_one "employee spine" src/baton/BatonEmployeeSpine.test.ts
