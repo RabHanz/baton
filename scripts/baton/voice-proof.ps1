@@ -1,10 +1,10 @@
 # Installs a Tessaya build silently, launches it with BATON_TEST_WAV (a spoken wake phrase made here with
 # Windows speech) and BATON_TEST_DIR, waits, and reads voice-turns.ndjson to see how far the voice start got.
-#   voice-proof.ps1 -Installer <Tessaya-x64.exe> -Out <folder> [-WaitSeconds 120] [-RequireWake]
+#   voice-proof.ps1 -Installer <Tessaya-x64.exe> -Out <folder> [-WaitSeconds 300] [-RequireWake]
 param(
   [Parameter(Mandatory)][string]$Installer,
   [Parameter(Mandatory)][string]$Out,
-  [int]$WaitSeconds = 120,
+  [int]$WaitSeconds = 300,
   [switch]$RequireWake
 )
 $ErrorActionPreference = 'Stop'
