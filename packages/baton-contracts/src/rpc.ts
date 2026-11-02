@@ -106,6 +106,14 @@ import {
   BatonJobTermsResult,
 } from "./jobs.ts";
 import {
+  BATON_COMMITMENT_WS_METHODS,
+  BatonCommitmentError,
+  BatonCommitmentListInput,
+  BatonCommitmentListResult,
+  BatonCommitmentUpsertInput,
+  BatonCommitmentUpsertResult,
+} from "./commitments.ts";
+import {
   BATON_MEMORY_WS_METHODS,
   BatonMemoryDraft,
   BatonMemoryEditInput,
@@ -291,6 +299,18 @@ const WsBatonJobSplitRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSplit, {
   payload: BatonJobSplitInput,
   success: BatonJobSplitResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const CommitmentErrors = Schema.Union([BatonCommitmentError, EnvironmentAuthorizationError]);
+const WsBatonCommitmentListRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.list, {
+  payload: BatonCommitmentListInput,
+  success: BatonCommitmentListResult,
+  error: CommitmentErrors,
+});
+const WsBatonCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert, {
+  payload: BatonCommitmentUpsertInput,
+  success: BatonCommitmentUpsertResult,
+  error: CommitmentErrors,
 });
 
 const MemoryErrors = Schema.Union([BatonMemoryRefusedError, EnvironmentAuthorizationError]);
@@ -551,6 +571,8 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobScheduleRpc,
   WsBatonJobSplitRpc,
   WsBatonWatchGetRpc,
+  WsBatonCommitmentListRpc,
+  WsBatonCommitmentUpsertRpc,
   WsBatonMemoryListRpc,
   WsBatonMemorySearchRpc,
   WsBatonMemoryAddRpc,
