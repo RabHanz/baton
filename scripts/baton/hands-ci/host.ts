@@ -63,7 +63,10 @@ NodeReadline.createInterface({ input: clipProc.stdout }).on("line", (line) =>
   clipWaiting.shift()?.(line),
 );
 let clipChain: Promise<unknown> = Promise.resolve();
+export const clipLog: string[] = [];
+const clipStart = Date.now();
 const clip = (command: string): Promise<string> => {
+  clipLog.push(`${Date.now() - clipStart}ms ${command.split(" ")[0]}`);
   const turn = clipChain.then(
     () =>
       new Promise<string>((resolve, reject) => {
