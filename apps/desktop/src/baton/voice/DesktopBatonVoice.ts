@@ -338,7 +338,6 @@ const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
-<<<<<<< HEAD
 /** Changes this close together make one tray and window update. */
 const RENDER_COALESCE_MS = 40;
 
@@ -359,14 +358,9 @@ const cachedFor = <T>(ms: number, make: () => T) => {
   };
   return Object.assign(get, { reset: () => void (at = -Infinity) });
 };
-/** The choices offered for how long it listens; the defaults are the middle and the second. */
-export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [8_000, 15_000, 30_000];
-export const CONVERSATION_MS: ReadonlyArray<number> = [30_000, 60_000, 120_000];
-=======
 /** The choices for how long it listens. Eight seconds and 30 s are the defaults; the wait covers only the start of speech. */
 export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [4_000, 6_000, 8_000, 12_000];
 export const CONVERSATION_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000, 120_000];
->>>>>>> origin/main
 const BRIEF_HOUR = 8;
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
