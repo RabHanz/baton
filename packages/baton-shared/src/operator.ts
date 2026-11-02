@@ -91,6 +91,8 @@ export const batonToolName = (tool: string): string =>
 /** Look at state, or reversible and local: nothing leaves, nothing is changed. */
 const BATON_QUIET = new Set([
   "sessions_list",
+  "sessions_find",
+  "session_resume",
   "session_show",
   "fleet_status",
   "memory_search",
@@ -136,6 +138,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "type_text",
   "press_keys",
   "session_send",
+  "session_new",
   "job_start",
   "job_split",
   "job_refine",

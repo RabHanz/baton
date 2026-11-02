@@ -73,6 +73,7 @@ export const startBatonDesktop = Effect.gen(function* () {
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
     let screen: ScreenCompanion | null = null;
+    let catalogStore: ReturnType<typeof createCatalog> | null = null;
     const conversation = createConversationLog({
       file: NodePath.join(environment.stateDir, "baton-conversation.ndjson"),
     });
@@ -262,6 +263,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     try {
       screen = startScreenCompanion({
+        catalog: () => catalogStore?.tools,
         stateDir: environment.stateDir,
         conversation,
         onNote: turnLog.note,
@@ -299,13 +301,13 @@ export const startBatonDesktop = Effect.gen(function* () {
       setTimeout(() => voice?.openHome(), SECOND_LAUNCH_RAISE_MS).unref();
     });
     // Every session on every connected environment, through the T3 sidebar; BATON_MOCK_CATALOG shows sample rows instead.
-    const catalog = createCatalog({
+    const catalog = (catalogStore = createCatalog({
       service:
         (hostEnvironment["BATON_MOCK_CATALOG"] ?? "") === ""
           ? createBridgeCatalogService({ bridge: sessions, openMainWindow })
           : mockCatalogService(),
       onChange: () => voice?.refresh(),
-    });
+    }));
     setTimeout(() => void catalog.refresh(), 8_000).unref();
     setInterval(() => void catalog.refresh(), 45_000).unref();
     voice = startDesktopBatonVoice({
