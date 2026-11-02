@@ -147,6 +147,12 @@ const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(?:cvv|cvc|security code)\s*(?:is|=|:)?\s*\d{3,4}\b/i, "a card security code"],
 ];
 
+/** What kind of secret the text looks like ("a password or key"), or null. Used by the memory door, the vault offer and History. */
+export const detectSecret = (text: string): string | null => {
+  for (const [pattern, what] of SECRET_PATTERNS) if (pattern.test(text)) return what;
+  return hasCardNumber(text) ? "a card number" : null;
+};
+
 /** Words in a row that a longer private text shares with this one. */
 const wordRuns = (text: string, n: number): Set<string> => {
   const words = text.toLowerCase().split(/\s+/).filter(Boolean);
@@ -166,10 +172,8 @@ export const refuseToStore = (
   const clean = text.trim();
   if (clean === "") return "there is nothing to remember in that";
   if (clean.length > MEMORY_TEXT_MAX) return `a memory is at most ${MEMORY_TEXT_MAX} characters`;
-  for (const [pattern, what] of SECRET_PATTERNS) {
-    if (pattern.test(clean)) return `that looks like ${what}, so I did not keep it`;
-  }
-  if (hasCardNumber(clean)) return "that looks like a card number, so I did not keep it";
+  const secret = detectSecret(clean);
+  if (secret !== null) return `that looks like ${secret}, so I did not keep it`;
   if (privateTexts.length > 0) {
     const mine = wordRuns(clean, 8);
     if (mine.size > 0 && privateTexts.some((p) => [...wordRuns(p, 8)].some((r) => mine.has(r)))) {
