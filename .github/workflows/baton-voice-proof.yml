@@ -1,0 +1,92 @@
+name: Tessaya voice proof
+
+# Installs a Tessaya build on a Windows desktop, launches it with BATON_TEST_WAV (a spoken wake phrase made
+# with Windows speech) and BATON_TEST_DIR, and reads voice-turns.ndjson: how far did the voice start get, did
+# the audio hook run, did the phrase wake it. Give `tag` (baton-v0.1.31) to test a released installer, or
+# leave it empty to build this branch (about 10 minutes more).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Released tag to install, e.g. baton-v0.1.31; empty builds this ref"
+        default: ""
+      require_wake:
+        description: "Also fail unless the phrase woke it (a synthetic voice may not)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download the released installer
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir installer
+          gh release download "${{ inputs.tag }}" -R "$GITHUB_REPOSITORY" --dir installer --pattern '*-x64.exe'
+          ls installer
+
+      - name: Apply Tessaya branding (build only, not committed)
+        if: inputs.tag == ''
+        shell: bash
+        run: bash scripts/baton/apply-release-branding.sh
+
+      - name: T3 Connect public config
+        if: inputs.tag == ''
+        shell: bash
+        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        if: inputs.tag == ''
+        with:
+          node-version-file: package.json
+
+      - uses: actions/setup-python@v5
+        if: inputs.tag == ''
+        with:
+          python-version: "3.x"
+
+      - name: Setup pnpm
+        if: inputs.tag == ''
+        run: corepack enable
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: inputs.tag == ''
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        if: inputs.tag == ''
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the installer
+        if: inputs.tag == ''
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 \
+            --build-version 99.0.0 --output-dir installer --verbose
+
+      - name: Install, launch with the test audio, read the log
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem installer -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
+          $wake = if ('${{ inputs.require_wake }}' -eq 'false') { @() } else { @('-RequireWake') }
+          ./scripts/baton/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @wake
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-proof
+          path: ${{ runner.temp }}/voice-proof
