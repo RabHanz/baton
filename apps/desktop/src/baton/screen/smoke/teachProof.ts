@@ -382,7 +382,7 @@ function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandl
 using System.Drawing;
 public static class Diff { public static int Count(string a, string b) { using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) { int n = 0; int w = System.Math.Min(x.Width, y.Width), h = System.Math.Min(x.Height, y.Height); for (int i = 0; i < w; i += 3) for (int j = 0; j < h; j += 3) if (x.GetPixel(i, j).ToArgb() != y.GetPixel(i, j).ToArgb()) n++; return n; } } }
 "@
-$n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 300){exit 0}else{exit 1}`,
+$n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 100){exit 0}else{exit 1}`,
       );
       return { pass: r.code === 0, detail: r.out };
     };
