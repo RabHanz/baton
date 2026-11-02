@@ -137,3 +137,15 @@ export const snapPosition = (
     place: null,
   };
 };
+
+/** Whether the cursor is over the capsule (a box inside the window), with a little reach around it. */
+export const cursorOverCapsule = (
+  cursor: { readonly x: number; readonly y: number },
+  window: Area,
+  capsule: Area,
+  pad = 6,
+): boolean =>
+  cursor.x >= window.x + capsule.x - pad &&
+  cursor.x <= window.x + capsule.x + capsule.width + pad &&
+  cursor.y >= window.y + capsule.y - pad &&
+  cursor.y <= window.y + capsule.y + capsule.height + pad;
