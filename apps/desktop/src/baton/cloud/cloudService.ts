@@ -198,7 +198,7 @@ export const createCloud = (deps: CloudDeps) => {
     loadedAt = deps.now();
     offerNew();
     // A card whose request is gone or answered forgets its state.
-    for (const k of [...cards.keys()]) if (!reqs.some((r) => requestKey(r) === k && r.state === "awaiting-director")) cards.delete(k);
+    for (const k of cards.keys()) if (!reqs.some((r) => requestKey(r) === k && r.state === "awaiting-director")) cards.delete(k);
     deps.changed();
   };
 
