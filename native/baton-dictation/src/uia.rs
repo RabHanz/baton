@@ -1,10 +1,13 @@
 //! The real element behind a guess: Windows UI Automation, searched inside the top-level window
 //! under the model's point. A pointer lands on something that exists or says it could not check.
 use serde_json::{json, Value};
-use windows::Win32::Foundation::{POINT, RECT};
+use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, TreeScope_Descendants};
-use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GetWindowRect, WindowFromPoint, GA_ROOT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetAncestor, GetForegroundWindow, GetTopWindow, GetWindow, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible,
+    WindowFromPoint, GA_ROOT, GW_HWNDNEXT,
+};
 
 const MAX_ELEMENTS: i32 = 4000;
 const MIN_SIDE: i32 = 8;
@@ -53,6 +56,26 @@ unsafe fn at_point(automation: &IUIAutomation, label: &str, x: i32, y: i32) -> w
     Ok(json!({"found": false, "elements": 1}))
 }
 
+/// The window and every other visible top-level window of its process: an open menu and a dialog are
+/// windows of their own, and the keyboard's window alone does not hold them.
+unsafe fn process_windows(top: HWND) -> Vec<HWND> {
+    let mut pid = 0u32;
+    GetWindowThreadProcessId(top, Some(&mut pid));
+    let mut out = vec![top];
+    let mut next = GetTopWindow(None);
+    while let Ok(h) = next {
+        if h != top && IsWindowVisible(h).as_bool() {
+            let mut other = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut other));
+            if other == pid {
+                out.push(h);
+            }
+        }
+        next = GetWindow(h, GW_HWNDNEXT);
+    }
+    out
+}
+
 /// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
 /// searches the window with the keyboard, wherever the pointer is; otherwise the window under (x, y).
 pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, String> {
@@ -68,39 +91,51 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, St
         };
         let condition = automation.ControlViewCondition().map_err(err)?;
         // 0x80040201 can come from the window or any one provider in it, and fails the whole
-        // search, so ask for the element at the point instead.
-        let searched = automation
-            .ElementFromHandle(top)
-            .and_then(|root| root.FindAll(TreeScope_Descendants, &condition));
-        let all = match searched {
-            Ok(all) => all,
-            Err(whole) => {
-                return at_point(&automation, label, x, y)
-                    .map_err(|inner| format!("{whole}; at the point: {inner}"))
-            }
-        };
-        let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
+        // search, so ask for the element at the point instead when no window could be searched.
+        let roots = if foreground { process_windows(top) } else { vec![top] };
+        let mut count = 0;
+        let mut searched_any = false;
+        let mut whole_error = String::new();
         let mut best: Option<(f32, String, RECT)> = None;
-        for i in 0..count {
-            let Ok(element) = all.GetElement(i) else { continue };
-            let Ok(name) = element.CurrentName() else { continue };
-            let name = name.to_string();
-            let score = name_score(label, &name);
-            if score == 0.0 || element.CurrentIsOffscreen().map(|o| o.as_bool()).unwrap_or(true) {
-                continue;
+        for root in roots {
+            let searched = automation
+                .ElementFromHandle(root)
+                .and_then(|element| element.FindAll(TreeScope_Descendants, &condition));
+            let all = match searched {
+                Ok(all) => all,
+                Err(whole) => {
+                    whole_error = whole.to_string();
+                    continue;
+                }
+            };
+            searched_any = true;
+            let here = all.Length().map_err(err)?.min(MAX_ELEMENTS);
+            count += here;
+            for i in 0..here {
+                let Ok(element) = all.GetElement(i) else { continue };
+                let Ok(name) = element.CurrentName() else { continue };
+                let name = name.to_string();
+                let score = name_score(label, &name);
+                if score == 0.0 || element.CurrentIsOffscreen().map(|o| o.as_bool()).unwrap_or(true) {
+                    continue;
+                }
+                let Ok(rect) = element.CurrentBoundingRectangle() else { continue };
+                // A window's own 1 px title element has the right name and is nothing to point at.
+                if rect.right - rect.left < MIN_SIDE || rect.bottom - rect.top < MIN_SIDE {
+                    continue;
+                }
+                let (cx, cy) = centre(&rect);
+                let distance = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2)).sqrt();
+                // Name first; among equals the one nearest the model's point.
+                let rank = score * 10_000.0 - distance;
+                if best.as_ref().map(|(r, ..)| rank > *r).unwrap_or(true) {
+                    best = Some((rank, name, rect));
+                }
             }
-            let Ok(rect) = element.CurrentBoundingRectangle() else { continue };
-            // A window's own 1 px title element has the right name and is nothing to point at.
-            if rect.right - rect.left < MIN_SIDE || rect.bottom - rect.top < MIN_SIDE {
-                continue;
-            }
-            let (cx, cy) = centre(&rect);
-            let distance = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2)).sqrt();
-            // Name first; among equals the one nearest the model's point.
-            let rank = score * 10_000.0 - distance;
-            if best.as_ref().map(|(r, ..)| rank > *r).unwrap_or(true) {
-                best = Some((rank, name, rect));
-            }
+        }
+        if !searched_any {
+            return at_point(&automation, label, x, y)
+                .map_err(|inner| format!("{whole_error}; at the point: {inner}"));
         }
         let mut window = RECT::default();
         let _ = GetWindowRect(top, &mut window);
