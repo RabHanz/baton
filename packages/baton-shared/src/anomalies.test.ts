@@ -1,3 +1,4 @@
+import { DateTime } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -60,7 +61,7 @@ describe("anomalies", () => {
       name: "verify",
       branch: "main",
       conclusion,
-      createdAt: new Date(now - ago * MIN).toISOString(),
+      createdAt: DateTime.formatIso(DateTime.makeUnsafe(now - ago * MIN)),
     });
     expect(
       anomalyFromCi([run(3, "failure", 5), run(2, "failure", 60), run(1, "failure", 120)], now),
