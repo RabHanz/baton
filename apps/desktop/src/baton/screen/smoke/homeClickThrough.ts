@@ -123,10 +123,15 @@ void Electron.app.whenReady().then(async () => {
     y: number;
     ok: boolean;
   }
+  // Fresh every time, and scrolled into view: a click moves things, and a long sidebar scrolls.
   const find = (selector: string) =>
     js(
-      `[...document.querySelectorAll(${JSON.stringify(selector)})].map(e=>{const r=e.getBoundingClientRect();const name=(e.getAttribute('aria-label')||e.textContent||e.id||e.tagName).trim().slice(0,32);return {name,x:r.x+r.width/2,y:r.y+r.height/2,ok:r.width>2&&r.height>2&&r.x>=0&&r.y>=0&&r.x<innerWidth&&r.y<innerHeight}})`,
+      `[...document.querySelectorAll(${JSON.stringify(selector)})].map(e=>{e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();const name=(e.getAttribute('aria-label')||e.textContent||e.id||e.tagName).trim().slice(0,32);return {name,x:r.x+r.width/2,y:r.y+r.height/2,ok:r.width>2&&r.height>2&&r.x>=0&&r.y>=0&&r.x<innerWidth&&r.y<innerHeight}})`,
     ) as Promise<Found[]>;
+  const nth = async (selector: string, i: number) => {
+    await sleep(250);
+    return (await find(selector))[i];
+  };
   const rows: Row[] = [];
   const press = async (group: string, c: Found) => {
     if (!c.ok) return rows.push({ group, control: c.name, result: "off screen", effect: "" });
@@ -148,33 +153,45 @@ void Electron.app.whenReady().then(async () => {
   await sleep(1500);
 
   // The sidebar: each item opens its page.
-  for (const c of await find("#side button, #side a")) await press("sidebar", c);
-  await js("go('home')");
-  await sleep(500);
+  const sideCount = (await find("#side button, #side a")).length;
+  for (let i = 0; i < sideCount; i += 1) {
+    const c = await nth("#side button, #side a", i);
+    if (c !== undefined) await press("sidebar", c);
+    await js("closeModal();go('home');0");
+    await sleep(400);
+  }
 
   // The header: each control does something; one that opens a dialog gets every dialog tab clicked, then is closed.
-  const header = await find("#top button, #top a, #top input, #top select");
-  for (let i = 0; i < header.length; i += 1) {
-    const c = (await find("#top button, #top a, #top input, #top select"))[i];
+  const headerSel = "#top button, #top a, #top input, #top select";
+  const headerCount = (await find(headerSel)).length;
+  for (let i = 0; i < headerCount; i += 1) {
+    const c = await nth(headerSel, i);
     if (c === undefined) {
-      rows.push({ group: "header", control: header[i]!.name, result: "not found", effect: "" });
+      rows.push({ group: "header", control: `#${i}`, result: "not found", effect: "" });
       continue;
     }
     await press("header", c);
     if (await js("!!document.getElementById('modal')")) {
-      for (const tab of await find("#mnav button")) await press("dialog tab", tab);
-      await js("closeModal()");
-      await sleep(500);
+      await sleep(700);
+      const tabs = (await find("#mnav button")).length;
+      for (let t = 0; t < tabs; t += 1) {
+        const tab = await nth("#mnav button", t);
+        if (tab !== undefined) await press("dialog tab", tab);
+      }
     }
-    await js("go('home')");
-    await sleep(300);
+    await js("closeModal();go('home');0");
+    await sleep(400);
   }
   // The dialogs that no header control opens in this state.
   for (const m of ["general", "system", "keys", "account", "updates", "about"]) {
     await js(`modal=${JSON.stringify(m)};render();0`);
-    await sleep(500);
-    for (const tab of await find("#mnav button")) await press(`dialog ${m}`, tab);
-    await js("closeModal()");
+    await sleep(800);
+    const tabs = (await find("#mnav button")).length;
+    for (let t = 0; t < tabs; t += 1) {
+      const tab = await nth("#mnav button", t);
+      if (tab !== undefined) await press(`dialog ${m}`, tab);
+    }
+    await js("closeModal();0");
     await sleep(300);
   }
   const seconds = (Date.now() - began) / 1000;
