@@ -82,7 +82,9 @@ describe("command mode on the text", () => {
     expect(await edit.command(sel)).toBe("Selected the previous paragraph.");
     expect(log).toEqual(["press ctrl+shift+up"]);
     log.length = 0;
-    expect(await edit.command(parseTextCommand("delete the last word")!)).toContain("Deleted the last word.");
+    expect(await edit.command(parseTextCommand("delete the last word")!)).toContain(
+      "Deleted the last word.",
+    );
     expect(log).toEqual(["press ctrl+shift+left", "press backspace"]);
     log.length = 0;
     expect(await edit.undo()).toBe("Undone with the app's own undo.");
@@ -103,13 +105,17 @@ describe("command mode on the text", () => {
       ask: async () => "",
       now: () => 0,
     });
-    expect(await edit.command(parseTextCommand("delete the last sentence")!)).toContain("Deleted the last sentence");
+    expect(await edit.command(parseTextCommand("delete the last sentence")!)).toContain(
+      "Deleted the last sentence",
+    );
     expect(log).toEqual(["press ctrl+shift+up", "paste One. Two."]);
   });
   it("rewrites the selection with the spoken instruction, and asks him to select when nothing is", async () => {
     const ok = rig("this is a very long winded sentence indeed", "This is a long sentence.");
     expect(await ok.edit.command(parseTextCommand("make this more concise")!)).toContain("Done.");
     expect(ok.log).toEqual(["paste This is a long sentence."]);
-    expect(await rig(null, "x").edit.command(parseTextCommand("make this shorter")!)).toContain("Select the text first");
+    expect(await rig(null, "x").edit.command(parseTextCommand("make this shorter")!)).toContain(
+      "Select the text first",
+    );
   });
 });

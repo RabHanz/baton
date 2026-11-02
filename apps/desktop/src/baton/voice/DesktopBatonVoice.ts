@@ -72,6 +72,20 @@ import {
   type Transform,
 } from "@t3tools/baton-shared/transforms";
 import { createModelAsk } from "../writing/modelAsk.ts";
+import {
+  applyStyle,
+  categoryForApp,
+  cleanupSettingOf,
+  STYLE_CATEGORIES,
+} from "@t3tools/baton-shared/writingStyle";
+import { createStyleStore } from "../writing/styleStore.ts";
+import {
+  GUIDE_BUTTONS,
+  guideAnswer,
+  guideQuestion,
+  styleAction,
+  styleControls,
+} from "../writing/styleRows.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
@@ -751,6 +765,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const snippets = createSnippetStore(input.stateDir);
   const transforms = createTransformStore(input.stateDir);
+  const styles = createStyleStore(input.stateDir);
   const askModel = createModelAsk({
     claudeBinary: () => settings.claudeBinary,
     model: () => settings.cleanupModel,
@@ -768,6 +783,21 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     return checked.ok ? checked.text : null;
   };
   let transformNote = "";
+  /** Four questions, one per kind of writing, as the card with buttons; Skip leaves that one as it was. */
+  const runStyleGuide = async (): Promise<void> => {
+    for (const c of STYLE_CATEGORIES) {
+      const q = guideQuestion(c);
+      const index = await (input.extras?.ask({
+        ...q,
+        buttons: GUIDE_BUTTONS,
+        cancel: GUIDE_BUTTONS.length - 1,
+        expiresMs: 120_000,
+      }) ?? Promise.resolve(GUIDE_BUTTONS.length - 1));
+      const style = guideAnswer(index);
+      if (style !== null) styles.set(c, style);
+      render();
+    }
+  };
   input.extras?.setTransformHotkeys?.(transforms.read().enabled);
   /** Clean-up, then the spoken cues he saved expand (Snippets). */
   const writeClean = async (raw: string, app: { readonly exe: string; readonly title: string }) => {
@@ -776,7 +806,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       mode: chooseMode(app, settings.appModes),
       level: await levelNow(app),
     });
-    let text = expandSnippets(out.text, snippets.list(), app.exe);
+    const styled =
+      chooseMode(app, settings.appModes) === "code" || chooseMode(app, settings.appModes) === "raw"
+        ? out.text
+        : applyStyle(out.text, styles.read()[categoryForApp(app)]);
+    let text = expandSnippets(styled, snippets.list(), app.exe);
     // Transforms: one chosen rewrite after every dictation, if he asked. A failure inserts the cleaned text.
     const tcfg = transforms.read();
     const auto = tcfg.enabled ? transforms.all().find((t) => t.id === tcfg.autoApply) : undefined;
@@ -913,7 +947,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turn = history.get(id);
     if (turn === null) return null;
     if (action === "copy_raw") void Electron.clipboard.writeText(turn.raw);
-    else if (action === "copy") {
+    else if (action === "undo_ai") {
+      // The heard words become the row's words (the written ones stay as a version) and go on the clipboard.
+      history.update(id, {
+        versions: withRetry(turn, {
+          at: new Date().toISOString(),
+          raw: turn.raw,
+          cleaned: turn.raw,
+          model: null,
+        }),
+        cleaned: turn.raw,
+        status: "raw",
+      });
+      void Electron.clipboard.writeText(turn.raw);
+    } else if (action === "copy") {
       void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
     } else if (action === "copy_cleaned")
       void Electron.clipboard.writeText(turn.cleaned ?? turn.raw);
@@ -1376,7 +1423,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         });
       }
       // Rewrites of the selection are answered by the companion, which holds the keyboard.
-      if (op === "text_transform" || op === "text_undo" || op === "text_command") return "That is not available here.";
+      if (op === "text_transform" || op === "text_undo" || op === "text_command")
+        return "That is not available here.";
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
         findings?: ReadonlyArray<WatchFinding>;
@@ -2474,6 +2522,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...nowControls(nowData, Date.now()),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
+      ...styleControls(styles.read(), settings.dictationCleanup),
       ...presenceControls(settings),
       ...memoryTab.controls(),
       ...vaultTab.controls(),
@@ -3127,6 +3176,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           })
           .catch(() => undefined);
       }
+    } else if (id.startsWith("st.")) {
+      const act = styleAction(id, value);
+      if (act?.kind === "style") styles.set(act.category, act.style);
+      else if (act?.kind === "level") {
+        save({ dictationCleanupChosen: true, dictationCleanup: cleanupSettingOf(act.level) });
+      } else if (act?.kind === "guide") void runStyleGuide();
     } else if (id.startsWith("tr.")) {
       const act = transformAction(id, value);
       transformNote = "";
