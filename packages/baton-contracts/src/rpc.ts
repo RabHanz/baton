@@ -106,6 +106,23 @@ import {
   BatonJobTermsResult,
 } from "./jobs.ts";
 import {
+  BATON_MEMORY_WS_METHODS,
+  BatonMemoryDraft,
+  BatonMemoryEditInput,
+  BatonMemoryExportResult,
+  BatonMemoryForgetResult,
+  BatonMemoryItemResult,
+  BatonMemoryListResult,
+  BatonMemoryPinInput,
+  BatonMemoryQuery,
+  BatonMemoryRecallInput,
+  BatonMemoryRecallResult,
+  BatonMemoryRefInput,
+  BatonMemoryRefusedError,
+  BatonMemorySearchResult,
+  BatonMemoryUsedInput,
+} from "./memory.ts";
+import {
   BATON_HANDOFF_WS_METHODS,
   WorkSessionHandoffInput,
   WorkSessionHandoffRefusedError,
@@ -265,6 +282,58 @@ const WsBatonJobSplitRpc = Rpc.make(BATON_JOB_WS_METHODS.jobSplit, {
   payload: BatonJobSplitInput,
   success: BatonJobSplitResult,
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+
+const MemoryErrors = Schema.Union([BatonMemoryRefusedError, EnvironmentAuthorizationError]);
+const WsBatonMemoryListRpc = Rpc.make(BATON_MEMORY_WS_METHODS.list, {
+  payload: BatonMemoryQuery,
+  success: BatonMemoryListResult,
+  error: MemoryErrors,
+});
+const WsBatonMemorySearchRpc = Rpc.make(BATON_MEMORY_WS_METHODS.search, {
+  payload: BatonMemoryQuery,
+  success: BatonMemorySearchResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryAddRpc = Rpc.make(BATON_MEMORY_WS_METHODS.add, {
+  payload: BatonMemoryDraft,
+  success: BatonMemoryItemResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryEditRpc = Rpc.make(BATON_MEMORY_WS_METHODS.edit, {
+  payload: BatonMemoryEditInput,
+  success: BatonMemoryItemResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryPinRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pin, {
+  payload: BatonMemoryPinInput,
+  success: BatonMemoryItemResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryForgetRpc = Rpc.make(BATON_MEMORY_WS_METHODS.forget, {
+  payload: BatonMemoryRefInput,
+  success: BatonMemoryForgetResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryAcceptRpc = Rpc.make(BATON_MEMORY_WS_METHODS.accept, {
+  payload: BatonMemoryRefInput,
+  success: BatonMemoryItemResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryRecallRpc = Rpc.make(BATON_MEMORY_WS_METHODS.recall, {
+  payload: BatonMemoryRecallInput,
+  success: BatonMemoryRecallResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryUsedRpc = Rpc.make(BATON_MEMORY_WS_METHODS.used, {
+  payload: BatonMemoryUsedInput,
+  success: BatonMemoryListResult,
+  error: MemoryErrors,
+});
+const WsBatonMemoryExportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.export, {
+  payload: Schema.Struct({}),
+  success: BatonMemoryExportResult,
+  error: MemoryErrors,
 });
 
 const WsBatonWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
@@ -448,6 +517,16 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobScheduleRpc,
   WsBatonJobSplitRpc,
   WsBatonWatchGetRpc,
+  WsBatonMemoryListRpc,
+  WsBatonMemorySearchRpc,
+  WsBatonMemoryAddRpc,
+  WsBatonMemoryEditRpc,
+  WsBatonMemoryPinRpc,
+  WsBatonMemoryForgetRpc,
+  WsBatonMemoryAcceptRpc,
+  WsBatonMemoryRecallRpc,
+  WsBatonMemoryUsedRpc,
+  WsBatonMemoryExportRpc,
   WsBatonOrchestrationRuleCreateRpc,
   WsBatonOrchestrationRuleListRpc,
   WsBatonOrchestrationRuleDisableRpc,
