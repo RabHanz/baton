@@ -5,7 +5,7 @@
  */
 import type { HomeControl } from "../home/batonHome.ts";
 
-export type TrustKind = "action" | "social" | "vault" | "weave";
+export type TrustKind = "action" | "social" | "vault" | "weave" | "playbook";
 export type TrustFilter = "all" | TrustKind;
 
 export interface TrustEntry {
@@ -35,6 +35,15 @@ export const parseTrustLogs = (files: {
   const out: TrustEntry[] = [];
   for (const l of lines(files.turns)) {
     const o = obj(l);
+    if (o !== null && o["kind"] === "playbook" && s(o["at"]) !== "") {
+      out.push({
+        at: s(o["at"]),
+        kind: "playbook",
+        text: s(o["text"], 200) || s(o["playbook"]),
+        outcome: s(o["text"]).startsWith("Failed") ? "failed" : "ran",
+      });
+      continue;
+    }
     if (o === null || o["kind"] !== "action" || s(o["at"]) === "" || s(o["tool"]) === "") continue;
     const tool = s(o["tool"]);
     out.push({
@@ -101,6 +110,13 @@ export interface TrustData {
     readonly since: string;
   }>;
   readonly weaveHosts: ReadonlyArray<string>;
+  readonly playbooks: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly what: string;
+    readonly perDay: number;
+    readonly on: boolean;
+  }>;
   readonly entries: ReadonlyArray<TrustEntry>;
   readonly filter: TrustFilter;
 }
@@ -108,6 +124,7 @@ export interface TrustData {
 const PERMS = "What Tessaya may do";
 const STANDING = "Standing permissions on jobs";
 const LOG = "What it did for you";
+const PLAYS = "Things it may do by itself";
 
 export const FILTERS: ReadonlyArray<{ value: TrustFilter; label: string }> = [
   { value: "all", label: "Everything" },
@@ -115,6 +132,7 @@ export const FILTERS: ReadonlyArray<{ value: TrustFilter; label: string }> = [
   { value: "social", label: "Social accounts" },
   { value: "vault", label: "Vault" },
   { value: "weave", label: "Messages to other sessions" },
+  { value: "playbook", label: "Things it did by itself" },
 ];
 
 const CHANNEL_WORDS: Readonly<Record<string, string>> = {
@@ -244,6 +262,18 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
           }),
         )),
   );
+  rows.push(
+    ...data.playbooks.map(
+      (p): HomeControl => ({
+        id: `trust.playbook:${p.id}`,
+        section: PLAYS,
+        label: p.title,
+        hint: `${p.what} At most ${p.perDay} a day. Never sends, posts or spends. Off until you turn it on.`,
+        kind: "toggle",
+        on: p.on,
+      }),
+    ),
+  );
   rows.push({
     id: "trust.filter",
     section: LOG,
@@ -284,13 +314,16 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
 export type TrustAction =
   | { readonly kind: "revoke"; readonly what: Permission }
   | { readonly kind: "grant"; readonly jobId: string; readonly channel: string }
-  | { readonly kind: "filter"; readonly filter: TrustFilter };
+  | { readonly kind: "filter"; readonly filter: TrustFilter }
+  | { readonly kind: "playbook"; readonly id: string; readonly on: boolean };
 
 export const trustAction = (id: string, value: unknown): TrustAction | null => {
   if (id === "trust.filter") {
     const f = FILTERS.find((x) => x.value === value);
     return f === undefined ? null : { kind: "filter", filter: f.value };
   }
+  const pb = /^trust\.playbook:([a-z_]+)$/.exec(id);
+  if (pb !== null) return { kind: "playbook", id: pb[1]!, on: value === true };
   const m = /^trust\.revoke:(screen|chrome|social|vault|act)$/.exec(id);
   if (m !== null) return { kind: "revoke", what: m[1] as Permission };
   const g = /^trust\.revoke:grant:(.+):([a-z_]+)$/.exec(id);

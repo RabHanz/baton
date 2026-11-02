@@ -10,6 +10,8 @@ import type { HomeControl } from "../home/batonHome.ts";
 export interface NowData {
   /** False until the first read has finished. */
   readonly loaded: boolean;
+  /** Today's brief, when the morning-brief playbook is on and has run. */
+  readonly brief?: string | null;
   readonly needs: ReadonlyArray<NeedItem>;
   readonly unreadable: ReadonlyArray<string>;
   readonly commitments: ReadonlyArray<Commitment>;
@@ -42,6 +44,7 @@ const WHY: Record<string, string> = {
 };
 
 const NEEDS = "Needs you";
+const BRIEF = "This morning";
 const KEEP = "Keeping track of";
 const DOING = "What I am doing";
 const LEARNED = "Learned today";
@@ -66,6 +69,7 @@ export const nowControls = (data: NowData, now: number): ReadonlyArray<HomeContr
         ? "Due now"
         : `Due ${new Date(c.due).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
   return [
+    ...(data.brief == null ? [] : [note("now.brief", BRIEF, "Your morning brief", data.brief)]),
     ...(!data.loaded
       ? [note("now.loading", NEEDS, "Reading everything", "This takes a moment.")]
       : data.needs.length === 0
