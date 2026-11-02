@@ -218,6 +218,9 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloud.offer.back": "Back",
     "cloud.ssh.machineKeyVault": "Shared computer: vault item holding the sending key (instead of a file)",
     "cloud.ssh.approverKeyVault": "Shared computer: vault item holding the approval key (asks Windows Hello each time)",
+    "cloud.hub.label": "The computer that runs cloud tasks",
+    "cloud.hub.hint": "Pick one of your connected computers. It does the work with its own sign-ins; this one only asks and shows the card.",
+    "cloud.hub.thisWindow": "The one this window is on",
   },
 };
 

@@ -17,6 +17,7 @@ import type {
   BatonCommitmentBridgeRequest,
   BatonPhoneBridgeRequest,
   BatonWeaveBridgeRequest,
+  BatonCloudBridgeRequest,
   BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
@@ -1450,6 +1451,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonMemoryBridgeRequest
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
+      | BatonCloudBridgeRequest
       | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
@@ -1487,6 +1489,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonMemoryBridgeRequest
       | BatonCommitmentBridgeRequest
       | BatonWeaveBridgeRequest
+      | BatonCloudBridgeRequest
       | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
@@ -3191,7 +3194,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     settings: cloudSettings,
     exec: nodeExec,
     dir: NodePath.join(input.stateDir, "cloud"),
-    hub: null,
+    hub: async (op, provider, args) => {
+      const read = ["describe", "detect", "status", "list", "usage", "diff"].includes(op);
+      try {
+        const out = (await requestKept({
+          kind: "cloud",
+          op: read ? "read" : "act",
+          ...(cloudSettings().hubEnv === "" ? {} : { environmentId: cloudSettings().hubEnv }),
+          args: { op, ...(provider === "" ? {} : { provider }), args },
+        })) as { ok?: boolean; value?: unknown; error?: string } | null;
+        return out?.ok === true ? { ok: true, value: out.value } : { ok: false, error: out?.error ?? "The computer that runs cloud tasks did not answer." };
+      } catch {
+        return { ok: false, error: "There is no connection to the computer that runs cloud tasks." };
+      }
+    },
+    environments: async () =>
+      ((await requestKept({ kind: "cloud", op: "environments", args: {} }).catch(() => [])) as ReadonlyArray<{ id: string; label: string }> | null) ?? [],
     vaultKey: (name, why) =>
       useVaultKey(name, why, {
         unlocked: () => vaultState.vault.isUnlocked(),
@@ -4214,6 +4232,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
     else if (id === "cl.set.on") saveCloud({ on });
     else if (id === "cl.set.ask") saveCloud({ askPopup: on });
+    else if (id === "cl.set.hubEnv" && typeof value === "string") saveCloud({ hubEnv: value });
     else if (id === "cl.set.transport" && (value === "local" || value === "hub" || value === "ssh")) saveCloud({ transport: value });
     else if (id === "cl.set.cap") saveCloud({ capPoints: Math.max(1, Math.min(10, Number(value) || 2)) });
     else if (/^cl\.set\.(codexEnv|sshHost|sshUser|machineKey|approverKey|machineKeyVault|approverKeyVault)(:save|:reset)$/.test(id)) {

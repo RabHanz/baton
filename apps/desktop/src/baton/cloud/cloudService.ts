@@ -36,6 +36,8 @@ export interface CloudSettings {
   /** Names of vault items holding the keys instead of files; the vault wins when both are set. */
   readonly machineKeyVault: string;
   readonly approverKeyVault: string;
+  /** Which connected computer runs cloud tasks (transport 2); empty is the one this window is on. */
+  readonly hubEnv: string;
   /** A run that uses more than this many points of its own provider's weekly figure is flagged. */
   readonly capPoints: number;
   /** Also ask with a pop-up (mirrored to a paired phone) for each waiting task. */
@@ -52,6 +54,7 @@ export const DEFAULT_CLOUD: CloudSettings = {
   approverKey: "",
   machineKeyVault: "",
   approverKeyVault: "",
+  hubEnv: "",
   capPoints: 2,
   askPopup: false,
 };
@@ -65,6 +68,8 @@ export interface CloudDeps {
   readonly dir: string;
   /** The connection to the computer that runs cloud tasks (transport 2); null when there is none. */
   readonly hub: HubCall | null;
+  /** The computers this window is connected to, for the picker. */
+  readonly environments?: () => Promise<ReadonlyArray<{ readonly id: string; readonly label: string }>>;
   /** The Director's yes, on a dialog the assistant cannot click: the index of the button he pressed. */
   readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number }) => Promise<number>;
   readonly changed: () => void;
@@ -86,6 +91,7 @@ export interface CloudView {
   readonly error: string | null;
   readonly loadedAt: number | null;
   readonly cards: ReadonlyMap<string, CardState>;
+  readonly environments: ReadonlyArray<{ readonly id: string; readonly label: string }>;
 }
 
 export const requestKey = (r: Pick<CloudRequest, "provider" | "id">): string => `${r.provider}:${r.id}`;
@@ -98,13 +104,14 @@ export const createCloud = (deps: CloudDeps) => {
   let loadedAt: number | null = null;
   const cards = new Map<string, CardState>();
   let hubProviders: ReadonlyArray<CloudProvider> = [];
+  let environments: ReadonlyArray<{ readonly id: string; readonly label: string }> = [];
 
   // Built once per set of settings, because a harness remembers who is signed in between calls.
   let built: { readonly sig: string; readonly list: ReadonlyArray<CloudProvider> } | null = null;
   const providers = (): ReadonlyArray<CloudProvider> => {
     const s = deps.settings();
     if (s.transport === "hub") return hubProviders;
-    const sig = JSON.stringify([s.transport, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey, s.machineKeyVault, s.approverKeyVault]);
+    const sig = JSON.stringify([s.transport, s.hubEnv, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey, s.machineKeyVault, s.approverKeyVault]);
     if (built?.sig === sig) return built.list;
     const list =
       s.transport === "ssh"
@@ -140,7 +147,7 @@ export const createCloud = (deps: CloudDeps) => {
   const view = (): CloudView => {
     const s = deps.settings();
     const list = providers();
-    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards };
+    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards, environments };
   };
 
   const refresh = async (): Promise<void> => {
@@ -148,6 +155,7 @@ export const createCloud = (deps: CloudDeps) => {
     if (!s.on) return;
     error = null;
     if (s.transport === "hub") {
+      environments = (await deps.environments?.().catch(() => [])) ?? [];
       if (deps.hub === null) {
         error = "There is no connection to a computer that runs cloud tasks.";
         hubProviders = [];

@@ -37,7 +37,7 @@ const EMPTY_TRUST: TrustData = {
 };
 
 const CLOUD_VIEW: CloudView = {
-  on: true, transport: "local", providers: [], choices: [], requests: [], usage: [], detections: {}, error: null, loadedAt: null, cards: new Map(),
+  on: true, transport: "local", providers: [], choices: [], requests: [], usage: [], detections: {}, error: null, loadedAt: null, cards: new Map(), environments: [],
 };
 
 const status = { label: "Listening", tone: "good", device: "", mark: "" };
