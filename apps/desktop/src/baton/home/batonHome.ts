@@ -137,6 +137,8 @@ export type HomeControl =
       readonly creating: boolean;
       readonly newMachine: string;
       readonly folders: ReadonlyArray<string>;
+      readonly models: ReadonlyArray<HomeOption>;
+      readonly efforts: ReadonlyArray<HomeOption>;
       readonly status: string;
       /** Rows past the page, behind Show more. */
       readonly remaining: number;

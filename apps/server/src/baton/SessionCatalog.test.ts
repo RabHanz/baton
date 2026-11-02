@@ -5,12 +5,27 @@ import { createSessionCatalog, type CatalogPorts, type TranscriptInfo } from "./
 
 const ID = "11111111-2222-3333-4444-555555555555";
 const OLD = "99999999-2222-3333-4444-555555555555";
-const live = (over: Partial<ClaudeLiveSession> = {}): ClaudeLiveSession => ({
-  pid: 1, sessionId: ID, cwd: "/work/shop", name: "Shop", status: "idle", entrypoint: "cli", herdrPane: "fab-shop~p1",
-  tmux: null, account: "ann", updatedAt: "2026-11-02T10:00:00.000Z", ...over,
-}) as ClaudeLiveSession;
+const live = (over: Partial<ClaudeLiveSession> = {}): ClaudeLiveSession =>
+  ({
+    pid: 1,
+    sessionId: ID,
+    cwd: "/work/shop",
+    name: "Shop",
+    status: "idle",
+    entrypoint: "cli",
+    herdrPane: "fab-shop~p1",
+    tmux: null,
+    account: "ann",
+    updatedAt: "2026-11-02T10:00:00.000Z",
+    ...over,
+  }) as ClaudeLiveSession;
 const transcript = (over: Partial<TranscriptInfo> = {}): TranscriptInfo => ({
-  sessionId: ID, cwd: "/work/shop", title: "Fix the checkout", lastActivityAt: "2026-11-01T09:00:00.000Z", account: "ann", ...over,
+  sessionId: ID,
+  cwd: "/work/shop",
+  title: "Fix the checkout",
+  lastActivityAt: "2026-11-01T09:00:00.000Z",
+  account: "ann",
+  ...over,
 });
 
 /** A machine where the session is stopped, and `baton --resume` brings it up in a Herdr pane a moment later. */
@@ -23,13 +38,24 @@ const machine = (over: Partial<CatalogPorts> = {}) => {
   const ports: CatalogPorts = {
     machine: "box",
     live: async () => (clock >= upAt ? sessions : []),
-    transcripts: async () => [transcript(), transcript({ sessionId: OLD, title: "Old work", lastActivityAt: "2026-10-01T09:00:00.000Z", cwd: "/gone/folder" })],
+    transcripts: async () => [
+      transcript(),
+      transcript({
+        sessionId: OLD,
+        title: "Old work",
+        lastActivityAt: "2026-10-01T09:00:00.000Z",
+        cwd: "/gone/folder",
+      }),
+    ],
     history: async () => [],
     dirExists: (d) => d === "/work/shop" || d === "/work/new",
     baton: async (args) => {
       batonCalls.push(args);
       upAt = clock + 1_500;
-      sessions = args[0] === "--resume" ? [live()] : [live({ sessionId: "new-1", cwd: args[0]!, herdrPane: "fab-new~p9" })];
+      sessions =
+        args[0] === "--resume"
+          ? [live()]
+          : [live({ sessionId: "new-1", cwd: args[0]!, herdrPane: "fab-new~p9" })];
       return { ok: true, out: "baton: claude running in fab-shop pane p1" };
     },
     type: async (pane, text) => (typed.push([pane, text]), true),
@@ -42,14 +68,39 @@ const machine = (over: Partial<CatalogPorts> = {}) => {
 
 describe("sending to a stopped session", () => {
   it("on a machine with no Herdr it comes back as a thread and does not call baton", async () => {
-    const { catalog, batonCalls } = machine({ thread: async (id) => ({ threadId: `import:claudeAgent:${id}` }) });
+    const { catalog, batonCalls } = machine({
+      thread: async (id) => ({ threadId: `import:claudeAgent:${id}` }),
+    });
     expect(await catalog.resume({ sessionId: ID })).toEqual({
-      state: "running", pane: null, detail: null, threadId: `import:claudeAgent:${ID}`,
+      state: "running",
+      pane: null,
+      detail: null,
+      threadId: `import:claudeAgent:${ID}`,
     });
     expect(batonCalls).toEqual([]);
     const sent = await catalog.send({ sessionId: ID, text: "hi" });
     expect(sent.delivered).toBe(false);
     expect(sent.detail).toContain("thread");
+  });
+
+  it("a new session on a machine with no Herdr is a thread with the model, effort and first message asked for, and no baton call", async () => {
+    const launched: unknown[] = [];
+    const { catalog, batonCalls } = machine({
+      launch: async (input) => (launched.push(input), { threadId: "thread-1" }),
+    });
+    const made = await catalog.create({
+      cwd: "/work/new",
+      model: "opus",
+      effort: "high",
+      message: "Read BRIEF.md",
+    });
+    expect(made).toMatchObject({ state: "running", threadId: "thread-1", pane: null });
+    expect(launched).toEqual([
+      { cwd: "/work/new", model: "opus", effort: "high", message: "Read BRIEF.md" },
+    ]);
+    expect(batonCalls).toEqual([]);
+    const missing = await catalog.create({ cwd: "/work/nope" });
+    expect(missing.state).toBe("failed");
   });
 
   it("resumes it in the right folder, waits until it is ready, then delivers the message once", async () => {
@@ -61,7 +112,9 @@ describe("sending to a stopped session", () => {
   });
 
   it("keeps the message and says why when it cannot be resumed, and never reports 'not delivered' as final", async () => {
-    const { catalog, typed } = machine({ baton: async () => ({ ok: false, out: "herdr: no server" }) });
+    const { catalog, typed } = machine({
+      baton: async () => ({ ok: false, out: "herdr: no server" }),
+    });
     const sent = await catalog.send({ sessionId: ID, text: "hello" });
     expect(sent.state).toBe("failed");
     expect(sent.delivered).toBe(false);
@@ -75,7 +128,8 @@ describe("sending to a stopped session", () => {
   it("names Claude's folder-trust question when that is what the session is waiting on", async () => {
     const { catalog, typed } = machine({
       live: async () => [],
-      screen: async () => " Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder",
+      screen: async () =>
+        " Quick safety check: Is this a project you created or one you trust?\n ❯ No, exit\n   Yes, I trust this folder",
     });
     const sent = await catalog.send({ sessionId: ID, text: "hello" });
     expect(sent.detail).toContain("asking whether to trust this folder");
@@ -129,7 +183,10 @@ describe("resuming", () => {
 
   it("says plainly when the folder is gone or unknown", async () => {
     const { catalog } = machine();
-    expect(await catalog.resume({ sessionId: OLD })).toMatchObject({ state: "failed", detail: "The folder /gone/folder is not on this machine." });
+    expect(await catalog.resume({ sessionId: OLD })).toMatchObject({
+      state: "failed",
+      detail: "The folder /gone/folder is not on this machine.",
+    });
     expect(await catalog.resume({ sessionId: "nope" })).toMatchObject({ state: "failed" });
     expect((await catalog.resume({ sessionId: "nope" })).detail).toContain("which folder");
   });
@@ -137,7 +194,17 @@ describe("resuming", () => {
 
 describe("browsing", () => {
   it("lists running and stopped sessions newest first with project, title, account and machine, and says why one cannot be resumed", async () => {
-    const { catalog } = machine({ live: async () => [live({ sessionId: "run-1", cwd: "/work/api", name: "API", updatedAt: "2026-11-02T12:00:00.000Z", account: "bob" })] });
+    const { catalog } = machine({
+      live: async () => [
+        live({
+          sessionId: "run-1",
+          cwd: "/work/api",
+          name: "API",
+          updatedAt: "2026-11-02T12:00:00.000Z",
+          account: "bob",
+        }),
+      ],
+    });
     const { sessions, machine: name } = await catalog.list({});
     expect(name).toBe("box");
     expect(sessions.map((s) => [s.id, s.state, s.project, s.account, s.canResume])).toEqual([
@@ -150,7 +217,15 @@ describe("browsing", () => {
   });
 
   it("finds older sessions through the history index when words are given, and marks them read-only when the transcript is gone", async () => {
-    const { catalog } = machine({ history: async (q) => (q.includes("invoice") ? [{ sessionId: "hist-1", project: "-home-ann-books", at: "2026-09-01T10:00:00.000Z" }, { sessionId: ID, project: "-work-shop", at: null }] : []) });
+    const { catalog } = machine({
+      history: async (q) =>
+        q.includes("invoice")
+          ? [
+              { sessionId: "hist-1", project: "-home-ann-books", at: "2026-09-01T10:00:00.000Z" },
+              { sessionId: ID, project: "-work-shop", at: null },
+            ]
+          : [],
+    });
     expect((await catalog.list({})).sessions.some((s) => s.source === "history")).toBe(false);
     const found = (await catalog.list({ query: "invoice" })).sessions;
     const hist = found.find((s) => s.id === "hist-1")!;
@@ -175,12 +250,20 @@ describe("starting a new session", () => {
     const { catalog, batonCalls } = machine();
     const made = await catalog.create({ cwd: "/work/new" });
     expect(batonCalls).toEqual([["/work/new", "claude"]]);
-    expect(made).toEqual({ state: "running", sessionId: "new-1", pane: "fab-new~p9", detail: null });
+    expect(made).toEqual({
+      state: "running",
+      sessionId: "new-1",
+      pane: "fab-new~p9",
+      detail: null,
+    });
   });
 
   it("refuses a folder that is not here", async () => {
     const { catalog, batonCalls } = machine();
-    expect(await catalog.create({ cwd: "/nowhere" })).toMatchObject({ state: "failed", detail: "The folder /nowhere is not on this machine." });
+    expect(await catalog.create({ cwd: "/nowhere" })).toMatchObject({
+      state: "failed",
+      detail: "The folder /nowhere is not on this machine.",
+    });
     expect(batonCalls).toEqual([]);
   });
 });

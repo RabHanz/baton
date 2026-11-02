@@ -19,6 +19,36 @@ const row = {
 };
 
 describe("the real catalog service", () => {
+  it("opens the thread a machine without Herdr made for the resumed session", async () => {
+    const sent: unknown[] = [];
+    const answers = [
+      {
+        ok: true,
+        detail: JSON.stringify({
+          state: "running",
+          pane: null,
+          threadId: "import:claudeAgent:abc",
+        }),
+      },
+    ];
+    const bridge = {
+      request: async (r: unknown) => (sent.push(r), answers.shift() ?? null),
+    } as unknown as SessionsBridge;
+    const service = createBridgeCatalogService({
+      bridge,
+      openMainWindow: () => undefined,
+      wait: async () => undefined,
+    });
+    const [stopped] = rowsFromAnswer(JSON.stringify([row]));
+    await service.resume(stopped!);
+    service.open(stopped!);
+    expect(sent.at(-1)).toEqual({
+      kind: "open",
+      environmentId: "e1",
+      threadId: "import:claudeAgent:abc",
+    });
+  });
+
   it("reads rows from the sidebar's answer and drops malformed ones", () => {
     const rows = rowsFromAnswer(
       JSON.stringify([

@@ -33,7 +33,13 @@ export interface CatalogService {
   readonly list: (query: string) => Promise<ReadonlyArray<CatalogRow>>;
   /** Makes the thread live; resolves when it is. */
   readonly resume: (row: CatalogRow) => Promise<void>;
-  readonly create: (target: { environmentId: string; cwd: string }) => Promise<void>;
+  readonly create: (target: {
+    environmentId: string;
+    cwd: string;
+    model?: string;
+    effort?: string;
+    message?: string;
+  }) => Promise<void>;
   /** Recent folders on a machine, for the New session box. */
   readonly folders: (environmentId: string) => Promise<ReadonlyArray<string>>;
   /** Opens a live session's thread. */
@@ -110,6 +116,9 @@ const WORDS = {
   new: "New session",
   machine: "Machine",
   folder: "Folder, for example C:\\work\\project",
+  model: "Model",
+  effort: "Effort",
+  message: "First message (optional)",
   start: "Start",
   cancel: "Cancel",
   more: "Show more",
@@ -149,6 +158,18 @@ export const catalogControls = (input: {
     creating: view.creating,
     newMachine: view.newMachine || machines[1]?.value || "",
     folders: input.folders,
+    models: [
+      { value: "", label: "Default model" },
+      { value: "opus", label: "Opus" },
+      { value: "sonnet", label: "Sonnet" },
+    ],
+    efforts: [
+      { value: "", label: "Default effort" },
+      { value: "low", label: "Low" },
+      { value: "medium", label: "Medium" },
+      { value: "high", label: "High" },
+      { value: "max", label: "Max" },
+    ],
     status: input.status,
     remaining: Math.max(0, shownRows.length - view.shown),
   };
@@ -225,7 +246,9 @@ export const createCatalog = (input: {
       }
     },
     start: async (cwd: string, machine: string): Promise<string> => {
-      const target = rows.find((r) => machine === "" || r.machine.toLowerCase() === machine.toLowerCase())?.environmentId;
+      const target = rows.find(
+        (r) => machine === "" || r.machine.toLowerCase() === machine.toLowerCase(),
+      )?.environmentId;
       if (target === undefined) return "I do not know that machine. Use sessions_find to see them.";
       try {
         await input.service.create({ environmentId: target, cwd });
@@ -272,13 +295,27 @@ export const createCatalog = (input: {
         view = { ...view, newMachine: text };
         void loadFolders(text);
       } else if (id === "c.start") {
-        const folder = text.trim();
+        // The form sends one JSON line: folder, model, effort and the first message.
+        let form: { cwd?: unknown; model?: unknown; effort?: unknown; message?: unknown } = {};
+        try {
+          form = JSON.parse(text) as typeof form;
+        } catch {
+          form = { cwd: text };
+        }
+        const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+        const folder = str(form.cwd);
         const environmentId = view.newMachine || rows[0]?.environmentId || "";
         if (folder === "" || environmentId === "") return true;
         view = { ...view, creating: false };
         status = "Starting a session...";
         void input.service
-          .create({ environmentId, cwd: folder })
+          .create({
+            environmentId,
+            cwd: folder,
+            ...(str(form.model) === "" ? {} : { model: str(form.model) }),
+            ...(str(form.effort) === "" ? {} : { effort: str(form.effort) }),
+            ...(str(form.message) === "" ? {} : { message: str(form.message) }),
+          })
           .then(() => {
             status = "";
             return refresh();
