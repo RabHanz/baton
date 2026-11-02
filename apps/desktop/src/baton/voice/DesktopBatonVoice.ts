@@ -263,6 +263,7 @@ import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, modelShipped, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
+import { parseGlass, parseMotion, type Glass, type Motion } from "../home/look.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -405,6 +406,9 @@ interface VoiceSettings {
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   /** Baton's window: System follows Windows. */
   readonly appearance: Appearance;
+  /** Motion and glass (Settings, General); the system can ask for less on top of this. */
+  readonly motion: Motion;
+  readonly glass: Glass;
   /** The soft cues when listening starts, when a turn ends, after a long wait and on an error. */
   readonly cues: CueLevel;
   /** Hold-key dictation plays no cue unless he asks. */
@@ -504,6 +508,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
   appearance: "system",
+  motion: "full",
+  glass: "on",
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
@@ -593,6 +599,8 @@ export const readSettings = (path: string): VoiceSettings => {
       quietSpeech: saved["quietSpeech"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
+      motion: parseMotion(saved["motion"]),
+      glass: parseGlass(saved["glass"]),
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -3817,6 +3825,32 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "dark", label: "Dark" },
         ],
       },
+      {
+        id: "v.motion",
+        section: "Appearance",
+        label: "Motion",
+        hint: "Full plays every animation. Reduced keeps the small ones. Off stops them. Full follows the system when it asks for less.",
+        kind: "choice",
+        value: settings.motion,
+        options: [
+          { value: "full", label: "Full" },
+          { value: "reduced", label: "Reduced" },
+          { value: "off", label: "Off" },
+        ],
+      },
+      {
+        id: "v.glass",
+        section: "Appearance",
+        label: "Glass effects",
+        hint: "The see-through window material. On follows the system when transparency effects are off.",
+        kind: "choice",
+        value: settings.glass,
+        options: [
+          { value: "on", label: "On" },
+          { value: "reduced", label: "Reduced" },
+          { value: "off", label: "Off" },
+        ],
+      },
 
       {
         id: "v.audition",
@@ -4636,6 +4670,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.motion") save({ motion: parseMotion(value) });
+    else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });
@@ -4720,6 +4756,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
     },
     appearance: () => settings.appearance,
+    look: () => ({ motion: settings.motion, glass: settings.glass }),
+    quietLaunch: () => Electron.app.getLoginItemSettings().wasOpenedAtLogin === true,
     level: () => micNow,
   });
   // First run after an update: the list was just resolved and rewritten, so the window is told once more.
