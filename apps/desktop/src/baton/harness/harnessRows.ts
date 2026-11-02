@@ -1,4 +1,6 @@
 /** The Skills and tools area of Baton's window (D146): the harnesses' own plugins, skills and servers. */
+import { CONNECTOR_INFO, CONNECTOR_KINDS, connectorKindOf } from "@t3tools/baton-shared/connectors";
+
 import type { HomeControl } from "../home/batonHome.ts";
 import type { HarnessItem } from "./harnessInventory.ts";
 
@@ -14,6 +16,36 @@ export const addSkillControl: HomeControl = {
   addLabel: "Review",
 };
 
+/** Calendar, mail and chat: what is connected (MCP servers whose names say so) and a box to add one, reviewed first. */
+export const connectorControls = (items: ReadonlyArray<HarnessItem>): ReadonlyArray<HomeControl> =>
+  CONNECTOR_KINDS.flatMap((kind): ReadonlyArray<HomeControl> => {
+    const info = CONNECTOR_INFO[kind];
+    const have = items
+      .filter((i) => i.kind === "mcp" && connectorKindOf(i.name) === kind)
+      .map((i) => i.name);
+    return [
+      {
+        id: `k.connected.${kind}`,
+        section: "Connectors",
+        label: info.label,
+        hint: `Reaches ${info.reads}.`,
+        kind: "check",
+        status: have.length > 0 ? "ok" : "warn",
+        detail: have.length > 0 ? `Connected: ${have.join(", ")}.` : "Not connected.",
+      },
+      {
+        id: `k.conn.${kind}`,
+        section: "Connectors",
+        label: `Connect ${info.label.toLowerCase()}`,
+        hint: "Paste the https address of an MCP server you trust, or the command that starts one. Tessaya shows the exact command and what it could reach, and adds nothing until you say yes.",
+        kind: "list",
+        items: [],
+        placeholder: info.placeholder,
+        addLabel: "Review",
+      },
+    ];
+  });
+
 export const harnessControls = (items: ReadonlyArray<HarnessItem>): ReadonlyArray<HomeControl> => {
   if (items.length === 0) {
     return [
@@ -26,6 +58,7 @@ export const harnessControls = (items: ReadonlyArray<HarnessItem>): ReadonlyArra
         status: "ok",
         detail: "Neither has any installed here.",
       },
+      ...connectorControls(items),
       addSkillControl,
     ];
   }
@@ -51,6 +84,7 @@ export const harnessControls = (items: ReadonlyArray<HarnessItem>): ReadonlyArra
             ...(i.kind === "skill" ? { more: true } : {}),
           },
     ),
+    ...connectorControls(items),
     addSkillControl,
   ];
 };
