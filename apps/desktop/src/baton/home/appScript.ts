@@ -339,7 +339,7 @@ function home(p) {
   const need = (x.stats && x.stats.needYou) || 0;
   if (need > 0) p.appendChild(banner('warn', 'you', need + (need === 1 ? ' session needs' : ' sessions need'), 'Open Sessions to answer.', 'Open Sessions', () => go('sessions')));
   const sp = $('div', 'split'); const left = $('div'); const right = $('div', 'rail');
-  const items = x.activity || [];
+  const allItems = x.activity || [], items = allItems.slice(0, 5);
   left.appendChild($('div', 'day first', 'Today'));
   if (!items.length) left.appendChild($('div', 'empty', 'Nothing yet. Say a wake word, or hold your dictation key and speak.'));
   let day = null, log = null; if (items.length) { log = $('div', 'log'); left.appendChild(log); day = 'Today'; }
@@ -347,6 +347,7 @@ function home(p) {
     const d = dayLabel(a.at); if (d !== day) { day = d; left.appendChild($('div', 'day', d)); log = $('div', 'log'); left.appendChild(log); }
     const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
   }
+  if (allItems.length > items.length) { const all = $('button', 'btn quiet', SEE_ALL); all.style.marginTop = '8px'; all.onclick = () => go('history'); left.appendChild(all); }
   const st = $('div', 'stats'); const s2 = x.stats || {};
   for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.dictations || 0, 'dictations today'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
   right.appendChild($('div', 'day first', 'At a glance')); right.appendChild(st);
@@ -440,7 +441,7 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false, hday = null;
+let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hrec = false, hday = null, hrange = 'all', hdaylim = {}, hexp = (() => { try { return JSON.parse(localStorage.getItem('tessaya.hdays') || '{}'); } catch (e) { return {}; } })();
 function loadHistory() {
   const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
@@ -477,27 +478,42 @@ function recordings(p) {
   if (hrec) wrap.appendChild(group('Voice recordings', items));
   p.appendChild(wrap);
 }
+const NONE = 'Nothing in this range.', SEE_ALL = 'See all in History';
 function historyPage(p) {
   if (hrows === null) loadHistory();
   if (!window.__hm) { window.__hm = 1; document.addEventListener('click', e => { if (hmenu && !e.target.closest('.hmenuwrap')) { hmenu = null; render(); } }); }
   const f = $('div', 'hsearch'); const q = $('input'); q.type = 'search'; q.id = 'in-hq'; q.placeholder = 'Search what you said'; q.setAttribute('aria-label', 'Search history'); q.value = hq;
-  q.oninput = () => { hq = q.value; hlimit = 40; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
+  q.oninput = () => { hq = q.value; hdaylim = {}; clearTimeout(htimer); htimer = setTimeout(loadHistory, 180); };
   f.appendChild(q); p.appendChild(f);
   if (hnote) { const n = $('p', 'hint', hnote); n.style.margin = '0 0 10px'; p.appendChild(n); }
   if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); recordings(p); return; }
   if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Things you say to Tessaya and dictate show up here.')); recordings(p); return; }
-  const shownRows = hrows.slice(0, hlimit);
-  const perDay = {}; for (const t of shownRows) { const d = dayLabel(t.at); perDay[d] = (perDay[d] || 0) + 1; }
-  let day = null, g = null;
-  for (const t of shownRows) {
-    const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); p.appendChild(dh);
-      const ids = hrows.filter(x => dayLabel(x.at) === d).map(x => x.id), dayName = d;
-      const da = $('div', 'hacts'); da.style.margin = '-4px 0 8px';
-      const db = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
-      if (hday === dayName) da.append($('span', 'hint', 'Delete ' + ids.length + ' ' + (ids.length === 1 ? 'entry' : 'entries') + ' and their recordings for good?'), db('Delete', () => { hday = null; const done = () => { hrows = hrows.filter(x => !ids.includes(x.id)); hnote = 'Deleted.'; render(); }; if (real) ipc.invoke('baton-history:delete-many', ids).then(done); else done(); }, 'primary'), db('Keep', () => { hday = null; render(); }));
-      else da.appendChild(db('Delete all from ' + dayName.toLowerCase(), () => { hday = dayName; render(); }));
-      p.appendChild(da); g = $('div', 'group'); p.appendChild(g); }
-    const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
+  const rangeOk = t => hrange === 'all' || (hrange === 'today' && dayLabel(t.at) === 'Today') || (hrange === 'yesterday' && dayLabel(t.at) === 'Yesterday') || (hrange === 'week' && Date.now() - Date.parse(t.at) < 7 * 864e5);
+  const rf = $('div', 'hacts'); rf.style.margin = '0 0 4px'; rf.setAttribute('role', 'group'); rf.setAttribute('aria-label', 'Show');
+  for (const [id, l] of [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'Last 7 days'], ['all', 'All']]) { const b = $('button', 'btn ' + (hrange === id ? 'primary' : 'quiet'), l); b.setAttribute('aria-pressed', String(hrange === id)); b.onclick = () => { hrange = id; render(); }; rf.appendChild(b); }
+  p.appendChild(rf);
+  const rows = hrows.filter(rangeOk);
+  if (!rows.length) { p.appendChild($('div', 'empty', NONE)); recordings(p); return; }
+  const days = [];
+  for (const t of rows) { const d = dayLabel(t.at); const last = days[days.length - 1]; if (!last || last.d !== d) days.push({ d, rows: [t] }); else last.rows.push(t); }
+  for (const { d, rows: dayRows } of days) {
+    const isOpen = d in hexp ? hexp[d] : (d === 'Today' || hq !== '');
+    const dh = $('button', 'day dayhead'); dh.setAttribute('aria-expanded', String(isOpen));
+    const first = dayRows[0]; const gist = (first.kind === 'spoken' ? first.raw : (first.cleaned || first.raw)).replace(/\\s+/g, ' ');
+    dh.append($('span', null, (isOpen ? '\u25BE ' : '\u25B8 ') + d), $('span', 'daycount', ' \u00b7 ' + dayRows.length), ...(isOpen ? [] : [$('span', 'daycount', ' \u00b7 ' + (gist.length > 60 ? gist.slice(0, 60) + '\u2026' : gist))]));
+    dh.onclick = () => { hexp[d] = !isOpen; try { localStorage.setItem('tessaya.hdays', JSON.stringify(hexp)); } catch (e) {} render(); };
+    p.appendChild(dh);
+    if (!isOpen) continue;
+    const ids = dayRows.map(x => x.id), dayName = d;
+    const da = $('div', 'hacts'); da.style.margin = '-4px 0 8px';
+    const db = (l, fn, cls) => { const b = $('button', 'btn ' + (cls || 'quiet'), l); b.onclick = fn; return b; };
+    if (hday === dayName) da.append($('span', 'hint', 'Delete ' + ids.length + ' ' + (ids.length === 1 ? 'entry' : 'entries') + ' and their recordings for good?'), db('Delete', () => { hday = null; const done = () => { hrows = hrows.filter(x => !ids.includes(x.id)); hnote = 'Deleted.'; render(); }; if (real) ipc.invoke('baton-history:delete-many', ids).then(done); else done(); }, 'primary'), db('Keep', () => { hday = null; render(); }));
+    else da.appendChild(db('Delete all from ' + dayName.toLowerCase(), () => { hday = dayName; render(); }));
+    p.appendChild(da);
+    const g = $('div', 'group'); p.appendChild(g);
+    const lim = hdaylim[d] || 20;
+    for (const t of dayRows.slice(0, lim)) {
+      const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
     const text = t.kind === 'spoken' ? t.raw : (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
     head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
     const cp = $('button', 'hcopy', 'Copy'); cp.setAttribute('aria-label', t.kind === 'spoken' && t.cleaned ? 'Copy the reply' : 'Copy this transcript'); cp.onclick = () => hact(t, 'copy');
@@ -557,9 +573,10 @@ function historyPage(p) {
       else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
       body.appendChild(acts); wrap.appendChild(body);
     }
-    g.appendChild(wrap);
+      g.appendChild(wrap);
+    }
+    if (dayRows.length > lim) { const more = $('button', 'btn quiet', 'Show more (' + (dayRows.length - lim) + ')'); more.style.marginTop = '8px'; more.onclick = () => { hdaylim[d] = lim + 20; render(); }; p.appendChild(more); }
   }
-  if (hrows.length > hlimit) { const more = $('button', 'btn quiet', 'Show older (' + (hrows.length - hlimit) + ')'); more.style.marginTop = '12px'; more.onclick = () => { hlimit += 40; render(); }; p.appendChild(more); }
   recordings(p);
 }
 const tabName = id => (TABS.find(t => t[0] === id) || [id, 'Settings'])[1];
