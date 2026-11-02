@@ -34,7 +34,8 @@ export const needScore = (item: NeedItem, now: number): number => {
     const left = item.dueAt - now;
     score += left < 0 ? 40 : left < DAY ? 30 : left < 3 * DAY ? 20 : left < 14 * DAY ? 10 : 0;
   }
-  if (item.waitingMinutes !== undefined) score += Math.min(20, Math.floor(item.waitingMinutes / 30));
+  if (item.waitingMinutes !== undefined)
+    score += Math.min(20, Math.floor(item.waitingMinutes / 30));
   return score;
 };
 
@@ -201,10 +202,10 @@ export const describeNeeds = (
     shown.length === 0
       ? ["Nothing needs you in the sources I can read."]
       : shown.map(
-          (n, i) =>
-            `${i + 1}. ${n.title}: ${n.why}${n.ref === undefined ? "" : ` [id: ${n.ref}]`}`,
+          (n, i) => `${i + 1}. ${n.title}: ${n.why}${n.ref === undefined ? "" : ` [id: ${n.ref}]`}`,
         );
-  if (ranked.length > shown.length) lines.push(`And ${ranked.length - shown.length} more, lower down.`);
+  if (ranked.length > shown.length)
+    lines.push(`And ${ranked.length - shown.length} more, lower down.`);
   if (unreadable.length > 0) lines.push(`I could not read: ${unreadable.join(", ")}.`);
   return lines.join("\n");
 };

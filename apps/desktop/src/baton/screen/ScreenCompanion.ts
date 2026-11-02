@@ -4,6 +4,7 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
+import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -240,6 +241,8 @@ export interface AssistantActions {
   readonly grammarPlaces: (said: string) => Promise<boolean>;
   /** His live sessions, one per line, with the id each is named by. */
   readonly sessionsList?: () => string;
+  /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
+  readonly presence?: () => Promise<string>;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
     op:
@@ -1728,6 +1731,7 @@ export const startScreenCompanion = (input: {
       start: agentStart,
       conversation,
       clockLine: () => clockLine(new Date()),
+      presence: async () => (await actions?.presence?.()) ?? "",
       notes: async () => {
         const standing = await memory.standing();
         return standing === "" ? notesBlock(notes.list()) : standing;
@@ -1758,7 +1762,10 @@ export const startScreenCompanion = (input: {
       void show("Thinking", text);
       const reply = await agentOf().say(
         direct ? `(to the focused session) ${text}` : text,
-        { window: titlesAllowed() ? (focus?.label ?? null) : null, session: null },
+        {
+          window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
+          session: null,
+        },
         (delta) => {
           firstTokenAt ??= Date.now();
           voice.feed(delta);
