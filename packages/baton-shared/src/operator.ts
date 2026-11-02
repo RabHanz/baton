@@ -52,6 +52,10 @@ const actionText = ({ input }: ToolCall): string =>
     "keys",
     "target",
     "session",
+    "label",
+    "goal",
+    "instruction",
+    "task",
   ]
     .flatMap((key) => {
       const value = input[key];
