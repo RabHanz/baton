@@ -54,6 +54,8 @@ export interface Usage {
   readonly rejected: boolean;
   /** False when the provider says the account cannot take a task now (a rejected account is also unavailable). */
   readonly available?: boolean;
+  /** The state of the account's own login, when the provider says. */
+  readonly login?: "ok" | "renew-soon" | "expired" | "not-logged-in";
   readonly pointsThisWeek: number | null;
 }
 
@@ -152,12 +154,13 @@ export const ACCOUNT_LIMIT_PERCENT = 98;
 
 /** Whether an account may be picked, and if not why, from its live figure (absent figure: usable, said so). */
 export const pickable = (
-  u: Pick<Usage, "weeklyPercent" | "rejected" | "available"> | undefined,
+  u: Pick<Usage, "weeklyPercent" | "rejected" | "available" | "login"> | undefined,
 ): { readonly enabled: boolean; readonly why: string | null } => {
   if (u === undefined) return { enabled: true, why: "usage unknown" };
   if (u.rejected) return { enabled: false, why: "rejected" };
+  if (u.login === "expired" || u.login === "not-logged-in") return { enabled: false, why: "sign in needed" };
   if (u.available === false) return { enabled: false, why: "not available" };
-  if (u.weeklyPercent === null) return { enabled: true, why: "usage unknown" };
+  if (u.weeklyPercent === null) return { enabled: true, why: u.login === "renew-soon" ? "usage unknown; login renews soon" : "usage unknown" };
   if (u.weeklyPercent >= ACCOUNT_LIMIT_PERCENT) return { enabled: false, why: `${u.weeklyPercent}% used` };
-  return { enabled: true, why: null };
+  return { enabled: true, why: u.login === "renew-soon" ? "login renews soon" : null };
 };

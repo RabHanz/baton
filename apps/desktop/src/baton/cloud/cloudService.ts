@@ -92,6 +92,8 @@ export interface CloudView {
   readonly loadedAt: number | null;
   readonly cards: ReadonlyMap<string, CardState>;
   readonly environments: ReadonlyArray<{ readonly id: string; readonly label: string }>;
+  /** The last connection test, in lines for a person; null before one is run. */
+  readonly tested: ReadonlyArray<{ readonly ok: boolean; readonly line: string }> | null;
 }
 
 export const requestKey = (r: Pick<CloudRequest, "provider" | "id">): string => `${r.provider}:${r.id}`;
@@ -105,6 +107,7 @@ export const createCloud = (deps: CloudDeps) => {
   const cards = new Map<string, CardState>();
   let hubProviders: ReadonlyArray<CloudProvider> = [];
   let environments: ReadonlyArray<{ readonly id: string; readonly label: string }> = [];
+  let tested: ReadonlyArray<{ readonly ok: boolean; readonly line: string }> | null = null;
 
   // Built once per set of settings, because a harness remembers who is signed in between calls.
   let built: { readonly sig: string; readonly list: ReadonlyArray<CloudProvider> } | null = null;
@@ -147,7 +150,7 @@ export const createCloud = (deps: CloudDeps) => {
   const view = (): CloudView => {
     const s = deps.settings();
     const list = providers();
-    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards, environments };
+    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards, environments, tested };
   };
 
   const refresh = async (): Promise<void> => {
@@ -283,11 +286,32 @@ export const createCloud = (deps: CloudDeps) => {
     }
   };
 
+  /** Asks every assistant for its accounts and use. Starts nothing. */
+  const test = async (): Promise<void> => {
+    tested = null;
+    deps.changed();
+    await refresh();
+    const lines: Array<{ ok: boolean; line: string }> = [];
+    if (error !== null) lines.push({ ok: false, line: text("cloud.test.none", { why: error }) });
+    for (const p of providers()) {
+      if (detections[p.id]?.signedIn !== true) continue;
+      for (const u of usage.filter((x) => x.provider === p.id)) {
+        const usageText = u.rejected ? "rejected" : u.weeklyPercent === null ? "usage unknown" : `${u.weeklyPercent}% used${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`;
+        lines.push({ ok: !u.rejected && u.login !== "expired" && u.login !== "not-logged-in", line: text("cloud.test.account", { provider: p.label, account: u.account, usage: usageText, login: u.login === undefined ? "" : text("cloud.test.login", { login: u.login }) }) });
+      }
+    }
+    if (lines.length === 0) lines.push({ ok: false, line: text("cloud.test.none", { why: Object.values(detections).map((d) => d?.line).filter(Boolean).join(" ") }) });
+    else if (lines.every((l) => l.ok)) lines.unshift({ ok: true, line: text("cloud.test.ok") });
+    tested = lines;
+    deps.changed();
+  };
+
   const guard = (): string | null => (deps.settings().on ? null : NOT_SET_UP);
 
   return {
     view,
     refresh,
+    test,
     /** Resolves when every question put to him has been answered or left. */
     settled: async (): Promise<void> => void (await Promise.all(inflight.splice(0))),
     /** A click on the card: ids are `cl.p|a|ok|deny:<provider>:<id>[:<provider or account>]`. */

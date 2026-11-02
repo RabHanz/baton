@@ -4242,6 +4242,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (/^cl\.(p|a|ok|deny)\./.test(id)) {
       void cloud.click(id).catch(() => undefined);
     } else if (id === "cl.refresh") void cloud.refresh().catch(() => undefined);
+    else if (id === "cl.test") void cloud.test().catch(() => undefined);
     else if (id === "cl.set.on") saveCloud({ on });
     else if (id === "cl.set.ask") saveCloud({ askPopup: on });
     else if (id === "cl.set.hubEnv" && typeof value === "string") saveCloud({ hubEnv: value });

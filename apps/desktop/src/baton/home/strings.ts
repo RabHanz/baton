@@ -221,6 +221,15 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloud.hub.label": "The computer that runs cloud tasks",
     "cloud.hub.hint": "Pick one of your connected computers. It does the work with its own sign-ins; this one only asks and shows the card.",
     "cloud.hub.thisWindow": "The one this window is on",
+    "cloud.card.renewSoon": "login renews soon",
+    "cloud.test.section": "Connection test",
+    "cloud.test.label": "Test the connection",
+    "cloud.test.hint": "Asks for each assistant's accounts and how much of the week they have used. Starts nothing.",
+    "cloud.test.button": "Test",
+    "cloud.test.account": "{provider} {account}: {usage}{login}",
+    "cloud.test.login": ", login {login}",
+    "cloud.test.none": "Nothing answered. {why}",
+    "cloud.test.ok": "The connection works.",
   },
 };
 
