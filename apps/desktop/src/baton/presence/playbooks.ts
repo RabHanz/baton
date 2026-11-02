@@ -87,6 +87,8 @@ export interface PlaybookInput {
   readonly now: number;
   readonly day: string;
   readonly hour: number;
+  /** Do not disturb, a snooze or quiet hours: nothing is said aloud, and a reminder waits. */
+  readonly quiet?: boolean;
   readonly findings: ReadonlyArray<WatchFinding>;
   readonly ci: ReadonlyArray<CiRun>;
   readonly jobs: ReadonlyArray<BatonJob>;
@@ -125,7 +127,7 @@ export const runPlaybooks = async (
     });
   }
   for (const f of input.findings) {
-    if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES) continue;
+    if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
     await attempt("waiting_remind", `wait:${f.workSessionId}`, async () => {
       ops.say(`${f.title} has been waiting for you for about ${Math.round(f.minutes / 60)} hour${f.minutes >= 120 ? "s" : ""}.`);
       return `Reminded you about ${f.title}.`;

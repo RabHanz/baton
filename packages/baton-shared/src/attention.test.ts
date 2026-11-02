@@ -1,8 +1,9 @@
+// @effect-diagnostics globalDate:off
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { freshFindings, inQuietHours, morningBrief, noticeLine } from "./attention.ts";
+import { freshFindings, inQuietHours, isSilenced, morningBrief, noticeLine } from "./attention.ts";
 
 const f = (id: string, kind: WatchFinding["kind"]) =>
   ({ workSessionId: id, title: `Work ${id}`, kind, minutes: 40 }) as unknown as WatchFinding;
@@ -54,5 +55,16 @@ describe("the morning brief", () => {
       "Good morning. Finished: Site. Failed: Work 9. Waiting for you: Tax. Still running: Audit.",
     );
     expect(morningBrief({ jobs: [], findings: [], now: NOW })).toContain("Nothing happened");
+  });
+});
+
+describe("being silenced", () => {
+  const at = new Date(2026, 10, 3, 12, 0, 0);
+  it("is silent for quiet hours, Do not disturb, or a snooze that has not ended", () => {
+    expect(isSilenced({ quietHours: "none" }, at)).toBe(false);
+    expect(isSilenced({ quietHours: "11-13" }, at)).toBe(true);
+    expect(isSilenced({ quietHours: "none", doNotDisturb: true }, at)).toBe(true);
+    expect(isSilenced({ quietHours: "none", snoozeUntil: at.getTime() + 1 }, at)).toBe(true);
+    expect(isSilenced({ quietHours: "none", snoozeUntil: at.getTime() }, at)).toBe(false);
   });
 });

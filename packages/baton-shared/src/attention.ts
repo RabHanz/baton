@@ -14,6 +14,13 @@ const INTERRUPTING: ReadonlySet<WatchFinding["kind"]> = new Set([
 
 const key = (f: WatchFinding): string => `${f.workSessionId}:${f.kind}`;
 
+/** Nothing unprompted is said or offered: quiet hours, Do not disturb, or a snooze still running. */
+export const isSilenced = (
+  s: { readonly quietHours: string; readonly doNotDisturb?: boolean; readonly snoozeUntil?: number },
+  now: Date,
+): boolean =>
+  s.doNotDisturb === true || (s.snoozeUntil ?? 0) > now.getTime() || inQuietHours(s.quietHours, now.getHours());
+
 /** "22-8" is 22:00 to 08:00 and wraps midnight; "none" is never quiet. */
 export const inQuietHours = (spec: string, hour: number): boolean => {
   const m = /^(\d{1,2})-(\d{1,2})$/.exec(spec);
