@@ -16,6 +16,8 @@ export interface TransformSettings {
   /** The id applied to every dictation, or null. */
   readonly autoApply: string | null;
   readonly custom: ReadonlyArray<Transform>;
+  /** Command mode: spoken edits of the selection and the text around the caret. Off until he turns it on. */
+  readonly command?: boolean;
 }
 
 const OFF: TransformSettings = { enabled: false, autoApply: null, custom: [] };
@@ -36,6 +38,7 @@ export const createTransformStore = (stateDir: string) => {
   return {
     read: store.read,
     all: (): ReadonlyArray<Transform> => allTransforms(store.read().custom),
+    setCommand: (command: boolean) => update({ command }),
     setEnabled: (enabled: boolean) => update({ enabled }),
     setAutoApply: (autoApply: string | null) => update({ autoApply }),
     /** False when his own set is full. */

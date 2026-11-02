@@ -1376,7 +1376,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         });
       }
       // Rewrites of the selection are answered by the companion, which holds the keyboard.
-      if (op === "text_transform" || op === "text_undo") return "That is not available here.";
+      if (op === "text_transform" || op === "text_undo" || op === "text_command") return "That is not available here.";
       const value = (await requestKept({ kind: "job", op, args })) as {
         jobs?: ReadonlyArray<BatonJob>;
         findings?: ReadonlyArray<WatchFinding>;
@@ -3130,7 +3130,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id.startsWith("tr.")) {
       const act = transformAction(id, value);
       transformNote = "";
-      if (act?.kind === "enabled") {
+      if (act?.kind === "command") transforms.setCommand(act.on);
+      else if (act?.kind === "enabled") {
         transforms.setEnabled(act.on);
         input.extras?.setTransformHotkeys?.(act.on);
       } else if (act?.kind === "auto") transforms.setAutoApply(act.id);
