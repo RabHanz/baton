@@ -83,6 +83,11 @@ export type HomeControl =
       readonly detail: string;
       readonly fix?: string;
     })
+  /** A calendar of days as a grid, oldest first, one column per week: level 0 to 4, or -1 for a blank. */
+  | (HomeControlBase & {
+      readonly kind: "heat";
+      readonly cells: ReadonlyArray<{ readonly label: string; readonly level: number }>;
+    })
   /** A list he edits: each item with Remove, and a line to add one. Ids: `<id>:add` (the text) and `<id>:rm` (the item). */
   | (HomeControlBase & {
       readonly kind: "list";
