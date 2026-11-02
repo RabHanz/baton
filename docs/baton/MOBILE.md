@@ -72,12 +72,20 @@ T3 way first (the page uses that session), and add it to the home screen (a mani
 - **Shows:** What needs me, Approvals (Approve or Deny, with the exact action text; a stale or changed approval is refused),
   Now, Jobs (Stop, and Retry only where a retry is allowed, with the reason otherwise), and the Weave list. A badge count on the
   tab and the app icon; the page polls every 20 seconds while in view. No push notifications (policy).
-- **Ask box and Talk button:** typed words and heard words go to the server's one intent brain (`baton.intent.run`), the same door the
-  window's ask box uses. Talk records in the browser (MediaRecorder), makes a 16 kHz WAV there and uploads it; the server runs the
-  dictation sidecar's `transcribe` with the speech model (`BATON_DICTATION`, `BATON_STT_MODEL`, or `voice/models` beside the database)
-  and shows what it heard with the reply. A server without them answers "Voice is not available on this server".
+- **Ask box and Talk button:** the words go into a small durable inbox on the server (`baton.phone.call`, operate scope; each
+  ask has a client id, so a retry asks once; it expires after 24 hours and the phone is told so). The desktop app, when its
+  window is open and connected, takes the oldest ask and runs it through the one assistant exactly like a typed Ask: same
+  gate, same approvals. The short reply and the card text go back and the phone shows them (Asked tab, and the line under the
+  bar). If the desktop is away the phone says "Your computer is not connected; it will answer when it is back" and the ask waits.
+  Phone text is marked source phone: it is the user's own words (not tainted); web content quoted inside it is still data.
+- **Approvals round trip:** any question the desktop asks him (a drive's plan, a screen-capture yes, a vault use) is mirrored to
+  the phone's Approvals with the exact text; the first answer, on the desktop or on the phone, counts and the other box comes
+  down. A mirrored question that nobody answers is dropped after two minutes.
+- **Talk:** records in the browser (MediaRecorder), makes a 16 kHz WAV there and uploads it; the server transcribes it with the
+  dictation sidecar and the speech model (`BATON_DICTATION`, `BATON_STT_MODEL`, or `voice/models` beside the database), shows
+  what it heard, and queues that text as an ask. A server without them answers "Voice is not available on this server".
 - **Auth:** the server's own session. Reading needs `orchestration:read`; Approve, Deny, Stop, Retry, Ask and Talk need
   `orchestration:operate`. A phone without the session sees a "not paired" card.
-- **Limits, stated:** the desktop's richer assistant (screen, vault, memory tools) lives in the desktop app, not the server, so the
-  phone reaches the server's intent brain, not that. A session's own question is answered in its thread, not here. Nothing
+- **Limits, stated:** the desktop must have its window open (a tray-only app does not poll, so it is "not connected"); the
+  desktop polls every 5 seconds. A session's own question is answered in its thread, not here. Nothing
   here was tried on a real phone.

@@ -124,6 +124,12 @@ import {
   BatonCommitmentUpsertResult,
 } from "./commitments.ts";
 import {
+  BATON_PHONE_WS_METHODS,
+  BatonPhoneCallInput,
+  BatonPhoneCallResult,
+  BatonPhoneError,
+} from "./phone.ts";
+import {
   BATON_MEMORY_WS_METHODS,
   BatonMemoryDraft,
   BatonMemoryEditInput,
@@ -323,6 +329,12 @@ const WsBatonCommitmentUpsertRpc = Rpc.make(BATON_COMMITMENT_WS_METHODS.upsert, 
   payload: BatonCommitmentUpsertInput,
   success: BatonCommitmentUpsertResult,
   error: CommitmentErrors,
+});
+
+const WsBatonPhoneCallRpc = Rpc.make(BATON_PHONE_WS_METHODS.call, {
+  payload: BatonPhoneCallInput,
+  success: BatonPhoneCallResult,
+  error: Schema.Union([BatonPhoneError, EnvironmentAuthorizationError]),
 });
 
 const WeaveErrors = Schema.Union([BatonWeaveError, EnvironmentAuthorizationError]);
@@ -610,6 +622,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonWeaveTickRpc,
   WsBatonCommitmentListRpc,
   WsBatonCommitmentUpsertRpc,
+  WsBatonPhoneCallRpc,
   WsBatonMemoryListRpc,
   WsBatonMemorySearchRpc,
   WsBatonMemoryAddRpc,

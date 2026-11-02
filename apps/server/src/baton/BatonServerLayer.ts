@@ -30,6 +30,7 @@ import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
 import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
 import * as BatonMemoryService from "./BatonMemoryService.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
+import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
 import * as BatonTessayaRoutes from "./BatonTessayaRoutes.ts";
 import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
@@ -70,6 +71,7 @@ const servicesInner = IntentService.layer.pipe(
       BatonJobService.layer.pipe(Layer.provide(WorkSessionService.layer)),
       BatonMemoryService.layer,
       BatonCommitmentService.layer,
+      BatonPhoneInbox.layer,
       BatonWeaveService.layer.pipe(
         Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
       ),

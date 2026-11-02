@@ -14,6 +14,7 @@ import type {
   BatonJob,
   BatonJobBridgeRequest,
   BatonCommitmentBridgeRequest,
+  BatonPhoneBridgeRequest,
   BatonWeaveBridgeRequest,
   BatonMemoryBridgeRequest,
   WatchFinding,
@@ -219,6 +220,7 @@ import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { windowsHello } from "../vault/hello.ts";
+import { createPhoneRelay } from "../phone/phoneRelay.ts";
 import { createNightlyCache } from "../presence/nightlyRead.ts";
 import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
@@ -283,7 +285,7 @@ import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
-import type { AssistantActions } from "../screen/ScreenCompanion.ts";
+import type { AssistantActions, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, isCancelPhrase, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
@@ -507,6 +509,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
 
 /** The renderer has this long to answer an intent call before the core is told it failed. */
 const REQUEST_TIMEOUT_MS = 20_000;
+const PHONE_POLL_MS = 5_000;
 /** Under the context bus's 30 s TTL, so what Baton has open never expires while it is open. */
 const CONTEXT_REFRESH_MS = 10_000;
 /** Long enough for him to fix a word in the field before it is read back. */
@@ -642,6 +645,9 @@ export interface VoiceCoreHooks {
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
+  /** The phone's words run as a typed ask; the reply comes back. */
+  readonly askFromPhone?: (text: string) => Promise<{ readonly spoken: string; readonly card: string }>;
+  readonly setPhoneMirror?: (mirror: PhoneMirror | null) => void;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
@@ -1417,7 +1423,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonJobBridgeRequest
       | BatonMemoryBridgeRequest
       | BatonCommitmentBridgeRequest
-      | BatonWeaveBridgeRequest,
+      | BatonWeaveBridgeRequest
+      | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
@@ -1453,7 +1460,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonJobBridgeRequest
       | BatonMemoryBridgeRequest
       | BatonCommitmentBridgeRequest
-      | BatonWeaveBridgeRequest,
+      | BatonWeaveBridgeRequest
+      | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -1482,6 +1490,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
     return value;
   };
+  // The phone relay: the desktop assistant answers what the phone page asked. It only talks while the app's own window is
+  // already open (it never opens one to ask), so a tray-only app is "not connected" to the phone, and the ask waits.
+  const phoneRelay = createPhoneRelay({
+    call: (op, args) =>
+      Electron.BrowserWindow.getAllWindows().some(
+        (w) => !w.isDestroyed() && /^https?:/.test(w.webContents.getURL()),
+      )
+        ? request({ kind: "phone", op: op as BatonPhoneBridgeRequest["op"], args })
+        : Promise.reject(new Error("The app window is not open.")),
+    run: (text) =>
+      input.extras?.askFromPhone === undefined
+        ? Promise.reject(new Error("No assistant here."))
+        : input.extras.askFromPhone(text),
+  });
+  input.extras?.setPhoneMirror?.(phoneRelay.mirror);
+  const phoneTimer = setInterval(() => void phoneRelay.tick(), PHONE_POLL_MS);
+  phoneTimer.unref();
   const voiceIntent = makeVoiceIntentClient({
     request: requestKept,
     injection,
