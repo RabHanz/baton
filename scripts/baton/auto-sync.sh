@@ -146,7 +146,9 @@ if [ "$rc" -ne 0 ]; then
   # Which patches and which files, so a human (or the fix session) starts from the answer.
   conflict_patches="$(sed -n 's/^  CONFLICT  \([^ ]*\) .*/\1/p' "$log" | sort -u | tr '\n' ' ')"
   conflict_files="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
-  publish_status "$([ "$rc" -eq 2 ] && echo conflict || echo gates)" --patches "$conflict_patches" --files "$conflict_files"
+  touching="$(for f in $conflict_files; do printf '%s\t' "$f"; git log --no-merges --format='%h %s' "$pin..upstream/main" -- "$f" 2> /dev/null | head -3 | tr '\n' '|'; printf '\n'; done |
+    node -e 'const o={};for(const l of require("fs").readFileSync(0,"utf8").split("\n")){const[f,c]=l.split("\t");if(f)o[f]=(c||"").split("|").filter(Boolean)}console.log(JSON.stringify(o))' 2> /dev/null || echo '{}')"
+  publish_status "$([ "$rc" -eq 2 ] && echo conflict || echo gates)" --patches "$conflict_patches" --files "$conflict_files" --touching "$touching"
   # Gates failed (the sync commit exists): push it and open a draft PR so the work is visible and mergeable.
   if [ "$rc" -eq 3 ] && git push --quiet -u origin "$branch" 2> /dev/null; then
     gh pr create -R "$repo" --draft --base main --head "$branch" --title "sync: upstream to $(git rev-parse --short upstream/main) (gates failed)" --body-file "$report" > /dev/null 2>&1 || true

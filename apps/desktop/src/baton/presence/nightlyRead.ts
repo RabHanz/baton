@@ -5,7 +5,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 
-import { parseNightly, type NightlyStatus } from "@t3tools/baton-shared/nightly";
+import { parseNightly, parseSync, type NightlyStatus, type SyncStatus } from "@t3tools/baton-shared/nightly";
 
 export type RunGh = (args: ReadonlyArray<string>) => Promise<string>;
 
@@ -25,16 +25,25 @@ export const readNightly = async (repo: string, run: RunGh = runGh): Promise<Nig
   }
 };
 
+export const readSync = async (repo: string, run: RunGh = runGh): Promise<SyncStatus | null> => {
+  try {
+    const content = await run(["api", `repos/${repo}/contents/upstream-sync.json?ref=baton/status`, "--jq", ".content"]);
+    return parseSync(Buffer.from(content.trim(), "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+};
+
 const CACHE_MS = 30 * 60_000;
 
 /** Asks at most every half hour; a failed read is remembered for that long too, so the Now page never waits on it. */
 export const createNightlyCache = (repo: string, run?: RunGh, now: () => number = Date.now) => {
   let at = Number.NEGATIVE_INFINITY;
-  let held: NightlyStatus | null = null;
-  return async (): Promise<NightlyStatus | null> => {
+  let held: { readonly nightly: NightlyStatus | null; readonly sync: SyncStatus | null } = { nightly: null, sync: null };
+  return async () => {
     if (now() - at < CACHE_MS) return held;
     at = now();
-    held = await readNightly(repo, run);
+    held = { nightly: await readNightly(repo, run), sync: await readSync(repo, run) };
     return held;
   };
 };

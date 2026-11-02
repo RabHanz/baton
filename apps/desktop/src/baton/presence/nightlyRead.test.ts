@@ -21,9 +21,9 @@ describe("reading the last nightly", () => {
     await read();
     t = 10 * 60_000;
     await read();
-    expect(asked).toBe(1);
+    expect(asked).toBe(2); // the nightly file and the sync file, once
     t = 31 * 60_000;
     await read();
-    expect(asked).toBe(2);
+    expect(asked).toBe(4);
   });
 });

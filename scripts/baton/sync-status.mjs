@@ -24,6 +24,8 @@ export const syncStatus = (a) => ({
   oldestUnsyncedDays: a.days ?? null,
   conflictingPatches: a.patches ?? [],
   conflictingFiles: a.files ?? [],
+  // For each conflicting file: the upstream commits that touched it since the pin.
+  touching: a.touching ?? {},
   pr: a.pr ?? null,
   log: a.log ?? null,
   hint: HINTS[a.result] ?? "",
@@ -45,6 +47,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         days: num(args.days),
         patches: words(args.patches),
         files: words(args.files),
+        touching: args.touching ? JSON.parse(args.touching) : {},
         pr: args.pr,
         log: args.log,
       }),
