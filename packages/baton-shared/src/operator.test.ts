@@ -181,6 +181,10 @@ describe("Baton's own tools (D143)", () => {
       "ask",
     );
     expect(judgeToolCall({ tool: "mcp__baton__weave_list", input: {} }, off).verdict).toBe("allow");
+    const jot = { tool: "mcp__baton__note_add", input: { text: "buy milk" } };
+    expect(judgeToolCall(jot, off).verdict).toBe("allow");
+    expect(judgeToolCall(jot, read).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__note_search", input: { query: "x" } }, read).verdict).toBe("allow");
     const rewrite = { tool: "mcp__baton__text_transform", input: { name: "polish" } };
     expect(judgeToolCall(rewrite, off).verdict).toBe("allow");
     expect(judgeToolCall(rewrite, read).verdict).toBe("ask");
