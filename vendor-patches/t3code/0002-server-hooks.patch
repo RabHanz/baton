@@ -134,7 +134,7 @@ index bf026d9005c1a25b1ae61ba018e00372a335f16d..311ab5cede0af01d037d173dac111cd8
            }
  
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 741fc73103b7d58d22fe7aac978291ecd2bd1819..01dbb1aa13af9104378d5925584fef50d3daa2f4 100644
+index 741fc73103b7d58d22fe7aac978291ecd2bd1819..2877936669c4927ba680d3dcfb0902fd1df887c3 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -4,6 +4,7 @@ import * as Random from "effect/Random";
@@ -158,6 +158,14 @@ index 741fc73103b7d58d22fe7aac978291ecd2bd1819..01dbb1aa13af9104378d5925584fef50
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
+@@ -734,6 +740,7 @@ const layerMakeRoutes = Layer.mergeAll(
+     GuestHttp.layer,
+     DeviceHubProxy.layer,
+     ServerBrowserStream.routeLayer,
++    BatonServerLayer.routes,
+     ServerHttp.layerStaticAndDevRoute,
+     Ws.layer,
+   ),
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
 index befad768da3e532a7c4ebdae3cbe3257ef0a25bf..78221daa66e1e3f11669f5b11d721deb7260c1ef 100644
 --- a/apps/server/src/ws.ts
