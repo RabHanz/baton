@@ -27,7 +27,9 @@ const rig = (line: string) => {
     for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
   };
   const settle = async () => {
-    for (let i = 0; i < 5; i += 1) await core.idle();
+    // The core's work queue drains on the macrotask queue, so a microtask yield is not enough.
+    // oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- a yield, not a wait
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
   };
   return { core, push, routed, settle };
 };
