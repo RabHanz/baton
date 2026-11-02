@@ -13,6 +13,7 @@ describe("where each control lives", () => {
     expect(tabOf("v.appMode")).toBe("dictation");
     expect(tabOf("trust.revoke:chrome")).toBe("trust");
     expect(tabOf("tr.enabled")).toBe("transforms");
+    expect(tabOf("bk.export")).toBe("history");
   });
   it("sends an id it does not know to Settings, not nowhere", () => {
     expect(tabOf("x.new")).toBe("settings");
