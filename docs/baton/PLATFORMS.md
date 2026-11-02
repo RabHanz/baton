@@ -25,16 +25,25 @@ Windows stranger-install proof (first read 2026-11-02): clean machine, silent in
 second launch, 12 text files in user data with no private name, no voice settings written (voice off until he turns it on),
 no user operating-system pack, uninstall removes the app and the Add or remove entry and leaves the 45 user-data files.
 
-## What is Windows only today
+## The sidecar, piece by piece: real, stubbed, unproven
 
-- The dictation and wake sidecar (`native/baton-dictation`): Parakeet through `transcribe-cpp`, `handy-recorder`,
-  `handy-keys` hotkeys, `enigo` typing, the Windows paste path and Win32 window work. It is the whole voice start beyond
-  `begin`. Its crates build on mac and Linux; the Win32 modules do not.
-- UI Automation: `ui_tree`, `click_element`, the focused-control reads and the drive's window-under-point lookup.
-- Windows Hello as the vault's consent gate (`UserConsentVerifier` through PowerShell) and DPAPI as one of the vault's key
-  wraps (Electron's `safeStorage` uses the Keychain on macOS and the Secret Service or kwallet on Linux, so the wrap itself
-  carries over; the Hello prompt does not).
-- The Windows installer packaging checks (SmartScreen, NSIS uninstall).
+`native/baton-dictation` builds and passes its tests on Windows, Linux x64 and macOS arm64 and x64 (CI, `baton-dictation-build.yml`),
+and `stageBatonVoice` packages it into every desktop build. What each piece is on each platform:
+
+| Piece | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| Microphone capture (`handy-recorder`: WASAPI, CoreAudio, ALSA) | real, used daily | real code; device listing proven on the CI runner (CoreAudio null device); a real microphone and the Microphone permission not tried | real code; listing proven with ALSA's null device; real microphones not tried |
+| Test input (`BATON_TEST_WAV`, `BATON_FAKE_MIC`) for CI | real | real | real (this is what the smoke job uses) |
+| Parakeet model load and inference (`transcribe-cpp`, the same GGUF) | real | loads (voice start reaches `core-made` on the runner); inference in the app not yet proven, see below | real: the smoke job's phrase is transcribed ("What is the cup of Brazil?") |
+| Wake word and VAD (onnxruntime) | real | not proven | real in the smoke job |
+| Hold-to-dictate hotkey (`handy-keys`) | real | the crate has a CGEventTap backend; needs Input Monitoring and Accessibility; **not exercised** | the crate's Linux backend; **not exercised**; Wayland has no global hotkeys without a portal |
+| Paste into the focused app | real (`paste_windows`, receipt-based, restores the clipboard) | real code (`pbcopy`, Command-V through `enigo`, clipboard restored after 1.5 s); needs Accessibility; **not exercised** | real code (`wl-copy` or `xclip` plus a chord; `wtype`/X11); **not exercised** |
+| Which app has focus | real | `osascript` front-app lookup; title not available | `hyprctl` / `swaymsg` / X11 tools where present, else "unknown window" (text still pastes) |
+| Mouse hooks (chords, side buttons) | real (`mouse_windows`) | **stubbed**: no hook, bindings with mouse buttons do nothing | **stubbed** |
+| UI Automation: `ui_tree`, `locate`, `window_at`, window rect, pointer nudge | real | **stubbed** (return nothing); plan: Accessibility API | **stubbed**; plan: AT-SPI |
+
+The desktop app finds the binary next to itself (`resources/baton-voice/baton-dictation`, `.exe` on Windows; `BATON_DICTATION`
+overrides) and no longer says "Voice is Windows only for now" when it is there.
 
 ## Plan for native feature parity (planned, not built)
 
