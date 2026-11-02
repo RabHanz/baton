@@ -45,6 +45,10 @@ if ($Phase -eq 'first') {
   $env:BATON_TEST_DIR = $shots
   Remove-Item Env:BATON_TEST_WAV -ErrorAction SilentlyContinue
   $app = Start-Process -FilePath $exe -PassThru
+  # Tessaya starts in the tray with no window; a second launch means "show me Tessaya" (startBatonDesktop), which
+  # opens its window, and the app records the page it draws.
+  Start-Sleep -Seconds 25
+  Start-Process -FilePath $exe
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 3
