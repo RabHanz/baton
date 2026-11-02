@@ -11,7 +11,12 @@ import {
   type NeedItem,
 } from "@t3tools/baton-shared/needsMe";
 
-import { readExternalNeeds, type ExternalNeeds, type Run } from "./needsSources.ts";
+import {
+  readExternalNeeds,
+  type ExternalNeeds,
+  type NeedsConfig,
+  type Run,
+} from "./needsSources.ts";
 
 export interface NeedsInput {
   readonly jobs: ReadonlyArray<BatonJob>;
@@ -19,7 +24,7 @@ export interface NeedsInput {
   readonly findings: ReadonlyArray<WatchFinding>;
   /** Extra items from the commitments ledger and other local sources. */
   readonly extra?: ReadonlyArray<NeedItem>;
-  readonly config: { readonly repos: ReadonlyArray<string>; readonly deadlinesFile: string | null };
+  readonly config: NeedsConfig;
   readonly hidden?: ReadonlySet<string>;
   readonly now: number;
   readonly run?: Run;

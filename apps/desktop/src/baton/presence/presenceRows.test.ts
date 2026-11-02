@@ -13,6 +13,8 @@ const settings = {
   needsRepos: ["o/a"],
   ciRepos: [],
   needsDeadlinesFile: null,
+  needsFeeds: [],
+  needsExpect: ["Cockpit approvals"],
 } as const;
 
 describe("the Presence settings", () => {
@@ -45,5 +47,19 @@ describe("the Presence settings", () => {
       needsDeadlinesFile: "C:\\x\\d.json",
     });
     expect(presencePatch("pr.deadlines:rm", "x", settings)).toEqual({ needsDeadlinesFile: null });
+  });
+
+  it("adds status files and expected sources, and refuses a duplicate or an empty one", () => {
+    expect(presencePatch("pr.feeds:add", " C:\\x\\peers.json ", settings)).toEqual({
+      needsFeeds: ["C:\\x\\peers.json"],
+    });
+    expect(presencePatch("pr.expect:add", "Peers' status", settings)).toEqual({
+      needsExpect: ["Cockpit approvals", "Peers' status"],
+    });
+    expect(presencePatch("pr.expect:add", "Cockpit approvals", settings)).toBeNull();
+    expect(presencePatch("pr.expect:rm", "Cockpit approvals", settings)).toEqual({
+      needsExpect: [],
+    });
+    expect(presencePatch("pr.feeds:add", "  ", settings)).toBeNull();
   });
 });
