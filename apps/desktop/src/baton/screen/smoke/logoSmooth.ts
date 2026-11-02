@@ -57,6 +57,12 @@ void Electron.app.whenReady().then(async () => {
   win.focus();
   await sleep(1500);
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  // A CI desktop may report reduced motion, which switches the animation off; the real window is watched with it allowed.
+  win.webContents.debugger.attach("1.3");
+  await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "no-preference" }],
+  });
+  await sleep(500);
   const live = (await js("document.documentElement.classList.contains('live')")) as boolean;
   await js("window.__mark=document.getElementById('mark');0");
   const rect = (await js(
@@ -95,11 +101,14 @@ void Electron.app.whenReady().then(async () => {
 
   const restarts = clocks.filter((t, i) => i > 0 && t < clocks[i - 1]!).length;
   const maxDiff = Math.max(0, ...diffs);
-  const verdict = live && same && restarts === 0 && maxDiff < 4;
+  const moved = clocks.filter((t) => t >= 0).length > clocks.length / 2 && Math.max(0, ...clocks) > 5000;
+  const changing = diffs.some((d) => d > 0);
+  const verdict = live && same && moved && changing && restarts === 0 && maxDiff < 4;
   const lines = [
     `### Sidebar logo: ${verdict ? "smooth" : "NOT smooth"}`,
     `- window in front (html.live): ${live}`,
     `- same element through ${rebuilds} sidebar rebuilds: ${same}`,
+    `- animation running (clock passed ${Math.round(Math.max(0, ...clocks))} ms) and the logo pixels changing: ${moved && changing}`,
     `- animation clock restarts: ${restarts} of ${clocks.length} samples`,
     `- frames compared: ${diffs.length}; largest change between neighbouring frames: ${maxDiff.toFixed(2)} of 255 (a jump would be well above 4)`,
   ];
