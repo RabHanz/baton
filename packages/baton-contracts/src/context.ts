@@ -223,7 +223,7 @@ export interface BatonSessionSummary {
 /** One account's limits as T3 reports them, for the Usage tab. */
 export interface BatonUsageSummary {
   readonly account: string;
-  /** The machines it is on, in plain words: "onyx + signzart-prod". */
+  /** The machines it is on, in plain words: "laptop + build-server". */
   readonly box: string;
   /** The same machines as a list, for a page that lists them itself. */
   readonly boxes?: ReadonlyArray<string>;

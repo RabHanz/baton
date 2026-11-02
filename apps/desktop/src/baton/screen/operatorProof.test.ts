@@ -32,6 +32,7 @@ const turn = (options: { actWithoutAsking: boolean; said: Said }) => {
       tainted,
     });
     if (judged.verdict === "allow") return { allow: true as const };
+    if (judged.verdict === "deny") return { allow: false as const, reason: judged.why };
     const prompt = gatePrompt(judged, "x");
     asked.push({ tool: call.tool, risky: judged.risky === true, noOnExpiry: prompt.noOnExpiry });
     // An unanswered ordinary question waits for the box, which is not a yes either.

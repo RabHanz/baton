@@ -66,7 +66,8 @@ import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, wakeWordsFor } from "./wakeDefaults.ts";
-import { markBitmap, markSvg, type MarkOptions } from "./trayMark.ts";
+import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
+import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -166,6 +167,9 @@ import {
   noticeLine,
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
+import { loginItemOn, setLoginItem } from "./loginItem.ts";
+import { warmUpVoice } from "./warmUp.ts";
+import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
 
@@ -276,7 +280,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   toggleKey: "Ctrl+Alt+Shift+Space",
   paste: "ctrl_v",
   language: "en",
-  // Local until the Director rules on D31: "claude" sends flagged dictation to Anthropic (D105).
+  // Local until D31 is ruled on: "claude" sends flagged dictation to Anthropic (D105).
   dictationCleanup: "local",
   cleanupModel: "haiku",
   claudeBinary: "claude",
@@ -323,19 +327,30 @@ const SESSIONS_NOTE_MS = 8_000;
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
 const BRIEF_HOUR = 8;
-/** Baton's own green: the sidebar's mark, whatever state the dot is in. */
-const BRAND_COLOUR = "#1d6b57";
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
 
-/** The mark at tray size (D131); 32 px is sharp on a high-density display and scaled down elsewhere. */
-const trayIcon = (options: MarkOptions): Electron.NativeImage =>
-  Electron.nativeImage.createFromBitmap(markBitmap(options, 32), {
-    width: 32,
-    height: 32,
-    scaleFactor: 2,
-  });
+/**
+ * The tray mark: the logo's hinted cut for the taskbar's own theme (white on dark, black on light), at
+ * every size Windows may ask for (100, 125, 150, 200, 250 and 300 %), with the state as a dot.
+ */
+const trayIcon = (options: MarkOptions): Electron.NativeImage => {
+  const dark = Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+  const image = Electron.nativeImage.createEmpty();
+  for (const size of TRAY_SIZES) {
+    const source = Electron.nativeImage.createFromBuffer(
+      Buffer.from(TRAY_PNG[`${dark ? "white" : "black"}-${size}`]!, "base64"),
+    );
+    image.addRepresentation({
+      scaleFactor: size / 16,
+      width: size,
+      height: size,
+      buffer: withTrayState(source.toBitmap(), size, options, dark),
+    });
+  }
+  return image;
+};
 
 export interface VoiceCoreHooks {
   /** The core router's intent calls, answered by the Baton window and the paste adapter. */
@@ -422,6 +437,10 @@ export interface DesktopBatonVoiceInput {
   /** Each change of what the pill says, and "idle" when it goes: for the turn log. */
   readonly onPillState?: (phase: string) => void;
   /** How a pill drag ended, for the turn log. */
+  /** BATON_TEST_WAV is set: the start of the recording, each file as it begins, and its end, for the turn log. */
+  /** The Run entry name the installer writes: the app's AppUserModelId. */
+  readonly loginEntry: string;
+  readonly onTestAudio?: (event: TestAudioEvent) => void;
   readonly onPillDrag?: (outcome: {
     readonly reason: string;
     readonly dx: number;
@@ -475,7 +494,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // Renamed from Baton: drop the old login entry, and write the one he asked for for the new exe.
   if (input.platform === "win32") {
     Electron.app.setLoginItemSettings({ openAtLogin: false, name: "Baton" });
-    if (settings.openAtLogin) Electron.app.setLoginItemSettings({ openAtLogin: true });
+    // The switch follows the real entry (the installer writes it too); an entry from an older exe is rewritten.
+    if (loginItemOn(Electron.app, input.loginEntry))
+      setLoginItem(Electron.app, input.loginEntry, true);
   }
   // Only now is there something to quit from, and a way back to a window.
   keepRunningForTray();
@@ -947,6 +968,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       badge: input.updates?.ready() ?? false,
     };
   };
+  // The taskbar's theme changes the tray mark's colour (white on dark, black on light).
+  Electron.nativeTheme.on("updated", () => render());
   const render = () => {
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     tray.setImage(trayIcon(markOptions()));
@@ -1368,6 +1391,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Both the wake capture and the dictation recorder follow the same choice.
   const onDeviceChange = () => {
+    // Recorded files are not a device to follow, and switching would play them from the start.
+    if ((process.env["BATON_TEST_WAV"] ?? "") !== "") return;
     void (async () => {
       const source = audio ?? (sidecar === null ? null : { listDevices: listSidecarDevices });
       if (source === null) return;
@@ -1405,6 +1430,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const pill: VoicePill = createVoicePill({
+    ...((process.env["BATON_TEST_DIR"] ?? "") === ""
+      ? {}
+      : { captureDir: process.env["BATON_TEST_DIR"] as string }),
     cueGain: () => CUE_GAIN[settings.cues],
     cueGate: {
       // Never over his speech: wait up to 300 ms for him to stop, then drop the cue.
@@ -1600,20 +1628,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
-    audio = makeSidecarAudioInput({
-      binary,
-      listDevices: listSidecarDevices,
-      channelFor,
-      // Back on the same mic if it was a hiccup, on the next one if it left.
-      onLost: (reason, ranMs) => {
-        recordFailures = ranMs >= HEALTHY_RUN_MS ? 1 : recordFailures + 1;
-        const delay = restartDelayMs(recordFailures);
-        note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
-        pill.on({ type: "trouble", message: "Reconnecting your mic" });
-        render();
-        setTimeout(() => void restart(), delay);
-      },
-    });
+    // With BATON_TEST_WAV set, recorded files stand in for the microphone; unset, nothing changes.
+    const testSource = process.env["BATON_TEST_WAV"];
+    audio =
+      testSource !== undefined && testSource !== ""
+        ? makeTestAudioInput({ source: testSource, onEvent: (event) => input.onTestAudio?.(event) })
+        : makeSidecarAudioInput({
+            binary,
+            listDevices: listSidecarDevices,
+            channelFor,
+            // Back on the same mic if it was a hiccup, on the next one if it left.
+            onLost: (reason, ranMs) => {
+              recordFailures = ranMs >= HEALTHY_RUN_MS ? 1 : recordFailures + 1;
+              const delay = restartDelayMs(recordFailures);
+              note = `The microphone stopped${reason === null ? "" : ` (${reason})`}. Trying again in ${Math.round(delay / 1000)} s.`;
+              pill.on({ type: "trouble", message: "Reconnecting your mic" });
+              render();
+              setTimeout(() => void restart(), delay);
+            },
+          });
     pill.warm();
     devices = await audio.listDevices();
     choice = selectInputDevice(devices, preference());
@@ -1719,20 +1752,35 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   let sessionsNote: string | null = null;
-  /** The job cards as the window last read them; null until he loads them once (no window is opened unasked). */
+  /** The job cards as the window last read them; null until the Jobs or Approvals tab has been opened once. */
   let jobsCache: ReadonlyArray<BatonJob> | null = null;
+  let jobsError: string | null = null;
+  let jobsLoading = false;
+  /** Opening the Jobs or Approvals tab asks for them, and they are kept fresh from then on. */
+  let jobsWanted = false;
   const refreshJobs = async () => {
-    const value = (await requestKept({ kind: "job", op: "list", args: {} })) as {
-      jobs?: ReadonlyArray<BatonJob>;
-    } | null;
-    const next = value?.jobs ?? [];
-    if (JSON.stringify(next) !== JSON.stringify(jobsCache)) {
-      jobsCache = next;
+    if (jobsLoading) return;
+    jobsLoading = true;
+    try {
+      const value = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+        jobs?: ReadonlyArray<BatonJob>;
+      } | null;
+      const next = value?.jobs ?? [];
+      jobsError = null;
+      if (JSON.stringify(next) !== JSON.stringify(jobsCache)) jobsCache = next;
+    } catch (error) {
+      jobsError = error instanceof Error ? error.message : String(error);
+    } finally {
+      jobsLoading = false;
       home.refresh();
     }
   };
+  const wantJobs = () => {
+    jobsWanted = true;
+    void refreshJobs();
+  };
   setInterval(() => {
-    if (jobsCache !== null) void refreshJobs().catch(() => undefined);
+    if (jobsWanted) void refreshJobs();
   }, JOBS_REFRESH_MS).unref();
 
   // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
@@ -1911,28 +1959,39 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       tone: state === "muted" ? "off" : state === "sleeping" ? "idle" : "good",
       device: deviceName(),
       mark: markSvg(markOptions()),
-      brandMark: markSvg({ ...markOptions(), color: BRAND_COLOUR, muted: false }),
+      brandMark: brandMarkSvg(),
     },
     extra: homeExtra(),
     controls: [
       ...approvalControls(
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
-        jobsCache !== null,
+        jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
       ...noteControls(notes.list()),
       ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
-        ? [
-            {
-              id: "j.load",
-              section: "Jobs",
-              label: "Load jobs",
-              hint: "Reads the jobs from your sessions window, which opens if it is not already.",
-              kind: "action" as const,
-              button: "Load",
-            },
-          ]
+        ? jobsError !== null
+          ? [
+              {
+                id: "j.load",
+                section: "Jobs",
+                label: "Could not read your jobs",
+                hint: jobsError,
+                kind: "action" as const,
+                button: "Try again",
+              },
+            ]
+          : [
+              {
+                id: "j.loading",
+                section: "Jobs",
+                label: "Reading your jobs",
+                kind: "check" as const,
+                status: "ok" as const,
+                detail: "Asking the sessions window; it opens if it is not already.",
+              },
+            ]
         : jobsCache.length === 0
           ? [
               {
@@ -2318,7 +2377,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         section: "On screen",
         label: "Start Tessaya when I sign in",
         kind: "toggle",
-        on: settings.openAtLogin,
+        on: loginItemOn(Electron.app, input.loginEntry),
         more: true,
       },
       {
@@ -2474,7 +2533,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const file = notes.list().find((n) => n.id === act.id)?.file;
         if (file !== undefined) void Electron.shell.openPath(file);
       }
-    } else if (id === "a.load") void refreshJobs().catch(() => undefined);
+    } else if (id === "a.load") wantJobs();
     else if (id.startsWith("a:")) {
       const act = approvalAction(id);
       if (act === null) return;
@@ -2484,7 +2543,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       } else void input.sessions?.act(`n:${act.ref}`, null);
-    } else if (id === "j.load") void refreshJobs().catch(() => undefined);
+    } else if (id === "j.load") wantJobs();
     else if (/^j[as]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);
       const job = (op: BatonJobBridgeRequest["op"], args: Record<string, unknown>) =>
@@ -2592,7 +2651,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       pill.setEdge(value);
     } else if (id === "v.login") {
       save({ openAtLogin: on });
-      Electron.app.setLoginItemSettings({ openAtLogin: on });
+      setLoginItem(Electron.app, input.loginEntry, on);
     } else if (id === "v.check") void runAllChecks();
     else if (id === "v.micTest") testMic();
     else if (id === "v.file") {
@@ -2607,6 +2666,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     state: homeState,
     apply: applyHome,
     openSessions: input.openMainWindow,
+    onTab: (tab) => {
+      if (tab === "jobs" || tab === "approvals") wantJobs();
+    },
     appearance: () => settings.appearance,
   });
 

@@ -5,40 +5,51 @@ import type { HomeControl } from "../home/batonHome.ts";
 
 export const approvalControls = (
   items: ReadonlyArray<Approval>,
-  loaded: boolean,
+  state: "loading" | "ready" | { readonly error: string },
 ): ReadonlyArray<HomeControl> =>
-  !loaded
+  state === "loading"
     ? [
         {
-          id: "a.load",
+          id: "a.loading",
           section: "Waiting for you",
-          label: "Load what is waiting",
-          hint: "Reads your jobs and sessions from the sessions window, which opens if it is not already.",
-          kind: "action",
-          button: "Load",
+          label: "Reading what is waiting",
+          kind: "check",
+          status: "ok",
+          detail: "Asking the sessions window; it opens if it is not already.",
         },
       ]
-    : items.length === 0
+    : state !== "ready"
       ? [
           {
-            id: "a.empty",
+            id: "a.load",
             section: "Waiting for you",
-            label: "Nothing is waiting for your yes",
-            kind: "check",
-            status: "ok",
-            detail: "No plan or question needs you.",
+            label: "Could not read what is waiting",
+            hint: state.error,
+            kind: "action",
+            button: "Try again",
           },
         ]
-      : items.map((a): HomeControl => ({
-          id: `a:${a.id}`,
-          section: "Waiting for you",
-          label: `${a.title}: ${a.action}`,
-          hint: `Would use: ${a.permission}`,
-          kind: "action",
-          button: a.kind === "plan" ? "Approve" : "Open T3",
-          ...(a.kind === "plan" ? { secondary: "Deny" } : {}),
-          lead: true,
-        }));
+      : items.length === 0
+        ? [
+            {
+              id: "a.empty",
+              section: "Waiting for you",
+              label: "Nothing is waiting for your yes",
+              kind: "check",
+              status: "ok",
+              detail: "No plan or question needs you.",
+            },
+          ]
+        : items.map((a): HomeControl => ({
+            id: `a:${a.id}`,
+            section: "Waiting for you",
+            label: `${a.title}: ${a.action}`,
+            hint: `Would use: ${a.permission}`,
+            kind: "action",
+            button: a.kind === "plan" ? "Approve" : "Open T3",
+            ...(a.kind === "plan" ? { secondary: "Deny" } : {}),
+            lead: true,
+          }));
 
 /** `a:p:<job>` Approve and `a:p:<job>:later` Deny; `a:s:<key>` opens the session. */
 export const approvalAction = (id: string) => {

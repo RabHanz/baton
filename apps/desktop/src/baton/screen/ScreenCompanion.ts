@@ -83,8 +83,10 @@ import { pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
+import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
+import { checkChrome, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
@@ -119,6 +121,12 @@ interface ScreenSettings {
   readonly codexBinary: string;
   /** One continuous assistant with every tool, instead of the router's stages (D143). Off until measured. */
   readonly oneAssistant: boolean;
+  /** Let the assistant drive his own Chrome through Claude in Chrome (D3). Off until tried on his machine. */
+  readonly browserChrome: boolean;
+  /** He (or the first-run check) has decided; until then a connected Chrome turns it on once. */
+  readonly browserChromeSet: boolean;
+  /** Social sites are ones it may act on in Chrome, with every action asked. On; a switch turns it off. */
+  readonly socialOn: boolean;
   /** He has picked what Baton works through, so the first-run card is done. */
   readonly brainChosen: boolean;
   /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
@@ -139,6 +147,9 @@ const DEFAULTS: ScreenSettings = {
   operator: "claude",
   codexBinary: "codex",
   oneAssistant: true,
+  browserChrome: false,
+  browserChromeSet: false,
+  socialOn: true,
   brainChosen: false,
   assistantAccount: null,
 };
@@ -281,6 +292,8 @@ export interface ScreenCompanion {
   readonly voice: () => PocketVoice | "system";
   readonly volume: () => number;
   readonly stop: () => void;
+  /** Dismissed by Esc, a click or "never mind": everything comes down and goes quiet, with nothing said and no turn logged. */
+  readonly dismissQuietly: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
@@ -413,6 +426,14 @@ export const startScreenCompanion = (input: {
   const conversation =
     input.conversation ??
     createConversationLog({ file: NodePath.join(input.stateDir, "baton-conversation.ndjson") });
+  let chromeSeen: { readonly at: number; readonly check: ChromeCheck } | null = null;
+  /** Reading a folder and a pipe name is cheap, but the window asks often. */
+  const chromeStatus = (fresh = false): ChromeCheck => {
+    if (fresh || chromeSeen === null || Date.now() - chromeSeen.at > 10_000) {
+      chromeSeen = { at: Date.now(), check: checkChrome(realProbe(input.platform)) };
+    }
+    return chromeSeen.check;
+  };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   /** A reply is kept in full and logged in full, whatever route made it. */
   const converse = (
@@ -731,6 +752,10 @@ export const startScreenCompanion = (input: {
     const action = describeToolCall(call);
     const record = (outcome: string) =>
       input.onAction?.({ by: settings.operator, tool: call.tool, action, outcome });
+    if (judged.verdict === "deny") {
+      record("refused");
+      return { allow: false as const, reason: `${judged.why} Tell him why and stop.` };
+    }
     if (judged.verdict === "allow") {
       record("allowed");
       return { allow: true as const };
@@ -1372,8 +1397,16 @@ export const startScreenCompanion = (input: {
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   const agentTools: string[] = [];
+  /** What the gate decided about each call this turn: allowed, he said yes, he said no, refused. */
+  const agentDecisions: Array<{ readonly tool: string; readonly outcome: string }> = [];
   const agentGate = createAgentGate({
     actWithoutAsking: () => settings.actWithoutAsking,
+    chrome: {
+      socialOn: () => settings.socialOn,
+      now: () => Date.now(),
+      log: (line) =>
+        NodeFS.appendFileSync(NodePath.join(input.stateDir, "social-actions.ndjson"), `${line}\n`),
+    },
     taint: agentTaint,
     textIsHis: (text) => textIsFromConversation(text, conversation.recent(12)),
     focusedWindow: async () => {
@@ -1397,7 +1430,10 @@ export const startScreenCompanion = (input: {
         p.noOnExpiry,
       )) === 0,
     record: (entry) => {
-      if (typeof entry["tool"] === "string") agentTools.push(entry["tool"]);
+      if (typeof entry["tool"] === "string") {
+        agentTools.push(entry["tool"]);
+        agentDecisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+      }
       input.onAction?.({ by: "assistant", ...entry });
     },
   });
@@ -1555,7 +1591,10 @@ export const startScreenCompanion = (input: {
   };
   const agentStart = async (systemPrompt: string): Promise<VisionSession> => {
     await agentMcp?.close();
-    agentMcp = await startBatonMcp({ tools: buildBatonTools(toolHost), gate: agentGate });
+    agentMcp = await startBatonMcp({
+      tools: withFailureGuard(buildBatonTools(toolHost)),
+      gate: agentGate,
+    });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
       model: settings.model,
@@ -1567,6 +1606,7 @@ export const startScreenCompanion = (input: {
       timeoutMs: OPERATOR_TURN_MS,
       gate: harnessGate,
       mcp: { url: agentMcp.url, token: agentMcp.token },
+      chrome: settings.browserChrome,
       onTool: (call) => agentTools.push(call.tool),
     });
   };
@@ -1579,6 +1619,7 @@ export const startScreenCompanion = (input: {
       beginTurn: () => {
         agentTaint.reset();
         agentTools.length = 0;
+        agentDecisions.length = 0;
         leftPointer = null;
       },
     });
@@ -1593,6 +1634,7 @@ export const startScreenCompanion = (input: {
     let firstAudioAt: number | null = null;
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
+      input.onNote?.("agent_turn_start", { said: text });
       input.onActivity?.("Thinking");
       void show("Thinking", text);
       const reply = await agentOf().say(
@@ -1607,8 +1649,10 @@ export const startScreenCompanion = (input: {
       input.onActivity?.(null);
       linger("Tessaya", reply);
       input.onNote?.("agent_turn", {
+        ok: true,
         said: text,
         reply,
+        decisions: [...agentDecisions],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
@@ -1616,6 +1660,16 @@ export const startScreenCompanion = (input: {
         route: "agent",
       });
     } catch (error) {
+      // Every turn leaves its line, a failed one too, with what the tools did before it stopped.
+      input.onNote?.("agent_turn", {
+        ok: false,
+        said: text,
+        error: error instanceof Error ? error.message : String(error),
+        totalMs: Date.now() - started,
+        tools: [...agentTools],
+        decisions: [...agentDecisions],
+        route: "agent",
+      });
       // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
       if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
       input.onNote?.("agent_fallback", {
@@ -1739,6 +1793,12 @@ export const startScreenCompanion = (input: {
   Electron.globalShortcut.register(ASK_HOTKEY, openAskBox);
 
   const stop = () => perform({ route: "control", control: "stop", source: "instant" }, 0, 0);
+  const dismissQuietly = () => {
+    hush();
+    dropOperator();
+    if (run !== null && run.mode !== "look") end();
+    void wipe();
+  };
 
   return {
     said,
@@ -1749,6 +1809,15 @@ export const startScreenCompanion = (input: {
     hush,
     dismiss,
     warm: () => {
+      // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.
+      if (!settings.browserChromeSet && chromeStatus(true).state === "ready") {
+        dropOperator();
+        save({ browserChrome: true, browserChromeSet: true });
+        linger(
+          "Tessaya",
+          "Chrome is connected, so the assistant can use it. Turn it off under Assistant if you would rather not.",
+        );
+      }
       if (settings.oneAssistant) agentOf().warm();
       warmRouter();
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
@@ -1770,6 +1839,7 @@ export const startScreenCompanion = (input: {
     volume: () => settings.volume,
     ask: windows.ask,
     stop,
+    dismissQuietly,
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },
@@ -1845,6 +1915,32 @@ export const startScreenCompanion = (input: {
         hint: "Tessaya keeps one conversation and every tool in view, and decides for itself, instead of sending each sentence to a separate stage.",
         kind: "toggle",
         on: settings.oneAssistant,
+        more: true,
+      },
+      {
+        id: "s.chrome",
+        section: "Working for you",
+        label: "Use my Chrome",
+        hint: "Lets the assistant read and use pages in your own Chrome through Claude in Chrome. Reading is routine; a submit, send, purchase, delete or settings change asks aloud, and moving money is refused. Not yet tried on this computer.",
+        kind: "toggle",
+        on: settings.browserChrome,
+      },
+      {
+        id: "s.chromeCheck",
+        section: "Working for you",
+        label: "Chrome",
+        kind: "check",
+        status: chromeStatus().state === "ready" ? "ok" : "warn",
+        detail: chromeStatus().message,
+        ...(chromeStatus().state === "ready" ? {} : { fix: "Check again" }),
+      },
+      {
+        id: "s.social",
+        section: "Working for you",
+        label: "Allow social accounts in Chrome",
+        hint: "Applies once Use my Chrome is on. Reading is routine; every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson. Off, social sites are refused.",
+        kind: "toggle",
+        on: settings.socialOn,
         more: true,
       },
       {
@@ -1935,7 +2031,15 @@ export const startScreenCompanion = (input: {
       } else if (id === "s.oneAssistant") {
         dropOperator();
         save({ oneAssistant: value === true });
-      } else if (id === "s.act") save({ actWithoutAsking: value === true });
+      } else if (id === "s.chromeCheck") {
+        chromeStatus(true);
+      } else if (id === "s.chrome") {
+        dropOperator();
+        save({ browserChrome: value === true, browserChromeSet: true });
+        if (value === true && chromeStatus(true).state !== "ready")
+          linger("Tessaya", chromeStatus().message);
+      } else if (id === "s.social") save({ socialOn: value === true });
+      else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
     dispose: () => {

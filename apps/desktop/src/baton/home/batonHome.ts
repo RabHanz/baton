@@ -187,6 +187,8 @@ export interface BatonHomeInput {
   readonly state: () => HomeState;
   readonly apply: (id: string, value: string | boolean | null) => void;
   readonly openSessions: () => void;
+  /** The window moved to this tab. */
+  readonly onTab?: (tab: string) => void;
   /** System, Light or Dark, as he chose it in Settings. */
   readonly appearance: () => Appearance;
 }
@@ -245,6 +247,28 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     return withTabs(input.state());
   });
   Electron.ipcMain.on(SESSIONS, () => input.openSessions());
+  // BATON_TEST_DIR: a PNG of the window's own page at each tab change, from inside the app; otherwise nothing.
+  let tabShots = 0;
+  Electron.ipcMain.on("baton-home:tab", (_event, tab: unknown) => {
+    if (typeof tab === "string") input.onTab?.(tab);
+    const dir = process.env["BATON_TEST_DIR"] ?? "";
+    const open = live();
+    if (dir === "" || open === null || typeof tab !== "string") return;
+    const n = (tabShots += 1);
+    setTimeout(() => {
+      if (open.isDestroyed()) return;
+      void open.webContents
+        .capturePage()
+        .then((image) => {
+          NodeFS.mkdirSync(dir, { recursive: true });
+          NodeFS.writeFileSync(
+            NodePath.join(dir, `home-${tab.replace(/[^a-z]/g, "")}-${n}.png`),
+            image.toPNG(),
+          );
+        })
+        .catch(() => undefined);
+    }, 500).unref();
+  });
 
   const boundsFile = NodePath.join(input.stateDir, "baton-window.json");
   const theme = () => resolveTheme(input.appearance(), Electron.nativeTheme.shouldUseDarkColors);
