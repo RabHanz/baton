@@ -315,7 +315,7 @@ function usage(p) {
   }
   p.appendChild(g);
 }
-let hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false;
+let hsel = null, hmenu = null, hq = '', hrows = null, hopen = new Set(), hask = null, hnote = '', htimer = null, hbusy = new Set(), hlimit = 40, hrec = false;
 function loadHistory() {
   const run = real ? ipc.invoke('baton-history:list', hq) : Promise.resolve((window.__BATON_HISTORY__ || []).filter(t => !hq || (t.raw + ' ' + (t.cleaned || '') + ' ' + t.app).toLowerCase().includes(hq.toLowerCase())));
   run.then(r => { hrows = r; render(); });
@@ -329,7 +329,7 @@ function hact(t, action) {
     hbusy.delete(t.id);
     if (action === 'delete') hrows = hrows.filter(x => x.id !== t.id);
     else if (r && r.failed) { hnote = r.failed; }
-    else if (retry && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hopen.add(t.id); hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
+    else if (retry && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hsel = t.id; hnote = action === 'retry_transcript' ? 'Done. The new words sit beside the old ones under Compare.' : (r.status === 'ok' ? 'Cleaned again. Copy it from the row.' : 'Clean-up failed again. The words as heard are still here.'); }
     else if (action.indexOf('use_version') === 0 && r) { hrows = hrows.map(x => x.id === t.id ? r : x); hnote = 'Now using that version.'; }
     else if (action.indexOf('copy') === 0) { hnote = 'Copied.'; }
     render();
@@ -357,14 +357,18 @@ function historyPage(p) {
   if (hnote) { const n = $('p', 'hint', hnote); n.style.margin = '0 0 10px'; p.appendChild(n); }
   if (hrows === null) { p.appendChild($('div', 'empty', 'Loading.')); recordings(p); return; }
   if (!hrows.length) { p.appendChild($('div', 'empty', hq ? 'Nothing matches.' : 'Nothing yet. Things you say to Tessaya and dictate show up here.')); recordings(p); return; }
+  const stat = (n, l) => { const e = $('div', 'sum'); e.append($('b', null, String(n)), $('span', null, l)); return e; };
+  const strip = $('div', 'strip'); strip.append(stat(hrows.length, 'entries'), stat(hrows.filter(t => t.kind === 'spoken').length, 'spoken'), stat(hrows.filter(t => t.kind !== 'spoken').length, 'dictated'), stat(hrows.filter(t => t.audio).length, 'with a recording')); p.appendChild(strip);
+  const split = $('div', 'hsplit'), listCol = $('div', 'hlist'), detail = $('aside', 'hdetail'); split.append(listCol, detail); p.appendChild(split);
+  let selectedBody = null;
   const shownRows = hrows.slice(0, hlimit);
   const perDay = {}; for (const t of shownRows) { const d = dayLabel(t.at); perDay[d] = (perDay[d] || 0) + 1; }
   let day = null, g = null;
   for (const t of shownRows) {
-    const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); p.appendChild(dh); g = $('div', 'group'); p.appendChild(g); }
-    const wrap = $('div', 'hrow'); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hopen.has(t.id)));
+    const d = dayLabel(t.at); if (d !== day) { day = d; const dh = $('div', 'day'); dh.append(document.createTextNode(d), $('span', 'daycount', ' · ' + perDay[d])); listCol.appendChild(dh); g = $('div', 'group'); listCol.appendChild(g); }
+    const wrap = $('div', 'hrow' + (hsel === t.id ? ' sel' : '')); const line = $('div', 'hline'); const head = $('button', 'hhead'); head.setAttribute('aria-expanded', String(hsel === t.id));
     const text = t.kind === 'spoken' ? t.raw : (t.cleaned || t.raw); head.append($('time', null, clock(t.at)), $('span', 'htext', text.length > 170 ? text.slice(0, 170) + '…' : text), $('span', 'badge ' + (t.status === 'ok' ? 'added' : t.status === 'none' ? 'learned' : 'warnb'), t.kind === 'spoken' ? 'Spoken' : STATUS[t.status] || t.status));
-    head.onclick = () => { if (hopen.has(t.id)) hopen.delete(t.id); else hopen.add(t.id); render(); };
+    head.onclick = () => { hsel = hsel === t.id ? null : t.id; render(); };
     const cp = $('button', 'hcopy', 'Copy'); cp.setAttribute('aria-label', t.kind === 'spoken' && t.cleaned ? 'Copy the reply' : 'Copy this transcript'); cp.onclick = () => hact(t, 'copy');
     line.append(head, cp);
     if (t.menu && t.menu.length) {
@@ -377,7 +381,7 @@ function historyPage(p) {
           const b = $('button', 'hitem' + (it.enabled ? '' : ' off'), hbusy.has(t.id) && it.id === 'retry_transcript' ? 'Retrying' : it.label); b.setAttribute('role', 'menuitem');
           if (it.note) b.title = it.note;
           b.onclick = (e) => { e.stopPropagation(); hmenu = null;
-            if (it.id === 'delete') { hask = t.id; hopen.add(t.id); render(); }
+            if (it.id === 'delete') { hask = t.id; hsel = t.id; render(); }
             else if (!it.enabled) { hnote = it.note || 'Not available right now.'; render(); }
             else hact(t, it.id); };
           m.appendChild(b);
@@ -387,7 +391,7 @@ function historyPage(p) {
       line.appendChild(mw);
     }
     wrap.appendChild(line);
-    if (hopen.has(t.id)) {
+    if (hsel === t.id) {
       const body = $('div', 'hbody');
       const blk = (l, x) => { const b = $('div', 'hblock'); b.append($('div', 'hint', l), $('div', 'hpre', x)); return b; };
       if (t.kind === 'spoken') { body.appendChild(blk('You said', t.raw)); if (t.cleaned) body.appendChild(blk('Tessaya replied', t.cleaned)); }
@@ -417,11 +421,12 @@ function historyPage(p) {
       if ((t.menu || []).some(i => i.id === 'retry')) acts.appendChild(mk(hbusy.has(t.id) ? 'Cleaning' : 'Retry clean-up', () => hact(t, 'retry'), 'primary'));
       if (hask === t.id) { acts.append($('span', 'hint', 'Delete this for good?'), mk('Delete', () => hact(t, 'delete'), 'primary'), mk('Keep', () => { hask = null; render(); })); }
       else acts.appendChild(mk('Delete', () => { hask = t.id; render(); }));
-      body.appendChild(acts); wrap.appendChild(body);
+      body.appendChild(acts); selectedBody = body;
     }
     g.appendChild(wrap);
   }
-  if (hrows.length > hlimit) { const more = $('button', 'btn quiet', 'Show older (' + (hrows.length - hlimit) + ')'); more.style.marginTop = '12px'; more.onclick = () => { hlimit += 40; render(); }; p.appendChild(more); }
+  detail.appendChild(selectedBody || $('div', 'hint', 'Pick an entry to read it, compare retries, copy it or delete it.'));
+  if (hrows.length > hlimit) { const more = $('button', 'btn quiet', 'Show older (' + (hrows.length - hlimit) + ')'); more.style.marginTop = '12px'; more.onclick = () => { hlimit += 40; render(); }; listCol.appendChild(more); }
   recordings(p);
 }
 function tabPage(p) {
@@ -432,7 +437,13 @@ function tabPage(p) {
   const items = tabControls(cur);
   const EMPTY = { sessions: 'No sessions yet. Start one in Claude Code or T3 and it appears here.', approvals: 'Nothing is waiting for your yes.', jobs: 'No jobs yet. Ask Tessaya to take on a long piece of work and it appears here.', memory: 'Nothing remembered yet. Say \u201cremember that\u2026\u201d and it is kept here.', tools: 'No plugins, skills or servers found yet.' };
   if (!items.length && EMPTY[cur]) p.appendChild($('div', 'empty', EMPTY[cur]));
-  for (const s of sections(items)) { if (sections(items).length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
+  const LIST = ['sessions', 'approvals', 'jobs', 'memory', 'tools'], secs = sections(items);
+  if (LIST.includes(cur) && items.length) {
+    const strip = $('div', 'strip'); for (const s of secs.slice(0, 4)) { const e = $('div', 'sum'); e.append($('b', null, String(s.items.length)), $('span', null, s.name.toLowerCase())); strip.appendChild(e); } p.appendChild(strip);
+  }
+  if (LIST.includes(cur) && secs.length > 1) {
+    const grid = $('div', 'cols2'); for (const s of secs) { const col = $('section', 'col'); col.append($('h2', null, s.name), group(s.name, s.items)); grid.appendChild(col); } p.appendChild(grid);
+  } else for (const s of secs) { if (secs.length > 1 || s.name !== intro[0]) p.appendChild($('h2', null, s.name)); p.appendChild(group(s.name, s.items)); }
   if (cur === 'dictation') { vocabulary(p); keys(p, ['dictation']); }
   if (cur === 'voice') keys(p, ['voice']);
   if (cur === 'screen') {
@@ -568,7 +579,7 @@ function render(state) {
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(ac);
   });
-  const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
+  const page = document.getElementById('page'); const pageClass = ['home', 'history', 'sessions', 'approvals', 'jobs', 'memory', 'tools'].includes(cur) ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal();
   if (keep && keep.indexOf('in-') === 0) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }

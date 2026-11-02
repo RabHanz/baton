@@ -84,7 +84,7 @@ nav{display:flex;flex-direction:column;gap:2px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
 .dot[data-tone=good]{background:var(--accent)}.dot[data-tone=warn]{background:var(--warn)}.dot[data-tone=off]{background:var(--bad)}
 #panel{flex:1;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--panel-shadow);overflow:auto}
-#page.wide{max-width:1100px}
+#page.wide{max-width:1180px}
 #page{max-width:900px;margin:0 auto;padding:34px 36px 56px;animation:rise .28s var(--ease) both}
 @keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
@@ -291,4 +291,31 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .sidecard{border-radius:6px}
 .log time,.hrow time{font-variant-numeric:tabular-nums}
 :focus-visible{outline-color:var(--focus)}
+
+/* Woad, used on purpose: the active page, primary actions, links, numerals, tags and what is on. Ink stays for text. */
+.nav[aria-current=page]{color:var(--accent-text)}
+.nav[aria-current=page] svg{stroke:var(--accent)}
+.btn.primary,.pill[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover,.pill[aria-pressed=true]:hover{filter:brightness(1.08)}
+a,.reveal,.moreBtn:hover,.hitem:hover{color:var(--accent-text)}
+.stat b,.sum b{color:var(--accent-text)}
+.state:has(.dot[data-tone=good]){color:var(--accent-text);border-color:var(--accent-edge)}
+.log .tag,.badge.learned{color:var(--accent-text)}
+.seg button[aria-pressed=true]{background:var(--accent-wash);color:var(--accent-text)}
+#bar{background:var(--accent)}
+.pick.on .label{color:var(--accent-text)}
+/* Wide pages: a summary strip, two columns, and a detail panel beside the list. */
+.strip{display:flex;flex-wrap:wrap;gap:6px 36px;margin:4px 0 26px;padding:14px 2px;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line)}
+.sum{display:flex;align-items:baseline;gap:8px}
+.sum b{font:400 30px/1 var(--serif);font-variant-numeric:tabular-nums}
+.sum span{color:var(--soft);font-size:13px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 44px;align-items:start}
+.cols2 .col h2{margin-top:0}
+@media (max-width:900px){.cols2{grid-template-columns:minmax(0,1fr)}}
+.hsplit{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:40px;align-items:start}
+.hlist .day:first-child{margin-top:0}
+.hdetail{position:sticky;top:0;padding:18px 20px;border:1px solid var(--line);border-radius:6px;background:var(--sunk);min-height:160px}
+.hdetail .hbody{padding:0;border:0;margin:0}
+.hrow.sel{background:var(--accent-wash)}
+@media (max-width:980px){.hsplit{grid-template-columns:minmax(0,1fr)}.hdetail{position:static}}
 `;
