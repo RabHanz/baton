@@ -21,7 +21,7 @@ const serve = (path: string) =>
       Effect.sync(() =>
         HttpRouter.toWebHandler(
           routes.pipe(
-            Layer.provide(Layer.succeed(BatonRuntime, Context.empty())),
+            Layer.provide(Layer.succeed(BatonRuntime, Context.empty() as never)),
             Layer.provide(
               Layer.succeed(ServerConfig.ServerConfig, {
                 dbPath: "/nowhere/state.sqlite",
