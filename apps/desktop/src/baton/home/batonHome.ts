@@ -108,6 +108,8 @@ export type HomeControl =
       readonly pinned: boolean;
       /** A proposal waiting for his yes. */
       readonly held: boolean;
+      /** The plain answer to "why do you remember this". */
+      readonly why: string;
     })
   /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
   | (HomeControlBase & {
