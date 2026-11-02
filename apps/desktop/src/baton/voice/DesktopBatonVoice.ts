@@ -237,6 +237,8 @@ import { windowsHello } from "../vault/hello.ts";
 import { createPhoneRelay, nextPollMs } from "../phone/phoneRelay.ts";
 import { createNightlyCache, runGh } from "../presence/nightlyRead.ts";
 import { createSyncExtraCache } from "../presence/syncRead.ts";
+import { cloudLoginsFile, readCloudLogins } from "../presence/cloudLoginsRead.ts";
+import { cloudLoginsNeeds, cloudLoginsRow } from "@t3tools/baton-shared/cloudLogins";
 import { syncCapability, syncNeeds, type SyncState } from "@t3tools/baton-shared/syncState";
 import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
@@ -1665,10 +1667,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         jobs: jobsCache ?? [],
         sessions: input.sessions?.rows() ?? [],
         findings: await watchFindings(),
-        extra: [
-          ...needsFromCommitments(commitments.list(), Date.now()),
-          ...syncNeeds(syncNow, Date.now()),
-        ],
+        extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now()), ...cloudLoginsNeeds(cloudNow(), Date.now())],
         config: needsConfig(),
         external: externalNeeds,
         now: Date.now(),
@@ -1753,10 +1752,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
-          extra: [
-            ...needsFromCommitments(commitments.list(), Date.now()),
-            ...syncNeeds(syncNow, Date.now()),
-          ],
+          extra: [...needsFromCommitments(commitments.list(), Date.now()), ...syncNeeds(syncNow, Date.now()), ...cloudLoginsNeeds(cloudNow(), Date.now())],
           config: needsConfig(),
           external: externalNeeds,
           now: Date.now(),
@@ -3104,6 +3100,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const readLastNightly = createNightlyCache("RabHanz/baton");
   const readSyncExtra = createSyncExtraCache("RabHanz/baton", input.env["BATON_REPO_DIR"], runGh);
   /** Last read of the upstream sync; the rows below use it, and a failed read leaves it unknown. */
+  const cloudNow = () => readCloudLogins(cloudLoginsFile(input.env));
   let syncNow: SyncState = { localBehind: null, status: null, pr: null };
   const refreshNow = async (): Promise<void> => {
     const at = Date.now();
@@ -3116,7 +3113,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       jobs,
       sessions: input.sessions?.rows() ?? [],
       findings: windowUp ? await watchFindings() : [],
-      extra: [...needsFromCommitments(commitments.list(), at), ...syncNeeds(syncNow, at), ...cloudNeeds(cloud.view().requests)],
+      extra: [
+        ...needsFromCommitments(commitments.list(), at),
+        ...syncNeeds(syncNow, at),
+        ...cloudLoginsNeeds(cloudNow(), at),
+        ...cloudNeeds(cloud.view().requests),
+      ],
       config: needsConfig(),
       external: externalNeeds,
       now: at,
@@ -3160,6 +3162,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         }),
         nightlyRow(nightly, Date.now()),
         syncCapability(syncNow, Date.now()),
+        cloudLoginsRow(cloudNow(), Date.now()),
       ],
       weaves:
         (

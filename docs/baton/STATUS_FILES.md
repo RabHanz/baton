@@ -38,3 +38,23 @@ A manager can read it: a `running: true` file older than two minutes means Tessa
 On the next start, jobs the last heartbeat saw running that are neither running nor finished are
 listed on the Now page as interrupted, each with a Continue button. Messages between sessions and
 commitments are stored durably and resume by themselves.
+
+## Claude cloud login health
+
+`~/.t3/baton/cloud-logins.json` is written daily by `scripts/baton/cloud-logins.sh`:
+`{"checkedAt": <epoch seconds>, "accounts": [{"account", "state", "accessTokenExpiresInDays"}]}` where
+`state` is `ok`, `renew-soon` (under three days left), `expired` or `not-logged-in`. Accounts are the
+folder names under `~/.claude-cloud` (override `BATON_CLOUD_DIR`); no address is written anywhere.
+
+Install on the box that holds the cloud logins:
+
+```
+install -m 755 scripts/baton/cloud-logins.sh ~/.local/bin/baton-cloud-logins
+cp scripts/baton/systemd/baton-cloud-logins.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now baton-cloud-logins.timer
+```
+
+The Now page reads the file (read only; `BATON_CLOUD_LOGINS_FILE` overrides the place): a "Claude cloud
+logins" row under what works, "unknown" when there is no file, and a needs-you row naming each account
+that is `renew-soon` or `expired` ("Renew the cloud login for <account>: it needs you at a browser").
+These logins are cloud-only. Tessaya and T3 never use them as a provider.
