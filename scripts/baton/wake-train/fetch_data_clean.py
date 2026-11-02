@@ -125,9 +125,19 @@ np.save("clean_negative_features.npy", np.concatenate([
 ]))
 print("negative features done", flush=True)
 dev = parquet_audio(["clean/validation/0000.parquet", "clean/test/0000.parquet"])
-# float32: the trainer feeds validation features straight to its float32 model (float16 stops the run at 75 %).
+# The trainer wants the validation set as one run of 96-dimensional frames, (frames, 96) in float32, and
+# cuts its own windows: it is not the (windows, 16, 96) the negatives are.
+def to_frames(clips, batch=64):
+    feats = AudioFeatures(inference_framework="onnx", device="cpu")
+    out = []
+    for i in range(0, len(clips), batch):
+        for item in feats.embed_clips(clips[i : i + batch], batch_size=batch):
+            out.append(item)
+    return np.concatenate(out).astype(np.float32)
+
+
 np.save("clean_validation_features.npy", np.concatenate([
-    to_features(clips_from(dev, 4)),
-    to_features(clips_from(sorted(held_noise.glob("*.wav")), 2)),
-]).astype(np.float32))
+    to_frames(clips_from(dev, 4)),
+    to_frames(clips_from(sorted(held_noise.glob("*.wav")), 2)),
+]))
 print("validation features done", flush=True)
