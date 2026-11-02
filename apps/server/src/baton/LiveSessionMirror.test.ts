@@ -10,6 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   endedMirrorThreads,
   liveMedia,
+  takeTouched,
   liveThreadId,
   liveThreadTitle,
   mirrorTitle,
@@ -256,5 +257,15 @@ describe("a live message's media", () => {
     expect(liveMedia(base).text).toBe("Here you go.");
     expect(liveMedia({ ...base, touched: [shot] }).text).toMatch(/!\[screen\.png\]/);
     NodeFS.rmSync(elsewhere, { recursive: true, force: true });
+  });
+});
+
+describe("media shows once", () => {
+  it("hands a turn's touched files to the next reply only, never to the ones after", () => {
+    const follow = { touched: new Set(["/w/shot.png"]) };
+    expect(takeTouched(follow)).toEqual(["/w/shot.png"]);
+    expect(takeTouched(follow)).toEqual([]);
+    follow.touched.add("/w/other.png");
+    expect(takeTouched(follow)).toEqual(["/w/other.png"]);
   });
 });
