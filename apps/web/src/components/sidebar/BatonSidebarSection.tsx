@@ -255,6 +255,7 @@ export function BatonSidebarSection(props: {
               text: text("text"),
               via: args["via"] === "text" ? "text" : "voice",
               widens: args["widens"] === true,
+              ...(args["note"] === true ? { note: true } : {}),
             },
           }),
         );
