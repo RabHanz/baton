@@ -1184,3 +1184,5 @@ Merged: weaving to live threads outside Herdr, the standing `retry` grant, the s
 Trust page and the first-run guide (#257); unattended playbooks, all off by default (#259); the employee
 spine regression test (#261); backup and restore (#263); heartbeat and interrupted-job recovery (#264).
 All unit tested or tested in CI; none seen on the laptop yet. Details and gaps: `GAP_AUDIT_2026-11-02.md` section 6b.
+
+Also merged 2026-11-03: Trust and activity by voice (#267), Do not disturb and snooze (#269), Ctrl+K command palette (#270), Help page (#271). Rows in `GAP_AUDIT_2026-11-02.md` section 6b.
