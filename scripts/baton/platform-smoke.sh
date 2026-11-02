@@ -38,7 +38,7 @@ esac
 if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
   echo "--- sidecar alone: $sidecar ---"
   "$sidecar" devices 2>&1 | head -5; echo "devices exit=${PIPESTATUS[0]}"
-  printf '{"cmd":"devices"}\n' | timeout 15 "$sidecar" serve 2>&1 | head -8; echo "serve exit=${PIPESTATUS[1]}"
+  printf '{"cmd":"devices"}\n' | ( "$sidecar" serve 2>&1 & p=$!; sleep 8; kill $p 2>/dev/null ) | head -8
 fi
 export BATON_TEST_WAV="$out/wav/list.txt" BATON_TEST_DIR="$out/shots"
 "${run[@]}" > "$out/app.log" 2>&1 &
@@ -72,6 +72,11 @@ grep -q 'main window created' "$out/app.log" 2>/dev/null && opened=1
 steps=$( [ -f "$log" ] && grep -o '"step":"[a-z-]*"' "$log" | sed 's/"step":"//;s/"//' | tr '\n' ' ' )
 if ! kill -0 "$pid" 2>/dev/null; then echo "NOTE the app process ($pid) had exited before the end"; fi
 if [ "$platform" = macos ]; then
+  echo "--- signature of the app and the sidecar ---"
+  codesign --verify --deep --strict --verbose=2 "$HOME/Tessaya.app" 2>&1 | tail -6
+  codesign -dv "$sidecar" 2>&1 | tail -4
+  echo "--- why the kernel killed it (if it did) ---"
+  log show --style compact --last 10m --predicate '(process == "kernel" OR process == "amfid" OR process == "syspolicyd") AND (eventMessage CONTAINS[c] "Tessaya" OR eventMessage CONTAINS[c] "baton-dictation" OR eventMessage CONTAINS[c] "Code Signature" OR eventMessage CONTAINS[c] "AMFI")' 2>&1 | tail -25
   # A native crash leaves no line in our logs, but macOS writes a report.
   mkdir -p "$out/crash"; cp /Users/runner/Library/Logs/DiagnosticReports/* "$out/crash/" 2>/dev/null || true
   ls "$out/crash" | head -5 | sed 's/^/crash report: /'
