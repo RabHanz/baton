@@ -194,7 +194,7 @@ import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
-import { FRESH_WAKE_WORDS, WAKE_MODEL_PENDING, wakeWordsFor } from "./wakeDefaults.ts";
+import { FRESH_WAKE_WORDS, modelShipped, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
@@ -479,9 +479,21 @@ const LOCATE_MAX_DIP = 160;
 const readSettings = (path: string): VoiceSettings => {
   try {
     const saved: Record<string, unknown> = JSON.parse(NodeFS.readFileSync(path, "utf8"));
+    const wakeWords = wakeWordsFor(saved);
+    // A saved word whose model is not shipped is switched off in the file too, not only in memory.
+    if (
+      JSON.stringify(wakeWords) !== JSON.stringify(saved["wakeWords"]) &&
+      Array.isArray(saved["wakeWords"])
+    ) {
+      try {
+        NodeFS.writeFileSync(path, JSON.stringify({ ...saved, wakeWords }, null, 2));
+      } catch {
+        // The file is the user's; if it cannot be written the memory copy is still right.
+      }
+    }
     return {
       ...DEFAULT_SETTINGS,
-      wakeWords: wakeWordsFor(saved),
+      wakeWords,
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       appearance: parseAppearance(saved["appearance"]),
@@ -2978,7 +2990,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         label: `Wake word: ${wake.word}`,
         kind: "toggle" as const,
         on: wake.enabled,
-        ...(wake.word === WAKE_MODEL_PENDING
+        ...(!modelShipped(wake.word)
           ? { disabled: true, hint: "Coming: model training. It cannot wake yet." }
           : {}),
       })),

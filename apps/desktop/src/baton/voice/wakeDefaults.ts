@@ -29,17 +29,21 @@ const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   ONYX,
 ];
 
-/** Tessaya has no trained model yet, so it can never be on: it could not wake anything. Drop this when the model ships. */
-export const WAKE_MODEL_PENDING = "Tessaya";
-const withoutPending = (words: ReadonlyArray<WakeWordSetting>): ReadonlyArray<WakeWordSetting> =>
-  words.some((w) => w.word === WAKE_MODEL_PENDING && w.enabled)
-    ? words.map((w) => (w.word === WAKE_MODEL_PENDING ? { ...w, enabled: false } : w))
+/** Which wake words have a model in the app. A word that is not here is shipped. Flip Tessaya the day its model is wired. */
+export const MODEL_SHIPPED: Readonly<Record<string, boolean>> = { Tessaya: false };
+export const modelShipped = (word: string): boolean => MODEL_SHIPPED[word] !== false;
+/** A word with no model can never be on: it could not wake anything. Same list back when nothing changes. */
+export const withShippedModels = (
+  words: ReadonlyArray<WakeWordSetting>,
+): ReadonlyArray<WakeWordSetting> =>
+  words.some((w) => w.enabled && !modelShipped(w.word))
+    ? words.map((w) => (w.enabled && !modelShipped(w.word) ? { ...w, enabled: false } : w))
     : words;
 
 /** `saved` is the parsed settings file, or null when there is none. */
 export const wakeWordsFor = (saved: unknown): ReadonlyArray<WakeWordSetting> => {
   if (typeof saved !== "object" || saved === null) return FRESH_WAKE_WORDS;
-  return withoutPending(
+  return withShippedModels(
     Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
       ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
       : LEGACY_WAKE_WORDS,
