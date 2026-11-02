@@ -154,8 +154,6 @@ export const approvalCardControls = (v: CloudView): ReadonlyArray<HomeControl> =
         return [
           head,
           ...v.choices
-            // A request held by a shared computer can only be answered there; a local one by any ready assistant.
-            .filter((c) => v.providers.find((p) => p.id === r.provider)?.approval !== "remote" || c.id === r.provider)
             .map((c): HomeControl => ({
             id: ids("p", c.id),
             section,

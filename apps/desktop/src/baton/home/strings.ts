@@ -161,7 +161,7 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "cloud.ssh.user": "Shared computer: user",
     "cloud.ssh.machineKey": "Shared computer: key file for sending tasks",
     "cloud.ssh.approverKey": "Shared computer: key file for approving",
-    "cloud.ssh.hint": "A path to a key file. The key itself is never stored here.",
+    "cloud.ssh.hint": "Use the shared computer's public address, not a private-network one, or its rules are skipped. A key is a file path; the key itself is never stored here.",
     "cloud.section.assistants": "Assistants",
     "cloud.signin": "To sign in, run: {command}",
     "cloud.section.requests": "My requests",

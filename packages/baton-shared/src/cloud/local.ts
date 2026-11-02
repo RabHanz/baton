@@ -61,7 +61,7 @@ export const localProvider = (h: LocalHarness, store: PendingStore, briefs: Brie
         provider: h.id, id: store.nextId(), state: "awaiting-director", task: brief.split("\n")[0]!.slice(0, 140),
         repo: input.repo, branch: input.branch, caller: "tessaya", label: input.label ?? null, account: null,
         sessionLink: null, result: null, expectedUsage: input.expectedUsage ?? null, weeklyBefore: null,
-        weeklyAfter: null, pointsUsed: null, fromWeb: input.fromWeb === true,
+        weeklyAfter: null, pointsUsed: null, fromWeb: input.fromWeb === true, error: null, overCap: false,
       };
       briefs.put(request.id, brief);
       store.save([...store.load(), request]);

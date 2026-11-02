@@ -118,7 +118,7 @@ describe("cloud tasks in the desktop", () => {
     for (const jargon of ["SSH", "forced command", "tailnet", "Tailscale", "key file"]) expect(visible.includes(jargon)).toBe(false);
     expect(ids(rows)).not.toContain("cl.set.sshHost");
     expect(ids(cloudPageControls(cloud.view(), { ...DEFAULT_CLOUD, on: true, transport: "ssh" }))).toContain("cl.set.sshHost");
-    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual(["cl.set.on", "cl.off"]);
+    expect(ids(cloudPageControls(cloud.view(), DEFAULT_CLOUD))).toEqual(["cl.set.on", "setup.cloud.github", "setup.cloud.always", "cl.off"]);
   });
 
   it("shows an assistant that reports no usage as unknown, never zero", async () => {
