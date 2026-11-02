@@ -131,7 +131,18 @@ export const BatonJob = Schema.Struct({
   phase: BatonJobPhase,
   limitReached: Schema.NullOr(Schema.Literals(["time", "turns", "spend"])),
   /** What the job has used so far, against its caps. Absent from an older server. */
-  usage: Schema.optionalKey(Schema.Struct({ minutes: Schema.Number, turns: Schema.Number })),
+  usage: Schema.optionalKey(
+    Schema.Struct({
+      minutes: Schema.Number,
+      turns: Schema.Number,
+      /** From the worker's own transcript; absent when no transcript could be read. */
+      tokens: Schema.optionalKey(Schema.Number),
+      /** Null when nothing could be priced. */
+      dollars: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+      /** The figures are a floor: a transcript or a price was missing. */
+      partial: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   terms: BatonJobTerms,
 });
 export type BatonJob = typeof BatonJob.Type;

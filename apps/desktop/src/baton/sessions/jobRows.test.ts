@@ -55,6 +55,14 @@ describe("what a job has used", () => {
       terms: { limits: { wallClockMinutes: 120, workerTurns: 40 } },
     } as unknown as BatonJob;
     expect(usageLine(j)).toBe("Used 42 of 120 min and 11 of 40 turns.");
+    const priced = {
+      ...j,
+      usage: { minutes: 1, turns: 2, tokens: 12_345, dollars: 0.5, partial: true },
+      terms: { limits: { wallClockMinutes: 120, workerTurns: 40, dollars: 5 } },
+    } as unknown as BatonJob;
+    expect(usageLine(priced)).toBe(
+      "Used 1 of 120 min and 2 of 40 turns. About $0.50 of $5 or more, 12,345 tokens.",
+    );
     expect(usageLine({ ...j, phase: "awaiting_agreement" } as BatonJob)).toBe("");
     expect(usageLine({ ...j, usage: undefined } as unknown as BatonJob)).toBe("");
   });
