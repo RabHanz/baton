@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { herdrPaneRef, parseClaudeSessionDescriptor } from "./ClaudeLiveSessions.ts";
+import {
+  herdrPaneRef,
+  isTessayaOwnFolder,
+  parseClaudeSessionDescriptor,
+} from "./ClaudeLiveSessions.ts";
 
 const descriptor = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
@@ -54,5 +58,15 @@ describe("live Claude Code sessions from their own descriptors (D68)", () => {
       ),
     ).toBe("fab-api~w1:p1");
     expect(herdrPaneRef(new Map())).toBeNull();
+  });
+});
+
+describe("Tessaya's own helper sessions", () => {
+  it("are told apart from the user's projects by their folder under the app's data directory", () => {
+    expect(isTessayaOwnFolder("C:\\Users\\rabee\\.t3\\userdata")).toBe(true);
+    expect(isTessayaOwnFolder("/home/dev/.t3/userdata/screen")).toBe(true);
+    expect(isTessayaOwnFolder("D:\\Downloads\\Development\\3D-Printer")).toBe(false);
+    expect(isTessayaOwnFolder("/home/dev/.t3x/work")).toBe(false);
+    expect(isTessayaOwnFolder(null)).toBe(false);
   });
 });

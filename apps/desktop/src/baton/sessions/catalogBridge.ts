@@ -52,6 +52,16 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
   return rows;
 };
 
+/** The server's plain reason from a failed answer's JSON, or null. */
+export const reasonOf = (json: string): string | null => {
+  try {
+    const detail = (JSON.parse(json) as { detail?: unknown }).detail;
+    return typeof detail === "string" && detail !== "" ? detail : null;
+  } catch {
+    return json.trim() === "" ? null : json.slice(0, 200);
+  }
+};
+
 export const createBridgeCatalogService = (input: {
   readonly bridge: SessionsBridge;
   readonly openMainWindow: () => void;
@@ -77,7 +87,9 @@ export const createBridgeCatalogService = (input: {
         },
         RESUME_WAIT_MS,
       );
-      if (answer === null || !answer.ok) throw new Error("not resumed");
+      if (answer === null)
+        throw new Error("The sessions view did not answer. Open T3 and try again.");
+      if (!answer.ok) throw new Error(reasonOf(answer.detail) ?? "not resumed");
       // "resuming" means the server is still bringing it back: watch the list until it is running.
       let state: unknown;
       try {
@@ -106,7 +118,10 @@ export const createBridgeCatalogService = (input: {
         },
         RESUME_WAIT_MS,
       );
-      if (answer === null || !answer.ok) throw new Error("not started");
+      if (answer === null)
+        throw new Error("The sessions view did not answer. Open T3 and try again.");
+      if (!answer.ok)
+        throw new Error(reasonOf(answer.detail) ?? "That session could not be started there.");
       // A machine with no Herdr starts a thread: show it.
       try {
         const threadId = (JSON.parse(answer.detail) as { threadId?: unknown }).threadId;

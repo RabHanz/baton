@@ -192,6 +192,16 @@ button.sname:hover{text-decoration:underline}
 
 .vocab{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}
 .vocab input{flex:1}
+.newses{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--quiet);margin:6px 0 10px}
+.nstitle{grid-column:1/-1;font:600 14px var(--sans);color:var(--ink)}
+.nsfield{display:flex;flex-direction:column;gap:5px;min-width:0}
+.nsfield:nth-of-type(2),.nsfield:nth-of-type(5),.nsearlier,.newses .btn.primary{grid-column:1/-1}
+.nsrow{display:flex;gap:8px;min-width:0}.nsrow input{flex:1 1 auto;min-width:16rem}.nsrow select{flex:0 1 11rem;min-width:0}
+.newses input,.newses select,.newses textarea{box-sizing:border-box;height:36px;padding:7px 10px;border-radius:9px;border:1px solid color-mix(in srgb,var(--ink) 24%,transparent);background:transparent;color:var(--ink);font:inherit;font-size:13px;width:100%}
+.newses textarea{height:auto;min-height:36px;max-height:160px;resize:none;line-height:20px}
+.newses input:focus-visible,.newses select:focus-visible,.newses textarea:focus-visible{outline:2px solid var(--blue-soft,currentColor);outline-offset:1px}
+.nsearlier{display:flex;align-items:center;gap:10px}.nsearlier:empty{display:none}
+.newses .btn.primary{justify-self:start}
 .entry{display:grid;grid-template-columns:minmax(0,1.1fr) 24px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 18px;border-top:1px solid var(--line)}
 .entry .arrow{color:var(--faint);text-align:center}
 .badge{display:inline-block;font:600 11px var(--sans);border-radius:6px;padding:0 7px;margin-right:4px;border:1px solid var(--line-strong);color:var(--soft);background:var(--panel)}
