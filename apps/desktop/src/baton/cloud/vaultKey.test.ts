@@ -22,7 +22,7 @@ describe("a key kept in the vault", () => {
     const used = await useVaultKey("approver", "Approve a cloud task", p);
     if (!used.ok) throw new Error(used.error);
     expect(NodeFS.readFileSync(used.path, "utf8")).toBe(`${KEY}\n`);
-    if (NodeOS.platform() !== "win32") expect(NodeFS.statSync(used.path).mode & 0o077).toBe(0);
+    if (used.path.startsWith("/")) expect(NodeFS.statSync(used.path).mode & 0o077).toBe(0);
     used.done();
     expect(NodeFS.existsSync(used.path)).toBe(false);
   });
