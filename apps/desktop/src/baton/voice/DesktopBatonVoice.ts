@@ -185,6 +185,14 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
+import {
+  CONTINUE_TEXT,
+  createRecoveryFiles,
+  findInterrupted,
+  mergeMarks,
+  stillInterrupted,
+  type Interrupted,
+} from "../lifecycle/recovery.ts";
 import { createPlaybookStore, PLAYBOOKS, runPlaybooks, type PlaybookId } from "../presence/playbooks.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
