@@ -83,6 +83,11 @@ import { insightControls } from "../writing/insightRows.ts";
 import { previewOf, searchNotes } from "@t3tools/baton-shared/scratchpad";
 import { createScratchStore } from "../writing/scratchStore.ts";
 import { SCRATCH_HOTKEY, scratchAction, scratchControls } from "../writing/scratchRows.ts";
+import {
+  exportDictionaryCsv,
+  IMPORT_MAX_BYTES,
+  importDictionary,
+} from "@t3tools/baton-shared/dictionaryIO";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -1115,11 +1120,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               })(),
             )
           : sidecar === null
-          ? Promise.resolve(false)
-          : sidecar.paste(text).then(
-              () => true,
-              () => false,
-            ),
+            ? Promise.resolve(false)
+            : sidecar.paste(text).then(
+                () => true,
+                () => false,
+              ),
     },
     restored,
   );
@@ -2582,6 +2587,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...transformControls(transforms.read(), transforms.all(), transformNote),
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
+      {
+        id: "d.import",
+        section: "Vocabulary files",
+        label: "Import or export your vocabulary",
+        hint: "A file of words, one per line or heard,written, or JSON: up to 3 MB and 1,000 words. A word already there is replaced. Export saves a CSV you can import again.",
+        kind: "action",
+        button: "Import a file",
+        secondary: "Export",
+      },
       ...scratchControls(scratch.notes(), scratchQuery, scratch.hotkeyOn()),
       ...presenceControls(settings),
       ...memoryTab.controls(),
@@ -3090,6 +3104,49 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id.startsWith("q.open:")) {
       const target = homeExtra().paths.find((p) => `q.open:${p.id}` === id);
       if (target !== undefined) void Electron.shell.openPath(target.path);
+    } else if (id === "d.import") {
+      void Electron.dialog
+        .showOpenDialog({
+          properties: ["openFile"],
+          filters: [{ name: "Words", extensions: ["csv", "txt", "json"] }],
+        })
+        .then((picked) => {
+          const file = picked.filePaths[0];
+          if (picked.canceled || file === undefined) return;
+          if (NodeFS.statSync(file).size > IMPORT_MAX_BYTES) {
+            input.extras?.notice("That file is over 3 MB.");
+            return;
+          }
+          const done = importDictionary(NodeFS.readFileSync(file, "utf8"));
+          if (done.refused !== undefined) return void input.extras?.notice(done.refused);
+          for (const r of done.rows) dictionary = addEntry(dictionary, r);
+          saveDictionary(input.stateDir, dictionary);
+          input.extras?.notice(
+            `Imported ${done.rows.length} words${done.skipped > 0 ? `; ${done.skipped} lines were skipped` : ""}.`,
+          );
+          render();
+        })
+        .catch(() => undefined);
+    } else if (id === "d.import:later") {
+      void Electron.dialog
+        .showSaveDialog({
+          defaultPath: "vocabulary.csv",
+          filters: [{ name: "CSV", extensions: ["csv"] }],
+        })
+        .then((picked) => {
+          if (picked.canceled || picked.filePath === undefined) return;
+          NodeFS.writeFileSync(
+            picked.filePath,
+            exportDictionaryCsv(
+              (dictionary as ReadonlyArray<VocabEntry>).map((d) => ({
+                phrase: d.phrase,
+                replacement: d.replacement ?? null,
+              })),
+            ),
+          );
+          input.extras?.notice("Vocabulary exported.");
+        })
+        .catch(() => undefined);
     } else if (id === "d.add" && typeof value === "string") {
       try {
         const entry = JSON.parse(value) as { phrase?: unknown; replacement?: unknown };
