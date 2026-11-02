@@ -72,7 +72,10 @@ import {
   setupShouldShow,
 } from "../setup/firstRun.ts";
 import {
+  describeToday,
+  describeTrust,
   parseTrustLogs,
+  permissionFromWords,
   trustAction,
   trustControls,
   type TrustFilter,
@@ -1642,6 +1645,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "handoff") {
         await requestKept({ kind: "job", op: "handoff", args });
         return "Handed the job to that worker. The same thread continues there.";
+      }
+      if (op === "trust_show") return describeTrust(trustData(), Date.now());
+      if (op === "activity_today") return describeToday(trustData().entries, new Date());
+      if (op === "permission_off") {
+        const what = permissionFromWords(String(args["what"] ?? ""));
+        if (what === null) return "I do not know which permission that is. Ask for trust_show to see them.";
+        applyHome(`trust.revoke:${what}`, null);
+        return `Turned off: ${what}. You can turn it back on in the Trust page.`;
       }
       if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
       if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
