@@ -746,6 +746,67 @@ function syncModal() {
 function closeModal() { if (modal === 'setup') return setupFinish(); stopMeter(); modal = null; aboutSeen = false; render(); }
 function go(t) { cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
+/** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
+function paletteRank(items, q) {
+  const words = q.toLowerCase().split(' ').filter(Boolean);
+  if (!words.length) return items.slice(0, 12);
+  const scored = [];
+  for (const it of items) {
+    const hay = (it.label + ' ' + (it.hint || '')).toLowerCase(); const lab = it.label.toLowerCase();
+    if (!words.every(w => hay.indexOf(w) >= 0)) continue;
+    scored.push([words.reduce((s, w) => s + (lab.indexOf(w) === 0 ? 3 : lab.indexOf(w) >= 0 ? 2 : 1), 0) + (it.kind === 'Command' ? 0.5 : 0), it]);
+  }
+  return scored.sort((a, b) => b[0] - a[0]).slice(0, 12).map(x => x[1]);
+}
+function paletteItems() {
+  const items = [];
+  for (const [id, name] of TABS) items.push({ kind: 'Page', label: name, hint: 'Open the ' + name + ' page', run: () => { modal = null; go(id); } });
+  const on = id => { const c = find(id); return !!(c && c.on); };
+  const cmd = (label, hint, run) => items.push({ kind: 'Command', label, hint, run });
+  cmd('Start listening', 'Wake Tessaya without the wake word', () => set('q.wake', null));
+  cmd('Stop what Tessaya is saying or doing', '', () => set('q.stop', null));
+  cmd(on('v.muted') ? 'Unmute the microphone' : 'Mute the microphone', '', () => set('v.muted', !on('v.muted')));
+  cmd('Ask Tessaya', 'Type a question or a request', () => set('q.ask', null));
+  cmd('Clear the screen', 'Remove the pointer and cards', () => set('q.clear', null));
+  cmd('Open T3 sessions', '', () => real && ipc.send('baton-home:sessions'));
+  cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
+  cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
+  cmd('Run the playbooks now', 'The ones you have switched on', () => set('trust.playbooks-run', null));
+  cmd('Run the setup guide again', '', () => { const sp = (S.extra || {}).setup; if (sp) { setupStep = 0; modal = 'setup'; render(); } });
+  for (const c of S.controls) {
+    if (c.id.indexOf('trust.playbook:') === 0) cmd((c.on ? 'Turn off playbook: ' : 'Turn on playbook: ') + c.label, 'Unattended work, never sends or spends', () => set(c.id, !c.on));
+    else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });
+    else if (c.kind === 'toggle' || c.kind === 'choice' || c.kind === 'action') items.push({ kind: 'Setting', label: c.label, hint: c.hint || '', run: () => { modal = null; go(c.tab || 'settings'); } });
+  }
+  return items;
+}
+let palOpen = false, palSel = 0, palItems = [];
+function palClose() { palOpen = false; const p = document.getElementById('pal'); if (p) p.remove(); if (palReturn && palReturn.focus) { try { palReturn.focus(); } catch (_) {} } }
+let palReturn = null;
+function palDraw(list, input) {
+  list.replaceChildren();
+  palItems.forEach((it, i) => { const o = $('div', 'palopt'); o.id = 'palopt' + i; o.setAttribute('role', 'option'); o.setAttribute('aria-selected', String(i === palSel)); o.append($('span', 'palkind', it.kind), $('span', 'pallabel', it.label)); if (it.hint) o.appendChild($('span', 'palhint', it.hint)); o.onclick = () => { palClose(); it.run(); }; list.appendChild(o); });
+  if (!palItems.length) list.appendChild($('div', 'palempty', 'Nothing matches.'));
+  input.setAttribute('aria-activedescendant', palItems.length ? 'palopt' + palSel : '');
+}
+function palOpenNow() {
+  if (palOpen || !S) return; palOpen = true; palReturn = document.activeElement; palSel = 0;
+  const veil = $('div', 'palveil'); veil.id = 'pal'; veil.onclick = e => { if (e.target === veil) palClose(); };
+  const box = $('div', 'palbox'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Command palette');
+  const input = $('input', 'palin'); input.type = 'text'; input.setAttribute('role', 'combobox'); input.setAttribute('aria-expanded', 'true'); input.setAttribute('aria-controls', 'pallist'); input.setAttribute('aria-label', 'Search pages, settings and commands'); input.placeholder = 'Search pages, settings and commands';
+  const list = $('div', 'pallist'); list.id = 'pallist'; list.setAttribute('role', 'listbox');
+  const all = paletteItems(); palItems = paletteRank(all, ''); palDraw(list, input);
+  input.oninput = () => { palSel = 0; palItems = paletteRank(all, input.value); palDraw(list, input); };
+  input.onkeydown = e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); palDraw(list, input); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel - 1); palDraw(list, input); }
+    else if (e.key === 'Enter') { e.preventDefault(); const it = palItems[palSel]; if (it) { palClose(); it.run(); } }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); palClose(); }
+    else if (e.key === 'Tab') e.preventDefault();
+  };
+  box.append(input, list); veil.appendChild(box); document.body.appendChild(veil); input.focus();
+}
+addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palOpen) palClose(); else palOpenNow(); } }, true);
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
   if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.show) { setupAuto = true; modal = 'setup'; }
