@@ -173,11 +173,12 @@ export const candidateWords = (text: string): ReadonlyArray<string> => {
 export type SeenWords = Readonly<Record<string, number>>;
 
 const NAMES = new Set(
-  (
-    "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori sam tom bob jim tim dan mike steve chris nick ben will liz kate jen"
-  ).split(" "),
+  "james john robert michael william david richard joseph thomas charles daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam douglas nathan peter zachary kyle noah ethan jeremy walter christian keith roger terry austin sean gerald carl harold dylan arthur lawrence jordan jesse bryan billy bruce gabriel joe logan alan juan albert willie elijah wayne randy vincent mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty margaret sandra ashley kimberly emily donna michelle carol amanda melissa deborah stephanie dorothy rebecca sharon laura cynthia amy kathleen angela shirley anna brenda pamela emma nicole helen samantha katherine christine debra rachel carolyn janet maria olivia heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa ann sara madison frances kathryn janice jean abigail alice julia judy sophia grace denise amber doris marilyn danielle beverly isabella theresa diana natalie brittany charlotte marie kayla alexis lori sam tom bob jim tim dan mike steve chris nick ben will liz kate jen".split(
+    " ",
+  ),
 );
-const FILE_EXT = /\.(?:png|jpe?g|gif|webp|svg|pdf|docx?|xlsx?|pptx?|csv|txt|md|json|ya?ml|zip|exe|msi|dll|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|cpp|html?|css|sql|log|mp[34]|wav|mov)$/i;
+const FILE_EXT =
+  /\.(?:png|jpe?g|gif|webp|svg|pdf|docx?|xlsx?|pptx?|csv|txt|md|json|ya?ml|zip|exe|msi|dll|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|cpp|html?|css|sql|log|mp[34]|wav|mov)$/i;
 
 /** Why a word is never learned, or null when it may be: paths, URLs, code, numbers, acronyms and common names. */
 export const skipWord = (word: string): string | null => {
@@ -189,7 +190,8 @@ export const skipWord = (word: string): string | null => {
   if (/[_=(){}<>$#`@]|::|=>/.test(w)) return "code";
   if (/^[\d.,:%£$€-]+$/.test(w) || /^\d/.test(w)) return "number";
   if (/^[0-9a-f]{7,}$/i.test(w)) return "code";
-  if (w.length > 1 && w === w.toUpperCase() && /\p{L}/u.test(w) && !/\p{N}/u.test(w)) return "acronym";
+  if (w.length > 1 && w === w.toUpperCase() && /\p{L}/u.test(w) && !/\p{N}/u.test(w))
+    return "acronym";
   if (NAMES.has(w.toLowerCase())) return "common name";
   return null;
 };
@@ -207,7 +209,9 @@ export const isNever = (never: NeverList, word: string): boolean =>
 export const addNever = (never: NeverList, word: string): NeverList =>
   isNever(never, word) ? never : [...never, word];
 export const parseNever = (value: unknown): NeverList =>
-  Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+  Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string" && v.length > 0)
+    : [];
 
 export interface Learned {
   readonly seen: SeenWords;

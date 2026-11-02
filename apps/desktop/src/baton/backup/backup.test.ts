@@ -17,10 +17,15 @@ const put = (dir: string, name: string, text: string) => {
 
 describe("zip", () => {
   it("round-trips, and rejects damage", () => {
-    const zip = makeZip([{ name: "a/b.txt", data: Buffer.from("hello") }, { name: "c.json", data: Buffer.from("{}") }]);
+    const zip = makeZip([
+      { name: "a/b.txt", data: Buffer.from("hello") },
+      { name: "c.json", data: Buffer.from("{}") },
+    ]);
     const back = readZip(zip);
     expect(back).not.toBeInstanceOf(Error);
-    expect((back as Array<{ name: string; data: Buffer }>).map((e) => `${e.name}:${e.data}`)).toEqual(["a/b.txt:hello", "c.json:{}"]);
+    expect(
+      (back as Array<{ name: string; data: Buffer }>).map((e) => `${e.name}:${e.data}`),
+    ).toEqual(["a/b.txt:hello", "c.json:{}"]);
     const bad = Buffer.from(zip);
     bad[37] = bad[37]! ^ 0xff;
     expect(readZip(bad)).toBeInstanceOf(Error);
@@ -38,11 +43,22 @@ describe("backup and restore", () => {
     put(from, "operating-system/roles/legal.md", "A lawyer.");
     put(from, "vault.json", "ENCRYPTED");
     put(from, "vault-audit.ndjson", "{}");
-    put(from, "scratchpad.json", '{"notes":["key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"]}');
+    put(
+      from,
+      "scratchpad.json",
+      '{"notes":["key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"]}',
+    );
     const plan = planBackup(from, "# memory\n- tea");
     const names = plan.entries.map((e) => e.name);
     expect(names).toEqual(
-      expect.arrayContaining(["fabric-voice.json", "snippets.json", "memory/likes-tea.md", "operating-system/executive.md", "operating-system/roles/legal.md", "memory-server.md"]),
+      expect.arrayContaining([
+        "fabric-voice.json",
+        "snippets.json",
+        "memory/likes-tea.md",
+        "operating-system/executive.md",
+        "operating-system/roles/legal.md",
+        "memory-server.md",
+      ]),
     );
     expect(names.join()).not.toMatch(/vault/);
     expect(plan.skipped.map((s) => s.name)).toEqual(["scratchpad.json"]);
@@ -64,10 +80,16 @@ describe("backup and restore", () => {
       "fabric-voice.json": "replaces",
       "snippets.json": "same",
     });
-    expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json"), "utf8")).toBe('{"holdKey":"Pause"}');
+    expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json"), "utf8")).toBe(
+      '{"holdKey":"Pause"}',
+    );
     expect(applyRestore(preview, to)).toBe(1);
-    expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json"), "utf8")).toBe('{"holdKey":"F9"}');
-    expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json.bak"), "utf8")).toBe('{"holdKey":"Pause"}');
+    expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json"), "utf8")).toBe(
+      '{"holdKey":"F9"}',
+    );
+    expect(NodeFS.readFileSync(NodePath.join(to, "fabric-voice.json.bak"), "utf8")).toBe(
+      '{"holdKey":"Pause"}',
+    );
   });
 
   it("refuses any name it would not have written, so a hand-made zip cannot climb out", () => {

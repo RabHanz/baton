@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * Runs the labelled sentences (packages/baton-voice/test/fixtures/utterances.json) through the real
@@ -29,9 +30,19 @@ const rows = (
 ).filter((r) => r.assistant !== null);
 
 const workDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-intent-"));
-const base = { claudeBinary: flag("--claude", "claude"), workDir, env: process.env, platform: process.platform };
+const base = {
+  claudeBinary: flag("--claude", "claude"),
+  workDir,
+  env: process.env,
+  platform: process.platform,
+};
 const start = () =>
-  startVisionSession({ ...base, model: "haiku", systemPrompt: BRAIN_ROUTER_PROMPT, timeoutMs: 30_000 });
+  startVisionSession({
+    ...base,
+    model: "haiku",
+    systemPrompt: BRAIN_ROUTER_PROMPT,
+    timeoutMs: 30_000,
+  });
 let router = start();
 let turns = 0;
 
@@ -57,7 +68,10 @@ for (const r of rows) {
   const ok = decision.route === r.assistant;
   const t = byTag.get(r.tag) ?? { ok: 0, all: 0 };
   byTag.set(r.tag, { ok: t.ok + (ok ? 1 : 0), all: t.all + 1 });
-  if (!ok) misses.push(`"${r.say}" (${r.tag}): expected ${r.assistant}, got ${decision.route}/${decision.source}`);
+  if (!ok)
+    misses.push(
+      `"${r.say}" (${r.tag}): expected ${r.assistant}, got ${decision.route}/${decision.source}`,
+    );
 }
 router.dispose();
 NodeFS.rmSync(workDir, { recursive: true, force: true, maxRetries: 3 });

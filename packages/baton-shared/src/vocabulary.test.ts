@@ -126,20 +126,43 @@ describe("recognition bias", () => {
 describe("what is never learned", () => {
   it("skips paths, files, URLs, code, numbers, acronyms and common names, and keeps real names", () => {
     const skipped: ReadonlyArray<readonly [string, string]> = [
-      ["C:\\Users\\sam", "path"], ["src/app", "path"], ["report.pdf", "file"], ["main.ts", "file"],
-      ["https://x.dev/a", "url"], ["www.example", "url"], ["example.com", "url"], ["my_var", "code"], ["a=b", "code"],
-      ["2026", "number"], ["3.5", "number"], ["£40", "number"], ["API", "acronym"], ["NASA", "acronym"], ["Thomas", "common name"],
+      ["C:\\Users\\sam", "path"],
+      ["src/app", "path"],
+      ["report.pdf", "file"],
+      ["main.ts", "file"],
+      ["https://x.dev/a", "url"],
+      ["www.example", "url"],
+      ["example.com", "url"],
+      ["my_var", "code"],
+      ["a=b", "code"],
+      ["2026", "number"],
+      ["3.5", "number"],
+      ["£40", "number"],
+      ["API", "acronym"],
+      ["NASA", "acronym"],
+      ["Thomas", "common name"],
     ];
     for (const [word, why] of skipped) expect(skipWord(word), word).toBe(why);
-    for (const fine of ["Kowalczyk", "Zohaib", "Kubernetes", "GitHub", "Tomas"]) expect(skipWord(fine), fine).toBeNull();
+    for (const fine of ["Kowalczyk", "Zohaib", "Kubernetes", "GitHub", "Tomas"])
+      expect(skipWord(fine), fine).toBeNull();
   });
 
   it("never brings back a word he discarded, and reports what it added", () => {
     let never = addNever([], "Kowalczyk");
     expect(isNever(never, "kowalczyk")).toBe(true);
-    let state = { seen: {} as Record<string, number>, entries: [] as ReturnType<typeof parseVocabulary> };
+    let state = {
+      seen: {} as Record<string, number>,
+      entries: [] as ReturnType<typeof parseVocabulary>,
+    };
     for (let i = 0; i < 4; i += 1) {
-      const next = observeWording(state.seen, state.entries, "We met Kowalczyk and Zohaib today.", NOW, [], never);
+      const next = observeWording(
+        state.seen,
+        state.entries,
+        "We met Kowalczyk and Zohaib today.",
+        NOW,
+        [],
+        never,
+      );
       state = { seen: next.seen, entries: next.entries };
     }
     expect(state.entries.map((e) => e.phrase)).toEqual(["Zohaib"]);
@@ -153,7 +176,13 @@ describe("what is never learned", () => {
     }
     expect(added).toEqual(["Kowalczyk"]);
     // A correction to a discarded word is dropped too.
-    const fix = learnCorrection({ "kowalchick>Kowalczyk": 1 }, [], { heard: "Kowalchick", meant: "Kowalczyk" }, NOW, ["Kowalczyk"]);
+    const fix = learnCorrection(
+      { "kowalchick>Kowalczyk": 1 },
+      [],
+      { heard: "Kowalchick", meant: "Kowalczyk" },
+      NOW,
+      ["Kowalczyk"],
+    );
     expect(fix.entries).toEqual([]);
     expect(fix.added).toEqual([]);
   });

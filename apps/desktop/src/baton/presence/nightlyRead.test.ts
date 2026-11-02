@@ -4,7 +4,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { createNightlyCache, readNightly } from "./nightlyRead.ts";
 
 const file = JSON.stringify(
-  buildNightly({ now: "2026-11-03T03:30:00Z", runUrl: "u", main: "abc", release: null, checks: [{ name: "memory evals", ref: "main", outcome: "success" }] }),
+  buildNightly({
+    now: "2026-11-03T03:30:00Z",
+    runUrl: "u",
+    main: "abc",
+    release: null,
+    checks: [{ name: "memory evals", ref: "main", outcome: "success" }],
+  }),
 );
 const b64 = Buffer.from(file).toString("base64");
 
@@ -17,7 +23,11 @@ describe("reading the last nightly", () => {
   it("asks the repository once per half hour", async () => {
     let asked = 0;
     let t = 0;
-    const read = createNightlyCache("o/r", async () => (asked++, b64), () => t);
+    const read = createNightlyCache(
+      "o/r",
+      async () => (asked++, b64),
+      () => t,
+    );
     await read();
     t = 10 * 60_000;
     await read();

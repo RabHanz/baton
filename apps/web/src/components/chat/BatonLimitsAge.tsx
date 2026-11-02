@@ -1,3 +1,4 @@
+/* oxlint-disable shadcn/no-raw-colors, shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
  * How old a limits reading is (D92). A setup token's windows come from Baton's five-minute probe, so
  * they lag the account, and a stopped probe would otherwise look like a quiet account.

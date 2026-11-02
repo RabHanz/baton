@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-real-time-wait-in-tests -- Baton file predating the rule (D82) */
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";

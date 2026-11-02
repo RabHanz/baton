@@ -68,7 +68,8 @@ export const routes = HttpRouter.use((router) =>
             Effect.all({ ask: inbox.get(id), connected: inbox.connected }),
           ),
         ),
-      answerPrompt: (id, index) => run(Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.answerPrompt(id, index))),
+      answerPrompt: (id, index) =>
+        run(Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.answerPrompt(id, index))),
       transcribe: (wav) =>
         transcribeWav({ wav, env: process.env, userdataDir: NodePath.dirname(config.dbPath) }),
     };
@@ -77,14 +78,20 @@ export const routes = HttpRouter.use((router) =>
       const request = yield* HttpServerRequest.HttpServerRequest;
       const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
       if (session._tag === "None") {
-        return HttpServerResponse.jsonUnsafe({ message: "Not paired." }, { status: 401, headers: PAGE_HEADERS });
+        return HttpServerResponse.jsonUnsafe(
+          { message: "Not paired." },
+          { status: 401, headers: PAGE_HEADERS },
+        );
       }
       const url = new URL(request.url, "http://local");
       const path = url.pathname.replace(/^\/tessaya\/api\//, "");
       const type = request.headers["content-type"] ?? "";
       const raw = request.method === "POST" && type.startsWith("audio/");
       const bytes = raw ? new Uint8Array(yield* request.arrayBuffer) : undefined;
-      const json = request.method === "POST" && !raw ? yield* request.json.pipe(Effect.orElseSucceed(() => ({}))) : undefined;
+      const json =
+        request.method === "POST" && !raw
+          ? yield* request.json.pipe(Effect.orElseSucceed(() => ({})))
+          : undefined;
       const answer = yield* Effect.promise(() =>
         handlePhone(deps, {
           method: request.method,
@@ -92,20 +99,43 @@ export const routes = HttpRouter.use((router) =>
           scopes: new Set(session.value.scopes),
           ...(json === undefined ? {} : { json }),
           ...(bytes === undefined ? {} : { bytes }),
-          ...(request.headers["x-client-id"] === undefined ? {} : { clientId: request.headers["x-client-id"] }),
+          ...(request.headers["x-client-id"] === undefined
+            ? {}
+            : { clientId: request.headers["x-client-id"] }),
         }),
       );
-      return HttpServerResponse.jsonUnsafe(answer.json, { status: answer.status, headers: PAGE_HEADERS });
+      return HttpServerResponse.jsonUnsafe(answer.json, {
+        status: answer.status,
+        headers: PAGE_HEADERS,
+      });
     }).pipe(
       Effect.catchCause(() =>
-        Effect.succeed(HttpServerResponse.jsonUnsafe({ message: "That did not work." }, { status: 500 })),
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe({ message: "That did not work." }, { status: 500 }),
+        ),
       ),
     );
 
-    yield* router.add("GET", "/tessaya", Effect.sync(() => page(HTML, "text/html; charset=utf-8")));
-    yield* router.add("GET", "/tessaya/", Effect.sync(() => page(HTML, "text/html; charset=utf-8")));
-    yield* router.add("GET", "/tessaya/app.js", Effect.sync(() => page(SCRIPT, "text/javascript; charset=utf-8")));
-    yield* router.add("GET", "/tessaya/sw.js", Effect.sync(() => page(SERVICE_WORKER, "text/javascript; charset=utf-8")));
+    yield* router.add(
+      "GET",
+      "/tessaya",
+      Effect.sync(() => page(HTML, "text/html; charset=utf-8")),
+    );
+    yield* router.add(
+      "GET",
+      "/tessaya/",
+      Effect.sync(() => page(HTML, "text/html; charset=utf-8")),
+    );
+    yield* router.add(
+      "GET",
+      "/tessaya/app.js",
+      Effect.sync(() => page(SCRIPT, "text/javascript; charset=utf-8")),
+    );
+    yield* router.add(
+      "GET",
+      "/tessaya/sw.js",
+      Effect.sync(() => page(SERVICE_WORKER, "text/javascript; charset=utf-8")),
+    );
     yield* router.add(
       "GET",
       "/tessaya/manifest.webmanifest",

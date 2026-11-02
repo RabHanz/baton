@@ -106,7 +106,9 @@ export const createVaultTab = (input: {
         key === null
           ? undefined
           : id === "vt.recoverySave"
-            ? input.saveRecovery?.(key).then((p) => (p === null ? "" : `Saved to ${p}. Keep it off this computer.`))
+            ? input
+                .saveRecovery?.(key)
+                .then((p) => (p === null ? "" : `Saved to ${p}. Keep it off this computer.`))
             : input.printRecovery?.(key).then((ok) => (ok ? "Sent to the printer." : ""));
       void (task ?? Promise.resolve("That is not available here."))
         .then((m) => void (status = m))

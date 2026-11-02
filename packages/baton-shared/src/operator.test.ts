@@ -184,13 +184,24 @@ describe("Baton's own tools (D143)", () => {
     const retry = { tool: "mcp__baton__job_retry", input: { id: "j1", reason: "timed out" } };
     expect(judgeToolCall(retry, off).verdict).toBe("allow");
     expect(judgeToolCall(retry, read).verdict).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__job_handoff", input: { id: "j1", instance: "codex" } }, off).verdict).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, off).verdict).toBe("allow");
-    expect(judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, read).verdict).toBe("ask");
+    expect(
+      judgeToolCall(
+        { tool: "mcp__baton__job_handoff", input: { id: "j1", instance: "codex" } },
+        off,
+      ).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, off).verdict,
+    ).toBe("allow");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__skill_draft", input: { id: "j1" } }, read).verdict,
+    ).toBe("ask");
     const jot = { tool: "mcp__baton__note_add", input: { text: "buy milk" } };
     expect(judgeToolCall(jot, off).verdict).toBe("allow");
     expect(judgeToolCall(jot, read).verdict).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__note_search", input: { query: "x" } }, read).verdict).toBe("allow");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__note_search", input: { query: "x" } }, read).verdict,
+    ).toBe("allow");
     const rewrite = { tool: "mcp__baton__text_transform", input: { name: "polish" } };
     expect(judgeToolCall(rewrite, off).verdict).toBe("allow");
     expect(judgeToolCall(rewrite, read).verdict).toBe("ask");
@@ -202,10 +213,18 @@ describe("Baton's own tools (D143)", () => {
     expect(
       judgeToolCall({ tool: "mcp__baton__memory_forget", input: { id: "a" } }, off).verdict,
     ).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, off).verdict).toBe("allow");
-    expect(judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, read).verdict).toBe("allow"); // the vault asks, naming the secret, when the turn read something
-    expect(judgeToolCall({ tool: "mcp__baton__vault_save_pending", input: { name: "x" } }, off).verdict).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__browser_accessibility_on", input: {} }, off)).toMatchObject({ verdict: "ask", risky: true });
+    expect(
+      judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, off).verdict,
+    ).toBe("allow");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, read).verdict,
+    ).toBe("allow"); // the vault asks, naming the secret, when the turn read something
+    expect(
+      judgeToolCall({ tool: "mcp__baton__vault_save_pending", input: { name: "x" } }, off).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__browser_accessibility_on", input: {} }, off),
+    ).toMatchObject({ verdict: "ask", risky: true });
     const grant = judgeToolCall(
       { tool: "mcp__baton__job_grant", input: { id: "j1", channel: "email" } },
       off,

@@ -96,9 +96,11 @@ export const readZip = (zip: Buffer): ReadonlyArray<ZipEntry> | Error => {
       if (zip.readUInt32LE(local) !== 0x04034b50) return new Error("The zip is damaged.");
       const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
       const packed = zip.subarray(start, start + zip.readUInt32LE(local + 18));
-      if (method !== 0 && method !== 8) return new Error("That zip uses a method this cannot read.");
+      if (method !== 0 && method !== 8)
+        return new Error("That zip uses a method this cannot read.");
       const data = method === 0 ? Buffer.from(packed) : NodeZlib.inflateRawSync(packed);
-      if (data.length !== size || crc32(data) !== crc) return new Error(`${name} is damaged in the zip.`);
+      if (data.length !== size || crc32(data) !== crc)
+        return new Error(`${name} is damaged in the zip.`);
       if (!name.endsWith("/")) out.push({ name, data });
     }
   } catch {

@@ -27,6 +27,9 @@ jobs:
       - name: Typecheck (new errors fail; known ones sit in typecheck-baseline.txt)
         run: node scripts/baton/typecheck-gate.mjs
 
+      - name: Lint (errors fail; it was not gated before and had drifted to 115)
+        run: vp lint --report-unused-disable-directives
+
       - name: Unit tests of changed Baton files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
