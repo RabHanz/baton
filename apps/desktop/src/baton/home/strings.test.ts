@@ -18,7 +18,10 @@ describe("the window's words", () => {
       expect(en[`intro.${id}.title`], id).toBeTruthy();
       expect(en[`intro.${id}.text`], id).toBeTruthy();
     }
-    const used = [...APP_SCRIPT.matchAll(/\bL\('([a-z][a-z0-9.]*)'/g)].map((m) => m[1]!);
+    // A key ending in a dot is a prefix the script completes (tab.<id>), checked above.
+    const used = [...APP_SCRIPT.matchAll(/\bL\('([a-z][a-z0-9.]*)'/g)]
+      .map((m) => m[1]!)
+      .filter((key) => !key.endsWith("."));
     expect(used.length).toBeGreaterThan(5);
     expect(used.filter((key) => en[key] === undefined)).toEqual([]);
   });
