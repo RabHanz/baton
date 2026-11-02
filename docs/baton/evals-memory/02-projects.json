@@ -1,0 +1,16 @@
+{
+  "about": "Two projects with similar facts. The project being worked on wins a tie; a better word match from the other project still shows.",
+  "items": [
+    { "key": "shop-build", "kind": "fact", "text": "The shop builds with pnpm", "source": "thread", "scope": "project", "scopeRef": "shop" },
+    { "key": "shop-staging", "kind": "fact", "text": "Staging for the shop is on the second box", "source": "thread", "scope": "project", "scopeRef": "shop" },
+    { "key": "blog-build", "kind": "fact", "text": "The blog builds with hugo", "source": "thread", "scope": "project", "scopeRef": "blog" },
+    { "key": "blog-deploy", "kind": "fact", "text": "The blog deploys from the main branch every night", "source": "thread", "scope": "project", "scopeRef": "blog" }
+  ],
+  "cases": [
+    { "query": "how does it build", "scopeRef": "shop", "top": "shop-build" },
+    { "query": "how does it build", "scopeRef": "blog", "top": "blog-build" },
+    { "query": "staging box", "scopeRef": "blog", "top": "shop-staging" },
+    { "query": "deploys", "scopeRef": "blog", "top": "blog-deploy" },
+    { "query": "pnpm", "absent": ["blog-build"] }
+  ]
+}
