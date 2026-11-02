@@ -113,3 +113,59 @@ SOFTWARE.
   Open Font License 1.1, texts in `docs/baton/licences/`: Newsreader (roman and italic, variable
   weight; Copyright 2020 The Newsreader Project Authors) and Schibsted Grotesk (variable weight;
   Copyright 2023 The Schibsted-Grotesk Project Authors).
+
+## What ships, and under which licence (checked by CI)
+
+`docs/baton/notices.json` lists every dependency, crate, model file and font that Tessaya's own code ships or downloads, and
+`scripts/baton/check-notices.mjs` (run by the `verify` job) fails when one is missing here or has no licence text. Upstream T3
+Code's own dependencies are covered by `third-party-licenses.config.json`. Licence texts are in `docs/baton/licences/`.
+
+### Runtime
+
+- **Electron** (MIT, Copyright (c) Electron contributors; Copyright (c) 2013-2020 GitHub Inc.), `licences/MIT-electron.txt`.
+  Electron's own bundled components (Chromium, Node.js, FFmpeg and others) carry their licences in the `LICENSES.chromium.html`
+  file Electron places beside the executable, which the installer keeps.
+- **ONNX Runtime**, as `onnxruntime-node` (MIT, Copyright (c) Microsoft Corporation), runs the wake and VAD models.
+- **Rust crates** in `native/baton-dictation`: `transcribe-cpp`, `handy-recorder`, `handy-keys` (MIT, handy-computer);
+  `enigo` (MIT); `hound` (Apache-2.0); `serde` and `serde_json` (MIT OR Apache-2.0); `windows-rs`, the `windows` crate
+  (MIT OR Apache-2.0, Microsoft). Texts: `licences/MIT.txt`, `licences/Apache-2.0.txt`.
+- **whisper.cpp** (MIT, Copyright (c) Georgi Gerganov) is the fallback speech-to-text binary where it is used.
+
+### Models
+
+| File | What it is | Licence | Ships in the installer |
+| ---- | ---------- | ------- | ---------------------- |
+| `silero_vad.onnx` | Silero VAD v6.2.3, Silero Team | MIT | yes |
+| `melspectrogram.onnx` | openWakeWord v0.5.1 feature model | CC BY-NC-SA 4.0 (the project's README groups it with its pre-trained models) | yes |
+| `embedding_model.onnx` | openWakeWord v0.5.1 embedding model (the README says it re-implements Google's speech embedding, Apache-2.0) | CC BY-NC-SA 4.0, as above | yes |
+| `sebastian.onnx`, `alfred.onnx`, `freya.onnx`, `onyx.onnx` | Tessaya's wake models, trained here with openWakeWord's trainer | trained on sets that include non-commercial data (below), so treated as CC BY-NC-SA 4.0 | yes |
+| Parakeet TDT 0.6B v3 (NVIDIA), GGUF conversion by handy-computer | speech to text for dictation | CC BY 4.0 | no, downloaded on first use |
+| Pocket TTS (Kyutai) binary and weights; VCTK-derived voices | spoken replies | MIT (binary); CC BY 4.0 (weights and voices) | no, downloaded on first use |
+
+Texts: `licences/CC-BY-4.0.txt`, `licences/CC-BY-NC-SA-4.0.txt`, `licences/MIT.txt`. A clean-licence wake model for the word
+Tessaya is trained on the sets marked "clean" below (`WAKE_TRAINING_CLEAN.md`); the four older words are not.
+
+### Training data for the wake models
+
+CC BY terms require attribution; this is it. The licence of each set is as recorded when it was chosen and should be checked
+against the set's own page before a release that relies on it.
+
+| Data | Used for | Licence |
+| ---- | -------- | ------- |
+| VCTK corpus (University of Edinburgh) voices through Piper | positives, old and clean | CC BY 4.0 |
+| ARU voice set through Piper | positives, old and clean | CC BY 4.0 |
+| Alba voice through Piper | positives, old and clean | CC BY 4.0 |
+| Cori voice through Piper | positives, clean | public domain |
+| LibriTTS-R (Google) generator | American top-up positives | CC BY 4.0 |
+| LibriSpeech (Panayotov et al.), train-clean-100, dev and test-clean | negative features and validation, clean | CC BY 4.0 |
+| MUSAN (Snyder, Chen, Povey) noise and music | background audio and held-out noise, clean | CC BY 4.0 |
+| MIT environmental impulse responses (McDermott lab) | room impulses | as published by the lab (recorded here as MIT) |
+| Semaine, jenny_dioco, northern_english_male, southern_english_female voices; AudioSet clips; openWakeWord's ACAV100M features | old path only | include non-commercial or per-item terms; the reason the four older wake models are not cleared for commercial use |
+| Piper TTS | generating the positives | MIT (the version used at training time is to be confirmed) |
+
+### Fonts
+
+Newsreader (roman and italic, variable weight; Copyright 2020 The Newsreader Project Authors) and Schibsted Grotesk (variable
+weight; Copyright 2023 The Schibsted-Grotesk Project Authors) are bundled in the window, SIL Open Font License 1.1, texts in
+`licences/OFL-newsreader.txt` and `licences/OFL-schibsted-grotesk.txt`. The fonts are not sold on their own and keep their names
+and licence.

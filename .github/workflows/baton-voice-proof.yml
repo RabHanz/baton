@@ -3,13 +3,19 @@ name: Tessaya voice proof
 # Installs a Tessaya build on a Windows desktop, launches it with BATON_TEST_WAV (a spoken wake phrase made
 # with Windows speech) and BATON_TEST_DIR, and reads voice-turns.ndjson: how far did the voice start get, did
 # the audio hook run, did the phrase wake it. Give `tag` (baton-v0.1.31) to test a released installer, or
-# leave it empty to build this branch (about 10 minutes more).
+# leave it empty to build this branch (about 10 minutes more). With `stranger` on (the default), the same run
+# also proves what a person who is not the maintainer gets: a clean machine, a first run, nothing private, and an
+# uninstall that leaves the user's data (scripts/baton/stranger-proof.ps1).
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: "Released tag to install, e.g. baton-v0.1.31; empty builds this ref"
         default: ""
+      stranger:
+        description: "Stranger-install proof: clean machine, first run, no private defaults, uninstall (adds two steps around the voice proof)"
+        type: boolean
+        default: true
       require_wake:
         description: "Also fail unless the phrase woke it (a synthetic voice may not)"
         type: boolean
@@ -78,6 +84,13 @@ jobs:
           node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 \
             --build-version 99.0.0 --output-dir installer --verbose
 
+      - name: "Stranger - clean start, install, first run, nothing private"
+        if: inputs.stranger
+        shell: pwsh
+        run: |
+          $exe = (Get-ChildItem installer -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
+          ./scripts/baton/stranger-proof.ps1 -Phase first -Installer $exe -Out "$env:RUNNER_TEMP/stranger-proof"
+
       - name: Install, launch with the test audio, read the log
         shell: pwsh
         run: |
@@ -86,8 +99,56 @@ jobs:
           if ('${{ inputs.require_wake }}' -ne 'false') { $extra.RequireWake = $true }
           ./scripts/baton/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @extra
 
+      - name: "Stranger - uninstall keeps the user's data, removes the app"
+        if: inputs.stranger
+        shell: pwsh
+        run: ./scripts/baton/stranger-proof.ps1 -Phase uninstall -Out "$env:RUNNER_TEMP/stranger-proof"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stranger-proof
+          path: ${{ runner.temp }}/stranger-proof
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: voice-proof
           path: ${{ runner.temp }}/voice-proof
+
+  # macOS and Linux: launch a RELEASED build headless with the same test hooks and report how far it got
+  # (docs/baton/PLATFORMS.md). Needs `tag`; the build itself is baton-desktop-release.yml.
+  smoke:
+    name: smoke ${{ matrix.platform }}
+    if: inputs.tag != ''
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            pattern: "*.AppImage"
+          - platform: macos
+            os: macos-latest
+            pattern: "*arm64*.dmg"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Tools (Linux)
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb espeak-ng ffmpeg libfuse2 libgtk-3-0 libnss3 libasound2t64 libgbm1
+      - name: Download the released build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir release
+          gh release download "${{ inputs.tag }}" -R "$GITHUB_REPOSITORY" --dir release --pattern '${{ matrix.pattern }}'
+          ls release
+      - name: Launch with the test hooks
+        run: bash scripts/baton/platform-smoke.sh "${{ matrix.platform }}" "$(ls release/* | head -1)" "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.platform }}
+          path: ${{ runner.temp }}/smoke

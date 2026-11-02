@@ -6,12 +6,11 @@
  * the message and kept as data. Every message is a row: who, when, text, delivered, replied.
  */
 import {
-  AdoptedSessionId,
   BatonWeaveError,
+  type AdoptedSession,
   type AdoptedSessionCandidate,
   type BatonWeave,
 } from "@t3tools/baton-contracts";
-import { HERDR_CAPABILITIES } from "@t3tools/baton-shared/adoptedSession";
 import {
   extractReply,
   nextStep,
@@ -26,7 +25,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
-import { AdoptedSessionService } from "./AdoptedSessionService.ts";
+import { BatonWeaveBoxes, type WeaveBox } from "./BatonWeaveBoxes.ts";
 
 interface Row {
   readonly id: string;
@@ -81,7 +80,7 @@ export class BatonWeaveService extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const adopted = yield* AdoptedSessionService;
+  const boxes = yield* BatonWeaveBoxes;
   const nowMs = Clock.currentTimeMillis;
 
   const get = (id: string) =>
@@ -109,65 +108,80 @@ export const make = Effect.gen(function* () {
       WHERE id = ${id}
     `.pipe(Effect.orDie);
 
-  /** The adopted session for a pane, registered the way a one-field send does. */
-  const sessionFor = (c: AdoptedSessionCandidate) =>
-    adopted.register({
-      id: AdoptedSessionId.make(`herdr:${c.location.pane}`),
+  /** The pane key stored in a record: which machine, and the pane there. */
+  const paneKey = (box: string, pane: string) => `${box}|${pane}`;
+  const splitKey = (key: string): { box: string; pane: string } => {
+    const at = key.indexOf("|");
+    return at < 0 ? { box: "here", pane: key } : { box: key.slice(0, at), pane: key.slice(at + 1) };
+  };
+  const boxNamed = (name: string): WeaveBox | undefined => boxes.find((b) => b.name === name);
+
+  /** Only the pane and label are read by the adapter; no stored session is involved. */
+  const synth = (c: AdoptedSessionCandidate): AdoptedSession =>
+    ({
+      id: `weave:${c.location.pane}`,
       runtime: "herdr",
+      workSessionId: null,
       label: c.label,
       location: c.location,
       agentKind: c.agentKind,
-      runtimeState: c.runtimeState,
-      foreground: c.foreground ?? null,
-      capabilities: HERDR_CAPABILITIES,
-    });
+      state: "idle",
+      capabilities: {
+        readConversation: false,
+        sendInput: true,
+        approvals: false,
+        diffs: false,
+        stop: false,
+        showTerminal: true,
+      },
+    }) as unknown as AdoptedSession;
 
   /** Looks at the target now and, if it can take the message, types it. */
   const attempt = (rec: WeaveRecord) =>
     Effect.gen(function* () {
       const now = yield* nowMs;
-      const found = yield* adopted.discover;
-      const cand = found.candidates.find((c) => c.location.pane === rec.toPane);
-      let busy = false;
-      let input: "empty" | "draft" | "unknown" = "unknown";
-      if (cand !== undefined) {
-        busy = cand.runtimeState === "working" || cand.runtimeState === "blocked";
-        const s = yield* sessionFor(cand);
-        const out = yield* adopted.readOutput({ id: s.id, lines: SCREEN_LINES });
-        input = out.available ? paneInputState(out.output) : "unknown";
-        const step = nextStep(rec, { present: true, busy, input }, now);
-        if (step.do === "send") {
-          const sent = yield* adopted.sendInput({ id: s.id, text: rec.text, submit: true });
-          if (sent.delivered) {
-            yield* setState(rec.id, {
-              status: "delivered",
-              reason: null,
-              tries: rec.tries + 1,
-              deliveredAt: now,
-            });
-            return "delivered" as const;
-          }
+      const { box: boxName, pane } = splitKey(rec.toPane);
+      const box = boxNamed(boxName);
+      const found = box === undefined ? null : yield* box.adapter.discover;
+      const cand = found?.candidates.find((c) => c.location.pane === pane);
+      if (box === undefined || cand === undefined) {
+        const step = nextStep(rec, { present: false, busy: false, input: "unknown" }, now);
+        yield* setState(rec.id, {
+          status: step.do === "lose" ? "lost" : "queued",
+          reason: step.do === "send" ? null : step.why,
+          tries: rec.tries + 1,
+        });
+        return step.do === "lose" ? ("lost" as const) : ("waiting" as const);
+      }
+      const busy = cand.runtimeState === "working" || cand.runtimeState === "blocked";
+      const session = synth(cand);
+      const out = yield* box.adapter.readOutput({ session, lines: SCREEN_LINES });
+      const input = out.available ? paneInputState(out.output) : "unknown";
+      const step = nextStep(rec, { present: true, busy, input }, now);
+      if (step.do === "send") {
+        const sent = yield* box.adapter.sendInput({ session, text: rec.text, submit: true });
+        if (sent.delivered) {
           yield* setState(rec.id, {
-            status: "queued",
-            reason: sent.detail || "the pane did not take it",
+            status: "delivered",
+            reason: null,
             tries: rec.tries + 1,
+            deliveredAt: now,
           });
-          return "waiting" as const;
+          return "delivered" as const;
         }
-        if (step.do === "lose") {
-          yield* setState(rec.id, { status: "lost", reason: step.why, tries: rec.tries + 1 });
-          return "lost" as const;
-        }
-        yield* setState(rec.id, { status: "queued", reason: step.why, tries: rec.tries + 1 });
+        yield* setState(rec.id, {
+          status: "queued",
+          reason: sent.detail || "the pane did not take it",
+          tries: rec.tries + 1,
+        });
         return "waiting" as const;
       }
-      const step = nextStep(rec, { present: false, busy, input }, now);
-      yield* setState(rec.id, {
-        status: step.do === "lose" ? "lost" : "queued",
-        reason: step.do === "send" ? null : step.why,
-        tries: rec.tries + 1,
-      });
-      return step.do === "lose" ? ("lost" as const) : ("waiting" as const);
+      if (step.do === "lose") {
+        yield* setState(rec.id, { status: "lost", reason: step.why, tries: rec.tries + 1 });
+        return "lost" as const;
+      }
+      yield* setState(rec.id, { status: "queued", reason: step.why, tries: rec.tries + 1 });
+      return "waiting" as const;
     }).pipe(
       Effect.catchCause(() =>
         setState(rec.id, {
@@ -186,17 +200,23 @@ export const make = Effect.gen(function* () {
   }) {
     const refusal = refuseWeave(input.text);
     if (refusal !== null) return yield* new BatonWeaveError({ reason: refusal });
-    const found = yield* adopted.discover;
-    if (!found.available) return yield* new BatonWeaveError({ reason: found.reason });
-    const target = resolveTarget(
-      input.to,
+    const seen = yield* Effect.forEach(boxes, (box) =>
+      Effect.map(box.adapter.discover, (found) => ({ box, found })),
+    );
+    if (seen.every((x) => !x.found.available)) {
+      return yield* new BatonWeaveError({
+        reason: seen[0]?.found.reason ?? "no sessions are reachable",
+      });
+    }
+    const all = seen.flatMap(({ box, found }) =>
       found.candidates.map((c) => ({
-        label: c.label,
-        pane: c.location.pane,
+        label: box.name === "here" ? c.label : `${box.name}:${c.label}`,
+        pane: paneKey(box.name, c.location.pane),
         state: c.runtimeState,
         agentKind: c.agentKind,
       })),
     );
+    const target = resolveTarget(input.to, all);
     if (!target.ok) return yield* new BatonWeaveError({ reason: target.why });
     const now = yield* nowMs;
     const id = newId();
@@ -240,27 +260,27 @@ export const make = Effect.gen(function* () {
       SELECT * FROM fabric_weaves WHERE status = 'delivered' AND delivered_at > ${now - REPLY_WINDOW_MS}
     `.pipe(Effect.orDie);
     let replied = 0;
-    if (waiting.length > 0) {
-      const found = yield* adopted.discover;
-      for (const row of waiting) {
-        const cand = found.candidates.find((c) => c.location.pane === row.to_pane);
+    for (const row of waiting) {
+      const { box: boxName, pane } = splitKey(row.to_pane);
+      const box = boxNamed(boxName);
+      if (box === undefined) continue;
+      const text = yield* Effect.gen(function* () {
+        const found = yield* box.adapter.discover;
+        const cand = found.candidates.find((c) => c.location.pane === pane);
         // Read only once it has stopped working, so a half-written answer is not taken as the reply.
-        if (cand === undefined || cand.runtimeState === "working") continue;
-        const text = yield* Effect.gen(function* () {
-          const s = yield* sessionFor(cand);
-          const out = yield* adopted.readOutput({ id: s.id, lines: 200 });
-          return out.available ? extractReply(out.output, row.text) : null;
-        }).pipe(Effect.catchCause(() => Effect.succeed(null)));
-        if (text !== null) {
-          yield* setState(row.id, {
-            status: "replied",
-            reason: null,
-            tries: row.tries,
-            repliedAt: now,
-            reply: text,
-          });
-          replied += 1;
-        }
+        if (cand === undefined || cand.runtimeState === "working") return null;
+        const out = yield* box.adapter.readOutput({ session: synth(cand), lines: 200 });
+        return out.available ? extractReply(out.output, row.text) : null;
+      }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+      if (text !== null) {
+        yield* setState(row.id, {
+          status: "replied",
+          reason: null,
+          tries: row.tries,
+          repliedAt: now,
+          reply: text,
+        });
+        replied += 1;
       }
     }
     return { delivered, replied };

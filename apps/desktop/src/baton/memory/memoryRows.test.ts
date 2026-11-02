@@ -45,7 +45,7 @@ describe("memoryControls", () => {
   it("counts by kind, groups rows under kinds and says where each came from", () => {
     const [bar, ...rows] = memoryControls(state({ items, usedIds: new Set(["2"]) }));
     expect(bar).toMatchObject({ kind: "memoryBar", usedCount: 1 });
-    expect((bar as { kinds: Array<{ value: string; count: number }> }).kinds.map((k) => `${k.value}:${k.count}`)).toEqual([
+    expect((bar as unknown as { kinds: Array<{ value: string; count: number }> }).kinds.map((k) => `${k.value}:${k.count}`)).toEqual([
       "all:2",
       "preference:1",
       "fact:1",
