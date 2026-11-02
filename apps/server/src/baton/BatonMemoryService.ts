@@ -119,6 +119,8 @@ export class BatonMemoryService extends Context.Service<
     readonly exportMarkdown: Effect.Effect<string>;
     /** Deletes what expired or faded; returns how many. */
     readonly sweep: Effect.Effect<number>;
+    /** Remembers `value` under `key`; true when it differs from what was there, so work is done once. */
+    readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
 >()("t3/baton/BatonMemoryService") {}
 
@@ -385,6 +387,17 @@ export const make = Effect.gen(function* () {
     return gone.length;
   });
 
+  const noteOnce = Effect.fn("BatonMemoryService.noteOnce")(function* (key: string, value: string) {
+    const rows = yield* sql<{
+      value: string;
+    }>`SELECT value FROM fabric_memory_meta WHERE key = ${`seen:${key}`}`.pipe(Effect.orDie);
+    if (rows[0]?.value === value) return false;
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`seen:${key}`}, ${value})`.pipe(
+      Effect.orDie,
+    );
+    return true;
+  });
+
   return BatonMemoryService.of({
     origin,
     list,
@@ -399,6 +412,7 @@ export const make = Effect.gen(function* () {
     used,
     exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
     sweep,
+    noteOnce,
   });
 });
 

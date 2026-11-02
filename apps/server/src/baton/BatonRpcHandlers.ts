@@ -49,6 +49,7 @@ import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
+import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
@@ -76,6 +77,7 @@ export type BatonServices =
   | BatonEngine
   | BatonJobService
   | BatonMemoryService
+  | BatonMemoryLearning
   | ServerConfig.ServerConfig
   | ScheduledTaskService
   | ThreadAccountMoves
@@ -395,6 +397,19 @@ export const make = Effect.gen(function* () {
       run(
         Effect.flatMap(BatonMemoryService, (memory) =>
           Effect.map(memory.used(input.turnRef), (items) => ({ items })),
+        ),
+      ),
+    [BATON_MEMORY_WS_METHODS.learn]: (input) =>
+      run(
+        Effect.flatMap(BatonMemoryLearning, (learning) =>
+          learning.learn({
+            origin: "turn",
+            said: input.said,
+            reply: input.reply,
+            sourceRef: input.turnRef ?? null,
+            tainted: input.tainted,
+            project: input.project ?? null,
+          }),
         ),
       ),
     [BATON_MEMORY_WS_METHODS.export]: () =>
