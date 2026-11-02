@@ -264,6 +264,44 @@ too small), `nice -n 10`, one build at a time.
 | 6. The automatic sync job (pin, re-apply, gate, build, PR), then daily on a timer                    | 0.5 day                                           |
 | **Total**                                                                                            | **about 5 lane-days, in 2 lanes (1–2, then 3–6)** |
 
+## The daily sync: what is automatic and what is manual (2026-11-02)
+
+`baton-auto-sync.timer` runs `scripts/baton/auto-sync.sh` on signzart at 22:30 UTC (a copy taken from `origin/main`, so an edit
+cannot change a run in flight).
+
+**Automatic**
+
+| Step | What happens |
+| --- | --- |
+| Look | fetch; if the pin is upstream's tip, publish `nothing` and stop; if the pin is more than 3 days behind, open or comment on an issue |
+| Disk | stop with `disk` if the volume is below its floor |
+| Apply | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, a two-parent commit so upstream's history stays reachable |
+| Gates | `gates.sh --install --build`: patch series, typecheck, lint, tests, build |
+| Merge | green: PR opened and merged; older `baton/auto-sync-*` PRs are closed with a comment saying they are superseded |
+| Tag | `apps/desktop` changed: the `baton-v<version>` tag, which builds the release |
+| Deploy | build `<upstream version>-baton.<N+1>`, rehearse it on a snapshot of live userdata, deploy beside on signzart then onnyx; a box that does not stay healthy for a minute is rolled back with the `rollback.sh` the deploy wrote, an issue is opened, and the run stops |
+| Status | every ending writes `upstream-sync.json` (to `~/.t3/baton-autosync/last-status.json` and the `baton/status` branch): `result` is `merged`, `nothing`, `conflict`, `gates`, `deploy` or `disk`; for a conflict it names the patches and the files |
+
+**Manual (today)**
+
+- **A patch that no longer applies** (`result: conflict`, exit 2). Nothing mechanical decides how Baton's lines sit in a rewritten upstream
+  file. A fix session is started in Herdr, an issue is opened with the report, and the status file lists the files. The person (or
+  session) resolves them on a branch from `main`: `patches.sh rebase <upstream sha>`, fix the markers, `patches.sh refresh`,
+  `patches.sh verify`, regenerate the lockfile, open the PR. If an earlier sync PR already resolved the same files and the
+  patches have not changed since, take its versions of those files (this is how #284 reused #144).
+- **Gates failing on the new upstream** (`result: gates`, exit 3). The branch is pushed and a draft PR opened; fix on that branch.
+- **Anything that needs a decision**: dropping a Baton patch upstream now covers, a path both sides added.
+- **Closing stale PRs** after a manual resolution: the nightly only closes the ones it created when it merges.
+
+**Why it stalled (2026-10-30 to 2026-11-02).** Three nights running `0008-claude-account-limits` and `0008-web-panes` conflicted in
+`ChatView.tsx` and `ThreadDetailsUsage.tsx`, and `scripts/build-desktop-artifact.test.ts` conflicted once main moved. #55 and #144
+were the fix sessions' answers, but each was cut from a main that had since moved (its patch files then conflicted), and nobody
+merged them within a day. Every night added hundreds of upstream commits. The lines `fatal: ... not our ref` in the log come from
+`git checkout <sha> -- .` visiting the vendored `.repos` gitlinks; they are noise.
+
+**What would remove the manual step.** Fewer lines in upstream-rewritten files: each Baton edit in `ChatView.tsx`, `Sidebar.tsx` and the
+usage components is a future conflict, so new Baton work should live in new files with a one-line hook (the patch README says the same).
+
 ## Remotes and rebasing
 
 The clone is a blobless partial clone (`--filter=blob:none`) with full commit history, which keeps
