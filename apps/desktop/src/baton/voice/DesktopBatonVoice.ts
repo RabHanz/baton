@@ -87,6 +87,9 @@ import { redactForHistory } from "../vault/redact.ts";
 import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
+import { windowsHello } from "../vault/hello.ts";
+import { createVaultTab } from "../vault/vaultTab.ts";
+import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
@@ -1994,6 +1997,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }),
   );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
+  const vaultState = vaultFor(input.stateDir);
+  const vaultTab = createVaultTab({
+    vault: vaultState.vault,
+    hello: (message) => windowsHello(message, input.platform),
+    clipboard: {
+      read: () => Electron.clipboard.readText(),
+      write: (t) => Electron.clipboard.writeText(t),
+      clear: () => Electron.clipboard.clear(),
+    },
+    audit: vaultState.audit,
+    readAudit: () => {
+      try {
+        return NodeFS.readFileSync(vaultState.auditFile, "utf8").split("\n").filter((l) => l !== "");
+      } catch {
+        return [];
+      }
+    },
+    stateDir: input.stateDir,
+    refresh: () => home.refresh(),
+    reveal: (file) => Electron.shell.showItemInFolder(file),
+  });
   const memoryTab = createMemoryTab({
     call: (op, args) =>
       requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
@@ -2367,6 +2391,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...nowControls(nowData, Date.now()),
       ...presenceControls(settings),
       ...memoryTab.controls(),
+      ...vaultTab.controls(),
       ...cachedPack(),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
@@ -2854,6 +2879,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
     if (memoryTab.act(id, value)) return;
+    if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
     else if (id === "q.ask" || id === "q.clear") {
       const entry = input.extras
