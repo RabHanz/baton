@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Memory's two background jobs (D150): learn from a job when its worker reports, and run the daily
  * consolidation. Nothing here blocks or fails a thread; errors are logged and dropped.

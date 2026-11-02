@@ -80,7 +80,7 @@ export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function
     for (const draft of parseLearningFile(text)) {
       const item = yield* memory
         .add({ ...draft, source: "import", sourceRef: rel })
-        .pipe(Effect.catch(() => Effect.succeed(null)));
+        .pipe(Effect.orElseSucceed(() => null));
       if (item === null) refused++;
       else added++;
     }

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 /**
  * What the assistant can do with the vault (D151): list names, use a secret without seeing it, and file a
  * secret it was just told about. The value goes from the vault to the action; the model gets a sentence.
