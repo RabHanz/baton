@@ -652,7 +652,10 @@ export const createVoiceCore = (input: {
       } else acceptWake(score, samples, input.wake.lastWord?.() ?? null, false);
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();
-      enqueue(() => dispatch({ type: speaking ? "keep_open" : "tick", at }));
+      // The window waits only for speech to START. Words that have begun, or are being recognised, are never
+      // cut off by it, however long they go on; the end-of-speech silence ends them.
+      const hearingHim = segment !== null || transcribing > 0;
+      enqueue(() => dispatch({ type: speaking || hearingHim ? "keep_open" : "tick", at }));
     }
 
     if (held !== null) {
