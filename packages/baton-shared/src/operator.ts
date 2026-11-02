@@ -92,6 +92,7 @@ const BATON_QUIET = new Set([
   "fleet_status",
   "memory_search",
   "memory_used",
+  "vault_list",
   "memory_pin",
   "remember_target",
   "wait",
@@ -126,6 +127,8 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_schedule",
   "memory_remember",
   "memory_forget",
+  "vault_use",
+  "vault_save_pending",
   "commit_add",
   "commit_done",
   "notices_stop",
@@ -247,6 +250,12 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       return outgoing
         ? { verdict: "ask", why: "It would keep something it read as a note or a commitment." }
         : { verdict: "allow" };
+    case "vault_use":
+      // The vault asks for itself, by the secret's policy and with the name, purpose and target (never the value);
+      // a turn that read something is always asked there.
+      return { verdict: "allow" };
+    case "vault_save_pending":
+      return { verdict: "ask", why: "It would keep the secret you just told it in your vault." };
     case "memory_forget":
       return { verdict: "ask", why: "It would delete one of your notes." };
     case "job_schedule":

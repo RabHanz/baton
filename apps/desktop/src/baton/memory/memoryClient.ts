@@ -4,7 +4,13 @@
  * plain notes folder (D146) when it does not, so "remember that" never silently does nothing. The
  * server owns the rules (what is never kept, decay, conflicts); this only asks and phrases.
  */
-import { MEMORY_TEXT_MAX, type MemoryHit, type MemoryItem } from "@t3tools/baton-shared/memory";
+import {
+  MEMORY_TEXT_MAX,
+  detectSecret,
+  type MemoryClient,
+  type MemoryHit,
+  type MemoryItem,
+} from "@t3tools/baton-shared/memory";
 
 import type { NotesStore } from "./memoryNotes.ts";
 
@@ -21,6 +27,8 @@ export const createDesktopMemory = (input: {
   /** Absent or failing: the notes folder answers. */
   readonly call?: MemoryCall | undefined;
   readonly notes: NotesStore;
+  /** A secret was about to be remembered: keep it out of memory and return the offer to put it in the vault. */
+  readonly onSecret?: ((text: string, what: string) => string | null) | undefined;
 }) => {
   let turn = 0;
   let lastTurnRef: string | null = null;
@@ -73,6 +81,11 @@ export const createDesktopMemory = (input: {
     },
     remember: async (text: string): Promise<string> => {
       const clean = text.trim().slice(0, MEMORY_TEXT_MAX);
+      const secret = detectSecret(clean);
+      if (secret !== null) {
+        const offer = input.onSecret?.(clean, secret);
+        if (offer !== undefined && offer !== null) return offer;
+      }
       try {
         const out = await ask<{ item: MemoryItem }>("add", {
           kind: "note",
