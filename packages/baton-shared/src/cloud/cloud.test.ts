@@ -7,6 +7,7 @@ import { claudeHarness, codexHarness, localProvider, type BriefStore, type Pendi
 import { jsonLines, safeArg } from "./parse.ts";
 import { providerChoices } from "./registry.ts";
 import { STUBS } from "./stubs.ts";
+import { findProgram, launchPlan, scriptOfNpmShim, type LaunchEnv } from "./winLaunch.ts";
 import { overCap, pickable, type CloudProvider, type CloudRequest, type Exec, type ExecResult, type ProviderId, type Usage } from "./types.ts";
 
 type Call = { file: string; args: ReadonlyArray<string>; stdin?: string; env?: Readonly<Record<string, string>> };
@@ -262,5 +263,72 @@ describe("one cap for every provider", () => {
     const { store, brief } = memoryStores();
     const u = await localProvider(codexHarness(fakeExec(() => ({})).exec), store, brief).usage();
     expect(u.ok && u.value).toEqual([{ provider: "codex", account: "This computer's Codex login", weeklyPercent: null, resetsAt: null, rejected: false, pointsThisWeek: null }]);
+  });
+});
+
+describe("starting programs safely on any system", () => {
+  const shim = '@ECHO off\r\nGOTO start\r\n:start\r\nSETLOCAL\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n)\r\n"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n';
+  const files = new Map<string, string>([
+    ["C:\\Users\\Ann Lee\\AppData\\Roaming\\npm\\codex.cmd", shim],
+    ["C:\\Users\\Ann Lee\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\bin\\codex.js", "//"],
+    ["C:\\Program Files\\nodejs\\node.exe", ""],
+    ["C:\\Tools\\claude.exe", ""],
+  ]);
+  const win = (extra: Partial<LaunchEnv> = {}): LaunchEnv => ({
+    platform: "win32",
+    path: 'C:\\Users\\Ann Lee\\AppData\\Roaming\\npm;"C:\\Program Files\\nodejs";C:\\Tools',
+    pathext: ".COM;.EXE;.BAT;.CMD",
+    exists: (f) => files.has(f),
+    read: (f) => files.get(f) ?? null,
+    ...extra,
+  });
+
+  it("passes the name and the arguments straight through on Linux and macOS", () => {
+    const env: LaunchEnv = { ...win(), platform: "linux", path: "/usr/bin" };
+    expect(launchPlan("claude", ["--cloud", "a b; rm -rf /"], env)).toEqual({ ok: true, file: "claude", args: ["--cloud", "a b; rm -rf /"], viaCmd: false });
+  });
+
+  it("starts a native Windows program by its full path, with the arguments as a list", () => {
+    expect(launchPlan("claude", ["auth", "status"], win())).toEqual({ ok: true, file: "C:\\Tools\\claude.exe", args: ["auth", "status"], viaCmd: false });
+  });
+
+  it("runs an npm shim's script with node directly, so a brief with quotes and ampersands is only text", () => {
+    const brief = 'Fix "the" test & delete %TEMP% | more\nnext line';
+    const plan = launchPlan("codex", ["cloud", "exec", brief], win());
+    expect(plan).toEqual({
+      ok: true,
+      file: "C:\\Program Files\\nodejs\\node.exe",
+      args: ["C:\\Users\\Ann Lee\\AppData\\Roaming\\npm\\node_modules\\@openai\\codex\\bin\\codex.js", "cloud", "exec", brief],
+      viaCmd: false,
+    });
+    expect(scriptOfNpmShim("C:\\a\\codex.cmd", shim)).toBe("C:\\a\\node_modules\\@openai\\codex\\bin\\codex.js");
+  });
+
+  it("falls back to cmd only for plain arguments, and otherwise says plainly why not", () => {
+    const odd = win({ read: () => "no script in here" });
+    expect(launchPlan("codex", ["login", "status"], odd)).toMatchObject({ ok: true, viaCmd: true });
+    const refused = launchPlan("codex", ["cloud", "exec", "a & b"], odd);
+    expect(refused.ok).toBe(false);
+    expect(!refused.ok && refused.error).toContain("not safe for a task description");
+    expect(launchPlan("gemini", [], win())).toEqual({ ok: false, error: "gemini is not installed on this computer." });
+  });
+
+  it("finds a program past a quoted path and a folder with spaces", () => {
+    expect(findProgram("node", win())).toBe("C:\\Program Files\\nodejs\\node.exe");
+    expect(findProgram("nothing", win())).toBeNull();
+  });
+
+  it("gives each named login its own folder: CLAUDE_CONFIG_DIR and CODEX_HOME, never another", async () => {
+    const { exec, calls } = fakeExec((c) => (c.args[0] === "auth" ? { stdout: `{"loggedIn":true,"email":"${c.env?.["CLAUDE_CONFIG_DIR"] === "/h/a" ? "a@example.org" : "b@example.org"}"}` } : c.args[0] === "--cloud" ? { stdout: "https://claude.ai/code/s_9" } : {}));
+    const { store, brief } = memoryStores();
+    const h = claudeHarness(exec, { claudeHomes: { a: "/h/a", b: "/h/b" } });
+    const d = await h.detect();
+    expect(d).toMatchObject({ signedIn: true, line: "Claude: signed in as a@example.org, b@example.org" });
+    expect(calls.map((c) => c.env?.["CLAUDE_CONFIG_DIR"])).toEqual(["/h/a", "/h/b"]);
+    const p = localProvider(h, store, brief);
+    await p.dispatch(input);
+    await p.approve("L-1", "b@example.org", "r");
+    expect(calls.at(-1)).toMatchObject({ env: { CLAUDE_CONFIG_DIR: "/h/b" } });
+    expect(h.accounts()).toEqual(["a@example.org", "b@example.org"]);
   });
 });

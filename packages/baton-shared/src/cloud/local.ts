@@ -129,6 +129,8 @@ export interface LocalSettings {
   readonly codexEnv?: string;
   /** Extra Codex logins by name, each a CODEX_HOME folder. Absent: this computer's own login. */
   readonly codexHomes?: Readonly<Record<string, string>>;
+  /** Extra Claude logins by name, each a CLAUDE_CONFIG_DIR folder. Absent: this computer's own login. */
+  readonly claudeHomes?: Readonly<Record<string, string>>;
 }
 
 const NO_USAGE = (provider: ProviderId, accounts: ReadonlyArray<string>): Outcome<ReadonlyArray<Usage>> => ({
@@ -136,41 +138,59 @@ const NO_USAGE = (provider: ProviderId, accounts: ReadonlyArray<string>): Outcom
   value: accounts.map((account) => ({ provider, account, weeklyPercent: null, resetsAt: null, rejected: false, pointsThisWeek: null })),
 });
 
-/** Claude: `claude auth status` for who is signed in; `claude --cloud` to start. */
+/** Claude: `claude auth status` for who is signed in; `claude --cloud` to start. Named logins are CLAUDE_CONFIG_DIR folders. */
 export const claudeHarness = (exec: Exec, s: LocalSettings = {}): LocalHarness => {
   const bin = s.binary ?? "claude";
-  let who: string | null = null;
-  const detect = async (): Promise<Detection> => {
-    const r = await exec(bin, ["auth", "status", "--json"], { timeoutMs: 15_000 });
-    if (r.missing === true) return { installed: false, signedIn: false, identity: null, line: "Claude: not installed. Install Claude Code, then sign in.", signInCommand: null };
+  const homes = s.claudeHomes ?? {};
+  const own = "This computer's Claude login";
+  /** Account label (the login's address when known) -> the folder it lives in; empty means the computer's own. */
+  const dirOf = new Map<string, string>();
+  let signed: ReadonlyArray<string> = [];
+  const probe = async (dir: string | undefined) => {
+    const r = await exec(bin, ["auth", "status", "--json"], { ...(dir === undefined ? {} : { env: { CLAUDE_CONFIG_DIR: dir } }), timeoutMs: 15_000 });
     let o: { loggedIn?: unknown; email?: unknown } = {};
     try {
       o = JSON.parse(r.stdout) as typeof o;
     } catch {
       // not signed in prints nothing useful
     }
-    if (o.loggedIn === true) {
-      who = typeof o.email === "string" ? o.email : null;
-      return { installed: true, signedIn: true, identity: who, line: `Claude: signed in${who === null ? "" : ` as ${who}`}`, signInCommand: null };
+    return { missing: r.missing === true, loggedIn: o.loggedIn === true, email: typeof o.email === "string" ? o.email : null };
+  };
+  const detect = async (): Promise<Detection> => {
+    dirOf.clear();
+    const targets: ReadonlyArray<[string, string | undefined]> = Object.keys(homes).length === 0 ? [[own, undefined]] : Object.entries(homes);
+    const names: string[] = [];
+    let any = false;
+    for (const [name, dir] of targets) {
+      const p = await probe(dir);
+      if (p.missing) return { installed: false, signedIn: false, identity: null, line: "Claude: not installed. Install Claude Code, then sign in.", signInCommand: null };
+      if (p.loggedIn) {
+        any = true;
+        const label = p.email ?? name;
+        names.push(label);
+        if (dir !== undefined) dirOf.set(label, dir);
+      }
     }
-    who = null;
+    signed = names;
+    if (any) return { installed: true, signedIn: true, identity: names[0] ?? null, line: `Claude: signed in${names[0] === undefined || names[0] === own ? "" : ` as ${names.join(", ")}`}`, signInCommand: null };
     return { installed: true, signedIn: false, identity: null, line: `Claude: not signed in. Run: ${SIGN_IN_CLAUDE}`, signInCommand: SIGN_IN_CLAUDE };
   };
   return {
     id: "claude", label: "Claude", driver: "claudeAgent", resultKind: "pr", canCancel: false,
     detect,
-    accounts: () => [who ?? "This computer's Claude login"],
+    accounts: () => (signed.length === 0 ? [own] : signed),
     // ASSUMPTION to confirm in the pilot: `claude --cloud <description>` starts a cloud session and prints its
     // claude.ai/code link. The command line is built here and nowhere else.
-    start: async (r, brief, _account) => {
-      const r2 = await exec(bin, ["--cloud", `${brief}\n\nRepository: ${r.repo ?? ""}\nBranch: ${r.branch ?? ""}`], { timeoutMs: 180_000 });
+    start: async (r, brief, account) => {
+      const dir = dirOf.get(account);
+      const r2 = await exec(bin, ["--cloud", `${brief}\n\nRepository: ${r.repo ?? ""}\nBranch: ${r.branch ?? ""}`], { ...(dir === undefined ? {} : { env: { CLAUDE_CONFIG_DIR: dir } }), timeoutMs: 180_000 });
       if (r2.missing === true) return fail("Claude Code is not installed on this computer.");
       if (r2.code !== 0) return fail("Claude could not start the cloud task. Check that you are signed in, and that GitHub is connected (/web-setup).");
       const link = /https:\/\/claude\.ai\/code\/[^\s"')]+/.exec(r2.stdout)?.[0] ?? null;
       return { ok: true, value: { link, taskId: null } };
     },
     // Claude's own figures are read from the account page, not by this program.
-    usage: async () => NO_USAGE("claude", [who ?? "This computer's Claude login"]),
+    usage: async () => NO_USAGE("claude", signed.length === 0 ? [own] : signed),
   };
 };
 
