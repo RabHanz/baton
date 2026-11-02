@@ -312,6 +312,58 @@ describe("media across a turn's replies", () => {
   });
 });
 
+describe("a picture a reply shows is shown once, however it got there", () => {
+  // Seen on a real thread: Read of a screenshot returns the image block (a tool shot) AND the file is in `touched`;
+  // the reply showed it twice, once as image-1.png and once under its own name.
+  it("a tool shot and the same file touched this turn give exactly one picture", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "twice-"));
+    const bytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const file = NodePath.join(dir, "s5.png");
+    NodeFS.writeFileSync(file, bytes);
+    const follow = {
+      touched: new Set([file]),
+      shots: [{ mimeType: "image/png", data: bytes.toString("base64") }],
+    };
+    const reply = nextReply(follow, {
+      uuid: "a",
+      role: "assistant",
+      text: "Here it is.",
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    const shown = liveMedia({
+      attachmentsDir: NodePath.join(dir, "att"),
+      threadId: "t",
+      messageId: "m",
+      message: reply.message,
+      cwd: dir,
+      touched: reply.touched,
+      shown: new Set(),
+    });
+    expect(shown.text.match(/!\[/g) ?? []).toHaveLength(1);
+  });
+  it("the same picture on a later reply of the thread is not shown again", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "later-"));
+    const bytes = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const shownSet = new Set<string>();
+    const once = (id: string) =>
+      liveMedia({
+        attachmentsDir: NodePath.join(dir, "att"),
+        threadId: "t",
+        messageId: id,
+        message: {
+          uuid: id,
+          role: "assistant",
+          text: "x",
+          createdAt: "2026-01-01T00:00:00Z",
+          images: [{ mimeType: "image/png", data: bytes.toString("base64") }],
+        },
+        shown: shownSet,
+      }).text;
+    expect(once("m1")).toMatch(/!\[/);
+    expect(once("m2")).toBe("x");
+  });
+});
+
 describe("media that only appears in text is not shown", () => {
   const reply = (dir: string, extra: object) => ({
     attachmentsDir: NodePath.join(dir, "att"),

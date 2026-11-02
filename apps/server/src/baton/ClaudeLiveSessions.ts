@@ -136,6 +136,13 @@ export const accountOfConfigDir = (dir: string): string | null => {
   }
 };
 
+/**
+ * Tessaya's own helper sessions (the assistant, rewrites, an account's login) run Claude in a folder under the app's
+ * data directory (.t3). They are not the user's work: they must not become threads or catalog rows.
+ */
+export const isTessayaOwnFolder = (cwd: string | null | undefined): boolean =>
+  cwd !== null && cwd !== undefined && /(^|\/)\.t3(\/|$)/i.test(cwd.replace(/\\/g, "/"));
+
 /** Sessions under every config directory, each with its own account (the live-thread mirror). */
 export const readAllProfileLiveSessions = (): Effect.Effect<ReadonlyArray<ClaudeLiveSession>> =>
   Effect.gen(function* () {
@@ -146,8 +153,10 @@ export const readAllProfileLiveSessions = (): Effect.Effect<ReadonlyArray<Claude
         account: accountOfConfigDir(dir),
         dir: NodePath.join(dir, "sessions"),
       });
-      for (const session of found)
+      for (const session of found) {
+        if (isTessayaOwnFolder(session.cwd)) continue;
         all.push(dir === home ? session : { ...session, configDir: dir });
+      }
     }
     return all;
   });

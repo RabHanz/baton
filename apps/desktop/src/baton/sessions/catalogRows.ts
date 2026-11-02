@@ -114,12 +114,18 @@ export const visibleRows = (
 const WORDS = {
   search: "Search sessions, folders and machines",
   new: "New session",
+  newTitle: "Start a new session",
+  startNew: "Start new session",
+  recent: "Recent folders",
+  earlier: "earlier sessions here",
+  latest: "Resume latest",
+  startFresh: "Start new",
+  resumeHint: "Continues this conversation with its full history",
   machine: "Machine",
   folder: "Folder, for example C:\\work\\project",
   model: "Model",
   effort: "Effort",
   message: "First message (optional)",
-  start: "Start",
   cancel: "Cancel",
   more: "Show more",
 } as const;
@@ -143,6 +149,19 @@ export const catalogControls = (input: {
     { value: "running", label: "Running" },
     { value: "stopped", label: "Stopped" },
   ];
+  // Folders that already hold stopped sessions: the form says so, so Resume and Start new are never confused.
+  const earlierByFolder = new Map<string, { cwd: string; count: number; id: string }>();
+  for (const r of rows.toSorted(
+    (a, b) => (Date.parse(b.lastActivityAt ?? "") || 0) - (Date.parse(a.lastActivityAt ?? "") || 0),
+  )) {
+    if (r.state === "running" || !r.canResume || r.cwd === "") continue;
+    const key = r.cwd.toLowerCase().replace(/[\\/]+$/, "");
+    const have = earlierByFolder.get(key);
+    earlierByFolder.set(
+      key,
+      have === undefined ? { cwd: r.cwd, count: 1, id: r.id } : { ...have, count: have.count + 1 },
+    );
+  }
   const bar: HomeControl = {
     id: "c.bar",
     section: "Sessions",
@@ -158,6 +177,7 @@ export const catalogControls = (input: {
     creating: view.creating,
     newMachine: view.newMachine || machines[1]?.value || "",
     folders: input.folders,
+    earlierHere: [...earlierByFolder.values()],
     models: [
       { value: "", label: "Default model" },
       { value: "opus", label: "Opus" },
@@ -185,6 +205,7 @@ export const catalogControls = (input: {
     stateLabel: STATE_WORDS[r.state],
     resumeLabel:
       r.state === "stopped" || r.state === "failed" ? (r.canResume ? "Resume" : null) : null,
+    note: (r.state === "stopped" || r.state === "failed") && r.canResume ? WORDS.resumeHint : "",
     source: r.detail ?? (r.source === "history" ? "From history" : ""),
   }));
   return [bar, ...list];
@@ -320,8 +341,11 @@ export const createCatalog = (input: {
             status = "";
             return refresh();
           })
-          .catch(() => {
-            status = "That session could not be started there.";
+          .catch((error: unknown) => {
+            status =
+              error instanceof Error && error.message !== ""
+                ? error.message
+                : "That session could not be started there.";
             input.onChange();
           });
       } else if (id.startsWith("c:")) {
@@ -336,7 +360,14 @@ export const createCatalog = (input: {
               set({ id: row.id, state: "running" });
               input.service.open(row);
             })
-            .catch(() => set({ id: row.id, state: "failed" }));
+            .catch((error: unknown) =>
+              set({
+                id: row.id,
+                state: "failed",
+                detail:
+                  error instanceof Error && error.message !== "not resumed" ? error.message : null,
+              }),
+            );
           return true;
         }
       }

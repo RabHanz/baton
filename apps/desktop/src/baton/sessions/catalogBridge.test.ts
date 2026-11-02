@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createBridgeCatalogService, rowsFromAnswer } from "./catalogBridge.ts";
+import { createBridgeCatalogService, reasonOf, rowsFromAnswer } from "./catalogBridge.ts";
 import type { SessionsBridge } from "./sessionsBridge.ts";
 
 const row = {
@@ -19,6 +19,24 @@ const row = {
 };
 
 describe("the real catalog service", () => {
+  it("shows the server's own reason when a new session cannot start", async () => {
+    expect(
+      reasonOf(JSON.stringify({ state: "failed", detail: "The folder X is not on this machine." })),
+    ).toBe("The folder X is not on this machine.");
+    const service = createBridgeCatalogService({
+      bridge: {
+        request: async () => ({
+          ok: false,
+          detail: JSON.stringify({ detail: "Claude Code is not installed here." }),
+        }),
+      } as unknown as SessionsBridge,
+      openMainWindow: () => undefined,
+    });
+    await expect(service.create({ environmentId: "e1", cwd: "D:\\x" })).rejects.toThrow(
+      "Claude Code is not installed here.",
+    );
+  });
+
   it("opens the thread a machine without Herdr made for the resumed session", async () => {
     const sent: unknown[] = [];
     const answers = [

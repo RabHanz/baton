@@ -68,11 +68,18 @@ describe("the mark shows once", () => {
 
 describe("the mark breathes only while the window is in front", () => {
   it("animates transform and opacity only, behind the live gate, and the gate follows focus and visibility", () => {
-    expect(APP_CSS).toMatch(/@keyframes breathe\{[^@]*transform:scale\(1\.035\)/);
+    expect(APP_CSS).toMatch(/@keyframes breathe\{[^@]*transform:scale\(1\.03\)/);
     expect(APP_CSS).not.toMatch(/(?<!html\.live )\.brand #mark\{[^}]*animation:/);
-    expect(APP_CSS).toMatch(/html\.live \.brand #mark\{animation:breathe 6s/);
+    expect(APP_CSS).toMatch(/html\.live \.brand #mark\{animation:breathe 7s/);
     for (const event of ["'focus'", "'blur'", "'visibilitychange'"]) expect(APP_SCRIPT).toContain(event);
     expect(APP_CSS).toMatch(/prefers-reduced-motion:reduce\)\{\*\{[^}]*animation:none/);
+  });
+});
+
+describe("a refresh keeps the breathing mark", () => {
+  it("leaves the brand in the page across a sidebar rebuild so its animation does not restart", () => {
+    expect(APP_SCRIPT).toContain("fresh.remove(); el.append(...next.childNodes)");
+    expect(APP_SCRIPT).toMatch(/foot\.append\(t3, st\); side\.appendChild\(foot\);\s*\}, 'brand'\);/);
   });
 });
 
