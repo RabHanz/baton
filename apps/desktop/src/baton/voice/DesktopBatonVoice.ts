@@ -4260,7 +4260,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       void Electron.shell.openExternal("https://github.com/apps/claude");
     } else if (id.startsWith("cl.signin.")) {
       const command = cloud.view().detections[id.slice("cl.signin.".length) as ProviderId]?.signInCommand ?? "";
-      const plan = terminalPlan(process.platform, command);
+      const plan = terminalPlan(input.platform, command);
       if (plan !== null) {
         try {
           NodeChildProcess.spawn(plan.file, [...plan.args], { detached: true, stdio: "ignore", windowsHide: false }).unref();
