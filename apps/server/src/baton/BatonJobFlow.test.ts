@@ -13,6 +13,7 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import {
   agreeJob,
   enforceCaps,
+  postReports,
   noticePlan,
   refineJob,
   releaseWaiting,
@@ -422,5 +423,46 @@ layer("BatonJobFlow", (it) => {
         });
         assert.isNull(none.find((j) => j.workSessionId === id)?.limitReached);
       }),
+  );
+
+  it.effect("writes a progress report into a running job's record once per cadence, from state", () =>
+    Effect.gen(function* () {
+      const jobs = yield* BatonJobService;
+      const id = WorkSessionId.make("job-report-1");
+      const { threadId } = yield* startJob({
+        id,
+        projectId: ProjectId.make("project-site"),
+        title: "Reported",
+        goal: "Do the thing",
+        permissions: { folders: [], projects: [], tools: ["read"] },
+        limits: { reportEveryMinutes: 1 },
+        modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+        runtimeMode: "approval-required",
+      });
+      shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+      yield* jobs.planReady(id);
+      yield* agreeJob(id);
+      const entries = [
+        {
+          workSessionId: id,
+          title: "Reported",
+          lifecycle: "active",
+          state: "working",
+          needsUser: false,
+          updatedAt: "2026-11-03T10:00:00.000Z",
+          threads: [{ threadId }],
+          synopsis: {
+            currentAction: "running the tests",
+            recentFindings: [{ text: "fixed the import" }],
+            changedFiles: ["a.ts"],
+            next: ["rebuild"],
+            validation: [{ label: "tests", outcome: "failed" }],
+            needsUser: false,
+          },
+        },
+      ] as never;
+      // The job was just created, so nothing is due yet.
+      assert.deepStrictEqual(yield* postReports(entries), []);
+    }),
   );
 });
