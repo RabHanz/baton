@@ -306,25 +306,30 @@ void Electron.app.whenReady().then(async () => {
 using System;using System.Runtime.InteropServices;
 public class W{[DllImport("user32.dll")]public static extern bool MoveWindow(IntPtr h,int x,int y,int w,int ht,bool r);[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr h);}
 '@
-function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandle -ne 0}|Select-Object -First 1;if($p){[W]::MoveWindow($p.MainWindowHandle,100,60,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null}}
+function Place($name){$p=Get-Process $name -EA 0|Where-Object{$_.MainWindowHandle -ne 0}|Select-Object -First 1;if($p){[W]::MoveWindow($p.MainWindowHandle,100,60,820,560,$true)|Out-Null;[W]::SetForegroundWindow($p.MainWindowHandle)|Out-Null;(New-Object -ComObject WScript.Shell).AppActivate($p.Id)|Out-Null}}
 `;
+    // Files, not pipes: an app started by the script (Explorer, Edge) would hold a pipe open and the call would never end.
     const run = (script: string) =>
       new Promise<{ code: number; out: string }>((resolve) => {
-        const file = NodePath.join(
+        const base = NodePath.join(
           out,
-          `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.ps1`,
+          `m-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         );
-        NodeFS.writeFileSync(file, PRELUDE + script);
-        NodeChildProcess.execFile(
+        NodeFS.writeFileSync(`${base}.ps1`, PRELUDE + script);
+        const log = NodeFS.openSync(`${base}.log`, "w");
+        const child = NodeChildProcess.spawn(
           "powershell.exe",
-          ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file],
-          { windowsHide: true, timeout: 60_000 },
-          (error, stdout, stderr) =>
-            resolve({
-              code: error === null ? 0 : typeof error.code === "number" ? error.code : 1,
-              out: `${String(stdout)}${String(stderr)}`.trim().slice(0, 300),
-            }),
+          ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", `${base}.ps1`],
+          { windowsHide: true, stdio: ["ignore", log, log] },
         );
+        const timer = setTimeout(() => child.kill(), 60_000);
+        const done = (code: number) => {
+          clearTimeout(timer);
+          NodeFS.closeSync(log);
+          resolve({ code, out: NodeFS.readFileSync(`${base}.log`, "utf8").trim().slice(0, 300) });
+        };
+        child.on("exit", (code) => done(code ?? 1));
+        child.on("error", () => done(1));
       });
     const side = (...args: string[]) =>
       new Promise<string>((resolve) =>
@@ -429,6 +434,11 @@ $n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 300
         }
       }
       await sleep(3000);
+      // Notepad writes its settings when it closes, so a registry check comes after the close.
+      if (sc.check.type === "ps" && sc.close !== undefined) {
+        await run(sc.close);
+        await sleep(1500);
+      }
       const verdict = await judge(sc.check, before);
       if (cause === "" && !/Finished/.test(ended)) cause = `ended with "${ended}"`;
       if (cause === "" && !verdict.pass) cause = `check failed: ${verdict.detail}`;
