@@ -193,6 +193,8 @@ import {
   stillInterrupted,
   type Interrupted,
 } from "../lifecycle/recovery.ts";
+import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
+import { helpControls } from "../help/helpRows.ts";
 import { createPlaybookStore, PLAYBOOKS, runPlaybooks, type PlaybookId } from "../presence/playbooks.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
@@ -3044,6 +3046,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ),
       ...nowControls(nowData, Date.now()),
       ...trustControls(trustData(), Date.now()),
+      ...helpControls({
+        tools: buildBatonTools({} as ToolHost).map((t) => t.name),
+        bindings: currentBindings().map((r) => ({
+          label: r.def.label,
+          keys: r.inputs.map((x) => (x.type === "key" ? x.accelerator : x.button)).join(", "),
+        })),
+        checks: checks ?? [],
+      }),
       setupHoldControl(settings.holdKey),
       ...snippetControls(snippets.list(), snippetNote),
       ...transformControls(transforms.read(), transforms.all(), transformNote),
