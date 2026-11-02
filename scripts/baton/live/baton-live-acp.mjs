@@ -121,9 +121,70 @@ const FOOTER = /Esc to cancel|Enter to (confirm|select)|↑\/↓ to navigate/;
 const RULE = /^\s*[─━╌]{8,}\s*$/;
 const SOLID = /^\s*[─━]{8,}\s*$/;
 const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
-const CUSTOM = /^type something\.?$/i;
+const CUSTOM = /^(?:type something|other)\.?$/i;
 const DROPPED = /^chat about this$/i;
 const clean = (text) => text.replace(/^[\s│┃|]+/, "").replace(/\s+/g, " ").trim();
+
+/** The tab bar of a multi-question form: each question's name and whether it is answered (☒). */
+const tabsOf = (line) =>
+  [...line.matchAll(/([☐☒✔])\s+(.+?)(?=\s+[☐☒✔]|\s*→|\s*$)/g)]
+    .map((m) => ({ label: m[2].trim(), answered: m[1] !== "☐", submit: m[1] === "✔" }))
+    .filter((tab) => tab.label.length > 0);
+
+/**
+ * The last screen of a multi-question form: "Review your answers", each question with its answer, then
+ * "Ready to submit your answers?" over Submit and Cancel. It has no Esc footer, which is why it was not
+ * read: a session sat waiting on it with nothing to show. Going back one question is the left arrow.
+ */
+export function parseReviewScreen(lines) {
+  let ask = -1;
+  for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
+    if (/^\s*Ready to submit your answers\?\s*$/.test(lines[i])) {
+      ask = i;
+      break;
+    }
+  if (ask < 0) return null;
+  const options = [];
+  for (let i = ask + 1; i < lines.length && i <= ask + 8; i += 1) {
+    const m = NUMBERED.exec(lines[i]);
+    if (m === null) {
+      if (options.length > 0 && lines[i].trim() === "") break;
+      continue;
+    }
+    options.push({ number: Number(m[3]), label: m[4], selected: m[2] !== undefined });
+  }
+  if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
+  let top = ask - 1;
+  while (top >= 0 && ask - top < 40 && !/Review your answers/.test(lines[top])) top -= 1;
+  const answers = [];
+  for (let i = Math.max(0, top); i < ask; i += 1) {
+    const q = /^[\s│┃]*●\s*(.*)$/.exec(lines[i]);
+    if (q !== null) answers.push({ question: clean(q[1]), answer: "" });
+    else if (answers.length > 0) {
+      const a = /^\s*→\s*(.*)$/.exec(lines[i]);
+      if (a !== null && answers.at(-1).answer === "") answers.at(-1).answer = clean(a[1]);
+      else if (/^[\s│┃]/.test(lines[i]) && lines[i].trim() !== "" && answers.at(-1).answer === "")
+        answers.at(-1).question = `${answers.at(-1).question} ${clean(lines[i])}`.trim();
+    }
+  }
+  const tabLine = lines.slice(Math.max(0, top - 2), top + 1).find((l) => /^\s*←/.test(l));
+  const question = "Ready to submit your answers?";
+  const context = answers.map((a) => `${a.question} → ${a.answer}`).join(" · ").slice(0, 600);
+  return {
+    question,
+    header: "Review your answers",
+    ...(tabLine === undefined ? {} : { tabs: tabsOf(tabLine.trim()) }),
+    context,
+    options: [
+      ...options.map((o) => ({ index: o.number - 1, label: o.label, description: "" })),
+      { index: -1, label: "Go back", description: "Back to the last question", keys: ["left"] },
+    ],
+    selected: options.findIndex((o) => o.selected),
+    customIndex: null,
+    review: true,
+    key: [question, ...options.map((o) => o.label), context].join("\u0000"),
+  };
+}
 
 /**
  * The prompt on a Claude Code screen, or null when none can be read. Options keep their screen
@@ -131,6 +192,8 @@ const clean = (text) => text.replace(/^[\s│┃|]+/, "").replace(/\s+/g, " ").t
  */
 export function parsePanePrompt(screen) {
   const lines = String(screen ?? "").replace(/\r/g, "").split("\n");
+  const review = parseReviewScreen(lines);
+  if (review !== null) return review;
   let footer = -1;
   for (let i = lines.length - 1; i >= 0 && i >= lines.length - 40; i -= 1)
     if (FOOTER.test(lines[i])) {
@@ -199,12 +262,15 @@ export function parsePanePrompt(screen) {
     .filter((l) => !RULE.test(l))
     .map(clean)
     .filter((l) => l.length > 0);
+  // A multi-question form puts its tabs on one line: ← ☐ Chrome ☒ Connectors ✔ Submit →
+  const tabs = context.length > 0 && /^←/.test(context[0]) ? tabsOf(context.shift()) : null;
   const header = context.length > 0 && /^[☐☒✔]/.test(context[0]) ? context.shift().slice(1).trim() : null;
   const visible = options.filter((o) => !CUSTOM.test(o.label) && !DROPPED.test(o.label));
   const custom = options.find((o) => CUSTOM.test(o.label));
   return {
     question,
     header,
+    ...(tabs === null ? {} : { tabs }),
     context: context.join(" · ").slice(0, 600),
     options: visible.map((o) => ({
       index: o.number - 1,
@@ -225,6 +291,7 @@ export function answerKeys(prompt, answer) {
     ? prompt.options.find((o) => o.index === Number(wanted) - 1)
     : undefined;
   const option = byLabel ?? byNumber;
+  if (option?.keys !== undefined) return { keys: option.keys, text: null };
   const target = option?.index ?? (wanted.length > 0 ? prompt.customIndex : null);
   if (target === null || target === undefined) return null;
   const delta = target - prompt.selected;
@@ -430,7 +497,7 @@ export async function readPanePrompt(paneRef) {
  * D88: answer the prompt showing in the pane with keystrokes, then wait until it is gone. Returns
  * what to tell the thread, or null when `text` is not an answer to it (nothing was pressed).
  */
-async function answerPrompt(sessionId, paneRef, text) {
+export async function answerPrompt(sessionId, paneRef, text) {
   const shown = await readPanePrompt(paneRef);
   if (shown === null) return null;
   const answer = answerFrom(text, shown);

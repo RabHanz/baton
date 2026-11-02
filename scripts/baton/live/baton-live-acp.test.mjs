@@ -16,6 +16,7 @@ import {
   splitAttachments,
   safeInboxName,
   parsePanePrompt,
+  parseReviewScreen,
   answerKeys,
   answerFrom,
   enqueue,
@@ -297,4 +298,64 @@ NodeTest.test("when the session is gone for good every queued message is quoted 
     lostNote("the session is no longer running here.", "two"),
   ]);
   NodeAssert.equal(readQueue(dir, "s4").length, 0);
+});
+
+NodeTest.test("the review screen of a multi-question form is read, with its answers, Submit, Cancel and a way back", () => {
+  const prompt = parsePanePrompt(fixture("pane-review.txt"));
+  NodeAssert.equal(prompt.question, "Ready to submit your answers?");
+  NodeAssert.equal(prompt.header, "Review your answers");
+  NodeAssert.deepEqual(
+    prompt.tabs?.map((t) => [t.label, t.answered]),
+    [
+      ["Browser", true],
+      ["Connectors", true],
+      ["Submit", true],
+    ],
+  );
+  NodeAssert.match(prompt.context, /Which browser profile should that happen in\? → My main profile/);
+  NodeAssert.match(prompt.context, /should those connectors be removed\? → Remove after \(Recommended\)/);
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Submit answers", "Cancel", "Go back"],
+  );
+  NodeAssert.equal(prompt.selected, 0);
+  NodeAssert.deepEqual(answerKeys(prompt, "Submit answers"), { keys: ["enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "cancel"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Go back"), { keys: ["left"], text: null });
+  NodeAssert.equal(answerKeys(prompt, "banana"), null, "no free text on the review screen");
+});
+
+NodeTest.test("a question in a real multi-question form has its tabs, and free text goes to the last option", () => {
+  // Read from a throwaway Claude Code session asked for two questions in one AskUserQuestion call.
+  const prompt = parsePanePrompt(fixture("pane-form-tabs.txt"));
+  NodeAssert.equal(prompt.question, "Which colour do you prefer?");
+  NodeAssert.deepEqual(
+    prompt.tabs?.map((t) => [t.label, t.answered]),
+    [
+      ["Colour", false],
+      ["Size", false],
+      ["Submit", true],
+    ],
+  );
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Red", "Green"],
+  );
+  NodeAssert.equal(prompt.customIndex, 2);
+  NodeAssert.deepEqual(answerKeys(prompt, "green"), { keys: ["down", "enter"], text: null });
+  NodeAssert.deepEqual(answerKeys(prompt, "Extra large, please"), {
+    keys: ["down", "down"],
+    text: "Extra large, please",
+  });
+});
+
+NodeTest.test("a free-text option called Other is the custom slot too", () => {
+  const screen = fixture("pane-form-tabs.txt").replace("3. Type something.", "3. Other");
+  NodeAssert.equal(parsePanePrompt(screen).customIndex, 2);
+});
+
+NodeTest.test("the permission dialog and the single question still read as before", () => {
+  NodeAssert.equal(parsePanePrompt(fixture("pane-permission.txt")).question, "Do you want to proceed?");
+  NodeAssert.equal(parsePanePrompt(fixture("pane-question.txt")).question, "Which colour do you prefer?");
+  NodeAssert.equal(parseReviewScreen(["nothing here"]), null);
 });
