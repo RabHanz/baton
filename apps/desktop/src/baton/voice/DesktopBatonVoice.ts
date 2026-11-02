@@ -3954,6 +3954,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           applyBindings();
         }
       }
+    } else if (id === "trust.playbooks-run") {
+      void playbookTick().catch(() => undefined);
     } else if (id.startsWith("trust.")) {
       const act = trustAction(id, value);
       if (act?.kind === "filter") trustFilter = act.filter;
