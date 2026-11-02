@@ -180,10 +180,70 @@ export const refineJob = Effect.fn("BatonJobFlow.refine")(function* (input: Bato
   return terms;
 });
 
+/** Runs that actually ran: one is a turn the worker took. Queued, cancelled and rolled-back ones are not. */
+const TURN_STATUSES: ReadonlySet<string> = new Set([
+  "starting",
+  "running",
+  "waiting",
+  "completed",
+  "interrupted",
+  "failed",
+]);
+
+/** What each worker has taken so far, for the cards and for the caps. */
+export const turnCounts = Effect.fn("BatonJobFlow.turnCounts")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const engine = yield* BatonEngine;
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    let n = 0;
+    for (const thread of entry.threads) {
+      const runs = yield* engine.threadRuns(thread.threadId);
+      n += runs.filter((r) => TURN_STATUSES.has(r.status)).length;
+    }
+    counts.set(entry.workSessionId, n);
+  }
+  return counts;
+});
+
 export const listJobs = Effect.fn("BatonJobFlow.list")(function* () {
   const jobs = yield* BatonJobService;
   const fleet = yield* FleetQuery.getFleet({});
-  return yield* jobs.view({ entries: fleet.entries });
+  return yield* jobs.view({ entries: fleet.entries, turns: yield* turnCounts(fleet.entries) });
+});
+
+/**
+ * The caps are enforced, not only shown: an agreed job whose worker is still going after its time or
+ * turns are used up is stopped (its thread and plan stay) and a line says why. Raising the cap with a
+ * refinement lets it go on. Spend is not measured per job yet, so a dollar cap is never the reason.
+ */
+export const enforceCaps = Effect.fn("BatonJobFlow.enforceCaps")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+) {
+  const jobs = yield* BatonJobService;
+  const cards = yield* jobs.view({ entries, turns: yield* turnCounts(entries) });
+  const stopped: string[] = [];
+  for (const card of cards) {
+    // Only a worker that is going: one waiting for him, or finished, spends nothing.
+    if (
+      card.phase !== "approved" ||
+      card.limitReached === null ||
+      !["working", "starting", "monitoring"].includes(card.state)
+    ) {
+      continue;
+    }
+    if (!(yield* stopJob(card.workSessionId))) continue;
+    const at = DateTime.formatIso(DateTime.makeUnsafe(yield* Clock.currentTimeMillis));
+    yield* jobs.refine(card.workSessionId, {
+      by: "baton",
+      at,
+      via: "thread",
+      text: `Stopped: it reached its ${card.limitReached} limit. Raise the limit to let it go on.`,
+    });
+    stopped.push(card.workSessionId);
+  }
+  return stopped;
 });
 
 /**
