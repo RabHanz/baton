@@ -40,7 +40,7 @@ describe("entry points: voice, typed Ask, hotkey and tray all arrive as a senten
 });
 
 describe("tools: what sees, points, teaches or acts goes through the one gate", () => {
-  const host = {} as ToolHost;
+  const host = { windowKey: async () => "w" } as unknown as ToolHost;
   const tools = buildBatonTools(host).map((t) => t.name);
   const call = (tool: string, input: Record<string, unknown> = {}) =>
     judgeToolCall({ tool, input }, { actWithoutAsking: false, tainted: false });
