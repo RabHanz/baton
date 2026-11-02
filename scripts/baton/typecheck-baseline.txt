@@ -1,13 +1,11 @@
-apps/desktop/src/baton/memory/memoryClient.ts: error TS2304: Cannot find name 'MemoryClient'.
-apps/desktop/src/baton/memory/memoryClient.ts: error TS7006: Parameter 'context' implicitly has an 'any' type.
-apps/desktop/src/baton/memory/memoryClient.ts: error TS7006: Parameter 'draft' implicitly has an 'any' type.
-apps/desktop/src/baton/memory/memoryClient.ts: error TS7006: Parameter 'id' implicitly has an 'any' type.
-apps/desktop/src/baton/memory/memoryClient.ts: error TS7006: Parameter 'patch' implicitly has an 'any' type.
-apps/desktop/src/baton/memory/memoryClient.ts: error TS7006: Parameter 'pinned' implicitly has an 'any' type.
-apps/desktop/src/baton/memory/memoryClient.ts: error TS7006: Parameter 'query' implicitly has an 'any' type.
 apps/desktop/src/baton/memory/memoryRows.test.ts: error TS2352: Conversion of type 'HomeControl | undefined' to type '{ kinds: { value: string; count: number; }[]; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
 apps/desktop/src/baton/memory/memoryTab.test.ts: error TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)
+apps/desktop/src/baton/screen/ScreenCompanion.ts: error TS2322: Type 'Promise<string>' is not assignable to type 'string'.
+apps/desktop/src/baton/vault/vaultHost.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
 apps/desktop/src/baton/vault/vaultStore.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+apps/desktop/src/baton/vault/vaultTab.test.ts: error TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)
+apps/desktop/src/baton/vault/vaultTab.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+apps/desktop/src/baton/voice/DesktopBatonVoice.ts: error TS2322: Type 'Promise<string>' is not assignable to type 'string'.
 apps/server/src/baton/BatonMemoryEpisode.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
 apps/server/src/baton/BatonMemoryEpisode.ts: error TS377069: This Effect code constructs `new Date()`, date values in Effect code are represented through `DateTime` from Effect. effect(globalDateInEffect)
 apps/server/src/baton/BatonMemoryEpisode.ts: error TS377095: `Effect.orElseSucceed` expresses the same recovery more directly than `Effect.catch` followed by `Effect.succeed`. effect(catchToOrElseSucceed)
@@ -19,5 +17,6 @@ apps/server/src/baton/BatonMemoryService.ts: error TS377012: This Effect generat
 apps/server/src/baton/BatonMemoryService.ts: error TS377026: This code uses `JSON.parse` or `JSON.stringify`. Use `Schema.UnknownFromJsonString` for unknown shapes, `Schema.fromJsonString(schema)` for known ones, or `Schema.toCodecJson(schema)` when working with JSON values instead of strings. effect(preferSchemaOverJson)
 apps/server/src/baton/BatonMemoryService.ts: error TS377079: This Effect code uses `crypto.randomUUID()`, prefer the Effect `Crypto` module instead. effect(cryptoRandomUUIDInEffect)
 apps/server/src/baton/BatonMemoryService.ts: error TS377120: `Effect.filterOrFail` expresses this conditional validation more directly than `Effect.flatMap` with an identity `Effect.succeed` branch. effect(flatMapConditionalToFilterOrFail)
+packages/baton-shared/src/anomalies.test.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
 packages/baton-shared/src/initiative.test.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
 packages/baton-shared/src/memoryLearning.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
