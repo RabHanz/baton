@@ -35,6 +35,7 @@ export const createMemoryTab = (input: {
   let usedOnly = false;
   let status = "";
   let loading = false;
+  let pullOn = false;
 
   const load = async (): Promise<void> => {
     if (loading) return;
@@ -50,6 +51,7 @@ export const createMemoryTab = (input: {
         items?: ReadonlyArray<MemoryItem>;
       } | null;
       usedIds = new Set((used?.items ?? []).map((i) => i.id));
+      pullOn = ((await input.call("pull", { action: "status" }).catch(() => null)) as { enabled?: boolean } | null)?.enabled === true;
     } catch {
       items = null;
     } finally {
@@ -106,6 +108,14 @@ export const createMemoryTab = (input: {
       input.sync.setEnabled(value === true);
       status = value === true ? "Sync is on." : "Sync is off.";
       input.refresh();
+    } else if (id === "m.pullOn") {
+      void run("pull", { action: value === true ? "enable" : "disable" }, value === true ? "Pulling learnings daily; they wait for your yes." : "Not pulling learnings.");
+    } else if (id === "m.pull") {
+      void input
+        .call("pull", { action: "run" })
+        .then((out) => void (status = (out as { message: string }).message))
+        .catch((e: unknown) => void (status = reason(e)))
+        .then(load);
     } else if (id === "m.sync") {
       void input.sync
         .run()
@@ -137,6 +147,7 @@ export const createMemoryTab = (input: {
             usedIds,
             usedOnly,
             syncOn: input.sync.enabled(),
+            pullOn,
             status,
           }),
   };
