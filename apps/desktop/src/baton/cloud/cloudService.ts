@@ -71,7 +71,7 @@ export interface CloudDeps {
   /** The computers this window is connected to, for the picker. */
   readonly environments?: () => Promise<ReadonlyArray<{ readonly id: string; readonly label: string }>>;
   /** The Director's yes, on a dialog the assistant cannot click: the index of the button he pressed. */
-  readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number }) => Promise<number>;
+  readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number; everywhere?: boolean }) => Promise<number>;
   readonly changed: () => void;
   readonly now: () => number;
   /** A key from the vault for one call (Hello-gated), or null when no vault key is named. */
@@ -245,6 +245,7 @@ export const createCloud = (deps: CloudDeps) => {
         buttons: q.buttons,
         cancel: q.cancel,
         armMs: 1_500,
+        everywhere: true,
       });
       const pick = q.picks[pressed] ?? { kind: "later" as const };
       if (pick.kind === "later") return;
@@ -262,6 +263,7 @@ export const createCloud = (deps: CloudDeps) => {
         buttons: [text("cloud.offer.approve"), text("cloud.offer.back")],
         cancel: 1,
         armMs: 1_500,
+        everywhere: true,
       });
       if (yes === 0) {
         await runApprove(key);
