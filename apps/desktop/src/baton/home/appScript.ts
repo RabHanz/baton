@@ -195,8 +195,11 @@ function catalogBar(c) {
     const nf = $('form', 'vocab'), nm = $('select'); nm.setAttribute('aria-label', c.words.machine);
     for (const o of c.machines.slice(1)) { const op = $('option', null, o.label); op.value = o.value; nm.appendChild(op); } nm.value = c.newMachine; nm.onchange = () => set('c.newMachine', nm.value);
     const fi = $('input'); fi.type = 'text'; fi.id = 'in-c-folder'; fi.placeholder = c.words.folder; fi.setAttribute('aria-label', c.words.folder); fi.value = drafts.get('c-folder') || ''; fi.oninput = () => drafts.set('c-folder', fi.value);
-    const go = $('button', 'btn primary', c.words.start); go.type = 'submit'; nf.append(nm, fi, go);
-    nf.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('c-folder'); set('c.start', v); };
+    const sel = (opts, label) => { const x = $('select'); x.setAttribute('aria-label', label); for (const o of opts) { const op = $('option', null, o.label); op.value = o.value; x.appendChild(op); } return x; };
+    const md = sel(c.models, c.words.model), ef = sel(c.efforts, c.words.effort);
+    const ms = $('textarea', 'memedit'); ms.id = 'in-c-msg'; ms.placeholder = c.words.message; ms.setAttribute('aria-label', c.words.message); ms.value = drafts.get('c-msg') || ''; ms.oninput = () => drafts.set('c-msg', ms.value);
+    const go = $('button', 'btn primary', c.words.start); go.type = 'submit'; nf.append(nm, fi, md, ef, ms, go);
+    nf.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('c-folder'); drafts.delete('c-msg'); set('c.start', JSON.stringify({ cwd: v, model: md.value, effort: ef.value, message: ms.value })); };
     w.appendChild(nf);
     if (c.folders.length) { const fl = $('div', 'memtools'); for (const d of c.folders.slice(0, 6)) { const b = $('button', 'btn quiet', d); b.onclick = () => { fi.value = d; drafts.set('c-folder', d); fi.focus(); }; fl.appendChild(b); } w.appendChild(fl); }
   }

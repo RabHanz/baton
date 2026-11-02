@@ -77,12 +77,20 @@ export const BatonCatalogResumeResult = Schema.Struct({
 export const BatonCatalogCreateInput = Schema.Struct({
   cwd: Schema.String.check(Schema.isMaxLength(500)),
   agent: Schema.optionalKey(Schema.Literal("claude")),
+  /** A family ("opus", "sonnet") or a model id; used where the session is a T3 thread (no Herdr). */
+  model: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
+  /** Reasoning effort: low, medium, high, xhigh or max. */
+  effort: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(20))),
+  /** The first message, sent once the thread is up. */
+  message: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(65_536))),
 });
 export const BatonCatalogCreateResult = Schema.Struct({
   state: BatonCatalogState,
   sessionId: Schema.NullOr(Schema.String),
   pane: Schema.NullOr(Schema.String),
   detail: Schema.NullOr(Schema.String),
+  /** The T3 thread that was started, on a machine with no Herdr. */
+  threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 export const BatonCatalogSendInput = Schema.Struct({

@@ -10,6 +10,7 @@ import type { SessionsBridge } from "./sessionsBridge.ts";
 
 const RESUME_WAIT_MS = 70_000;
 const LIST_WAIT_MS = 15_000;
+const OPEN_WAIT_MS = 8_000;
 const WATCH_MS = 3_000;
 const WATCH_FOR_MS = 60_000;
 
@@ -57,6 +58,8 @@ export const createBridgeCatalogService = (input: {
   readonly wait?: (ms: number) => Promise<void>;
 }): CatalogService => {
   const wait = input.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  /** Where a resumed session's thread is, when the server made one (a machine with no Herdr). */
+  const threads = new Map<string, string>();
   const list = async (query: string) => {
     const answer = await input.bridge.request({ kind: "catalogList", query }, LIST_WAIT_MS);
     if (answer === null) throw new Error("The sessions view did not answer.");
@@ -78,7 +81,9 @@ export const createBridgeCatalogService = (input: {
       // "resuming" means the server is still bringing it back: watch the list until it is running.
       let state: unknown;
       try {
-        state = (JSON.parse(answer.detail) as { state?: unknown }).state;
+        const result = JSON.parse(answer.detail) as { state?: unknown; threadId?: unknown };
+        state = result.state;
+        if (typeof result.threadId === "string") threads.set(row.id, result.threadId);
       } catch {
         state = "running";
       }
@@ -89,12 +94,29 @@ export const createBridgeCatalogService = (input: {
       }
       if (state === "failed" || state === "resuming") throw new Error("not resumed");
     },
-    create: async ({ environmentId, cwd }) => {
+    create: async ({ environmentId, cwd, model, effort, message }) => {
       const answer = await input.bridge.request(
-        { kind: "catalogCreate", environmentId, cwd },
+        {
+          kind: "catalogCreate",
+          environmentId,
+          cwd,
+          ...(model === undefined ? {} : { model }),
+          ...(effort === undefined ? {} : { effort }),
+          ...(message === undefined ? {} : { message }),
+        },
         RESUME_WAIT_MS,
       );
       if (answer === null || !answer.ok) throw new Error("not started");
+      // A machine with no Herdr starts a thread: show it.
+      try {
+        const threadId = (JSON.parse(answer.detail) as { threadId?: unknown }).threadId;
+        if (typeof threadId === "string") {
+          input.openMainWindow();
+          void input.bridge.request({ kind: "open", environmentId, threadId }, OPEN_WAIT_MS);
+        }
+      } catch {
+        // The session is started either way.
+      }
     },
     folders: async (environmentId) => {
       const answer = await input.bridge.request(
@@ -110,7 +132,15 @@ export const createBridgeCatalogService = (input: {
         return [];
       }
     },
-    // The thread opens in T3's own window; the sidebar selects it from there.
-    open: () => input.openMainWindow(),
+    // The thread opens in T3's own window; a resumed session's own thread is selected there when the server made one.
+    open: (row) => {
+      input.openMainWindow();
+      const threadId = threads.get(row.id);
+      if (threadId !== undefined)
+        void input.bridge.request(
+          { kind: "open", environmentId: row.environmentId, threadId },
+          OPEN_WAIT_MS,
+        );
+    },
   };
 };

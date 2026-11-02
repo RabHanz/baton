@@ -245,7 +245,14 @@ export type BatonSessionRequest =
       readonly sessionId: string;
       readonly cwd: string | null;
     }
-  | { readonly kind: "catalogCreate"; readonly environmentId: string; readonly cwd: string }
+  | {
+      readonly kind: "catalogCreate";
+      readonly environmentId: string;
+      readonly cwd: string;
+      readonly model?: string;
+      readonly effort?: string;
+      readonly message?: string;
+    }
   | { readonly kind: "catalogFolders"; readonly environmentId: string }
   | {
       readonly kind: "send";
