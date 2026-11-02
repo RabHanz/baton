@@ -14,6 +14,7 @@ import * as Electron from "electron";
 
 import { createVoicePill } from "../../voice/voicePill.ts";
 import { createInputDriver } from "../inputDriver.ts";
+import { startDictationSidecar } from "../../voice/dictationSidecar.ts";
 import { startScreenCompanion } from "../ScreenCompanion.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "teach-proof-out");
@@ -205,6 +206,56 @@ void Electron.app.whenReady().then(async () => {
     onCue: (cue) => note("cue", { cue }),
   });
 
+  // The real UI Automation sidecar (built in the workflow) gives the ring its control and the drive its window checks.
+  const sidecarBinary = process.env["SIDECAR"] ?? "";
+  const sidecar =
+    sidecarBinary === ""
+      ? null
+      : startDictationSidecar({ binary: sidecarBinary, onEvent: () => undefined });
+  const within = <T>(work: Promise<T>, ms = 8000): Promise<T | null> =>
+    Promise.race([work.catch(() => null), sleep(ms).then(() => null)]);
+  if (sidecar !== null) {
+    companion.setActions({
+      act: async () => "",
+      grammarPlaces: async () => false,
+      focus: async () => {
+        const app = await within(sidecar.foreground());
+        if (app === null || app.exe.length === 0) return null;
+        const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
+        return {
+          label: `${app.exe}: ${app.title}`,
+          ...(app.window === undefined ? {} : { window: app.window }),
+          centre:
+            rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+        };
+      },
+      windowAt: (point) => within(sidecar.windowAt(Electron.screen.dipToScreenPoint(point))),
+      uiTree: async () => {
+        const tree = await within(sidecar.uiTree());
+        return tree === null || tree.controls === undefined
+          ? null
+          : { window: tree.window ?? "", controls: tree.controls };
+      },
+      locate: async (label, near) => {
+        const physical = Electron.screen.dipToScreenPoint(near);
+        const found = await within(
+          sidecar.locate({ label, x: physical.x, y: physical.y, foreground: true }),
+        );
+        note("locate", { label, found: found?.found === true, name: found?.name ?? null });
+        if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
+        const real = Electron.screen.screenToDipPoint({ x: found.x, y: found.y });
+        const scale = Electron.screen.getDisplayNearestPoint(real).scaleFactor || 1;
+        return {
+          ...real,
+          name: found.name ?? label,
+          ...(found.width === undefined || found.height === undefined
+            ? {}
+            : { width: found.width / scale, height: found.height / scale }),
+        };
+      },
+    });
+  }
+
   const results: Record<string, unknown> = {};
   const pid = await ps(NOTEPAD);
   note("notepad", { pid });
@@ -290,6 +341,7 @@ void Electron.app.whenReady().then(async () => {
   console.log("results", JSON.stringify(results));
   timeline.end(() => {
     companion.dispose();
+    sidecar?.dispose();
     driver.dispose();
     Electron.app.exit(0);
   });

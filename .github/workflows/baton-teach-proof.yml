@@ -6,7 +6,7 @@ name: Tessaya teach and drive proof
 on:
   workflow_dispatch:
   push:
-    branches: [baton/teach-proof]
+    branches: ["baton/teach-proof**"]
 
 permissions:
   contents: read
@@ -23,6 +23,18 @@ jobs:
       - run: corepack enable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: native/baton-dictation/target
+          key: sidecar-${{ runner.os }}-${{ hashFiles('native/baton-dictation/Cargo.lock', 'native/baton-dictation/src/**') }}
+          restore-keys: sidecar-${{ runner.os }}-
+      - name: Build the UI Automation sidecar
+        shell: bash
+        env:
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
       - name: Fetch the Electron binary
         working-directory: apps/desktop
         run: node node_modules/electron/install.js
@@ -45,6 +57,7 @@ jobs:
         env:
           PROOF_OUT: ${{ github.workspace }}/teach-proof-out
           PROOF_FAKE: ${{ github.workspace }}/scripts/baton/teach-proof/fake-claude.mjs
+          SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
           HANDS_RECORD: "1"
         run: |
           mkdir -p "$PROOF_OUT"
@@ -55,3 +68,4 @@ jobs:
         with:
           name: teach-proof
           path: teach-proof-out
+          if-no-files-found: warn
