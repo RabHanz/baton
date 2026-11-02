@@ -226,13 +226,19 @@ enum Work {
     Abort,
 }
 
+/// Half the cores, at least two, but never more threads than cores: ggml's threads wait for each other by spinning, so two
+/// threads on one core (a one-core machine, or the app pinned to one) can crawl for minutes instead of seconds.
+fn default_threads(cores: usize) -> i32 {
+    (cores / 2).max(2).min(cores.max(1)) as i32
+}
+
 fn load(model: &Path) -> Result<(Session, u64), String> {
     let started = Instant::now();
     // ggml loses more than it gains on hyperthreads; BATON_THREADS is for measuring that.
     let n_threads = std::env::var("BATON_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| thread::available_parallelism().map_or(4, |n| (n.get() / 2).max(2) as i32));
+        .unwrap_or_else(|| default_threads(thread::available_parallelism().map_or(4, |n| n.get())));
     let session = Model::load(model)
         .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
@@ -1150,6 +1156,11 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn threads_are_half_the_cores_but_never_more_than_the_cores() {
+        assert_eq!([1, 2, 3, 4, 8, 16].map(default_threads), [1, 2, 2, 2, 4, 8]);
+    }
 
     /// The same table the TypeScript reducer replays (docs/baton/fixtures/double-tap.json): one set of timings, two implementations.
     #[test]

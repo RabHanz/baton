@@ -81,14 +81,23 @@ export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => vo
   core: T,
   ready: Promise<unknown>,
   maxFrames = 15_000,
+  /** For the turn log: the first frame to arrive while holding, and how many were played in when the models were ready. */
+  on: { readonly first?: () => void; readonly played?: (frames: number) => void } = {},
 ): T => {
   let open = false;
+  let seen = false;
   const held: Int16Array[] = [];
   void ready.then(() => {
     open = true;
-    for (const frame of held.splice(0)) core.pushAudio(frame);
+    const frames = held.splice(0);
+    on.played?.(frames.length);
+    for (const frame of frames) core.pushAudio(frame);
   });
   const pushAudio = (frame: Int16Array) => {
+    if (!seen) {
+      seen = true;
+      on.first?.();
+    }
     if (open) return core.pushAudio(frame);
     held.push(frame);
     if (held.length > maxFrames) held.shift();
