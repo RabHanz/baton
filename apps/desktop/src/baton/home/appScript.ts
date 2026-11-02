@@ -664,9 +664,39 @@ function modalPage(b) {
   if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
   else if (modal === 'keys') bindingsPage(b);
+  else if (modal === 'setup') setupPage(b);
   else if (modal === 'account') { b.appendChild($('h1', null, 'Account')); const g = $('div', 'group'); for (const c of rows(['s.account', 's.accountEmail'])) g.appendChild(row(c)); b.appendChild(g); const n = $('p', 'hint', 'Tessaya uses your own subscription through the claude and codex programs. It never uses an API key.'); n.style.marginTop = '12px'; b.appendChild(n); }
   else if (modal === 'updates') { b.appendChild($('h1', null, 'Updates')); const g = $('div', 'group'); for (const c of rows(['u.act'])) g.appendChild(row(c)); const ab = x.about || {}; for (const [l, v] of [['Installed version', ab.version], ['Updates come from', ab.source]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); b.appendChild($('p', 'hint', 'Tessaya downloads an update in the background and tells you before it restarts.')).style.marginTop = '12px'; }
-  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); }
+  else { const am = $('div', 'aboutmark'); am.innerHTML = markHtml(); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(startSting, 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', 'Run the setup guide again'); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); }
+}
+let setupStep = 0, setupAuto = false, meterTimer = null;
+function stopMeter() { if (meterTimer) { clearInterval(meterTimer); meterTimer = null; } }
+function setupFinish() { stopMeter(); const was = S && S.extra && S.extra.setup && S.extra.setup.show; modal = null; setupStep = 0; if (was) set('q.setupDone', true); render(); }
+function setupPage(b) {
+  const sp = (S.extra || {}).setup; if (!sp) return;
+  const step = sp.steps[setupStep]; if (!step) return;
+  b.appendChild($('p', 'hint', 'Step ' + (setupStep + 1) + ' of ' + sp.steps.length));
+  b.appendChild($('h1', null, step.title));
+  const lead = $('p', 'hint', step.text); lead.style.marginBottom = '14px'; b.appendChild(lead);
+  const list = [];
+  for (const id of step.controls) for (const c of S.controls) if (c.id === id || (id.slice(-1) === ':' && c.id.indexOf(id) === 0)) list.push(c);
+  if (list.length) { const g = $('div', 'group'); for (const c of list) g.appendChild(row(c)); b.appendChild(g); }
+  if (step.meter) {
+    const m = $('div', 'meter'); m.setAttribute('role', 'meter'); m.setAttribute('aria-label', 'Microphone level'); m.setAttribute('aria-valuemin', '0'); m.setAttribute('aria-valuemax', '100');
+    const bar = $('i'); m.appendChild(bar); b.appendChild(m);
+    const tick = () => { if (!real) return; ipc.invoke('baton-home:level').then(v => { const w = Math.round(Math.min(1, Math.max(0, Math.sqrt(v) * 1.6)) * 100); bar.style.width = w + '%'; m.setAttribute('aria-valuenow', String(w)); }).catch(() => {}); };
+    stopMeter(); meterTimer = setInterval(tick, 120); tick();
+    b.appendChild($('p', 'hint', 'If listening is off the bar stays flat. Turn it on above.'));
+  } else stopMeter();
+  if (step.tryBox) {
+    const t = $('textarea', 'trybox'); t.setAttribute('aria-label', 'Try dictation here'); t.placeholder = 'Hold ' + (sp.hold || 'your key') + ' and speak'; b.appendChild(t);
+  }
+  const foot = $('div', 'wizfoot');
+  const back = $('button', 'btn quiet', 'Back'); back.disabled = setupStep === 0; back.onclick = () => { setupStep -= 1; render(); };
+  const last = setupStep === sp.steps.length - 1;
+  const skip = $('button', 'btn quiet', last ? 'Close' : 'Skip the rest'); skip.onclick = setupFinish;
+  const next = $('button', 'btn primary', last ? 'Finish' : 'Next'); next.onclick = () => { if (last) setupFinish(); else { setupStep += 1; render(); } };
+  const mid = $('div', 'wizmid'); mid.append(back, skip); foot.append(mid, next); b.appendChild(foot);
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
 function setRegion(el, build) {
@@ -678,13 +708,14 @@ let shownModal = null, lastSig = '', modalOpener = null;
 function ensureVeil() {
   let v = document.getElementById('veil'); if (v) return v;
   v = $('div'); v.id = 'veil'; v.onclick = e => { if (e.target === v) closeModal(); };
-  const m = $('div'); m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-label', 'Settings'); m.tabIndex = -1;
+  const m = $('div'); m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-label', modal === 'setup' ? 'Setup' : 'Settings'); m.tabIndex = -1;
   const nav = $('div'); nav.id = 'mnav'; const body = $('div'); body.id = 'mbody';
   m.append(nav, body); v.appendChild(m); document.body.appendChild(v); return v;
 }
 /** The dialog is built once and kept: a tab switch changes the nav mark and the content, nothing else. */
 function syncModal() {
   const v = ensureVeil();
+  document.getElementById('modal').setAttribute('aria-label', modal === 'setup' ? 'Setup' : 'Settings');
   if (!modal) {
     shownModal = null;
     if (v.classList.contains('on') && !v.classList.contains('out') && modalOpener && modalOpener.focus) { try { modalOpener.focus(); } catch (_) {} modalOpener = null; }
@@ -694,6 +725,7 @@ function syncModal() {
   if (shownModal === null && !v.classList.contains('on')) { modalOpener = document.activeElement; setTimeout(() => { const mm = document.getElementById('modal'); const first = mm && (mm.querySelector('button[aria-current], #mnav button') || mm); if (first) first.focus(); }, 0); }
   v.classList.remove('out'); v.classList.add('on');
   setRegion(document.getElementById('mnav'), nav => {
+    if (modal === 'setup') { nav.appendChild($('h4', null, 'Setup')); const sp = (S.extra || {}).setup; for (const [i, st] of ((sp && sp.steps) || []).entries()) { const b = $('button', 'nav', (i + 1) + '. ' + st.title); if (i === setupStep) b.setAttribute('aria-current', 'step'); b.onclick = () => { setupStep = i; render(); }; nav.appendChild(b); } return; }
     nav.appendChild($('h4', null, 'Settings'));
     for (const [l, id] of MODAL) { if (id === 'account') nav.appendChild($('h4', null, 'Account')); const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
     nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
@@ -702,11 +734,12 @@ function syncModal() {
   setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
-function closeModal() { modal = null; aboutSeen = false; render(); }
+function closeModal() { if (modal === 'setup') return setupFinish(); stopMeter(); modal = null; aboutSeen = false; render(); }
 function go(t) { cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
+  if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.show) { setupAuto = true; modal = 'setup'; }
   const keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
