@@ -199,7 +199,7 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 #modal{width:min(920px,calc(100vw - 48px));height:min(680px,calc(100vh - 48px));background:var(--panel);border-radius:16px;box-shadow:0 30px 80px -20px rgba(28,27,24,.45);display:grid;grid-template-columns:210px 1fr;overflow:hidden;animation:rise .22s var(--ease) both}
 #veil.on.out{animation:fadeout .16s ease both}
 @keyframes fadeout{from{opacity:1}to{opacity:0}}
-#modal{width:min(820px,calc(100vw - 48px));height:min(540px,calc(100vh - 48px));background:var(--panel);border-radius:16px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden;animation:rise .22s var(--ease) both}
+#modal{width:min(900px,calc(100vw - 48px));height:min(720px,calc(100vh - 48px));background:var(--panel);border-radius:16px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden;animation:rise .22s var(--ease) both}
 #mnav{background:var(--sunk);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
 #mnav h4{font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}
 #mnav .nav{padding:7px 10px}
