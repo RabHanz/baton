@@ -83,6 +83,8 @@ import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
+import { redactForHistory } from "../vault/redact.ts";
+import { pendingSecret } from "../vault/pendingSecret.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { createMemoryTab } from "../memory/memoryTab.ts";
 import { noteAction } from "../memory/noteRows.ts";
@@ -806,6 +808,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly seconds?: number | null;
   }): string | null => {
     if (history === null || turn.raw.trim().length === 0) return null;
+    // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
+    const safe = redactForHistory(turn.raw, turn.cleaned);
+    if (safe.secret !== null) {
+      pendingSecret.set(turn.raw, Date.now());
+      input.extras?.notice(
+        `That looked like ${safe.secret}, so I kept it out of History. Say "put that in the vault" to keep it safely.`,
+      );
+      turn = { ...turn, raw: safe.raw, cleaned: safe.cleaned };
+    }
     try {
       return history.add({
         at: new Date().toISOString(),

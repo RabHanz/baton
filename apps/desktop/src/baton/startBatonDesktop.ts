@@ -242,6 +242,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         onActivity: (label, caption) => voice?.onActivity(label, caption),
         onCue: (name) => voice?.cue(name),
         onDismissed: () => voice?.onDismissed(),
+        onOpenTab: () => voice?.openHome(),
       });
     } catch (cause) {
       Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
