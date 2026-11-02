@@ -408,7 +408,7 @@ export const startScreenCompanion = (input: {
     return picked.env;
   };
 
-  const overlay = createPointerOverlay(input.platform);
+  const overlay = createPointerOverlay(input.platform, (id) => cardAction(id));
   const speech = queueSpeech(input.speak);
   /** Bumped when he silences it, so what an answer is still streaming stays unsaid. */
   let hushes = 0;
@@ -571,6 +571,34 @@ export const startScreenCompanion = (input: {
       end();
     }
     void wipe();
+  };
+
+  const FINISHED_CARD_MS = 12_000;
+  /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
+  const finishedCard = async (kicker: string, text: string, bubble: string | null) => {
+    const mine = ++showing;
+    await overlay.card({
+      kicker,
+      text,
+      state: "done",
+      actions: [{ id: "close", label: "Close", primary: true }],
+    });
+    if (bubble !== null) void overlay.bubble(bubble.slice(0, 140));
+    setTimeout(() => mine === showing && void wipe(), FINISHED_CARD_MS).unref();
+  };
+  const STEP_ACTIONS = [
+    { id: "again", label: "Say it again" },
+    { id: "skip", label: "Skip" },
+    { id: "stop", label: "Stop" },
+  ] as const;
+  /** A button on a step card: the same as saying it. */
+  const cardAction = (id: string) => {
+    if (id === "again") {
+      if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
+    } else if (id === "skip") {
+      if (run?.mode === "teach") void teachStep("he skipped this step.").catch(fail);
+    } else if (id === "stop") stop();
+    else if (id === "close") void wipe();
   };
 
   /** A card that stays until something replaces it: a step, a plan, a thought. */
@@ -1017,16 +1045,22 @@ export const startScreenCompanion = (input: {
       });
       if (reply.done) {
         say(reply.spoken);
-        linger("Done", reply.spoken);
+        await finishedCard(
+          `Finished · ${lesson.step} ${lesson.step === 1 ? "step" : "steps"}`,
+          "That is all of it.",
+          reply.spoken,
+        );
         return end();
       }
       say(reply.spoken);
       await pointAt(reply.point, shots, lesson.step);
       await show(
-        `Step ${lesson.step}`,
+        `Step ${lesson.step} · waiting for you`,
         reply.spoken,
-        "Do it and I'll notice, or say next. Stop ends the lesson.",
+        "Do it and I'll notice, or say next.",
+        { state: "waiting", actions: STEP_ACTIONS },
       );
+      void overlay.waiting();
       watch(lesson, baseline, reply.spoken);
     } finally {
       lesson.busy = false;
@@ -1291,14 +1325,10 @@ export const startScreenCompanion = (input: {
             m.n - 1 < i ? { ...m, state: "done" } : m.n - 1 === i ? { ...m, state: "now" } : m,
           ),
         );
-        input.onActivity?.("Driving", `Step ${i + 1} of ${plan.actions.length}`);
-        void show(
-          `Step ${i + 1} of ${plan.actions.length}`,
-          describeAction(action),
-          "Esc or Stop ends it.",
-          {
-            dots: { at: i, of: plan.actions.length },
-          },
+        // While it drives he watches the screen, not a card: the pill says which step and how to take it back.
+        input.onActivity?.(
+          "Driving",
+          `Step ${i + 1} of ${plan.actions.length} · ${describeAction(action).slice(0, 48)} · Esc takes it back`,
         );
       },
       verify: async (action, i) => {
@@ -1327,7 +1357,24 @@ export const startScreenCompanion = (input: {
     await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
-    linger("Drive", message);
+    if (result.kind === "finished") {
+      await finishedCard(
+        `Finished · ${plan.actions.length} of ${plan.actions.length}`,
+        plan.title,
+        null,
+      );
+    } else {
+      // Plain words, never a raw error; the way out is on the card.
+      const mine = ++showing;
+      await overlay.card({
+        kicker: "Stopped",
+        text: message,
+        hint: "Nothing else was changed.",
+        state: "error",
+        actions: [{ id: "close", label: "Close", primary: true }],
+      });
+      setTimeout(() => mine === showing && void wipe(), FINISHED_CARD_MS).unref();
+    }
     finish();
   };
 
