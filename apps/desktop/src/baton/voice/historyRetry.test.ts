@@ -49,10 +49,11 @@ describe("retry transcript", () => {
 });
 
 describe("the row menu", () => {
-  it("offers Copy, Copy as heard, Retry transcript and Delete", () => {
+  it("offers Copy, Copy as heard, Undo AI edit, Retry transcript and Delete", () => {
     expect(rowMenu(turn(), false).map((i) => [i.id, i.enabled])).toEqual([
       ["copy", true],
       ["copy_raw", true],
+      ["undo_ai", true],
       ["retry_transcript", true],
       ["delete", true],
     ]);
@@ -101,5 +102,15 @@ describe("versions", () => {
     const t = turn({ versions: withRetry(turn(), first) });
     expect(useVersion(t, 1)?.raw).toBe(first.raw);
     expect(useVersion(t, 5)).toBeNull();
+  });
+});
+
+describe("Undo AI edit", () => {
+  it("is offered only when the written words differ from the heard ones", () => {
+    const ids = (raw: string, cleaned: string | null) =>
+      rowMenu({ ...turn(), raw, cleaned }, false).map((i) => i.id);
+    expect(ids("ths is it", "This is it.")).toContain("undo_ai");
+    expect(ids("same", "same")).not.toContain("undo_ai");
+    expect(ids("same", null)).not.toContain("undo_ai");
   });
 });
