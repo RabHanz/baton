@@ -296,4 +296,7 @@ h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color
 .btn[aria-pressed=true]{background:var(--accent-wash);border-color:var(--accent-edge);color:var(--accent-text)}
 .vaultbar select{border:1px solid var(--line-strong);background:var(--panel);border-radius:9px;padding:7px 11px}.vaultkey{margin-top:8px;font-family:ui-monospace,Consolas,monospace;letter-spacing:.04em;word-break:break-all}.vaulthead{padding:12px 18px 4px;font-size:13px;color:var(--soft)}.vaultbar input[type=password]{flex:1;min-width:0;border:1px solid var(--line-strong);background:var(--panel);border-radius:9px;padding:7px 11px}
 :focus-visible{outline-color:var(--focus)}
+.heat{display:grid;grid-template-rows:repeat(7,11px);grid-auto-flow:column;grid-auto-columns:11px;gap:3px;padding:8px 18px 12px}
+.heat i{display:block;width:11px;height:11px;border-radius:2px;background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line)}
+.heat .h1{background:var(--accent-wash)}.heat .h2{background:var(--accent-edge)}.heat .h3{background:var(--accent)}.heat .h4{background:var(--accent-deep)}.heat .hx{visibility:hidden}
 `;
