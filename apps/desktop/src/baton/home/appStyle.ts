@@ -197,7 +197,7 @@ button.sname:hover{text-decoration:underline}
 .nsfield{display:flex;flex-direction:column;gap:5px;min-width:0}
 .nsfield:nth-of-type(2),.nsfield:nth-of-type(5),.nsearlier,.newses .btn.primary{grid-column:1/-1}
 .nsrow{display:flex;gap:8px;min-width:0}.nsrow input{flex:1 1 auto;min-width:16rem}.nsrow select{flex:0 1 11rem;min-width:0}
-.newses input,.newses select,.newses textarea{box-sizing:border-box;height:36px;padding:7px 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg,transparent);color:var(--ink);font:inherit;font-size:13px;width:100%}
+.newses input,.newses select,.newses textarea{box-sizing:border-box;height:36px;padding:7px 10px;border-radius:9px;border:1px solid color-mix(in srgb,var(--ink) 24%,transparent);background:transparent;color:var(--ink);font:inherit;font-size:13px;width:100%}
 .newses textarea{height:auto;min-height:36px;max-height:160px;resize:none;line-height:20px}
 .newses input:focus-visible,.newses select:focus-visible,.newses textarea:focus-visible{outline:2px solid var(--blue-soft,currentColor);outline-offset:1px}
 .nsearlier{display:flex;align-items:center;gap:10px}.nsearlier:empty{display:none}
