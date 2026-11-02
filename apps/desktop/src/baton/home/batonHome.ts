@@ -83,6 +83,13 @@ export type HomeControl =
       readonly detail: string;
       readonly fix?: string;
     })
+  /** A list he edits: each item with Remove, and a line to add one. Ids: `<id>:add` (the text) and `<id>:rm` (the item). */
+  | (HomeControlBase & {
+      readonly kind: "list";
+      readonly items: ReadonlyArray<string>;
+      readonly placeholder: string;
+      readonly addLabel?: string;
+    })
   /** One memory (D150): its text is the label, `hint` says where it came from. Edit, pin and forget are the page's. */
   | (HomeControlBase & {
       readonly kind: "memory";
