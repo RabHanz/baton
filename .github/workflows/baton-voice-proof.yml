@@ -27,6 +27,9 @@ on:
       smoke_env:
         type: string
         default: ""
+      perf_enforce:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -50,6 +53,10 @@ on:
       smoke_env:
         description: "Extra environment for the smoke jobs, KEY=VALUE separated by spaces (an experiment)"
         default: ""
+      perf_enforce:
+        description: "Fail the resource step when a budget in scripts/baton/perf-budgets.json is exceeded"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -130,6 +137,10 @@ jobs:
           if ('${{ inputs.require_wake }}' -ne 'false') { $extra.RequireWake = $true }
           ./scripts/baton/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @extra
 
+      - name: Resource budget (idle, wake-listen, dictation, assistant turn, starved start)
+        shell: pwsh
+        run: ./scripts/baton/resource-proof.ps1 -Out "$env:RUNNER_TEMP/resource-proof" ${{ inputs.perf_enforce && '-Enforce' || '' }}
+
       - name: "Stranger - uninstall keeps the user's data, removes the app"
         if: inputs.stranger
         shell: pwsh
@@ -146,6 +157,13 @@ jobs:
         with:
           name: voice-proof
           path: ${{ runner.temp }}/voice-proof
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resource-proof
+          path: ${{ runner.temp }}/resource-proof
+          if-no-files-found: ignore
 
   # macOS and Linux: launch a RELEASED build headless with the same test hooks and report how far it got
   # (docs/baton/PLATFORMS.md). With `tag` it installs the released build; without, it builds this ref the way

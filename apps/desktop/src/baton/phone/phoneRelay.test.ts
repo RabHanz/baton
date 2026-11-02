@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createPhoneRelay } from "./phoneRelay.ts";
+import { createPhoneRelay, nextPollMs } from "./phoneRelay.ts";
 
 const make = (over: { take?: unknown; run?: () => Promise<{ spoken: string; card: string }>; poll?: Array<number | null> } = {}) => {
   const calls: Array<[string, Record<string, unknown>]> = [];
@@ -45,5 +45,10 @@ describe("the desktop's phone relay", () => {
     expect(calls[0]).toEqual(["prompt", { id: "p1", title: "Run it?", detail: "Click Save", buttons: ["Go ahead", "Not now"], yes: 0, cancel: 1 }]);
     mirrored!.close();
     expect(calls.at(-1)).toEqual(["promptClose", { id: "p1" }]);
+  });
+
+  it("polls often while active and backs off when nothing happens, but never past the server's connected window", () => {
+    expect([0, 11, 12, 59, 60, 5_000].map(nextPollMs)).toEqual([5_000, 5_000, 15_000, 15_000, 30_000, 30_000]);
+    expect(Math.max(...[0, 12, 60].map(nextPollMs))).toBeLessThan(45_000);
   });
 });
