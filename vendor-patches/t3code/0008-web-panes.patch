@@ -4,10 +4,10 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 6cd1c7775d96b66108259e1d09c481e8c0bca3ab..534cd31e8da873310360b3746d6b97312e9496b2 100644
+index 6fd54db6bd52a8cd2fb03f928de72235be3c4db7..5ad02efeca7a023399af9ad218d5892ba8063255 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1800,7 +1800,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1801,7 +1801,7 @@ export default function ChatView(props: ChatViewProps) {
    });
  
    const focusComposer = () => {
@@ -16,7 +16,7 @@ index 6cd1c7775d96b66108259e1d09c481e8c0bca3ab..534cd31e8da873310360b3746d6b9731
    };
    const focusComposerStable = useStableCallback(focusComposer);
    const canInterruptRunningThread =
-@@ -2653,8 +2653,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2654,8 +2654,9 @@ export default function ChatView(props: ChatViewProps) {
    // composer effect above.
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses the open drawer terminal when entering a thread
    useEffect(() => {
@@ -28,7 +28,7 @@ index 6cd1c7775d96b66108259e1d09c481e8c0bca3ab..534cd31e8da873310360b3746d6b9731
  
    const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
      terminalFocus: getTerminalFocusOwner() !== null,
-@@ -2744,12 +2745,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2745,12 +2746,13 @@ export default function ChatView(props: ChatViewProps) {
    useEffect(() => {
      if (embedded) return;
      return window.desktopBridge?.onMenuAction((action) => {
@@ -44,7 +44,7 @@ index 6cd1c7775d96b66108259e1d09c481e8c0bca3ab..534cd31e8da873310360b3746d6b9731
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3289,7 +3291,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3290,7 +3292,7 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -53,7 +53,7 @@ index 6cd1c7775d96b66108259e1d09c481e8c0bca3ab..534cd31e8da873310360b3746d6b9731
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3322,7 +3324,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3323,7 +3325,9 @@ export default function ChatView(props: ChatViewProps) {
                  className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
                />
              ) : null}
@@ -137,10 +137,10 @@ index deede26763fdd685b0dc17b598ef5e9387459a5a..c0ec1ca29d0ec016f7bb5fd25a3d23db
            {isSearchingThreads ? (
              threadSearchResults.length > 0 ? (
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index 79f4633ea545295b2d3caae4ef704075e37f6097..81e67ffc8dbe17b97abe42695f37b0b45b5f076c 100644
+index 30ab2465a9dec7bb0184c9488a3b3bb1aa8e686f..cb2295c6cd362e145ca845a1b4209d9d6ad9c89b 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
-@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
+@@ -7,7 +7,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
  import { useEffect, useState } from "react";
  
  import ChatView from "./ChatView";
@@ -149,7 +149,7 @@ index 79f4633ea545295b2d3caae4ef704075e37f6097..81e67ffc8dbe17b97abe42695f37b0b4
  import { SidebarInset } from "./ui/sidebar";
  import { useComposerDraftStore } from "../composerDraftStore";
  import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-@@ -153,7 +153,7 @@ export function ThreadRouteView({
+@@ -208,7 +208,7 @@ export function ThreadRouteView({
        className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
        inert={background}
      >

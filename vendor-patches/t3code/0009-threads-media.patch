@@ -11,10 +11,10 @@ index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40
      id: "todo-list",
      name: "Plan and reads",
 diff --git a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..9ca99e70dc0335aef0c459d7b41a406f47d3b816 100644
+index f27580d909afff4109d2503610bbb903b80839c2..23f1c8b739e1a1e079981b531c7f073bac3b110f 100644
 --- a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 +++ b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-@@ -26,6 +26,7 @@ import * as Context from "effect/Context";
+@@ -21,6 +21,7 @@ import * as Context from "effect/Context";
  import * as DateTime from "effect/DateTime";
  import * as Effect from "effect/Effect";
  import * as Layer from "effect/Layer";
@@ -22,7 +22,7 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..9ca99e70dc0335aef0c459d7b41a406f
  import * as Schema from "effect/Schema";
  import * as SqlError from "effect/sql/SqlError";
  
-@@ -36,7 +37,11 @@ import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
+@@ -34,7 +35,11 @@ import {
  import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import * as EventSink from "./EventSink.ts";
@@ -34,7 +34,7 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..9ca99e70dc0335aef0c459d7b41a406f
  import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
-@@ -341,6 +346,57 @@ export const layer: Layer.Layer<
+@@ -257,6 +262,57 @@ export const layer: Layer.Layer<
      const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
      const scope = yield* Effect.scope;
      const completedTurnAnalytics = new Set<string>();
@@ -92,7 +92,7 @@ index 5a2aa39faece4cc678d8b67c2cbb0727312caacb..9ca99e70dc0335aef0c459d7b41a406f
  
      const makeDomainEvent =
        /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
-@@ -643,28 +699,61 @@ export const layer: Layer.Layer<
+@@ -559,28 +615,61 @@ export const layer: Layer.Layer<
                    nodeId: input.event.subagent.id,
                  }),
                ];
@@ -579,7 +579,7 @@ index 8a4a7552901a210fef0c36ccdb0aa7d6a1e43236..644126c7aa482fce1b7dfbe429d1fee0
      }
  
 diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
-index 4c2816376605819265ca7a92d32a55690c255af9..785c14b89a4a4d2acd1e9b8afcdda063db8dddd2 100644
+index cea2daa1112074180220f9253a83830ea38e28a3..555593424266f32f25c4d7f62cd72f31cb906349 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.tsx
 @@ -113,6 +113,7 @@ import {
@@ -590,7 +590,7 @@ index 4c2816376605819265ca7a92d32a55690c255af9..785c14b89a4a4d2acd1e9b8afcdda063
    LiveWorkEntryTimelineRow,
    WorkGroupToggleTimelineRow,
  } from "./TimelineWorkGroupRows";
-@@ -522,6 +523,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -510,6 +511,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
        return next;
      });
    };
@@ -604,7 +604,7 @@ index 4c2816376605819265ca7a92d32a55690c255af9..785c14b89a4a4d2acd1e9b8afcdda063
    const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
      suspendEndScrollMaintenanceForDisclosure(anchorKey);
      setExpandedWorkGroupIds((existing) => {
-@@ -683,6 +691,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -671,6 +679,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      expandedRunIds: visibleExpandedRunIds,
      expandedAttemptIds: visibleExpandedAttemptIds,
      expandedWorkGroupIds,
@@ -612,7 +612,7 @@ index 4c2816376605819265ca7a92d32a55690c255af9..785c14b89a4a4d2acd1e9b8afcdda063
      isWorking,
      runlessWorkActive,
      activeTurnStartedAt,
-@@ -1055,6 +1064,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -1042,6 +1051,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      onToggleTurnFold,
      onToggleAttemptFold,
      onToggleWorkGroup,
@@ -620,7 +620,7 @@ index 4c2816376605819265ca7a92d32a55690c255af9..785c14b89a4a4d2acd1e9b8afcdda063
      onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
      onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
      retryableWorkspacePreparationRunIds,
-@@ -1500,6 +1510,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
+@@ -1487,6 +1497,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
            {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
          </WorkLogBlock>
        ) : null}
