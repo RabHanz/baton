@@ -57,6 +57,7 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
+import { answerNeeds } from "../presence/needsAnswer.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
@@ -227,6 +228,9 @@ interface VoiceSettings {
   /** "22-8" is silent from 22:00 to 08:00; "none" is never silent. */
   readonly quietHours: string;
   readonly briefMode: "off" | "written" | "spoken";
+  /** Repositories whose ledger labels count in "what needs me" (read-only, gh), and a deadlines file. */
+  readonly needsRepos: ReadonlyArray<string>;
+  readonly needsDeadlinesFile: string | null;
   /** The day (local) the morning brief was last given, so it comes once. */
   readonly briefDay: string | null;
   readonly pillEdge: "bottom" | "top";
@@ -277,6 +281,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   noticeMode: "written",
   quietHours: "22-8",
   briefMode: "written",
+  needsRepos: [],
+  needsDeadlinesFile: null,
   briefDay: null,
   pillEdge: "bottom",
   dictation: "baton",
@@ -1093,6 +1099,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return describeApprovals(
           buildApprovals({ jobs: jobs?.jobs ?? [], sessions: input.sessions?.rows() ?? [] }),
         );
+      }
+      if (op === "needs") {
+        const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+          jobs?: ReadonlyArray<BatonJob>;
+        } | null;
+        return answerNeeds({
+          jobs: jobs?.jobs ?? [],
+          sessions: input.sessions?.rows() ?? [],
+          findings: await watchFindings(),
+          config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+          now: Date.now(),
+        });
       }
       if (op === "brief") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
