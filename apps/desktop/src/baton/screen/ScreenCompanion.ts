@@ -365,6 +365,8 @@ export interface ScreenCompanion {
   readonly dismissQuietly: () => void;
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
+  /** The same question, also put to a paired phone: the first answer counts. */
+  readonly askMirrored: (box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0]) => Promise<number>;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
@@ -2351,6 +2353,7 @@ export const startScreenCompanion = (input: {
     voice: () => settings.voice,
     volume: () => settings.volume,
     ask: windows.ask,
+    askMirrored: (box) => askHandsFree(box, box.title),
     stop,
     dismissQuietly,
     menuItems: () => [

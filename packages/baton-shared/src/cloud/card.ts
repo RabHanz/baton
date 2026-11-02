@@ -76,6 +76,8 @@ export const fromSpoken = (
   };
 };
 
+export const OFFER_MAX = 6;
+
 export type OfferPick =
   | { readonly kind: "pick"; readonly provider: ProviderId; readonly account: string }
   | { readonly kind: "deny" }
@@ -100,6 +102,8 @@ export const offerQuestion = (
           pick: { kind: "pick", provider: c.id, account: a.account } as OfferPick,
         })),
     );
-  const picks: OfferPick[] = [...options.map((o) => o.pick), { kind: "deny" }, { kind: "later" }];
-  return { buttons: [...options.map((o) => o.button), words.deny, words.later], cancel: picks.length - 1, picks };
+  // A phone shows eight answers; the rest are still on the card in Approvals.
+  const shown = options.slice(0, OFFER_MAX);
+  const picks: OfferPick[] = [...shown.map((o) => o.pick), { kind: "deny" }, { kind: "later" }];
+  return { buttons: [...shown.map((o) => o.button), words.deny, words.later], cancel: picks.length - 1, picks };
 };
