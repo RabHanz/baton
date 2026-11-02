@@ -106,6 +106,25 @@ import {
   reviewSkill,
 } from "@t3tools/baton-shared/skillReview";
 import { fetchSkillText, installSkill, nameFromUrl, skillExists } from "../harness/skillInstall.ts";
+import { createVolumeDuck } from "./volumeDuck.ts";
+import { PLACES, type PlaceId } from "./pillPlacement.ts";
+import {
+  createSilenceWatch,
+  DEFAULT_SILENCE_SECONDS,
+  SILENCE_MESSAGE,
+} from "@t3tools/baton-shared/silenceWatch";
+import {
+  HIDE_FOR_MS,
+  isFullscreenWindow,
+  restBarWanted,
+} from "@t3tools/baton-shared/pillVisibility";
+import {
+  confirmed,
+  RESET_LABEL,
+  RESET_SCOPES,
+  resetPrompt,
+  type ResetScope,
+} from "@t3tools/baton-shared/dataReset";
 import { createStyleStore } from "../writing/styleStore.ts";
 import {
   GUIDE_BUTTONS,
@@ -317,6 +336,14 @@ interface VoiceSettings {
   readonly keepCapGb: number;
   /** A small mark while idle; nothing on screen otherwise. */
   readonly pillAtRest: boolean;
+  /** The resting bar stays hidden until this time (epoch ms), by his choice. */
+  readonly pillHiddenUntil: number;
+  /** The resting bar steps aside for a full-screen app or game. */
+  readonly hideInFullscreen: boolean;
+  /** Lower or mute the system volume while he dictates, and put it back after. */
+  readonly duckWhileDictating: "off" | "lower" | "mute";
+  /** A card and a pill message when the microphone is open but silent this long; 0 is off. */
+  readonly micSilenceSeconds: number;
   /** A line when something first needs him: Off, a card only, or said aloud as well. */
   readonly noticeMode: "off" | "written" | "spoken";
   /** "22-8" is silent from 22:00 to 08:00; "none" is never silent. */
@@ -382,6 +409,10 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   keepDays: 30,
   keepCapGb: 2,
   pillAtRest: false,
+  pillHiddenUntil: 0,
+  hideInFullscreen: true,
+  duckWhileDictating: "off",
+  micSilenceSeconds: DEFAULT_SILENCE_SECONDS,
   noticeMode: "written",
   quietHours: "22-8",
   briefMode: "written",
@@ -1707,8 +1738,55 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     render();
   };
   // Esc is taken only while the microphone is open, so it stays his the rest of the time.
+  /** Erases what he typed the word for. Returns a sentence for the card. */
+  const eraseData = async (scope: ResetScope): Promise<string> => {
+    let removed = 0;
+    if (scope === "history" || scope === "recordings") {
+      for (const turn of history?.list({ limit: 1_000_000 }) ?? []) {
+        if (turn.audio !== null) {
+          for (const path of clipPaths(turn.audio)) NodeFS.rmSync(path, { force: true });
+          if (scope === "recordings") history?.update(turn.id, { audio: null });
+        }
+        if (scope === "history") history?.remove(turn.id);
+        removed += 1;
+      }
+      if (scope === "history") {
+        lastDictation = null;
+        NodeFS.rmSync(NodePath.join(input.stateDir, "voice", "dictation-pending.json"), {
+          force: true,
+        });
+      }
+      return scope === "history"
+        ? `History is erased (${removed} entries and their recordings).`
+        : "The voice recordings are erased. The words in History stay.";
+    }
+    let forgotten = 0;
+    try {
+      const listed = (await requestKept({
+        kind: "memory",
+        op: "list",
+        args: { includeSuperseded: true, includeProposed: true, limit: 100_000 },
+      })) as { items?: ReadonlyArray<{ id: string }> } | null;
+      for (const item of listed?.items ?? []) {
+        await requestKept({ kind: "memory", op: "forget", args: { id: item.id } });
+        forgotten += 1;
+      }
+    } catch {
+      return `Memory could not be reached, so only your notes folder was erased (${forgotten} server memories were).`;
+    } finally {
+      NodeFS.rmSync(NodePath.join(input.stateDir, "memory"), { recursive: true, force: true });
+    }
+    return `Memory is erased (${forgotten} items and your notes folder).`;
+  };
+  const duck = createVolumeDuck({
+    file: NodePath.join(input.stateDir, "voice", "volume-before-dictation.json"),
+    platform: input.platform,
+  });
+  void duck.recover();
   const setRecording = (next: boolean) => {
     if (next === (releaseRecordingEscape !== null)) return;
+    if (next) void duck.start(settings.duckWhileDictating);
+    else void duck.stop();
     if (next) releaseRecordingEscape = input.holdEscape(() => sidecar?.cancel(), "recording");
     else {
       releaseRecordingEscape?.();
@@ -1868,7 +1946,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       },
       playing: (ms) => core?.playingCue(ms),
     },
-    rest: () => settings.pillAtRest,
+    rest: () => restWanted(),
     edge: () => settings.pillEdge,
     stateDir: input.stateDir,
     holdEscape: input.holdEscape,
@@ -1881,18 +1959,49 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onChange: (turn) => input.onPillState?.(turn.phase),
     ...(input.onPillDrag === undefined ? {} : { onDrag: input.onPillDrag }),
   });
-  if (settings.pillAtRest) pill.setRest(true);
+  let fullscreen = false;
+  const restWanted = () =>
+    restBarWanted({
+      atRest: settings.pillAtRest,
+      hiddenUntil: settings.pillHiddenUntil,
+      hideInFullscreen: settings.hideInFullscreen,
+      fullscreen,
+      now: Date.now(),
+    });
+  if (restWanted()) pill.setRest(true);
+  // The resting bar steps aside for a full-screen app or game, and for the hour he hid it.
+  let barShown = restWanted();
+  setInterval(() => {
+    void (async () => {
+      if (!settings.pillAtRest || sidecar === null) return;
+      const app = await sidecar.foreground().catch(() => null);
+      const rect = app?.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
+      fullscreen =
+        app !== null &&
+        isFullscreenWindow(
+          { exe: app.exe, rect },
+          Electron.screen.getAllDisplays().map((d) => d.bounds),
+        );
+      const want = restWanted();
+      if (want !== barShown) {
+        barShown = want;
+        pill.setRest(want);
+      }
+    })().catch(() => undefined);
+  }, 3_000).unref();
   let dictatingByVoice = false;
   const stateTurn = (next: VoiceState, target: string | null): TurnEvent | null => {
     const wasDictating = dictatingByVoice;
     dictatingByVoice = next === "dictation";
     if (dictatingByVoice) {
+      if (!wasDictating) void duck.start(settings.duckWhileDictating);
       if (!wasDictating && (settings["dictation.delivery"] ?? "oneshot") === "oneshot")
         collecting = true;
       pill.on({ type: "window_open" });
       return { type: "dictating", caption: STOP_DICTATING_HINT };
     }
     if (wasDictating) {
+      void duck.stop();
       pill.on({ type: "dictating", caption: null });
       // The last chunk is still on its way through the core: flush once everything has landed.
       if (collecting) void core?.idle().then(flushDictation);
@@ -2118,6 +2227,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       onLevel: (frame) => {
         const level = frameLevel(frame);
         pill.micLevel(level);
+        if (silence.feed(level, Date.now()) === "warn") {
+          pill.on({ type: "trouble", message: "Your microphone hears nothing" });
+          input.extras?.notice(SILENCE_MESSAGE);
+        }
         if (levelTest !== null) levelTest.peak = Math.max(levelTest.peak, level);
       },
       // The core's router has already sent the words on; this is the HUD's line.
@@ -2143,6 +2256,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let checks: ReadonlyArray<CheckResult> | null = null;
   let micPeak: number | null = null;
   let levelTest: { peak: number } | null = null;
+  const silence = createSilenceWatch({ seconds: () => settings.micSilenceSeconds });
 
   const gather = async (): Promise<CheckInput> => {
     const assets = input.voiceAssets?.(settings.modelsDir);
@@ -3044,11 +3158,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         hint: "Or drag it: it lines up on a grid and snaps to centre, top and bottom. Hold Alt or Shift to place it freely. Right-click it for the same places.",
         kind: "choice",
         value: pill.place(),
-        options: [
-          { value: "centre", label: "Centre" },
-          { value: "top", label: "Top" },
-          { value: "bottom", label: "Bottom" },
-        ],
+        options: PLACES.map((p) => ({ value: p.id, label: p.label })),
       },
       {
         id: "v.pillMove",
@@ -3105,6 +3215,59 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           { value: "spoken", label: "Spoken" },
         ],
       },
+      {
+        id: "v.pillHide",
+        section: "On screen",
+        label: "Hide the resting bar for an hour",
+        hint: "It comes back by itself, or press Show again. Only the resting bar hides; the pill still shows while Tessaya listens or speaks.",
+        kind: "action",
+        button: Date.now() < settings.pillHiddenUntil ? "Show again" : "Hide for an hour",
+      },
+      {
+        id: "v.pillFull",
+        section: "On screen",
+        label: "Step aside for full-screen apps and games",
+        hint: "The resting bar is not drawn over a window that fills the screen.",
+        kind: "toggle",
+        on: settings.hideInFullscreen,
+      },
+      {
+        id: "v.duck",
+        section: "Dictation",
+        label: "Quiet other sounds while I dictate",
+        hint: "Lowers or mutes the system volume while you speak and puts it back exactly after. If Tessaya crashes in between, the next start restores it. Windows only.",
+        kind: "choice",
+        value: settings.duckWhileDictating,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "lower", label: "Lower the volume" },
+          { value: "mute", label: "Mute" },
+        ],
+      },
+      {
+        id: "v.silence",
+        section: "Voice",
+        label: "Warn me when the microphone hears nothing",
+        hint: "A card and a pill message if the open microphone is dead quiet for this long; at most once an hour.",
+        kind: "choice",
+        value: String(settings.micSilenceSeconds),
+        options: [
+          { value: "0", label: "Off" },
+          { value: "30", label: "After 30 seconds" },
+          { value: "90", label: "After 90 seconds" },
+          { value: "300", label: "After 5 minutes" },
+        ],
+      },
+      ...RESET_SCOPES.map((scope): HomeControl => ({
+        id: `rs.${scope}`,
+        section: "Erase my data",
+        label: RESET_LABEL[scope].label,
+        hint: RESET_LABEL[scope].hint,
+        kind: "list",
+        items: [],
+        placeholder: resetPrompt,
+        addLabel: "Erase",
+      })),
       {
         id: "v.pillEdge",
         section: "On screen",
@@ -3575,9 +3738,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       render();
     } else if (
       id === "v.pillPlace" &&
-      (value === "centre" || value === "top" || value === "bottom")
+      typeof value === "string" &&
+      PLACES.some((p) => p.id === value)
     ) {
-      pill.moveTo(value);
+      pill.moveTo(value as PlaceId);
+    } else if (id === "v.pillHide") {
+      save({
+        pillHiddenUntil: Date.now() < settings.pillHiddenUntil ? 0 : Date.now() + HIDE_FOR_MS,
+      });
+      if (!restWanted()) pill.setRest(false);
+      else if (settings.pillAtRest) pill.setRest(true);
+      barShown = restWanted();
+    } else if (id === "v.pillFull") save({ hideInFullscreen: on });
+    else if (id === "v.duck" && (value === "off" || value === "lower" || value === "mute")) {
+      save({ duckWhileDictating: value });
+    } else if (id === "v.silence" && typeof value === "string") {
+      save({
+        micSilenceSeconds: [0, 30, 90, 300].includes(Number(value))
+          ? Number(value)
+          : DEFAULT_SILENCE_SECONDS,
+      });
+      silence.reset();
+    } else if (id.startsWith("rs.") && id.endsWith(":add")) {
+      const scope = id.slice(3, -4) as ResetScope;
+      if (!RESET_SCOPES.includes(scope)) return;
+      if (typeof value !== "string" || !confirmed(value)) {
+        input.extras?.notice(`Nothing was erased. ${resetPrompt}.`);
+        return;
+      }
+      void eraseData(scope).then((line) => {
+        input.extras?.notice(line);
+        render();
+      });
     } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
@@ -3759,6 +3951,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     clear: () => {
       const clear = input.extras?.menuItems().find((i) => i.label === "Clear the screen");
       (clear?.click as (() => void) | undefined)?.();
+    },
+    pasteLast: () => {
+      if (lastDictation !== null && lastDictation !== "") void sidecar?.paste(lastDictation);
     },
     ask: () => {
       const ask = input.extras?.menuItems().find((i) => i.label === "Ask Tessaya…");
