@@ -70,7 +70,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   cloud_list: ["What cloud tasks have I asked for?", "Your cloud requests."],
   cloud_cancel: ["Withdraw cloud request 3", "Only while it is still waiting."],
   cloud_usage: ["How much of each cloud account is left?", "Weekly use and when it resets."],
-  cloud_approve: ["Approve cloud request 3 on rabee", "Reads the card back; you press Approve."],
+  cloud_approve: ["Approve cloud request 3 on work", "Reads the card back; you press Approve."],
   trust_show: ["Show me what you can access", "Your permissions in plain words."],
   activity_today: ["What did you do today?", "What it did on your behalf."],
   permission_off: ["Turn off Chrome", "Takes a permission back."],

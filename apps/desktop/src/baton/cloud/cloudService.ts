@@ -260,7 +260,7 @@ export const createCloud = (deps: CloudDeps) => {
           : usage.map((u) => `${u.provider} ${u.account}: ${u.rejected ? "rejected" : u.weeklyPercent === null ? "usage unknown" : `${u.weeklyPercent}% used this week`}${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`).join("\n");
       },
       /**
-       * 'approve cloud request 3 on rabee': only reads the card back and asks him on a dialog the assistant
+       * 'approve cloud request 3 on <account>': only reads the card back and asks him on a dialog the assistant
        * cannot press. The account must be named. Nothing is approved without his button.
        */
       approve: async (id: string, account: string, provider?: string): Promise<string> => {
