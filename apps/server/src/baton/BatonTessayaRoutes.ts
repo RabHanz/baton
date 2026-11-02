@@ -39,9 +39,10 @@ export const routes = HttpRouter.use((router) =>
     const config = yield* ServerConfig.ServerConfig;
 
     if (context === null) return;
+    const run = Effect.runPromiseWith(context);
     const deps: PhoneDeps = {
       state: () =>
-        Effect.runPromise(
+        run(
           Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis;
             const fleet = yield* FleetQuery.getFleet({});
@@ -51,17 +52,16 @@ export const routes = HttpRouter.use((router) =>
               weaves: (yield* (yield* BatonWeaveService).list(30)) as never,
               now,
             });
-          }).pipe(Effect.provideContext(context)),
+          }),
         ),
-      agree: (id) => Effect.runPromise(Effect.asVoid(JobFlow.agreeJob(id as never)).pipe(Effect.provideContext(context))),
-      stop: (id) => Effect.runPromise(JobFlow.stopJob(id as never).pipe(Effect.provideContext(context))),
-      retry: (id) => Effect.runPromise(JobFlow.retryJob(id as never).pipe(Effect.provideContext(context))),
+      agree: (id) => run(Effect.asVoid(JobFlow.agreeJob(id as never))),
+      stop: (id) => run(JobFlow.stopJob(id as never)),
+      retry: (id) => run(JobFlow.retryJob(id as never)),
       say: (text) =>
-        Effect.runPromise(
+        run(
           Effect.flatMap(BatonIntentService, (intents) => intents.run({ text, focusedWorkSessionId: null })).pipe(
             Effect.map((result) => result.reply),
             Effect.orElseSucceed(() => "I could not do that just now."),
-            Effect.provideContext(context),
           ),
         ),
       transcribe: (wav) =>
