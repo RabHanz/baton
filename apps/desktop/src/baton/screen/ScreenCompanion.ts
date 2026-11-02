@@ -367,6 +367,8 @@ export const startScreenCompanion = (input: {
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** Tells the pill what is going on; null when it stops. */
   readonly onActivity?: (label: string | null, caption?: string) => void;
+  /** A short sound for a lesson or drive: start, a step done, waiting, error, finished. */
+  readonly onCue?: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** The answer's words were cancelled by him: the pill goes too. */
   readonly onDismissed?: () => void;
 }): ScreenCompanion => {
@@ -599,6 +601,7 @@ export const startScreenCompanion = (input: {
   /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
   const finishedCard = async (kicker: string, text: string, bubble: string | null) => {
     const mine = ++showing;
+    input.onCue?.("finished");
     await overlay.card({
       kicker,
       text,
@@ -847,7 +850,7 @@ export const startScreenCompanion = (input: {
       {
         title: prompt.title,
         detail: prompt.detail,
-        buttons: ["Do it", "Not now"],
+        buttons: ["Go ahead", "Not now"],
         cancel: 1,
         scoped: true,
       },
@@ -1042,7 +1045,10 @@ export const startScreenCompanion = (input: {
       }
       lesson.step += 1;
       // The step on screen stays readable while the next one is worked out.
-      if (lesson.step === 1) void show("Lesson", "Looking at your screen");
+      if (lesson.step === 1) {
+        input.onCue?.("start");
+        void show("Lesson", "Looking at your screen");
+      } else if (note !== undefined) input.onCue?.("stepDone");
       input.onActivity?.("Checking", `Step ${lesson.step}`);
       const captured = await capture();
       // What this step was judged against: any change from here on is his doing.
@@ -1083,6 +1089,7 @@ export const startScreenCompanion = (input: {
         { state: "waiting", actions: STEP_ACTIONS },
       );
       void overlay.waiting();
+      input.onCue?.("waiting");
       watch(lesson, baseline, reply.spoken);
     } finally {
       lesson.busy = false;
@@ -1240,9 +1247,9 @@ export const startScreenCompanion = (input: {
       ? 0
       : await askHandsFree(
           {
-            title: plan.title,
-            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
-            buttons: ["Run it", "Not now"],
+            title: `Want me to ${plan.title.charAt(0).toLowerCase()}${plan.title.slice(1).replace(/[.?!]$/, "")}?`,
+            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nYou watch. Esc takes it back (so does saying stop, or the Stop button). The numbered dots are where it will click; if a window moves under a click, it asks first.`,
+            buttons: ["Go ahead", "Not now"],
             cancel: 1,
             scoped: true,
           },
@@ -1265,7 +1272,7 @@ export const startScreenCompanion = (input: {
                   ? "This plan types nothing itself."
                   : `Tessaya would type:\n\n${shell.typed.join("\n")}`
               }`,
-              buttons: ["Type it", "Not now"],
+              buttons: ["Go ahead", "Not now"],
               cancel: 1,
               scoped: true,
             },
@@ -1282,6 +1289,7 @@ export const startScreenCompanion = (input: {
       if (run === current) input.onNote?.("drive_outcome", { goal, outcome: "he said no" });
       return finish();
     }
+    input.onCue?.("start");
     await sleep(350); // the prompt leaves the screen first
     const afterPrompt = await fingerprint();
     input.onTrace?.({
@@ -1347,6 +1355,7 @@ export const startScreenCompanion = (input: {
             m.n - 1 < i ? { ...m, state: "done" } : m.n - 1 === i ? { ...m, state: "now" } : m,
           ),
         );
+        if (i > 0) input.onCue?.("stepDone");
         // While it drives he watches the screen, not a card: the pill says which step and how to take it back.
         input.onActivity?.(
           "Driving",
@@ -1388,6 +1397,7 @@ export const startScreenCompanion = (input: {
     } else {
       // Plain words, never a raw error; the way out is on the card.
       const mine = ++showing;
+      input.onCue?.("error");
       await overlay.card({
         kicker: "Stopped",
         text: message,
@@ -1522,7 +1532,7 @@ export const startScreenCompanion = (input: {
         {
           title: p.title,
           detail: p.detail,
-          buttons: ["Do it", "Not now"],
+          buttons: ["Go ahead", "Not now"],
           cancel: 1,
           scoped: true,
         },

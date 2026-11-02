@@ -1,13 +1,10 @@
+// @effect-diagnostics globalDate:off globalTimers:off
 /**
  * The assistant's memory as the desktop sees it (D150): the server's store when it answers, and his
  * plain notes folder (D146) when it does not, so "remember that" never silently does nothing. The
  * server owns the rules (what is never kept, decay, conflicts); this only asks and phrases.
  */
-import {
-  MEMORY_TEXT_MAX,
-  type MemoryHit,
-  type MemoryItem,
-} from "@t3tools/baton-shared/memory";
+import { MEMORY_TEXT_MAX, type MemoryHit, type MemoryItem } from "@t3tools/baton-shared/memory";
 
 import type { NotesStore } from "./memoryNotes.ts";
 
@@ -67,14 +64,21 @@ export const createDesktopMemory = (input: {
       }
     },
     search: async (query: string): Promise<ReadonlyArray<string>> => {
-      const out = await ask<{ hits: ReadonlyArray<MemoryHit> }>("search", { text: query, limit: 12 });
+      const out = await ask<{ hits: ReadonlyArray<MemoryHit> }>("search", {
+        text: query,
+        limit: 12,
+      });
       if (out !== null) return out.hits.map((h) => line(h.item));
       return input.notes.search(query).map((n) => `his note [id: ${n.id}]: ${n.text}`);
     },
     remember: async (text: string): Promise<string> => {
       const clean = text.trim().slice(0, MEMORY_TEXT_MAX);
       try {
-        const out = await ask<{ item: MemoryItem }>("add", { kind: "note", text: clean, source: "user" });
+        const out = await ask<{ item: MemoryItem }>("add", {
+          kind: "note",
+          text: clean,
+          source: "user",
+        });
         if (out !== null) return `Kept [id: ${out.item.id}].`;
       } catch (error) {
         return error instanceof Error ? error.message : "That was not kept.";
@@ -88,7 +92,11 @@ export const createDesktopMemory = (input: {
     },
     pin: async (id: string, pinned: boolean): Promise<string> => {
       const out = await ask<{ item: MemoryItem }>("pin", { id, pinned });
-      return out === null ? "Memory is not reachable, so nothing was pinned." : pinned ? "Pinned." : "Unpinned.";
+      return out === null
+        ? "Memory is not reachable, so nothing was pinned."
+        : pinned
+          ? "Pinned."
+          : "Unpinned.";
     },
     /** What the last answer drew on. */
     used: async (): Promise<string> => {
@@ -101,7 +109,12 @@ export const createDesktopMemory = (input: {
     },
     /** After a turn: fire and forget, never read aloud and never in the way. */
     learn: (said: string, reply: string, tainted: boolean): void => {
-      void ask("learn", { said, reply, tainted, ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }) });
+      void ask("learn", {
+        said,
+        reply,
+        tainted,
+        ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),
+      });
     },
   };
 };
