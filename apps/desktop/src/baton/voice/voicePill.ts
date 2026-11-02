@@ -225,6 +225,8 @@ export const createVoicePill = (input: {
     readonly playing: (ms: number) => void;
   };
   readonly rest: () => boolean;
+  /** Extra items at the end of the right-click menu. */
+  readonly menuItems?: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   /** BATON_TEST_DIR: a PNG of the pill's own page at every state change, taken from inside the app. */
   readonly captureDir?: string;
   readonly edge: () => "bottom" | "top";
@@ -703,6 +705,7 @@ export const createVoicePill = (input: {
       })),
       { type: "separator" as const },
       { label: "Put it back", click: () => Electron.ipcMain.emit("baton-pill:reset", event) },
+      ...(input.menuItems === undefined ? [] : [{ type: "separator" as const }, ...input.menuItems()]),
     ]).popup({ window });
   });
   Electron.ipcMain.on("baton-pill:reset", (event) => {
