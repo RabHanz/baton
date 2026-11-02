@@ -14,7 +14,9 @@ const prompts: string[] = [];
 const oneShot = Layer.succeed(BatonOneShot, {
   run: ((input: { readonly prompt: string }) => {
     prompts.push(input.prompt);
-    return down ? Effect.fail(new BatonOneShotError({ detail: "offline" })) : Effect.succeed(reply as never);
+    return down
+      ? Effect.fail(new BatonOneShotError({ detail: "offline" }))
+      : Effect.succeed(reply as never);
   }) as BatonOneShot["Service"]["run"],
 });
 const config = Layer.succeed(ServerConfig.ServerConfig, {
@@ -88,7 +90,10 @@ layer("BatonMemoryLearning", (it) => {
     Effect.gen(function* () {
       const learning = yield* BatonMemoryLearning;
       const before = prompts.length;
-      assert.deepEqual(yield* learning.learn(turn({ said: "ok", reply: "yes" })), { stored: 0, held: 0 });
+      assert.deepEqual(yield* learning.learn(turn({ said: "ok", reply: "yes" })), {
+        stored: 0,
+        held: 0,
+      });
       assert.strictEqual(prompts.length, before);
       down = true;
       assert.deepEqual(yield* learning.learn(turn()), { stored: 0, held: 0 });
@@ -100,9 +105,21 @@ layer("BatonMemoryLearning", (it) => {
     Effect.gen(function* () {
       const memory = yield* BatonMemoryService;
       const learning = yield* BatonMemoryLearning;
-      yield* memory.add({ kind: "fact", text: "Staging lives on the second box", source: "job", scope: "project", scopeRef: "s" });
+      yield* memory.add({
+        kind: "fact",
+        text: "Staging lives on the second box",
+        source: "job",
+        scope: "project",
+        scopeRef: "s",
+      });
       // Two rewordings that dedupe cannot see at add time are merged here.
-      yield* memory.add({ kind: "fact", text: "Staging lives on the second box today", source: "job", scope: "project", scopeRef: "s" });
+      yield* memory.add({
+        kind: "fact",
+        text: "Staging lives on the second box today",
+        source: "job",
+        scope: "project",
+        scopeRef: "s",
+      });
       const before = (yield* memory.list({ scope: "project" })).length;
       const result = yield* learning.consolidate;
       const after = (yield* memory.list({ scope: "project" })).length;

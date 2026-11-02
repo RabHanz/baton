@@ -216,7 +216,11 @@ export const make = Effect.gen(function* () {
         const score =
           (both / wanted.size) * (0.5 + 0.5 * effectiveConfidence(item, now)) +
           (item.pinned ? 0.1 : 0) +
-          (query.scopeRef !== undefined && query.scopeRef !== null && item.scopeRef === query.scopeRef ? 0.2 : 0);
+          (query.scopeRef !== undefined &&
+          query.scopeRef !== null &&
+          item.scopeRef === query.scopeRef
+            ? 0.2
+            : 0);
         return { item, score };
       })
       .toSorted((a, b) => b.score - a.score)
@@ -286,7 +290,9 @@ export const make = Effect.gen(function* () {
   });
 
   const touch = (id: string, at: string) =>
-    sql`UPDATE fabric_memory_items SET updated_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(Effect.orDie);
+    sql`UPDATE fabric_memory_items SET updated_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(
+      Effect.orDie,
+    );
 
   const edit = Effect.fn("BatonMemoryService.edit")(function* (
     id: string,
@@ -294,8 +300,7 @@ export const make = Effect.gen(function* () {
   ) {
     const current = yield* requireItem(id);
     const at = yield* nowIso;
-    const text =
-      patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
+    const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
     if (reason !== null) return yield* refuse(reason);
     yield* sql`
@@ -454,10 +459,10 @@ export const make = Effect.gen(function* () {
     ];
     // A full batch means there is more: the peer resumes from the last stamp it was given.
     const full = rows.length === BATCH || stones.length === BATCH;
-    const last = [
-      rows.at(-1)?.updated_at ?? "",
-      stones.at(-1)?.deleted_at ?? "",
-    ].reduce((a, b) => (a > b ? a : b), "");
+    const last = [rows.at(-1)?.updated_at ?? "", stones.at(-1)?.deleted_at ?? ""].reduce(
+      (a, b) => (a > b ? a : b),
+      "",
+    );
     return { origin, changes, upTo: full ? last : yield* nowIso };
   });
 
@@ -471,7 +476,8 @@ export const make = Effect.gen(function* () {
       const id = change.item?.id ?? change.tombstone?.id;
       if (id === undefined || peer === origin) continue;
       // Every received item passes the same door as one he types: a peer is not trusted to have checked.
-      if (change.item !== null && refuseToStore(change.item.text, privateTexts()) !== null) continue;
+      if (change.item !== null && refuseToStore(change.item.text, privateTexts()) !== null)
+        continue;
       const row = yield* sql<ItemRow>`SELECT * FROM fabric_memory_items WHERE id = ${id}`.pipe(
         Effect.orDie,
       );
@@ -514,9 +520,9 @@ export const make = Effect.gen(function* () {
     }
     // The cursor only moves forward.
     const key = `cursor:${peer}`;
-    const held = yield* sql<{ value: string }>`SELECT value FROM fabric_memory_meta WHERE key = ${key}`.pipe(
-      Effect.orDie,
-    );
+    const held = yield* sql<{
+      value: string;
+    }>`SELECT value FROM fabric_memory_meta WHERE key = ${key}`.pipe(Effect.orDie);
     if (held[0] === undefined || held[0].value < upTo) {
       yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${key}, ${upTo})`.pipe(
         Effect.orDie,

@@ -91,7 +91,11 @@ export const make = Effect.gen(function* () {
   });
 
   const consolidate = Effect.gen(function* () {
-    const all = yield* memory.list({ includeSuperseded: true, includeProposed: true, limit: 100_000 });
+    const all = yield* memory.list({
+      includeSuperseded: true,
+      includeProposed: true,
+      limit: 100_000,
+    });
     const plans = planMerges(all);
     for (const { keep, drop } of plans) {
       // Saying it twice is repetition: re-adding the survivor reinforces it (MEMORY.md section 2).
