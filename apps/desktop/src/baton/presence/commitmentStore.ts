@@ -24,6 +24,8 @@ export const createCommitmentStore = (
   dir: string,
   now: () => number = Date.now,
   newId: () => string = () => NodeCrypto.randomUUID().slice(0, 8),
+  /** Called after every write, so a server copy can follow. */
+  onChange: () => void = () => undefined,
 ) => {
   const file = NodePath.join(dir, "commitments.json");
   const read = (): ReadonlyArray<Commitment> => {
@@ -47,9 +49,12 @@ export const createCommitmentStore = (
     const tmp = `${file}.tmp`;
     NodeFS.writeFileSync(tmp, JSON.stringify(pruneCommitments(list, now()), null, 2));
     NodeFS.renameSync(tmp, file);
+    onChange();
   };
   return {
     list: read,
+    /** The merged list from the server sync replaces the file. */
+    replace: write,
     add: (input: CommitmentInput): Commitment => {
       const before = read();
       const id = newId();

@@ -13,6 +13,7 @@ import type {
   BatonFocusTarget,
   BatonJob,
   BatonJobBridgeRequest,
+  BatonCommitmentBridgeRequest,
   BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
@@ -61,6 +62,7 @@ import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approva
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
+import { createCommitmentSync } from "../presence/commitmentSync.ts";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
 import { presenceControls, presencePatch } from "../presence/presenceRows.ts";
@@ -377,6 +379,8 @@ const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
 const AWARENESS_SAMPLE_MS = 30_000;
 const INITIATIVE_MS = 2 * 60_000;
+const COMMIT_SYNC_MS = 60_000;
+const COMMIT_SYNC_SOON_MS = 3_000;
 const NOW_REFRESH_MS = 5 * 60_000;
 const CI_REFRESH_MS = 10 * 60_000;
 /** Changes this close together make one tray and window update. */
@@ -1092,7 +1096,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   >();
   let mainContents: Electron.WebContents | null = null;
   const request = async (
-    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
+    body:
+      | VoiceIntentRequest
+      | BatonJobBridgeRequest
+      | BatonMemoryBridgeRequest
+      | BatonCommitmentBridgeRequest,
   ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
@@ -1123,7 +1131,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   /** What the sessions side answered joins the one conversation, with what it was about. */
   const requestKept = async (
-    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
+    body:
+      | VoiceIntentRequest
+      | BatonJobBridgeRequest
+      | BatonMemoryBridgeRequest
+      | BatonCommitmentBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -1162,7 +1174,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     bus: desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }),
     now: Date.now(),
   });
-  const commitments = createCommitmentStore(input.stateDir);
+  const commitments = createCommitmentStore(input.stateDir, Date.now, undefined, () =>
+    setTimeout(() => void syncCommitments(), COMMIT_SYNC_SOON_MS).unref(),
+  );
+  // The server copy is shared by his devices; it only follows while the window exists, since asking opens it.
+  const commitmentSync = createCommitmentSync({
+    store: commitments,
+    call: (op, args) => requestKept({ kind: "commitments", op, args }),
+  });
+  const syncCommitments = async (): Promise<void> => {
+    if (mainContents === null || mainContents.isDestroyed()) return;
+    await commitmentSync.sync();
+  };
+  setInterval(() => void syncCommitments(), COMMIT_SYNC_MS).unref();
   const externalNeeds = createExternalNeeds();
   const briefExtra = (): ReadonlyArray<string> => {
     const line = briefCommitments(commitments.list(), Date.now());
