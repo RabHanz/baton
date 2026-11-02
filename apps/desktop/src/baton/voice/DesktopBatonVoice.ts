@@ -338,9 +338,35 @@ const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
+<<<<<<< HEAD
+/** Changes this close together make one tray and window update. */
+const RENDER_COALESCE_MS = 40;
+
+/**
+ * A value that costs file reads, kept for a few seconds: the window asks for its rows on every update, and
+ * the folders do not change that fast. `reset` after anything that does change them.
+ */
+const cachedFor = <T>(ms: number, make: () => T) => {
+  let at = -Infinity;
+  let value: T;
+  const get = (): T => {
+    const now = Date.now();
+    if (now - at > ms) {
+      value = make();
+      at = now;
+    }
+    return value;
+  };
+  return Object.assign(get, { reset: () => void (at = -Infinity) });
+};
+/** The choices offered for how long it listens; the defaults are the middle and the second. */
+export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [8_000, 15_000, 30_000];
+export const CONVERSATION_MS: ReadonlyArray<number> = [30_000, 60_000, 120_000];
+=======
 /** The choices for how long it listens. Eight seconds and 30 s are the defaults; the wait covers only the start of speech. */
 export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [4_000, 6_000, 8_000, 12_000];
 export const CONVERSATION_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000, 120_000];
+>>>>>>> origin/main
 const BRIEF_HOUR = 8;
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
@@ -350,8 +376,13 @@ const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
  * The tray mark: the logo's hinted cut for the taskbar's own theme (white on dark, black on light), at
  * every size Windows may ask for (100, 125, 150, 200, 250 and 300 %), with the state as a dot.
  */
+const trayIconCache = new Map<string, Electron.NativeImage>();
 const trayIcon = (options: MarkOptions): Electron.NativeImage => {
   const dark = Electron.nativeTheme.shouldUseDarkColorsForSystemIntegratedUI;
+  // Six PNGs decoded and drawn on per call: the same few states come round again and again.
+  const key = `${dark}|${JSON.stringify(options)}`;
+  const known = trayIconCache.get(key);
+  if (known !== undefined) return known;
   const image = Electron.nativeImage.createEmpty();
   for (const size of TRAY_SIZES) {
     const source = Electron.nativeImage.createFromBuffer(
@@ -364,6 +395,8 @@ const trayIcon = (options: MarkOptions): Electron.NativeImage => {
       buffer: withTrayState(source.toBitmap(), size, options, dark),
     });
   }
+  if (trayIconCache.size > 32) trayIconCache.clear();
+  trayIconCache.set(key, image);
   return image;
 };
 
@@ -987,13 +1020,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // The taskbar's theme changes the tray mark's colour (white on dark, black on light).
   Electron.nativeTheme.on("updated", () => render());
-  const render = () => {
+  const renderNow = () => {
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
     tray.setImage(trayIcon(markOptions()));
     tray.setToolTip(
       `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`,
     );
     rebuildMenu();
+  };
+  // Several changes in a burst (a state, a note, a reply) repaint the tray, rebuild its menu and push the whole
+  // window state once, not once each.
+  let renderTimer: ReturnType<typeof setTimeout> | null = null;
+  const render = () => {
+    if (renderTimer !== null) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = null;
+      renderNow();
+    }, RENDER_COALESCE_MS);
   };
   /** A reply to something said: on the pill, and in full when nothing will read it out. */
   const flash = (caption: string) => {
@@ -1807,13 +1850,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const claudeDir = () =>
     process.env["CLAUDE_CONFIG_DIR"] ?? NodePath.join(Electron.app.getPath("home"), ".claude");
-  const harnessItems = () =>
+  const harnessItems = cachedFor(3_000, () =>
     readInventory({
       claudeDir: claudeDir(),
       claudeJson: NodePath.join(Electron.app.getPath("home"), ".claude.json"),
       codexDir: NodePath.join(Electron.app.getPath("home"), ".codex"),
-    });
+    }),
+  );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
+  const cachedNotes = cachedFor(3_000, () => notes.list());
+  const cachedPack = cachedFor(3_000, () =>
+    packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
+  );
+  /** Files he edits by hand or through a row here: forget what was read, so the next draw is true. */
+  const forgetFiles = () => {
+    harnessItems.reset();
+    cachedNotes.reset();
+    cachedPack.reset();
+  };
   let sessionsNote: string | null = null;
   /** The job cards as the window last read them; null until the Jobs or Approvals tab has been opened once. */
   let jobsCache: ReadonlyArray<BatonJob> | null = null;
@@ -2030,8 +2084,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
-      ...noteControls(notes.list()),
-      ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
+      ...noteControls(cachedNotes()),
+      ...cachedPack(),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
         ? jobsError !== null
@@ -2588,6 +2642,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       saveDictionary(input.stateDir, dictionary);
     } else if (pluginOfControl(id) !== null) {
       const result = setPluginEnabled(claudeDir(), pluginOfControl(id)!, on);
+      forgetFiles();
       if (result === "refused")
         note = "Could not change that plugin; its settings file was left alone.";
       home.refresh();
@@ -2599,9 +2654,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const dir = NodePath.join(input.stateDir, PACK_FOLDER);
       if (act.reset) {
         useDefault(dir, act.id);
+        forgetFiles();
         home.refresh();
       } else {
         const file = fileToEdit(dir, act.id);
+        forgetFiles();
         if (file !== null) void Electron.shell.openPath(file);
         home.refresh();
       }
@@ -2612,6 +2669,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       const act = noteAction(id)!;
       if (act.remove) {
         notes.remove(act.id);
+        forgetFiles();
         home.refresh();
       } else {
         const file = notes.list().find((n) => n.id === act.id)?.file;
