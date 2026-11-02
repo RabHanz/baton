@@ -138,6 +138,9 @@ export class BatonMemoryService extends Context.Service<
       changes: ReadonlyArray<MemoryChange>,
       upTo: string,
     ) => Effect.Effect<number>;
+    /** A switch kept with the memory (e.g. the scheduled learnings pull). */
+    readonly flag: (key: string) => Effect.Effect<boolean>;
+    readonly setFlag: (key: string, on: boolean) => Effect.Effect<void>;
     /** Notes what he talked about today (a few words), for the day's episode. */
     readonly noteTalk: (day: string, text: string) => Effect.Effect<void>;
     readonly talks: (day: string) => Effect.Effect<ReadonlyArray<string>>;
@@ -417,6 +420,14 @@ export const make = Effect.gen(function* () {
     return gone.length;
   });
 
+  const flag = Effect.fn("BatonMemoryService.flag")(function* (key: string) {
+    const rows = yield* sql<{ value: string }>`SELECT value FROM fabric_memory_meta WHERE key = ${`flag:${key}`}`.pipe(Effect.orDie);
+    return rows[0]?.value === "1";
+  });
+  const setFlag = Effect.fn("BatonMemoryService.setFlag")(function* (key: string, on: boolean) {
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`flag:${key}`}, ${on ? "1" : "0"})`.pipe(Effect.orDie);
+  });
+
   const MAX_TALKS = 12;
   const talks = Effect.fn("BatonMemoryService.talks")(function* (day: string) {
     const rows = yield* sql<{ value: string }>`
@@ -568,6 +579,8 @@ export const make = Effect.gen(function* () {
     exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
     sweep,
     noteOnce,
+    flag,
+    setFlag,
     noteTalk,
     talks,
     syncHello,

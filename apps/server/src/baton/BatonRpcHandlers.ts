@@ -51,6 +51,7 @@ import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
+import { pullAction } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
@@ -429,6 +430,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
+    [BATON_MEMORY_WS_METHODS.pull]: (input) => run(pullAction(input.action)),
     [BATON_MEMORY_WS_METHODS.syncHello]: () =>
       run(Effect.flatMap(BatonMemoryService, (memory) => memory.syncHello)),
     [BATON_MEMORY_WS_METHODS.syncPull]: (input) =>

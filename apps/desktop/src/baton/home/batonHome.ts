@@ -110,6 +110,8 @@ export type HomeControl =
       readonly usedOnly: boolean;
       readonly usedCount: number;
       readonly syncOn: boolean;
+      /** The daily pull of learnings from the history index (held for his yes). */
+      readonly pullOn: boolean;
       readonly status: string;
     })
   /** Shown masked until he clicks it. */

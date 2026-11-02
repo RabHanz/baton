@@ -127,6 +127,8 @@ import {
   BatonMemoryListResult,
   BatonMemoryPinInput,
   BatonMemoryQuery,
+  BatonMemoryPullInput,
+  BatonMemoryPullResult,
   BatonMemoryRecallInput,
   BatonMemoryRecallResult,
   BatonMemoryRefInput,
@@ -384,6 +386,11 @@ const WsBatonMemoryImportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.import, {
   success: BatonMemoryImportResult,
   error: MemoryErrors,
 });
+const WsBatonMemoryPullRpc = Rpc.make(BATON_MEMORY_WS_METHODS.pull, {
+  payload: BatonMemoryPullInput,
+  success: BatonMemoryPullResult,
+  error: MemoryErrors,
+});
 const WsBatonMemoryExportRpc = Rpc.make(BATON_MEMORY_WS_METHODS.export, {
   payload: Schema.Struct({}),
   success: BatonMemoryExportResult,
@@ -585,6 +592,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonMemoryExportRpc,
   WsBatonMemoryLearnRpc,
   WsBatonMemoryImportRpc,
+  WsBatonMemoryPullRpc,
   WsBatonMemorySyncHelloRpc,
   WsBatonMemorySyncPullRpc,
   WsBatonMemorySyncPushRpc,

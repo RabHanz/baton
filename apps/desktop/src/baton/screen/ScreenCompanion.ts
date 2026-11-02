@@ -90,6 +90,7 @@ import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { askHistory } from "@t3tools/baton-shared/historyIndex";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
@@ -1615,6 +1616,10 @@ export const startScreenCompanion = (input: {
     askToUnlock: () => input.onOpenTab?.("vault"),
   });
   const toolHost: ToolHost = {
+    history: async (ask) => {
+      const answer = await askHistory(input.env, ask);
+      return answer.ok ? answer.text : answer.why;
+    },
     vault: {
       list: () => vaultHost!.list(),
       use: (a) => vaultHost!.use(a),
