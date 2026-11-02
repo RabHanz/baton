@@ -575,11 +575,28 @@ async function adopt(sessionId, live) {
   return { error: "It reopened in Herdr but did not report ready in 30 s." };
 }
 
+/**
+ * A name a person can read: the file's own, or `image-HH-MM.ext` when it is one of T3's generated
+ * attachment names (thread id and uuid), plus a short suffix so two of the same name never collide.
+ */
+export function readableInboxName(fileName, now, suffix) {
+  const clean = safeInboxName(fileName, "x").slice(2);
+  const generated = /^baton-live|[0-9a-f]{8}-[0-9a-f]{4}-/.test(clean);
+  const dot = clean.lastIndexOf(".");
+  const ext = dot > 0 ? clean.slice(dot) : "";
+  const hhmm = now.toISOString().slice(11, 16).replace(":", "-");
+  const base = generated
+    ? `${/^\.(png|jpe?g|gif|webp|heic)$/i.test(ext) ? "image" : "file"}-${hhmm}`
+    : clean.slice(0, dot > 0 ? dot : clean.length);
+  return `${base}-${suffix}${ext}`;
+}
+
 function saveToInbox(cwd, name, bytes) {
-  const inbox = NodePath.join(cwd, ".baton", "inbox");
-  NodeFS.mkdirSync(inbox, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const path = NodePath.join(inbox, safeInboxName(name, stamp));
+  const now = new Date();
+  const day = NodePath.join(cwd, ".baton", "inbox", now.toISOString().slice(0, 10));
+  NodeFS.mkdirSync(day, { recursive: true });
+  const suffix = Math.random().toString(16).slice(2, 6);
+  const path = NodePath.join(day, readableInboxName(name, now, suffix));
   NodeFS.writeFileSync(path, bytes, { mode: 0o600 });
   return path;
 }
@@ -601,7 +618,12 @@ function composeForSession(blocks, cwd) {
       }
     }
   }
-  return [text, ...refs.map((ref) => `@${ref}`)].filter((part) => part.length > 0).join("\n");
+  // A plain sentence first, so the session (and the thread's echo) reads as a person would.
+  const attached = refs.map((ref) => {
+    const kind = /\.(png|jpe?g|gif|webp|heic)$/i.test(ref) ? "image" : "file";
+    return `He attached ${kind} ${NodePath.basename(ref)}:\n@${ref}`;
+  });
+  return [text, ...attached].filter((part) => part.length > 0).join("\n");
 }
 
 // ---------------------------------------------------------------------------------------------
