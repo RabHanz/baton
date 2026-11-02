@@ -83,6 +83,13 @@ export type HomeControl =
       readonly detail: string;
       readonly fix?: string;
     })
+  /** A text he edits in the window. Ids: `<id>:save` (the text) and `<id>:reset` (back to the default). */
+  | (HomeControlBase & {
+      readonly kind: "editor";
+      readonly text: string;
+      /** His own file exists, so "Use default" does something. */
+      readonly mine: boolean;
+    })
   /** A calendar of days as a grid, oldest first, one column per week: level 0 to 4, or -1 for a blank. */
   | (HomeControlBase & {
       readonly kind: "heat";

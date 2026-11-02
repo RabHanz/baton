@@ -6,33 +6,44 @@ import * as NodePath from "node:path";
 import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
 import { describe, expect, it } from "vite-plus/test";
 
-import { fileToEdit, packAction, packControls, useDefault } from "./packRows.ts";
+import {
+  fileToEdit,
+  packAction,
+  packControls,
+  packEdit,
+  savePackText,
+  useDefault,
+} from "./packRows.ts";
 
 describe("the pack in the window", () => {
   it("lists the framing, each role and the routing, writes the default to edit, and returns to it", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-packwin-"));
     const first = packControls(dir);
     expect(first.map((c) => c.id)).toEqual([
-      "p:executive",
-      "p:role:engineering",
-      "p:role:marketing",
-      "p:role:research",
-      "p:role:operations",
-      "p:routing",
+      "p.ed:executive",
+      "p.ed:role:engineering",
+      "p.ed:role:marketing",
+      "p.ed:role:research",
+      "p.ed:role:operations",
+      "p.ed:routing",
       "p.folder",
     ]);
-    expect(first[0]).not.toHaveProperty("secondary");
+    expect(first[0]).toMatchObject({
+      kind: "editor",
+      mine: false,
+      text: DEFAULT_OS_PACK.executive,
+    });
 
     const file = fileToEdit(dir, "executive")!;
     expect(NodeFS.readFileSync(file, "utf8").trim()).toBe(DEFAULT_OS_PACK.executive);
     NodeFS.writeFileSync(file, "Mine.\n");
     expect(fileToEdit(dir, "executive")).toBe(file);
     expect(NodeFS.readFileSync(file, "utf8")).toBe("Mine.\n");
-    expect(packControls(dir)[0]).toMatchObject({ secondary: "Use default" });
+    expect(packControls(dir)[0]).toMatchObject({ mine: true, text: "Mine.\n" });
 
     NodeFS.mkdirSync(NodePath.join(dir, "roles"), { recursive: true });
     NodeFS.writeFileSync(NodePath.join(dir, "roles", "legal.md"), "A lawyer.");
-    expect(packControls(dir).some((c) => c.id === "p:role:legal")).toBe(true);
+    expect(packControls(dir).some((c) => c.id === "p.ed:role:legal")).toBe(true);
 
     expect(useDefault(dir, "executive")).toBe(true);
     expect(NodeFS.existsSync(file)).toBe(false);
@@ -43,5 +54,27 @@ describe("the pack in the window", () => {
     expect(packAction("p:executive")).toEqual({ id: "executive", reset: false });
     expect(packAction("p.folder")).toBeNull();
     NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("editing the pack in the window", () => {
+  it("saves a part, keeps the file it replaced, and refuses empty or broken text", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-packed-"));
+    expect(packEdit("p.ed:role:legal:save")).toEqual({ id: "role:legal", save: true });
+    expect(packEdit("p.ed:executive:reset")).toEqual({ id: "executive", save: false });
+    expect(packEdit("p.ed:../../etc:save")).toBeNull();
+    expect(savePackText(dir, "executive", "First version")).toBeNull();
+    expect(savePackText(dir, "executive", "Second version")).toBeNull();
+    expect(NodeFS.readFileSync(NodePath.join(dir, "executive.md"), "utf8")).toBe(
+      "Second version\n",
+    );
+    expect(NodeFS.readFileSync(NodePath.join(dir, "executive.md.bak"), "utf8")).toBe(
+      "First version\n",
+    );
+    expect(savePackText(dir, "executive", "   ")).toContain("empty");
+    expect(savePackText(dir, "routing", "{not json")).toContain("not valid JSON");
+    expect(savePackText(dir, "routing", "[1]")).toContain("JSON object");
+    expect(savePackText(dir, "routing", '{"planning":"strong"}')).toBeNull();
+    expect(savePackText(dir, "role:../x", "text")).toContain("not a part");
   });
 });
