@@ -2121,7 +2121,8 @@ export const startScreenCompanion = (input: {
         kind: "brain",
         value: settings.operator,
         options: brainRows(brains ?? UNKNOWN_BRAINS),
-        lead: !settings.brainChosen,
+        // A ready default needs no first-run card on Home; the Assistant page is the one place to change it.
+        lead: !settings.brainChosen && !brainRows(brains ?? UNKNOWN_BRAINS).some((r) => r.value === settings.operator && r.state === "ready"),
       },
       {
         id: "s.brainCheck",
