@@ -17,7 +17,15 @@ import { markCompanionWindow } from "../lastAppWindow.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
 import { THEME_GROUND, resolveTheme, type Appearance } from "./theme.ts";
 import { tabOf, type TabId } from "./tabs.ts";
-import { applyLookScript, effectiveGlass, effectiveMotion, lookClasses, materialFor, type Glass, type Motion } from "./look.ts";
+import {
+  applyLookScript,
+  effectiveGlass,
+  effectiveMotion,
+  lookClasses,
+  materialFor,
+  type Glass,
+  type Motion,
+} from "./look.ts";
 import { shouldSplash } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
@@ -115,6 +123,34 @@ export type HomeControl =
       readonly held: boolean;
       /** The plain answer to "why do you remember this". */
       readonly why: string;
+    })
+  /** The Sessions browser's bar: search, machine and state filters, New session. */
+  | (HomeControlBase & {
+      readonly kind: "catalogBar";
+      readonly query: string;
+      readonly machine: string;
+      readonly stateFilter: string;
+      readonly machines: ReadonlyArray<HomeOption>;
+      readonly states: ReadonlyArray<HomeOption>;
+      /** Every word the bar shows, so the page script holds none. */
+      readonly words: Readonly<Record<string, string>>;
+      readonly creating: boolean;
+      readonly newMachine: string;
+      readonly folders: ReadonlyArray<string>;
+      readonly status: string;
+      /** Rows past the page, behind Show more. */
+      readonly remaining: number;
+    })
+  /** One session in the browser: running or stopped, on a machine, with Resume when it is stopped. */
+  | (HomeControlBase & {
+      readonly kind: "catalogRow";
+      readonly project: string;
+      readonly machine: string;
+      readonly when: string;
+      readonly state: "running" | "stopped" | "resuming" | "failed";
+      readonly stateLabel: string;
+      readonly resumeLabel: string | null;
+      readonly source: string;
     })
   /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
   | (HomeControlBase & {
@@ -363,12 +399,18 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   });
 
   const systemAsks = () => ({
-    reducedMotion: Electron.systemPreferences.getAnimationSettings?.().prefersReducedMotion === true,
-    reducedTransparency: (Electron.nativeTheme as { prefersReducedTransparency?: boolean }).prefersReducedTransparency === true,
+    reducedMotion:
+      Electron.systemPreferences.getAnimationSettings?.().prefersReducedMotion === true,
+    reducedTransparency:
+      (Electron.nativeTheme as { prefersReducedTransparency?: boolean })
+        .prefersReducedTransparency === true,
   });
   const look = () => {
     const chosen = input.look?.() ?? { motion: "full" as const, glass: "on" as const };
-    return { motion: effectiveMotion(chosen.motion, systemAsks()), glass: effectiveGlass(chosen.glass, systemAsks()) };
+    return {
+      motion: effectiveMotion(chosen.motion, systemAsks()),
+      glass: effectiveGlass(chosen.glass, systemAsks()),
+    };
   };
   const material = () => materialFor(process.platform, NodeOS.release(), look().glass);
   const overlayFor = (t: "light" | "dark") => ({
@@ -414,11 +456,15 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     const open = live();
     if (open === null) return;
     const now = look();
-    void open.webContents.executeJavaScript(applyLookScript(lookClasses(now.motion, now.glass))).catch(() => undefined);
+    void open.webContents
+      .executeJavaScript(applyLookScript(lookClasses(now.motion, now.glass)))
+      .catch(() => undefined);
     if (process.platform === "win32") {
       try {
         open.setBackgroundMaterial(material().backgroundMaterial ?? "none");
-        open.setBackgroundColor(material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()]);
+        open.setBackgroundColor(
+          material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()],
+        );
         open.setTitleBarOverlay(overlayFor(theme()));
       } catch {
         // Windows 10 and older builds keep a plain background.
@@ -457,7 +503,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
         minWidth: 860,
         minHeight: 580,
         title: "Tessaya",
-        backgroundColor: material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()],
+        backgroundColor:
+          material().backgroundMaterial === "mica" ? "#00000000" : THEME_GROUND[theme()],
         ...material(),
         autoHideMenuBar: true,
         // Our own title strip, so the window controls take the page's theme, not Windows'.
