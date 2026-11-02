@@ -56,6 +56,9 @@ type JobOp =
   | "brief"
   | "approvals"
   | "needs"
+  | "commit_add"
+  | "commit_done"
+  | "commit_list"
   | "split";
 
 type Args = Readonly<Record<string, unknown>>;
@@ -283,7 +286,9 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "Pin a memory so it is always kept in mind and never fades (pinned true), or unpin it (false). The id comes from memory_search.",
     inputSchema: object({ id: { type: "string" }, pinned: { type: "boolean" } }, ["id", "pinned"]),
     run: async (a) => ({
-      text: (await host.pin?.(str(a, "id", 200), a["pinned"] !== false)) ?? "Pinning is not available here.",
+      text:
+        (await host.pin?.(str(a, "id", 200), a["pinned"] !== false)) ??
+        "Pinning is not available here.",
     }),
   },
   {
@@ -332,6 +337,52 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       "'What needs me?' across everything: sessions that failed, stalled, wait for him or finished unseen, jobs and plans waiting, the ledger and deadlines he configured. A short ranked list, read-only, with a note for any source it could not read. Use it first for 'what needs me', 'what should I do next', 'what is waiting'.",
     inputSchema: object({}),
     run: async () => ({ text: await host.jobs("needs", {}) }),
+  },
+  {
+    name: "commit_add",
+    description:
+      "Keep track of something he asked you to follow up on or remind him of ('check back on the deploy', 'remind me', 'keep an eye on X'). His words, short. Give due_in_minutes (or due_at as an ISO time) when he named a time; owner 'you' when the next step is his. A note only: it does not act on his behalf, and any action later still goes through the usual gate.",
+    inputSchema: object(
+      {
+        text: { type: "string", maxLength: 300 },
+        due_in_minutes: { type: "number", minimum: 0 },
+        due_at: { type: "string" },
+        owner: { enum: ["tessaya", "you"] },
+        ref: { type: "string", maxLength: 200 },
+      },
+      ["text"],
+    ),
+    run: async (a) => ({
+      text: await host.jobs("commit_add", {
+        text: str(a, "text", 300),
+        ...(a["due_in_minutes"] === undefined ? {} : { due_in_minutes: num(a, "due_in_minutes") }),
+        ...(typeof a["due_at"] === "string" ? { due_at: a["due_at"] } : {}),
+        ...(a["owner"] === "you" ? { owner: "you" } : {}),
+        ...(typeof a["ref"] === "string" ? { ref: a["ref"] } : {}),
+        source: "assistant",
+      }),
+    }),
+  },
+  {
+    name: "commit_done",
+    description:
+      "Close a commitment by its id: done when it has been followed up, dropped when he says forget it.",
+    inputSchema: object({ id: { type: "string" }, status: { enum: ["done", "dropped"] } }, ["id"]),
+    run: async (a) => ({
+      text: await host.jobs("commit_done", {
+        id: str(a, "id", 200),
+        ...(a["status"] === "dropped" ? { status: "dropped" } : {}),
+      }),
+    }),
+  },
+  {
+    name: "commit_list",
+    description:
+      "What he asked you to keep track of, with when each is due. Use it for 'what are you keeping track of' and before promising a follow-up.",
+    inputSchema: object({ include_closed: { type: "boolean" } }),
+    run: async (a) => ({
+      text: await host.jobs("commit_list", { include_closed: a["include_closed"] === true }),
+    }),
   },
   {
     name: "morning_brief",

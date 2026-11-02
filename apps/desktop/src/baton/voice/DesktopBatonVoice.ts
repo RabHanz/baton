@@ -59,6 +59,9 @@ import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { answerNeeds } from "../presence/needsAnswer.ts";
+import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
+import { createCommitmentStore } from "../presence/commitmentStore.ts";
+import { runCommitOp } from "../presence/commitTools.ts";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
@@ -1133,6 +1136,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     bus: desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }),
     now: Date.now(),
   });
+  const commitments = createCommitmentStore(input.stateDir);
+  const briefExtra = (): ReadonlyArray<string> => {
+    const line = briefCommitments(commitments.list(), Date.now());
+    return line === null ? [] : [line];
+  };
   const awareness = createAwareness({
     switches: () => ({
       window: settings.awarenessWindow,
@@ -1182,6 +1190,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           buildApprovals({ jobs: jobs?.jobs ?? [], sessions: input.sessions?.rows() ?? [] }),
         );
       }
+      if (op === "commit_add" || op === "commit_done" || op === "commit_list") {
+        return runCommitOp(commitments, op, args, Date.now());
+      }
       if (op === "needs") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
           jobs?: ReadonlyArray<BatonJob>;
@@ -1190,6 +1201,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
+          extra: needsFromCommitments(commitments.list(), Date.now()),
           config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
           now: Date.now(),
         });
@@ -1202,6 +1214,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           findings: await watchFindings(),
           now: Date.now(),
+          extra: briefExtra(),
         });
       }
       const value = (await requestKept({ kind: "job", op, args })) as {
@@ -1906,7 +1919,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   const memoryTab = createMemoryTab({
-    call: (op, args) => requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    call: (op, args) =>
+      requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
     sync: createMemorySync({
       file: NodePath.join(input.stateDir, "baton-memory.json"),
       call: (op, args) =>
@@ -1987,7 +2001,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       } | null;
       save({ briefDay: today });
       input.extras?.announce(
-        morningBrief({ jobs: jobs?.jobs ?? [], findings: found, now: Date.now() }),
+        morningBrief({
+          jobs: jobs?.jobs ?? [],
+          findings: found,
+          now: Date.now(),
+          extra: briefExtra(),
+        }),
         settings.briefMode === "spoken",
       );
     }
