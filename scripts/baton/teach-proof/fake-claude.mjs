@@ -59,7 +59,7 @@ const toShot = (spot, text) => {
 };
 const point = (name, label, text) => {
   const at = toShot(locate(name), text);
-  return at ? `[POINT:${at.x},${at.y}:${label}]` : "[POINT:none]";
+  return at ? `[POINT:${at.x},${at.y}:${label}:0.95]` : "[POINT:none]";
 };
 
 let turn = 0;
