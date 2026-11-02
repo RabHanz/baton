@@ -70,6 +70,8 @@ export const BatonCatalogResumeResult = Schema.Struct({
   state: BatonCatalogState,
   pane: Schema.NullOr(Schema.String),
   detail: Schema.NullOr(Schema.String),
+  /** Set when the session came back as a T3 thread (a machine with no Herdr, such as Windows). */
+  threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 export const BatonCatalogCreateInput = Schema.Struct({

@@ -111,7 +111,7 @@ export const claudeConfigDirs = (): ReadonlyArray<string> => {
   };
   add(NodePath.join(home, ".local", "share", "claude-swap", "sessions"), () => true);
   add(home, (name) => name.startsWith(".claude-"));
-  for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(":")) {
+  for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(NodePath.delimiter)) {
     if (extra.length > 0) dirs.push(extra);
   }
   return [...new Set(dirs)].filter((dir) => NodeFS.existsSync(NodePath.join(dir, "sessions")));
