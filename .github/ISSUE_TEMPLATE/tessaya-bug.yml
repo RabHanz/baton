@@ -1,0 +1,37 @@
+name: Tessaya bug
+description: Something in Tessaya (voice, dictation, screen, jobs, memory, vault, phone page) is broken.
+title: "[Tessaya]: "
+labels:
+  - bug
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Voice, Dictation, Screen companion, Jobs and approvals, Memory, Vault, History, Phone page, Install or update, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options: [Windows, macOS, Linux, Phone browser]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version (Settings, About)
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to repeat it
+  - type: markdown
+    attributes:
+      value: Do not paste secrets, vault contents or recovery keys. For a security problem use the Security tab instead.
