@@ -123,7 +123,7 @@ function session(c) {
   const t = $('div', 'text'); const name = $(c.canOpen ? 'button' : 'div', 'sname', c.label);
   if (c.canOpen) { name.title = 'Open in sessions'; name.onclick = () => set(c.id, null); }
   const meta = $('div', 'hint'); meta.append(document.createTextNode(c.project + ' \\u00b7 ' + c.box + ' \\u00b7 ' + c.stateLabel));
-  if (c.masked) { meta.append(document.createTextNode(' \\u00b7 ')); const a = $('button', 'reveal', shown.has(c.id) ? c.revealed : c.masked); a.setAttribute('aria-label', 'Show account'); a.onclick = () => { if (shown.has(c.id)) shown.delete(c.id); else shown.add(c.id); a.textContent = shown.has(c.id) ? c.revealed : c.masked; }; meta.append(a); }
+  if (c.masked) { const a = $('button', 'reveal', shown.has(c.id) ? c.revealed : c.masked); a.setAttribute('aria-label', 'Account, press to show or hide the address'); a.title = 'Account'; a.onclick = () => { if (shown.has(c.id)) shown.delete(c.id); else shown.add(c.id); a.textContent = shown.has(c.id) ? c.revealed : c.masked; }; meta.append(a); }
   t.append(name, meta);
   if (c.canSend) {
     const f = $('form', 'send'); const i = $('input'); i.type = 'text'; i.id = 'in-' + c.id; i.placeholder = 'Send to this session'; i.setAttribute('aria-label', 'Send to ' + c.label); i.value = drafts.get(c.id) || '';
