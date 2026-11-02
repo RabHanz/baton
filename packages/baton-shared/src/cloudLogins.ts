@@ -13,12 +13,19 @@ export interface CloudLogins {
   readonly accounts: ReadonlyArray<{
     readonly account: string;
     readonly state: CloudLoginState;
-    readonly accessTokenExpiresInDays: number | null;
+    /** Days until the login (the refresh token) lapses; the access token is refreshed by use and does not count. */
+    readonly loginExpiresInDays: number | null;
   }>;
 }
 
 const STATES: ReadonlySet<string> = new Set(["ok", "renew-soon", "expired", "not-logged-in"]);
 export const CLOUD_CHECK_STALE_MS = 2 * 86_400_000;
+/** A login with fewer days than this left is about to lapse. */
+export const CLOUD_RENEW_DAYS = 5;
+
+/** The state to act on: a good login with under five days left is renew-soon whatever the file says. */
+const stateOf = (state: CloudLoginState, days: number | null): CloudLoginState =>
+  state === "ok" && days !== null && days < CLOUD_RENEW_DAYS ? "renew-soon" : state;
 
 export const parseCloudLogins = (text: string): CloudLogins | null => {
   try {
@@ -30,8 +37,8 @@ export const parseCloudLogins = (text: string): CloudLogins | null => {
         ? [
             {
               account: o["account"],
-              state: o["state"] as CloudLoginState,
-              accessTokenExpiresInDays: typeof o["accessTokenExpiresInDays"] === "number" ? o["accessTokenExpiresInDays"] : null,
+              loginExpiresInDays: typeof o["loginExpiresInDays"] === "number" ? o["loginExpiresInDays"] : null,
+              state: stateOf(o["state"] as CloudLoginState, typeof o["loginExpiresInDays"] === "number" ? o["loginExpiresInDays"] : null),
             },
           ]
         : [];
@@ -82,6 +89,6 @@ export const cloudLoginsNeeds = (s: CloudLogins | null, now: number): ReadonlyAr
       why:
         a.state === "expired"
           ? `It has expired (checked ${ago(now - (s?.checkedAt ?? now))}).`
-          : `It lapses in ${a.accessTokenExpiresInDays ?? "a few"} days.`,
+          : `It lapses in ${a.loginExpiresInDays ?? "a few"} days.`,
       weight: a.state === "expired" ? 80 : 65,
     }));

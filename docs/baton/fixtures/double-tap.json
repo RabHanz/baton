@@ -1,0 +1,579 @@
+{
+  "about": "The double-tap push-to-talk timing table. packages/baton-voice/src/doubleTap.ts is the executable spec; native/baton-dictation/src/main.rs (DoubleTap) is what runs. Both test suites replay these cases and must agree on the outputs and the final phase. Times are milliseconds.",
+  "timings": {
+    "shortTapMs": 200,
+    "firstPressMs": 350,
+    "gapMs": 350,
+    "holdMs": 600
+  },
+  "cases": [
+    {
+      "name": "hold",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 1000
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "medium press",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 400
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "short tap",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 150
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel"
+      ],
+      "phase": "tapped"
+    },
+    {
+      "name": "tap at the short-tap boundary stops",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 200
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop"
+      ],
+      "phase": "tapped"
+    },
+    {
+      "name": "double tap latches",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 300
+        },
+        {
+          "type": "up",
+          "at": 380
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "latch"
+      ],
+      "phase": "latched"
+    },
+    {
+      "name": "double tap with a 300 ms first press",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 300
+        },
+        {
+          "type": "down",
+          "at": 600
+        },
+        {
+          "type": "up",
+          "at": 700
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop",
+        "start",
+        "latch"
+      ],
+      "phase": "latched"
+    },
+    {
+      "name": "gap too long is two taps",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 451
+        },
+        {
+          "type": "up",
+          "at": 500
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "cancel"
+      ],
+      "phase": "tapped"
+    },
+    {
+      "name": "first press too long is no double tap",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 350
+        },
+        {
+          "type": "down",
+          "at": 400
+        },
+        {
+          "type": "up",
+          "at": 450
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop",
+        "start",
+        "cancel"
+      ],
+      "phase": "tapped"
+    },
+    {
+      "name": "triple tap latches then ends",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 200
+        },
+        {
+          "type": "up",
+          "at": 300
+        },
+        {
+          "type": "down",
+          "at": 400
+        },
+        {
+          "type": "up",
+          "at": 500
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "latch",
+        "unlatch",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "latch then a long press ends it",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 200
+        },
+        {
+          "type": "up",
+          "at": 300
+        },
+        {
+          "type": "down",
+          "at": 5000
+        },
+        {
+          "type": "up",
+          "at": 7000
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "latch",
+        "unlatch",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "after ending a latch, a tap is a fresh tap",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 200
+        },
+        {
+          "type": "up",
+          "at": 300
+        },
+        {
+          "type": "down",
+          "at": 400
+        },
+        {
+          "type": "up",
+          "at": 500
+        },
+        {
+          "type": "down",
+          "at": 600
+        },
+        {
+          "type": "up",
+          "at": 650
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "latch",
+        "unlatch",
+        "stop",
+        "start",
+        "cancel"
+      ],
+      "phase": "tapped"
+    },
+    {
+      "name": "long hold after a tap is a normal hold",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 200
+        },
+        {
+          "type": "up",
+          "at": 801
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "setting off: short tap stops",
+      "doubleTap": false,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "setting off: double tap is two holds",
+      "doubleTap": false,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 200
+        },
+        {
+          "type": "up",
+          "at": 300
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop",
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "duplicate down and stray up are ignored",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "up",
+          "at": 0
+        },
+        {
+          "type": "down",
+          "at": 10
+        },
+        {
+          "type": "down",
+          "at": 20
+        },
+        {
+          "type": "up",
+          "at": 1000
+        },
+        {
+          "type": "up",
+          "at": 1100
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "stray up while latched is ignored",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 100
+        },
+        {
+          "type": "down",
+          "at": 200
+        },
+        {
+          "type": "up",
+          "at": 300
+        },
+        {
+          "type": "up",
+          "at": 350
+        },
+        {
+          "type": "down",
+          "at": 400
+        },
+        {
+          "type": "down",
+          "at": 410
+        },
+        {
+          "type": "up",
+          "at": 500
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "latch",
+        "unlatch",
+        "stop"
+      ],
+      "phase": "idle"
+    },
+    {
+      "name": "time going backwards is ignored",
+      "doubleTap": true,
+      "events": [
+        {
+          "type": "down",
+          "at": 1000
+        },
+        {
+          "type": "up",
+          "at": 900
+        },
+        {
+          "type": "up",
+          "at": 1050
+        },
+        {
+          "type": "down",
+          "at": 500
+        },
+        {
+          "type": "down",
+          "at": 1200
+        },
+        {
+          "type": "up",
+          "at": 1260
+        }
+      ],
+      "outputs": [
+        "start",
+        "cancel",
+        "start",
+        "latch"
+      ],
+      "phase": "latched"
+    },
+    {
+      "name": "setting off matches today's hold-to-talk",
+      "doubleTap": false,
+      "events": [
+        {
+          "type": "down",
+          "at": 0
+        },
+        {
+          "type": "up",
+          "at": 50
+        },
+        {
+          "type": "down",
+          "at": 60
+        },
+        {
+          "type": "up",
+          "at": 120
+        },
+        {
+          "type": "down",
+          "at": 130
+        },
+        {
+          "type": "down",
+          "at": 140
+        },
+        {
+          "type": "up",
+          "at": 900
+        },
+        {
+          "type": "up",
+          "at": 950
+        },
+        {
+          "type": "down",
+          "at": 960
+        },
+        {
+          "type": "up",
+          "at": 970
+        }
+      ],
+      "outputs": [
+        "start",
+        "stop",
+        "start",
+        "stop",
+        "start",
+        "stop",
+        "start",
+        "stop"
+      ],
+      "phase": "idle"
+    }
+  ]
+}

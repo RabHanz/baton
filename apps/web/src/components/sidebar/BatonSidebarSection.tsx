@@ -18,11 +18,12 @@ import {
   type ProjectId,
   type ScopedThreadRef,
 } from "@t3tools/baton-contracts";
+import { homeOf, resolveRunOn } from "@t3tools/baton-shared/runOn";
 import type { ThreadId } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { batonUsageSummaries } from "../../batonUsage";
 
 import { focusedWorkSessionFromThreads } from "../../batonContextView";
@@ -62,6 +63,8 @@ export function BatonSidebarSection(props: {
   const projects = useProjects();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const primary = fleet.environmentIds[0];
+  // Where each job was started, so a later stop or agree asks the server that holds it.
+  const jobHomes = useRef(new Map<string, string>());
   const usage = JSON.stringify(
     batonUsageSummaries(
       [...serverConfigs].map(([environmentId, config]) => ({
@@ -148,20 +151,48 @@ export function BatonSidebarSection(props: {
   /** The desktop assistant's job tools: the project by the name he said, the first ready Claude as the worker. */
   const onJob = async (request: BatonJobBridgeRequest): Promise<unknown> => {
     const { op, args } = request;
-    const env = { environmentId: primary };
     const text = (key: string) => (typeof args[key] === "string" ? args[key] : "");
+    const targets = fleet.environmentIds.map((id) => ({
+      id: id as string,
+      label: fleet.resolveEnvironmentLabel(id) ?? (id as string),
+    }));
+    // "Run on": a job starts on the server he names; later calls about it go to the server that holds it.
+    let target = primary;
+    if (op === "start") {
+      const choice = resolveRunOn(text("runOn"), targets, primary as string);
+      if (!choice.ok) throw new Error(choice.why);
+      target = choice.id as typeof primary;
+    } else if (typeof args["id"] === "string") {
+      target = homeOf(args["id"], jobHomes.current, primary as string) as typeof primary;
+    }
+    const env = { environmentId: target };
     const done = <V,>(result: { _tag: string; value?: V }): V => {
       if (result._tag !== "Success") throw new Error("That job request failed. Nothing changed.");
       return result.value as V;
     };
     switch (op) {
-      case "list":
-        return done(await jobList({ ...env, input: {} }));
+      case "list": {
+        // Every connected server's jobs, each marked with where it runs.
+        const all = await Promise.all(
+          fleet.environmentIds.map(async (id) => {
+            const result = await jobList({ environmentId: id, input: {} });
+            if (result._tag !== "Success") return [];
+            const label = fleet.resolveEnvironmentLabel(id) ?? (id as string);
+            return (result.value as { jobs: ReadonlyArray<{ workSessionId: string }> }).jobs.map(
+              (job) => {
+                jobHomes.current.set(job.workSessionId, id as string);
+                return { ...job, runOn: label };
+              },
+            );
+          }),
+        );
+        return { jobs: all.flat() };
+      }
       case "watch":
         return done(await watchGet({ ...env, input: {} }));
       case "start": {
         const wanted = text("project").trim().toLowerCase();
-        const mine = projects.filter((p) => p.environmentId === primary);
+        const mine = projects.filter((p) => p.environmentId === target);
         const project = mine.find((p) => {
           const label = batonProjectKey(p).label.toLowerCase();
           return label === wanted || p.title.toLowerCase() === wanted;
@@ -171,7 +202,7 @@ export function BatonSidebarSection(props: {
             `No project is called "${text("project")}". Projects: ${mine.map((p) => batonProjectKey(p).label).join(", ")}.`,
           );
         }
-        const worker = [...(providerEntries.get(primary)?.values() ?? [])].find(
+        const worker = [...(providerEntries.get(target)?.values() ?? [])].find(
           (entry) => isProviderInstancePickerReady(entry) && entry.driverKind === "claudeAgent",
         );
         const model = worker?.models.find((m) => m.isDefault) ?? worker?.models[0];
@@ -183,7 +214,7 @@ export function BatonSidebarSection(props: {
         const tools = strings("tools") as ReadonlyArray<
           "read" | "edit" | "shell" | "web" | "sessions"
         >;
-        return done(
+        const started = done(
           await jobStart({
             ...env,
             input: {
@@ -204,6 +235,11 @@ export function BatonSidebarSection(props: {
             },
           }),
         );
+        jobHomes.current.set(
+          (started as { terms: { workSessionId: string } }).terms.workSessionId,
+          target as string,
+        );
+        return started;
       }
       case "split":
         return done(

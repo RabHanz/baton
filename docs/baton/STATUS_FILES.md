@@ -42,8 +42,10 @@ commitments are stored durably and resume by themselves.
 ## Claude cloud login health
 
 `~/.t3/baton/cloud-logins.json` is written daily by `scripts/baton/cloud-logins.sh`:
-`{"checkedAt": <epoch seconds>, "accounts": [{"account", "state", "accessTokenExpiresInDays"}]}` where
-`state` is `ok`, `renew-soon` (under three days left), `expired` or `not-logged-in`. Accounts are the
+`{"checkedAt": <epoch seconds>, "accounts": [{"account", "state", "loginExpiresInDays", "accessTokenExpiresInHours"}]}`
+where `state` is `ok`, `renew-soon` (under five days of login left), `expired` or `not-logged-in`. The login lasts until
+the refresh token expires (about 28 days); the access token lives hours and is refreshed by use, so it is reported but
+never decides the state. One line a day is also appended to `cloud-logins.history` (times only). Accounts are the
 folder names under `~/.claude-cloud` (override `BATON_CLOUD_DIR`); no address is written anywhere.
 
 Install on the box that holds the cloud logins:
