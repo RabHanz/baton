@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Feature request
-    url: https://github.com/pingdotgg/t3code/discussions/categories/ideas
-    about: Suggest an improvement or new capability in Discussions.
+  - name: Security problem
+    url: https://github.com/RabHanz/baton/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue.
