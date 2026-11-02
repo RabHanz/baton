@@ -1,0 +1,23 @@
+apps/desktop/src/baton/memory/memoryRows.test.ts: error TS2352: Conversion of type 'HomeControl | undefined' to type '{ kinds: { value: string; count: number; }[]; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+apps/desktop/src/baton/memory/memoryTab.test.ts: error TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)
+apps/desktop/src/baton/screen/ScreenCompanion.ts: error TS2322: Type 'Promise<string>' is not assignable to type 'string'.
+apps/desktop/src/baton/vault/vaultHost.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+apps/desktop/src/baton/vault/vaultStore.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+apps/desktop/src/baton/vault/vaultTab.test.ts: error TS377072: This code uses `setTimeout`, the corresponding Effect timer API is `Effect.sleep or Schedule` from Effect. effect(globalTimers)
+apps/desktop/src/baton/vault/vaultTab.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+apps/desktop/src/baton/voice/DesktopBatonVoice.ts: error TS2322: Type 'Promise<string>' is not assignable to type 'string'.
+apps/server/src/baton/BatonMemoryEpisode.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+apps/server/src/baton/BatonMemoryEpisode.ts: error TS377069: This Effect code constructs `new Date()`, date values in Effect code are represented through `DateTime` from Effect. effect(globalDateInEffect)
+apps/server/src/baton/BatonMemoryEpisode.ts: error TS377095: `Effect.orElseSucceed` expresses the same recovery more directly than `Effect.catch` followed by `Effect.succeed`. effect(catchToOrElseSucceed)
+apps/server/src/baton/BatonMemoryImport.ts: error TS377095: `Effect.orElseSucceed` expresses the same recovery more directly than `Effect.catch` followed by `Effect.succeed`. effect(catchToOrElseSucceed)
+apps/server/src/baton/BatonMemoryLearning.ts: error TS377057: This module reference uses the `path` module, the corresponding Effect API is `Path` from `effect`. effect(nodeBuiltinImport)
+apps/server/src/baton/BatonMemoryLearning.ts: error TS377095: `Effect.orElseSucceed` expresses the same recovery more directly than `Effect.catch` followed by `Effect.succeed`. effect(catchToOrElseSucceed)
+apps/server/src/baton/BatonMemoryPull.ts: error TS377095: `Effect.orElseSucceed` expresses the same recovery more directly than `Effect.catch` followed by `Effect.succeed`. effect(catchToOrElseSucceed)
+apps/server/src/baton/BatonMemoryReactor.ts: error TS377057: This module reference uses the `crypto` module, the corresponding Effect API is `Crypto` from `effect`. effect(nodeBuiltinImport)
+apps/server/src/baton/BatonMemoryService.ts: error TS377012: This Effect generator contains `try/catch`; in this context, error handling is expressed with Effect APIs such as Effect.try, Effect.tryPromise, Effect.catch, Effect.catchTag). effect(tryCatchInEffectGen)
+apps/server/src/baton/BatonMemoryService.ts: error TS377026: This code uses `JSON.parse` or `JSON.stringify`. Use `Schema.UnknownFromJsonString` for unknown shapes, `Schema.fromJsonString(schema)` for known ones, or `Schema.toCodecJson(schema)` when working with JSON values instead of strings. effect(preferSchemaOverJson)
+apps/server/src/baton/BatonMemoryService.ts: error TS377079: This Effect code uses `crypto.randomUUID()`, prefer the Effect `Crypto` module instead. effect(cryptoRandomUUIDInEffect)
+apps/server/src/baton/BatonMemoryService.ts: error TS377120: `Effect.filterOrFail` expresses this conditional validation more directly than `Effect.flatMap` with an identity `Effect.succeed` branch. effect(flatMapConditionalToFilterOrFail)
+packages/baton-shared/src/anomalies.test.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+packages/baton-shared/src/initiative.test.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)
+packages/baton-shared/src/memoryLearning.ts: error TS377068: This code constructs `new Date()`, date values are represented through `DateTime` from Effect. effect(globalDate)

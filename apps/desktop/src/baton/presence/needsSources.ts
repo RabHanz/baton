@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
  * The read-only sources behind "what needs me": issue labels on repositories he lists, and a
  * deadlines file. Both are settings and empty by default; nothing is written, sent or spent. A
@@ -103,4 +103,51 @@ export const readExternalNeeds = async (
     }
   }
   return { items: [...needsFromLedger(ledger.issues), ...deadlines], unreadable };
+};
+
+type External = { items: ReadonlyArray<NeedItem>; unreadable: ReadonlyArray<string> };
+export type ExternalNeeds = (
+  config: { readonly repos: ReadonlyArray<string>; readonly deadlinesFile: string | null },
+  now: number,
+) => Promise<External>;
+
+/**
+ * gh is slow and a spoken answer must not wait for it: serve the last read while it is fresh, and
+ * otherwise wait only `timeoutMs` for a new one (the read carries on and fills the cache).
+ */
+export const createExternalNeeds = (
+  options: { readonly run?: Run; readonly ttlMs?: number; readonly timeoutMs?: number } = {},
+): ExternalNeeds => {
+  const ttl = options.ttlMs ?? 5 * 60_000;
+  const timeout = options.timeoutMs ?? 2_500;
+  let cache: { key: string; at: number; value: External } | null = null;
+  let inflight: Promise<External> | null = null;
+  return async (config, now) => {
+    const key = JSON.stringify(config);
+    if (cache?.key === key && now - cache.at < ttl) return cache.value;
+    if (config.repos.length === 0 && config.deadlinesFile === null)
+      return { items: [], unreadable: [] };
+    inflight ??= readExternalNeeds(config, now, options.run)
+      .then((value) => {
+        cache = { key, at: now, value };
+        return value;
+      })
+      .finally(() => {
+        inflight = null;
+      });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const slow = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), timeout);
+    });
+    try {
+      const got = await Promise.race([inflight, slow]);
+      if (got !== null) return got;
+    } finally {
+      clearTimeout(timer);
+    }
+    // Stale beats nothing; with nothing, say it is still loading.
+    return cache?.key === key
+      ? cache.value
+      : { items: [], unreadable: ["the ledger and deadlines (still loading)"] };
+  };
 };

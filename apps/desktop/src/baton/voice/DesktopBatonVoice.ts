@@ -13,6 +13,8 @@ import type {
   BatonFocusTarget,
   BatonJob,
   BatonJobBridgeRequest,
+  BatonCommitmentBridgeRequest,
+  BatonWeaveBridgeRequest,
   BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
@@ -58,12 +60,39 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
-import { answerNeeds } from "../presence/needsAnswer.ts";
+import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
+import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
+import { createExternalNeeds } from "../presence/needsSources.ts";
+import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
+import { createCommitmentSync } from "../presence/commitmentSync.ts";
+import { createCommitmentStore } from "../presence/commitmentStore.ts";
+import { runCommitOp } from "../presence/commitTools.ts";
+import { presenceControls, presencePatch } from "../presence/presenceRows.ts";
+import { EMPTY_NOW, nowAction, nowControls, type NowData } from "../presence/nowRows.ts";
+import { collectNeeds } from "../presence/needsAnswer.ts";
+import { createAnomalySource } from "../presence/anomalySource.ts";
+import { createInitiative } from "../presence/initiativeEngine.ts";
+import { readCiRuns } from "../presence/ciSource.ts";
+import {
+  DEFAULT_POLICY,
+  triggersFromCi,
+  triggersFromCommitments,
+  triggersFromFindings,
+  type CiRun,
+} from "@t3tools/baton-shared/initiative";
+import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
 import { fileToEdit, PACK_FOLDER, packAction, packControls, useDefault } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
-import { noteAction, noteControls } from "../memory/noteRows.ts";
+import { redactForHistory } from "../vault/redact.ts";
+import { pendingSecret } from "../vault/pendingSecret.ts";
+import { createMemorySync } from "../memory/memorySync.ts";
+import { createMemoryTab } from "../memory/memoryTab.ts";
+import { windowsHello } from "../vault/hello.ts";
+import { createVaultTab } from "../vault/vaultTab.ts";
+import { vaultFor } from "../vault/vaultInstance.ts";
+import { noteAction } from "../memory/noteRows.ts";
 import { sessionControls } from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
@@ -230,6 +259,16 @@ interface VoiceSettings {
   readonly quietHours: string;
   readonly briefMode: "off" | "written" | "spoken";
   /** Repositories whose ledger labels count in "what needs me" (read-only, gh), and a deadlines file. */
+  /** What the assistant may know of his state: each off until he turns it on (D149). */
+  readonly awarenessWindow: boolean;
+  readonly awarenessIdle: boolean;
+  readonly awarenessFocus: boolean;
+  readonly awarenessJobs: boolean;
+  /** Offers when something needs a look: Off, a card with Yes, Later, Never, or the card and one spoken line. */
+  readonly initiativeMode: "off" | "written" | "spoken";
+  readonly initiativePerHour: number;
+  /** Repositories whose failed builds become offers (gh, read-only). */
+  readonly ciRepos: ReadonlyArray<string>;
   readonly needsRepos: ReadonlyArray<string>;
   readonly needsDeadlinesFile: string | null;
   /** The day (local) the morning brief was last given, so it comes once. */
@@ -282,6 +321,13 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   noticeMode: "written",
   quietHours: "22-8",
   briefMode: "written",
+  awarenessWindow: false,
+  awarenessIdle: false,
+  awarenessFocus: false,
+  awarenessJobs: false,
+  initiativeMode: "written",
+  initiativePerHour: 3,
+  ciRepos: [],
   needsRepos: [],
   needsDeadlinesFile: null,
   briefDay: null,
@@ -339,6 +385,12 @@ const SESSIONS_NOTE_MS = 8_000;
 /** Jobs change slowly; a local read every so often once he has loaded them. */
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
+const AWARENESS_SAMPLE_MS = 30_000;
+const INITIATIVE_MS = 2 * 60_000;
+const COMMIT_SYNC_MS = 60_000;
+const COMMIT_SYNC_SOON_MS = 3_000;
+const NOW_REFRESH_MS = 5 * 60_000;
+const CI_REFRESH_MS = 10 * 60_000;
 /** Changes this close together make one tray and window update. */
 const RENDER_COALESCE_MS = 40;
 
@@ -437,6 +489,8 @@ export interface TrayExtras extends BrainVoiceHook {
     readonly buttons: ReadonlyArray<string>;
     readonly cancel: number;
     readonly expiresMs?: number;
+    /** Unasked: its Yes stays disabled this long, so a keystroke meant for something else cannot answer. */
+    readonly armMs?: number;
   }) => Promise<number>;
 }
 
@@ -509,6 +563,8 @@ export interface DesktopBatonVoice {
   readonly onTurnEnd: () => void;
   /** The assistant is looking, planning or driving; null when it stops. */
   readonly onActivity: (label: string | null, caption?: string) => void;
+  /** A lesson or drive sound, through the pill's own cue path. */
+  readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
   readonly onSpeechLevel: (level: number) => void;
   /** He dismissed the assistant's output. */
@@ -757,6 +813,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     readonly seconds?: number | null;
   }): string | null => {
     if (history === null || turn.raw.trim().length === 0) return null;
+    // A dictated password is not kept in plain text (VAULT.md section 6): History gets a mark, the vault gets an offer.
+    const safe = redactForHistory(turn.raw, turn.cleaned);
+    if (safe.secret !== null) {
+      pendingSecret.set(turn.raw, Date.now());
+      input.extras?.notice(
+        `That looked like ${safe.secret}, so I kept it out of History. Say "put that in the vault" to keep it safely.`,
+      );
+      turn = { ...turn, raw: safe.raw, cleaned: safe.cleaned };
+    }
     try {
       return history.add({
         at: new Date().toISOString(),
@@ -1048,7 +1113,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   >();
   let mainContents: Electron.WebContents | null = null;
   const request = async (
-    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
+    body:
+      | VoiceIntentRequest
+      | BatonJobBridgeRequest
+      | BatonMemoryBridgeRequest
+      | BatonCommitmentBridgeRequest
+      | BatonWeaveBridgeRequest,
   ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
@@ -1079,7 +1149,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   /** What the sessions side answered joins the one conversation, with what it was about. */
   const requestKept = async (
-    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
+    body:
+      | VoiceIntentRequest
+      | BatonJobBridgeRequest
+      | BatonMemoryBridgeRequest
+      | BatonCommitmentBridgeRequest
+      | BatonWeaveBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -1118,8 +1193,90 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     bus: desktopVoiceContext({ focusedWorkSessionId, field, observedAt: new Date() }),
     now: Date.now(),
   });
+  const commitments = createCommitmentStore(input.stateDir, Date.now, undefined, () =>
+    setTimeout(() => void syncCommitments(), COMMIT_SYNC_SOON_MS).unref(),
+  );
+  // The server copy is shared by his devices; it only follows while the window exists, since asking opens it.
+  const commitmentSync = createCommitmentSync({
+    store: commitments,
+    call: (op, args) => requestKept({ kind: "commitments", op, args }),
+  });
+  const syncCommitments = async (): Promise<void> => {
+    if (mainContents === null || mainContents.isDestroyed()) return;
+    await commitmentSync.sync();
+  };
+  setInterval(() => void syncCommitments(), COMMIT_SYNC_MS).unref();
+  const externalNeeds = createExternalNeeds();
+  const weaveOp = async (
+    op: "weave_send" | "weave_list",
+    args: Readonly<Record<string, unknown>>,
+  ) => {
+    if (op === "weave_list") {
+      await requestKept({ kind: "weave", op: "tick", args: {} }).catch(() => undefined);
+      const out = (await requestKept({ kind: "weave", op: "list", args: {} })) as {
+        items?: ReadonlyArray<WeaveRecord>;
+      } | null;
+      return describeWeaves(out?.items ?? [], Date.now());
+    }
+    const out = (await requestKept({
+      kind: "weave",
+      op: "send",
+      args: {
+        to: String(args["session"] ?? ""),
+        text: String(args["text"] ?? ""),
+        from: "Tessaya",
+        ...(typeof args["job"] === "string" ? { job: args["job"] } : {}),
+      },
+    })) as { weave?: WeaveRecord } | null;
+    const w = out?.weave;
+    if (w === undefined) return "The message was not sent.";
+    return w.status === "delivered"
+      ? `Delivered to ${w.toLabel}. Ask for weave_list later to read its reply [id: ${w.id}].`
+      : w.status === "queued"
+        ? `Not delivered yet, queued in order: ${w.reason ?? "it cannot take it now"} [id: ${w.id}].`
+        : `Not delivered: ${w.reason ?? "unknown"} [id: ${w.id}].`;
+  };
+  const briefExtra = (): ReadonlyArray<string> => {
+    const line = briefCommitments(commitments.list(), Date.now());
+    return line === null ? [] : [line];
+  };
+  const awareness = createAwareness({
+    switches: () => ({
+      window: settings.awarenessWindow,
+      idle: settings.awarenessIdle,
+      focus: settings.awarenessFocus,
+      jobs: settings.awarenessJobs,
+    }),
+    foreground: async () => {
+      const app = await sidecar?.foreground();
+      return app === undefined || app.exe.length === 0 ? null : `${app.exe}: ${app.title}`;
+    },
+    idleSeconds: () => Electron.powerMonitor.getSystemIdleTime(),
+    focusSession: () =>
+      input.sessions?.rows().find((r) => r.key === focusedWorkSessionId)?.session ?? null,
+    runningJobs: () => (jobsCache ?? []).filter((j) => j.group === "running").map((j) => j.title),
+    doing: () =>
+      buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] })
+        .slice(0, 3)
+        .map((a) => `waiting for his answer: ${a.title}`),
+    now: () => Date.now(),
+  });
+  setInterval(() => {
+    if (awareness.active()) void awareness.sample().catch(() => undefined);
+  }, AWARENESS_SAMPLE_MS).unref();
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
+    presence: () => awareness.describe(),
+    needsMe: async () =>
+      answerNeedsSpoken({
+        jobs: jobsCache ?? [],
+        sessions: input.sessions?.rows() ?? [],
+        findings: await watchFindings(),
+        extra: needsFromCommitments(commitments.list(), Date.now()),
+        config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+        external: externalNeeds,
+        now: Date.now(),
+      }),
     sessionsList: () => {
       const rows = input.sessions?.rows() ?? [];
       return rows.length === 0
@@ -1142,6 +1299,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           buildApprovals({ jobs: jobs?.jobs ?? [], sessions: input.sessions?.rows() ?? [] }),
         );
       }
+      if (op === "commit_add" || op === "commit_done" || op === "commit_list") {
+        return runCommitOp(commitments, op, args, Date.now());
+      }
+      if (op === "weave_send" || op === "weave_list") return weaveOp(op, args);
+      if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
+      if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
       if (op === "needs") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
           jobs?: ReadonlyArray<BatonJob>;
@@ -1150,7 +1313,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           sessions: input.sessions?.rows() ?? [],
           findings: await watchFindings(),
+          extra: needsFromCommitments(commitments.list(), Date.now()),
           config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+          external: externalNeeds,
           now: Date.now(),
         });
       }
@@ -1162,6 +1327,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           jobs: jobs?.jobs ?? [],
           findings: await watchFindings(),
           now: Date.now(),
+          extra: briefExtra(),
         });
       }
       const value = (await requestKept({ kind: "job", op, args })) as {
@@ -1865,14 +2031,46 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }),
   );
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
-  const cachedNotes = cachedFor(3_000, () => notes.list());
+  const vaultState = vaultFor(input.stateDir);
+  const vaultTab = createVaultTab({
+    vault: vaultState.vault,
+    hello: (message) => windowsHello(message, input.platform),
+    clipboard: {
+      read: () => Electron.clipboard.readText(),
+      write: (t) => Electron.clipboard.writeText(t),
+      clear: () => Electron.clipboard.clear(),
+    },
+    audit: vaultState.audit,
+    readAudit: () => {
+      try {
+        return NodeFS.readFileSync(vaultState.auditFile, "utf8").split("\n").filter((l) => l !== "");
+      } catch {
+        return [];
+      }
+    },
+    stateDir: input.stateDir,
+    refresh: () => home.refresh(),
+    reveal: (file) => Electron.shell.showItemInFolder(file),
+  });
+  const memoryTab = createMemoryTab({
+    call: (op, args) =>
+      requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    sync: createMemorySync({
+      file: NodePath.join(input.stateDir, "baton-memory.json"),
+      call: (op, args) =>
+        requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
+    }),
+    notes,
+    stateDir: input.stateDir,
+    refresh: () => home.refresh(),
+    reveal: (file) => Electron.shell.showItemInFolder(file),
+  });
   const cachedPack = cachedFor(3_000, () =>
     packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
   );
   /** Files he edits by hand or through a row here: forget what was read, so the next draw is true. */
   const forgetFiles = () => {
     harnessItems.reset();
-    cachedNotes.reset();
     cachedPack.reset();
   };
   let sessionsNote: string | null = null;
@@ -1937,12 +2135,101 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       } | null;
       save({ briefDay: today });
       input.extras?.announce(
-        morningBrief({ jobs: jobs?.jobs ?? [], findings: found, now: Date.now() }),
+        morningBrief({
+          jobs: jobs?.jobs ?? [],
+          findings: found,
+          now: Date.now(),
+          extra: briefExtra(),
+        }),
         settings.briefMode === "spoken",
       );
     }
   };
   setInterval(() => void checkAttention().catch(() => undefined), ATTENTION_MS).unref();
+
+  // Initiative (D149): offers as cards. A Yes starts a read-only plan-first job or notes a commitment.
+  let ciCache: { at: number; runs: ReadonlyArray<CiRun> } = { at: 0, runs: [] };
+  const ciRuns = async (): Promise<ReadonlyArray<CiRun>> => {
+    if (settings.ciRepos.length === 0) return [];
+    if (Date.now() - ciCache.at > CI_REFRESH_MS) {
+      ciCache = { at: Date.now(), runs: await readCiRuns(settings.ciRepos) };
+    }
+    return ciCache.runs;
+  };
+  const anomalies = createAnomalySource({ dir: input.stateDir, now: () => Date.now() });
+  const initiative = createInitiative({
+    dir: input.stateDir,
+    now: () => Date.now(),
+    hour: () => new Date().getHours(),
+    policy: () =>
+      settings.initiativeMode === "off" || mainContents === null || mainContents.isDestroyed()
+        ? null
+        : {
+            ...DEFAULT_POLICY,
+            quietHours: settings.quietHours,
+            maxPerHour: Math.max(1, Math.min(10, Math.floor(settings.initiativePerHour))),
+            // Someone typing right now is the costly moment to interrupt.
+            interruptionCost: Electron.powerMonitor.getSystemIdleTime() < 3 ? 15 : 0,
+          },
+    gather: async () => [
+      ...triggersFromFindings(await watchFindings()),
+      ...triggersFromCommitments(commitments.list(), Date.now()),
+      ...triggersFromCi(await ciRuns(), Date.now()),
+      ...anomalies.triggers(
+        (jobsCache ?? []).map((j) => ({ id: j.workSessionId, title: j.title, group: j.group })),
+        await ciRuns(),
+      ),
+    ],
+    present: async (offer) => {
+      if (settings.initiativeMode === "spoken") input.extras?.announce(offer.offer, true);
+      const index = await (input.extras?.ask({
+        title: "Tessaya",
+        detail: offer.offer,
+        buttons: ["Yes", "Later", "Never"],
+        cancel: 1,
+        armMs: 1_500,
+        expiresMs: 5 * 60_000,
+      }) ?? Promise.resolve(1));
+      return index === 0 ? "yes" : index === 2 ? "never" : "later";
+    },
+    act: async (offer) => {
+      const yes = offer.yes;
+      if (yes.kind === "done") {
+        commitments.close(yes.commitmentId, "done");
+        return "Marked done.";
+      }
+      if (yes.kind === "commitment") {
+        commitments.add({ text: yes.text, source: "offer" });
+        return "I will keep track of it.";
+      }
+      const project =
+        yes.repo !== undefined
+          ? yes.repo.split("/")[1]
+          : input.sessions?.rows().find((r) => r.key === yes.sessionId)?.project;
+      if (project === undefined || project === "") {
+        commitments.add({
+          text: `Look into: ${offer.title}`.slice(0, 300),
+          source: "offer",
+          ...(yes.sessionId === undefined ? {} : { ref: yes.sessionId }),
+        });
+        return "I could not tell which project that is, so I noted it to look into.";
+      }
+      await requestKept({
+        kind: "job",
+        op: "start",
+        args: {
+          title: `Look into: ${offer.title}`.slice(0, 120),
+          goal: yes.goal,
+          project,
+          folders: [],
+          tools: ["read"],
+        },
+      });
+      return "Started a read-only look in its own thread. Nothing changes until you agree to a plan.";
+    },
+    tell: (text) => input.extras?.announce(text, false),
+  });
+  setInterval(() => void initiative.tick().catch(() => undefined), INITIATIVE_MS).unref();
 
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
@@ -2077,6 +2364,56 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     };
   };
 
+  // The Now page (D149): read every few minutes, not on every redraw, because it can call gh.
+  let nowData: NowData = EMPTY_NOW;
+  const refreshNow = async (): Promise<void> => {
+    const at = Date.now();
+    const jobs = jobsCache ?? [];
+    const { ranked, unreadable } = await collectNeeds({
+      jobs,
+      sessions: input.sessions?.rows() ?? [],
+      findings: await watchFindings(),
+      extra: needsFromCommitments(commitments.list(), at),
+      config: { repos: settings.needsRepos, deadlinesFile: settings.needsDeadlinesFile },
+      external: externalNeeds,
+      now: at,
+    });
+    const day = new Date(at).toDateString();
+    const learned = (
+      (await requestKept({ kind: "memory", op: "list", args: { limit: 200 } }).catch(
+        () => null,
+      )) as { items?: ReadonlyArray<{ text: string; createdAt: string; proposed: boolean }> } | null
+    )?.items
+      ?.filter((m) => !m.proposed && new Date(m.createdAt).toDateString() === day)
+      .slice(0, 5)
+      .map((m) => m.text);
+    const state = initiative.state();
+    nowData = {
+      loaded: true,
+      needs: ranked,
+      unreadable,
+      commitments: commitments.list().filter((c) => c.status === "open"),
+      doing: [
+        ...jobs.filter((j) => j.group === "running").map((j) => `Running: ${j.title}`),
+        ...buildApprovals({ jobs, sessions: input.sessions?.rows() ?? [] })
+          .slice(0, 3)
+          .map((a) => `Waiting for your answer: ${a.title}`),
+      ],
+      learned: learned ?? [],
+      declined: state.declined.slice(-8).toReversed(),
+      muted: state.never.map((topic) => ({ topic, title: state.titles[topic] ?? topic })),
+      weaves:
+        (
+          (await requestKept({ kind: "weave", op: "list", args: { limit: 10 } }).catch(
+            () => null,
+          )) as { items?: ReadonlyArray<WeaveRecord> } | null
+        )?.items ?? [],
+    };
+    home.refresh();
+  };
+  setInterval(() => void refreshNow().catch(() => undefined), NOW_REFRESH_MS).unref();
+  setTimeout(() => void refreshNow().catch(() => undefined), 15_000).unref();
+
   const homeState = (): HomeState => ({
     status: {
       label: hudView(state).label,
@@ -2091,7 +2428,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }),
         jobsCache !== null ? "ready" : jobsError !== null ? { error: jobsError } : "loading",
       ),
-      ...noteControls(cachedNotes()),
+      ...nowControls(nowData, Date.now()),
+      ...presenceControls(settings),
+      ...memoryTab.controls(),
+      ...vaultTab.controls(),
       ...cachedPack(),
       ...harnessControls(harnessItems()),
       ...(jobsCache === null
@@ -2449,12 +2789,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         more: true,
       },
       {
-        id: "v.pillCentre",
+        id: "v.pillPlace",
         section: "On screen",
-        label: "Put the pill in the centre",
+        label: "Pill position",
         hint: "Or drag it: it lines up on a grid and snaps to centre, top and bottom. Hold Alt or Shift to place it freely. Right-click it for the same places.",
+        kind: "choice",
+        value: pill.place(),
+        options: [
+          { value: "centre", label: "Centre" },
+          { value: "top", label: "Top" },
+          { value: "bottom", label: "Bottom" },
+        ],
+      },
+      {
+        id: "v.pillMove",
+        section: "On screen",
+        label: "Move the pill",
+        hint: "Shows the pill for ten seconds so you can drag it where you want it.",
         kind: "action",
-        button: "Centre",
+        button: "Move",
       },
       {
         id: "v.pillRest",
@@ -2565,6 +2918,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
+    if (memoryTab.act(id, value)) return;
+    if (vaultTab.act(id, value)) return;
     if (id === "q.wake") loop?.activate("wake");
     else if (id === "q.ask" || id === "q.clear") {
       const entry = input.extras
@@ -2689,6 +3044,20 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .then(refreshJobs)
           .catch(() => undefined);
       } else void input.sessions?.act(`n:${act.ref}`, null);
+    } else if (id.startsWith("pr.")) {
+      const patch = presencePatch(id, value, settings);
+      if (patch !== null) save(patch);
+    } else if (id === "now.refresh") void refreshNow().catch(() => undefined);
+    else if (id.startsWith("now.")) {
+      const act = nowAction(id);
+      if (act?.kind === "commitment") {
+        try {
+          commitments.close(act.id, act.drop ? "dropped" : "done");
+        } catch {
+          // Already closed elsewhere; the refresh shows the truth.
+        }
+      } else if (act?.kind === "allow") initiative.allow(act.topic);
+      void refreshNow().catch(() => undefined);
     } else if (id === "j.load") wantJobs();
     else if (/^j[as]?:/.test(id)) {
       const act = jobAction(jobsCache ?? [], id);
@@ -2771,7 +3140,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         history?.update(turn.id, { audio: null });
       }
       render();
-    } else if (id === "v.pillCentre") pill.moveTo("centre");
+    } else if (
+      id === "v.pillPlace" &&
+      (value === "centre" || value === "top" || value === "bottom")
+    ) {
+      pill.moveTo(value);
+    } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.audition") input.audition?.(typeof value === "string" ? value : null);
@@ -2821,6 +3195,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     openSessions: input.openMainWindow,
     onTab: (tab) => {
       if (tab === "jobs" || tab === "approvals") wantJobs();
+      if (tab === "memory") void memoryTab.load();
     },
     appearance: () => settings.appearance,
   });
@@ -3020,6 +3395,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     },
     onSpoken: (text) => core?.noteSpoken(text),
     onTurnEnd: () => pill.on({ type: "finished" }),
+    cue: (name) => pill.cue(name),
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
     onSpeechLevel: pill.speechLevel,

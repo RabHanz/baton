@@ -117,7 +117,7 @@ export class BatonMemoryService extends Context.Service<
       readonly turnRef?: string | undefined;
     }) => Effect.Effect<MemoryRecall>;
     readonly markUsed: (turnRef: string, ids: ReadonlyArray<string>) => Effect.Effect<void>;
-    readonly used: (turnRef: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
+    readonly used: (turnRef?: string) => Effect.Effect<ReadonlyArray<MemoryItem>>;
     readonly exportMarkdown: Effect.Effect<string>;
     /** Deletes what expired or faded; returns how many. */
     readonly sweep: Effect.Effect<number>;
@@ -138,6 +138,12 @@ export class BatonMemoryService extends Context.Service<
       changes: ReadonlyArray<MemoryChange>,
       upTo: string,
     ) => Effect.Effect<number>;
+    /** A switch kept with the memory (e.g. the scheduled learnings pull). */
+    readonly flag: (key: string) => Effect.Effect<boolean>;
+    readonly setFlag: (key: string, on: boolean) => Effect.Effect<void>;
+    /** Notes what he talked about today (a few words), for the day's episode. */
+    readonly noteTalk: (day: string, text: string) => Effect.Effect<void>;
+    readonly talks: (day: string) => Effect.Effect<ReadonlyArray<string>>;
     /** Remembers `value` under `key`; true when it differs from what was there, so work is done once. */
     readonly noteOnce: (key: string, value: string) => Effect.Effect<boolean>;
   }
@@ -216,7 +222,11 @@ export const make = Effect.gen(function* () {
         const score =
           (both / wanted.size) * (0.5 + 0.5 * effectiveConfidence(item, now)) +
           (item.pinned ? 0.1 : 0) +
-          (query.scopeRef !== undefined && query.scopeRef !== null && item.scopeRef === query.scopeRef ? 0.2 : 0);
+          (query.scopeRef !== undefined &&
+          query.scopeRef !== null &&
+          item.scopeRef === query.scopeRef
+            ? 0.2
+            : 0);
         return { item, score };
       })
       .toSorted((a, b) => b.score - a.score)
@@ -286,7 +296,9 @@ export const make = Effect.gen(function* () {
   });
 
   const touch = (id: string, at: string) =>
-    sql`UPDATE fabric_memory_items SET updated_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(Effect.orDie);
+    sql`UPDATE fabric_memory_items SET updated_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(
+      Effect.orDie,
+    );
 
   const edit = Effect.fn("BatonMemoryService.edit")(function* (
     id: string,
@@ -294,8 +306,7 @@ export const make = Effect.gen(function* () {
   ) {
     const current = yield* requireItem(id);
     const at = yield* nowIso;
-    const text =
-      patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
+    const text = patch.text === undefined ? current.text : patch.text.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
     if (reason !== null) return yield* refuse(reason);
     yield* sql`
@@ -387,11 +398,14 @@ export const make = Effect.gen(function* () {
     return out;
   });
 
-  const used = Effect.fn("BatonMemoryService.used")(function* (turnRef: string) {
+  const used = Effect.fn("BatonMemoryService.used")(function* (turnRef?: string) {
     const rows = yield* sql<ItemRow>`
       SELECT i.* FROM fabric_memory_uses u
       JOIN fabric_memory_items i ON i.id = u.item_id
-      WHERE u.turn_ref = ${turnRef}
+      WHERE u.turn_ref = COALESCE(
+        ${turnRef ?? null},
+        (SELECT turn_ref FROM fabric_memory_uses ORDER BY at DESC, rowid DESC LIMIT 1)
+      )
       ORDER BY i.pinned DESC, i.updated_at DESC
     `.pipe(Effect.orDie);
     return rows.map(fromRow);
@@ -404,6 +418,33 @@ export const make = Effect.gen(function* () {
     const gone = all.filter((item) => shouldDelete(item, now));
     for (const item of gone) yield* remove(item.id, at);
     return gone.length;
+  });
+
+  const flag = Effect.fn("BatonMemoryService.flag")(function* (key: string) {
+    const rows = yield* sql<{ value: string }>`SELECT value FROM fabric_memory_meta WHERE key = ${`flag:${key}`}`.pipe(Effect.orDie);
+    return rows[0]?.value === "1";
+  });
+  const setFlag = Effect.fn("BatonMemoryService.setFlag")(function* (key: string, on: boolean) {
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`flag:${key}`}, ${on ? "1" : "0"})`.pipe(Effect.orDie);
+  });
+
+  const MAX_TALKS = 12;
+  const talks = Effect.fn("BatonMemoryService.talks")(function* (day: string) {
+    const rows = yield* sql<{ value: string }>`
+      SELECT value FROM fabric_memory_meta WHERE key = ${`talks:${day}`}
+    `.pipe(Effect.orDie);
+    try {
+      return rows[0] === undefined ? [] : (JSON.parse(rows[0].value) as string[]);
+    } catch {
+      return [];
+    }
+  });
+  const noteTalk = Effect.fn("BatonMemoryService.noteTalk")(function* (day: string, text: string) {
+    const held = yield* talks(day);
+    if (held.length >= MAX_TALKS) return;
+    yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${`talks:${day}`}, ${JSON.stringify([...held, text.trim().replace(/\s+/g, " ").slice(0, 80)])})`.pipe(
+      Effect.orDie,
+    );
   });
 
   const noteOnce = Effect.fn("BatonMemoryService.noteOnce")(function* (key: string, value: string) {
@@ -451,10 +492,10 @@ export const make = Effect.gen(function* () {
     ];
     // A full batch means there is more: the peer resumes from the last stamp it was given.
     const full = rows.length === BATCH || stones.length === BATCH;
-    const last = [
-      rows.at(-1)?.updated_at ?? "",
-      stones.at(-1)?.deleted_at ?? "",
-    ].reduce((a, b) => (a > b ? a : b), "");
+    const last = [rows.at(-1)?.updated_at ?? "", stones.at(-1)?.deleted_at ?? ""].reduce(
+      (a, b) => (a > b ? a : b),
+      "",
+    );
     return { origin, changes, upTo: full ? last : yield* nowIso };
   });
 
@@ -468,7 +509,8 @@ export const make = Effect.gen(function* () {
       const id = change.item?.id ?? change.tombstone?.id;
       if (id === undefined || peer === origin) continue;
       // Every received item passes the same door as one he types: a peer is not trusted to have checked.
-      if (change.item !== null && refuseToStore(change.item.text, privateTexts()) !== null) continue;
+      if (change.item !== null && refuseToStore(change.item.text, privateTexts()) !== null)
+        continue;
       const row = yield* sql<ItemRow>`SELECT * FROM fabric_memory_items WHERE id = ${id}`.pipe(
         Effect.orDie,
       );
@@ -511,9 +553,9 @@ export const make = Effect.gen(function* () {
     }
     // The cursor only moves forward.
     const key = `cursor:${peer}`;
-    const held = yield* sql<{ value: string }>`SELECT value FROM fabric_memory_meta WHERE key = ${key}`.pipe(
-      Effect.orDie,
-    );
+    const held = yield* sql<{
+      value: string;
+    }>`SELECT value FROM fabric_memory_meta WHERE key = ${key}`.pipe(Effect.orDie);
     if (held[0] === undefined || held[0].value < upTo) {
       yield* sql`INSERT OR REPLACE INTO fabric_memory_meta (key, value) VALUES (${key}, ${upTo})`.pipe(
         Effect.orDie,
@@ -537,6 +579,10 @@ export const make = Effect.gen(function* () {
     exportMarkdown: Effect.map(list({ limit: 100_000 }), exportMarkdown),
     sweep,
     noteOnce,
+    flag,
+    setFlag,
+    noteTalk,
+    talks,
     syncHello,
     changesSince,
     applyChanges,

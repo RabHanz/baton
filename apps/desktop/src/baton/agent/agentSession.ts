@@ -44,6 +44,8 @@ export const createAssistantAgent = (input: {
   readonly learn?: (said: string, reply: string) => void;
   /** Called at the start of a turn: a new sentence has not read anything yet. */
   readonly beginTurn: () => void;
+  /** His state right now (awareness), empty when he has turned it all off. */
+  readonly presence?: () => Promise<string>;
 }): AssistantAgent => {
   const now = input.now ?? Date.now;
   let session: Promise<VisionSession> | null = null;
@@ -83,10 +85,16 @@ export const createAssistantAgent = (input: {
         window: where.window,
         session: where.session,
         target: target?.label ?? null,
+        presence: (await input.presence?.().catch(() => "")) ?? "",
       });
       const remembered = (await input.recall?.(text).catch(() => "")) ?? "";
       const reply = await agent.ask(
-        [{ type: "text", text: `${header}${remembered === "" ? "" : `\n\n${remembered}`}\n\nhe says: ${text}` }],
+        [
+          {
+            type: "text",
+            text: `${header}${remembered === "" ? "" : `\n\n${remembered}`}\n\nhe says: ${text}`,
+          },
+        ],
         onDelta,
       );
       turns += 1;

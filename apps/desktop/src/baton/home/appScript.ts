@@ -12,6 +12,7 @@ const set = (id, v) => real ? ipc.invoke('baton-home:set', id, v).then(render) :
 const $ = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x !== undefined) e.textContent = x; return e; };
 const ICON = {
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
+  now: '<circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
   sessions: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M7 20h10"/>',
   approvals: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   jobs: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
@@ -22,6 +23,7 @@ const ICON = {
   usage: '<path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/>',
   tools: '<path d="M14 6l4 4-8 8H6v-4z"/><path d="M13 7l4 4"/>',
   memory: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 11h8M8 15h8"/>',
+  vault: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   checks: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
   settings: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
@@ -33,14 +35,16 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>'
 };
 const icon = (n, size) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'i'); s.setAttribute('viewBox', '0 0 24 24'); if (size) { s.style.width = size + 'px'; s.style.height = size + 'px'; } s.innerHTML = ICON[n] || ''; return s; };
-const TABS = [['home','Home'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
+const TABS = [['home','Home'],['now','Now'],['sessions','Sessions'],['approvals','Approvals'],['jobs','Jobs'],['dictation','Dictation'],['history','History'],['memory','Memory'],['vault','Vault'],['tools','Skills'],['assistant','Assistant'],['voice','Voice'],['screen','Screen'],['usage','Usage'],['checks','Checks']];
 const INTRO = {
+  now: ['Now', 'What needs you, what Tessaya is keeping track of and doing, what it learned today, and what it held back and why.'],
   sessions: ['Sessions', 'Every live session on every connected machine. Open one, or type to it.'],
   approvals: ['Approvals', 'Everything waiting for your yes, with what it would do and what it would use. High-risk actions still ask you aloud when they happen.'],
   jobs: ['Jobs', 'Long work Tessaya handed to a worker. It plans first and starts only when you approve.'],
   dictation: ['Dictation', 'Talk into any app. Your words stay on this computer.'],
   tools: ['Skills and tools', 'The plugins, skills and servers that Claude Code and Codex already have. Tessaya adds none of its own. A plugin switch changes Claude Code\u2019s own setting and applies to its next session.'],
-  memory: ['Memory', 'What Tessaya has been asked to remember, as plain notes. Open one to correct it, or delete it. Clearing a note never touches Tessaya itself.'],
+  memory: ['Memory', 'What Tessaya remembers about you and your work, and what it learned. Search it, correct it, pin what must never fade, or forget it. Forgetting a memory never touches Tessaya itself.'],
+  vault: ['Vault', 'Passwords, keys and private notes, encrypted on this computer. Tessaya can use a secret for you without ever seeing it, and every use is logged here. Banking passwords you always type yourself.'],
   history: ['History', 'Everything you said and what it became. Kept on this computer, forever, until you delete it.'],
   assistant: ['Assistant', 'What Tessaya works through, whose subscription it uses, and what it may do without asking.'],
   voice: ['Voice', 'How Tessaya hears you and how it sounds back.'],
@@ -135,7 +139,103 @@ function wakeRow(items) {
   { const i = $('div', 'inline wakes'); for (const x of items) { const l = $('label', 'wk'); l.append($('span', null, x.label.replace(/^Wake word: /, '')), control(x)); i.appendChild(l); } wrap.appendChild(i); }
   return wrap;
 }
+const memEditing = new Set();
+function memoryRow(c) {
+  const id = c.id.slice(2), wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text');
+  if (memEditing.has(c.id)) {
+    const a = $('textarea', 'memedit'); a.id = 'in-e-' + c.id; a.maxLength = 500; a.setAttribute('aria-label', 'Edit this memory'); a.value = drafts.has('e-' + c.id) ? drafts.get('e-' + c.id) : c.label; a.oninput = () => drafts.set('e-' + c.id, a.value);
+    const done = () => { memEditing.delete(c.id); drafts.delete('e-' + c.id); };
+    const save = $('button', 'btn primary', 'Save'); save.onclick = () => { const v = a.value.trim(); done(); if (v) set('m.edit:' + id, v); else render(); };
+    const cancel = $('button', 'btn quiet', 'Cancel'); cancel.onclick = () => { done(); render(); };
+    const acts = $('div', 'memacts'); acts.append(save, cancel); t.append(a, acts); r.appendChild(t); wrap.appendChild(r); return wrap;
+  }
+  t.appendChild($('div', 'label', c.label)); if (c.hint) t.appendChild($('div', 'hint', c.hint)); r.appendChild(t);
+  const acts = $('div', 'memacts');
+  if (c.held) { const keep = $('button', 'btn primary', 'Keep'); keep.onclick = () => set('m.accept:' + id, null); acts.appendChild(keep); }
+  else if (c.section !== 'Replaced') {
+    const pin = $('button', 'btn quiet', c.pinned ? 'Unpin' : 'Pin'); pin.setAttribute('aria-pressed', String(c.pinned)); pin.onclick = () => set('m.pin:' + id, !c.pinned);
+    const ed = $('button', 'btn quiet', 'Edit'); ed.onclick = () => { memEditing.add(c.id); render(); }; acts.append(pin, ed);
+  }
+  const fg = $('button', 'btn quiet', c.held ? 'Dismiss' : 'Forget'); fg.onclick = () => set('m.forget:' + id, null); acts.appendChild(fg);
+  r.appendChild(acts); wrap.appendChild(r); return wrap;
+}
+function memoryBar(c) {
+  const w = $('div', 'rowwrap stack membar'), f = $('form', 'vocab'), q = $('input'); q.type = 'text'; q.id = 'in-m-q'; q.placeholder = 'Search what Tessaya remembers'; q.setAttribute('aria-label', 'Search memory'); q.value = drafts.has('m-q') ? drafts.get('m-q') : c.query;
+  let tm = null; q.oninput = () => { drafts.set('m-q', q.value); clearTimeout(tm); tm = setTimeout(() => set('m.query', q.value), 250); };
+  f.onsubmit = e => { e.preventDefault(); clearTimeout(tm); set('m.query', q.value); }; f.appendChild(q); w.appendChild(f);
+  const seg = $('div', 'seg memseg'); for (const k of c.kinds) { const b = $('button', null, k.label + ' ' + k.count); b.setAttribute('aria-pressed', String(k.value === c.filter)); b.onclick = () => set('m.kind', k.value); seg.appendChild(b); } w.appendChild(seg);
+  const tools = $('div', 'memtools');
+  if (c.usedCount) { const u = $('button', 'btn quiet', 'Used in the last answer (' + c.usedCount + ')'); u.setAttribute('aria-pressed', String(c.usedOnly)); u.onclick = () => set('m.used', !c.usedOnly); tools.appendChild(u); }
+  const ex = $('button', 'btn quiet', 'Export'); ex.onclick = () => set('m.export', null); tools.appendChild(ex); w.appendChild(tools);
+  const imp = $('form', 'vocab'), fi = $('input'); fi.type = 'text'; fi.id = 'in-m-imp'; fi.placeholder = 'Import a folder of .md learnings: its full path'; fi.setAttribute('aria-label', 'Folder to import'); fi.value = drafts.get('m-imp') || ''; fi.oninput = () => drafts.set('m-imp', fi.value);
+  const ib = $('button', 'btn quiet', 'Import'); ib.type = 'submit'; imp.append(fi, ib); imp.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('m-imp'); set('m.import', v); }; w.appendChild(imp);
+  const sy = $('div', 'row'), st = $('div', 'text'); st.append($('div', 'label', 'Keep servers in step'), $('div', 'hint', 'Memory is carried between the servers this window is connected to. The last change wins, and a forgotten memory stays forgotten.'));
+  const sw = $('button', 'sw'); sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', String(c.syncOn)); sw.setAttribute('aria-label', 'Keep servers in step'); sw.onclick = () => set('m.syncOn', !c.syncOn); sy.append(st, sw);
+  if (c.syncOn) { const nb = $('button', 'btn quiet', 'Sync now'); nb.onclick = () => set('m.sync', null); sy.appendChild(nb); } w.appendChild(sy);
+  const pl = $('div', 'row'), pt = $('div', 'text'); pt.append($('div', 'label', 'Pull learnings from the history index'), $('div', 'hint', 'Once a day, short quotes about what worked and failed in your ventures are proposed here. They wait for your yes; nothing is copied from a session.'));
+  const ps = $('button', 'sw'); ps.setAttribute('role', 'switch'); ps.setAttribute('aria-checked', String(c.pullOn)); ps.setAttribute('aria-label', 'Pull learnings'); ps.onclick = () => set('m.pullOn', !c.pullOn); pl.append(pt, ps);
+  if (c.pullOn) { const pb = $('button', 'btn quiet', 'Pull now'); pb.onclick = () => set('m.pull', null); pl.appendChild(pb); } w.appendChild(pl);
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  return w;
+}
+function listRow(c) {
+  const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.appendChild(t);
+  for (const it of c.items) { const r = $('div', 'row'); r.appendChild($('div', 'label', it)); const b = $('button', 'btn quiet', 'Remove'); b.setAttribute('aria-label', 'Remove ' + it); b.onclick = () => set(c.id + ':rm', it); r.appendChild(b); w.appendChild(r); }
+  const add = $('div', 'row'); const inp = $('input', 'search'); inp.type = 'text'; inp.placeholder = c.placeholder; inp.setAttribute('aria-label', c.label);
+  const ab = $('button', 'btn', c.addLabel || 'Add'); const go = () => { const v = inp.value.trim(); if (v) set(c.id + ':add', v); };
+  ab.onclick = go; inp.onkeydown = e => { if (e.key === 'Enter') go(); }; add.append(inp, ab); w.appendChild(add); return w;
+}
+function vtInput(id, ph, type) { const i = $('input'); i.type = type || 'text'; i.id = 'in-' + id; i.placeholder = ph; i.setAttribute('aria-label', ph); i.autocomplete = 'off'; i.value = drafts.get(id) || ''; i.oninput = () => drafts.set(id, i.value); return i; }
+function vtForm(fields, button, run) { const f = $('form', 'vocab'); f.append(...fields); const b = $('button', 'btn' + (button.primary ? ' primary' : ' quiet'), button.label); b.type = 'submit'; f.appendChild(b); f.onsubmit = e => { e.preventDefault(); run(); }; return f; }
+function vaultBar(c) {
+  const w = $('div', 'rowwrap stack vaultbar');
+  if (c.recovery) {
+    const k = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Your recovery key'), $('div', 'hint', 'Print it or save it somewhere safe. It is shown once and is the only way in if you forget the passphrase.')); const pre = $('div', 'hpre vaultkey', c.recovery); t.appendChild(pre);
+    const ok = $('button', 'btn primary', 'I have saved it'); ok.onclick = () => set('vt.recoveryDone', null); k.append(t, ok); w.appendChild(k);
+  }
+  if (c.state === 'none') {
+    w.appendChild(vtForm([vtInput('vt-new', 'Choose a passphrase (8 or more characters)', 'password')], { label: 'Make the vault', primary: true }, () => { const v = drafts.get('vt-new') || ''; drafts.delete('vt-new'); set('vt.create', v); }));
+  } else if (c.state === 'locked') {
+    w.appendChild(vtForm([vtInput('vt-pass', 'Passphrase', 'password')], { label: 'Unlock', primary: true }, () => { const v = drafts.get('vt-pass') || ''; drafts.delete('vt-pass'); set('vt.unlock', v); }));
+    const alt = $('div', 'memtools');
+    const hb = $('button', 'btn quiet', 'Unlock with Windows Hello'); hb.onclick = () => set('vt.unlockHello', null); alt.appendChild(hb); w.appendChild(alt);
+    w.appendChild(vtForm([vtInput('vt-rec', 'Or a recovery key', 'password')], { label: 'Use recovery key' }, () => { const v = drafts.get('vt-rec') || ''; drafts.delete('vt-rec'); set('vt.unlockRecovery', v); }));
+  } else {
+    const cat = $('select'); cat.id = 'in-vt-cat'; cat.setAttribute('aria-label', 'What kind'); for (const k of ['login', 'key', 'note', 'id', 'file', 'financial']) { const o = $('option', null, k); o.value = k; cat.appendChild(o); }
+    const nm = vtInput('vt-name', 'Name, like github'), lb = vtInput('vt-label', 'A note to yourself (optional)'), vl = vtInput('vt-value', 'The secret', 'password');
+    w.appendChild(vtForm([nm, lb, cat, vl], { label: 'Add', primary: true }, () => { const v = { name: nm.value.trim(), label: lb.value, category: cat.value, value: vl.value }; ['vt-name', 'vt-label', 'vt-value'].forEach(d => drafts.delete(d)); set('vt.add', JSON.stringify(v)); }));
+    w.appendChild($('div', 'hint memstatus', 'Passwords of banks and cards can be kept here, but Tessaya will never fill them in: you type those yourself.'));
+  }
+  if (c.status) { const x = $('div', 'hint memstatus', c.status); x.setAttribute('role', 'status'); w.appendChild(x); }
+  if (c.state === 'unlocked') {
+    const tools = $('div', 'memtools'); const lk = $('button', 'btn', 'Lock now'); lk.onclick = () => set('vt.lock', null); tools.appendChild(lk); w.appendChild(tools);
+    w.appendChild(vtForm([vtInput('vt-exp', 'Export passphrase', 'password')], { label: 'Export encrypted file' }, () => { const v = drafts.get('vt-exp') || ''; drafts.delete('vt-exp'); set('vt.export', v); }));
+    const ip = vtInput('vt-imp', 'Path of an exported file'), iw = vtInput('vt-imppw', 'Its passphrase', 'password');
+    w.appendChild(vtForm([ip, iw], { label: 'Import' }, () => { const v = { path: ip.value.trim(), passphrase: iw.value }; drafts.delete('vt-imp'); drafts.delete('vt-imppw'); set('vt.import', JSON.stringify(v)); }));
+  }
+  if ((c.activity || []).length) {
+    w.appendChild($('h3', 'vaulthead', 'Activity'));
+    for (const line of c.activity) { let e = null; try { e = JSON.parse(line); } catch (x) { e = null; } if (!e) continue; const r = $('div', 'kv'); r.append($('div', null, e.name + ' \u00b7 ' + e.outcome + ' \u00b7 ' + (e.target || '') + (e.purpose ? ' \u00b7 ' + e.purpose : '')), $('time', 'hint', clock(e.at))); w.appendChild(r); }
+  }
+  return w;
+}
+function vaultItem(c) {
+  const wrap = $('div', 'rowwrap'), r = $('div', 'row'), t = $('div', 'text'); t.append($('div', 'label', c.label), $('div', 'hint', c.hint));
+  if (c.revealed !== null) { const v = $('div', 'hpre vaultkey', c.revealed); v.setAttribute('role', 'status'); t.appendChild(v); }
+  r.appendChild(t); const acts = $('div', 'memacts'), id = c.id.slice(3);
+  const rv = $('button', 'btn quiet', 'Reveal'); rv.onclick = () => set('vt.reveal:' + id, null);
+  const cp = $('button', 'btn quiet', 'Copy'); cp.onclick = () => set('vt.copy:' + id, null);
+  acts.append(rv, cp);
+  if (!c.locked) { const sel = $('select'); sel.setAttribute('aria-label', 'Who may use ' + c.label); for (const [v, l] of [['ask', 'Ask me each time'], ['domain:10', 'Allow a site for 10 minutes'], ['never', 'Only me']]) { const o = $('option', null, l); o.value = v; o.selected = v === c.policy; sel.appendChild(o); } sel.onchange = () => set('vt.policy:' + id, sel.value); acts.appendChild(sel); }
+  const dl = $('button', 'btn quiet', 'Delete'); dl.onclick = () => set('vt.delete:' + id, null); acts.appendChild(dl);
+  r.appendChild(acts); wrap.appendChild(r); return wrap;
+}
 function row(c) {
+  if (c.kind === 'vaultBar') return vaultBar(c);
+  if (c.kind === 'vaultItem') return vaultItem(c);
+  if (c.kind === 'list') return listRow(c);
+  if (c.kind === 'memory') return memoryRow(c);
+  if (c.kind === 'memoryBar') return memoryBar(c);
   // A choice shows its options where it is: a few short ones as buttons, more as a menu, a list with notes below its label.
   if (c.kind === 'choice' && (c.id === 's.voice' || c.options.some(o => o.note))) { const w = $('div', 'rowwrap stack'); const t = $('div', 'row'); const x = $('div', 'text'); x.appendChild($('div', 'label', c.label)); if (c.hint) x.appendChild($('div', 'hint', c.hint)); t.appendChild(x); w.append(t, control(c)); return w; }
   if (c.kind === 'session') return session(c);
@@ -576,6 +676,7 @@ function render(state) {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
   const stt = $('div', 'state'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
+  const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', 'Alerts'); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.onclick = () => go(need ? 'sessions' : 'home'); top.appendChild(bell);
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });

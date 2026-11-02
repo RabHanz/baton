@@ -10,6 +10,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   endedMirrorThreads,
   liveMedia,
+  nextReply,
+  takeTouched,
+  withoutRepeatedMedia,
   liveThreadId,
   liveThreadTitle,
   mirrorTitle,
@@ -256,5 +259,53 @@ describe("a live message's media", () => {
     expect(liveMedia(base).text).toBe("Here you go.");
     expect(liveMedia({ ...base, touched: [shot] }).text).toMatch(/!\[screen\.png\]/);
     NodeFS.rmSync(elsewhere, { recursive: true, force: true });
+  });
+});
+
+describe("media shows once", () => {
+  it("hands a turn's touched files to the next reply only, never to the ones after", () => {
+    const follow = { touched: new Set(["/w/shot.png"]) };
+    expect(takeTouched(follow)).toEqual(["/w/shot.png"]);
+    expect(takeTouched(follow)).toEqual([]);
+    follow.touched.add("/w/other.png");
+    expect(takeTouched(follow)).toEqual(["/w/other.png"]);
+  });
+});
+
+describe("media across a turn's replies", () => {
+  it("shows a touched image on exactly one of three replies", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "reply-"));
+    const shot = NodePath.join(dir, "screen.png");
+    NodeFS.writeFileSync(shot, Buffer.from("png-bytes"));
+    const follow = { touched: new Set([shot]), shots: [] };
+    const shown = ["one", "two", "three"].map((text, i) => {
+      const reply = nextReply(follow, {
+        uuid: `u${i}`,
+        role: "assistant",
+        text,
+        createdAt: "2026-01-01T00:00:00Z",
+      });
+      return liveMedia({
+        attachmentsDir: NodePath.join(dir, "att"),
+        threadId: "t",
+        messageId: `m${i}`,
+        message: reply.message,
+        cwd: dir,
+        touched: reply.touched,
+      }).text;
+    });
+    expect(shown.filter((text) => /!\[screen\.png\]/.test(text))).toHaveLength(1);
+  });
+
+  it("cleans a thread that repeated one file, keeping the first and different ones", () => {
+    const bytes: Record<string, string> = { "/a/1.png": "x", "/a/2.png": "x", "/a/3.png": "y" };
+    const fix = withoutRepeatedMedia(
+      [
+        { id: "m1", text: "one\n\n![s](</a/1.png>)" },
+        { id: "m2", text: "two\n\n![s](</a/2.png>)\n\n![t](</a/3.png>)" },
+      ],
+      (path) => bytes[path] ?? null,
+    );
+    expect(fix).toEqual([{ id: "m2", text: "two\n\n![t](</a/3.png>)" }]);
   });
 });

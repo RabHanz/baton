@@ -19,6 +19,31 @@ for moving 9 ahead of 5 is in `DECISIONS.md`.
 | 8 — Herdr adoption                             | **done for a terminal**             | Herdr 0.9.5 on both boxes; a real pane discovered, adopted, in the fleet and readable; T3 terminals can be Herdr-backed and outlive T3 (D61, proven live)                                    |
 | 10 — capability plane + hardening              | **partial**                         | the Phase 10 table below: the plane, the policy, retention, the audit view, migration additivity as a test, and the reconnect and performance runs on the snapshot                           |
 
+## Memory, the vault, learnings and browser routes, 2026-11-02 (D150, D151)
+
+Built and unit tested (server and desktop logic run against in-memory SQLite and fakes). **None of it has been seen on his laptop**, and
+the windows were not looked at rendered.
+
+| Part | State | Where | Not proven |
+| ---- | ----- | ----- | ---------- |
+| Memory store, search, RPCs | built | `BatonMemoryService`, `baton.memory.*`, `MEMORY.md` | live use on both boxes |
+| Learning loop (after a turn, end of a job, daily pass, daily episode) | built | `BatonMemoryLearning`, `BatonMemoryReactor`, `BatonMemoryEpisode` | the cheap model's real proposals |
+| Retrieval into the assistant, `memory_used` card | built | `memoryClient.ts`, `agentSession.ts` | speed on his machine |
+| Sync between servers (window relays, last writer wins, tombstones) | built, off by default | `memorySync.ts`, `syncHello/Pull/Push` | two real servers |
+| Learnings import (folder of markdown) | built | `BatonMemoryImport` | the VentureOS feed format (its learnings are database records, not files) |
+| `history_search`, daily `learnings_pull` held for his yes | built | `historyIndex.ts`, `BatonMemoryPull` | the index's real output format; the script is set by `BATON_HISTORY_SEARCH` and was absent on this box |
+| Memory tab | built | `memoryRows.ts`, `memoryTab.ts`, page script | rendering |
+| Vault: AES-256-GCM file, scrypt passphrase, recovery key, Windows account wrap, auto-lock, encrypted export | built | `vault/vaultStore.ts`, `VAULT.md` | a real passkey: Electron does not reach Windows Hello through WebAuthn |
+| Windows Hello as a consent gate | written, **untested** | `vault/hello.ts` (PowerShell `UserConsentVerifier`) | everything: needs his machine |
+| `vault_use` without the model seeing the value, scrubbing, audit log, financial never injected | built | `vaultHost.ts`, the MCP scrub | live typing into a field |
+| The refusal as an offer; History redaction | built | `memoryClient.ts`, `redact.ts` | the voice flow |
+| Vault tab and lock button | built | `vaultTab.ts`, page script | rendering |
+| Browser route selector, accessibility relaunch, route in `agent_turn` | built | `browserRoute.ts` | his Chrome extension, the hidden-window click timeouts |
+
+Known limits: the vault's Hello prompt is an app-enforced gate, not a cryptographic secret (passphrase and recovery key are the
+protection); an idle auto-lock does not redraw the window until the next refresh; the 10 second limit with one retry covers Tessaya's
+own probes, while the extension's tool calls are made by the harness and are not wrapped.
+
 ## Limits and account in the thread, 2026-10-30 (D92)
 
 Usage panel on setup tokens from the probe, with age and stale state; account label and one-click

@@ -14,6 +14,7 @@ import * as NodePath from "node:path";
 
 import {
   PLACES,
+  cursorOverCapsule,
   defaultPosition,
   parseSpots,
   placePosition,
@@ -61,6 +62,8 @@ const LEVEL_MS = 80;
 const DEAD_LEVEL = 0.03;
 /** The closing sound plays out before the window hides. */
 const CLOSE_MS = 280;
+/** How long the "Move the pill" handle stays up. */
+const MOVE_MS = 10_000;
 
 /** The phases that show a waveform and no word: his voice or Baton's, live. */
 const WAVE_PHASES = ["listening", "speaking", "dictating"];
@@ -137,6 +140,10 @@ grab.addEventListener('pointercancel',()=>{down=null;endDrag('cancel');});
 grab.addEventListener('lostpointercapture',()=>{down=null;endDrag('lost');});
 grab.addEventListener('dblclick',()=>{if(grab.classList.contains('rest'))ipcRenderer.send('baton-pill:reset');});
 grab.addEventListener('contextmenu',e=>{e.preventDefault();ipcRenderer.send('baton-pill:menu');});
+// The capsule's box goes to the main process, which decides by the cursor position when the window takes the mouse, so a missed forwarded mousemove cannot leave the pill dead.
+const sendRect=()=>{const r=grab.getBoundingClientRect();ipcRenderer.send('baton-pill:rect',r.left,r.top,r.width,r.height);};
+new ResizeObserver(sendRect).observe(grab);addEventListener('load',sendRect);
+for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEventListener(t,e=>ipcRenderer.send('baton-pill:pointer',t,e.clientX,e.clientY,e.target&&e.target.id||e.target.tagName,e.buttons),true);
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
@@ -149,6 +156,7 @@ window.pill={
  level(n){if(live&&!calm)draw(Math.min(1,n));},
  hide(){$('p').className='';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
  sting(){if(calm)return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
+ move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);},
 };
@@ -172,6 +180,8 @@ export interface VoicePill {
   readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
   readonly micLevel: (value: number) => void;
+  /** A short sound for a lesson or a drive (start, a step done, waiting, an error, finished); honours the cues setting. */
+  readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** Baton's own voice, while it speaks. */
   readonly speechLevel: (value: number) => void;
   /** Build the window now, so the first wake is as quick as the rest. */
@@ -183,6 +193,10 @@ export interface VoicePill {
   readonly setEdge: (edge: "bottom" | "top") => void;
   /** Puts it on a named place of the display it is on and keeps it there. */
   readonly moveTo: (place: PlaceId) => void;
+  /** Shows a draggable handle for ten seconds, so moving the pill never depends on a wake. */
+  readonly showMove: () => void;
+  /** The named place it is nearest to, for the settings control. */
+  readonly place: () => PlaceId;
   /** Where the pill is, or would appear: what the vocabulary toast sits beside. */
   readonly anchor: () => Electron.Rectangle;
   readonly state: () => TurnState;
@@ -245,6 +259,41 @@ export const createVoicePill = (input: {
   let shots = 0;
   let markers: Electron.BrowserWindow | null = null;
   let markerPlace: PlaceId | null = null;
+  let capsule = { x: 302, y: 26, width: 132, height: 41 };
+  let takingMouse = false;
+  let hitTimer: ReturnType<typeof setInterval> | null = null;
+  let moveTimer: ReturnType<typeof setTimeout> | null = null;
+  const trace = (record: Record<string, unknown>) => {
+    if (input.captureDir === undefined) return;
+    try {
+      NodeFS.mkdirSync(input.captureDir, { recursive: true });
+      NodeFS.appendFileSync(
+        NodePath.join(input.captureDir, "pill-pointer.ndjson"),
+        JSON.stringify({ at: Date.now(), ...record }) + "\n",
+      );
+    } catch {
+      // A test aid only.
+    }
+  };
+  /** The window takes the mouse exactly while the cursor is over the capsule, decided here, not by forwarded events. */
+  const hitTest = () => {
+    const target = window;
+    if (target === null || target.isDestroyed() || !target.isVisible()) {
+      if (hitTimer !== null) clearInterval(hitTimer);
+      hitTimer = null;
+      takingMouse = false;
+      return;
+    }
+    if (dragTimer !== null) return;
+    const cursor = Electron.screen.getCursorScreenPoint();
+    const b = target.getBounds();
+    const over = cursorOverCapsule(cursor, b, capsule);
+    if (over === takingMouse) return;
+    takingMouse = over;
+    if (over) target.setIgnoreMouseEvents(false);
+    else target.setIgnoreMouseEvents(true, { forward: true });
+    trace({ kind: "pill_hit", over, cursor, bounds: b, capsule });
+  };
   const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
 
   const displayKey = (display: Electron.Display) => String(display.id);
@@ -309,6 +358,7 @@ export const createVoicePill = (input: {
   };
   const stopDrag = (save: boolean, reason = "up") => {
     if (dragTimer === null) return;
+    if (moveTimer !== null) armMove();
     clearInterval(dragTimer);
     dragTimer = null;
     closeMarkers();
@@ -327,6 +377,24 @@ export const createVoicePill = (input: {
     const display = Electron.screen.getDisplayMatching(bounds);
     spots = { ...spots, [displayKey(display)]: spotFrom(display.workArea, bounds, bounds) };
     saveSpots();
+  };
+
+  /** "Move the pill": a handle that stays up for 10 s after the last touch, whatever Tessaya is doing. */
+  const armMove = () => {
+    if (moveTimer !== null) clearTimeout(moveTimer);
+    moveTimer = setTimeout(() => {
+      moveTimer = null;
+      if (state.phase !== "idle") return;
+      if (input.rest()) call(`window.pill.rest(${JSON.stringify(why)})`);
+      else lower();
+    }, MOVE_MS);
+    moveTimer.unref();
+  };
+
+  const this_anchor = () => {
+    if (window !== null && !window.isDestroyed()) return window.getBounds();
+    const display = Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint());
+    return { ...placeFor(display), width: WIDTH, height: HEIGHT };
   };
 
   const call = (code: string) => {
@@ -389,7 +457,13 @@ export const createVoicePill = (input: {
       if (target === null || target.isDestroyed() || target.isVisible()) return;
       const at = placeFor(display);
       target.setBounds({ ...at, width: WIDTH, height: HEIGHT });
+      takingMouse = false;
+      target.setIgnoreMouseEvents(true, { forward: true });
       target.showInactive();
+      if (hitTimer === null) {
+        hitTimer = setInterval(hitTest, 40);
+        hitTimer.unref();
+      }
     });
   };
 
@@ -525,11 +599,24 @@ export const createVoicePill = (input: {
 
   const mine = (event: Electron.IpcMainEvent) =>
     window !== null && event.sender === window.webContents;
+  Electron.ipcMain.on(
+    "baton-pill:rect",
+    (event, x: unknown, y: unknown, w: unknown, h: unknown) => {
+      if (!mine(event) || ![x, y, w, h].every((n) => typeof n === "number" && Number.isFinite(n)))
+        return;
+      if ((w as number) > 0 && (h as number) > 0)
+        capsule = { x: x as number, y: y as number, width: w as number, height: h as number };
+    },
+  );
+  Electron.ipcMain.on(
+    "baton-pill:pointer",
+    (event, type: unknown, x: unknown, y: unknown, target: unknown, buttons: unknown) => {
+      if (mine(event)) trace({ kind: "pill_pointer", type, x, y, target, buttons });
+    },
+  );
   Electron.ipcMain.on("baton-pill:hover", (event, over: unknown) => {
     if (!mine(event) || window === null || window.isDestroyed()) return;
-    // Over the capsule it takes the mouse; anywhere else in its window the mouse goes through.
-    if (over === true) window.setIgnoreMouseEvents(false);
-    else if (dragTimer === null) window.setIgnoreMouseEvents(true, { forward: true });
+    trace({ kind: "pill_hover", over });
   });
   Electron.ipcMain.on("baton-pill:beat", (event) => {
     if (mine(event)) lastBeat = Date.now();
@@ -620,6 +707,7 @@ export const createVoicePill = (input: {
 
   return {
     on,
+    cue: (name) => sound(name),
     micLevel: (value) => {
       loudest = Math.max(loudest, value);
       if (state.phase === "listening" || state.phase === "dictating") push(value);
@@ -647,6 +735,23 @@ export const createVoicePill = (input: {
       }
     },
     moveTo,
+    showMove: () => {
+      if (state.phase !== "idle") return;
+      raise();
+      call("window.pill.move()");
+      armMove();
+    },
+    place: () => {
+      const b = this_anchor();
+      const display = Electron.screen.getDisplayMatching(b);
+      const near = (["centre", "top", "bottom"] as const)
+        .map((id) => {
+          const at = placePosition(display.workArea, b, id, margins());
+          return { id, d: Math.hypot(at.x - b.x, at.y - b.y) };
+        })
+        .sort((a, c) => a.d - c.d)[0]!;
+      return near.id;
+    },
     anchor: () => {
       if (window !== null && !window.isDestroyed()) return window.getBounds();
       const display = Electron.screen.getDisplayNearestPoint(
@@ -659,6 +764,8 @@ export const createVoicePill = (input: {
       if (timer !== null) clearTimeout(timer);
       if (silentTimer !== null) clearTimeout(silentTimer);
       closeMarkers();
+      if (hitTimer !== null) clearInterval(hitTimer);
+      if (moveTimer !== null) clearTimeout(moveTimer);
       Electron.app.removeListener("browser-window-created", follow);
       setEscape(false);
       stopDrag(false);

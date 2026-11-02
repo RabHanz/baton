@@ -290,7 +290,7 @@ layer("BatonJobFlow", (it) => {
         assert.lengthOf(started, 1);
         assert.lengthOf(launched.slice(before), 1);
         const [p1, p2, p3] = (yield* jobs.parts(parent)).map((p) => p.workSessionId);
-        assert.deepEqual((yield* jobs.terms(p3!))?.partSpec?.after, [p1, p2]);
+        assert.deepEqual((yield* jobs.terms(p3!))?.partSpec?.after, [p1!, p2!]);
         const entry = (id: string, state: string) =>
           ({
             workSessionId: id,
