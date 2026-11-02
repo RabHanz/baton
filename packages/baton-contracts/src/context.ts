@@ -275,7 +275,8 @@ export interface BatonDesktopBridge {
             readonly focusedWorkSessionId: string | null;
           }
         | BatonJobBridgeRequest
-        | BatonMemoryBridgeRequest,
+        | BatonMemoryBridgeRequest
+        | BatonCommitmentBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
   /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
@@ -330,5 +331,12 @@ export interface BatonMemoryBridgeRequest {
     | "learn"
     | "import"
     | "sync";
+  readonly args: Readonly<Record<string, unknown>>;
+}
+
+/** The desktop's commitments ledger calls (D149), answered by the window with `baton.commitments.*`. */
+export interface BatonCommitmentBridgeRequest {
+  readonly kind: "commitments";
+  readonly op: "list" | "upsert";
   readonly args: Readonly<Record<string, unknown>>;
 }

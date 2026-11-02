@@ -9,6 +9,7 @@ import {
   batonDesktopBridge,
   type BatonFleetEntry,
   type BatonJobBridgeRequest,
+  type BatonCommitmentBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
   type ProjectId,
@@ -73,6 +74,8 @@ export function BatonSidebarSection(props: {
   }, [usage]);
   const quiet = { reportFailure: false } as const;
   const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
+  const commitmentsList = useAtomCommand(batonWorkSessions.commitmentsList, quiet);
+  const commitmentsUpsert = useAtomCommand(batonWorkSessions.commitmentsUpsert, quiet);
   const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
   const memorySearch = useAtomCommand(batonWorkSessions.memorySearch, quiet);
   const memoryAdd = useAtomCommand(batonWorkSessions.memoryAdd, quiet);
@@ -282,6 +285,19 @@ export function BatonSidebarSection(props: {
     }
     return { servers: servers.length, applied };
   };
+  const onCommitments = async (request: BatonCommitmentBridgeRequest): Promise<unknown> => {
+    const run = (request.op === "list" ? commitmentsList : commitmentsUpsert) as unknown as (call: {
+      readonly environmentId: typeof primary;
+      readonly input: never;
+    }) => Promise<
+      | { readonly _tag: "Success"; readonly value: unknown }
+      | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0])
+    >;
+    const result = await run({ environmentId: primary, input: request.args as never });
+    if (result._tag === "Success") return result.value;
+    const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
+    throw new Error(typeof reason === "string" ? reason : "The commitments did not answer. Nothing changed.");
+  };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
     if (request.op === "sync") return syncMemory();
     const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn, import: memoryImport };
@@ -312,6 +328,7 @@ export function BatonSidebarSection(props: {
         onRan={() => undefined}
         onJob={onJob}
         onMemory={onMemory}
+        onCommitments={onCommitments}
       />
       <BatonProjectsBlock
         environmentIds={fleet.environmentIds}

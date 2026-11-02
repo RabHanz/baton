@@ -4,7 +4,9 @@ import {
   addCommitment,
   briefCommitments,
   closeCommitment,
+  commitmentsToPush,
   describeCommitments,
+  mergeCommitments,
   needsFromCommitments,
   pruneCommitments,
 } from "./commitments.ts";
@@ -48,5 +50,22 @@ describe("the commitments ledger", () => {
     const list = closeCommitment(addCommitment([], { text: "t" }, now, "a"), "a", "done", now);
     expect(pruneCommitments(list, now + 31 * 24 * HOUR)).toEqual([]);
     expect(pruneCommitments(list, now + HOUR)).toHaveLength(1);
+  });
+
+  it("merges two devices: closed beats open, newer beats older, same words once", () => {
+    const open = addCommitment([], { text: "check the deploy" }, now, "a");
+    const closed = closeCommitment(open, "a", "done", now + HOUR);
+    expect(mergeCommitments(open, closed)[0]?.status).toBe("done");
+    expect(mergeCommitments(closed, open)[0]?.status).toBe("done");
+    const moved = addCommitment(open, { text: "check the deploy", due: now + 9 * HOUR }, now + HOUR, "z");
+    expect(mergeCommitments(open, moved)[0]?.due).toBe(now + 9 * HOUR);
+    const other = addCommitment([], { text: "Check the deploy" }, now + 5, "b");
+    expect(mergeCommitments(open, other).map((c) => c.id)).toEqual(["a"]);
+  });
+
+  it("pushes only what the server does not hold in the same state", () => {
+    const list = addCommitment(addCommitment([], { text: "one" }, now, "a"), { text: "two" }, now, "b");
+    expect(commitmentsToPush(list, [list[0]!]).map((c) => c.id)).toEqual(["b"]);
+    expect(commitmentsToPush(list, list)).toEqual([]);
   });
 });
