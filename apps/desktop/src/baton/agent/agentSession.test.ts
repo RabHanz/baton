@@ -54,6 +54,28 @@ describe("the one assistant's session", () => {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("puts memory in the first prompt and the sentence, and hands the turn to the learning loop", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const prompts: string[] = [];
+    const asked: string[] = [];
+    const learned: string[] = [];
+    const agent = createAssistantAgent({
+      start: async (prompt) => (prompts.push(prompt), fakeSession(asked)),
+      conversation,
+      clockLine: () => "Sunday 10:00",
+      beginTurn: () => undefined,
+      notes: async () => "what you remember about him:\n- he likes tea",
+      recall: async (text) => `remembered for: ${text}`,
+      learn: (said, reply) => void learned.push(`${said} => ${reply}`),
+    });
+    await agent.say("make the tea", { window: null, session: null });
+    expect(prompts[0]).toContain("he likes tea");
+    expect(asked[0]).toContain("remembered for: make the tea");
+    expect(learned).toEqual(["make the tea => I typed it."]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it("starts a new session, seeded again, when the old one dies or has run long", async () => {
     expect(shouldRecycle({ alive: true, turns: 3, idleMs: 1000 })).toBe(false);
     expect(shouldRecycle({ alive: false, turns: 0, idleMs: 0 })).toBe(true);

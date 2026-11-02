@@ -13,6 +13,7 @@ import type {
   BatonFocusTarget,
   BatonJob,
   BatonJobBridgeRequest,
+  BatonMemoryBridgeRequest,
   WatchFinding,
 } from "@t3tools/baton-contracts";
 import {
@@ -1052,7 +1053,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
   >();
   let mainContents: Electron.WebContents | null = null;
-  const request = async (body: VoiceIntentRequest | BatonJobBridgeRequest): Promise<unknown> => {
+  const request = async (
+    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
+  ): Promise<unknown> => {
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
     const id = ++nextRequest;
@@ -1082,7 +1085,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   /** What the sessions side answered joins the one conversation, with what it was about. */
   const requestKept = async (
-    body: VoiceIntentRequest | BatonJobBridgeRequest,
+    body: VoiceIntentRequest | BatonJobBridgeRequest | BatonMemoryBridgeRequest,
   ): Promise<unknown> => {
     const value = await request(body);
     if (body.kind === "run" && input.conversation !== undefined) {
@@ -1134,6 +1137,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             )
             .join("\n");
     },
+    memory: (op, args) =>
+      requestKept({ kind: "memory", op: op as BatonMemoryBridgeRequest["op"], args }),
     jobs: async (op, args) => {
       if (op === "approvals") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
