@@ -2709,6 +2709,40 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   });
   setInterval(() => void initiative.tick().catch(() => undefined), INITIATIVE_MS).unref();
 
+  // Crash recovery: a heartbeat file every half minute, and jobs a restart cut off are marked and offered a Continue.
+  const recovery = createRecoveryFiles(input.logDir, input.stateDir);
+  const previousBeat = recovery.readHeartbeat();
+  let interruptedNow: ReadonlyArray<Interrupted> = recovery.readMarks();
+  let recovered = false;
+  const beatNow = (running: boolean): void => {
+    const cards = (jobsCache ?? []).map((j) => ({ id: j.workSessionId, title: j.title, group: j.group }));
+    if (jobsCache !== null) {
+      let marks = recovery.readMarks();
+      if (!recovered) {
+        recovered = true;
+        marks = mergeMarks(marks, findInterrupted(previousBeat, cards, new Date().toISOString()));
+      }
+      interruptedNow = stillInterrupted(marks, cards);
+      recovery.writeMarks(interruptedNow);
+    }
+    recovery.writeHeartbeat({
+      at: new Date().toISOString(),
+      pid: process.pid,
+      version: input.appVersion,
+      running,
+      state: hudView(state).label,
+      // Before jobs have loaded, the last known list is carried over so a second crash loses nothing.
+      jobsRunning:
+        jobsCache === null
+          ? (previousBeat?.jobsRunning ?? [])
+          : cards.filter((c) => c.group === "running").map((c) => ({ id: c.id, title: c.title })),
+      approvalsWaiting: buildApprovals({ jobs: jobsCache ?? [], sessions: input.sessions?.rows() ?? [] }).length,
+    });
+  };
+  setInterval(() => beatNow(true), 30_000).unref();
+  setTimeout(() => beatNow(true), 10_000).unref();
+  Electron.app.on("will-quit", () => beatNow(false));
+
   // Playbooks (all off until he turns one on in Trust): narrow, budgeted, logged, and never send, post or spend.
   const playbookStore = createPlaybookStore(input.stateDir);
   const playbookTick = async (): Promise<void> => {
@@ -2918,6 +2952,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     nowData = {
       loaded: true,
       brief: playbookStore.load().brief?.text ?? null,
+      interrupted: interruptedNow,
       needs: ranked,
       unreadable,
       commitments: commitments.list().filter((c) => c.status === "open"),
@@ -3909,6 +3944,17 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           // Already closed elsewhere; the refresh shows the truth.
         }
       } else if (act?.kind === "allow") initiative.allow(act.topic);
+      else if (act?.kind === "continue") {
+        interruptedNow = interruptedNow.filter((m) => m.id !== act.id);
+        recovery.writeMarks(interruptedNow);
+        void requestKept({
+          kind: "job",
+          op: "refine",
+          args: { id: act.id, text: CONTINUE_TEXT, via: "text" },
+        })
+          .then(refreshJobs)
+          .catch(() => undefined);
+      }
       void refreshNow().catch(() => undefined);
     } else if (id === "j.load") wantJobs();
     else if (/^j[as]?:/.test(id)) {
