@@ -55,6 +55,7 @@ import {
   WindowsPackagedPayloadValidationError,
   stageCursorSdkPlatformPackages,
   BATON_VOICE_PAYLOAD_FILES,
+  batonSidecarBuild,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
   WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
   WINDOWS_SERVER_ASAR_RESOURCE,
@@ -1765,3 +1766,15 @@ it.effect.skipIf(!symlinksSupported)("rebases packaged links into the isolated t
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it("batonSidecarBuild builds the sidecar for each platform and arch, joining a universal mac build", () => {
+  const targets = (platform: "win" | "linux" | "mac", arch: "arm64" | "x64" | "universal") =>
+    batonSidecarBuild(platform, arch).map((b) => b.rustTarget);
+  assert.deepEqual(targets("win", "x64"), [null]);
+  assert.strictEqual(batonSidecarBuild("win", "x64")[0]!.rustflags, "-C target-feature=+crt-static");
+  assert.deepEqual(targets("linux", "x64"), [null]);
+  assert.deepEqual(targets("mac", "arm64"), ["aarch64-apple-darwin"]);
+  assert.deepEqual(targets("mac", "x64"), ["x86_64-apple-darwin"]);
+  assert.deepEqual(targets("mac", "universal"), ["aarch64-apple-darwin", "x86_64-apple-darwin"]);
+  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
+});

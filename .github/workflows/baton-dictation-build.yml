@@ -1,6 +1,7 @@
 name: Baton dictation build
 
-# Builds the Windows sidecar on its own, so it can be tried on the laptop without a desktop release.
+# Builds the sidecar on its own for every platform, so it can be tried without a desktop release. Windows is the
+# one the app shipped with; Linux x64 and macOS arm64 + x64 are built and tested here the same way.
 on:
   push:
     branches: [main, baton/one-brain]
@@ -38,3 +39,59 @@ jobs:
           path: |
             native/baton-dictation/target/release/baton-dictation.exe
             native/baton-dictation/Cargo.lock
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: System libraries (audio, keyboard, clang for bindgen)
+        run: sudo apt-get update && sudo apt-get install -y cmake libasound2-dev libx11-dev libxi-dev libxtst-dev libxdo-dev libxkbcommon-dev libevdev-dev libclang-dev pkg-config
+      - name: Test and build
+        env:
+          # Portable AVX2 floor, as on Windows: the runner's CPU may be newer than the user's.
+          TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+        run: |
+          cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml
+          cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml
+          ldd native/baton-dictation/target/release/baton-dictation | tee ldd.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baton-dictation-linux-x64
+          path: |
+            native/baton-dictation/target/release/baton-dictation
+            ldd.txt
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target: aarch64-apple-darwin
+            cmake: -DGGML_NATIVE=OFF -DCMAKE_OSX_ARCHITECTURES=arm64
+          - arch: x64
+            target: x86_64-apple-darwin
+            cmake: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON -DCMAKE_OSX_ARCHITECTURES=x86_64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build (tests run for the native arm64 build)
+        env:
+          TRANSCRIBE_CMAKE_ARGS: ${{ matrix.cmake }}
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: |
+          if [ "${{ matrix.arch }}" = arm64 ]; then cargo test --release --locked --manifest-path native/baton-dictation/Cargo.toml --target ${{ matrix.target }}; fi
+          cargo build --release --locked --manifest-path native/baton-dictation/Cargo.toml --target ${{ matrix.target }}
+          otool -L native/baton-dictation/target/${{ matrix.target }}/release/baton-dictation | tee otool.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baton-dictation-macos-${{ matrix.arch }}
+          path: |
+            native/baton-dictation/target/${{ matrix.target }}/release/baton-dictation
+            otool.txt
