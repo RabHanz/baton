@@ -17,6 +17,7 @@ export const BATON_MEMORY_WS_METHODS = {
   recall: "baton.memory.recall",
   used: "baton.memory.used",
   export: "baton.memory.export",
+  learn: "baton.memory.learn",
 } as const;
 
 export const BatonMemoryKind = Schema.Literals([
@@ -116,3 +117,17 @@ export class BatonMemoryRefusedError extends Schema.TaggedError<BatonMemoryRefus
     return this.reason;
   }
 }
+
+/** After a turn: what he said and what came back, for the extractor (D150). Dictation is never sent. */
+export const BatonMemoryLearnInput = Schema.Struct({
+  said: Schema.String,
+  reply: Schema.String,
+  /** The turn read something from outside, so nothing from it is kept without his yes. */
+  tainted: Schema.Boolean,
+  project: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  turnRef: Schema.optionalKey(Schema.String),
+});
+export const BatonMemoryLearnResult = Schema.Struct({
+  stored: Schema.Number,
+  held: Schema.Number,
+});
