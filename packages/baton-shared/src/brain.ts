@@ -111,6 +111,17 @@ export const instantDecision = (said: string, active: boolean): BrainDecision | 
   return control === null ? null : fromIntent(control);
 };
 
+/**
+ * Where a sentence goes first, whatever way it came in (voice, typed Ask, hotkey, tray): his own prefixes and lesson
+ * controls name their mode and never wait on a model; everything else goes to the one assistant when it is on.
+ */
+export const entryRoute = (
+  said: string,
+  active: boolean,
+  oneAssistant: boolean,
+): "router" | "assistant" =>
+  oneAssistant && instantDecision(said, active) === null ? "assistant" : "router";
+
 /** No model to ask: the old word rules, so a dead model never means a dead assistant. */
 export const fallbackDecision = (said: string, active: boolean): BrainDecision => {
   const intent = parseScreenIntent(said, active);
