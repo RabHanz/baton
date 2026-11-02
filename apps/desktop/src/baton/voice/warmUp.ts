@@ -74,13 +74,13 @@ export const startWarmUp = (
 export const warmUpVoice = (input: WarmUpInput): Promise<boolean> => startWarmUp(input).result;
 
 /**
- * The core, except that audio arriving before `ready` is kept (the newest `maxFrames`, about 30 s) and given to it in order
+ * The core, except that audio arriving before `ready` is kept (the newest `maxFrames`, about 5 min) and given to it in order
  * the moment it is ready: a phrase said while the models are still loading is heard late, not dropped.
  */
 export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => void }>(
   core: T,
   ready: Promise<unknown>,
-  maxFrames = 1_500,
+  maxFrames = 15_000,
 ): T => {
   let open = false;
   const held: Int16Array[] = [];
