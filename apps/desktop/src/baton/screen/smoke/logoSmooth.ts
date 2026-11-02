@@ -12,6 +12,7 @@ import * as Electron from "electron";
 
 import { createBatonHome } from "../../home/batonHome.ts";
 import { STATES } from "../../home/pageStates.ts";
+import { brandMarkSvg } from "../../voice/trayMark.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "logo-smooth-out");
 NodeFS.mkdirSync(out, { recursive: true });
@@ -38,7 +39,7 @@ const startClip = () => {
 void Electron.app.whenReady().then(async () => {
   const base = STATES["empty"]!;
   const state = {
-    status: { label: "Listening", tone: "good", device: "", mark: "", brandMark: "" },
+    status: { label: "Listening", tone: "good", device: "", mark: "", brandMark: brandMarkSvg() },
     controls: base.controls,
     ...(base.extra === undefined ? {} : { extra: base.extra }),
   };
