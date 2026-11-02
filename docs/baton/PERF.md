@@ -54,18 +54,24 @@ point at a polling loop.
 
 ## Starting on a starved CPU
 
-First attempt (one core shared with TWO busy loops, so the app had a third of a core): the models had not finished loading after four
-minutes and the first phrase was still not heard, with or without the hold (loop-started after 138 to 162 s; `pill_state error` at about 100 s
-into the audio). That is harsher than a slow laptop. The proof now shares the core with ONE busy loop (about half a core), the hold keeps up
-to five minutes of audio, and the wait is seven minutes. Result (run 41449733277): loop-started after 105 s, the models still unfinished (`warm-timeout`), and **the first phrase was still not heard**
-within seven minutes. So the "kept and played in" promise is **not proven**; the likely culprit is the speech sidecar's first call (it loads the
-700 MB model on first use and its call timeout is 120 s, `dictationSidecar.ts`), which the audio hold cannot help. The proof now reports this
-instead of failing on it, and uploads the app's logs from that start so the next look has the evidence. The progress line and the honest message
-are in; the guarantee is not.
+The proof starts the app on one core shared with one busy loop and plays the wake phrase the moment the voice loop starts. The first phrase
+must be heard. It now is (run 41479939470, as shipped and with `BATON_THREADS=1`), and the proof enforces it.
 
-The proof also starts the app on one core shared with two busy loops and plays the wake phrase right away. Before this change the start gave up
-waiting for the models after 8 s, opened the microphone, and the first phrase was lost: **loop-started took 138 and 162 s, first phrase heard:
-no.** Now the start waits up to 45 s showing how many of the two models are ready and for how long ("Starting: loading the speech models
-(1 of 2 ready, 14 s)"); past that it says "Still loading the speech models. What you say now is kept and heard as soon as they are ready.",
-keeps the last 30 s of audio, and plays it into the models in order when they are ready. The starved-start assertion (loop started within
-240 s, first phrase heard) is on in the proof.
+**What was wrong, with the evidence** (runs 41470145822, 41474487093, 41479939470; each start's steps are in `starved-voice-turns.ndjson`):
+
+1. The sidecar loaded the 700 MB model inside a call with a fixed 120 s timer. Fixed in #309: the sidecar says "loading" every second and
+   a call waits while it does. That was real but was not what lost the phrase: the model itself loads in about 0.6 s even when starved.
+2. **The hold played its audio back in one burst.** Steps showed `held-audio-played` and `warm-complete`, so the models were ready and the audio
+   was handed to the core, and still nothing was heard. The wake check, the command window and the recogniser follow the clock; a phrase pushed
+   in a burst is over before the window that waits for it opens. Now it is played in at the speed it was said, with quiet stretches over 1.2 s
+   cut so a long wait is not replayed as a long silence.
+3. **Two speech threads on one core.** With the app pinned to one core the warm-up's scoring stage took 211 s (control with one speech thread:
+   57 s). std's `available_parallelism` ignores a Windows affinity mask, so the sidecar still started threads for four cores, and ggml's threads
+   wait for each other by spinning. The sidecar now counts cores with `GetProcessAffinityMask` and never starts more threads than cores.
+4. The status line shows how many of the two models are ready, how long the speech model has been loading, and, past 45 s, that audio is
+   being kept and will be heard when they are ready.
+
+**Why the first ever start is slow** (96 to 102 s in the proof). From the turn log of an unstarved first start: about 53 s is the 740 MB
+speech-model download, about 15 s is verifying it and starting the sidecar and microphone list, and the voice loop itself starts under a second
+after that. The next starts skip the download (a `.verified` marker saves hashing). The window shows "Downloading the speech model: N%"
+meanwhile. Shipping the model in the installer would remove it at the cost of a 700 MB download for everyone.
