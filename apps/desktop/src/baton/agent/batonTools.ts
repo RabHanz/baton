@@ -39,6 +39,19 @@ export interface ToolHost {
   /** Memory the assistant may pin and the list of what the last answer used (D150). */
   readonly pin?: (id: string, pinned: boolean) => Promise<string>;
   readonly used?: () => Promise<string>;
+  /** The vault (D151): the model gets names and sentences, never a value. */
+  readonly vault?: {
+    readonly list: () => Promise<string>;
+    readonly use: (a: {
+      readonly name: string;
+      readonly purpose: string;
+      readonly target: string;
+      readonly how: "type" | "paste" | "env";
+      readonly command?: string | undefined;
+      readonly envName?: string | undefined;
+    }) => Promise<string>;
+    readonly savePending: (name: string, category: string) => Promise<string>;
+  };
   readonly jobs: (op: JobOp, args: Readonly<Record<string, unknown>>) => Promise<string>;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
 }
@@ -281,6 +294,56 @@ export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => [
       'Delete one memory by its id (from memory_search). For "forget that", search for what he means first. He is asked first.',
     inputSchema: object({ id: { type: "string" } }, ["id"]),
     run: async (a) => ({ text: await host.forget(str(a, "id", 200)) }),
+  },
+  {
+    name: "vault_list",
+    description:
+      "The names and labels of the secrets in his vault (API keys, passwords, recovery codes, private notes), never their values. Use it to find the right name for vault_use.",
+    inputSchema: object({}),
+    run: async () => ({ text: (await host.vault?.list()) ?? "There is no vault on this computer." }),
+  },
+  {
+    name: "vault_use",
+    description:
+      "Use a secret without seeing it: Tessaya types it into the focused field (how: type), puts it on the clipboard for 10 seconds (paste), or gives it to one command as an environment variable (env, with command and env_name). He is asked first unless he already allowed that target. You never receive the value, and output is scrubbed. Passwords of banks and cards are never filled in. Give a real purpose and the target app or website.",
+    inputSchema: object(
+      {
+        name: { type: "string" },
+        purpose: { type: "string" },
+        target: { type: "string" },
+        how: { type: "string", enum: ["type", "paste", "env"] },
+        command: { type: "string" },
+        env_name: { type: "string" },
+      },
+      ["name", "purpose", "target", "how"],
+    ),
+    run: async (a) => {
+      const how = a["how"] === "paste" || a["how"] === "env" ? a["how"] : "type";
+      return {
+        text:
+          (await host.vault?.use({
+            name: str(a, "name", 64),
+            purpose: str(a, "purpose", 300),
+            target: str(a, "target", 200),
+            how,
+            command: typeof a["command"] === "string" ? a["command"].slice(0, 2000) : undefined,
+            envName: typeof a["env_name"] === "string" ? a["env_name"] : undefined,
+          })) ?? "There is no vault on this computer.",
+      };
+    },
+  },
+  {
+    name: "vault_save_pending",
+    description:
+      "After a tool said that something he told you looks like a secret and he said yes to the vault: file it under a short lower-case name. The value is held by Tessaya, so you do not send it. category: login, key, note, id, file or financial.",
+    inputSchema: object({ name: { type: "string" }, category: { type: "string" } }, ["name"]),
+    run: async (a) => ({
+      text:
+        (await host.vault?.savePending(
+          str(a, "name", 64),
+          typeof a["category"] === "string" ? a["category"] : "key",
+        )) ?? "There is no vault on this computer.",
+    }),
   },
   {
     name: "memory_pin",
