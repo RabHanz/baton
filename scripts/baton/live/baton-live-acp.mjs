@@ -485,6 +485,17 @@ export const lostNote = (reason, shown) => `Not delivered: ${reason} Your messag
  * One pass over one session's queue, oldest first. Stops at the first message that cannot go yet, so
  * the order is kept. `deps` are the live session, the pane and the thread, injected for tests.
  */
+/** Messages held back (a resume is under way or failed): kept, in order, never handed back or dropped. */
+export function holdQueue(dir, sessionId, reason) {
+  const items = readQueue(dir, sessionId);
+  if (items.length > 0) writeQueue(dir, sessionId, items.map((item) => ({ ...item, held: reason })));
+}
+
+export function releaseQueue(dir, sessionId) {
+  const items = readQueue(dir, sessionId);
+  if (items.some((item) => item.held)) writeQueue(dir, sessionId, items.map(({ held: _gone, ...item }) => item));
+}
+
 export async function drainSession(dir, sessionId, deps) {
   // A note (weaving: "sent to X") is only shown in this thread; it never waits on the pane.
   const all = readQueue(dir, sessionId);
@@ -498,6 +509,7 @@ export async function drainSession(dir, sessionId, deps) {
   }
   const items = readQueue(dir, sessionId);
   if (items.length === 0) return;
+  if (items[0].held) return;
   const live = deps.findLive(sessionId);
   if (live === null || live.pane === null) {
     const gone = items.map((item) => ({ ...item, gone: (item.gone ?? 0) + 1 }));
@@ -528,6 +540,26 @@ export async function drainSession(dir, sessionId, deps) {
     }
     return writeQueue(dir, sessionId, [{ ...head, tries }, ...rest]);
   }
+}
+
+/**
+ * A send to a stopped session: the message is queued and visible at once, the session is resumed, and the
+ * queue is released and drained when it is ready. A failure keeps the message, held, with the reason.
+ */
+export async function sendToStopped(dir, sessionId, item, deps) {
+  enqueue(dir, sessionId, item);
+  holdQueue(dir, sessionId, "resuming");
+  deps.say(sessionId, resumingNote(item.shown));
+  const result = await resumeSession(sessionId, deps);
+  if (result.error !== undefined) {
+    holdQueue(dir, sessionId, result.error);
+    deps.say(sessionId, resumeFailedNote(result.error, ""));
+    return { state: "failed", error: result.error };
+  }
+  releaseQueue(dir, sessionId);
+  deps.say(sessionId, "Resumed in Herdr with its history. Sending now.");
+  await drainSession(dir, sessionId, deps);
+  return { state: "resumed" };
 }
 
 /** The prompt on the pane's screen now, or null. */
@@ -589,6 +621,64 @@ async function typeInto(paneRef, text) {
   return /agent_blocked/.test(sent.out)
     ? BLOCKED_NOTE
     : `Herdr did not take the message: ${sent.out.slice(0, 200)}`;
+}
+
+/** A request to bring a stopped session back without sending anything: just "resume". */
+export const isResumeRequest = (text) => /^\s*resume( it| this session)?\s*\.?\s*$/i.test(text);
+
+export const resumingNote = (shown) =>
+  `Resuming this session in Herdr. Your message is kept and goes when it is ready: "${shown}"`;
+
+export const resumeFailedNote = (reason, shown) =>
+  `Could not resume: ${reason} Your message is kept${shown ? `: "${shown}"` : ""}. Send again, or say "resume", to try again.`;
+
+const READY_MS = Number(process.env.BATON_LIVE_RESUME_READY_MS ?? 45_000);
+
+/**
+ * Brings a stopped Claude conversation back in Herdr with its history: `baton --resume <id> <folder>` on this
+ * machine (the live agent runs on the thread's own box), then waits until it is in a pane and not mid-turn.
+ * Returns the live session, or why not in words for a person. `deps` are the outside world, for tests.
+ */
+export async function resumeSession(sessionId, deps) {
+  const cwd = deps.cwdOf(sessionId);
+  if (cwd === null) return { error: "I do not know which folder this conversation was in, and its transcript is not on this machine." };
+  if (!deps.dirExists(cwd)) return { error: `The folder ${cwd} is not on this machine.` };
+  const out = await deps.baton(["--resume", sessionId, cwd]);
+  if (!/running in (\S+) pane (\S+)/.test(out.out))
+    return { error: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
+  const started = deps.now();
+  for (;;) {
+    const live = deps.findLive(sessionId);
+    if (live !== null && live.pane !== null && live.status !== "busy") return { live };
+    if (deps.now() - started >= READY_MS) return { error: "It was started in Herdr but did not become ready within 45 seconds." };
+    await deps.sleep(500);
+  }
+}
+
+/** The folder a stopped conversation ran in, from its transcript in any Claude config folder. */
+export function cwdFromTranscript(sessionId) {
+  for (const sessions of sessionsDirs()) {
+    const projects = NodePath.join(NodePath.dirname(sessions), "projects");
+    let slugs = [];
+    try {
+      slugs = NodeFS.readdirSync(projects);
+    } catch {
+      continue;
+    }
+    for (const slug of slugs) {
+      const file = NodePath.join(projects, slug, `${sessionId}.jsonl`);
+      if (!NodeFS.existsSync(file)) continue;
+      try {
+        const fd = NodeFS.openSync(file, "r");
+        const buf = Buffer.alloc(32 * 1024);
+        const head = buf.subarray(0, NodeFS.readSync(fd, buf, 0, buf.length, 0)).toString("utf8");
+        NodeFS.closeSync(fd);
+        const m = /"cwd":"((?:[^"\\]|\\.)*)"/.exec(head);
+        if (m !== null) return JSON.parse(`"${m[1]}"`);
+      } catch {}
+    }
+  }
+  return null;
 }
 
 /** D74 adoption: an idle plain-terminal session is reopened in Herdr with the same conversation. */
@@ -689,13 +779,31 @@ async function prompt(params) {
   if (isAppContinuation(promptText(params.prompt))) return { stopReason: "end_turn" };
   let live = findLiveSession(sessionId);
   if (live === null) {
-    say(
-      sessionId,
-      lostNote(
-        "that Claude Code session is not running on this machine now.",
-        promptText(params.prompt).trim(),
-      ),
-    );
+    // Stopped: it is resumed and the message goes when it is ready. "Not delivered" is for nothing that can be fixed.
+    const words = promptText(params.prompt);
+    if (resumesInFlight.has(sessionId)) {
+      const count = enqueue(QUEUE_DIR, sessionId, { text: words.trim(), shown: words.replace(/\s+/g, " ").trim().slice(0, 200), at: new Date().toISOString(), held: "resuming" });
+      say(sessionId, `Still resuming. ${count} message${count === 1 ? "" : "s"} kept; they go when it is ready.`);
+      return { stopReason: "end_turn" };
+    }
+    const cwd = cwdFromTranscript(sessionId);
+    const body = cwd === null ? words.trim() : composeForSession(params.prompt, cwd);
+    resumesInFlight.add(sessionId);
+    try {
+      const wantsOnlyResume = isResumeRequest(words);
+      const item = { text: body, shown: words.replace(/\s+/g, " ").trim().slice(0, 200) || "(resume)", at: new Date().toISOString() };
+      if (wantsOnlyResume) {
+        say(sessionId, "Resuming this session in Herdr.");
+        const result = await resumeSession(sessionId, resumeDeps);
+        say(sessionId, result.error ?? "Resumed in Herdr with its history. Messages sent here now reach it.");
+        if (result.error === undefined) releaseQueue(QUEUE_DIR, sessionId);
+        if (result.error === undefined) startDrainer();
+      } else {
+        await sendToStopped(QUEUE_DIR, sessionId, item, { ...resumeDeps, ...drainDeps });
+      }
+    } finally {
+      resumesInFlight.delete(sessionId);
+    }
     return { stopReason: "end_turn" };
   }
   if (live.pane === null) {
@@ -775,6 +883,22 @@ async function prompt(params) {
     turns.delete(sessionId);
   }
 }
+
+const resumesInFlight = new Set();
+const resumeDeps = {
+  cwdOf: cwdFromTranscript,
+  dirExists: (dir) => {
+    try {
+      return NodeFS.statSync(dir).isDirectory();
+    } catch {
+      return false;
+    }
+  },
+  baton: (args) => run(BATON, args, 45_000).then((r) => ({ ok: r.ok, out: r.out })),
+  findLive: findLiveSession,
+  sleep,
+  now: () => Date.now(),
+};
 
 let drainer = null;
 const drainDeps = { findLive: findLiveSession, typeInto, say };
