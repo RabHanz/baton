@@ -62,6 +62,15 @@ import { answerNeeds } from "../presence/needsAnswer.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
+import { createInitiative } from "../presence/initiativeEngine.ts";
+import { readCiRuns } from "../presence/ciSource.ts";
+import {
+  DEFAULT_POLICY,
+  triggersFromCi,
+  triggersFromCommitments,
+  triggersFromFindings,
+  type CiRun,
+} from "@t3tools/baton-shared/initiative";
 import { createAwareness } from "../presence/awarenessState.ts";
 import { harnessControls, pluginOfControl } from "../harness/harnessRows.ts";
 import { readInventory, setPluginEnabled } from "../harness/harnessInventory.ts";
@@ -241,6 +250,11 @@ interface VoiceSettings {
   readonly awarenessIdle: boolean;
   readonly awarenessFocus: boolean;
   readonly awarenessJobs: boolean;
+  /** Offers when something needs a look: Off, a card with Yes, Later, Never, or the card and one spoken line. */
+  readonly initiativeMode: "off" | "written" | "spoken";
+  readonly initiativePerHour: number;
+  /** Repositories whose failed builds become offers (gh, read-only). */
+  readonly ciRepos: ReadonlyArray<string>;
   readonly needsRepos: ReadonlyArray<string>;
   readonly needsDeadlinesFile: string | null;
   /** The day (local) the morning brief was last given, so it comes once. */
@@ -297,6 +311,9 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   awarenessIdle: false,
   awarenessFocus: false,
   awarenessJobs: false,
+  initiativeMode: "written",
+  initiativePerHour: 3,
+  ciRepos: [],
   needsRepos: [],
   needsDeadlinesFile: null,
   briefDay: null,
@@ -355,6 +372,8 @@ const SESSIONS_NOTE_MS = 8_000;
 const JOBS_REFRESH_MS = 15_000;
 const ATTENTION_MS = 5 * 60_000;
 const AWARENESS_SAMPLE_MS = 30_000;
+const INITIATIVE_MS = 2 * 60_000;
+const CI_REFRESH_MS = 10 * 60_000;
 /** Changes this close together make one tray and window update. */
 const RENDER_COALESCE_MS = 40;
 
@@ -453,6 +472,8 @@ export interface TrayExtras extends BrainVoiceHook {
     readonly buttons: ReadonlyArray<string>;
     readonly cancel: number;
     readonly expiresMs?: number;
+    /** Unasked: its Yes stays disabled this long, so a keystroke meant for something else cannot answer. */
+    readonly armMs?: number;
   }) => Promise<number>;
 }
 
@@ -1193,6 +1214,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (op === "commit_add" || op === "commit_done" || op === "commit_list") {
         return runCommitOp(commitments, op, args, Date.now());
       }
+      if (op === "notices_stop") return initiative.stop(String(args["about"] ?? ""));
+      if (op === "notices_resume") return initiative.resume(String(args["about"] ?? ""));
       if (op === "needs") {
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
           jobs?: ReadonlyArray<BatonJob>;
@@ -2012,6 +2035,85 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     }
   };
   setInterval(() => void checkAttention().catch(() => undefined), ATTENTION_MS).unref();
+
+  // Initiative (D149): offers as cards. A Yes starts a read-only plan-first job or notes a commitment.
+  let ciCache: { at: number; runs: ReadonlyArray<CiRun> } = { at: 0, runs: [] };
+  const ciRuns = async (): Promise<ReadonlyArray<CiRun>> => {
+    if (settings.ciRepos.length === 0) return [];
+    if (Date.now() - ciCache.at > CI_REFRESH_MS) {
+      ciCache = { at: Date.now(), runs: await readCiRuns(settings.ciRepos) };
+    }
+    return ciCache.runs;
+  };
+  const initiative = createInitiative({
+    dir: input.stateDir,
+    now: () => Date.now(),
+    hour: () => new Date().getHours(),
+    policy: () =>
+      settings.initiativeMode === "off" || mainContents === null || mainContents.isDestroyed()
+        ? null
+        : {
+            ...DEFAULT_POLICY,
+            quietHours: settings.quietHours,
+            maxPerHour: Math.max(1, Math.min(10, Math.floor(settings.initiativePerHour))),
+            // Someone typing right now is the costly moment to interrupt.
+            interruptionCost: Electron.powerMonitor.getSystemIdleTime() < 3 ? 15 : 0,
+          },
+    gather: async () => [
+      ...triggersFromFindings(await watchFindings()),
+      ...triggersFromCommitments(commitments.list(), Date.now()),
+      ...triggersFromCi(await ciRuns(), Date.now()),
+    ],
+    present: async (offer) => {
+      if (settings.initiativeMode === "spoken") input.extras?.announce(offer.offer, true);
+      const index = await (input.extras?.ask({
+        title: "Tessaya",
+        detail: offer.offer,
+        buttons: ["Yes", "Later", "Never"],
+        cancel: 1,
+        armMs: 1_500,
+        expiresMs: 5 * 60_000,
+      }) ?? Promise.resolve(1));
+      return index === 0 ? "yes" : index === 2 ? "never" : "later";
+    },
+    act: async (offer) => {
+      const yes = offer.yes;
+      if (yes.kind === "done") {
+        commitments.close(yes.commitmentId, "done");
+        return "Marked done.";
+      }
+      if (yes.kind === "commitment") {
+        commitments.add({ text: yes.text, source: "offer" });
+        return "I will keep track of it.";
+      }
+      const project =
+        yes.repo !== undefined
+          ? yes.repo.split("/")[1]
+          : input.sessions?.rows().find((r) => r.key === yes.sessionId)?.project;
+      if (project === undefined || project === "") {
+        commitments.add({
+          text: `Look into: ${offer.title}`.slice(0, 300),
+          source: "offer",
+          ...(yes.sessionId === undefined ? {} : { ref: yes.sessionId }),
+        });
+        return "I could not tell which project that is, so I noted it to look into.";
+      }
+      await requestKept({
+        kind: "job",
+        op: "start",
+        args: {
+          title: `Look into: ${offer.title}`.slice(0, 120),
+          goal: yes.goal,
+          project,
+          folders: [],
+          tools: ["read"],
+        },
+      });
+      return "Started a read-only look in its own thread. Nothing changes until you agree to a plan.";
+    },
+    tell: (text) => input.extras?.announce(text, false),
+  });
+  setInterval(() => void initiative.tick().catch(() => undefined), INITIATIVE_MS).unref();
 
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
