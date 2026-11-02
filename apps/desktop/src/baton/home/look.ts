@@ -1,0 +1,56 @@
+/**
+ * Motion and glass: two settings (Settings, General) that become classes on the page's root so the styles
+ * can read them. Auto-reduced when the system asks for less. Pure; the window applies the results.
+ */
+export type Motion = "full" | "reduced" | "off";
+export type Glass = "on" | "reduced" | "off";
+
+export const parseMotion = (v: unknown): Motion => (v === "reduced" || v === "off" ? v : "full");
+export const parseGlass = (v: unknown): Glass => (v === "reduced" || v === "off" ? v : "on");
+
+export interface SystemAsks {
+  readonly reducedMotion: boolean;
+  readonly reducedTransparency: boolean;
+}
+
+/** A choice of Full follows the system when it asks for less; Reduced and Off are always taken as chosen. */
+export const effectiveMotion = (set: Motion, os: SystemAsks): Motion =>
+  set === "full" && os.reducedMotion ? "reduced" : set;
+
+export const effectiveGlass = (set: Glass, os: SystemAsks): Glass =>
+  set === "on" && os.reducedTransparency ? "reduced" : set;
+
+/** Class names on the root element: html.motion-reduced, html.motion-off, html.glass-reduced, html.glass-off. */
+export const lookClasses = (motion: Motion, glass: Glass): ReadonlyArray<string> => [
+  ...(motion === "full" ? [] : [`motion-${motion}`]),
+  ...(glass === "on" ? [] : [`glass-${glass}`]),
+];
+
+export const ALL_LOOK_CLASSES: ReadonlyArray<string> = ["motion-reduced", "motion-off", "glass-reduced", "glass-off"];
+
+/** The script that sets those classes on the page. Fixed words only: nothing from outside goes into it. */
+export const applyLookScript = (classes: ReadonlyArray<string>): string =>
+  `(()=>{const c=document.documentElement.classList;${JSON.stringify(ALL_LOOK_CLASSES)}.forEach(x=>c.remove(x));${JSON.stringify(classes.filter((x) => ALL_LOOK_CLASSES.includes(x)))}.forEach(x=>c.add(x));})()`;
+
+/** Windows 11 reports 10.0.22000 or higher; the background material needs 22621 (22H2). */
+export const windowsBuild = (release: string): number => {
+  const m = /^10\.0\.(\d+)/.exec(release);
+  return m === null ? 0 : Number(m[1]);
+};
+
+export interface MaterialOptions {
+  readonly backgroundMaterial?: "mica" | "none";
+  readonly vibrancy?: "under-window";
+  readonly visualEffectState?: "followWindow";
+}
+
+/**
+ * The window's material: Mica on Windows 11 (22H2 and later), vibrancy on macOS, nothing elsewhere (and nothing
+ * when glass is reduced or off). Windows 10 and Linux keep a plain background.
+ */
+export const materialFor = (platform: string, release: string, glass: Glass): MaterialOptions => {
+  if (glass !== "on") return platform === "win32" && windowsBuild(release) >= 22621 ? { backgroundMaterial: "none" } : {};
+  if (platform === "win32") return windowsBuild(release) >= 22621 ? { backgroundMaterial: "mica" } : {};
+  if (platform === "darwin") return { vibrancy: "under-window", visualEffectState: "followWindow" };
+  return {};
+};
