@@ -14,6 +14,8 @@ wav="$out/wav/wake.wav"
 case "$platform" in
   linux)
     espeak-ng -w "$out/wav/raw.wav" "$phrase" && ffmpeg -loglevel error -y -i "$out/wav/raw.wav" -ar 16000 -ac 1 "$wav"
+    # No sound card on a CI machine: ALSA's null device stands in, so the sidecar can list and open "a microphone".
+    printf 'pcm.!default { type null }\nctl.!default { type null }\n' > "$HOME/.asoundrc"
     chmod +x "$artifact"
     run=(xvfb-run -a "$artifact" --appimage-extract-and-run --no-sandbox)
     ;;
@@ -35,11 +37,19 @@ pid=$!
 sleep 25
 "${run[@]}" > "$out/app2.log" 2>&1 &
 log="$userdata/logs/voice-turns.ndjson"
-for _ in $(seq 1 40); do
-  sleep 3
-  if [ -f "$log" ] && grep -Eq 'wake_only|agent_turn|"type":"end"' "$log"; then break; fi
-  kill -0 "$pid" 2>/dev/null || break
-done
+# The speech model downloads on first use (about 740 MB), so the voice start can take minutes. Wait for loop-started,
+# then for the test audio to play out and for the phrase to be heard.
+waitfor() { # <pattern> <max seconds>
+  local n=0
+  while [ "$n" -lt "$2" ]; do
+    if [ -f "$log" ] && grep -Eq "$1" "$log"; then return 0; fi
+    kill -0 "$pid" 2>/dev/null || return 1
+    sleep 3; n=$((n + 3))
+  done
+  return 1
+}
+waitfor '"step":"loop-started"|"step":"error"' "${SMOKE_START_SECONDS:-900}" || true
+waitfor 'wake_only|agent_turn|"type":"end"' "${SMOKE_HEAR_SECONDS:-180}" || true
 sleep 3
 kill "$pid" 2>/dev/null || true
 mkdir -p "$out/logs"; cp -R "$userdata/logs/." "$out/logs/" 2>/dev/null || true
@@ -56,5 +66,8 @@ echo "--- app.log (tail) ---"; tail -n 25 "$out/app.log" 2>/dev/null || true
 status=0
 { [ "$shots" -gt 0 ] || [ "$opened" = 1 ]; } || { echo "FAIL no window was drawn"; status=1; }
 [ -n "$steps" ] || { echo "FAIL no voice start steps were logged"; status=1; }
+echo "$steps" | grep -q 'loop-started' || { echo "FAIL the voice start never reached loop-started"; status=1; }
+[ -f "$log" ] && grep -q '"kind":"test-audio"' "$log" || { echo "FAIL the test audio never reached the voice loop"; status=1; }
+if [ "${REQUIRE_WAKE:-0}" = 1 ]; then [ -f "$log" ] && grep -Eq 'wake_only|agent_turn' "$log" || { echo "FAIL the wake phrase was not heard"; status=1; }; fi
 [ -f "$log" ] && grep -q '"kind":"test-audio"' "$log" || { echo "NOTE the test audio never reached the voice start"; }
 exit $status
