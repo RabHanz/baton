@@ -23,7 +23,7 @@ export const describeJobs = (jobs: ReadonlyArray<BatonJob>): string =>
           const used =
             j.usage === undefined || j.phase !== "approved"
               ? ""
-              : ` Used ${j.usage.minutes} of ${j.terms.limits.wallClockMinutes} min and ${j.usage.turns} of ${j.terms.limits.workerTurns} turns.`;
+              : ` Used ${j.usage.minutes} of ${j.terms.limits.wallClockMinutes} min and ${j.usage.turns} of ${j.terms.limits.workerTurns} turns${j.usage.dollars == null ? "" : `, about $${j.usage.dollars.toFixed(2)}${j.usage.partial === true ? " or more" : ""}`}.`;
           return `${j.title} [id: ${j.workSessionId}]: ${waiting}${cap}.${used} May: ${j.permissionsSummary}`;
         })
         .join("\n");

@@ -372,4 +372,55 @@ layer("BatonJobFlow", (it) => {
       assert.isTrue(terms?.revisions.some((r) => r.text.includes("reached its turns limit")));
     }),
   );
+
+  it.effect(
+    "trips the dollar cap on what the worker's own log priced, and shows tokens and dollars",
+    () =>
+      Effect.gen(function* () {
+        const jobs = yield* BatonJobService;
+        const id = WorkSessionId.make("job-cap-dollars");
+        const { threadId } = yield* startJob({
+          id,
+          projectId: ProjectId.make("project-site"),
+          title: "Priced",
+          goal: "Do the thing",
+          permissions: { folders: [], projects: [], tools: ["read"] },
+          limits: { workerTurns: 40, wallClockMinutes: 600, dollars: 1 },
+          modelSelection: { instanceId: ProviderInstanceId.make("claude"), model: "sonnet" },
+          runtimeMode: "approval-required",
+        });
+        shells.push({ id: threadId, status: "completed" } as OrchestrationV2ThreadShell);
+        yield* jobs.planReady(id);
+        yield* agreeJob(id);
+        const entries = [
+          {
+            workSessionId: id,
+            title: "Priced",
+            lifecycle: "active",
+            state: "working",
+            updatedAt: "2026-11-03T10:00:00.000Z",
+            threads: [{ threadId }],
+            synopsis: null,
+          },
+        ] as never;
+        const under = yield* jobs.view({
+          entries,
+          spend: new Map([[id, { tokens: 10, dollars: 0.4, partial: false }]]),
+        });
+        assert.isNull(under.find((j) => j.workSessionId === id)?.limitReached);
+        const over = yield* jobs.view({
+          entries,
+          spend: new Map([[id, { tokens: 900, dollars: 1.2, partial: true }]]),
+        });
+        const card = over.find((j) => j.workSessionId === id);
+        assert.strictEqual(card?.limitReached, "spend");
+        assert.deepInclude(card?.usage ?? {}, { tokens: 900, dollars: 1.2, partial: true });
+        // Nothing priced yet is not zero spend: the cap does not trip on a missing figure.
+        const none = yield* jobs.view({
+          entries,
+          spend: new Map([[id, { tokens: 0, dollars: null, partial: true }]]),
+        });
+        assert.isNull(none.find((j) => j.workSessionId === id)?.limitReached);
+      }),
+  );
 });
