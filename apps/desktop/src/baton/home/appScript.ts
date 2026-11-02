@@ -755,9 +755,12 @@ function setupPage(b) {
 function setRegion(el, build, keepId) {
   const next = document.createElement('div'); build(next);
   if (next.innerHTML === el.innerHTML) return false;
-  // The mark is carried over, not rebuilt, so a refresh does not restart its slow breathing.
-  const old = keepId && el.querySelector('#' + keepId), fresh = keepId && next.querySelector('#' + keepId);
-  if (old && fresh && old.innerHTML === fresh.innerHTML) fresh.replaceWith(old);
+  // The first child stays in the page when unchanged: a node taken out of the document loses its running animation.
+  const old = keepId && document.getElementById(keepId), fresh = keepId && next.firstChild;
+  if (old && fresh && old.parentNode === el && el.firstChild === old && old.innerHTML === fresh.innerHTML) {
+    while (old.nextSibling) old.nextSibling.remove();
+    fresh.remove(); el.append(...next.childNodes); return true;
+  }
   el.replaceChildren(...next.childNodes); return true;
 }
 let shownModal = null, lastSig = '', modalOpener = null;
@@ -863,7 +866,7 @@ function render(state) {
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
-  const brand = $('div', 'brand'); const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
+  const brand = $('div', 'brand'); brand.id = 'brand'; const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages'); nav.id = 'navlist';
   const names = Object.fromEntries(TABS);
   for (const [gname, ids] of GROUPS) {
@@ -876,7 +879,7 @@ function render(state) {
   const foot = $('div', 'foot'); const st = $('button', 'nav'); st.append(icon('settings'), $('span', null, 'Settings')); st.onclick = () => { modal = 'general'; render(); };
   const t3 = $('button', 'nav'); t3.append(icon('external'), $('span', null, 'Open T3 sessions')); t3.onclick = () => real && ipc.send('baton-home:sessions');
   foot.append(t3, st); side.appendChild(foot);
-  }, 'mark');
+  }, 'brand');
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);

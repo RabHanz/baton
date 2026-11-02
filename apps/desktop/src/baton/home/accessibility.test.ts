@@ -77,9 +77,9 @@ describe("the mark breathes only while the window is in front", () => {
 });
 
 describe("a refresh keeps the breathing mark", () => {
-  it("carries the mark element across a sidebar rebuild so its animation does not restart", () => {
-    expect(APP_SCRIPT).toContain("fresh.replaceWith(old)");
-    expect(APP_SCRIPT).toMatch(/foot\.append\(t3, st\); side\.appendChild\(foot\);\s*\}, 'mark'\);/);
+  it("leaves the brand in the page across a sidebar rebuild so its animation does not restart", () => {
+    expect(APP_SCRIPT).toContain("fresh.remove(); el.append(...next.childNodes)");
+    expect(APP_SCRIPT).toMatch(/foot\.append\(t3, st\); side\.appendChild\(foot\);\s*\}, 'brand'\);/);
   });
 });
 

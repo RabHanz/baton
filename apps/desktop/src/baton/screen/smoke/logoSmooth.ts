@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off globalRandom:off globalTimers:off nodeBuiltinImport:off globalConsole:off
 /**
  * Watches the sidebar logo of the real Home window for 16 s while the sidebar is rebuilt four times. It samples the
- * mark's animation clock (a restart would send it backwards), checks it is the same element throughout, and diffs
+ * mark's animation clock (a restart would send it backwards), checks it is the same element (never taken out of the page) throughout, and diffs
  * consecutive captures of its rectangle (a jump would show as one large change). Writes results.md and a recording.
  */
 import * as NodeChildProcess from "node:child_process";
@@ -107,7 +107,7 @@ void Electron.app.whenReady().then(async () => {
   const lines = [
     `### Sidebar logo: ${verdict ? "smooth" : "NOT smooth"}`,
     `- window in front (html.live): ${live}`,
-    `- same element through ${rebuilds} sidebar rebuilds: ${same}`,
+    `- same element (never taken out of the page) through ${rebuilds} sidebar rebuilds: ${same}`,
     `- animation running (clock passed ${Math.round(Math.max(0, ...clocks))} ms) and the logo pixels changing: ${moved && changing}`,
     `- animation clock restarts: ${restarts} of ${clocks.length} samples`,
     `- frames compared: ${diffs.length}; largest change between neighbouring frames: ${maxDiff.toFixed(2)} of 255 (a jump would be well above 4)`,
