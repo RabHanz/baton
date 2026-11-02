@@ -8,6 +8,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   batonDesktopBridge,
   type BatonFleetEntry,
+  type BatonJobBridgeRequest,
   type EnvironmentId,
   type ProjectId,
   type ScopedThreadRef,
@@ -27,6 +28,8 @@ import {
 import { useProjects } from "../../state/entities";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
+import { batonWorkSessions } from "../../state/batonWorkSessions";
+import { useAtomCommand } from "../../state/use-atom-command";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
 
@@ -66,6 +69,17 @@ export function BatonSidebarSection(props: {
   useEffect(() => {
     batonDesktopBridge()?.setBatonUsage?.(JSON.parse(usage));
   }, [usage]);
+  const quiet = { reportFailure: false } as const;
+  const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
+  const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
+  const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
+  const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
+  const jobRefine = useAtomCommand(batonWorkSessions.jobRefine, quiet);
+  const jobSplit = useAtomCommand(batonWorkSessions.jobSplit, quiet);
+  const jobStop = useAtomCommand(batonWorkSessions.jobStop, quiet);
+  const jobSchedule = useAtomCommand(batonWorkSessions.jobSchedule, quiet);
+  const jobGrant = useAtomCommand(batonWorkSessions.jobGrant, quiet);
+  const jobRevoke = useAtomCommand(batonWorkSessions.jobRevoke, quiet);
   if (primary === undefined) return null;
 
   const projectByEnvironmentId = new Map(
@@ -101,6 +115,109 @@ export function BatonSidebarSection(props: {
     const threadId = entry.activeThreadId ?? entry.threads[0]?.threadId ?? null;
     if (threadId !== null) void props.onOpenThread(scopeThreadRef(environmentId, threadId));
   };
+  /** The desktop assistant's job tools: the project by the name he said, the first ready Claude as the worker. */
+  const onJob = async (request: BatonJobBridgeRequest): Promise<unknown> => {
+    const { op, args } = request;
+    const env = { environmentId: primary };
+    const text = (key: string) => (typeof args[key] === "string" ? args[key] : "");
+    const done = <V,>(result: { _tag: string; value?: V }): V => {
+      if (result._tag !== "Success") throw new Error("That job request failed. Nothing changed.");
+      return result.value as V;
+    };
+    switch (op) {
+      case "list":
+        return done(await jobList({ ...env, input: {} }));
+      case "watch":
+        return done(await watchGet({ ...env, input: {} }));
+      case "start": {
+        const wanted = text("project").trim().toLowerCase();
+        const mine = projects.filter((p) => p.environmentId === primary);
+        const project = mine.find((p) => {
+          const label = batonProjectKey(p).label.toLowerCase();
+          return label === wanted || p.title.toLowerCase() === wanted;
+        });
+        if (project === undefined) {
+          throw new Error(
+            `No project is called "${text("project")}". Projects: ${mine.map((p) => batonProjectKey(p).label).join(", ")}.`,
+          );
+        }
+        const worker = [...(providerEntries.get(primary)?.values() ?? [])].find(
+          (entry) => isProviderInstancePickerReady(entry) && entry.driverKind === "claudeAgent",
+        );
+        const model = worker?.models.find((m) => m.isDefault) ?? worker?.models[0];
+        if (worker === undefined || model === undefined) {
+          throw new Error("No signed-in Claude is ready to be the worker.");
+        }
+        const strings = (key: string) =>
+          Array.isArray(args[key]) ? (args[key] as ReadonlyArray<string>) : [];
+        const tools = strings("tools") as ReadonlyArray<
+          "read" | "edit" | "shell" | "web" | "sessions"
+        >;
+        return done(
+          await jobStart({
+            ...env,
+            input: {
+              projectId: project.id,
+              title: text("title"),
+              goal: text("goal"),
+              permissions: {
+                folders: strings("folders"),
+                projects: [batonProjectKey(project).label],
+                tools: tools.length === 0 ? ["read"] : tools,
+              },
+              modelSelection: { instanceId: worker.instanceId, model: model.slug },
+              // Anything the worker would ask permission for becomes a card that needs him.
+              runtimeMode: "approval-required",
+            },
+          }),
+        );
+      }
+      case "split":
+        return done(
+          await jobSplit({
+            ...env,
+            input: {
+              id: text("id") as never,
+              parts: (Array.isArray(args["parts"]) ? args["parts"] : []) as never,
+            },
+          }),
+        );
+      case "stop":
+        return done(await jobStop({ ...env, input: { id: text("id") as never } }));
+      case "schedule":
+        return done(
+          await jobSchedule({
+            ...env,
+            input: {
+              id: text("id") as never,
+              everyMinutes: typeof args["everyMinutes"] === "number" ? args["everyMinutes"] : null,
+            },
+          }),
+        );
+      case "agree":
+        return done(await jobAgree({ ...env, input: { id: text("id") as never } }));
+      case "refine":
+        return done(
+          await jobRefine({
+            ...env,
+            input: {
+              id: text("id") as never,
+              text: text("text"),
+              via: args["via"] === "text" ? "text" : "voice",
+              widens: args["widens"] === true,
+            },
+          }),
+        );
+      case "grant":
+      case "revoke":
+        return done(
+          await (op === "grant" ? jobGrant : jobRevoke)({
+            ...env,
+            input: { id: text("id") as never, channel: text("channel") as never },
+          }),
+        );
+    }
+  };
   const primaryEntries = fleets.find((entry) => entry.environmentId === primary)?.fleet?.entries;
 
   return (
@@ -114,6 +231,7 @@ export function BatonSidebarSection(props: {
           props.activeThreadKey,
         )}
         onRan={() => undefined}
+        onJob={onJob}
       />
       <BatonProjectsBlock
         environmentIds={fleet.environmentIds}

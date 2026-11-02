@@ -223,7 +223,7 @@ export interface BatonSessionSummary {
 /** One account's limits as T3 reports them, for the Usage tab. */
 export interface BatonUsageSummary {
   readonly account: string;
-  /** The machines it is on, in plain words: "onyx + signzart-prod". */
+  /** The machines it is on, in plain words: "laptop + build-server". */
   readonly box: string;
   /** The same machines as a list, for a page that lists them itself. */
   readonly boxes?: ReadonlyArray<string>;
@@ -273,7 +273,8 @@ export interface BatonDesktopBridge {
             readonly kind: "run";
             readonly text: string;
             readonly focusedWorkSessionId: string | null;
-          },
+          }
+        | BatonJobBridgeRequest,
     ) => Promise<unknown>,
   ) => () => void;
   /** The sidebar's live sessions, pushed when they change, for Baton's own window. */
@@ -293,3 +294,20 @@ export interface BatonDesktopBridge {
 /** `window.batonDesktopBridge` (exposed by Baton's own preload), or undefined outside the desktop app. */
 export const batonDesktopBridge = (): BatonDesktopBridge | undefined =>
   (globalThis as { batonDesktopBridge?: BatonDesktopBridge }).batonDesktopBridge;
+
+/** The desktop's job tools (D145), answered by the window with the job RPCs; arguments are checked server-side. */
+export interface BatonJobBridgeRequest {
+  readonly kind: "job";
+  readonly op:
+    | "list"
+    | "start"
+    | "agree"
+    | "refine"
+    | "grant"
+    | "revoke"
+    | "watch"
+    | "stop"
+    | "schedule"
+    | "split";
+  readonly args: Readonly<Record<string, unknown>>;
+}

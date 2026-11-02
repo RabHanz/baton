@@ -1,0 +1,29 @@
+● The shot is ready for the slot. Before it runs it needs two decisions from you.
+
+────────────────────────────────────────────────
+←  ☒ Browser  ☒ Connectors  ✔ Submit  →
+
+Review your answers
+
+ │ ● For the demo shot, the assistants connect
+ │   to the sample app signed in as a test
+ │   account. Which browser profile should that
+ │   happen in?
+   → My main profile
+ │ ● Each assistant gets the sample app added as
+ │   a connector for the shot. After capture,
+ │   should those connectors be removed?
+   → Remove after (Recommended)
+
+Ready to submit your answers?
+
+❯ 1. Submit answers
+  2. Cancel
+
+
+
+
+─────────────────────────────────────── sample ─
+
+  40 tasks (30 done, 7 in progress, 3 open)
+  ◼ Launch readiness: triage 339 iss…

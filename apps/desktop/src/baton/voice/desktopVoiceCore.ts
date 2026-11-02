@@ -238,6 +238,27 @@ export const withPreempt = (
   },
 });
 
+/** Timings read at each use, so a change in Settings counts at the next wake without restarting the voice. */
+type Timings = typeof DEFAULT_TIMINGS & { readonly wakeWords?: ReadonlyArray<string> };
+
+export const liveTimings = (
+  base: Timings,
+  read?: () => { readonly commandWindowMs: number; readonly conversationMs: number },
+): Timings =>
+  Object.defineProperties(
+    { ...base },
+    {
+      commandWindowMs: {
+        enumerable: true,
+        get: () => read?.().commandWindowMs ?? base.commandWindowMs,
+      },
+      conversationMs: {
+        enumerable: true,
+        get: () => read?.().conversationMs ?? base.conversationMs,
+      },
+    },
+  );
+
 export const createDesktopVoiceCore = async (input: {
   readonly assets: VoiceAssets;
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
@@ -251,6 +272,10 @@ export const createDesktopVoiceCore = async (input: {
   readonly brain?: BrainVoiceHook;
   readonly vocabulary?: (text: string) => Promise<string | null>;
   readonly waitMs?: () => number;
+  /** How long the command window and the conversation stay open, read each time they are used. */
+  readonly listening?: () => { readonly commandWindowMs: number; readonly conversationMs: number };
+  /** The second check before a wake from sleep. */
+  readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
   /** Baton's one voice; off in tests. */
   readonly tts?: TtsProvider | null;
   /** Everything the core reports, for the cue after a wake word. */
@@ -281,7 +306,10 @@ export const createDesktopVoiceCore = async (input: {
     wake,
     vad,
     stt: input.stt,
-    timings: { ...DEFAULT_TIMINGS, wakeWords: models.map((model) => model.word) },
+    timings: liveTimings(
+      { ...DEFAULT_TIMINGS, wakeWords: models.map((model) => model.word) },
+      input.listening,
+    ),
     tts: input.tts === undefined ? createOsTts(input.platform) : input.tts,
     router: ((router) =>
       input.vocabulary === undefined ? router : withPreempt(router, input.vocabulary))(
@@ -291,6 +319,7 @@ export const createDesktopVoiceCore = async (input: {
     ),
     ...(input.origin === undefined ? {} : { origin: input.origin }),
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
+    ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
   });
   if (input.onEvent !== undefined) core.subscribe(input.onEvent);
   if (input.onReply !== undefined) {

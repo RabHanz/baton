@@ -11,5 +11,6 @@ export * from "./rpc.ts";
 export * from "./sessionState.ts";
 export * from "./synopsis.ts";
 export * from "./jobs.ts";
+export * from "./watch.ts";
 export * from "./workSession.ts";
 export * from "@t3tools/contracts";

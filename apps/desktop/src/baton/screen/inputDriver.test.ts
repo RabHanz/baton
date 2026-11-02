@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createPaster } from "./inputDriver.ts";
+import { createPaster, isCopyChord } from "./inputDriver.ts";
+
+const fakeTimers = () => {
+  vi.useFakeTimers();
+  return { [Symbol.dispose]: () => vi.useRealTimers() };
+};
 
 describe("typing by the clipboard", () => {
   it("does not put his clipboard back under the next step's paste", async () => {
@@ -21,5 +26,39 @@ describe("typing by the clipboard", () => {
     const paste = createPaster({ readText: () => "old password", writeText: () => undefined }, 40);
     await expect(paste("npm test", async () => void (pressed = true))).rejects.toThrow("clipboard");
     expect(pressed).toBe(false);
+  });
+
+  it("puts his clipboard back only while the clipboard is still what it pasted, so a copy made right after is kept", async () => {
+    using _timers = fakeTimers();
+    let clip = "his";
+    const paste = createPaster(
+      { readText: () => clip, writeText: (text) => void (clip = text) },
+      40,
+    );
+    const pasted = paste("typed words", async () => undefined);
+    await vi.advanceTimersByTimeAsync(160);
+    await pasted;
+    // Ctrl+C in the app lands before the restore.
+    clip = "copied from the app";
+    await vi.advanceTimersByTimeAsync(200);
+    expect(clip).toBe("copied from the app");
+  });
+
+  it("puts nothing back once a copy chord is pressed, even when the copied text equals what was pasted", async () => {
+    using _timers = fakeTimers();
+    let clip = "his";
+    const paste = createPaster(
+      { readText: () => clip, writeText: (text) => void (clip = text) },
+      40,
+    );
+    const pasted = paste("hello", async () => undefined);
+    await vi.advanceTimersByTimeAsync(160);
+    await pasted;
+    expect(isCopyChord(["ctrl", "c"])).toBe(true);
+    expect(isCopyChord(["ctrl", "v"])).toBe(false);
+    // Copying "hello" from the app: the same text, so only the chord can tell.
+    paste.cancelRestore();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(clip).toBe("hello");
   });
 });

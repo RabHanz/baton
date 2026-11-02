@@ -5,6 +5,10 @@ import { buildBatonTools, type ToolHost } from "./batonTools.ts";
 
 const host = (log: string[]): ToolHost => ({
   capture: async () => ({ text: "shot" }),
+  remember: async () => "kept",
+  forget: async () => "gone",
+  jobs: async (op) => `jobs ${op}`,
+  uiTree: async () => "Window\nButton: Save",
   clickElement: async (l, d) => (log.push(`element ${l}${d ? " double" : ""}`), "clicked"),
   waitFor: async (l, s) => (log.push(`wait_for ${l} ${s}`), "found"),
   click: async (a) => (

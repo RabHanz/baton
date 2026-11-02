@@ -36,6 +36,8 @@ export const createAssistantAgent = (input: {
   readonly conversation: ConversationLog;
   readonly now?: () => number;
   readonly clockLine: () => string;
+  /** His notes as a prompt block, read fresh when a session starts. */
+  readonly notes?: () => string;
   /** Called at the start of a turn: a new sentence has not read anything yet. */
   readonly beginTurn: () => void;
 }): AssistantAgent => {
@@ -57,7 +59,9 @@ export const createAssistantAgent = (input: {
       session = null;
     }
     turns = 0;
-    session = input.start(agentSystemPrompt({ recent: input.conversation.recent() }));
+    session = input.start(
+      agentSystemPrompt({ recent: input.conversation.recent(), notes: input.notes?.() ?? "" }),
+    );
     return session;
   };
 

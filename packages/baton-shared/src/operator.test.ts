@@ -125,24 +125,100 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(typed("Here is the answer I gave you."), on).verdict).toBe("allow");
   });
   it("asks for a yes, default no, when the text is high risk or the window is a command line", () => {
-    expect(judgeToolCall(typed("git push --force origin main"), on)).toMatchObject({ verdict: "ask", risky: true });
+    expect(judgeToolCall(typed("git push --force origin main"), on)).toMatchObject({
+      verdict: "ask",
+      risky: true,
+    });
     expect(judgeToolCall(typed("hello"), { ...on, focusedShell: true }).verdict).toBe("ask");
   });
   it("asks when the text follows something it read, unless the text is his own", () => {
     const read = { ...on, tainted: true };
     expect(judgeToolCall(typed("buy this now"), read).verdict).toBe("ask");
-    expect(judgeToolCall(typed("what I just told you"), { ...read, textIsHis: true }).verdict).toBe("allow");
+    expect(judgeToolCall(typed("what I just told you"), { ...read, textIsHis: true }).verdict).toBe(
+      "allow",
+    );
+  });
+  it("lets a job start and be agreed to with his words, asks after a read, and always asks for a standing permission", () => {
+    const start = {
+      tool: "mcp__baton__job_start",
+      input: { title: "Site", goal: "rebuild the site", project: "Site" },
+    };
+    const split = {
+      tool: "mcp__baton__job_split",
+      input: { id: "j1", parts: [{ title: "A", goal: "do a" }] },
+    };
+    expect(judgeToolCall(split, off).verdict).toBe("allow");
+    expect(judgeToolCall(split, { ...off, tainted: true }).verdict).toBe("ask");
+    const agree = { tool: "mcp__baton__job_agree", input: { id: "j1" } };
+    expect(judgeToolCall(start, off).verdict).toBe("allow");
+    expect(judgeToolCall(agree, off).verdict).toBe("allow");
+    const read = { ...off, tainted: true };
+    expect(judgeToolCall(start, read).verdict).toBe("ask");
+    expect(judgeToolCall(start, { ...read, textIsHis: true }).verdict).toBe("allow");
+    expect(judgeToolCall(agree, { ...read, textIsHis: true }).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__job_stop", input: { id: "j1" } }, off).verdict).toBe(
+      "allow",
+    );
+    expect(
+      judgeToolCall(
+        { tool: "mcp__baton__job_schedule", input: { id: "j1", every_minutes: 60 } },
+        off,
+      ).verdict,
+    ).toBe("ask");
+    const note = { tool: "mcp__baton__memory_remember", input: { text: "likes tea" } };
+    expect(judgeToolCall(note, off).verdict).toBe("allow");
+    expect(judgeToolCall(note, read).verdict).toBe("ask");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__memory_forget", input: { id: "a" } }, off).verdict,
+    ).toBe("ask");
+    const grant = judgeToolCall(
+      { tool: "mcp__baton__job_grant", input: { id: "j1", channel: "email" } },
+      off,
+    );
+    expect(grant).toMatchObject({ verdict: "ask", risky: true });
   });
   it("lets it look and click, but not send, drag or press Enter on its own", () => {
-    for (const tool of ["screen_capture", "sessions_list", "fleet_status", "memory_search", "dictation_start"]) {
+    for (const tool of [
+      "screen_capture",
+      "ui_tree",
+      "sessions_list",
+      "fleet_status",
+      "memory_search",
+      "dictation_start",
+      "jobs_list",
+      "job_revoke",
+    ]) {
       expect(judgeToolCall({ tool: `mcp__baton__${tool}`, input: {} }, off).verdict).toBe("allow");
     }
-    expect(judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the text box" } }, off).verdict).toBe("allow");
-    expect(judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the Send button" } }, off).verdict).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__click_element", input: { label: "Save", why: "save the note" } }, off).verdict).toBe("allow");
-    expect(judgeToolCall({ tool: "mcp__baton__click_element", input: { label: "Send", why: "send it" } }, off).verdict).toBe("ask");
-    expect(judgeToolCall({ tool: "mcp__baton__wait_for", input: { label: "Save", seconds: 3 } }, off).verdict).toBe("allow");
-    expect(judgeToolCall({ tool: "mcp__baton__press_keys", input: { keys: ["enter"] } }, on).verdict).toBe("ask");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the text box" } }, off)
+        .verdict,
+    ).toBe("allow");
+    expect(
+      judgeToolCall(
+        { tool: "mcp__baton__click", input: { x: 1, y: 2, why: "the Send button" } },
+        off,
+      ).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall(
+        { tool: "mcp__baton__click_element", input: { label: "Save", why: "save the note" } },
+        off,
+      ).verdict,
+    ).toBe("allow");
+    expect(
+      judgeToolCall(
+        { tool: "mcp__baton__click_element", input: { label: "Send", why: "send it" } },
+        off,
+      ).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__wait_for", input: { label: "Save", seconds: 3 } }, off)
+        .verdict,
+    ).toBe("allow");
+    expect(
+      judgeToolCall({ tool: "mcp__baton__press_keys", input: { keys: ["enter"] } }, on).verdict,
+    ).toBe("ask");
     expect(judgeToolCall({ tool: "mcp__baton__drag", input: {} }, on).verdict).toBe("ask");
   });
   it("keeps the harness's own tools exactly as they were", () => {
@@ -153,17 +229,55 @@ describe("Baton's own tools (D143)", () => {
 
 describe("keys after a read", () => {
   it("are free only when they are navigation or editing, with no Windows key and no Alt", () => {
-    for (const keys of [["up"], ["tab"], ["shift", "tab"], ["home"], ["pagedown"], ["backspace"], ["delete"], ["escape"], ["ctrl", "a"], ["ctrl", "c"], ["ctrl", "v"], ["ctrl", "z"], ["ctrl", "f"], ["ctrl", "shift", "left"], ["shift", "end"]]) {
+    for (const keys of [
+      ["up"],
+      ["tab"],
+      ["shift", "tab"],
+      ["home"],
+      ["pagedown"],
+      ["backspace"],
+      ["delete"],
+      ["escape"],
+      ["ctrl", "a"],
+      ["ctrl", "c"],
+      ["ctrl", "v"],
+      ["ctrl", "z"],
+      ["ctrl", "f"],
+      ["ctrl", "shift", "left"],
+      ["shift", "end"],
+    ]) {
       expect(keyIsNavigation(keys)).toBe(true);
     }
   });
   it("ask when they open, close, navigate, send or are not sure", () => {
-    for (const keys of [["win", "r"], ["alt", "f4"], ["alt", "tab"], ["alt", "space"], ["ctrl", "alt", "delete"], ["ctrl", "shift", "escape"], ["ctrl", "w"], ["ctrl", "t"], ["ctrl", "n"], ["ctrl", "q"], ["ctrl", "r"], ["ctrl", "l"], ["enter"], ["f5"], ["ctrl", "s"], ["ctrl", "shift", "delete"], ["a"], ["ctrl", "k", "j"]]) {
+    for (const keys of [
+      ["win", "r"],
+      ["alt", "f4"],
+      ["alt", "tab"],
+      ["alt", "space"],
+      ["ctrl", "alt", "delete"],
+      ["ctrl", "shift", "escape"],
+      ["ctrl", "w"],
+      ["ctrl", "t"],
+      ["ctrl", "n"],
+      ["ctrl", "q"],
+      ["ctrl", "r"],
+      ["ctrl", "l"],
+      ["enter"],
+      ["f5"],
+      ["ctrl", "s"],
+      ["ctrl", "shift", "delete"],
+      ["a"],
+      ["ctrl", "k", "j"],
+    ]) {
       expect(keyIsNavigation(keys)).toBe(false);
     }
   });
   it("is judged by that after a read, and left alone before one", () => {
-    const press = (keys: string[]): ToolCall => ({ tool: "mcp__baton__press_keys", input: { keys, why: "a key" } });
+    const press = (keys: string[]): ToolCall => ({
+      tool: "mcp__baton__press_keys",
+      input: { keys, why: "a key" },
+    });
     expect(judgeToolCall(press(["ctrl", "a"]), { ...on, tainted: true }).verdict).toBe("allow");
     expect(judgeToolCall(press(["win", "r"]), { ...on, tainted: true }).verdict).toBe("ask");
     expect(judgeToolCall(press(["alt", "f4"]), { ...on, tainted: true }).verdict).toBe("ask");

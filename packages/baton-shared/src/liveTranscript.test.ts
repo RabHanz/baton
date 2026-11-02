@@ -124,6 +124,33 @@ describe("a live transcript read as messages", () => {
     expect(isComposerEcho("anything", "  ")).toBe(false);
   });
 
+  it("keeps a screenshot a tool returned inline, beside the result's text", () => {
+    const steps = parseLiveToolSteps(
+      line({
+        type: "user",
+        timestamp: "2026-10-29T10:00:00.000Z",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t9",
+              content: [
+                { type: "text", text: "Took a screenshot" },
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: "image/png", data: "aGk=" },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    expect(steps).toMatchObject([
+      { kind: "result", output: "Took a screenshot\n[image]", images: [{ mimeType: "image/png" }] },
+    ]);
+  });
+
   it("reads tool calls and their results as steps, without the file sends", () => {
     const at = "2026-10-29T10:00:00.000Z";
     expect(

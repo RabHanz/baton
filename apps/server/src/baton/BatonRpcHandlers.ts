@@ -11,10 +11,12 @@
 import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_ADOPTED_WS_METHODS,
+  BATON_JOB_WS_METHODS,
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
+  BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcGroup,
   isProviderAvailable,
@@ -31,6 +33,8 @@ import {
   type WorkSessionHandoffInput,
 } from "@t3tools/baton-contracts";
 import { ProviderInstanceId } from "@t3tools/contracts";
+import { watchFleet } from "@t3tools/baton-shared/watch";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -42,10 +46,14 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import * as ServerConfig from "../config.ts";
+import { BatonJobService } from "./BatonJobService.ts";
+import * as JobFlow from "./BatonJobFlow.ts";
+import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonIntentService } from "./IntentService.ts";
-import { liveAdopt, liveAttach } from "./LiveActions.ts";
+import { liveAdopt, liveAttach, liveSetModel } from "./LiveActions.ts";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
@@ -64,6 +72,9 @@ export type BatonServices =
   | BatonIntentService
   | AdoptedSessionService
   | BatonEngine
+  | BatonJobService
+  | ServerConfig.ServerConfig
+  | ScheduledTaskService
   | ThreadAccountMoves
   | ProviderInstanceRegistry.ProviderInstanceRegistry
   | ProviderRegistry.ProviderRegistry;
@@ -264,6 +275,8 @@ export const make = Effect.gen(function* () {
     [BATON_LIVE_WS_METHODS.liveAttach]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => liveAttach(adopted, input))),
     [BATON_LIVE_WS_METHODS.liveAdopt]: (input) => liveAdopt(input),
+    [BATON_LIVE_WS_METHODS.liveSetModel]: (input) =>
+      run(Effect.flatMap(AdoptedSessionService, (adopted) => liveSetModel(adopted, input))),
     [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => herdrSend(adopted, input))),
     // Settling a work session settles its threads in upstream too, so T3's own sidebar agrees.
@@ -300,6 +313,37 @@ export const make = Effect.gen(function* () {
       ),
     [BATON_WS_METHODS.fleetGet]: (input) =>
       run(Effect.map(FleetQuery.getFleet(input), (fleet) => ({ fleet }))),
+    [BATON_WATCH_WS_METHODS.watchGet]: () =>
+      run(
+        Effect.gen(function* () {
+          const fleet = yield* FleetQuery.getFleet({});
+          return { findings: watchFleet(fleet.entries, yield* Clock.currentTimeMillis) };
+        }),
+      ),
+    [BATON_JOB_WS_METHODS.jobList]: () => run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),
+    [BATON_JOB_WS_METHODS.jobStart]: (input) => run(JobFlow.startJob(input)),
+    [BATON_JOB_WS_METHODS.jobAgree]: (input) =>
+      run(Effect.map(JobFlow.agreeJob(input.id), (terms) => ({ terms }))),
+    [BATON_JOB_WS_METHODS.jobRefine]: (input) =>
+      run(Effect.map(JobFlow.refineJob(input), (terms) => ({ terms }))),
+    [BATON_JOB_WS_METHODS.jobGrant]: (input) =>
+      run(
+        Effect.flatMap(BatonJobService, (jobs) =>
+          Effect.map(jobs.grant(input.id, input.channel), (terms) => ({ terms })),
+        ),
+      ),
+    [BATON_JOB_WS_METHODS.jobStop]: (input) =>
+      run(Effect.map(JobFlow.stopJob(input.id), (stopped) => ({ stopped }))),
+    [BATON_JOB_WS_METHODS.jobSplit]: (input) =>
+      run(Effect.map(JobFlow.splitJob(input), (started) => ({ started }))),
+    [BATON_JOB_WS_METHODS.jobSchedule]: (input) =>
+      run(Effect.map(JobFlow.scheduleJob(input), (terms) => ({ terms }))),
+    [BATON_JOB_WS_METHODS.jobRevoke]: (input) =>
+      run(
+        Effect.flatMap(BatonJobService, (jobs) =>
+          Effect.map(jobs.revoke(input.id, input.channel), (terms) => ({ terms })),
+        ),
+      ),
     [BATON_ORCHESTRATION_WS_METHODS.ruleCreate]: (input) =>
       run(
         Effect.flatMap(OrchestrationRuleService, (rules) =>

@@ -3,32 +3,32 @@ import { FONT_FACES } from "./fonts.ts";
 /**
  * The look of Baton's window (D140): a warm cream ground, a sidebar of tabs, one raised panel for
  * the page, a serif for what is said to him and a plain sans for everything he operates. One accent,
- * a deep green; amber only for "needs you". Motion is short and one-off, with a reduced-motion
+ * the Woad dye (#14505A, #5FB3B3 on dark, from the logo kit); amber only for "needs you". Motion is short and one-off, with a reduced-motion
  * fallback; nothing repaints continuously.
  */
 /** The dark theme: a warm near-black ground, panels one step lighter, hairline rules, edge light instead of shadow. */
 export const DARK_TOKENS = `[data-theme=dark]{
   --ground:#111214;--side:#15161a;--panel:#1a1b1f;--sunk:#202127;--ink:#ebebe8;--soft:#a6a8b0;--faint:#8c8f98;
-  --line:#2a2c32;--line-strong:#3b3e46;--accent:#4d68c9;--accent-deep:#18214a;--accent-wash:#1b2340;--accent-ink:#fff;
+  --line:#2a2c32;--line-strong:#3b3e46;--accent:#5FB3B3;--accent-deep:#12292D;--accent-wash:#163035;--accent-ink:#0F1B1E;
   --warn:#e3a553;--warn-wash:#33270f;--bad:#f08a80;--bad-wash:#3b1f1c;
-  --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2a2c32;--accent-edge:#33427a;--accent-text:#a9bbf4;
-  --focus:#8aa2f2;--on-ink:#15161a;--on-deep:#e8ecfa;--on-deep-soft:#a9b4dc;--btn-deep-bg:#ebebe8;--btn-deep-fg:#15161a;
+  --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2a2c32;--accent-edge:#2D5A5F;--accent-text:#5FB3B3;
+  --focus:#5FB3B3;--on-ink:#15161a;--on-deep:#EEEDE4;--on-deep-soft:#9FD0D0;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
   --panel-shadow:inset 0 1px 0 rgba(255,255,255,.05);--veil:rgba(0,0,0,.6);
   --modal-shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.7);--arrow:%23a6a8b0;color-scheme:dark;
 }`;
 
 export const APP_CSS = `
 ${FONT_FACES}
-/* Bone paper, near-black ink, one ink-blue accent; amber stays for "needs you", red for errors. */
+/* Bone paper, near-black ink, one Woad accent; amber stays for "needs you", red for errors. */
 :root{
   --ground:#ebe9e4;--side:#e5e3dd;--panel:#f8f7f4;--sunk:#f1efea;--ink:#17181b;--soft:#565961;--faint:#666972;
-  --line:#dedbd4;--line-strong:#c9c5bc;--accent:#2b4590;--accent-deep:#1c2f6b;--accent-wash:#e6eaf6;--accent-ink:#fff;
+  --line:#dedbd4;--line-strong:#c9c5bc;--accent:#14505A;--accent-deep:#0E3A42;--accent-wash:#E3EEEF;--accent-ink:#ffffff;
   --warn:#9a5a12;--warn-wash:#f6e8d2;--bad:#a3342c;--bad-wash:#f4e0dd;
   --serif:"Newsreader",Georgia,"Iowan Old Style",Cambria,serif;
   --sans:"Schibsted Grotesk","Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   --ease:cubic-bezier(.2,.8,.2,1);--r:6px;
-  --hover:rgba(23,24,27,.05);--row-hover:rgba(248,247,244,.7);--quiet:#e6e4de;--accent-edge:#b9c4e6;--accent-text:#1c2f6b;
-  --focus:#2b4590;--on-ink:#ffffff;--on-deep:#f1f3fa;--on-deep-soft:#c9d1ec;--btn-deep-bg:#f8f7f4;--btn-deep-fg:#17181b;
+  --hover:rgba(23,24,27,.05);--row-hover:rgba(248,247,244,.7);--quiet:#e6e4de;--accent-edge:#B7D2D5;--accent-text:#14505A;
+  --focus:#14505A;--on-ink:#ffffff;--on-deep:#EEEDE4;--on-deep-soft:#BFD6D8;--btn-deep-bg:#f8f7f4;--btn-deep-fg:#17181b;
   --panel-shadow:none;--veil:rgba(23,24,27,.38);
   --modal-shadow:0 30px 80px -20px rgba(23,24,27,.45);--arrow:%23565961;color-scheme:light;
 }
@@ -45,10 +45,20 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 #app.collapsed{grid-template-columns:0 1fr}
 #side{background:var(--side);display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
 #app.collapsed #side{visibility:hidden}
-.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
-.brand #mark{width:30px;height:30px;display:block;flex:none}
+.brand{display:flex;align-items:center;gap:12px;padding:0 6px 20px}
+.brand #mark{width:56px;height:56px;display:block;flex:none;color:var(--ink)}
+.brand .bt{display:flex;flex-direction:column;gap:1px;min-width:0}
+.mk .on-dark{display:none}
+[data-theme=dark] .mk .on-light{display:none}
+[data-theme=dark] .mk .on-dark{display:inline}
+#page{position:relative}
+.homemark{position:absolute;right:36px;top:30px;width:72px;height:72px;color:var(--ink);opacity:.92}
+.homemark svg{width:100%;height:100%;display:block}
+.aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink)}
+.aboutmark svg{width:100%;height:100%;display:block}
 .brand #mark svg{width:100%;height:100%;display:block}
-.brand b{font:600 20px var(--serif);letter-spacing:-.01em}
+.brand .plan{margin:0;border:0;background:none;padding:0;font-weight:500;color:var(--faint);font-variant-numeric:tabular-nums}
+.brand b{font:600 26px/1.05 var(--serif);letter-spacing:-.01em}
 .plan{margin-left:auto;font:600 11px var(--sans);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px;color:var(--soft);background:var(--panel)}
 nav{display:flex;flex-direction:column;gap:2px}
 .nav{display:flex;align-items:center;gap:11px;border:0;background:transparent;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--soft);font-weight:500;transition:background .15s,color .15s}
@@ -138,7 +148,7 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 
 .sw{position:relative;width:40px;height:24px;flex:none;border-radius:12px;border:0;background:var(--line-strong);transition:background .18s}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s var(--ease)}
-.sw[aria-checked=true]{background:var(--accent)}.sw[aria-checked=true]::after{transform:translateX(16px)}
+.sw[aria-checked=true]{background:var(--accent)}[data-theme=dark] .sw[aria-checked=true]::after{background:#0F1B1E}.sw[aria-checked=true]::after{transform:translateX(16px)}
 .seg{display:flex;background:var(--quiet);border-radius:10px;padding:3px;gap:2px;flex:none}
 .seg button{border:0;background:transparent;padding:6px 12px;border-radius:8px;color:var(--soft);font-weight:600;font-size:13px}
 .seg button[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
@@ -153,7 +163,7 @@ select{appearance:none;border:1px solid var(--line-strong);background:var(--pane
 input[type=text]{border:1px solid var(--line-strong);background:var(--panel);border-radius:9px;padding:7px 11px;min-width:0;user-select:text}
 
 .glyph{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--sans);color:#fff;margin-top:1px}
-.glyph.ok{background:var(--accent)}.glyph.warn{background:var(--warn)}.glyph.bad{background:var(--bad)}
+.glyph.ok{background:var(--accent);color:var(--accent-ink)}.glyph.warn{background:var(--warn)}.glyph.bad{background:var(--bad)}
 .fix{margin-top:3px;font-size:13px;font-weight:600}
 .brainRow{padding:8px}.brainRow>.hint{padding:6px 10px 8px}
 .pick{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;border:1px solid transparent;background:transparent;border-radius:10px;padding:11px 10px}
@@ -260,8 +270,6 @@ h2{display:flex;align-items:baseline;gap:10px;font:600 11px var(--sans);letter-s
 #page{counter-reset:sec}
 h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);color:var(--faint);font-variant-numeric:tabular-nums}
 #panel{border-radius:6px;box-shadow:none}
-.brand b{font:500 22px var(--serif);letter-spacing:-.01em}
-.plan{border:0;background:none;padding:0;font:500 11px var(--sans);letter-spacing:.06em;color:var(--faint);font-variant-numeric:tabular-nums}
 .nav{border-radius:6px;position:relative}
 .nav[aria-current=page]{background:transparent;box-shadow:none;color:var(--ink);font-weight:600}
 .nav[aria-current=page]::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:2px;background:var(--accent)}

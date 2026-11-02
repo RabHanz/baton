@@ -3,6 +3,7 @@
  * (D127), run INSIDE every tool, so no local process and no harness mode reaches a tool without it.
  * A yes is spoken or clicked; for anything high risk the default is no.
  */
+import * as DateTime from "effect/DateTime";
 import {
   batonToolName,
   describeToolCall,
@@ -11,6 +12,13 @@ import {
   READS_OUTSIDE,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
+import {
+  chromeReads,
+  hostForCall,
+  isChromeTool,
+  isSocialHost,
+  socialLogLine,
+} from "@t3tools/baton-shared/webPolicy";
 
 export type Gate = (
   call: ToolCall,
@@ -80,21 +88,53 @@ export const createAgentGate = (input: {
   readonly focusedWindow: () => Promise<{ readonly label: string; readonly shell: boolean }>;
   readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>;
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
+  /** His own Chrome (D3): whether social accounts are on, the clock, and a line sink for what is done on them. */
+  readonly chrome?: {
+    readonly socialOn: () => boolean;
+    readonly now: () => number;
+    readonly log: (line: string) => void;
+  };
 }): Gate => {
+  let pageHost: string | null = null;
+  const socialAt: number[] = [];
+  const HOUR = 3_600_000;
   return async (call) => {
     const name = batonToolName(call.tool);
-    const text = typeof call.input["text"] === "string" ? call.input["text"] : "";
+    const words = call.input["text"] ?? call.input["value"] ?? call.input["goal"];
+    const text = typeof words === "string" ? words : "";
     const typing = name === "type_text" || name === "press_keys";
     const focus = typing ? await input.focusedWindow() : null;
     const scope: TypingScope | null =
       name === "type_text" && focus !== null
         ? { window: focus.label, field: input.taint.field() }
         : null;
+    const chromeCall = isChromeTool(call.tool);
+    const callHost = chromeCall ? hostForCall(call.input, pageHost) : null;
+    const social = callHost !== null && isSocialHost(callHost);
+    const now = input.chrome?.now() ?? 0;
+    const recent = socialAt.filter((t) => now - t < HOUR).length;
     const judged = judgeToolCall(call, {
+      ...(chromeCall
+        ? {
+            chrome: {
+              socialOn: input.chrome?.socialOn() ?? false,
+              pageHost,
+              recentSocial: recent,
+            },
+          }
+        : {}),
       actWithoutAsking: input.actWithoutAsking(),
       tainted: input.taint.on() && !(scope !== null && input.taint.typingAllowedFor(scope)),
       ...(focus === null ? {} : { focusedShell: focus.shell }),
-      textIsHis: (name === "type_text" || name === "session_send") && input.textIsHis(text),
+      textIsHis:
+        (name === "type_text" ||
+          name === "session_send" ||
+          name === "job_start" ||
+          name === "job_split" ||
+          name === "job_refine" ||
+          name === "memory_remember" ||
+          chromeCall) &&
+        input.textIsHis(text),
     });
     const action = describeToolCall(call);
     /** A click names the box that typing goes to; Enter or a send ends any yes given to typing. */
@@ -102,7 +142,33 @@ export const createAgentGate = (input: {
       if (name === "click" || name === "click_element") input.taint.noteField(fieldOf(call.input));
       if (name === "press_keys" || name === "session_send") input.taint.clearTyping();
     };
+    const logSocial = (outcome: string) => {
+      if (!social || callHost === null || input.chrome === undefined) return;
+      input.chrome.log(
+        socialLogLine({
+          at: DateTime.formatIso(DateTime.makeUnsafe(now)),
+          host: callHost,
+          tool: call.tool,
+          action,
+          outcome,
+        }),
+      );
+    };
+    /** The tab goes where a navigation took it; later clicks are judged against that site. */
+    const noteNavigation = () => {
+      if (chromeCall && /__(navigate|tabs_create_mcp)$/.test(call.tool)) {
+        pageHost = typeof call.input["url"] === "string" ? hostForCall(call.input, null) : pageHost;
+      }
+    };
+    if (judged.verdict === "deny") {
+      input.record({ tool: call.tool, action, outcome: "refused", why: judged.why });
+      logSocial("refused");
+      return { allow: false, reason: `${judged.why} Tell him why and stop.` };
+    }
     if (judged.verdict === "allow") {
+      noteNavigation();
+      if (chromeReads(call.tool, call.input)) input.taint.mark();
+      logSocial("allowed");
       after();
       input.record({ tool: call.tool, action, outcome: "allowed" });
       if (READS_OUTSIDE.has(name) || READS_OUTSIDE.has(call.tool)) input.taint.mark();
@@ -117,7 +183,10 @@ export const createAgentGate = (input: {
       ...(judged.risky === true ? { risky: true } : {}),
       why: judged.why,
     });
+    logSocial(yes ? "he said yes" : "he said no");
     if (!yes) return { allow: false, reason: `${judged.why} He said no. Stop and tell him.` };
+    if (social) socialAt.push(now);
+    noteNavigation();
     after();
     if (scope !== null && judged.risky !== true) input.taint.allowTyping(scope);
     if (READS_OUTSIDE.has(name) || READS_OUTSIDE.has(call.tool)) input.taint.mark();

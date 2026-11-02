@@ -6,7 +6,7 @@ const enabled = (words: ReadonlyArray<{ word: string; enabled: boolean }>) =>
   words.filter((w) => w.enabled).map((w) => w.word);
 
 describe("wake words at start", () => {
-  it("gives a fresh install the public set, without Freya", () => {
+  it("gives a fresh install Sebastian and Alfred until Tessaya has a model", () => {
     expect(enabled(wakeWordsFor(null))).toEqual(["Sebastian", "Alfred"]);
     expect(wakeWordsFor(null)).toBe(FRESH_WAKE_WORDS);
   });

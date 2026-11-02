@@ -5,6 +5,7 @@
  */
 import { highRiskSubject } from "./intentParser.ts";
 import { dangerousCommand, sensitiveAction } from "./screenCompanion.ts";
+import { isChromeTool, judgeChrome } from "./webPolicy.ts";
 
 export interface ToolCall {
   /** The harness's own name: "Bash", "Write", "commandExecution". */
@@ -15,7 +16,9 @@ export interface ToolCall {
 export type ToolVerdict =
   | { readonly verdict: "allow" }
   /** `risky`: needs his explicit yes, no timeout counts as one, and no setting covers it. */
-  | { readonly verdict: "ask"; readonly why: string; readonly risky?: true };
+  | { readonly verdict: "ask"; readonly why: string; readonly risky?: true }
+  /** Never done, asked or not: money movement, and a social site while social is off. */
+  | { readonly verdict: "deny"; readonly why: string };
 
 /** Only looks. */
 const READING = new Set(["Read", "Glob", "Grep", "LS"]);
@@ -33,7 +36,22 @@ const ROUTINE = new Set([
 
 /** The parts that say what happens. A file's contents can say "delete everything" and do nothing. */
 const actionText = ({ input }: ToolCall): string =>
-  ["command", "file_path", "path", "notebook_path", "url", "cwd", "query", "text", "why", "keys", "target"]
+  [
+    "command",
+    "file_path",
+    "path",
+    "notebook_path",
+    "url",
+    "cwd",
+    "query",
+    "text",
+    "value",
+    "action",
+    "ref",
+    "why",
+    "keys",
+    "target",
+  ]
     .flatMap((key) => {
       const value = input[key];
       return typeof value === "string" ? [value] : Array.isArray(value) ? value.map(String) : [];
@@ -54,6 +72,12 @@ export interface JudgeContext {
   readonly focusedShell?: boolean;
   /** The text is his own words or Baton's own earlier reply, found in the conversation. */
   readonly textIsHis?: boolean;
+  /** His own Chrome (Claude in Chrome): what the gate knows about the page and the accounts. */
+  readonly chrome?: {
+    readonly socialOn: boolean;
+    readonly pageHost: string | null;
+    readonly recentSocial: number;
+  };
 }
 
 /** Baton's own tools, served to the one assistant (D143). Claude names them `mcp__baton__<name>`. */
@@ -73,6 +97,13 @@ const BATON_QUIET = new Set([
   "dictation_start",
   "dictation_stop",
   "screen_capture",
+  "ui_tree",
+  "jobs_list",
+  "watch_report",
+  "morning_brief",
+  "approvals_list",
+  "job_revoke",
+  "job_stop",
 ]);
 const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
 export const BATON_TOOLS: ReadonlySet<string> = new Set([
@@ -82,6 +113,14 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "type_text",
   "press_keys",
   "session_send",
+  "job_start",
+  "job_split",
+  "job_refine",
+  "job_agree",
+  "job_grant",
+  "job_schedule",
+  "memory_remember",
+  "memory_forget",
 ]);
 /** What leaves the machine's own state and, run, taints what follows. */
 export const READS_OUTSIDE = new Set([
@@ -94,23 +133,37 @@ export const READS_OUTSIDE = new Set([
   "WebSearch",
   "commandExecution",
   "screen_capture",
+  "ui_tree",
   "session_show",
 ]);
 
 const SENDS = /\b(enter|return)\b/i;
 
 const NAV_KEYS = new Set([
-  "up", "down", "left", "right", "arrowup", "arrowdown", "arrowleft", "arrowright",
-  "tab", "home", "end", "pageup", "pagedown", "backspace", "delete", "escape", "esc",
+  "up",
+  "down",
+  "left",
+  "right",
+  "arrowup",
+  "arrowdown",
+  "arrowleft",
+  "arrowright",
+  "tab",
+  "home",
+  "end",
+  "pageup",
+  "pagedown",
+  "backspace",
+  "delete",
+  "escape",
+  "esc",
 ]);
 const EDIT_LETTERS = new Set(["a", "c", "x", "v", "z", "y", "f"]);
 
 /**
- * Keys that carry nothing out and open nothing: arrows, Tab, Home, End, page keys, Backspace, Delete,
- * Escape, and Ctrl+A, C, X, V, Z, Y, F, each with Shift or Ctrl only. Anything with the Windows key
- * or Alt, Ctrl+W, T, N, Q, R or L, Enter, an F-key, Task Manager, Clear browsing data, and any chord
- * not sure to be one of these is not: after a read it asks (a Win+R or Alt+F4 is how an injection
- * would start). Unknown is ask.
+ * Keys that carry nothing out and open nothing: navigation, Backspace, Delete, Escape, and Ctrl+A, C, X,
+ * V, Z, Y, F, each with Shift or Ctrl only. Anything else asks after a read (a Win+R or Alt+F4 is how
+ * an injection would start). Unknown is ask.
  */
 export const keyIsNavigation = (keys: ReadonlyArray<string>): boolean => {
   const parts = keys.map((k) => k.toLowerCase().trim());
@@ -150,21 +203,52 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
       // Plain text into a box he named is routine and needs no Run it. A command line, or words
       // that came from something it read, is not.
       if (context.focusedShell === true) {
-        return { verdict: "ask", why: "It would type into a command line, where nobody reads it first." };
+        return {
+          verdict: "ask",
+          why: "It would type into a command line, where nobody reads it first.",
+        };
       }
-      return outgoing ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };
+      return outgoing
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
     case "press_keys":
       if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
         return { verdict: "ask", why: "That may send what is typed." };
       }
-      if (sensitiveAction(text)) return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
+      if (sensitiveAction(text))
+        return { verdict: "ask", why: "It deletes, sends, pays or publishes." };
       // After a read, only navigation and editing keys are free (`keyIsNavigation`); the rest ask.
-      return context.tainted && !keyIsNavigation(Array.isArray(call.input["keys"]) ? call.input["keys"].map(String) : [])
+      return context.tainted &&
+        !keyIsNavigation(Array.isArray(call.input["keys"]) ? call.input["keys"].map(String) : [])
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    case "job_start":
+    case "job_split":
+    case "job_refine":
+    case "job_agree":
+      // A job's words are his own or they came from something it read; only the second asks.
+      // Starting work is his agreement, not the model's: after a read it always asks.
+      return outgoing || (name === "job_agree" && context.tainted)
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
+    case "memory_remember":
+      // A note outlasts the conversation, so words that came from something it read are not kept unasked.
+      return outgoing
+        ? { verdict: "ask", why: "It would keep something it read as a note." }
+        : { verdict: "allow" };
+    case "memory_forget":
+      return { verdict: "ask", why: "It would delete one of your notes." };
+    case "job_schedule":
+      // A repeating run is unattended spending, so it asks every time.
+      return { verdict: "ask", why: "It would make a job run again on a schedule." };
+    case "job_grant":
+      // A standing permission is explicit and his alone: it asks every time.
+      return { verdict: "ask", why: "It would give a job a standing permission.", risky: true };
     case "session_send":
       // The intent layer applies the same gates as typing it; a secret carried out is the risk here.
-      return outgoing ? { verdict: "ask", why: "It follows something it read." } : { verdict: "allow" };
+      return outgoing
+        ? { verdict: "ask", why: "It follows something it read." }
+        : { verdict: "allow" };
     default:
       return { verdict: "ask", why: `It wants to use ${call.tool}.` };
   }
@@ -172,6 +256,15 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
 
 export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdict => {
   const baton = batonToolName(call.tool);
+  if (isChromeTool(call.tool)) {
+    return judgeChrome(call.tool, call.input, {
+      tainted: context.tainted,
+      textIsHis: context.textIsHis === true,
+      socialOn: context.chrome?.socialOn ?? false,
+      pageHost: context.chrome?.pageHost ?? null,
+      recentSocial: context.chrome?.recentSocial ?? 0,
+    });
+  }
   if (BATON_TOOLS.has(baton)) return judgeBatonTool(baton, call, context);
   if (READING.has(call.tool)) return { verdict: "allow" };
   const text = actionText(call);

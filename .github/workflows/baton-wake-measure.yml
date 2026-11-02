@@ -1,0 +1,63 @@
+name: Wake word false-wake measurement
+
+# Replays public speech, TV-style speech over music, speaker bleed and noise through the shipped wake
+# models and reports false wakes per hour per word (scripts/baton/wake-train/false_wakes.py). Free
+# GitHub CPU runner; the report and the false-fire clips (negative samples) come back as an artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Hours of audio per room"
+        default: "2"
+      models:
+        description: "Folder with the wake .onnx files"
+        default: native/baton-dictation/models
+  pull_request:
+    paths: [scripts/baton/wake-train/false_wakes.py, .github/workflows/baton-wake-measure.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1 unzip espeak-ng
+          pip install -q "numpy<2" "scipy<1.12" soundfile onnxruntime==1.17.3 huggingface_hub tqdm requests scikit-learn
+          pip install -q --no-deps openwakeword==0.6.0
+      - name: Public audio
+        run: |
+          mkdir -p data/librispeech data/demand
+          for set in dev-clean test-clean; do
+            wget -q -O - "https://www.openslr.org/resources/12/$set.tar.gz" | tar -xz -C data/librispeech
+          done
+          # DEMAND room noise is CC BY 4.0 (zenodo.org/records/1227121); four rooms are enough.
+          for room in DKITCHEN DLIVING TCAR STRAFFIC; do
+            wget -q -O "$room.zip" "https://zenodo.org/records/1227121/files/${room}_16k.zip"
+            unzip -q -o "$room.zip" -d data/demand
+          done
+          python - <<'PY'
+          import pathlib, scipy.io.wavfile, soundfile
+          from huggingface_hub import snapshot_download
+          out = pathlib.Path("data/mit_rirs"); out.mkdir(exist_ok=True)
+          src = snapshot_download("davidscripka/MIT_environmental_impulse_responses", repo_type="dataset")
+          for p in pathlib.Path(src).rglob("*.wav"):
+              a, r = soundfile.read(p, dtype="float32", always_2d=True)
+              scipy.io.wavfile.write(out / p.name, r, (a.mean(axis=1) * 32767).astype("int16"))
+          PY
+          df -h . | tail -1
+      - name: Measure
+        run: python scripts/baton/wake-train/false_wakes.py --models "${{ inputs.models || 'native/baton-dictation/models' }}" --data data --out out --near scripts/baton/wake-train/near_misses.txt --hours "${{ inputs.hours || '1' }}"
+      - name: Summary
+        run: cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wake-false-wakes
+          path: out/
