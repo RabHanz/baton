@@ -27,10 +27,10 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 1fed13e08ad0b12dd9d120be6ab8e6892fa4eeb6..3a9d38c6f36b431bce102435f39066c07f918dce 100644
+index 75df815127f397d403e64f9655d2f4d034c2d5cb..ff3a2b391b276b50dde4dd212e26bf08346f0883 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
-@@ -959,9 +959,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
+@@ -962,9 +962,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
    readonly hasCompletedRun: boolean;
    readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
    readonly legacyImportItemCount: number;
@@ -46,7 +46,7 @@ index 1fed13e08ad0b12dd9d120be6ab8e6892fa4eeb6..3a9d38c6f36b431bce102435f39066c0
    );
  }
  
-@@ -6251,6 +6256,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6275,6 +6280,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
@@ -55,10 +55,10 @@ index 1fed13e08ad0b12dd9d120be6ab8e6892fa4eeb6..3a9d38c6f36b431bce102435f39066c0
          ? yield* contextHandoffService
              .prepareLegacyImport({
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index 9a5ad6114e2b9ca163ba9f28fbb2e2f902941d2f..8a7eec97838c942f1a0f2801ec9da1c5f1edc806 100644
+index 62a9e8b88e96d1057c2afbd7cb11577dda84931b..2a12d36abfb29a5d26ac4af885a1e88482ff9e93 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -1672,6 +1672,9 @@ export const layer: Layer.Layer<
+@@ -1683,6 +1683,9 @@ export const layer: Layer.Layer<
            ) + 1,
          nativeThreadHasTurns:
            nativeInputRunIds.size > 0 ||
@@ -134,7 +134,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6
            }
            let savedTitle: string | undefined;
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index d0d51a0b241ba15c096708e1f592e673374a756d..ae584d6c912d40247905de882068bf551c193ab9 100644
+index 67418010e38ecece06eea57678a9bf24588b4615..ccdba5809e1111876546c5d2fc2e78e622c3cec2 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -4,6 +4,7 @@ import * as Random from "effect/Random";
@@ -145,7 +145,7 @@ index d0d51a0b241ba15c096708e1f592e673374a756d..ae584d6c912d40247905de882068bf55
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -663,7 +664,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -664,7 +665,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    layerProviderInstallationRefresh,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -158,7 +158,7 @@ index d0d51a0b241ba15c096708e1f592e673374a756d..ae584d6c912d40247905de882068bf55
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -775,6 +781,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -776,6 +782,7 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
@@ -167,10 +167,10 @@ index d0d51a0b241ba15c096708e1f592e673374a756d..ae584d6c912d40247905de882068bf55
      Ws.layer,
    ),
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8330b2209 100644
+index e880551e65cce91f41f3f969b2d3a100786b08c1..9a69b36500cb9b12bf8717fd405b6dac1cfae6d3 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
-@@ -231,6 +231,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+@@ -232,6 +232,10 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
  import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
  import { requiredScopeForDeviceList, rpcAuthorizationError } from "./auth/RpcAuthorization.ts";
  import * as RpcAuthorization from "./auth/RpcAuthorization.ts";
@@ -181,7 +181,7 @@ index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8
  import { RpcInstrumentation, rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
  import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
  import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
-@@ -598,13 +602,14 @@ function projectFileFailureContext(
+@@ -599,13 +603,14 @@ function projectFileFailureContext(
  const PROVIDER_STATUS_DEBOUNCE_MS = 200;
  
  // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
@@ -198,7 +198,7 @@ index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8
  const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
  type SplitWsRpc = Extract<
    ServerWsRpc,
-@@ -614,7 +619,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
+@@ -615,7 +620,7 @@ const isSplitWsRpc = (rpc: ServerWsRpc): rpc is SplitWsRpc =>
    SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
  const isOtherWsRpc = (rpc: ServerWsRpc): rpc is Exclude<ServerWsRpc, SplitWsRpc> =>
    !isSplitWsRpc(rpc);
@@ -207,7 +207,7 @@ index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8
  const SplitWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isSplitWsRpc));
  const OtherWsRpcGroup = RpcGroup.make(...serverWsRpcs.filter(isOtherWsRpc));
  // Replaying each intervening event costs a shell refetch; past this gap a
-@@ -1909,7 +1914,7 @@ export const layerWsRpc = (
+@@ -1911,7 +1916,7 @@ export const layerWsRpc = (
          return yield* mutateProjectWithClone(projectService, projectCloneTracker, mutation);
        });
  
@@ -216,7 +216,7 @@ index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8
          [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
            Effect.annotateCurrentSpan({
              "orchestration_v2.command_id": command.commandId,
-@@ -3318,8 +3323,11 @@ export const layerWsRpc = (
+@@ -3322,8 +3327,11 @@ export const layerWsRpc = (
        const otherHandlers: Pick<typeof handlers, Exclude<ServerWsRpc, SplitWsRpc>["_tag"]> =
          handlers;
        return Context.merge(
@@ -230,7 +230,7 @@ index cc06273187a9a163fda3c30e1f4ebc56446ea465..3bc990dee1ac0536817a8dc1b80d56a8
        );
      }),
    );
-@@ -3394,7 +3402,7 @@ export const layer = Layer.unwrap(
+@@ -3398,7 +3406,7 @@ export const layer = Layer.unwrap(
                          })
                          .pipe(Effect.ignore);
                  }),
