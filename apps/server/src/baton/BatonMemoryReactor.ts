@@ -5,6 +5,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import type { ThreadId } from "@t3tools/baton-contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -15,6 +16,8 @@ import * as Stream from "effect/Stream";
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { BatonJobService } from "./BatonJobService.ts";
+import { dailyEpisode } from "./BatonMemoryEpisode.ts";
+import { pullIfEnabled } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
@@ -78,6 +81,8 @@ export const layer = Layer.effect(
           Effect.sleep(FIRST_PASS).pipe(
             Effect.andThen(
               Effect.flatMap(BatonMemoryLearning, (learning) => learning.consolidate).pipe(
+                Effect.andThen(Effect.flatMap(Clock.currentTimeMillis, dailyEpisode)),
+                Effect.andThen(pullIfEnabled),
                 Effect.ignoreCause({ log: true }),
                 Effect.repeat(Schedule.spaced(DAILY)),
               ),

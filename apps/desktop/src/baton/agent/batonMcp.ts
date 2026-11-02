@@ -47,6 +47,8 @@ interface Rpc {
 export const startBatonMcp = async (input: {
   readonly tools: ReadonlyArray<BatonTool>;
   readonly gate: Gate;
+  /** Removes vault values from anything headed back to the model (D151). */
+  readonly scrub?: (text: string) => string;
 }): Promise<BatonMcp> => {
   const token = NodeCrypto.randomBytes(32).toString("hex");
   let port = 0;
@@ -74,14 +76,19 @@ export const startBatonMcp = async (input: {
       const out = await tool.run(args);
       return {
         content: [
-          ...(out.text === undefined ? [] : [{ type: "text", text: out.text }]),
+          ...(out.text === undefined ? [] : [{ type: "text", text: (input.scrub ?? ((t) => t))(out.text) }]),
           ...(out.images ?? []).map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType })),
         ],
       };
     } catch (error) {
       return {
         isError: true,
-        content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+        content: [
+          {
+            type: "text",
+            text: (input.scrub ?? ((t) => t))(error instanceof Error ? error.message : String(error)),
+          },
+        ],
       };
     }
   };

@@ -83,6 +83,56 @@ export type HomeControl =
       readonly detail: string;
       readonly fix?: string;
     })
+  /** A list he edits: each item with Remove, and a line to add one. Ids: `<id>:add` (the text) and `<id>:rm` (the item). */
+  | (HomeControlBase & {
+      readonly kind: "list";
+      readonly items: ReadonlyArray<string>;
+      readonly placeholder: string;
+      readonly addLabel?: string;
+    })
+  /** One memory (D150): its text is the label, `hint` says where it came from. Edit, pin and forget are the page's. */
+  | (HomeControlBase & {
+      readonly kind: "memory";
+      readonly pinned: boolean;
+      /** A proposal waiting for his yes. */
+      readonly held: boolean;
+    })
+  /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
+  | (HomeControlBase & {
+      readonly kind: "memoryBar";
+      readonly query: string;
+      readonly filter: string;
+      readonly kinds: ReadonlyArray<{
+        readonly value: string;
+        readonly label: string;
+        readonly count: number;
+      }>;
+      readonly usedOnly: boolean;
+      readonly usedCount: number;
+      readonly syncOn: boolean;
+      /** The daily pull of learnings from the history index (held for his yes). */
+      readonly pullOn: boolean;
+      readonly status: string;
+    })
+  /** The Vault area's header: make, unlock, lock, add, export, import, and the activity log (D151). */
+  | (HomeControlBase & {
+      readonly kind: "vaultBar";
+      readonly state: "none" | "locked" | "unlocked";
+      readonly status: string;
+      /** Shown once after the vault is made, until he says it is saved. */
+      readonly recovery: string | null;
+      /** Windows Hello is there to confirm it is him. */
+      readonly hello: boolean;
+      readonly activity: ReadonlyArray<string>;
+    })
+  /** One secret: its name and rules; the value only while he has asked to see it. */
+  | (HomeControlBase & {
+      readonly kind: "vaultItem";
+      readonly policy: string;
+      /** Financial: the policy cannot be changed. */
+      readonly locked: boolean;
+      readonly revealed: string | null;
+    })
   /** Shown masked until he clicks it. */
   | (HomeControlBase & {
       readonly kind: "secret";

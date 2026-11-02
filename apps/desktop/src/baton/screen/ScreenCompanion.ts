@@ -4,6 +4,8 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
+import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
+import { isNeedsMeAsk } from "@t3tools/baton-shared/needsMe";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -86,8 +88,18 @@ import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
+import {
+  accessibilityLooksOff,
+  chooseBrowserRoute,
+  realRelaunchPorts,
+  relaunchChromeWithAccessibility,
+  withCallRetry,
+} from "./browserRoute.ts";
 import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
+import { askHistory } from "@t3tools/baton-shared/historyIndex";
+import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
+import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { plainError, stepLine } from "@t3tools/baton-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
@@ -241,6 +253,10 @@ export interface AssistantActions {
   readonly grammarPlaces: (said: string) => Promise<boolean>;
   /** His live sessions, one per line, with the id each is named by. */
   readonly sessionsList?: () => string;
+  /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
+  readonly presence?: () => Promise<string>;
+  /** "What needs me?" from state, with no model: the top three to say and the full card. */
+  readonly needsMe?: () => Promise<{ readonly spoken: string; readonly card: string }>;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
     op:
@@ -256,6 +272,13 @@ export interface AssistantActions {
       | "brief"
       | "approvals"
       | "needs"
+      | "commit_add"
+      | "commit_done"
+      | "commit_list"
+      | "notices_stop"
+      | "notices_resume"
+      | "weave_send"
+      | "weave_list"
       | "split",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
@@ -346,6 +369,8 @@ const LOOK_REPLY = "[LOOK]";
 
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
+  /** Bring Tessaya's window forward, on a tab when it can (the vault asks to be unlocked there). */
+  readonly onOpenTab?: (tab: string) => void;
   readonly platform: string;
   readonly env: NodeJS.ProcessEnv;
   /** Baton's one voice, injected so this module never loads the voice models. */
@@ -368,6 +393,8 @@ export const startScreenCompanion = (input: {
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
   /** Tells the pill what is going on; null when it stops. */
   readonly onActivity?: (label: string | null, caption?: string) => void;
+  /** A short sound for a lesson or drive: start, a step done, waiting, error, finished. */
+  readonly onCue?: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** The answer's words were cancelled by him: the pill goes too. */
   readonly onDismissed?: () => void;
 }): ScreenCompanion => {
@@ -468,7 +495,10 @@ export const startScreenCompanion = (input: {
   };
   const notes = createNotesStore(NodePath.join(input.stateDir, "memory"));
   // The server's store answers when the window does (`actions` arrives late); his notes folder otherwise.
+  // The vault host needs the confirm path, built further down; the offer waits for it.
+  let vaultHost: VaultHost | null = null;
   const memory = createDesktopMemory({
+    onSecret: (text, what) => vaultHost?.offer(text, what) ?? null,
     call: (op, args) =>
       actions?.memory === undefined
         ? Promise.reject(new Error("Memory is not reachable yet."))
@@ -600,6 +630,7 @@ export const startScreenCompanion = (input: {
   /** The end of a lesson or a drive: a green-edged card, and a bubble at the pointer saying what changed. */
   const finishedCard = async (kicker: string, text: string, bubble: string | null) => {
     const mine = ++showing;
+    input.onCue?.("finished");
     await overlay.card({
       kicker,
       text,
@@ -850,7 +881,7 @@ export const startScreenCompanion = (input: {
       {
         title: prompt.title,
         detail: prompt.detail,
-        buttons: ["Do it", "Not now"],
+        buttons: ["Go ahead", "Not now"],
         cancel: 1,
         scoped: true,
       },
@@ -1045,7 +1076,10 @@ export const startScreenCompanion = (input: {
       }
       lesson.step += 1;
       // The step on screen stays readable while the next one is worked out.
-      if (lesson.step === 1) void show("Lesson", "Looking at your screen");
+      if (lesson.step === 1) {
+        input.onCue?.("start");
+        void show("Lesson", "Looking at your screen");
+      } else if (note !== undefined) input.onCue?.("stepDone");
       input.onActivity?.("Checking", `Step ${lesson.step}`);
       const captured = await capture();
       // What this step was judged against: any change from here on is his doing.
@@ -1088,6 +1122,7 @@ export const startScreenCompanion = (input: {
         { state: "waiting", actions: STEP_ACTIONS },
       );
       void overlay.waiting();
+      input.onCue?.("waiting");
       watch(lesson, baseline, line);
     } finally {
       lesson.busy = false;
@@ -1245,9 +1280,9 @@ export const startScreenCompanion = (input: {
       ? 0
       : await askHandsFree(
           {
-            title: plan.title,
-            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nThe numbered dots on screen are where it will click. Esc, saying stop, or the Stop button stops it. The mouse stays yours: if a window moves under a click, it asks first.`,
-            buttons: ["Run it", "Not now"],
+            title: `Want me to ${plan.title.charAt(0).toLowerCase()}${plan.title.slice(1).replace(/[.?!]$/, "")}?`,
+            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nYou watch. Esc takes it back (so does saying stop, or the Stop button). The numbered dots are where it will click; if a window moves under a click, it asks first.`,
+            buttons: ["Go ahead", "Not now"],
             cancel: 1,
             scoped: true,
           },
@@ -1270,7 +1305,7 @@ export const startScreenCompanion = (input: {
                   ? "This plan types nothing itself."
                   : `Tessaya would type:\n\n${shell.typed.join("\n")}`
               }`,
-              buttons: ["Type it", "Not now"],
+              buttons: ["Go ahead", "Not now"],
               cancel: 1,
               scoped: true,
             },
@@ -1287,6 +1322,7 @@ export const startScreenCompanion = (input: {
       if (run === current) input.onNote?.("drive_outcome", { goal, outcome: "he said no" });
       return finish();
     }
+    input.onCue?.("start");
     await sleep(350); // the prompt leaves the screen first
     const afterPrompt = await fingerprint();
     input.onTrace?.({
@@ -1352,6 +1388,7 @@ export const startScreenCompanion = (input: {
             m.n - 1 < i ? { ...m, state: "done" } : m.n - 1 === i ? { ...m, state: "now" } : m,
           ),
         );
+        if (i > 0) input.onCue?.("stepDone");
         // While it drives he watches the screen, not a card: the pill says which step and how to take it back.
         input.onActivity?.(
           "Driving",
@@ -1393,6 +1430,7 @@ export const startScreenCompanion = (input: {
     } else {
       // Plain words, never a raw error; the way out is on the card.
       const mine = ++showing;
+      input.onCue?.("error");
       await overlay.card({
         kicker: "Stopped",
         text: message,
@@ -1503,6 +1541,9 @@ export const startScreenCompanion = (input: {
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   const agentTools: string[] = [];
+  /** Which browser route ran and why, for the turn log. */
+  const agentRoutes: Array<{ readonly route: string; readonly why: string }> = [];
+  let chromeRelaunched = false;
   /** What the gate decided about each call this turn: allowed, he said yes, he said no, refused. */
   const agentDecisions: Array<{ readonly tool: string; readonly outcome: string }> = [];
   const agentGate = createAgentGate({
@@ -1527,7 +1568,7 @@ export const startScreenCompanion = (input: {
         {
           title: p.title,
           detail: p.detail,
-          buttons: ["Do it", "Not now"],
+          buttons: ["Go ahead", "Not now"],
           cancel: 1,
           scoped: true,
         },
@@ -1574,7 +1615,33 @@ export const startScreenCompanion = (input: {
     await act();
     leftPointer = to;
   };
+  const vaultState = vaultFor(input.stateDir);
+  vaultHost = createVaultHost({
+    vault: vaultState.vault,
+    confirm: async (title, detail) =>
+      (await askHandsFree({ title, detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true }, title, 0, true)) === 0,
+    type: async (text) => {
+      await driverFor().type(text);
+    },
+    clipboard: {
+      read: () => Electron.clipboard.readText(),
+      write: (text) => Electron.clipboard.writeText(text),
+      clear: () => Electron.clipboard.clear(),
+    },
+    tainted: () => agentTaint.on(),
+    audit: vaultState.audit,
+    askToUnlock: () => input.onOpenTab?.("vault"),
+  });
   const toolHost: ToolHost = {
+    history: async (ask) => {
+      const answer = await askHistory(input.env, ask);
+      return answer.ok ? answer.text : answer.why;
+    },
+    vault: {
+      list: () => vaultHost!.list(),
+      use: (a) => vaultHost!.use(a),
+      savePending: (name, category) => vaultHost!.savePending(name, category),
+    },
     capture: async () => {
       if (!(await approveCapture("what is on your screen", null))) {
         throw new Error("He did not allow looking at his screen.");
@@ -1685,7 +1752,12 @@ export const startScreenCompanion = (input: {
     remember: (text) => memory.remember(text),
     forget: (id) => memory.forget(id),
     pin: (id, pinned) => memory.pin(id, pinned),
-    used: () => memory.used(),
+    used: async () => {
+      const text = await memory.used();
+      // The memories behind the last answer, shown where he is looking as well as read out.
+      if (text.startsWith("- ")) linger("Memory used", text);
+      return text;
+    },
     jobs: async (op, args) => actions?.jobs?.(op, args) ?? "Jobs are not reachable from here yet.",
     target: async (label, workSessionId) => {
       conversation.add({
@@ -1702,6 +1774,7 @@ export const startScreenCompanion = (input: {
     agentMcp = await startBatonMcp({
       tools: withFailureGuard(buildBatonTools(toolHost)),
       gate: agentGate,
+      scrub: (text) => vaultHost?.scrub(text) ?? text,
     });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
@@ -1723,6 +1796,7 @@ export const startScreenCompanion = (input: {
       start: agentStart,
       conversation,
       clockLine: () => clockLine(new Date()),
+      presence: async () => (await actions?.presence?.()) ?? "",
       notes: async () => {
         const standing = await memory.standing();
         return standing === "" ? notesBlock(notes.list()) : standing;
@@ -1734,6 +1808,7 @@ export const startScreenCompanion = (input: {
         agentTaint.reset();
         agentTools.length = 0;
         agentDecisions.length = 0;
+        agentRoutes.length = 0;
         leftPointer = null;
       },
     });
@@ -1753,7 +1828,10 @@ export const startScreenCompanion = (input: {
       void show("Thinking", text);
       const reply = await agentOf().say(
         direct ? `(to the focused session) ${text}` : text,
-        { window: titlesAllowed() ? (focus?.label ?? null) : null, session: null },
+        {
+          window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
+          session: null,
+        },
         (delta) => {
           firstTokenAt ??= Date.now();
           voice.feed(delta);
@@ -1767,6 +1845,7 @@ export const startScreenCompanion = (input: {
         said: text,
         reply,
         decisions: [...agentDecisions],
+        routes: [...agentRoutes],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
@@ -1782,6 +1861,7 @@ export const startScreenCompanion = (input: {
         totalMs: Date.now() - started,
         tools: [...agentTools],
         decisions: [...agentDecisions],
+        routes: [...agentRoutes],
         route: "agent",
       });
       // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
@@ -1813,6 +1893,25 @@ export const startScreenCompanion = (input: {
     }
   };
 
+  const needsTurn = async (text: string, started: number): Promise<void> => {
+    answering += 1;
+    try {
+      input.onActivity?.("Looking");
+      const found = await actions!.needsMe!();
+      linger("Tessaya", found.card);
+      say(found.spoken);
+      conversation.add({ route: "answer", said: text, reply: found.spoken });
+      input.onNote?.("needs_turn", { said: text, totalMs: Date.now() - started });
+    } catch {
+      // The state read failed: the assistant answers instead, with its tools.
+      await agentTurn(text, started, false);
+    } finally {
+      input.onActivity?.(null);
+      answering -= 1;
+      input.onTurnEnd?.();
+    }
+  };
+
   const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
     const started = Date.now();
     voiceTurn = !typed;
@@ -1822,6 +1921,11 @@ export const startScreenCompanion = (input: {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;
+    // "What needs me?" is answered from state in a second or two, not by a model turn.
+    if (isNeedsMeAsk(text) && actions?.needsMe !== undefined && !busy) {
+      void needsTurn(text, started);
+      return { kind: "handled" };
+    }
     // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
     if (settings.oneAssistant && instantDecision(text, busy)?.route !== "control") {
       void agentTurn(text, started, direct);

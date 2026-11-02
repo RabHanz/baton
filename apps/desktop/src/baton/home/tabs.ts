@@ -4,12 +4,14 @@
  */
 export const TABS = [
   { id: "home", label: "Home" },
+  { id: "now", label: "Now" },
   { id: "sessions", label: "Sessions" },
   { id: "approvals", label: "Approvals" },
   { id: "jobs", label: "Jobs" },
   { id: "dictation", label: "Dictation" },
   { id: "history", label: "History" },
   { id: "memory", label: "Memory" },
+  { id: "vault", label: "Vault" },
   { id: "tools", label: "Skills" },
   { id: "assistant", label: "Assistant" },
   { id: "voice", label: "Voice" },
@@ -34,7 +36,8 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.holdKeyCues": "voice",
   "v.pillRest": "voice",
   "v.pillEdge": "voice",
-  "v.pillCentre": "voice",
+  "v.pillPlace": "voice",
+  "v.pillMove": "voice",
   "v.volume": "voice",
   "s.voice": "voice",
   "v.audition": "voice",
@@ -80,10 +83,12 @@ export const tabOf = (id: string): TabId => {
   if (id.startsWith("v.wake:")) return "voice";
   if (id.startsWith("v.result:")) return "checks";
   if (id.startsWith("n:")) return "sessions";
+  if (/^now[:.]/.test(id)) return "now";
   if (/^j[a-z]?[:.]/.test(id)) return "jobs";
   if (/^a[:.]/.test(id)) return "approvals";
   if (/^k[:.]/.test(id)) return "tools";
   if (/^p[:.]/.test(id)) return "memory";
+  if (id.startsWith("vt:") || id.startsWith("vt.")) return "vault";
   if (id.startsWith("m:") || id.startsWith("m.")) return "memory";
   if (id.startsWith("u.")) return "settings";
   return "settings";

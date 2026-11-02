@@ -15,6 +15,8 @@ import {
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
+  BATON_COMMITMENT_WS_METHODS,
+  BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -50,7 +52,10 @@ import { BatonEngine } from "./BatonEngine.ts";
 import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
+import { pullAction } from "./BatonMemoryPull.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
+import { BatonWeaveService } from "./BatonWeaveService.ts";
+import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
@@ -78,6 +83,8 @@ export type BatonServices =
   | BatonEngine
   | BatonJobService
   | BatonMemoryService
+  | BatonCommitmentService
+  | BatonWeaveService
   | BatonMemoryLearning
   | ServerConfig.ServerConfig
   | ScheduledTaskService
@@ -350,6 +357,31 @@ export const make = Effect.gen(function* () {
           Effect.map(jobs.revoke(input.id, input.channel), (terms) => ({ terms })),
         ),
       ),
+    [BATON_WEAVE_WS_METHODS.send]: (input) =>
+      run(
+        Effect.flatMap(BatonWeaveService, (weave) =>
+          Effect.map(weave.send(input), (record) => ({ weave: record })),
+        ),
+      ),
+    [BATON_WEAVE_WS_METHODS.list]: (input) =>
+      run(
+        Effect.flatMap(BatonWeaveService, (weave) =>
+          Effect.map(weave.list(input.limit), (items) => ({ items })),
+        ),
+      ),
+    [BATON_WEAVE_WS_METHODS.tick]: () => run(Effect.flatMap(BatonWeaveService, (weave) => weave.tick)),
+    [BATON_COMMITMENT_WS_METHODS.list]: () =>
+      run(
+        Effect.flatMap(BatonCommitmentService, (commitments) =>
+          Effect.map(commitments.list, (items) => ({ items })),
+        ),
+      ),
+    [BATON_COMMITMENT_WS_METHODS.upsert]: (input) =>
+      run(
+        Effect.flatMap(BatonCommitmentService, (commitments) =>
+          Effect.map(commitments.upsert(input.items), (applied) => ({ applied })),
+        ),
+      ),
     [BATON_MEMORY_WS_METHODS.list]: (input) =>
       run(
         Effect.flatMap(BatonMemoryService, (memory) =>
@@ -414,6 +446,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     [BATON_MEMORY_WS_METHODS.import]: (input) => run(importFolder(input.folder)),
+    [BATON_MEMORY_WS_METHODS.pull]: (input) => run(pullAction(input.action)),
     [BATON_MEMORY_WS_METHODS.syncHello]: () =>
       run(Effect.flatMap(BatonMemoryService, (memory) => memory.syncHello)),
     [BATON_MEMORY_WS_METHODS.syncPull]: (input) =>

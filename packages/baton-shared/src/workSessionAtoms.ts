@@ -16,6 +16,8 @@ import {
   BATON_ACCOUNT_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_JOB_WS_METHODS,
+  BATON_COMMITMENT_WS_METHODS,
+  BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
@@ -124,6 +126,26 @@ export function createBatonWorkSessionAtoms<R, E>(
     watchGet: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:watch-get",
       tag: BATON_WATCH_WS_METHODS.watchGet,
+    }),
+    weaveSend: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:weave-send",
+      tag: BATON_WEAVE_WS_METHODS.send,
+    }),
+    weaveList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:weave-list",
+      tag: BATON_WEAVE_WS_METHODS.list,
+    }),
+    weaveTick: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:weave-tick",
+      tag: BATON_WEAVE_WS_METHODS.tick,
+    }),
+    commitmentsList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:commitments-list",
+      tag: BATON_COMMITMENT_WS_METHODS.list,
+    }),
+    commitmentsUpsert: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:commitments-upsert",
+      tag: BATON_COMMITMENT_WS_METHODS.upsert,
     }),
     /** Memory (D150): the desktop assistant's remember, recall and forget. */
     memoryList: createEnvironmentRpcCommand(runtime, {

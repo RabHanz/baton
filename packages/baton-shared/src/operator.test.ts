@@ -168,9 +168,35 @@ describe("Baton's own tools (D143)", () => {
     const note = { tool: "mcp__baton__memory_remember", input: { text: "likes tea" } };
     expect(judgeToolCall(note, off).verdict).toBe("allow");
     expect(judgeToolCall(note, read).verdict).toBe("ask");
+    const commit = { tool: "mcp__baton__commit_add", input: { text: "check the deploy" } };
+    expect(judgeToolCall(commit, off).verdict).toBe("allow");
+    expect(judgeToolCall(commit, read).verdict).toBe("ask");
+    const weave = {
+      tool: "mcp__baton__weave_send",
+      input: { session: "build", text: "rerun the tests", job: "j1" },
+    };
+    expect(judgeToolCall(weave, off).verdict).toBe("ask");
+    expect(judgeToolCall(weave, { ...off, weaveStanding: true }).verdict).toBe("allow");
+    expect(judgeToolCall(weave, { ...off, weaveStanding: true, tainted: true }).verdict).toBe(
+      "ask",
+    );
+    expect(
+      judgeToolCall(
+        { ...weave, input: { ...weave.input, text: "my password is hunter22x" } },
+        { ...off, weaveStanding: true },
+      ).verdict,
+    ).toBe("deny");
+    expect(judgeToolCall({ tool: "mcp__baton__weave_list", input: {} }, off).verdict).toBe("allow");
+    expect(judgeToolCall({ tool: "mcp__baton__commit_list", input: {} }, read).verdict).toBe(
+      "allow",
+    );
     expect(
       judgeToolCall({ tool: "mcp__baton__memory_forget", input: { id: "a" } }, off).verdict,
     ).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, off).verdict).toBe("allow");
+    expect(judgeToolCall({ tool: "mcp__baton__vault_use", input: { name: "x" } }, read).verdict).toBe("allow"); // the vault asks, naming the secret, when the turn read something
+    expect(judgeToolCall({ tool: "mcp__baton__vault_save_pending", input: { name: "x" } }, off).verdict).toBe("ask");
+    expect(judgeToolCall({ tool: "mcp__baton__browser_accessibility_on", input: {} }, off)).toMatchObject({ verdict: "ask", risky: true });
     const grant = judgeToolCall(
       { tool: "mcp__baton__job_grant", input: { id: "j1", channel: "email" } },
       off,
@@ -185,6 +211,9 @@ describe("Baton's own tools (D143)", () => {
       "fleet_status",
       "memory_search",
       "memory_used",
+      "vault_list",
+      "history_search",
+      "browser_route",
       "memory_pin",
       "dictation_start",
       "jobs_list",

@@ -21,6 +21,7 @@ import * as NodePath from "node:path";
 
 import * as ServerConfig from "../config.ts";
 import { BatonOneShot } from "./BatonOneShot.ts";
+import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import { readRouting } from "./OperatingSystemPack.ts";
 
@@ -62,6 +63,9 @@ export const make = Effect.gen(function* () {
 
   const learn = Effect.fn("BatonMemoryLearning.learn")(function* (input: LearnInput) {
     const none: LearnResult = { stored: 0, held: 0 };
+    if (input.origin === "turn" && input.said.trim() !== "") {
+      yield* memory.noteTalk(dayOf(yield* Clock.currentTimeMillis), input.said);
+    }
     if (!worthLearningFrom(input)) return none;
     const proposals = yield* oneShot
       .run({
@@ -91,7 +95,11 @@ export const make = Effect.gen(function* () {
   });
 
   const consolidate = Effect.gen(function* () {
-    const all = yield* memory.list({ includeSuperseded: true, includeProposed: true, limit: 100_000 });
+    const all = yield* memory.list({
+      includeSuperseded: true,
+      includeProposed: true,
+      limit: 100_000,
+    });
     const plans = planMerges(all);
     for (const { keep, drop } of plans) {
       // Saying it twice is repetition: re-adding the survivor reinforces it (MEMORY.md section 2).

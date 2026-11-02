@@ -9,6 +9,8 @@ import {
   batonDesktopBridge,
   type BatonFleetEntry,
   type BatonJobBridgeRequest,
+  type BatonCommitmentBridgeRequest,
+  type BatonWeaveBridgeRequest,
   type BatonMemoryBridgeRequest,
   type EnvironmentId,
   type ProjectId,
@@ -73,6 +75,11 @@ export function BatonSidebarSection(props: {
   }, [usage]);
   const quiet = { reportFailure: false } as const;
   const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
+  const weaveSend = useAtomCommand(batonWorkSessions.weaveSend, quiet);
+  const weaveList = useAtomCommand(batonWorkSessions.weaveList, quiet);
+  const weaveTick = useAtomCommand(batonWorkSessions.weaveTick, quiet);
+  const commitmentsList = useAtomCommand(batonWorkSessions.commitmentsList, quiet);
+  const commitmentsUpsert = useAtomCommand(batonWorkSessions.commitmentsUpsert, quiet);
   const memoryList = useAtomCommand(batonWorkSessions.memoryList, quiet);
   const memorySearch = useAtomCommand(batonWorkSessions.memorySearch, quiet);
   const memoryAdd = useAtomCommand(batonWorkSessions.memoryAdd, quiet);
@@ -241,13 +248,12 @@ export function BatonSidebarSection(props: {
    * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
    */
   const syncMemory = async (): Promise<unknown> => {
-    type Reply<V> =
-      | { readonly _tag: "Success"; readonly value: V }
-      | { readonly _tag: "Failure" };
+    type Reply<V> = { readonly _tag: "Success"; readonly value: V } | { readonly _tag: "Failure" };
     const call = async <V,>(run: unknown, environmentId: EnvironmentId, input: unknown) =>
-      (await (
-        run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
-      )({ environmentId, input: input as never }));
+      await (run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>)({
+        environmentId,
+        input: input as never,
+      });
     const hellos = (
       await Promise.all(
         fleet.environmentIds.map(async (environmentId) => {
@@ -266,11 +272,11 @@ export function BatonSidebarSection(props: {
     for (const to of servers) {
       for (const from of servers) {
         if (to.origin === from.origin) continue;
-        const pulled = await call<{ origin: string; changes: ReadonlyArray<unknown>; upTo: string }>(
-          memorySyncPull,
-          from.environmentId,
-          { since: to.cursors[from.origin] ?? null },
-        );
+        const pulled = await call<{
+          origin: string;
+          changes: ReadonlyArray<unknown>;
+          upTo: string;
+        }>(memorySyncPull, from.environmentId, { since: to.cursors[from.origin] ?? null });
         if (pulled._tag !== "Success") continue;
         const pushed = await call<{ applied: number }>(memorySyncPush, to.environmentId, {
           from: pulled.value.origin,
@@ -282,9 +288,53 @@ export function BatonSidebarSection(props: {
     }
     return { servers: servers.length, applied };
   };
+  const onWeave = async (request: BatonWeaveBridgeRequest): Promise<unknown> => {
+    const commands = { send: weaveSend, list: weaveList, tick: weaveTick };
+    const run = commands[request.op] as unknown as (call: {
+      readonly environmentId: typeof primary;
+      readonly input: never;
+    }) => Promise<
+      | { readonly _tag: "Success"; readonly value: unknown }
+      | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0])
+    >;
+    const result = await run({ environmentId: primary, input: request.args as never });
+    if (result._tag === "Success") return result.value;
+    const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
+    throw new Error(
+      typeof reason === "string" ? reason : "Weaving did not answer. Nothing was sent.",
+    );
+  };
+  const onCommitments = async (request: BatonCommitmentBridgeRequest): Promise<unknown> => {
+    const run = (request.op === "list" ? commitmentsList : commitmentsUpsert) as unknown as (call: {
+      readonly environmentId: typeof primary;
+      readonly input: never;
+    }) => Promise<
+      | { readonly _tag: "Success"; readonly value: unknown }
+      | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0])
+    >;
+    const result = await run({ environmentId: primary, input: request.args as never });
+    if (result._tag === "Success") return result.value;
+    const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
+    throw new Error(
+      typeof reason === "string" ? reason : "The commitments did not answer. Nothing changed.",
+    );
+  };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
     if (request.op === "sync") return syncMemory();
-    const commands = { list: memoryList, search: memorySearch, add: memoryAdd, edit: memoryEdit, pin: memoryPin, forget: memoryForget, accept: memoryAccept, recall: memoryRecall, used: memoryUsed, export: memoryExport, learn: memoryLearn, import: memoryImport };
+    const commands = {
+      list: memoryList,
+      search: memorySearch,
+      add: memoryAdd,
+      edit: memoryEdit,
+      pin: memoryPin,
+      forget: memoryForget,
+      accept: memoryAccept,
+      recall: memoryRecall,
+      used: memoryUsed,
+      export: memoryExport,
+      learn: memoryLearn,
+      import: memoryImport,
+    };
     type Settled =
       | { readonly _tag: "Success"; readonly value: unknown }
       | ({ readonly _tag: "Failure" } & Parameters<typeof squashAtomCommandFailure>[0]);
@@ -295,7 +345,9 @@ export function BatonSidebarSection(props: {
     const result = await run({ environmentId: primary, input: request.args as never });
     if (result._tag === "Success") return result.value;
     const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
-    throw new Error(typeof reason === "string" ? reason : "Memory did not answer. Nothing changed.");
+    throw new Error(
+      typeof reason === "string" ? reason : "Memory did not answer. Nothing changed.",
+    );
   };
   const primaryEntries = fleets.find((entry) => entry.environmentId === primary)?.fleet?.entries;
 
@@ -312,6 +364,8 @@ export function BatonSidebarSection(props: {
         onRan={() => undefined}
         onJob={onJob}
         onMemory={onMemory}
+        onCommitments={onCommitments}
+        onWeave={onWeave}
       />
       <BatonProjectsBlock
         environmentIds={fleet.environmentIds}
