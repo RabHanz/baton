@@ -4,7 +4,7 @@
  * `trayArt.ts`; this file only adds the dots, so it stays pure and testable. `markSvg` is still the
  * state-coloured tile the Home status uses.
  */
-import { MARK_SMALL_PATH } from "./trayArt.ts";
+import { MARK_MASTER_PATH, MARK_REVERSED_PATH } from "./trayArt.ts";
 
 export interface MarkOptions {
   readonly color: string;
@@ -15,9 +15,12 @@ export interface MarkOptions {
   readonly badge?: boolean;
 }
 
-/** The mark for the sidebar and header: the hinted small cut in the page's ink, never a scaled master. */
+/**
+ * The mark for the window, from 48 px up: the master drawing in the page's ink, and its slightly thinner
+ * reversed cut for light on dark, shown by theme. Under 48 px the hinted cuts are used instead (tray, pill).
+ */
 export const brandMarkSvg = (): string =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Tessaya"><path fill="currentColor" fill-rule="evenodd" d="${MARK_SMALL_PATH}"/></svg>`;
+  `<svg class="mk" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Tessaya"><path class="on-light" fill="currentColor" fill-rule="evenodd" d="${MARK_MASTER_PATH}"/><path class="on-dark" fill="currentColor" fill-rule="evenodd" d="${MARK_REVERSED_PATH}"/></svg>`;
 
 const BOX = 32;
 const RADIUS = 8;

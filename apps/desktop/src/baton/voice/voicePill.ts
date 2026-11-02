@@ -7,6 +7,7 @@
  * is built ahead and hidden so a wake shows at once, and goes as soon as it would be the last one
  * open, because a window left open stops "last window closed" quitting the app.
  */
+import { protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -24,7 +25,8 @@ import {
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { loadDocument } from "./loadDocument.ts";
-import { LISTENING_WEBP, MARK_STILL_PNG, STING_WEBP } from "./pillMotionArt.ts";
+import { LISTENING_WEBP, STING_WEBP } from "./pillMotionArt.ts";
+import { TRAY_PNG } from "./trayArt.ts";
 import { isPillClick } from "./pillGesture.ts";
 import {
   CUE_TAIL_MS,
@@ -81,7 +83,7 @@ body{display:flex;align-items:center;justify-content:center}
 #p.rest[data-rest=muted]{border-color:var(--red)}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
-#mk{display:none;width:16px;height:16px;flex:none}
+#mk{display:none;width:20px;height:20px;flex:none}
 #p[data-mark=on] #mk{display:block}
 #w{display:none;align-items:center;gap:2px;height:14px;flex:none}
 #w i{display:block;width:2px;height:12px;border-radius:1px;background:var(--bar,#fff);transform:scaleY(.17);transition:transform .09s linear;will-change:transform}
@@ -103,11 +105,11 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-tone=off] #t{color:var(--red)}
 #p[data-tone=warn]{border-color:var(--amber)}
 @media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
-</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="16" height="16"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span></div>
+</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${MARK_STILL_PNG}'};
+const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${TRAY_PNG["white-40"]}'};
 const MARKED=['listening','thinking','speaking','working','dictating'];
 let shown='none',stinging=false,want='still',stingTimer=0;
 // One image at a time, swapped for a new element so an animation starts from its first frame; gone when nothing is up.
@@ -293,7 +295,7 @@ export const createVoicePill = (input: {
     win.setIgnoreMouseEvents(true);
     win.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(win);
-    win.setContentProtection(true);
+    protectFromCapture(win);
     const page = markersDocument(dots);
     void loadDocument(win, page).then((loaded) => {
       if (loaded && !win.isDestroyed()) win.showInactive();
@@ -362,7 +364,7 @@ export const createVoicePill = (input: {
     created.setIgnoreMouseEvents(true, { forward: true });
     // Out of screenshots and recordings by design, which also hides it from OS-level capture tools; a test
     // run (BATON_TEST_DIR) lets them see it.
-    created.setContentProtection(input.captureDir === undefined);
+    protectFromCapture(created);
     created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window = created;
     ready = loadDocument(created, PILL_DOCUMENT).then((loaded) => {
