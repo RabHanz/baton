@@ -28,7 +28,8 @@ const make = (hello: "verified" | "declined" | "unavailable" = "verified") => {
   });
   return { tab, vault, audit, clip: () => clip, dir };
 };
-const bar = (t: ReturnType<typeof make>) => t.tab.controls()[0] as { state: string; recovery: string | null; status: string };
+const bar = (t: ReturnType<typeof make>) =>
+  t.tab.controls()[0] as { state: string; recovery: string | null; status: string };
 
 describe("the Vault tab", () => {
   it("makes the vault, shows the recovery key once, unlocks and locks", async () => {
@@ -51,7 +52,10 @@ describe("the Vault tab", () => {
     vi.useFakeTimers();
     const t = make();
     t.tab.act("vt.create", "correct horse battery");
-    t.tab.act("vt.add", JSON.stringify({ name: "github", label: "token", category: "key", value: FAKE }));
+    t.tab.act(
+      "vt.add",
+      JSON.stringify({ name: "github", label: "token", category: "key", value: FAKE }),
+    );
     const item = () => t.tab.controls()[1] as { id: string; revealed: string | null; hint: string };
     expect(item().revealed).toBeNull();
     expect(JSON.stringify(t.tab.controls())).not.toContain(FAKE);
@@ -70,7 +74,10 @@ describe("the Vault tab", () => {
     vi.useFakeTimers();
     const t = make("declined");
     t.tab.act("vt.create", "correct horse battery");
-    t.tab.act("vt.add", JSON.stringify({ name: "bank", label: "", category: "financial", value: FAKE }));
+    t.tab.act(
+      "vt.add",
+      JSON.stringify({ name: "bank", label: "", category: "financial", value: FAKE }),
+    );
     const id = (t.tab.controls()[1] as { id: string }).id.slice(3);
     t.tab.act(`vt.reveal:${id}`, null);
     await vi.advanceTimersByTimeAsync(1);
@@ -80,7 +87,10 @@ describe("the Vault tab", () => {
     await vi.advanceTimersByTimeAsync(10_001);
     expect(t.clip()).toBe("");
     t.tab.act(`vt.policy:${id}`, "never");
-    expect((t.tab.controls()[1] as { policy: string; locked: boolean })).toMatchObject({ policy: "self", locked: true });
+    expect(t.tab.controls()[1] as { policy: string; locked: boolean }).toMatchObject({
+      policy: "self",
+      locked: true,
+    });
     vi.useRealTimers();
   });
 
@@ -89,7 +99,9 @@ describe("the Vault tab", () => {
     t.tab.act("vt.create", "correct horse battery");
     t.tab.act("vt.add", JSON.stringify({ name: "one", label: "", category: "note", value: FAKE }));
     t.tab.act("vt.export", "export passphrase");
-    expect(NodeFS.readFileSync(NodePath.join(t.dir, "vault-export.json"), "utf8")).not.toContain(FAKE);
+    expect(NodeFS.readFileSync(NodePath.join(t.dir, "vault-export.json"), "utf8")).not.toContain(
+      FAKE,
+    );
     t.tab.act(`vt.delete:${(t.tab.controls()[1] as { id: string }).id.slice(3)}`, null);
     expect(t.tab.controls()).toHaveLength(1);
     expect(t.tab.act("m.query", "x")).toBe(false);

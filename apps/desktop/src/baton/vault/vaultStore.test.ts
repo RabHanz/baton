@@ -14,7 +14,10 @@ const make = (over: Partial<Parameters<typeof createVault>[0]> = {}) => {
   const file = NodePath.join(dir, "vault.json");
   return { dir, file, vault: createVault({ file, kdf: cheap, ...over }) };
 };
-const os = { wrap: (k: Buffer) => `os:${k.toString("base64")}`, unwrap: (w: string) => Buffer.from(w.slice(3), "base64") };
+const os = {
+  wrap: (k: Buffer) => `os:${k.toString("base64")}`,
+  unwrap: (w: string) => Buffer.from(w.slice(3), "base64"),
+};
 
 describe("the vault", () => {
   it("keeps nothing readable on disk, and opens again with the passphrase or the recovery key", () => {
@@ -52,11 +55,27 @@ describe("the vault", () => {
   it("financial items are always 'he types it himself'; names are checked", () => {
     const { vault } = make();
     vault.create("correct horse battery");
-    expect(vault.add({ name: "bank", label: "", category: "financial", value: FAKE, policy: { mode: "ask" } }).policy).toEqual({ mode: "self" });
-    expect(vault.update(vault.list()[0]!.id, { policy: { mode: "domain", minutes: 5 } }).policy).toEqual({ mode: "self" });
-    expect(() => vault.add({ name: "Bad Name", label: "", category: "key", value: FAKE })).toThrow("lower-case");
-    expect(() => vault.add({ name: "bank", label: "", category: "key", value: FAKE })).toThrow("already");
-    expect(() => vault.add({ name: "empty", label: "", category: "key", value: "" })).toThrow("nothing");
+    expect(
+      vault.add({
+        name: "bank",
+        label: "",
+        category: "financial",
+        value: FAKE,
+        policy: { mode: "ask" },
+      }).policy,
+    ).toEqual({ mode: "self" });
+    expect(
+      vault.update(vault.list()[0]!.id, { policy: { mode: "domain", minutes: 5 } }).policy,
+    ).toEqual({ mode: "self" });
+    expect(() => vault.add({ name: "Bad Name", label: "", category: "key", value: FAKE })).toThrow(
+      "lower-case",
+    );
+    expect(() => vault.add({ name: "bank", label: "", category: "key", value: FAKE })).toThrow(
+      "already",
+    );
+    expect(() => vault.add({ name: "empty", label: "", category: "key", value: "" })).toThrow(
+      "nothing",
+    );
   });
 
   it("locks itself when idle", () => {
@@ -92,6 +111,11 @@ describe("the vault", () => {
     expect(() => b.vault.importBlob(blob, "wrong one")).toThrow("did not open");
     expect(b.vault.importBlob(blob, "export passphrase")).toBe(1);
     expect(b.vault.importBlob(blob, "export passphrase")).toBe(0);
-    expect(b.vault.list().map((i) => i.name).toSorted()).toEqual(["one", "two"]);
+    expect(
+      b.vault
+        .list()
+        .map((i) => i.name)
+        .toSorted(),
+    ).toEqual(["one", "two"]);
   });
 });

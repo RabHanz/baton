@@ -29,10 +29,19 @@ const LEGACY_WAKE_WORDS: ReadonlyArray<WakeWordSetting> = [
   ONYX,
 ];
 
+/** Tessaya has no trained model yet, so it can never be on: it could not wake anything. Drop this when the model ships. */
+export const WAKE_MODEL_PENDING = "Tessaya";
+const withoutPending = (words: ReadonlyArray<WakeWordSetting>): ReadonlyArray<WakeWordSetting> =>
+  words.some((w) => w.word === WAKE_MODEL_PENDING && w.enabled)
+    ? words.map((w) => (w.word === WAKE_MODEL_PENDING ? { ...w, enabled: false } : w))
+    : words;
+
 /** `saved` is the parsed settings file, or null when there is none. */
 export const wakeWordsFor = (saved: unknown): ReadonlyArray<WakeWordSetting> => {
   if (typeof saved !== "object" || saved === null) return FRESH_WAKE_WORDS;
-  return Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
-    ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
-    : LEGACY_WAKE_WORDS;
+  return withoutPending(
+    Array.isArray((saved as { wakeWords?: unknown }).wakeWords)
+      ? (saved as { wakeWords: ReadonlyArray<WakeWordSetting> }).wakeWords
+      : LEGACY_WAKE_WORDS,
+  );
 };

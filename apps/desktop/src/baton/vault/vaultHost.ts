@@ -28,7 +28,11 @@ export interface VaultHostPorts {
   readonly confirm: (title: string, detail: string) => Promise<boolean>;
   /** Types into the focused field. */
   readonly type: (text: string) => Promise<void>;
-  readonly clipboard: { readonly read: () => string; readonly write: (text: string) => void; readonly clear: () => void };
+  readonly clipboard: {
+    readonly read: () => string;
+    readonly write: (text: string) => void;
+    readonly clear: () => void;
+  };
   /** This turn read something from outside. */
   readonly tainted: () => boolean;
   readonly audit: (line: string) => void;
@@ -44,9 +48,19 @@ const runCommand = (command: string, env: Record<string, string>): Promise<strin
   new Promise((resolve) => {
     NodeChildProcess.exec(
       command,
-      { env: { ...process.env, ...env }, timeout: COMMAND_MS, maxBuffer: OUTPUT_MAX * 4, windowsHide: true },
+      {
+        env: { ...process.env, ...env },
+        timeout: COMMAND_MS,
+        maxBuffer: OUTPUT_MAX * 4,
+        windowsHide: true,
+      },
       (error, stdout, stderr) =>
-        resolve(`${stdout}${stderr}${error === null ? "" : `\n(exit ${error.code ?? "error"})`}`.slice(0, OUTPUT_MAX)),
+        resolve(
+          `${stdout}${stderr}${error === null ? "" : `\n(exit ${error.code ?? "error"})`}`.slice(
+            0,
+            OUTPUT_MAX,
+          ),
+        ),
     );
   });
 
@@ -65,11 +79,19 @@ export const createVaultHost = (ports: VaultHostPorts) => {
   return {
     /** Names, labels, categories and policies; never a value. */
     list: async (): Promise<string> => {
-      if (!ports.vault.isUnlocked()) return ports.vault.exists() ? locked() : "There is no vault yet. He can make one in the Vault tab.";
+      if (!ports.vault.isUnlocked())
+        return ports.vault.exists()
+          ? locked()
+          : "There is no vault yet. He can make one in the Vault tab.";
       const items = ports.vault.list();
       return items.length === 0
         ? "The vault is empty."
-        : items.map((i) => `${i.name}: ${i.label || i.category} (${i.category}, ${i.policy.mode === "self" ? "he types it himself" : i.policy.mode === "never" ? "only he may use it" : "asks him first"})`).join("\n");
+        : items
+            .map(
+              (i) =>
+                `${i.name}: ${i.label || i.category} (${i.category}, ${i.policy.mode === "self" ? "he types it himself" : i.policy.mode === "never" ? "only he may use it" : "asks him first"})`,
+            )
+            .join("\n");
     },
 
     use: async (args: {
@@ -83,8 +105,15 @@ export const createVaultHost = (ports: VaultHostPorts) => {
       if (!ports.vault.isUnlocked()) return locked();
       const item = ports.vault.valueOf(args.name);
       const entry = { name: args.name, purpose: args.purpose, target: args.target, how: args.how };
-      if (item === null) return `There is no secret called ${args.name}. Use vault_list for the names.`;
-      const decision = useDecision({ item, target: args.target, grants, now: now(), tainted: ports.tainted() });
+      if (item === null)
+        return `There is no secret called ${args.name}. Use vault_list for the names.`;
+      const decision = useDecision({
+        item,
+        target: args.target,
+        grants,
+        now: now(),
+        tainted: ports.tainted(),
+      });
       if (decision.kind === "refuse") {
         note({ ...entry, outcome: "refused" });
         return decision.why;
@@ -98,7 +127,8 @@ export const createVaultHost = (ports: VaultHostPorts) => {
           note({ ...entry, outcome: "declined" });
           return "He said no. Nothing was used.";
         }
-        if (item.policy.mode === "domain") grants.set(grantKey(item.name, args.target), now() + item.policy.minutes * 60_000);
+        if (item.policy.mode === "domain")
+          grants.set(grantKey(item.name, args.target), now() + item.policy.minutes * 60_000);
       }
       try {
         let said: string;
@@ -112,8 +142,11 @@ export const createVaultHost = (ports: VaultHostPorts) => {
           }, CLIPBOARD_CLEAR_MS).unref();
           said = `${item.name} is on the clipboard and will be cleared in 10 seconds. Paste it now.`;
         } else {
-          if (args.command === undefined || args.command.trim() === "") return "Say which command to run.";
-          const envName = /^[A-Z_][A-Z0-9_]{0,63}$/.test(args.envName ?? "") ? args.envName! : "SECRET";
+          if (args.command === undefined || args.command.trim() === "")
+            return "Say which command to run.";
+          const envName = /^[A-Z_][A-Z0-9_]{0,63}$/.test(args.envName ?? "")
+            ? args.envName!
+            : "SECRET";
           const out = await (ports.run ?? runCommand)(args.command, { [envName]: item.value });
           said = `Ran it with ${item.name} as ${envName}. Output (secrets removed):\n${scrub(out)}`;
         }
@@ -136,14 +169,22 @@ export const createVaultHost = (ports: VaultHostPorts) => {
       const text = pending.peek(now());
       if (text === null) return "There is no secret waiting to be filed.";
       if (!ports.vault.isUnlocked()) return locked();
-      const cat = (VAULT_CATEGORIES as ReadonlyArray<string>).includes(category) ? (category as VaultCategory) : "key";
+      const cat = (VAULT_CATEGORIES as ReadonlyArray<string>).includes(category)
+        ? (category as VaultCategory)
+        : "key";
       try {
         ports.vault.add({ name, label: "", category: cat, value: text });
       } catch (error) {
         return error instanceof Error ? error.message : "It could not be saved.";
       }
       pending.clear();
-      note({ name, purpose: "saved from a conversation", target: "vault", how: "save", outcome: "saved" });
+      note({
+        name,
+        purpose: "saved from a conversation",
+        target: "vault",
+        how: "save",
+        outcome: "saved",
+      });
       return `Filed as ${name}. It is only in the vault now.`;
     },
 

@@ -7,7 +7,10 @@ import * as Electron from "electron";
 
 import { createVault, type Vault } from "./vaultStore.ts";
 
-const instances = new Map<string, { readonly vault: Vault; readonly audit: (line: string) => void; readonly auditFile: string }>();
+const instances = new Map<
+  string,
+  { readonly vault: Vault; readonly audit: (line: string) => void; readonly auditFile: string }
+>();
 
 export const vaultFor = (stateDir: string) => {
   const held = instances.get(stateDir);
@@ -22,7 +25,10 @@ export const vaultFor = (stateDir: string) => {
           : null,
       unwrap: (wrapped) => {
         try {
-          return Buffer.from(Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64")), "base64");
+          return Buffer.from(
+            Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64")),
+            "base64",
+          );
         } catch {
           return null;
         }
@@ -31,10 +37,13 @@ export const vaultFor = (stateDir: string) => {
     // A value Tessaya left on the clipboard goes with the lock.
     onLock: () => undefined,
   });
-  Electron.app.whenReady().then(() => {
-    Electron.powerMonitor.on("lock-screen", () => vault.lock());
-    Electron.powerMonitor.on("suspend", () => vault.lock());
-  }).catch(() => undefined);
+  Electron.app
+    .whenReady()
+    .then(() => {
+      Electron.powerMonitor.on("lock-screen", () => vault.lock());
+      Electron.powerMonitor.on("suspend", () => vault.lock());
+    })
+    .catch(() => undefined);
   const made = {
     vault,
     auditFile,

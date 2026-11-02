@@ -44,7 +44,6 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.pillFull": "voice",
   "v.silence": "voice",
   "v.duck": "dictation",
-  "v.pillEdge": "voice",
   "v.pillPlace": "voice",
   "v.pillMove": "voice",
   "v.volume": "voice",
