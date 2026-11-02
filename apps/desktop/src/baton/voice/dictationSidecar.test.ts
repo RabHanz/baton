@@ -1,3 +1,7 @@
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -10,6 +14,8 @@ import {
   focusedFrom,
   resolveDictationBinary,
   restartDelayMs,
+  startDictationSidecar,
+  type DictationEvent,
   type FocusedApp,
 } from "./dictationSidecar.ts";
 
@@ -112,5 +118,50 @@ describe("the keyboard's window, through the real parser", () => {
       host(() => shell, typed),
     );
     expect(result).toMatchObject({ kind: "stopped", step: 0 });
+  });
+});
+
+describe("a slow model load, through a real child process", () => {
+  // A stand-in for baton-dictation: it answers `load` with a few "loading" lines and then model_ready, and answers a
+  // `transcribe` that arrived during the load only after it, as the real engine thread does.
+  const fake = () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "fake-sidecar-"));
+    const file = NodePath.join(dir, "fake.mjs");
+    NodeFS.writeFileSync(
+      file,
+      `#!/usr/bin/env node
+import readline from "node:readline";
+const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+let queue = [];
+let loaded = false;
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const m = JSON.parse(line);
+  if (m.cmd === "load") {
+    let n = 0;
+    const t = setInterval(() => {
+      out({ ev: "loading", elapsedMs: ++n * 100 });
+      if (n === 4) { clearInterval(t); loaded = true; out({ ev: "model_ready", id: m.id, loadMs: 400 }); for (const q of queue) out({ ev: "text", id: q, text: "heard it" }); queue = []; }
+    }, 100);
+  } else if (m.cmd === "transcribe") { if (loaded) out({ ev: "text", id: m.id, text: "heard it" }); else queue.push(m.id); }
+});
+`,
+      { mode: 0o755 },
+    );
+    return file;
+  };
+
+  it("tells loading from a hang, loads on request, and answers a phrase that arrived mid-load", async () => {
+    const events: DictationEvent[] = [];
+    const sidecar = startDictationSidecar({ binary: fake(), onEvent: (e) => void events.push(e) });
+    try {
+      const early = sidecar.transcribe("x.wav");
+      const ready = sidecar.preload();
+      expect(await ready).toBe(400);
+      expect(await early).toBe("heard it");
+      expect(events.filter((e) => e.ev === "loading").length).toBeGreaterThanOrEqual(3);
+      expect(await sidecar.transcribe("y.wav")).toBe("heard it");
+    } finally {
+      sidecar.dispose();
+    }
   });
 });
