@@ -226,6 +226,22 @@ enum Work {
     Abort,
 }
 
+/// The cores this process may run on. std's count ignores a Windows affinity mask, so a process pinned to one core (a
+/// one-core job, a limited VM, the starved-start proof) would still be given threads for four.
+fn usable_cores() -> usize {
+    let std_cores = thread::available_parallelism().map_or(4, |n| n.get());
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessAffinityMask};
+        let (mut process, mut system) = (0usize, 0usize);
+        // SAFETY: both out-pointers are valid for the duration of the call.
+        if unsafe { GetProcessAffinityMask(GetCurrentProcess(), &mut process, &mut system) }.is_ok() && process != 0 {
+            return (process.count_ones() as usize).min(std_cores.max(1));
+        }
+    }
+    std_cores
+}
+
 /// Half the cores, at least two, but never more threads than cores: ggml's threads wait for each other by spinning, so two
 /// threads on one core (a one-core machine, or the app pinned to one) can crawl for minutes instead of seconds.
 fn default_threads(cores: usize) -> i32 {
@@ -238,7 +254,7 @@ fn load(model: &Path) -> Result<(Session, u64), String> {
     let n_threads = std::env::var("BATON_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| default_threads(thread::available_parallelism().map_or(4, |n| n.get())));
+        .unwrap_or_else(|| default_threads(usable_cores()));
     let session = Model::load(model)
         .and_then(|m| m.session_with(&SessionOptions { n_threads, ..Default::default() }))
         .map_err(|e| format!("could not load {}: {e}", model.display()))?;
