@@ -7,7 +7,15 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { changedPixels, makeHost, ps, sleep, type Host } from "./host.ts";
+import {
+  changedPixels,
+  clipboardText,
+  makeHost,
+  ps,
+  setClipboardText,
+  sleep,
+  type Host,
+} from "./host.ts";
 
 process.on("unhandledRejection", (error) =>
   console.log(`unhandled: ${(error as Error).message.split("\n")[0]}`),
@@ -139,7 +147,9 @@ class Task {
   }
 
   async cleanup() {
-    const open = await ps("Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { \"$($_.Name)#$($_.Id)='$($_.MainWindowTitle)'\" }").catch(() => "");
+    const open = await ps(
+      "Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { \"$($_.Name)#$($_.Id)='$($_.MainWindowTitle)'\" }",
+    ).catch(() => "");
     console.log(`  windows before cleanup: ${open.replaceAll("\n", " ").slice(0, 300)}`);
     await ps(
       `Get-Process -Name ${Task.APPS.join(",")} -ErrorAction SilentlyContinue | Where-Object { @(${this.before.join(",") || "0"}) -notcontains $_.Id } | Stop-Process -Force -ErrorAction SilentlyContinue; ` +
@@ -308,17 +318,19 @@ await task(
     await t.activate("explore");
     await t.waitTree(/explore/i, 15);
     // The keyboard shortcut needs the file list focused, which a new window does not have; the tree names
-  // a "New folder" button, so the loop uses that.
-  const tree = await t.tool("ui_tree");
-  t.replan(`read the tree; it has ${tree.split("\n").find((l) => /new folder/i.test(l)) ?? "no New folder button"}`);
-  await t.tool("click_element", { label: "New folder", why: "make the folder" });
-  await sleep(1200);
-  await t.tool("type_text", { text: "reports", why: "the folder name" });
-  await t.tool("press_keys", { keys: ["enter"], why: "name it" });
-  await sleep(1000);
-  t.check(NodeFS.existsSync(NodePath.join(dir, "reports")), "the folder reports exists on disk");
+    // a "New folder" button, so the loop uses that.
+    const tree = await t.tool("ui_tree");
+    t.replan(
+      `read the tree; it has ${tree.split("\n").find((l) => /new folder/i.test(l)) ?? "no New folder button"}`,
+    );
+    await t.tool("click_element", { label: "New folder", why: "make the folder" });
+    await sleep(1200);
+    await t.tool("type_text", { text: "reports", why: "the folder name" });
+    await t.tool("press_keys", { keys: ["enter"], why: "name it" });
+    await sleep(1000);
+    t.check(NodeFS.existsSync(NodePath.join(dir, "reports")), "the folder reports exists on disk");
     await t.tool("click_element", { label: "reports", why: "select the folder to rename" });
-  await t.tool("press_keys", { keys: ["f2"], why: "rename the selected folder" });
+    await t.tool("press_keys", { keys: ["f2"], why: "rename the selected folder" });
     await sleep(600);
     await t.tool("type_text", { text: "reports-2026", why: "the new name" });
     await t.tool("press_keys", { keys: ["enter"], why: "rename" });
@@ -416,25 +428,31 @@ await task(
 // 10. Read back: copy the text out of the app and compare.
 await task(
   "clipboard-readback",
-  "Type text, select all and copy in Notepad, and read the clipboard back",
+  "Type text, then at once select all and copy in Notepad, and read the clipboard back",
   async (t) => {
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
+    // His clipboard holds something else first; typing borrows it and puts it back later. A copy made
+    // straight after typing, with nothing in between, must win over that put-back.
+    await setClipboardText("SENTINEL");
     await t.tool("type_text", { text: "alpha beta gamma", why: "the text" });
-    await ps("Set-Clipboard -Value 'SENTINEL'");
     await t.tool("press_keys", { keys: ["ctrl", "a"], why: "select all" });
     await t.tool("press_keys", { keys: ["ctrl", "c"], why: "copy" });
-  await sleep(1000);
-  let clip = await ps("Get-Clipboard -Raw");
-  if (clip !== "alpha beta gamma") {
-    // The chord did not put the text on the clipboard (it reads "${clip}"): use the menu, by name.
-    t.replan(`the clipboard reads "${clip}" after Ctrl+C; copying from the Edit menu instead`);
-    await t.tool("click_element", { label: "Edit", why: "open the menu" });
-    await t.tool("click_element", { label: "Copy", why: "copy the selection" });
-    await sleep(1000);
-    clip = await ps("Get-Clipboard -Raw");
-  }
-  t.check(clip === "alpha beta gamma", `the clipboard holds "${clip}"`);
+    await sleep(1500);
+    let clip = await clipboardText();
+    if (clip !== "alpha beta gamma") {
+      // The chord did not put the text on the clipboard: use the menu, by name.
+      t.replan(`the clipboard reads "${clip}" after Ctrl+C; copying from the Edit menu instead`);
+      await t.tool("click_element", { label: "Edit", why: "open the menu" });
+      await t.tool("click_element", { label: "Copy", why: "copy the selection" });
+      await sleep(1000);
+      clip = await clipboardText();
+      t.check(false, `Ctrl+C right after typing did not copy (the menu did: "${clip}")`);
+    }
+    t.check(
+      clip === "alpha beta gamma",
+      `the clipboard holds "${clip}" after a copy made straight after typing`,
+    );
   },
 );
 
@@ -460,7 +478,10 @@ await task(
     t.steps.push({ kind: "act", text: "start ms-settings:about", ms: 0 });
     await sleep(4000);
     const tree = await t.waitTree(/windows|edition|device/i, 20);
-    const line = tree.split("\n").find((l) => /windows (server|10|11)/i.test(l) && !/specification/i.test(l)) ?? "";
+    const line =
+      tree
+        .split("\n")
+        .find((l) => /windows (server|10|11)/i.test(l) && !/specification/i.test(l)) ?? "";
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
   },
 );
