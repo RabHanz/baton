@@ -5,6 +5,7 @@
  * exactly its own size so every click outside it goes through, and it stays out of screen sharing.
  * Several words arriving together are one toast.
  */
+import { protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -105,7 +106,7 @@ export const createVocabToast = (input: {
     });
     win.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(win);
-    win.setContentProtection(true);
+    protectFromCapture(win);
     window = win;
     void win
       .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(toastDocument(words))}`)
