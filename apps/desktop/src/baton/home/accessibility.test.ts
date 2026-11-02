@@ -69,7 +69,7 @@ describe("the mark shows once", () => {
 describe("the mark breathes only while the window is in front", () => {
   it("animates transform and opacity only, behind the live gate, and the gate follows focus and visibility", () => {
     expect(APP_CSS).toMatch(/@keyframes breathe\{[^@]*transform:scale\(1\.035\)/);
-    expect(APP_CSS).not.toMatch(/\.brand #mark\{[^}]*animation:/);
+    expect(APP_CSS).not.toMatch(/(?<!html\.live )\.brand #mark\{[^}]*animation:/);
     expect(APP_CSS).toMatch(/html\.live \.brand #mark\{animation:breathe 6s/);
     for (const event of ["'focus'", "'blur'", "'visibilitychange'"]) expect(APP_SCRIPT).toContain(event);
     expect(APP_CSS).toMatch(/prefers-reduced-motion:reduce\)\{\*\{[^}]*animation:none/);
