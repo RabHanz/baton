@@ -44,7 +44,10 @@ sleep 3
 kill "$pid" 2>/dev/null || true
 mkdir -p "$out/logs"; cp -R "$userdata/logs/." "$out/logs/" 2>/dev/null || true
 shots=$(find "$out/shots" -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
-opened=0; [ -f "$log" ] && grep -Eq '"kind":"open_main".*"visible":true' "$log" && opened=1
+opened=0
+[ -f "$log" ] && grep -Eq '"kind":"open_main".*"visible":true' "$log" && opened=1
+# macOS does not log open_main for a second launch, but the app says when it made its window.
+grep -q 'main window created' "$out/app.log" 2>/dev/null && opened=1
 steps=$( [ -f "$log" ] && grep -o '"step":"[a-z-]*"' "$log" | sed 's/"step":"//;s/"//' | tr '\n' ' ' )
 echo "platform: $platform"
 echo "window opened (logged): $opened; page captures: $shots"
