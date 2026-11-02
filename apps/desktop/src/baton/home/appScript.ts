@@ -326,14 +326,15 @@ function markHtml() {
   if (Date.now() < stingUntil && window.TESSAYA_STING) { const dark = document.documentElement.dataset.theme === 'dark'; return '<img alt="" style="width:100%;height:100%;display:block" src="data:image/webp;base64,' + (dark ? TESSAYA_STING.dark : TESSAYA_STING.light) + '">'; }
   return S.status.brandMark || S.status.mark;
 }
+function sayWords(words) { return words.length ? 'Say ' + words.slice(0, 2).join(' or ') + ' to talk.' : 'The wake word is off. Say Wake now, or hold your dictation key.'; }
+function wakeLine(words) { return words.length ? words.join(', ') : 'Off'; }
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
   const hm = $('span', 'homemark'); hm.innerHTML = S.status.brandMark || ''; p.appendChild(hm);
   p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
   const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
   const sub = $('p', 'lede');
-  if (words.length) { sub.append(document.createTextNode('Say ')); words.slice(0, 2).forEach((w, i) => { if (i) sub.append(document.createTextNode(' or ')); sub.appendChild($('em', null, w)); }); sub.append(document.createTextNode(' to talk.')); }
-  else sub.textContent = 'The wake word is off. Say Wake now, or hold your dictation key.';
+  sub.textContent = sayWords(words);
   p.appendChild(sub);
   const q = $('div', 'quick');
   const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
@@ -375,7 +376,7 @@ function home(p) {
   right.appendChild($('div', 'day', 'Your voice'));
   const vc = $('div', 'stats');
   const kv = (l, v) => { const r = $('div', 'stat kvr'); r.append($('span', null, l), $('b', 'sm', v)); return r; };
-  vc.appendChild(kv('Wake words', words.length ? words.join(', ') : 'Off'));
+  vc.appendChild(kv('Wake words', wakeLine(words)));
   if (mic) vc.appendChild(kv('Microphone', valueOf(mic)));
   if (vo) vc.appendChild(kv('Speaks as', valueOf(vo)));
   if (ou) vc.appendChild(kv('Answers', valueOf(ou)));

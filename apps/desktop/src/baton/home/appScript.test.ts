@@ -10,4 +10,13 @@ describe("APP_SCRIPT", () => {
   it("parses as a script", () => {
     expect(() => new NodeVM.Script(APP_SCRIPT)).not.toThrow();
   });
+  // The Home sentence and the Your voice row are built by these two functions from the enabled, shipped words only.
+  it("names only the words it is given on Home", () => {
+    const page = NodeVM.runInNewContext(
+      `${/function sayWords[\s\S]*?\nfunction wakeLine[^\n]*/.exec(APP_SCRIPT)![0]}; ({ sayWords, wakeLine })`,
+    ) as { sayWords: (w: string[]) => string; wakeLine: (w: string[]) => string };
+    expect(page.sayWords(["Sebastian", "Alfred"])).toBe("Say Sebastian or Alfred to talk.");
+    expect(page.wakeLine(["Sebastian", "Alfred"])).toBe("Sebastian, Alfred");
+    expect(page.wakeLine([])).toBe("Off");
+  });
 });
