@@ -7,6 +7,7 @@ import {
   DEFAULT_RUNTIME_MODE,
   ProjectId,
   ProviderDriverKind,
+  ThreadId,
   defaultInstanceIdForDriver,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -21,6 +22,9 @@ import { ProjectService } from "../project/ProjectService.ts";
 
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
+import { isProviderAvailable } from "@t3tools/baton-contracts";
 import { herdrSend } from "./HerdrSend.ts";
 import { createSessionCatalog, type CatalogPorts } from "./SessionCatalog.ts";
 import { realCatalogPorts } from "./SessionCatalogLive.ts";
@@ -74,13 +78,25 @@ export const layer = Layer.effect(
     const projects = yield* Effect.serviceOption(ProjectService);
     const importer = yield* Effect.serviceOption(AgentSessionImporter);
     const engine = yield* Effect.serviceOption(BatonEngine);
+    const registry = yield* Effect.serviceOption(
+      ProviderInstanceRegistryModule.ProviderInstanceRegistry,
+    );
+    // No Herdr here (Windows): a missing piece must say so, not fall through to a Herdr program that is not there.
+    const noHerdr = NodePath.sep === "\\";
+    const OWN_FOLDER =
+      "That folder belongs to Tessaya's own data, not to a project, so no session is started there.";
+    const MISSING =
+      "This server could not reach the part that starts threads, so it cannot start a session here.";
     // No Herdr on Windows: the session comes back as a T3 thread on the Claude provider (the importer's resume cursor).
-    const thread: CatalogPorts["thread"] =
-      NodePath.sep !== "\\" || Option.isNone(projects) || Option.isNone(importer)
-        ? undefined
+    // The thread must exist before it is offered: a thread id that does not exist opens a blank thread in T3.
+    const thread: CatalogPorts["thread"] = !noHerdr
+      ? undefined
+      : Option.isNone(projects) || Option.isNone(importer) || Option.isNone(engine)
+        ? async () => ({ detail: MISSING })
         : (sessionId, cwd) =>
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
+                if (isTessayaOwnFolder(cwd)) return { detail: OWN_FOLDER };
                 const found = yield* projects.value.getByWorkspaceRoot(cwd);
                 const project = Option.isSome(found)
                   ? found.value
@@ -90,23 +106,56 @@ export const layer = Layer.effect(
                       title: NodePath.basename(cwd) || cwd,
                       workspaceRoot: cwd,
                     });
-                yield* importer.value.importRecentAgentThreads({ projectId: project.id });
+                const result = yield* importer.value.importRecentAgentThreads({
+                  projectId: project.id,
+                });
+                const threadId = ThreadId.make(
+                  `import:${defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"))}:${sessionId}`,
+                );
+                // The import commits events before it returns, but the thread's own record can trail them a moment.
+                for (let attempt = 0; attempt < 10; attempt += 1) {
+                  if ((yield* engine.value.threadShell(threadId)) !== null)
+                    return { threadId: String(threadId) };
+                  yield* Effect.sleep("500 millis");
+                }
                 return {
-                  threadId: `import:${defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"))}:${sessionId}`,
+                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). Only conversations from the last 30 days are imported.`,
                 };
               }),
-            ).catch(() => ({
-              detail: "Tessaya could not bring that conversation back as a thread here.",
+            ).catch((cause) => ({
+              detail: `Tessaya could not bring that conversation back as a thread here: ${String(
+                cause instanceof Error ? cause.message : cause,
+              )
+                .replace(/\s+/g, " ")
+                .slice(0, 160)}`,
             }));
     // A new session on a machine with no Herdr: a T3 thread in that folder's project, on the Claude provider, with the
     // model, effort and first message asked for. The project is found by its exact folder, so no other project is touched.
     const claudeInstance = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
-    const launch: CatalogPorts["launch"] =
-      NodePath.sep !== "\\" || Option.isNone(projects) || Option.isNone(engine)
-        ? undefined
+    const launch: CatalogPorts["launch"] = !noHerdr
+      ? undefined
+      : Option.isNone(projects) || Option.isNone(engine)
+        ? async () => ({ detail: MISSING })
         : (input) =>
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
+                if (isTessayaOwnFolder(input.cwd)) return { detail: OWN_FOLDER };
+                if (Option.isSome(registry)) {
+                  const instance = yield* registry.value.getInstance(claudeInstance);
+                  const snapshot =
+                    instance === undefined ? null : yield* instance.snapshot.getSnapshot;
+                  if (
+                    instance === undefined ||
+                    !instance.enabled ||
+                    snapshot === null ||
+                    !snapshot.installed ||
+                    !isProviderAvailable(snapshot)
+                  )
+                    return {
+                      detail:
+                        "Claude Code is not installed or not signed in on this machine, so a session cannot start here.",
+                    };
+                }
                 const found = yield* projects.value.getByWorkspaceRoot(input.cwd);
                 const project = Option.isSome(found)
                   ? found.value
@@ -143,7 +192,13 @@ export const layer = Layer.effect(
                   ? { detail: "Tessaya could not start that session." }
                   : { threadId: String(threadId) };
               }),
-            ).catch(() => ({ detail: "Tessaya could not start that session here." }));
+            ).catch((cause) => ({
+              detail: `Tessaya could not start that session here: ${String(
+                cause instanceof Error ? cause.message : cause,
+              )
+                .replace(/\s+/g, " ")
+                .slice(0, 160)}`,
+            }));
     const catalog = createSessionCatalog({
       ...realCatalogPorts((pane, text) =>
         Effect.runPromiseWith(services)(herdrSend(adopted, { pane, text, submit: true })).then(
