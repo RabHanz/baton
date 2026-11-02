@@ -58,3 +58,10 @@ describe("the top bar takes clicks", () => {
     }
   });
 });
+
+describe("the mark shows once", () => {
+  it("is not drawn a second time on Home", () => {
+    expect(APP_SCRIPT).not.toContain("homemark");
+    expect(APP_CSS).not.toContain("homemark");
+  });
+});

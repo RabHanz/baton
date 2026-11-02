@@ -52,8 +52,6 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 [data-theme=dark] .mk .on-light{display:none}
 [data-theme=dark] .mk .on-dark{display:inline}
 #page{position:relative}
-.homemark{position:absolute;right:36px;top:30px;width:72px;height:72px;color:var(--ink);opacity:.92}
-.homemark svg{width:100%;height:100%;display:block}
 .aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink)}
 .aboutmark svg{width:100%;height:100%;display:block}
 .brand #mark svg{width:100%;height:100%;display:block}
