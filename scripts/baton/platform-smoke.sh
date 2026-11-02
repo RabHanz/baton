@@ -9,6 +9,12 @@ mkdir -p "$out/shots" "$out/wav"
 home="$(mktemp -d)"; export HOME="$home"            # a clean user: nothing of anyone's
 userdata="$HOME/.t3/userdata"; mkdir -p "$userdata"
 printf '%s' '{"enabled":true,"wakeWords":[{"word":"Sebastian","enabled":true,"threshold":0.9}]}' > "$userdata/fabric-voice.json"
+# The speech model is 740 MB. Fetch it here, once, so the app's own downloader (which has its own stall limit) is
+# not what a slow runner network tests; the app checks the hash either way.
+models="$userdata/voice/models"; mkdir -p "$models"
+curl -fL --retry 5 --retry-delay 5 -o "$models/parakeet-tdt-0.6b-v3-Q8_0.gguf" \
+  "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf" \
+  || echo "NOTE the model could not be pre-fetched; the app will try itself"
 phrase="Sebastian. What is the capital of Brazil?"
 wav="$out/wav/wake.wav"
 case "$platform" in
@@ -24,11 +30,29 @@ case "$platform" in
     mnt="$(mktemp -d)"; hdiutil attach "$artifact" -mountpoint "$mnt" -nobrowse -quiet
     cp -R "$mnt"/*.app "$HOME/Tessaya.app"; hdiutil detach "$mnt" -quiet || true
     xattr -cr "$HOME/Tessaya.app"
+    # The unsigned bundle's seal is broken (resources added after electron-builder), and arm64 macOS kills a process that
+    # loads a native library under a broken seal. An ad-hoc signature is the least a downloaded build needs.
+    if [ "${SMOKE_ADHOC_SIGN:-1}" = 1 ]; then codesign --force --deep --sign - "$HOME/Tessaya.app" 2>&1 | tail -3; fi
     run=("$HOME/Tessaya.app/Contents/MacOS/Tessaya" --no-sandbox)
     ;;
   *) echo "unknown platform $platform"; exit 2 ;;
 esac
 printf 'wake.wav 4000\n30000\n' > "$out/wav/list.txt"; cp "$wav" "$out/wav/wake.wav" 2>/dev/null || true
+# The sidecar on its own first, so a crash in it is told apart from a crash in the app.
+sidecar=""
+case "$platform" in
+  macos) sidecar="$HOME/Tessaya.app/Contents/Resources/baton-voice/baton-dictation" ;;
+  linux) sidecar="$(find "$HOME" -name baton-dictation -type f 2>/dev/null | head -1)" ;;
+esac
+if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
+  echo "--- sidecar alone: $sidecar ---"
+  "$sidecar" devices 2>&1 | head -5; echo "devices exit=${PIPESTATUS[0]}"
+  printf '{"cmd":"devices"}\n' | ( "$sidecar" serve 2>&1 & p=$!; sleep 8; kill $p 2>/dev/null ) | head -8
+fi
+if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
+  echo "--- sidecar transcribes the phrase alone ---"
+  "$sidecar" transcribe --model "$models/parakeet-tdt-0.6b-v3-Q8_0.gguf" "$wav" 2>&1 | head -6; echo "transcribe exit=${PIPESTATUS[0]}"
+fi
 export BATON_TEST_WAV="$out/wav/list.txt" BATON_TEST_DIR="$out/shots"
 "${run[@]}" > "$out/app.log" 2>&1 &
 pid=$!
@@ -59,6 +83,19 @@ opened=0
 # macOS does not log open_main for a second launch, but the app says when it made its window.
 grep -q 'main window created' "$out/app.log" 2>/dev/null && opened=1
 steps=$( [ -f "$log" ] && grep -o '"step":"[a-z-]*"' "$log" | sed 's/"step":"//;s/"//' | tr '\n' ' ' )
+if ! kill -0 "$pid" 2>/dev/null; then echo "NOTE the app process ($pid) had exited before the end"; fi
+if [ "$platform" = macos ]; then
+  echo "--- signature of the app and the sidecar ---"
+  codesign --verify --deep --strict --verbose=2 "$HOME/Tessaya.app" 2>&1 | tail -6
+  codesign -dv "$sidecar" 2>&1 | tail -4
+  echo "--- why the kernel killed it (if it did) ---"
+  log show --style compact --last 10m --predicate '(process == "kernel" OR process == "amfid" OR process == "syspolicyd" OR process == "ReportCrash" OR process == "launchd") AND (eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam" OR eventMessage CONTAINS[c] "SIGKILL" OR eventMessage CONTAINS[c] "Tessaya" OR eventMessage CONTAINS[c] "baton-dictation" OR eventMessage CONTAINS[c] "Code Signature" OR eventMessage CONTAINS[c] "AMFI")' 2>&1 | tail -25
+  # A native crash leaves no line in our logs, but macOS writes a report.
+  mkdir -p "$out/crash"; cp /Users/runner/Library/Logs/DiagnosticReports/* "$out/crash/" 2>/dev/null || true
+  ls "$out/crash" | head -5 | sed 's/^/crash report: /'
+  head -c 3000 "$out/crash/"*Tessaya*.ips 2>/dev/null | head -60
+  echo "--- app2.log (tail) ---"; tail -n 10 "$out/app2.log" 2>/dev/null || true
+fi
 echo "platform: $platform"
 echo "window opened (logged): $opened; page captures: $shots"
 echo "voice start steps: ${steps:-none}"

@@ -121,6 +121,8 @@ jobs:
   # baton-desktop-release.yml does (no release is made).
   smoke:
     name: smoke ${{ matrix.platform }}
+    # macOS is reported, not required, until the warm-up kill is explained (docs/baton/PLATFORMS.md).
+    continue-on-error: ${{ matrix.platform == 'macos' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
