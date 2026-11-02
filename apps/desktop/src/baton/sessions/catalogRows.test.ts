@@ -98,4 +98,26 @@ describe("a resume shows Resuming... until the thread is live", () => {
     const row = failing.controls().find((c) => c.id === "c:s1");
     expect(row?.kind === "catalogRow" && row.resumeLabel).toBe("Resume");
   });
+
+  it("lets the assistant find a stopped session, bring it back and start another, in plain words", async () => {
+    const opened: string[] = [];
+    const created: string[] = [];
+    const service: CatalogService = {
+      list: async () => rows,
+      resume: async () => undefined,
+      create: async (t) => void created.push(`${t.environmentId} ${t.cwd}`),
+      folders: async () => [],
+      open: (row) => void opened.push(row.id),
+    };
+    const { tools, refresh } = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    await refresh();
+    expect(await tools.find("digest")).toContain("Fix the weekly digest");
+    expect(await tools.find("zzzz")).toBe("No session matches that.");
+    expect(await tools.resume("nope")).toContain("no session by that id");
+    expect(await tools.resume("s1")).toContain("running again");
+    expect(opened).toEqual(["s1"]);
+    expect(await tools.start("/work/new", "nowhere")).toContain("do not know that machine");
+    expect(await tools.start("/work/new", "")).toContain("starting in /work/new");
+    expect(created).toHaveLength(1);
+  });
 });
