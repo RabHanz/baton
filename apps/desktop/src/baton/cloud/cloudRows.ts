@@ -93,7 +93,7 @@ export const cloudPageControls = (v: CloudView, s: CloudSettings): ReadonlyArray
     out.push({
       id: `cl.req.${r.provider}:${r.id}`,
       section: mine,
-      label: `${r.task ?? r.id}`,
+      label: r.task ?? r.id,
       kind: "check",
       status: r.state === "failed" || over ? "warn" : "ok",
       detail: [
