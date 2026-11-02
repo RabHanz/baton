@@ -1,5 +1,6 @@
 export * from "./types.ts";
 export * from "./modeMachine.ts";
+export * from "./doubleTap.ts";
 export * from "./router.ts";
 export * from "./core.ts";
 export * from "./service.ts";
