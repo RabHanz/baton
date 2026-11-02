@@ -47,17 +47,28 @@ export const layer = Layer.effect(
   BatonSessionCatalogService,
   Effect.gen(function* () {
     const adopted = yield* AdoptedSessionService;
+    const services = yield* Effect.context<never>();
     const catalog = createSessionCatalog(
       realCatalogPorts((pane, text) =>
-        Effect.runPromise(herdrSend(adopted, { pane, text, submit: true })).then((r) => r.delivered),
+        Effect.runPromiseWith(services)(herdrSend(adopted, { pane, text, submit: true })).then((r) => r.delivered),
       ),
     );
     return BatonSessionCatalogService.of({
-      list: (input) => Effect.promise(() => catalog.list(input)),
-      folders: (input) => Effect.promise(() => catalog.folders(input)),
-      resume: (input) => Effect.promise(() => catalog.resume(input)),
-      create: (input) => Effect.promise(() => catalog.create(input)),
-      send: (input) => Effect.promise(() => catalog.send(input)),
+      list: Effect.fn("BatonSessionCatalogService.list")(function* (input) {
+        return yield* Effect.promise(() => catalog.list(input));
+      }),
+      folders: Effect.fn("BatonSessionCatalogService.folders")(function* (input) {
+        return yield* Effect.promise(() => catalog.folders(input));
+      }),
+      resume: Effect.fn("BatonSessionCatalogService.resume")(function* (input) {
+        return yield* Effect.promise(() => catalog.resume(input));
+      }),
+      create: Effect.fn("BatonSessionCatalogService.create")(function* (input) {
+        return yield* Effect.promise(() => catalog.create(input));
+      }),
+      send: Effect.fn("BatonSessionCatalogService.send")(function* (input) {
+        return yield* Effect.promise(() => catalog.send(input));
+      }),
     });
   }),
 );
