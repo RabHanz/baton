@@ -76,6 +76,30 @@ issue() { # issue <title> <body-file>: one open issue per title, commented on af
   else gh issue create -R "$repo" --title "$title" --body-file "$body" > /dev/null; fi
 }
 
+# The one status file: what the last run did and, when it stopped, exactly where. Kept on the baton/status branch
+# (never main) next to the nightly's, and read by the Now page. Best effort: a failure here never fails the run.
+publish_status() { # publish_status <result> [extra sync-status.mjs arguments...]
+  local result="$1"; shift
+  local file; file="$(mktemp)"
+  node scripts/baton/sync-status.mjs --result "$result" --pin "$pin" --to "$(git rev-parse upstream/main)" \
+    --behind "$behind" --days "$age_days" --log "$log" "$@" > "$file" || return 0
+  cp "$file" "$log_dir/last-status.json"
+  [ "$dry" -eq 1 ] && return 0
+  local sha; sha="$(gh api "repos/$repo/contents/upstream-sync.json?ref=baton/status" --jq .sha 2> /dev/null || true)"
+  gh api -X PUT "repos/$repo/contents/upstream-sync.json" -f message="upstream sync: $result" -f branch=baton/status \
+    -f content="$(base64 -w0 "$file")" ${sha:+-f sha="$sha"} > /dev/null 2>&1 || echo "could not publish the status file"
+}
+
+# Older sync PRs that a newer run replaced are closed with a comment, and their branches deleted.
+supersede() { # supersede <keeper-url>
+  local keeper="$1" n
+  for n in $(gh pr list -R "$repo" --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("baton/auto-sync-")) | .number' 2> /dev/null); do
+    case "$keeper" in */"$n") continue ;; esac
+    gh pr close "$n" -R "$repo" --delete-branch \
+      --comment "Superseded by $keeper: the sync reruns from main every night, so this branch's pin is out of date." > /dev/null 2>&1 || true
+  done
+}
+
 if [ "$age_days" -gt "$alarm_days" ]; then
   body="$(mktemp)"
   printf 'Baton is %s upstream commits behind; the oldest has waited %s days (alarm at %s).\n\nLog: `%s` on signzart.\n' \
@@ -86,6 +110,7 @@ fi
 
 if [ "$behind" -eq 0 ]; then
   echo "nothing to sync"
+  publish_status nothing
   cd "$repo_dir" && rm -rf "$work" && git worktree prune
   exit 0
 fi
@@ -95,6 +120,7 @@ if ! disk_ok; then
   body="$(mktemp)"
   printf 'The daily sync did not start: the volume is below its free-space floor.\n\nLog: `%s`\n' "$log" > "$body"
   issue "Upstream sync skipped: disk" "$body"
+  publish_status disk
   exit 5
 fi
 bash scripts/baton/toolchain-install.sh > /dev/null
@@ -117,6 +143,14 @@ if [ "$rc" -ne 0 ]; then
     printf '\nA Claude fix session was started in Herdr session `fab-baton-autosync` on signzart; it shows in Baton.\n'
   } > "$body"
   issue "Upstream sync blocked: $what" "$body"
+  # Which patches and which files, so a human (or the fix session) starts from the answer.
+  conflict_patches="$(sed -n 's/^  CONFLICT  \([^ ]*\) .*/\1/p' "$log" | sort -u | tr '\n' ' ')"
+  conflict_files="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
+  publish_status "$([ "$rc" -eq 2 ] && echo conflict || echo gates)" --patches "$conflict_patches" --files "$conflict_files"
+  # Gates failed (the sync commit exists): push it and open a draft PR so the work is visible and mergeable.
+  if [ "$rc" -eq 3 ] && git push --quiet -u origin "$branch" 2> /dev/null; then
+    gh pr create -R "$repo" --draft --base main --head "$branch" --title "sync: upstream to $(git rev-parse --short upstream/main) (gates failed)" --body-file "$report" > /dev/null 2>&1 || true
+  fi
   prompt="$log_dir/$stamp.fix-prompt.md"
   { printf 'You are fixing the daily Baton upstream sync, which stopped because %s.\n' "$what"
     printf 'Worktree: %s, branch %s. Read docs/baton/UPSTREAM.md (the sync) and vendor-patches/t3code/README.md.\n' "$work" "$branch"
@@ -134,6 +168,8 @@ bash scripts/baton/disable-upstream-workflows.sh > /dev/null || true
 url="$(gh pr create -R "$repo" --base main --head "$branch" --title "sync: upstream to $(git rev-parse --short upstream/main) (daily)" --body-file "$report")"
 gh pr merge "$url" -R "$repo" --merge --admin
 echo "merged $url"
+supersede "$url"
+publish_status merged --pr "$url"
 
 # apps/desktop changed in this sync: cut a desktop release tag so
 # .github/workflows/baton-desktop-release.yml builds and publishes it.
@@ -187,6 +223,7 @@ for box in local "$onnyx"; do
   body="$(mktemp)"
   printf '%s did not stay up on %s and was rolled back.\n\nLog: `%s`\n' "$version" "$box" "$log" > "$body"
   issue "Deploy rolled back: $version" "$body"
+  publish_status deploy
   exit 4
 done
 # Nothing of a green run stays on the volume: the worktree (about 5 GB with its build) is rebuilt
