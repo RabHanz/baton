@@ -15,6 +15,7 @@ import {
   BATON_HANDOFF_WS_METHODS,
   BATON_INTENT_WS_METHODS,
   BATON_LIVE_WS_METHODS,
+  BATON_COMMITMENT_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_WATCH_WS_METHODS,
@@ -51,6 +52,7 @@ import * as ServerConfig from "../config.ts";
 import { BatonJobService } from "./BatonJobService.ts";
 import { importFolder } from "./BatonMemoryImport.ts";
 import { BatonMemoryLearning } from "./BatonMemoryLearning.ts";
+import { BatonCommitmentService } from "./BatonCommitmentService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
@@ -78,6 +80,7 @@ export type BatonServices =
   | BatonEngine
   | BatonJobService
   | BatonMemoryService
+  | BatonCommitmentService
   | BatonMemoryLearning
   | ServerConfig.ServerConfig
   | ScheduledTaskService
@@ -348,6 +351,18 @@ export const make = Effect.gen(function* () {
       run(
         Effect.flatMap(BatonJobService, (jobs) =>
           Effect.map(jobs.revoke(input.id, input.channel), (terms) => ({ terms })),
+        ),
+      ),
+    [BATON_COMMITMENT_WS_METHODS.list]: () =>
+      run(
+        Effect.flatMap(BatonCommitmentService, (commitments) =>
+          Effect.map(commitments.list, (items) => ({ items })),
+        ),
+      ),
+    [BATON_COMMITMENT_WS_METHODS.upsert]: (input) =>
+      run(
+        Effect.flatMap(BatonCommitmentService, (commitments) =>
+          Effect.map(commitments.upsert(input.items), (applied) => ({ applied })),
         ),
       ),
     [BATON_MEMORY_WS_METHODS.list]: (input) =>
