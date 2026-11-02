@@ -5,7 +5,11 @@
  * they change, so nothing is polled. Opening a thread and typing to a pane go back the same way,
  * through the sidebar's own handlers, so they take the paths a click in T3 would.
  */
-import type { BatonSessionSummary, BatonUsageSummary } from "@t3tools/baton-contracts";
+import type {
+  BatonSessionRequest,
+  BatonSessionSummary,
+  BatonUsageSummary,
+} from "@t3tools/baton-contracts";
 import * as Electron from "electron";
 
 import {
@@ -25,6 +29,11 @@ export interface SessionsBridge {
   readonly usage: () => ReadonlyArray<BatonUsageSummary>;
   /** Open a session's thread (`text` null) or type to its pane. Resolves to a plain line. */
   readonly act: (id: string, text: string | null) => Promise<string>;
+  /** Any request to the sidebar with its own wait; null when it did not answer in time. */
+  readonly request: (
+    request: BatonSessionRequest,
+    waitMs?: number,
+  ) => Promise<{ ok: boolean; detail: string } | null>;
 }
 
 const isRow = (value: unknown): value is BatonSessionSummary => {
@@ -72,14 +81,17 @@ export const createSessionsBridge = (input: {
     pending.get(id)?.({ ok: ok === true, detail: typeof detail === "string" ? detail : "" });
   });
 
-  const ask = async (request: unknown): Promise<{ ok: boolean; detail: string } | null> => {
+  const ask = async (
+    request: unknown,
+    waitMs = ANSWER_MS,
+  ): Promise<{ ok: boolean; detail: string } | null> => {
     const window = await input.ensureMainWindow();
     const id = ++nextId;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         resolve(null);
-      }, ANSWER_MS);
+      }, waitMs);
       pending.set(id, (answer) => {
         clearTimeout(timer);
         pending.delete(id);
@@ -92,6 +104,7 @@ export const createSessionsBridge = (input: {
   return {
     rows: () => rows,
     usage: () => usage,
+    request: (request, waitMs) => ask(request, waitMs),
     act: async (id, text) => {
       const request = requestFor(rows, id, text);
       if (request === null)
