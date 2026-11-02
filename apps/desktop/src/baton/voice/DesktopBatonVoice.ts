@@ -2165,6 +2165,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let speechLoadMs = 0;
   const onDictation = (event: DictationEvent) => {
     if (event.ev === "loading") {
+      if (speechLoadMs === 0) step("speech-model-loading");
       speechLoadMs = event.elapsedMs;
       return;
     }
@@ -2533,7 +2534,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       // Read the model first, on its own call that waits as long as the sidecar says it is loading, so the first real
       // phrase never sits behind a load that a fixed timer gave up on.
       transcribe: async (pcm) => {
-        await warmSidecar.preload();
+        const loadMs = await warmSidecar.preload();
+        step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
         speechLoadMs = 0;
         return makeSidecarStt(warmSidecar).transcribe(pcm);
       },
@@ -2552,8 +2554,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         "Still loading the speech models. What you say now is kept and heard as soon as they are ready.";
       note = slow;
       render();
-      startCore = holdFramesUntil(core, warm.complete);
+      startCore = holdFramesUntil(core, warm.complete, 15_000, {
+        first: () => step("first-audio-frame", { sinceWarmStartMs: Date.now() - warmStarted }),
+        played: (frames) =>
+          step("held-audio-played", { frames, sinceWarmStartMs: Date.now() - warmStarted }),
+      });
       void warm.complete.then(() => {
+        step("warm-complete", { sinceWarmStartMs: Date.now() - warmStarted });
         if (note === slow) {
           note = null;
           render();
