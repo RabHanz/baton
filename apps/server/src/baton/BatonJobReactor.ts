@@ -10,7 +10,8 @@ import * as Stream from "effect/Stream";
 
 import { forkParked } from "../serverActivation.ts";
 import { BatonEngine } from "./BatonEngine.ts";
-import { noticePart, noticePlan } from "./BatonJobFlow.ts";
+import { enforceCaps, noticePart, noticePlan } from "./BatonJobFlow.ts";
+import * as FleetQuery from "./FleetQuery.ts";
 import type * as ServerConfig from "../config.ts";
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import type * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -36,6 +37,18 @@ export const layer = Layer.effect(
     >();
     return {
       start: Effect.fn("BatonJobReactor.start")(function* () {
+        // A worker that has used up its time or turns is stopped, even if it makes no more events.
+        yield* forkParked(
+          Effect.forever(
+            Effect.sleep("45 seconds").pipe(
+              Effect.andThen(
+                FleetQuery.getFleet({}).pipe(Effect.flatMap((fleet) => enforceCaps(fleet.entries))),
+              ),
+              Effect.provideContext(context),
+              Effect.ignoreCause({ log: true }),
+            ),
+          ),
+        );
         yield* forkParked(
           Stream.runForEach(engine.changedThreads, (threadId) =>
             noticePlan(threadId).pipe(
