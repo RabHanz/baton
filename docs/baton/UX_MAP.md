@@ -36,8 +36,8 @@ A search box in the window's top bar finds any setting by its words and opens it
 **Voice**
 
 - _Wake and listening:_ Listen for my wake word; Mute; Microphone; Wake words (each a switch, visible); Check the
-  wake word before waking; Listen after waking (8 / 15 / 30 s, default 15); Keep the conversation open (30 s / 1 / 2
-  min, default 1 min); How long I wait for you to finish; Send words to the focused session.
+  wake word before waking; Listen after waking (4 / 6 / 8 / 12 s, default 8: it waits only for you to start); Keep the
+  conversation open (15 s / 30 s / 1 / 2 min, default 30 s); How long I wait for you to finish; Send words to the focused session.
 - _Answers and voice:_ How Tessaya answers; Voice; Speaking volume; Hear the voice; Sounds.
 - _On screen:_ Put the pill in the centre; Show a small bar when Tessaya is not listening; Where the pill sits.
 - _Shortcuts:_ the fixed keys, read-only.
