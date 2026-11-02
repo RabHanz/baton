@@ -172,6 +172,8 @@ export interface VoicePill {
   readonly on: (event: TurnEvent, options?: { readonly silent?: boolean }) => void;
   /** His microphone, while listening or dictating. */
   readonly micLevel: (value: number) => void;
+  /** A short sound for a lesson or a drive (start, a step done, waiting, an error, finished); honours the cues setting. */
+  readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** Baton's own voice, while it speaks. */
   readonly speechLevel: (value: number) => void;
   /** Build the window now, so the first wake is as quick as the rest. */
@@ -620,6 +622,7 @@ export const createVoicePill = (input: {
 
   return {
     on,
+    cue: (name) => sound(name),
     micLevel: (value) => {
       loudest = Math.max(loudest, value);
       if (state.phase === "listening" || state.phase === "dictating") push(value);
