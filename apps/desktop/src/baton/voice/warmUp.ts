@@ -25,7 +25,7 @@ const warmClip = (): Int16Array => {
   return out;
 };
 
-export const warmUpVoice = async (input: {
+export interface WarmUpInput {
   readonly pushFrame: (frame: Int16Array) => void;
   readonly transcribe: (pcm: Int16Array) => Promise<string>;
   /** Resolves once every frame pushed so far has been scored. */
@@ -34,25 +34,63 @@ export const warmUpVoice = async (input: {
   readonly onStage?: (ready: number, total: number) => void;
   /** Resolves after the limit. Real time by default; a test passes its own. */
   readonly limit?: () => Promise<void>;
-}): Promise<boolean> => {
+}
+
+/**
+ * `result` settles at the first of: both models ready (true), a failure or the limit (false). `complete` settles when the
+ * models really are ready, however long that takes on this computer (never rejects; a failed load settles it too, since
+ * nothing more can be waited for), so audio heard in the meantime can be held and played in, not lost.
+ */
+export const startWarmUp = (input: WarmUpInput): { readonly result: Promise<boolean>; readonly complete: Promise<void> } => {
   const limit =
-    input.limit ??
-    (() => new Promise<void>((resolve) => setTimeout(resolve, WARM_LIMIT_MS).unref()));
+    input.limit ?? (() => new Promise<void>((resolve) => setTimeout(resolve, WARM_LIMIT_MS).unref()));
+  let ready = 0;
+  const stage = () => input.onStage?.((ready += 1), 2);
+  let complete: Promise<void>;
   try {
     for (let i = 0; i < WARM_FRAMES; i += 1) input.pushFrame(new Int16Array(FRAME_SAMPLES));
-    // Never wait on it for good: the recogniser may not answer for silence at all, and a start that waits
-    // for that never opens the microphone (0.1.30).
-    let ready = 0;
-    const stage = () => input.onStage?.((ready += 1), 2);
-    return await Promise.race([
-      Promise.all([
-        input.settled().then(stage),
-        input.transcribe(warmClip()).then(stage),
-      ]).then(() => true),
-      limit().then(() => false),
-    ]);
+    complete = Promise.all([input.settled().then(stage), input.transcribe(warmClip()).then(stage)]).then(() => undefined);
   } catch {
-    // Not fatal: see above.
-    return false;
+    complete = Promise.reject(new Error("warm-up failed to start"));
   }
+  const done = complete.then(
+    () => true,
+    () => false,
+  );
+  return {
+    // Never wait on it for good: the recogniser may not answer for silence at all (0.1.30 hung here).
+    result: Promise.race([done, limit().then(() => false)]),
+    complete: done.then(() => undefined),
+  };
+};
+
+export const warmUpVoice = (input: WarmUpInput): Promise<boolean> => startWarmUp(input).result;
+
+/**
+ * The core, except that audio arriving before `ready` is kept (the newest `maxFrames`, about 30 s) and given to it in order
+ * the moment it is ready: a phrase said while the models are still loading is heard late, not dropped.
+ */
+export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => void }>(
+  core: T,
+  ready: Promise<unknown>,
+  maxFrames = 1_500,
+): T => {
+  let open = false;
+  const held: Int16Array[] = [];
+  void ready.then(() => {
+    open = true;
+    for (const frame of held.splice(0)) core.pushAudio(frame);
+  });
+  const pushAudio = (frame: Int16Array) => {
+    if (open) return core.pushAudio(frame);
+    held.push(frame);
+    if (held.length > maxFrames) held.shift();
+  };
+  return new Proxy(core, {
+    get: (target, prop) => {
+      if (prop === "pushAudio") return pushAudio;
+      const value = Reflect.get(target, prop, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { warmUpVoice } from "./warmUp.ts";
+import { holdFramesUntil, startWarmUp, warmUpVoice } from "./warmUp.ts";
 
 describe("warming the voice models before the microphone opens", () => {
   it("scores silent frames and transcribes silence, and finishes only when both have", async () => {
@@ -67,5 +67,55 @@ describe("warming the voice models before the microphone opens", () => {
     giveUp();
     await warm;
     expect(order).toEqual(["gave up"]);
+  });
+
+  it("keeps the models loading after the limit and says when they are really ready", async () => {
+    let load!: () => void;
+    const loaded = new Promise<void>((resolve) => (load = resolve));
+    const warm = startWarmUp({
+      pushFrame: () => {},
+      transcribe: async () => (await loaded, ""),
+      settled: async () => {},
+      limit: async () => {},
+    });
+    expect(await warm.result).toBe(false);
+    let complete = false;
+    void warm.complete.then(() => (complete = true));
+    await Promise.resolve();
+    expect(complete).toBe(false);
+    load();
+    await warm.complete;
+    expect(complete).toBe(true);
+  });
+});
+
+describe("holding what is heard while the models load", () => {
+  it("plays the held audio in order once ready, then passes frames straight through", async () => {
+    const got: number[] = [];
+    let go!: () => void;
+    const ready = new Promise<void>((resolve) => (go = resolve));
+    const core = { pushAudio: (f: Int16Array) => void got.push(f[0]!), other: () => "kept" };
+    const held = holdFramesUntil(core, ready);
+    held.pushAudio(Int16Array.of(1));
+    held.pushAudio(Int16Array.of(2));
+    expect(got).toEqual([]);
+    go();
+    await ready;
+    await Promise.resolve();
+    held.pushAudio(Int16Array.of(3));
+    expect(got).toEqual([1, 2, 3]);
+    expect(held.other()).toBe("kept");
+  });
+
+  it("keeps only the newest frames when the wait is very long", async () => {
+    const got: number[] = [];
+    let go!: () => void;
+    const ready = new Promise<void>((resolve) => (go = resolve));
+    const held = holdFramesUntil({ pushAudio: (f: Int16Array) => void got.push(f[0]!) }, ready, 2);
+    for (const n of [1, 2, 3, 4]) held.pushAudio(Int16Array.of(n));
+    go();
+    await ready;
+    await Promise.resolve();
+    expect(got).toEqual([3, 4]);
   });
 });
