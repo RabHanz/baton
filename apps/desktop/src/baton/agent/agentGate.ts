@@ -5,6 +5,7 @@
  */
 import * as DateTime from "effect/DateTime";
 import {
+  batchSteps,
   batonToolName,
   describeToolCall,
   gatePrompt,
@@ -109,9 +110,18 @@ export const createAgentGate = (input: {
   const HOUR = 3_600_000;
   return async (call) => {
     const name = batonToolName(call.tool);
+    const steps = name === "act_batch" ? (batchSteps(call.input) ?? []) : [];
     const words = call.input["text"] ?? call.input["value"] ?? call.input["goal"];
-    const text = typeof words === "string" ? words : "";
-    const typing = name === "type_text" || name === "press_keys";
+    const text =
+      name === "act_batch"
+        ? steps.map((s) => String(s.input["text"] ?? "")).join(" ")
+        : typeof words === "string"
+          ? words
+          : "";
+    const typing =
+      name === "type_text" ||
+      name === "press_keys" ||
+      steps.some((s) => s.tool === "type_text" || s.tool === "press_keys");
     const focus = typing ? await input.focusedWindow() : null;
     const scope: TypingScope | null =
       name === "type_text" && focus !== null
@@ -139,6 +149,7 @@ export const createAgentGate = (input: {
       ...(focus === null ? {} : { focusedShell: focus.shell }),
       textIsHis:
         (name === "type_text" ||
+          name === "act_batch" ||
           name === "session_send" ||
           name === "job_start" ||
           name === "job_split" ||
@@ -153,6 +164,10 @@ export const createAgentGate = (input: {
     const after = () => {
       if (name === "click" || name === "click_element") input.taint.noteField(fieldOf(call.input));
       if (name === "press_keys" || name === "session_send") input.taint.clearTyping();
+      for (const step of steps) {
+        if (step.tool === "click_element") input.taint.noteField(fieldOf(step.input));
+        if (step.tool === "press_keys") input.taint.clearTyping();
+      }
       if (name === "weave_send") {
         const key = weaveKey(call);
         if (key !== null) weaveApproved.add(key);

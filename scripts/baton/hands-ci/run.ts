@@ -14,6 +14,7 @@ import {
   ps,
   setClipboardText,
   sleep,
+  stats,
   type Host,
 } from "./host.ts";
 import { startClip } from "./record.ts";
@@ -40,7 +41,14 @@ interface Result {
   evidence: string;
   cause: string;
   steps: Step[];
+  /** Model turns a planner would spend: one per tool call, a batch counting once. */
+  turns: number;
+  clicks: number;
+  invoked: number;
+  covered: number;
+  treeBytes: number;
 }
+const BATCH = process.env["HANDS_BATCH"] === "1";
 
 class Task {
   readonly steps: Step[] = [];
@@ -58,6 +66,7 @@ class Task {
   ];
   before: number[] = [];
   evidence = "";
+  turns = 0;
   readonly id: string;
   constructor(id: string) {
     this.id = id;
@@ -70,6 +79,7 @@ class Task {
   /** One tool call, logged as a see (ui_tree, screenshot) or an act. */
   async tool(name: string, args: Record<string, unknown> = {}): Promise<string> {
     const started = Date.now();
+    this.turns += 1;
     const kind = name === "ui_tree" || name === "screen_capture" ? "see" : "act";
     const label = `${name} ${JSON.stringify(args).slice(0, 120)}`;
     try {
@@ -171,6 +181,7 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
   const clip = startClip(OUT, id);
   await sleep(clip === null ? 0 : 1500);
   const started = Date.now();
+  const before = { ...stats };
   let result: Result["result"] = "pass";
   let cause = "";
   try {
@@ -197,6 +208,11 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
     evidence: t.evidence,
     cause,
     steps: t.steps,
+    turns: t.turns,
+    clicks: stats.clicks - before.clicks,
+    invoked: stats.invoked - before.invoked,
+    covered: stats.covered - before.covered,
+    treeBytes: stats.treeBytes - before.treeBytes,
   };
   results.push(r);
   console.log(
@@ -215,12 +231,35 @@ await task(
     const file = NodePath.join(WORK, "fox.txt");
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("type_text", { text: SENTENCE, why: "the sentence" });
-    await t.tool("press_keys", { keys: ["ctrl", "s"], why: "save" });
-    const waited = await t.tool("wait_for", { label: "File name", seconds: 10 });
-    t.check(/is there/.test(waited), "the Save As dialog showed up (waited for its File name box)");
-    await t.tool("type_text", { text: file, why: "the file name" });
-    await t.tool("press_keys", { keys: ["enter"], why: "confirm" });
+    if (BATCH) {
+      const first = await t.tool("act_batch", {
+        steps: [
+          { tool: "type_text", args: { text: SENTENCE, why: "the sentence" } },
+          { tool: "press_keys", args: { keys: ["ctrl", "s"], why: "save" } },
+          { tool: "wait_for", args: { label: "File name", seconds: 10 } },
+        ],
+      });
+      t.check(
+        !/FAILED|Stopped/.test(first),
+        "the batch typed, saved and the File name box showed up",
+      );
+      await t.tool("act_batch", {
+        steps: [
+          { tool: "type_text", args: { text: file, why: "the file name" } },
+          { tool: "press_keys", args: { keys: ["enter"], why: "confirm" } },
+        ],
+      });
+    } else {
+      await t.tool("type_text", { text: SENTENCE, why: "the sentence" });
+      await t.tool("press_keys", { keys: ["ctrl", "s"], why: "save" });
+      const waited = await t.tool("wait_for", { label: "File name", seconds: 10 });
+      t.check(
+        /is there/.test(waited),
+        "the Save As dialog showed up (waited for its File name box)",
+      );
+      await t.tool("type_text", { text: file, why: "the file name" });
+      await t.tool("press_keys", { keys: ["enter"], why: "confirm" });
+    }
     for (let i = 0; i < 20 && !NodeFS.existsSync(file); i += 1) await sleep(400);
     t.check(
       NodeFS.existsSync(file) && NodeFS.readFileSync(file, "utf8").trim() === SENTENCE,
@@ -236,8 +275,17 @@ await task(
   async (t) => {
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("click_element", { label: "Help", why: "open the menu" });
-    await t.tool("click_element", { label: "About Notepad", why: "the menu item" });
+    if (BATCH) {
+      await t.tool("act_batch", {
+        steps: [
+          { tool: "click_element", args: { label: "Help", why: "open the menu" } },
+          { tool: "click_element", args: { label: "About Notepad", why: "the menu item" } },
+        ],
+      });
+    } else {
+      await t.tool("click_element", { label: "Help", why: "open the menu" });
+      await t.tool("click_element", { label: "About Notepad", why: "the menu item" });
+    }
     const tree = await t.waitTree(/about notepad/i, 8);
     t.check(
       /about notepad/i.test(tree),
@@ -257,17 +305,26 @@ await task(
     );
     const pid = await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("click_element", { label: "Format", why: "open the menu" });
-    const tree = await t.tool("ui_tree");
-    t.replan(
-      `looked at the menu: ${
-        tree
-          .split("\n")
-          .filter((l) => /word wrap/i.test(l))
-          .join(" | ") || "no Word Wrap line"
-      }`,
-    );
-    await t.tool("click_element", { label: "Word Wrap", why: "the setting" });
+    if (BATCH) {
+      await t.tool("act_batch", {
+        steps: [
+          { tool: "click_element", args: { label: "Format", why: "open the menu" } },
+          { tool: "click_element", args: { label: "Word Wrap", why: "the setting" } },
+        ],
+      });
+    } else {
+      await t.tool("click_element", { label: "Format", why: "open the menu" });
+      const tree = await t.tool("ui_tree");
+      t.replan(
+        `looked at the menu: ${
+          tree
+            .split("\n")
+            .filter((l) => /word wrap/i.test(l))
+            .join(" | ") || "no Word Wrap line"
+        }`,
+      );
+      await t.tool("click_element", { label: "Word Wrap", why: "the setting" });
+    }
     await t.tool("press_keys", { keys: ["alt", "f4"], why: "close so it saves its settings" });
     await sleep(1500);
     await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(() => undefined);
@@ -285,6 +342,30 @@ await task(
   async (t) => {
     await t.launch("calc.exe", [], "Calculator");
     await t.waitTree(/calculator/i, 15);
+    if (BATCH) {
+      // The planner read the tree first (it names the buttons), then sends the whole sum.
+      const tree = await t.tool("ui_tree");
+      const pick = (...names: string[]) =>
+        names.find((n) => tree.split("\n").some((l) => l.endsWith(`: ${n}`))) ?? names[0]!;
+      const labels = [
+        pick("One", "1"),
+        pick("Two", "2"),
+        pick("Multiply by", "Multiply", "×"),
+        pick("Three", "3"),
+        pick("Four", "4"),
+        pick("Equals", "="),
+      ];
+      await t.tool("act_batch", {
+        steps: labels.map((label) => ({
+          tool: "click_element",
+          args: { label, why: "a calculator button" },
+        })),
+      });
+      const done = await t.tool("ui_tree");
+      const shown = done.split("\n").find((l) => /408/.test(l)) ?? "";
+      t.check(shown !== "", `the display reads: ${shown || "(nothing with 408)"}`);
+      return;
+    }
     const names: ReadonlyArray<ReadonlyArray<string>> = [
       ["One", "1"],
       ["Two", "2"],
@@ -414,14 +495,29 @@ await task(
   async (t) => {
     const pid = await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("type_text", { text: "unsaved words", why: "something to lose" });
-    await t.tool("press_keys", { keys: ["alt", "f4"], why: "close it" });
-    const waited = await t.tool("wait_for", { label: "Don't Save", seconds: 10 });
-    t.check(
-      /is there/.test(waited),
-      "the save question appeared and was found by its button's name",
-    );
-    await t.tool("click_element", { label: "Don't Save", why: "discard" });
+    if (BATCH) {
+      const out = await t.tool("act_batch", {
+        steps: [
+          { tool: "type_text", args: { text: "unsaved words", why: "something to lose" } },
+          { tool: "press_keys", args: { keys: ["alt", "f4"], why: "close it" } },
+          { tool: "wait_for", args: { label: "Don't Save", seconds: 10 } },
+          { tool: "click_element", args: { label: "Don't Save", why: "discard" } },
+        ],
+      });
+      t.check(
+        !/FAILED|Stopped/.test(out),
+        "the batch found the save question by name and answered it",
+      );
+    } else {
+      await t.tool("type_text", { text: "unsaved words", why: "something to lose" });
+      await t.tool("press_keys", { keys: ["alt", "f4"], why: "close it" });
+      const waited = await t.tool("wait_for", { label: "Don't Save", seconds: 10 });
+      t.check(
+        /is there/.test(waited),
+        "the save question appeared and was found by its button's name",
+      );
+      await t.tool("click_element", { label: "Don't Save", why: "discard" });
+    }
     await sleep(1500);
     const alive = await ps(
       `if (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }`,

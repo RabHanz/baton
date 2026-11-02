@@ -346,16 +346,72 @@ describe("keys after a read", () => {
 
 describe("cloud tools", () => {
   const ctx = (tainted: boolean) => ({ actWithoutAsking: false, tainted, textIsHis: false });
-  const call = (tool: string, input: Record<string, unknown> = {}) => ({ tool: `mcp__baton__${tool}`, input });
+  const call = (tool: string, input: Record<string, unknown> = {}) => ({
+    tool: `mcp__baton__${tool}`,
+    input,
+  });
   it("treats a dispatch as routine, but a brief built from something it read must say so", () => {
     const brief = { repo: "o/r", branch: "b", brief: "Fix the test" };
     expect(judgeToolCall(call("cloud_dispatch", brief), ctx(false)).verdict).toBe("allow");
     expect(judgeToolCall(call("cloud_dispatch", brief), ctx(true)).verdict).toBe("ask");
-    expect(judgeToolCall(call("cloud_dispatch", { ...brief, from_web_or_file: true }), ctx(true)).verdict).toBe("allow");
+    expect(
+      judgeToolCall(call("cloud_dispatch", { ...brief, from_web_or_file: true }), ctx(true))
+        .verdict,
+    ).toBe("allow");
   });
   it("lets it look and withdraw freely; the approval dialog is the ask", () => {
-    for (const t of ["cloud_status", "cloud_list", "cloud_usage", "cloud_cancel", "cloud_approve"]) {
-      expect(judgeToolCall(call(t, { id: "3", account: "rabee" }), ctx(true)).verdict).toBe("allow");
+    for (const t of [
+      "cloud_status",
+      "cloud_list",
+      "cloud_usage",
+      "cloud_cancel",
+      "cloud_approve",
+    ]) {
+      expect(judgeToolCall(call(t, { id: "3", account: "rabee" }), ctx(true)).verdict).toBe(
+        "allow",
+      );
+    }
+  });
+});
+
+describe("act_batch", () => {
+  const step = (tool: string, input: Record<string, unknown>) => ({ tool, args: input });
+  const batch = (steps: unknown[]): ToolCall => ({
+    tool: "mcp__baton__act_batch",
+    input: { steps },
+  });
+
+  it("is judged step by step, the strictest verdict standing", () => {
+    expect(
+      judgeToolCall(
+        batch([step("click_element", { label: "Help" }), step("type_text", { text: "hi" })]),
+        off,
+      ).verdict,
+    ).toBe("allow");
+    expect(
+      judgeToolCall(
+        batch([step("click_element", { label: "Help" }), step("press_keys", { keys: ["enter"] })]),
+        off,
+      ).verdict,
+    ).toBe("ask");
+    // typing after a read asks, as it would alone
+    expect(
+      judgeToolCall(batch([step("type_text", { text: "hi" })]), { ...off, tainted: true }).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall(batch([step("click_element", { label: "Pay", why: "delete it" })]), off)
+        .verdict,
+    ).toBe("ask");
+  });
+
+  it("refuses what cannot be batched or is malformed", () => {
+    for (const bad of [
+      [],
+      [step("drag", {})],
+      [step("click", { x: 1, y: 2 })],
+      new Array(7).fill(step("wait_for", {})),
+    ]) {
+      expect(judgeToolCall(batch(bad), on).verdict).toBe("deny");
     }
   });
 });
