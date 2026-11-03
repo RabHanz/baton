@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off
 /**
  * Why Baton went down (D139). One line each in `baton-lifecycle.ndjson`, written synchronously so a
  * crash still leaves its record, kept across restarts and rotated by size. A start with no clean
@@ -18,6 +18,8 @@ export interface LifecycleLog {
   readonly note: (event: string, detail?: Record<string, unknown>) => void;
   /** Who was running before this one ended badly, or null. */
   readonly previousRunEndedBadly: () => boolean;
+  /** Another Tessaya is already running: this launch must not touch the start guard or the running marker. */
+  readonly anotherInstance: boolean;
 }
 
 const appendRotating = (file: string, line: string): void => {
@@ -42,20 +44,37 @@ const appendRotating = (file: string, line: string): void => {
  * version, or one we cannot tell, is called a bad end.
  */
 export const classifyLeftover = (
-  left: { readonly version?: string } | null,
+  left: { readonly version?: string; readonly pid?: number } | null,
   currentVersion: string,
+  /** Whether that process is still running: then the marker is a live instance's, not a leftover. */
+  isAlive: (pid: number) => boolean = () => false,
 ):
   | { readonly kind: "none" }
+  | { readonly kind: "another-instance"; readonly pid: number }
   | { readonly kind: "replaced-by-update"; readonly from: string; readonly to: string }
   | { readonly kind: "ended-badly" } =>
   left === null
     ? { kind: "none" }
-    : left.version !== undefined && left.version !== currentVersion
-      ? { kind: "replaced-by-update", from: left.version, to: currentVersion }
-      : { kind: "ended-badly" };
+    : left.pid !== undefined && left.pid !== process.pid && isAlive(left.pid)
+      ? { kind: "another-instance", pid: left.pid }
+      : left.version !== undefined && left.version !== currentVersion
+        ? { kind: "replaced-by-update", from: left.version, to: currentVersion }
+        : { kind: "ended-badly" };
+
+const processAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it exists but is not ours to signal, which still means it is running.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
 
 export const createLifecycleLog = (input: {
   readonly file: string;
+  /** Tests make a pid alive or dead. */
+  readonly isAlive?: (pid: number) => boolean;
   /** A small file that exists only while a run is alive. */
   readonly runningFile: string;
   readonly version: string;
@@ -80,7 +99,19 @@ export const createLifecycleLog = (input: {
         }
       })()
     : null;
-  const leftover = classifyLeftover(left, input.version);
+  const leftover = classifyLeftover(left, input.version, input.isAlive ?? processAlive);
+  // A second launch while the first still runs (a double click, the login item, the tray) is not a crash and must not
+  // touch the first run's marker: it only says so and leaves the marker to its owner.
+  if (leftover.kind === "another-instance") {
+    write("another-instance-running", { otherPid: leftover.pid, version: input.version });
+    return {
+      willExitFor: (reason, detail) =>
+        write("exiting", { reason, ...(detail === undefined ? {} : { detail }) }),
+      note: write,
+      previousRunEndedBadly: () => false,
+      anotherInstance: true,
+    };
+  }
   if (leftover.kind === "replaced-by-update") {
     write("replaced-by-update", {
       from: leftover.from,
@@ -91,6 +122,8 @@ export const createLifecycleLog = (input: {
     write("previous-run-ended-badly", {
       startedAt: left?.at ?? null,
       previousPid: left?.pid ?? null,
+      // The marker is rewritten every 30 s while it lives: how long it ran says whether it died at start or later.
+      lastAliveAt: (left as { alive?: string } | null)?.alive ?? left?.at ?? null,
       meaning: "no clean exit was recorded: a crash, a kill or a power loss",
     });
   }
@@ -100,6 +133,22 @@ export const createLifecycleLog = (input: {
     JSON.stringify({ at: new Date().toISOString(), pid: process.pid, version: input.version }),
   );
   write("start", { version: input.version });
+  const startedAt = new Date().toISOString();
+  setInterval(() => {
+    try {
+      NodeFS.writeFileSync(
+        input.runningFile,
+        JSON.stringify({
+          at: startedAt,
+          alive: new Date().toISOString(),
+          pid: process.pid,
+          version: input.version,
+        }),
+      );
+    } catch {
+      // the marker is a convenience
+    }
+  }, 30_000).unref();
 
   const cleanExit = (fallback: ExitReason) => {
     write("exit", {
@@ -118,6 +167,17 @@ export const createLifecycleLog = (input: {
     intended = { reason: "crash", detail: origin };
     write("uncaught-exception", { origin, message: error.message, stack: error.stack ?? null });
   });
+  // A kill from outside (Task Manager, a script, the OS ending the session) says which signal, where the platform has one.
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP", "SIGBREAK"] as const) {
+    try {
+      process.on(signal, () => {
+        intended = { reason: "system", detail: signal };
+        write("signal", { signal });
+      });
+    } catch {
+      // not a signal this platform has
+    }
+  }
   process.on("unhandledRejection", (reason) => {
     write("unhandled-rejection", {
       message: reason instanceof Error ? reason.message : String(reason),
@@ -132,5 +192,6 @@ export const createLifecycleLog = (input: {
     },
     note: write,
     previousRunEndedBadly: () => leftover.kind === "ended-badly",
+    anotherInstance: false,
   };
 };
