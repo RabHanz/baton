@@ -18,6 +18,8 @@ interface Protectable {
 }
 
 const windows = new Set<Protectable>();
+// A click-through window says how to become click-through again: toggling protection must never leave it taking the mouse.
+const reassert = new WeakMap<Protectable, () => void>();
 let hideFromCapture = false;
 
 const wanted = (): boolean => hideFromCapture && !overlaysVisibleToCapture();
@@ -26,8 +28,9 @@ const wanted = (): boolean => hideFromCapture && !overlaysVisibleToCapture();
 export const protectionOn = (): boolean => wanted();
 
 /** Registers a Tessaya window; it follows the setting now and whenever it changes. */
-export const protectFromCapture = (win: Protectable): void => {
+export const protectFromCapture = (win: Protectable, clickThrough?: () => void): void => {
   windows.add(win);
+  if (clickThrough !== undefined) reassert.set(win, clickThrough);
   win.setContentProtection(wanted());
 };
 
@@ -36,7 +39,10 @@ export const setHideFromCapture = (on: boolean): void => {
   hideFromCapture = on;
   for (const win of windows) {
     if (win.isDestroyed?.() === true) windows.delete(win);
-    else win.setContentProtection(wanted());
+    else {
+      win.setContentProtection(wanted());
+      reassert.get(win)?.();
+    }
   }
 };
 
@@ -61,6 +67,7 @@ export const hiddenForCapture = async <T>(fn: () => Promise<T>, platform: string
       if (w.isDestroyed?.() === true) continue;
       if (excludes) w.setContentProtection(false);
       else w.showInactive?.();
+      reassert.get(w)?.();
     }
   }
 };

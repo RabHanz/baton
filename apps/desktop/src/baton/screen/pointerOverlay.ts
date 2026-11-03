@@ -231,6 +231,7 @@ export const createPointerOverlay = (
         backgroundThrottling: false,
       },
     });
+    let cardHover = false;
     win.setAlwaysOnTop(true, "screen-saver");
     markCompanionWindow(win);
     // Forwarded, so the page still sees the pointer over its card and can ask for the mouse.
@@ -238,16 +239,25 @@ export const createPointerOverlay = (
     win.webContents.on("console-message", (...args: ReadonlyArray<unknown>) => {
       const first = args[0] as { message?: unknown } | undefined;
       const message = typeof args[2] === "string" ? args[2] : first?.message;
-      if (message === "baton:card:hover:1") win.setIgnoreMouseEvents(false);
-      else if (message === "baton:card:hover:0") win.setIgnoreMouseEvents(true, { forward: true });
-      else if (message === "baton:card:copy" && shown !== null)
+      if (message === "baton:card:hover:1") {
+        cardHover = true;
+        win.setIgnoreMouseEvents(false);
+      } else if (message === "baton:card:hover:0") {
+        cardHover = false;
+        win.setIgnoreMouseEvents(true, { forward: true });
+      } else if (message === "baton:card:copy" && shown !== null)
         Electron.clipboard.writeText(shown.text);
       else if (typeof message === "string" && message.startsWith("baton:card:act:"))
         onAction(message.slice("baton:card:act:".length));
     });
     // Made on the primary's scale; set again so a 125 % display's window is the display's size.
     win.setBounds(display.bounds);
-    protectFromCapture(win);
+    // The layer covers the whole display: after any protection change it must go back to letting clicks through (unless the card is hovered).
+    protectFromCapture(win, () => {
+      if (win.isDestroyed()) return;
+      if (cardHover) win.setIgnoreMouseEvents(false);
+      else win.setIgnoreMouseEvents(true, { forward: true });
+    });
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     const bottom = display.bounds.y + display.bounds.height;
     const inset = bottom - (display.workArea.y + display.workArea.height) + CARD_ABOVE_WORK_AREA;
