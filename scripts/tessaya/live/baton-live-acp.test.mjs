@@ -555,3 +555,36 @@ NodeTest.test(
     NodeAssert.equal(soleCandidate(["a", "b"]), null);
   },
 );
+
+NodeTest.test(
+  "a tabbed multi-question form (CI account / Merge 4416 / Submit) is read as a card with its tabs",
+  () => {
+    const screen = [
+      "────────────────────────────────────────",
+      "←  ☐ CI account  ☐ Merge 4416  ✔ Submit  →",
+      "",
+      "Which account should CI run under?",
+      "",
+      "❯ 1. signzart",
+      "     Run the CI with the signzart account",
+      "  2. Don't run it",
+      "     Skip CI for now",
+      "  3. Type something.",
+      "────────────────────────────────────────",
+      "  4. Chat about this",
+      "",
+      "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
+    ].join("\n");
+    const prompt = parsePanePrompt(screen);
+    NodeAssert.equal(prompt?.question, "Which account should CI run under?");
+    NodeAssert.deepEqual(
+      prompt?.tabs?.map((t) => t.label),
+      ["CI account", "Merge 4416", "Submit"],
+    );
+    NodeAssert.deepEqual(
+      prompt?.options.map((o) => o.label),
+      ["signzart", "Don't run it"],
+    );
+    NodeAssert.equal(prompt?.customIndex, 2);
+  },
+);
