@@ -613,8 +613,7 @@ await task(
     await t.waitTree(/notepad/i);
     const rect = (
       await ps(
-        `Add-Type 'using System;using System.Runtime.InteropServices;public class W{[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out int[] r);}' -ErrorAction SilentlyContinue; ` +
-          `Add-Type 'using System;using System.Runtime.InteropServices;public struct R{public int L,T,Rt,B;} public class W2{[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out R r);}'; ` +
+        `Add-Type 'using System;using System.Runtime.InteropServices;public struct R{public int L,T,Rt,B;} public class W2{[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out R r);}'; ` +
           `$p = Get-Process -Id ${pid}; $r = New-Object R; [void][W2]::GetWindowRect($p.MainWindowHandle,[ref]$r); "$($r.L),$($r.T),$($r.Rt),$($r.B)"`,
       )
     )
