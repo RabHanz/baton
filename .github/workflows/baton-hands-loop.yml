@@ -1,4 +1,4 @@
-name: Baton hands loop
+name: Tessaya hands loop
 
 # The assistant's real tool path on a real Windows desktop (issue #52): ui_tree, click_element, wait_for,
 # type, press and a screenshot check against Notepad, Calculator, File Explorer, Paint and Settings.
@@ -11,7 +11,7 @@ on:
     branches: [baton/hands-ci]
     paths:
       [
-        "scripts/baton/hands-ci/**",
+        "scripts/tessaya/hands-ci/**",
         "native/baton-dictation/**",
         "apps/desktop/src/baton/agent/**",
         "apps/desktop/src/baton/screen/inputDriver.ts",
@@ -55,11 +55,11 @@ jobs:
           HANDS_RECORD: "1"
         run: |
           mkdir -p hands-out
-          node scripts/baton/hands-ci/run.ts 2>&1 | tee hands-out/run.log
+          node scripts/tessaya/hands-ci/run.ts 2>&1 | tee hands-out/run.log
       - name: Table
         if: always()
         shell: bash
-        run: node scripts/baton/hands-ci/report.ts hands-out >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/tessaya/hands-ci/report.ts hands-out >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   captureSize,
+  missingDisplaysNote,
+  pickSource,
   pointable,
   describeDrivePlan,
   needsCaptureApproval,
@@ -679,5 +681,18 @@ describe("the third review", () => {
     );
     // Quadratic, this took half a minute and the test would time out.
     expect(planHighRisk(plan)).toBeNull();
+  });
+});
+
+describe("capture sources for two displays", () => {
+  const sources = [{ display_id: "11" }, { display_id: "22" }];
+  it("finds the second display by its id, and by position where the system reports none", () => {
+    expect(pickSource(sources, 22, 0)).toEqual({ display_id: "22" });
+    expect(pickSource([{ display_id: "" }, { display_id: "" }], 99, 1)).toEqual({ display_id: "" });
+    expect(pickSource(sources, 33, 2)).toBeUndefined();
+  });
+  it("says so when a display gave no picture", () => {
+    expect(missingDisplaysNote(2, 2)).toBeNull();
+    expect(missingDisplaysNote(1, 2)).toContain("Only 1 of 2 displays");
   });
 });

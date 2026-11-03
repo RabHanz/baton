@@ -144,6 +144,8 @@ export type HomeControl =
         readonly id: string;
       }>;
       readonly background: boolean;
+      /** The Auto-resume switch; null until the servers have answered. */
+      readonly autoResume: boolean | null;
       /** Helper threads a dry run found, waiting for "Archive them". */
       readonly tidyFound: number;
       readonly models: ReadonlyArray<HomeOption>;
@@ -163,6 +165,8 @@ export type HomeControl =
       readonly resumeLabel: string | null;
       /** One line on what Resume does. */
       readonly note: string;
+      /** Stop, on a running session. */
+      readonly stopLabel: string | null;
       readonly source: string;
     })
   /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
@@ -470,7 +474,9 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     if (open === null) return;
     const now = look();
     void open.webContents
-      .executeJavaScript(applyLookScript(lookClasses(now.motion, now.glass)))
+      .executeJavaScript(
+        `${applyLookScript(lookClasses(now.motion, now.glass))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`,
+      )
       .catch(() => undefined);
     if (process.platform === "win32") {
       try {

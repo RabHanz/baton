@@ -114,7 +114,12 @@ export const claudeConfigDirs = (): ReadonlyArray<string> => {
   for (const extra of (process.env.BATON_CLAUDE_CONFIG_DIRS ?? "").split(NodePath.delimiter)) {
     if (extra.length > 0) dirs.push(extra);
   }
-  return [...new Set(dirs)].filter((dir) => NodeFS.existsSync(NodePath.join(dir, "sessions")));
+  // A profile with transcripts but no live-session folder (nothing running yet, or a fresh machine) still counts.
+  return [...new Set(dirs)].filter(
+    (dir) =>
+      NodeFS.existsSync(NodePath.join(dir, "sessions")) ||
+      NodeFS.existsSync(NodePath.join(dir, "projects")),
+  );
 };
 
 /** The signed-in account of a config directory: its `oauthAccount` address, before the `@`. */

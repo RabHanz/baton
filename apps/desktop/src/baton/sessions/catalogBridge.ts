@@ -12,7 +12,8 @@ const RESUME_WAIT_MS = 70_000;
 const LIST_WAIT_MS = 15_000;
 const OPEN_WAIT_MS = 8_000;
 const WATCH_MS = 3_000;
-const WATCH_FOR_MS = 60_000;
+// A long conversation takes minutes to bring in as a thread; the row says "Importing" while this watches.
+const WATCH_FOR_MS = 15 * 60_000;
 
 const STATES: ReadonlyArray<CatalogState> = ["running", "stopped", "resuming", "failed"];
 const asString = (v: unknown): string | null => (typeof v === "string" ? v : null);
@@ -47,6 +48,7 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
       source: raw["source"] === "history" ? "history" : "thread",
       canResume: raw["canResume"] === true,
       detail: asString(raw["detail"]),
+      ...(asString(raw["threadId"]) === null ? {} : { threadId: asString(raw["threadId"])! }),
     });
   }
   return rows;
@@ -82,6 +84,21 @@ export const createBridgeCatalogService = (input: {
   };
   return {
     list,
+    stop: async (row) => {
+      const answer = await input.bridge.request(
+        { kind: "catalogStop", environmentId: row.environmentId, sessionId: row.sessionId },
+        LIST_WAIT_MS,
+      );
+      if (answer === null || !answer.ok) throw new Error("not stopped");
+    },
+    autoResume: async (action) => {
+      const answer = await input.bridge.request(
+        { kind: "catalogAutoResume", action },
+        LIST_WAIT_MS,
+      );
+      if (answer === null) throw new Error("The sessions view did not answer.");
+      return (JSON.parse(answer.detail) as { enabled?: boolean }).enabled === true;
+    },
     cleanup: async (apply) => {
       const answer = await input.bridge.request({ kind: "catalogCleanup", apply }, LIST_WAIT_MS);
       if (answer === null) throw new Error("The sessions view did not answer.");
@@ -128,8 +145,14 @@ export const createBridgeCatalogService = (input: {
         await wait(WATCH_MS);
         const now = (await list("")).find((r) => r.id === row.id);
         state = now?.state ?? "running";
+        if (now?.threadId !== undefined) threads.set(row.id, now.threadId);
+        if (state === "failed") throw new Error(now?.detail ?? "not resumed");
       }
-      if (state === "failed" || state === "resuming") throw new Error("not resumed");
+      if (state === "failed") throw new Error("not resumed");
+      if (state === "resuming")
+        throw new Error(
+          "Bringing that conversation in is taking longer than 15 minutes. Try Resume again later.",
+        );
     },
     create: async ({ environmentId, cwd, model, effort, message }) => {
       const answer = await input.bridge.request(

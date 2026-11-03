@@ -79,7 +79,7 @@ export const packControls = (dir: string): ReadonlyArray<HomeControl> => {
       id: "p.folder",
       section: "Operating-system pack",
       label: "Pack folder",
-      hint: "To import your own document, run scripts/baton/import-operating-system.mjs on it; it writes here.",
+      hint: "To import your own document, run scripts/tessaya/import-operating-system.mjs on it; it writes here.",
       kind: "action",
       button: "Open folder",
       more: true,

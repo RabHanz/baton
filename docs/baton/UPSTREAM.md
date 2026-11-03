@@ -1,6 +1,6 @@
 # Upstream
 
-Baton is a fork of T3 Code, not a rewrite of it. This page records which upstream commit the
+Tessaya is a fork of T3 Code, not a rewrite of it. This page records which upstream commit the
 fork sits on, how to move it forward, what each workspace package owns, how to run and check the
 tree, and how to get real test data without touching a live install.
 
@@ -15,16 +15,16 @@ tree, and how to get real test data without touching a live install.
 | Commit date             | 2026-09-17 14:03:01 -0700                                                            |
 | Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                                                |
 | Fork created            | 2026-09-17 ~21:50Z                                                                   |
-| Baton work begins       | 2026-09-18                                                                           |
+| Tessaya work begins       | 2026-09-18                                                                           |
 | **Upstream pin now**    | `vendor-patches/t3code/PIN`, moved daily by `auto-sync.sh` (v2 port at `e762f09e26`) |
 
-The fork carried no Baton code at that point; it was a clean mirror of upstream `main`.
+The fork carried no Tessaya code at that point; it was a clean mirror of upstream `main`.
 The pin is the last upstream commit before the v2 orchestrator (`de3439142`); see
 "Where upstream went" below for why the fork stops there for now.
 
 ### Conflicts carried
 
-Files Baton edits rather than adds — everything else it contributes is a new file. Each edit is a
+Files Tessaya edits rather than adds — everything else it contributes is a new file. Each edit is a
 small, localized insertion chosen so a rebase conflicts in one place rather than across a rewrite.
 Each phase that diverges further adds a row with the file, the reason, and the upstream construct it
 extends.
@@ -41,14 +41,14 @@ extends.
 | Client RPC tags        | `packages/client-runtime/src/rpc/client.ts`                                                 | one member added to `EnvironmentSubscriptionRpcTag`                                                                                                                                                                                     | 2     |
 | Client-runtime exports | `packages/client-runtime/package.json`                                                      | one subpath export                                                                                                                                                                                                                      | 2     |
 | Sidebar                | `apps/web/src/components/Sidebar.tsx`                                                       | two memos, one callback, one status-label map, one flagged block above the thread list. The thread list itself is untouched — `DECISIONS.md` D12                                                                                        | 2     |
-| Migrations             | `apps/server/src/persistence/Layers/Sqlite.ts`                                              | two calls in the startup layer. Baton's migrations have their own manifest and their own tracking table, so upstream's `Migrations.ts` — the file they touch on every schema change — is byte-identical to theirs. `DECISIONS.md` D48   | 2     |
-| Shared exports         | `packages/shared/package.json`                                                              | one export entry per shared Baton module — the fleet view, the grammars, the policies                                                                                                                                                   | 4–10  |
+| Migrations             | `apps/server/src/persistence/Layers/Sqlite.ts`                                              | two calls in the startup layer. Tessaya's migrations have their own manifest and their own tracking table, so upstream's `Migrations.ts` — the file they touch on every schema change — is byte-identical to theirs. `DECISIONS.md` D48   | 2     |
+| Shared exports         | `packages/shared/package.json`                                                              | one export entry per shared Tessaya module — the fleet view, the grammars, the policies                                                                                                                                                   | 4–10  |
 | Desktop IPC            | `apps/desktop/src/ipc/channels.ts`, `DesktopIpcHandlers.ts`, `preload.ts`                   | one channel, one registration, one preload binding: what this machine can type into (§18). The renderer cannot see the display server                                                                                                   | 6     |
 | Desktop bridge type    | `packages/contracts/src/ipc.ts`                                                             | one optional method on `DesktopBridge`, so a build predating it still typechecks                                                                                                                                                        | 6     |
 | Mobile navigation      | `apps/mobile/src/Stack.tsx`, `features/home/HomeHeader.tsx`, `HomeRouteScreen.tsx`          | one route, one header button, one prop. A screen nothing links to is a screen nobody has                                                                                                                                                | 7     |
 | Upstream reactor       | `apps/server/src/orchestration/Layers/OrchestrationReactor.ts` and its test                 | the synopsis and rule reactors subscribe to the same domain events; the change is the subscription, not the reactor's own behaviour                                                                                                     | 4, 9  |
 | Integration harness    | `apps/server/integration/OrchestrationEngineHarness.integration.ts`                         | the harness builds the engine by hand and gained the same dependency the routes did                                                                                                                                                     | 9     |
-| Claude usage probe     | `apps/server/src/provider/Layers/ClaudeProvider.ts` and `ClaudeCapabilitiesProbe.test.ts`   | one constant and one call: the usage control request gets its own 15s deadline and asks to skip the local transcript scan. A defect found on the Director's own machine, not a Baton feature — offer it upstream                        | —     |
+| Claude usage probe     | `apps/server/src/provider/Layers/ClaudeProvider.ts` and `ClaudeCapabilitiesProbe.test.ts`   | one constant and one call: the usage control request gets its own 15s deadline and asks to skip the local transcript scan. A defect found on the Director's own machine, not a Tessaya feature — offer it upstream                        | —     |
 
 | Route test wiring | `apps/server/src/server.test.ts` | the routes gained a dependency, so the test that builds them by hand provides it | 2 |
 
@@ -64,14 +64,14 @@ divergence in the fork and the reason is in D54: on the Director's own machine, 
 conversations most worth resuming were exactly the ones that could not be.
 
 **Checked at Phase 10.** The table above was regenerated from
-`git diff --name-only <fork-point> HEAD`, filtered to files Baton _edits_ rather than adds. Every
-upstream file this fork touches is in it; everything else Baton contributes is a new file under a
+`git diff --name-only <fork-point> HEAD`, filtered to files Tessaya _edits_ rather than adds. Every
+upstream file this fork touches is in it; everything else Tessaya contributes is a new file under a
 `baton` name, which cannot conflict with anything upstream writes.
 
 ### Release build overrides (not a source edit)
 
-`.github/workflows/baton-desktop-release.yml` runs `scripts/baton/apply-release-branding.sh`
-(a new Baton file, not an edit) before building each platform's installer. It `sed`s three
+`.github/workflows/baton-desktop-release.yml` runs `scripts/tessaya/apply-release-branding.sh`
+(a new Tessaya file, not an edit) before building each platform's installer. It `sed`s three
 upstream constants in the release job's own ephemeral checkout only — nothing it touches is
 committed, so these three files stay byte-identical to upstream everywhere else (dev builds, the
 daily sync, `main`):
@@ -114,7 +114,7 @@ Merged `52e4b44293..024d49520e`, 430 upstream commits, as `0.0.45-baton.20` (PR 
   `node-pty: 1.2.0-beta.15` is added to `overrides`, backported from upstream `22840ab943`. The CLI
   archive installs without the lockfile, so `^beta.15` drifted to beta.18 and pnpm refused the unused patch.
 - `AgentSessionJson.ts` is back. Upstream's usage transcript reader imports it now.
-- Mobile `HomeHeader.tsx`: upstream's rewrite is taken whole. Baton is one header-right item plus
+- Mobile `HomeHeader.tsx`: upstream's rewrite is taken whole. Tessaya is one header-right item plus
   one prop in `HomeHeader.types.ts`.
 - Model picker: upstream's `ComboboxSearchInput`, with the account line kept above it.
 - The Sqlite layer keeps upstream's `journal_size_limit` and our reclaim. Upstream now ships its
@@ -122,7 +122,7 @@ Merged `52e4b44293..024d49520e`, 430 upstream commits, as `0.0.45-baton.20` (PR 
 - The version label is `0.0.45-baton.20` on upstream's `0.0.45`. Service protocol is still 3.
 
 The upstream workflows that deploy or publish with upstream's secrets are disabled through the
-GitHub API, not by editing the files. That is `scripts/baton/disable-upstream-workflows.sh`, and
+GitHub API, not by editing the files. That is `scripts/tessaya/disable-upstream-workflows.sh`, and
 `upstream-sync.sh` re-runs it after every merge. CI is kept.
 
 ### Where upstream went (2026-10-02 onward)
@@ -132,7 +132,7 @@ orchestrator", #2829). Everything after it, 3,250 commits to `3f9448747` as of 2
 the new engine:
 
 - `apps/server/src/orchestration/` (v1: OrchestrationEngine, reactors, ProjectionSnapshotQuery,
-  the Sqlite layer Baton hooks) is **deleted**. `apps/server/src/orchestration-v2/` (about 540
+  the Sqlite layer Tessaya hooks) is **deleted**. `apps/server/src/orchestration-v2/` (about 540
   files) replaces it.
 - State moves to a **new database file**, `userdata/statev2.sqlite`. A legacy importer
   (`orchestration-v2/legacy/LegacyV1ThreadImporter.ts`) copies v1 threads across.
@@ -141,19 +141,19 @@ the new engine:
   `orchestration-v2/Adapters/ClaudeAdapterV2.ts`, and providers are split into `packages/provider-*`.
 - Node `26.12.1` and pnpm `12.14.0`.
 
-Baton's server half is written against v1. Six modules call it directly (`FleetQuery`,
+Tessaya's server half is written against v1. Six modules call it directly (`FleetQuery`,
 `IntentService`, `IntentExecutorLive`, `OrchestrationEffectsLive`, `OrchestrationReactor`,
 `SynopsisReactor`), and every repository opens `state.sqlite` through the deleted layer. So
 going past `024d49520e` is a **port**, not a conflict resolution.
 
 ### Patch points after the v2 port (2026-10-26)
 
-`vendor-patches/t3code/series` is the list and `scripts/baton/patches.sh files` prints the paths:
+`vendor-patches/t3code/series` is the list and `scripts/tessaya/patches.sh files` prints the paths:
 six patches over 13 upstream files, about 300 lines.
 
 | Patch                      | Upstream files                                                       |
 | -------------------------- | -------------------------------------------------------------------- |
-| `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Baton package deps)  |
+| `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Tessaya package deps)  |
 | `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts` (+1 line, D83)  |
 | `0003-herdr-terminal`      | `apps/server/src/terminal/Manager.ts` (D81)                          |
 | `0004-claude-account-home` | `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (D52) |
@@ -161,7 +161,7 @@ six patches over 13 upstream files, about 300 lines.
 | `0006-web-sidebar`         | `apps/web/src/components/Sidebar.tsx`                                |
 
 Not yet back on v2: the desktop voice IPC (built on the laptop, never deployed to the boxes) and
-the mobile Baton route's entry point. Each returns as its own patch.
+the mobile Tessaya route's entry point. Each returns as its own patch.
 
 ### Patch points before the port (2026-10-26, measured at `024d49520e`)
 
@@ -185,7 +185,7 @@ are not ours.
 
 ### The port plan (decided 2026-10-26; progress in STATUS.md, "v2 port")
 
-**Target shape.** T3 becomes a pinned vendor tree that Baton does not edit. Baton lives in its own
+**Target shape.** T3 becomes a pinned vendor tree that Tessaya does not edit. Tessaya lives in its own
 top-level packages around it, and the edits T3 truly forces become a short, named patch series
 that the sync job re-applies.
 
@@ -196,28 +196,28 @@ packages/baton-server/    work sessions, fleet, intents, rules, accounts, Herdr,
 packages/baton-contracts/ fabric.* schemas and Rpc definitions
 packages/baton-web/       sidebar Projects block, intent bar, Continue with…
 packages/baton-voice/     (exists)
-scripts/baton/            sync, patch apply/refresh, deploy, workflow disable
+scripts/tessaya/            sync, patch apply/refresh, deploy, workflow disable
 ```
 
 The sync job does five things in order. It moves the pin, re-applies the series with `git apply --3way`,
-and runs the Baton gates. Then it builds, and it opens a PR only when all of that passes. A patch
+and runs the Tessaya gates. Then it builds, and it opens a PR only when all of that passes. A patch
 that stops applying is the one signal a human needs.
 
 **Adopt T3's, delete ours.** These are features the v2 engine or upstream already ships. Each
 is confirmed in the port by reading upstream's module, not by its name.
 
-| Baton feature                                                            | Upstream now                                                               | Action                                                                                                               |
+| Tessaya feature                                                            | Upstream now                                                               | Action                                                                                                               |
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | "Continue with…" handoff (D62): capsule + new thread on another provider | `ContextHandoffService`, `ContextHandoffDelivery`, `ProviderSwitchService` | Use theirs. Keep only the button and the work-session link                                                           |
 | Work-session settle / needs-me                                           | `ThreadSettlementService` (settle, snooze, PR-aware)                       | Read settlement from v2. Drop our settle state                                                                       |
-| Resume after restart                                                     | `RestartContinuation`, `ProviderRuntimeRecoveryService`                    | Drop any Baton restart logic for T3 threads. Keep D69 (Claude CLI in Herdr) only                                     |
-| Wait for a limit to reset                                                | `UsageLimitRecoveryWorker` (auto-resume at reset)                          | Use theirs for the same account. **Rotation to another account (D63) stays Baton's**, triggered by their limit class |
+| Resume after restart                                                     | `RestartContinuation`, `ProviderRuntimeRecoveryService`                    | Drop any Tessaya restart logic for T3 threads. Keep D69 (Claude CLI in Herdr) only                                     |
+| Wait for a limit to reset                                                | `UsageLimitRecoveryWorker` (auto-resume at reset)                          | Use theirs for the same account. **Rotation to another account (D63) stays Tessaya's**, triggered by their limit class |
 | Large-transcript import (D54 tail reader)                                | `AgentSessionScanner` now caps the scan at 1 MB and imports up to 4 GB     | Take upstream's scanner and importer. Delete our rewrite once a 420 MB transcript imports                            |
 | Cross-environment project identity (D72 key)                             | logical projects keyed by `RepositoryIdentity`                             | Already theirs. Our grouping stays a client-side view on top                                                         |
 | Scheduled/triggered runs (part of orchestration rules)                   | `scheduledTasks/` (interval, schedule, webhook)                            | Rules that are time or webhook triggered become scheduled tasks. Keep only "when thread X settles, do Y"             |
 | Claude usage probe deadline                                              | check upstream's `ClaudeProvider`                                          | Drop ours if upstream bounded it, otherwise offer it upstream                                                        |
 
-**Port work that remains Baton's.**
+**Port work that remains Tessaya's.**
 
 1. Work sessions, synopsis, intents, orchestration rules: rewrite the six v1 call sites against
    v2's command/event API (`Orchestrator`, `ThreadLaunchService`, `ThreadStream`, `EventSink`).
@@ -230,22 +230,22 @@ is confirmed in the port by reading upstream's module, not by its name.
 4. RPC: the `fabric.*` methods stay on the wire, names unchanged (D71). One patch adds the Baton
    group to `WsRpcGroup` and its scopes, unless v2 has a mergeable group by then.
 5. Web: the Projects block mounts at one point in the sidebar. The model-picker account line,
-   usage-limit notice and import button move into Baton components behind one slot each.
+   usage-limit notice and import button move into Tessaya components behind one slot each.
 
-**Data: Baton gets its own SQLite file.** `userdata/baton.sqlite`, opened by
+**Data: Tessaya gets its own SQLite file.** `userdata/baton.sqlite`, opened by
 `packages/baton-server` with its own client and its own migration table. That removes the
 Sqlite-layer patch point and the D48 reclaim. The migration from today's data runs once, on the
 first boot of the ported build:
 
 1. If `baton.sqlite` is missing and `state.sqlite` has `fabric_sql_migrations`, read the seven
    `fabric_*` tables from `state.sqlite` (read-only) and write them into a fresh `baton.sqlite`.
-   Run Baton's manifest first, then `INSERT … SELECT` per table, with row counts compared table by table.
+   Run Tessaya's manifest first, then `INSERT … SELECT` per table, with row counts compared table by table.
 2. Rewrite the references that point into v1. A work session's thread ids become v2 thread ids
    through the legacy importer's id map. Rows whose thread did not import keep the work session
    and lose the link, with a count in the boot log.
 3. Never write to `state.sqlite`. Rollback to `0.0.45-baton.20` keeps working, because it still reads
    the untouched v1 file.
-4. Rehearse on a `VACUUM INTO` copy of each box's `state.sqlite` (signzart: 1 project, 7 Baton
+4. Rehearse on a `VACUUM INTO` copy of each box's `state.sqlite` (signzart: 1 project, 7 Tessaya
    migrations; onnyx: 17 projects) before any deploy.
 
 **Toolchain.** Node `26.12.1` and pnpm `12.14.0`, user-local under `dev/toolchain/` with corepack,
@@ -256,7 +256,7 @@ too small), `nice -n 10`, one build at a time.
 
 | Step                                                                                                 | Estimate                                          |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| 1. Toolchain, plus the restructure (vendor subtree, patch series, Baton packages) at the current pin | 1 day                                             |
+| 1. Toolchain, plus the restructure (vendor subtree, patch series, Tessaya packages) at the current pin | 1 day                                             |
 | 2. Move the pin to upstream main and apply the series against v2                                     | 0.5 day                                           |
 | 3. Port the server half (items 1–4 above) and adopt-and-delete                                       | 2 days                                            |
 | 4. Own database and its migration, rehearsed on both boxes' copies                                   | 0.5 day                                           |
@@ -266,7 +266,7 @@ too small), `nice -n 10`, one build at a time.
 
 ## The daily sync: what is automatic and what is manual (2026-11-02)
 
-`baton-auto-sync.timer` runs `scripts/baton/auto-sync.sh` on signzart at 22:30 UTC (a copy taken from `origin/main`, so an edit
+`baton-auto-sync.timer` runs `scripts/tessaya/auto-sync.sh` on signzart at 22:30 UTC (a copy taken from `origin/main`, so an edit
 cannot change a run in flight).
 
 **Automatic**
@@ -284,13 +284,13 @@ cannot change a run in flight).
 
 **Manual (today)**
 
-- **A patch that no longer applies** (`result: conflict`, exit 2). Nothing mechanical decides how Baton's lines sit in a rewritten upstream
+- **A patch that no longer applies** (`result: conflict`, exit 2). Nothing mechanical decides how Tessaya's lines sit in a rewritten upstream
   file. A fix session is started in Herdr, an issue is opened with the report, and the status file lists the files. The person (or
   session) resolves them on a branch from `main`: `patches.sh rebase <upstream sha>`, fix the markers, `patches.sh refresh`,
   `patches.sh verify`, regenerate the lockfile, open the PR. If an earlier sync PR already resolved the same files and the
   patches have not changed since, take its versions of those files (this is how #284 reused #144).
 - **Gates failing on the new upstream** (`result: gates`, exit 3). The branch is pushed and a draft PR opened; fix on that branch.
-- **Anything that needs a decision**: dropping a Baton patch upstream now covers, a path both sides added.
+- **Anything that needs a decision**: dropping a Tessaya patch upstream now covers, a path both sides added.
 - **Closing stale PRs** after a manual resolution: the nightly only closes the ones it created when it merges.
 
 **Why it stalled (2026-10-30 to 2026-11-02).** Three nights running `0008-claude-account-limits` and `0008-web-panes` conflicted in
@@ -304,12 +304,12 @@ history as the second parent (#284 to `fa31b66bbb`, which reused #144's resoluti
 are closed). Three things the catch-up taught:
 
 - **Lint was never gated.** `baton-ci` ran typecheck and tests only, so lint errors piled up on main (115 by the time it was looked at) and the
-  fix session's "lint fails the same way before the sync" was true. #299 made lint green (file-level disables on 47 Baton files, formatting on
+  fix session's "lint fails the same way before the sync" was true. #299 made lint green (file-level disables on 47 Tessaya files, formatting on
   122) and added a Lint step to `baton-ci`.
 - **The sync gates do not build the Windows installer.** Upstream's new check that the packaged payload has at most 80 files failed the installer
-  build at 81 (Baton's voice files). Only the voice-proof job, which builds the installer, caught it (#300 raised the limit in patch 0001). A
+  build at 81 (Tessaya's voice files). Only the voice-proof job, which builds the installer, caught it (#300 raised the limit in patch 0001). A
   future sync should be followed by that job before a release tag is cut.
-- **`baton-ci` runs only Baton's own tests on an upstream wave.** A sync changes hundreds of upstream test files; those need browsers and tools
+- **`baton-ci` runs only Tessaya's own tests on an upstream wave.** A sync changes hundreds of upstream test files; those need browsers and tools
   the runner lacks, so past 150 changed test files only Baton-named ones run.
 
 **The exit 2 of 2026-11-01 and its 7.4 GB peak.** Exit 2 is the "patch needs a human" code: 0008-claude-account-limits and 0008-web-panes
@@ -318,8 +318,8 @@ of seven packages) running next to whatever else the box was doing; it was not m
 disk guard before starting, and the run happening at 22:30 UTC. If it recurs, build only what the series touches (the desktop, server and web
 bundles) instead of every package, and keep other builders' local gates off the box during the window.
 
-**What would remove the manual step.** Fewer lines in upstream-rewritten files: each Baton edit in `ChatView.tsx`, `Sidebar.tsx` and the
-usage components is a future conflict, so new Baton work should live in new files with a one-line hook (the patch README says the same).
+**What would remove the manual step.** Fewer lines in upstream-rewritten files: each Tessaya edit in `ChatView.tsx`, `Sidebar.tsx` and the
+usage components is a future conflict, so new Tessaya work should live in new files with a one-line hook (the patch README says the same).
 
 ## Remotes and rebasing
 
@@ -336,12 +336,12 @@ git remote -v
 To take upstream changes:
 
 ```sh
-scripts/baton/upstream-sync.sh --report-only     # what upstream did, which patched paths it touched
-scripts/baton/upstream-sync.sh [--to <commit>]   # move the pin, re-apply the series, gates, PR
-scripts/baton/gates.sh [--install] [--build]     # the same gates by hand
+scripts/tessaya/upstream-sync.sh --report-only     # what upstream did, which patched paths it touched
+scripts/tessaya/upstream-sync.sh [--to <commit>]   # move the pin, re-apply the series, gates, PR
+scripts/tessaya/gates.sh [--install] [--build]     # the same gates by hand
 ```
 
-Since 2026-10-26 (D76) the sync does not merge. Baton's edits to upstream are the patch series in
+Since 2026-10-26 (D76) the sync does not merge. Tessaya's edits to upstream are the patch series in
 `vendor-patches/t3code/` over the commit in `PIN`, and the sync is mechanical:
 
 1. `patches.sh rebase <commit>` makes every upstream path the new commit's, deletions included,
@@ -355,7 +355,7 @@ Since 2026-10-26 (D76) the sync does not merge. Baton's edits to upstream are th
 `patches.sh verify` is the invariant: every path upstream owns equals `PIN` plus the series. It
 runs first in the gates, so an upstream file edited outside a patch fails before anything else.
 
-**The number space is not shared.** Baton's migrations used to sit at 054–059 inside upstream's
+**The number space is not shared.** Tessaya's migrations used to sit at 054–059 inside upstream's
 manifest, one upstream release away from either a duplicate-id failure or — worse, because it is
 silent — upstream's own migration being skipped forever. They now have their own manifest and their
 own `fabric_sql_migrations` table, and databases carrying the old numbering are repaired on boot.
@@ -368,17 +368,17 @@ After a sync, update this page's fork-point table. The patch list is `vendor-pat
 Workspace globs come from `pnpm-workspace.yaml`: `apps/*`, `infra/*`, `packages/*`,
 `oxlint-plugin-t3code`, `scripts`.
 
-| Path                               | Package name                    | Owns                                                                                                                                                               | Baton relevance                                                                            |
+| Path                               | Package name                    | Owns                                                                                                                                                               | Tessaya relevance                                                                            |
 | ---------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `apps/server`                      | `t3`                            | WebSocket server, orchestration (command → decider → event → projector → reactor), providers, checkpointing, persistence, MCP toolkits, terminals, preview browser | WorkSession persistence, RPC handlers, and every Baton reactor live here                   |
+| `apps/server`                      | `t3`                            | WebSocket server, orchestration (command → decider → event → projector → reactor), providers, checkpointing, persistence, MCP toolkits, terminals, preview browser | WorkSession persistence, RPC handlers, and every Tessaya reactor live here                   |
 | `apps/web`                         | `@t3tools/web`                  | React/Vite client; the sidebar, thread view, settings                                                                                                              | WorkSession sidebar grouping, timeline, synopsis card                                      |
 | `apps/desktop`                     | `@t3tools/desktop`              | Electron shell wrapping `apps/web`, bundles a server runner, hosts the Chromium `<webview>` preview browser                                                        | desktop voice service, context bus, tray/HUD (Phase 5–6)                                   |
 | `apps/mobile`                      | `@t3tools/mobile`               | React Native (iOS + Android), separate navigation                                                                                                                  | WorkSession list, mic button, App Intents (Phase 7)                                        |
-| `apps/marketing`                   | `@t3tools/marketing`            | the public site                                                                                                                                                    | not touched by Baton                                                                       |
+| `apps/marketing`                   | `@t3tools/marketing`            | the public site                                                                                                                                                    | not touched by Tessaya                                                                       |
 | `packages/contracts`               | `@t3tools/contracts`            | Effect/Schema wire contracts; `rpc.ts` is the client↔server boundary, `orchestration.ts` the domain commands/events, `environment.ts` the capability descriptor    | the `WorkSession` schema, `fabric.*` RPC methods and events, and the Baton capability flag |
 | `packages/shared`                  | `@t3tools/shared`               | shared runtime utilities, subpath exports, no barrel                                                                                                               | normalization helpers shared by server and clients                                         |
 | `packages/client-runtime`          | `@t3tools/client-runtime`       | connection supervisor, RPC session, shared state services used by web **and** mobile                                                                               | WorkSession state service, so web and mobile do not diverge                                |
-| `packages/ssh`                     | `@t3tools/ssh`                  | SSH tunnels and desktop-managed remote environments                                                                                                                | multi-host topology; unchanged by Baton                                                    |
+| `packages/ssh`                     | `@t3tools/ssh`                  | SSH tunnels and desktop-managed remote environments                                                                                                                | multi-host topology; unchanged by Tessaya                                                    |
 | `packages/tailscale`               | `@t3tools/tailscale`            | tailnet serve/status integration                                                                                                                                   | the private-network default (spec §25)                                                     |
 | `packages/effect-acp`              | `effect-acp`                    | Agent Client Protocol binding                                                                                                                                      | provider adapters                                                                          |
 | `packages/effect-codex-app-server` | `effect-codex-app-server`       | Codex app-server protocol binding                                                                                                                                  | Codex provider                                                                             |
@@ -386,7 +386,7 @@ Workspace globs come from `pnpm-workspace.yaml`: `apps/*`, `infra/*`, `packages/
 | `oxlint-plugin-t3code`             | `@t3tools/oxlint-plugin-t3code` | repo lint rules                                                                                                                                                    | —                                                                                          |
 | `scripts`                          | `@t3tools/scripts`              | dev runner, release, icon and mobile tooling                                                                                                                       | —                                                                                          |
 
-### The three files a Baton change almost always touches
+### The three files a Tessaya change almost always touches
 
 1. `packages/contracts/src/rpc.ts` — `WS_METHODS`, one `Rpc.make` per method, and the method must
    be added to `WsRpcGroup` at the bottom of the file.
@@ -394,7 +394,7 @@ Workspace globs come from `pnpm-workspace.yaml`: `apps/*`, `infra/*`, `packages/
    own method union, so adding an RPC without choosing a scope is a **type error**, not a runtime
    hole. There is a test asserting the key sets match exactly.
 3. `apps/server/src/ws.ts` — `makeWsRpcLayer` builds one `WsRpcGroup.of({...})` object with every
-   handler. Baton handlers are built in their own module and spread in, to keep the diff in this
+   handler. Tessaya handlers are built in their own module and spread in, to keep the diff in this
    3 800-line file to a couple of lines.
 
 ### Persistence shape
@@ -405,22 +405,22 @@ only**: `apps/server/src/persistence/Migrations.ts` statically imports each numb
 `effect_sql_migrations`. There is no `down`. The upstream rollback story is "restore the database
 file", which is why the test-data strategy below matters.
 
-Highest migration at the fork point: **053_PullRequestFilesViewed**. Baton's first migration is
+Highest migration at the fork point: **053_PullRequestFilesViewed**. Tessaya's first migration is
 therefore 054 or later; the number is claimed at the moment the file lands, and a rebase that finds
-upstream took the number renumbers the Baton one rather than editing upstream's.
+upstream took the number renumbers the Tessaya one rather than editing upstream's.
 
 `apps/server/src/persistence/ProjectionThreadPullRequests.ts` is the closest existing template for a
-new Baton table: a `Schema.Struct` row, `SqlSchema.findAll`/`SqlSchema.void` statements, a
+new Tessaya table: a `Schema.Struct` row, `SqlSchema.findAll`/`SqlSchema.void` statements, a
 `Context.Service` repository, and a `Layer.effect`.
 
 ### Feature flagging
 
-Two mechanisms exist upstream and Baton uses both rather than inventing a third:
+Two mechanisms exist upstream and Tessaya uses both rather than inventing a third:
 
 - `ExecutionEnvironmentCapabilities` in `packages/contracts/src/environment.ts` — an optional
   boolean the server advertises, so a new client talking to an old server hides the feature instead
   of probing an RPC that does not exist. Every entry there carries a comment explaining the
-  version-skew contract; Baton's entries must too.
+  version-skew contract; Tessaya's entries must too.
 - `ServerSettings` in `packages/contracts/src/settings.ts` — the operator's own switch, persisted
   per environment.
 
@@ -459,7 +459,7 @@ Upstream calls these "the three ways to hurt yourself"; two of them are also spe
    the same thing.
 3. **Never set `VITE_HTTP_URL` or `VITE_WS_URL` for dev.** Dev is single-origin and Vite proxies
    `/api`, `/ws`, `/oauth`, `/.well-known`. Setting them bakes localhost into the bundle and
-   silently breaks every remote browser — which for Baton means every phone and laptop client.
+   silently breaks every remote browser — which for Tessaya means every phone and laptop client.
 
 Also inherited: do not run repo-wide checks (`vp check`, `vp run -r test`, `vp run -r typecheck`).
 CI owns the full suite. On this box a repo-wide run is minutes of CPU on a machine that is usually
@@ -486,14 +486,14 @@ Copy in, never symlink. Data flows one way: into the sandbox, never back out. Br
 
 A linked worktree defaults to its own gitignored `<worktree>/.t3/userdata`, which deliberately
 outranks an ambient `T3CODE_HOME`. The main checkout defaults to `~/.t3/dev/userdata`. An explicit
-`--home-dir` wins in both cases. Every Baton real-path proof runs against a snapshot in one of
+`--home-dir` wins in both cases. Every Tessaya real-path proof runs against a snapshot in one of
 those two, and the proof writes down which.
 
 ### Migration rehearsal
 
-Because migrations are forward only, "rollback" for Baton means: take a `VACUUM INTO` snapshot of
+Because migrations are forward only, "rollback" for Tessaya means: take a `VACUUM INTO` snapshot of
 the pre-migration database, run the server against the snapshot so the migration applies, then
-confirm a build from **before** the migration still opens the untouched original. Any Baton
+confirm a build from **before** the migration still opens the untouched original. Any Tessaya
 migration that would make an older server fail to open the database is a breaking change and needs
 a line in `DECISIONS.md` explaining why it was unavoidable.
 
@@ -504,7 +504,7 @@ The Director may open-source this fork. Therefore:
 - no VentureOS specifics, no customer data, no business content in the fork;
 - no secrets, tokens, pairing URLs, or `T3CODE_DEV_AUTH_TOKEN` values in any commit, test fixture,
   snapshot, or PR body — upstream's own docs call the dev token a reusable administrative secret;
-- MIT-compatible only. Herdr (`SuperCodeAgents/herdr-terminal`) is AGPL: Baton integrates with it
+- MIT-compatible only. Herdr (`SuperCodeAgents/herdr-terminal`) is AGPL: Tessaya integrates with it
   over its socket/CLI surface and never copies its source;
 - upstream's documentation rules apply to `docs/baton/` too. These pages exist because the
   reasoning crosses component boundaries and a maintainer would otherwise get the fork's

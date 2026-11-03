@@ -3369,22 +3369,18 @@ export const ThreadFeed = memo(function ThreadFeed({
     }
     return new Set(terminalIdsByTurn.values());
   })();
-  // An interrupted run unfolds; a run that is no longer latest folds back.
+  // An interrupted run unfolds. A run that is no longer latest stays as he left it: folding it back hid what he was reading.
   const [previousLatestRun, setPreviousLatestRun] = useState(props.latestRun);
   if (previousLatestRun !== props.latestRun) {
     setPreviousLatestRun(props.latestRun);
     const latest = props.latestRun;
     const previous = previousLatestRun;
     if (latest && previous) {
-      if (latest.runId !== previous.runId) {
-        if (expandedTurnIds.has(previous.runId)) {
-          setInteractionState((current) => {
-            const next = new Set(current.expandedTurnIds);
-            next.delete(previous.runId);
-            return { ...current, expandedTurnIds: next };
-          });
-        }
-      } else if (previous.status === "running" && latest.status === "interrupted") {
+      if (
+        latest.runId === previous.runId &&
+        previous.status === "running" &&
+        latest.status === "interrupted"
+      ) {
         setInteractionState((current) => ({
           ...current,
           expandedTurnIds: new Set(current.expandedTurnIds).add(latest.runId),

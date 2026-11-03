@@ -50,11 +50,11 @@ Usage panel on setup tokens from the probe, with age and stale state; account la
 switch in the thread header; the sentence "switch account to <name>". Unit-tested. A real switch
 waits for a second account with quota (2 Nov).
 
-## Split chat panes, 2026-10-30 (D93, Baton #40)
+## Split chat panes, 2026-10-30 (D93, Tessaya #40)
 
 | Piece                                                                          | State                                        | Evidence                                                                                      |
 | ------------------------------------------------------------------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Two to four threads side by side, resizable, restored on reload                | **proven** in Chromium on a throwaway server | `frames/split-panes-2026-10-30/01,04,05,06,07,09`; `scripts/baton/live/split-panes-proof.mjs` |
+| Two to four threads side by side, resizable, restored on reload                | **proven** in Chromium on a throwaway server | `frames/split-panes-2026-10-30/01,04,05,06,07,09`; `scripts/tessaya/live/split-panes-proof.mjs` |
 | Independent composers, both running at once, the unfocused pane keeps updating | **proven** with real Haiku turns             | `02-both-streaming-1440`; text length of the unfocused pane grew while the other was focused  |
 | Closing a pane loses nothing                                                   | **proven**                                   | a typed draft came back when the thread was reopened; `08-closed-one-1440`                    |
 | Threads from two environments                                                  | **proven** on two local servers              | `11-two-environments-1440` (`echo` exists only on the second)                                 |
@@ -73,7 +73,7 @@ waits for a second account with quota (2 Nov).
 | Working state                            | **built**                                        | a `background_task` on the provider thread while a turn runs; the orchestrator frame shows T3's "Running: Bash" bar. A stale read that left it unset or stuck is fixed in baton.39 |
 | Tool steps as they happen                | **built**                                        | each call shows running, then its result in place                                                                                                                                  |
 | Streaming assistant text                 | **not possible from the pane**                   | Claude Code draws a text block only when it is complete, the moment it writes the transcript (D85). Sessions T3 starts on its own Claude provider stream                           |
-| Per-thread mute                          | **T3's Settle**                                  | the relay sends no completion alert for a settled thread; Baton no longer unsettles it                                                                                             |
+| Per-thread mute                          | **T3's Settle**                                  | the relay sends no completion alert for a settled thread; Tessaya no longer unsettles it                                                                                             |
 
 ## v2 port (resume here), started 2026-10-26
 
@@ -82,16 +82,16 @@ The plan is `UPSTREAM.md` "The port plan". Four phases, each merged and deployab
 | Phase                                                                    | State                                                          | Evidence / next step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------------------------------------------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A — patch series + sync + gates at the current pin, no behaviour change  | **done; both boxes on `0.0.45-baton.21`**                      | `vendor-patches/t3code/` (PIN `024d49520e`, 10 patches over 59 upstream paths, lockfile regenerated), `patches.sh verify` and self-test 5/5. Gates green: typecheck 16 packages, lint 0 errors, tests server 5791, web 5560, client-runtime 1708, desktop 1438, shared 1176, contracts 483, voice 17. `release-build.sh` and `deploy-beside.sh` (writes `rollback.sh` before switching). Live at 390 px on both boxes: the sidebar block, Send to a Herdr Claude session that answered (MAPLE-21 on signzart, ONNYX-21 on onnyx), a T3 terminal opened as a Herdr session. First sidebar load 2.6–3.5 s on signzart, 22.7 s on onnyx. Frames in `frames/port-a-2026-10-26/`. D76–D78                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| B — Node 26.12.1 / pnpm 12.14.0, pin to upstream main, server half on v2 | **done; both boxes on `0.1.2-baton.22`**                       | Pin `e762f09e26` (upstream main, 2026-10-26). Six patches over 13 upstream files (from 60). `baton-contracts` and `baton-shared` packages; `BatonEngine` is the one seam to v2 (D79); Continue-with is upstream's `provider.switch` (D80); Baton data in `baton.sqlite`, seeded once from `state.sqlite`, which stays byte-identical. Rehearsed with `rehearse.sh` on copies of both boxes' userdata: v2 boots, onnyx's 129 threads and 17 projects all import, the seed copies 7 Baton migrations plus 4 (signzart) and 3 (onnyx) adopted sessions. Gates: lint 0, typecheck of server and web clean, but the monorepo typecheck was red in `apps/desktop` (the desktop patch had not been ported) until #10, found by the daily sync's gates; tests server 5063, web 4615 (12 browser timeouts under load 31; that file passes alone), client-runtime 1391, desktop 894, baton-shared 211, baton-contracts 15, voice 17. Live on both boxes: the Baton block in upstream's v2 sidebar, Send answered (CEDAR-22 signzart, ONNYX-22 onnyx), a T3 terminal opened as a Herdr session on each; T3 Connect relay re-registered. Frames `frames/port-b-2026-10-26/`. D79–D82. Not yet back on v2: desktop voice IPC, the mobile route's entry |
+| B — Node 26.12.1 / pnpm 12.14.0, pin to upstream main, server half on v2 | **done; both boxes on `0.1.2-baton.22`**                       | Pin `e762f09e26` (upstream main, 2026-10-26). Six patches over 13 upstream files (from 60). `baton-contracts` and `baton-shared` packages; `BatonEngine` is the one seam to v2 (D79); Continue-with is upstream's `provider.switch` (D80); Tessaya data in `baton.sqlite`, seeded once from `state.sqlite`, which stays byte-identical. Rehearsed with `rehearse.sh` on copies of both boxes' userdata: v2 boots, onnyx's 129 threads and 17 projects all import, the seed copies 7 Tessaya migrations plus 4 (signzart) and 3 (onnyx) adopted sessions. Gates: lint 0, typecheck of server and web clean, but the monorepo typecheck was red in `apps/desktop` (the desktop patch had not been ported) until #10, found by the daily sync's gates; tests server 5063, web 4615 (12 browser timeouts under load 31; that file passes alone), client-runtime 1391, desktop 894, baton-shared 211, baton-contracts 15, voice 17. Live on both boxes: the Tessaya block in upstream's v2 sidebar, Send answered (CEDAR-22 signzart, ONNYX-22 onnyx), a T3 terminal opened as a Herdr session on each; T3 Connect relay re-registered. Frames `frames/port-b-2026-10-26/`. D79–D82. Not yet back on v2: desktop voice IPC, the mobile route's entry |
 | C — sidebar from T3's own components at one hook; ~25 s first load       | **done; both boxes on `0.1.2-baton.23`**                       | `BatonProjectsBlock`: T3's `CollapsibleSectionHeader`, project rows with `ProjectFavicon`, session rows shaped like upstream's slim thread rows with T3's own status pills (`ThreadStatusLabel`), one Send composer (T3 `Textarea`, `Button`) for the selected session, Continue-with as a T3 `Menu`; intent bar on T3's `Input`. Mounted by the one-line `0006-web-sidebar` hook. The old fleet, projects and work-session sections are deleted. First load: the fleet was read once on mount, failed while the environment was still connecting, and retried on a 20 s tick; it is now a persisted query atom that waits for the connection. Measured cold reload on onnyx: session rows 21.7 s → 3.1 s; signzart 2.1 s. (The 16–18 s right after pairing is upstream's pairing step.) Live: Send through the composer answered BIRCH-23 (signzart) and ONNYX-23 (onnyx). Frames `frames/port-c-2026-10-26/`                                                                                                                                                                                                                                                                                                                            |
-| D — daily auto-sync job                                                  | **done; it deployed `0.1.2-baton.24` to both boxes by itself** | `scripts/baton/auto-sync.sh` under `baton-auto-sync.timer` (22:30 UTC daily; units in `scripts/baton/systemd/`, `install.sh`). In a throwaway worktree: pin to upstream main, series `--3way`, lockfile, two-parent commit, `gates.sh --install --build`, PR, merge, build `<upstream>-baton.<N+1>`, rehearse on a snapshot of live userdata, deploy beside on signzart then onnyx, each held to a minute of health or rolled back with its own `rollback.sh`. Red: an issue plus a Claude fix session in Herdr (`fab-baton-autosync`, so it shows in Baton). Alarm issue when the oldest unsynced upstream commit is over 3 days old. Disk floor checked before install and build; a green run removes its worktree. First five real runs, 2026-10-26: red on desktop typecheck (#9, fixed in #10), SIGPIPE (#12), red on upstream's docx browser tests timing out under load (#13, #15; web tests now retry on two workers), then green: upstream `dd5b5401e1` merged as #17, `0.1.2-baton.24` live on both boxes, rehearsal left `state.sqlite` unchanged. #15 also proved the red path end to end: issue opened and a live Claude fix session started                                                                                 |
+| D — daily auto-sync job                                                  | **done; it deployed `0.1.2-baton.24` to both boxes by itself** | `scripts/tessaya/auto-sync.sh` under `baton-auto-sync.timer` (22:30 UTC daily; units in `scripts/tessaya/systemd/`, `install.sh`). In a throwaway worktree: pin to upstream main, series `--3way`, lockfile, two-parent commit, `gates.sh --install --build`, PR, merge, build `<upstream>-baton.<N+1>`, rehearse on a snapshot of live userdata, deploy beside on signzart then onnyx, each held to a minute of health or rolled back with its own `rollback.sh`. Red: an issue plus a Claude fix session in Herdr (`fab-baton-autosync`, so it shows in Tessaya). Alarm issue when the oldest unsynced upstream commit is over 3 days old. Disk floor checked before install and build; a green run removes its worktree. First five real runs, 2026-10-26: red on desktop typecheck (#9, fixed in #10), SIGPIPE (#12), red on upstream's docx browser tests timing out under load (#13, #15; web tests now retry on two workers), then green: upstream `dd5b5401e1` merged as #17, `0.1.2-baton.24` live on both boxes, rehearsal left `state.sqlite` unchanged. #15 also proved the red path end to end: issue opened and a live Claude fix session started                                                                                 |
 
 Phase A also fixed what the gates found on main: typecheck failed in `scripts/mobile-showcase.test.ts`
-(a Baton test of a showcase scene the pre-v2 merge dropped; reverted to upstream's file), lint had
-over 40 errors in Baton's own UI files under upstream's newer shadcn rules (off-scale font sizes, four
+(a Tessaya test of a showcase scene the pre-v2 merge dropped; reverted to upstream's file), lint had
+over 40 errors in Tessaya's own UI files under upstream's newer shadcn rules (off-scale font sizes, four
 undeclared colours that rendered nothing, a native title tooltip, `toSorted`), and eight symlinks
 into `/home/dev/.claude` were committed under `apps/server/synthetic config's $literal/`. That
-directory came from an upstream test that names a relative `homePath`, which Baton's shared-home
+directory came from an upstream test that names a relative `homePath`, which Tessaya's shared-home
 materialiser (D52) filled with links to the real home. Relative homes are now never materialised,
 and the server's test run no longer walks into the Director's plugins.
 
@@ -112,7 +112,7 @@ Re-derived from the fork, both boxes and the spec rather than from this page's o
 | One-field send to any session                             | **built, deployed**                                     | `fabric.herdr.send` through the adopted gate (D68); plain-terminal/VS Code sessions are listed, not typed into (Claude Code's peer socket is private) and offered `baton --resume <id>`                  |
 | Rotation keeps control                                    | **built**                                               | after a rotation, idle Herdr-hosted Claude sessions are resumed in place on the new account (D69)                                                                                                        |
 | `baton <project> [claude\|codex]`                         | **installed on both boxes**                             | starts agents inside a Herdr space so they are owned from birth; `fab` still works as a deprecated alias that prints one notice (D71)                                                                    |
-| Airdeck input                                             | **Baton side built**                                    | spots export + intent-bar id (D64); Airdeck side RabHanz/airdeck#1, uncompiled                                                                                                                           |
+| Airdeck input                                             | **Tessaya side built**                                    | spots export + intent-bar id (D64); Airdeck side RabHanz/airdeck#1, uncompiled                                                                                                                           |
 | "Continue with…" button                                   | **built, deployed, proven**                             | per work session in the fleet; real run on a userdata copy, Claude to Codex with a real Codex turn (D62)                                                                                                 |
 | Box-to-box Herdr attach                                   | **signzart to onnyx proven**; onnyx to signzart blocked | `baton-remote` (D70; `fab-remote` is a deprecated alias, D71); the reverse needs Tailscale SSH check approval or a key                                                                                   |
 | tmux replacement                                          | **built, proven live, deployed**                        | `T3CODE_FABRIC_TERMINAL_RUNTIME=herdr` (D61): a T3 terminal is a Herdr session client, survives a T3 restart, re-attaches on reopen                                                                      |
@@ -133,23 +133,23 @@ Re-derived from the fork, both boxes and the spec rather than from this page's o
 | Desktop voice typecheck (18 style errors from #31)                     | **fixed**: file-level `@effect-diagnostics` headers on the six non-Effect voice files; desktop `tsc` clean                                                                                |
 | onnyx OOM protection (D75)                                             | **blocked on one root command** (in D75); user units cannot go below the manager's 200 and onnyx's askpass refuses agents                                                                 |
 
-## What Baton is for, in his words (D56)
+## What Tessaya is for, in his words (D56)
 
 "I want all of my projects and the active sessions within those projects that I am
-managing to work on to be in the T3 code, or whatever UI the Baton should have,
+managing to work on to be in the T3 code, or whatever UI the Tessaya should have,
 beautifully and functionally in threads there. If it is working and any kind of provider
 reaches limits, it should automatically or manually swap seamlessly to the other
 provider, and the coding and work mustn't ever stop unless it is stopped manually. That
 was my hands-off vision for development and coding, but it is just a part, a small part
 of the grand scheme of things, because what I envision is a completely hands-off computer
-control using my voice. That is what Baton was brought to life for, across my devices,
+control using my voice. That is what Tessaya was brought to life for, across my devices,
 across my agents, across my projects, and across platforms."
 
 Read the rest of this page against that sentence. Continuity is the product: a limit is an
-event Baton absorbs, not an interruption he sees. Voice is the grand scheme, and the
+event Tessaya absorbs, not an interruption he sees. Voice is the grand scheme, and the
 development surface is one slice of it.
 
-## Where Baton is — the whole programme
+## Where Tessaya is — the whole programme
 
 One table, so this file answers the question on its own. "Proven" means run
 against the snapshot of real userdata or asserted by a test that drives the real
@@ -212,7 +212,7 @@ fork build carries **none of T3 Connect's public config**, so the cloud link is
 skipped and the environment quietly stops being reachable from t3.codes while
 every local check still passes (D47).
 
-Both machines were deployed while Baton's migrations were still numbered
+Both machines were deployed while Tessaya's migrations were still numbered
 054–059 inside upstream's manifest. D48 moved them into their own manifest and
 their own `fabric_sql_migrations` table; the first boot of a build carrying that
 change moves each machine's record across and logs
@@ -301,13 +301,13 @@ refuses, `allowModel: true` — which is exactly what the first Enter does:
 
 The cut is one setting: his `~/.claude/settings.json` turns thinking on, the CLI
 loads it, and a classification against a closed list of names inherited a
-scratchpad. Turning it off for Baton's two model reads took the same sentence
+scratchpad. Turning it off for Tessaya's two model reads took the same sentence
 from 10.0 s to 6.0 s.
 
 **The 3-second target is not met and the remainder is not ours.** After thinking
 is off, what is left is one API call carrying ~26,000 tokens of Claude Code's own
 system prompt, answered through an end-turn tool — a tool call plus its carrier,
-not a single completion. Baton's own share is milliseconds: the fastest of the
+not a single completion. Tessaya's own share is milliseconds: the fastest of the
 ten was 6 ms, which is a sentence that never reached a model at all.
 
 A pre-warmed SDK session would remove the remaining 0.7–1.0 s of spawn — it is
@@ -403,7 +403,7 @@ on that machine, which only the Director can do.
 | #   | Criterion                                                           | State                                                                                           |
 | --- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | 1   | One desktop UI shows Claude A/B/C and Codex across two environments | **blocked** — one account is logged in                                                          |
-| 2   | Phone connects to the same environments and continues work          | **done** (upstream), and Baton's own screen is built but unrun                                  |
+| 2   | Phone connects to the same environments and continues work          | **done** (upstream), and Tessaya's own screen is built but unrun                                  |
 | 3   | Separate Claude accounts stay logged in                             | **blocked** — the second login                                                                  |
 | 4   | WorkSession survives account handoff                                | **blocked** — Phase 3                                                                           |
 | 5   | Parallel tasks use separate worktrees                               | **done** (upstream)                                                                             |
@@ -418,7 +418,7 @@ on that machine, which only the Director can do.
 
 ## Phase 1 — done by configuration, no code changes
 
-Spec §29 Phase 1 asks for a working stock deployment before any Baton abstraction is added, and
+Spec §29 Phase 1 asks for a working stock deployment before any Tessaya abstraction is added, and
 §37 step 7 asks whether it can be reached with zero code changes. It can, and it was: two Linux
 environments run the released `t3@0.0.42` from the official installer as user-mode services, a
 desktop client and a phone client pair to them over the tailnet, and projects are registered with
@@ -445,7 +445,7 @@ Host names, tailnet URLs, pairing files, and account identities are deliberately
 this repository. The fork is meant to be publishable; the operator's deployment record lives outside
 it.
 
-## Upstream capabilities Baton must not rebuild
+## Upstream capabilities Tessaya must not rebuild
 
 Read from the source tree at `6deac7a9`, not from release notes.
 
@@ -454,7 +454,7 @@ identifies one configuration and account lifecycle, and work routes by instance
 (`docs/internals/providers.md`). Claude instances isolate through `CLAUDE_CONFIG_DIR` rather than
 `HOME`, because overriding `HOME` also moves the macOS keychain lookup and the spawned CLI then
 reports "Not logged in" (`apps/server/src/provider/Drivers/ClaudeHome.ts`). Codex instances use a
-shared `CODEX_HOME` plus a shadow home. Spec §6 and §7 are satisfied by configuration; Baton adds
+shared `CODEX_HOME` plus a shadow home. Spec §6 and §7 are satisfied by configuration; Tessaya adds
 the layer _above_ them, not another provider system.
 
 **Claude runs on the subscription, through the local CLI.** `apps/server/src/provider/Layers/
@@ -475,19 +475,19 @@ be running; web and mobile cannot host it. Cookie jars are **browser profiles**
 (`packages/contracts/src/browserProfile.ts`): named partitions, `persistent` or `incognito`, up to
 24, with built-in `default` and `incognito`. They are client-local and bound to no provider and no
 account, so one logged-in profile serves every account and every vendor. The profile is fixed at
-`preview_open`. This is the end of per-account browser hopping, and it is why Baton does not build
+`preview_open`. This is the end of per-account browser hopping, and it is why Tessaya does not build
 a browser.
 
 **Voice today is iOS dictation into a draft, and nothing else.** `docs/internals/voice-input.md`:
 transcription edits a composer draft and does not submit an agent turn; the implementation
 transcribes locally on supported iOS devices; environment-backed transcription is not implemented.
 The shared controller lives in `packages/client-runtime/src/voice-input/`, which is the right seam
-for Baton to extend — there is no desktop capture, no wake word, no intent routing, no dictation
+for Tessaya to extend — there is no desktop capture, no wake word, no intent routing, no dictation
 into anything but the composer. Spec Phase 5 stands in full.
 
 **"Devices" upstream means simulators, not handsets.** `docs/internals/devices.md` covers iOS
 simulators and Android emulators owned by the environment server, streamed by `expo-device-hub` and
-driven by `agent-device` over adb/simctl. Useful shape, different thing; Baton does not reuse the
+driven by `agent-device` over adb/simctl. Useful shape, different thing; Tessaya does not reuse the
 name.
 
 **Environment identity is independent of the route.** An environment keeps its id across restarts
@@ -499,7 +499,7 @@ see `DECISIONS.md` D6.
 **The event log is the source of truth.** Commands are serialized by the engine, a pure decider
 produces events, events and projections and the command receipt commit in one transaction, and
 reactors do side effects afterwards and feed results back as commands
-(`docs/internals/overview.md`). Persisted events must stay decodable on replay forever. Baton's
+(`docs/internals/overview.md`). Persisted events must stay decodable on replay forever. Tessaya's
 domain follows this, which is why the WorkSession is not a mutable row updated in place by handlers.
 
 ## Phase 2 — WorkSession domain
@@ -566,7 +566,7 @@ assistant answered: ready
 
 One turn, seven seconds, on a scratch git repository — never the developer's live checkout, because a
 thread takes checkpoints as hidden refs in whatever workspace it runs in. `origin: created` on the
-timeline is what distinguishes a thread Baton started from one it adopted.
+timeline is what distinguishes a thread Tessaya started from one it adopted.
 
 ### Not proven
 
@@ -583,7 +583,7 @@ timeline is what distinguishes a thread Baton started from one it adopted.
 | `BatonSessionState`, all ten values, derived deterministically | done                       | `packages/contracts/src/baton/sessionState.ts` + `sessionState.test.ts`. Reachability outranks everything; approvals and questions outrank a running session; a failure outranks lingering background liveness; an exhausted account reads `limited` rather than `idle` so the reason is not hidden |
 | The §10 source ladder, with no model anywhere                  | done                       | the derivation reads `hasPendingApprovals`, `hasPendingUserInput`, `session.status`, `session.lastError`, `backgroundLiveness`, `latestTurn`, and the provider's own quota report — nothing else, and no transcript                                                                                 |
 | Work-session state from its threads                            | done                       | `deriveWorkSessionState`: the most demanding live thread wins, so an implementation session working beside a review session waiting for approval reads as needing the user                                                                                                                          |
-| `WorkSession.synopsis`, persisted                              | done                       | Baton migration 002 (additive, one nullable column), `WorkSessionRepository`                                                                                                                                                                                                                        |
+| `WorkSession.synopsis`, persisted                              | done                       | Tessaya migration 002 (additive, one nullable column), `WorkSessionRepository`                                                                                                                                                                                                                        |
 | Deterministic synopsis updates from events (§11.1)             | done                       | `packages/shared/src/batonSynopsis.ts` + test: turn started/completed/failed, tool started, files changed, validation started/finished, approval requested/resolved, question asked/answered, plan step, PR opened, background changed                                                              |
 | The event→signal mapping                                       | done                       | `apps/server/src/baton/SynopsisReactor.ts` + test. An unknown activity kind returns null rather than guessing                                                                                                                                                                                       |
 | Staleness                                                      | done                       | `SYNOPSIS_STALE_AFTER_MS`, `isSynopsisStale`; the Fleet row renders "(stale)" and the spoken answer says how old it is                                                                                                                                                                              |
@@ -640,7 +640,7 @@ first, and `02-needs-me-filter.png` after the filter was clicked.
 | Triggers `on_done` / `on_needs_user` / `on_failed` / `after_rule`                     | done          | `OrchestrationRuleService.test.ts` — each mapped onto the `BatonSessionState` values §10 derives, and nothing else                                                                                                 |
 | `after(time)` triggers                                                                | **not built** | a scheduler rather than a reactor, and none of this phase's three safety properties is written to hold for one; `DECISIONS.md` D23                                                                                 |
 | Actions: start a provider session, message the implementer, notify, confirmation gate | done          | `OrchestrationEffectsLive.ts` is the whole list of what a rule may do; `OrchestrationReactor.test.ts` drives each one through the real services and reads back the firing it recorded                              |
-| Persistence, additive                                                                 | done          | Baton migration 003, two tables; `OrchestrationRuleRepository.ts`                                                                                                                                                  |
+| Persistence, additive                                                                 | done          | Tessaya migration 003, two tables; `OrchestrationRuleRepository.ts`                                                                                                                                                  |
 | Create / list / disable / enable / confirm over RPC, each with an auth scope          | done          | `rpc.ts`, `RpcAuthorization.ts` — the key set must equal the RPC group's, so an unscoped method is a compile error                                                                                                 |
 | Evaluated by a reactor on the same events Phase 4 reads                               | done          | `OrchestrationReactor.test.ts` pins the event set — the four Phase 4 reads, and pinning/snoozing/renaming ignored: a rule must not fire on a fact the fleet cannot see                                             |
 | Never a model in the firing decision                                                  | done          | `shouldFire` is arithmetic over recorded facts; there is no model call anywhere in the path                                                                                                                        |
@@ -737,7 +737,7 @@ environment.
 | Create a rule, by delegating to `batonRuleParser`                | done  | `IntentService.test.ts`; the live run created §22's two rules from one sentence, each carrying the sentence as its source                                                                    |
 | Answer a parked confirmation gate                                | done  | the live run parked a gate and released it by sentence; `batonIntentParser.test.ts` for the grammar, including two questions waiting                                                         |
 | Refuse everything else, naming the phrase                        | done  | `batonIntentParser.test.ts` — 32 cases; every refusal carries the words it could not place                                                                                                   |
-| Every intent recorded (`received` / `resolved` / `refused`)      | done  | Baton migration 004, one additive table; `IntentService.ts` publishes the three §28-style events and writes the row, refusals included                                                       |
+| Every intent recorded (`received` / `resolved` / `refused`)      | done  | Tessaya migration 004, one additive table; `IntentService.ts` publishes the three §28-style events and writes the row, refusals included                                                       |
 | Shown on the work session when it has one                        | done  | `apps/web/src/batonIntentView.ts` + tests; the Work block renders the last three for each work session                                                                                       |
 | A text entry point in the web UI, behind the same flag           | done  | `BatonIntentBar.tsx` in the Fleet section: resolves while typing, shows what enter will do, says the reply afterwards                                                                        |
 | The spoken reply is text any TTS can read                        | done  | `BatonIntentRunResult.reply` is a plain string; no speech vendor, model or licence anywhere in the fork (D24)                                                                                |
@@ -808,7 +808,7 @@ asked. `DECISIONS.md` D29, which also records the general case that is still ope
   run deliberately did not start a provider session, because this phase was not authorised to spend
   a turn.
 - ~~**A state-triggered rule still fires on a state that persists**~~ — **closed** by the Phase 9
-  transition amendment below: Baton migration 005, and a rule now fires on entering a state rather than
+  transition amendment below: Tessaya migration 005, and a rule now fires on entering a state rather than
   while it holds. D30.
 - **No second account**, so "continue this with Claude B" resolves against one Claude. The mechanism
   is there; the second subscription is still Phase 1's open item.
@@ -817,7 +817,7 @@ asked. `DECISIONS.md` D29, which also records the general case that is still ope
 
 | Item                                                                 | State | Where it is proven                                                                                                                         |
 | -------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| The reactor remembers the state it last saw each work session in     | done  | Baton migration 005, one additive table, one row per work session; `OrchestrationRuleRepository.getObservedState` / `setObservedState`     |
+| The reactor remembers the state it last saw each work session in     | done  | Tessaya migration 005, one additive table, one row per work session; `OrchestrationRuleRepository.getObservedState` / `setObservedState`     |
 | Durable, so a restart is not a fresh transition                      | done  | the row is in the database, for the reason the firing count is: a restart is when a runaway does the most damage                           |
 | A rule fires on **entering** a matching state, not while it holds    | done  | `OrchestrationRuleService.test.ts`, "fires on entering a state, not while it stays true" — `state_unchanged` is a named refusal            |
 | A rule that has never fired may act on a state it finds already true | done  | `OrchestrationRuleService.test.ts` — "when this finishes, have it reviewed" said about work that has just finished must still do something |
@@ -920,10 +920,10 @@ exist yet — and the phone says which, where the action would have been.
 | Status query                        | done                                                            | the three §20 questions as one-tap sentences, answered by `fabric.intent.run`; `batonFleetScreenModel.test.ts`                                                                                                        |
 | Voice message / send an instruction | done                                                            | the same field and the same grammar. The phone has no microphone of its own: iOS's keyboard dictation key fills the field, which is the whole of D24 applied to a phone (D35)                                         |
 | Quick "What needs me?"              | done                                                            | `BATON_QUICK_ACTIONS` — sentences, not special-cased buttons, so a button cannot drift from what the same words do typed out                                                                                          |
-| Notification deep links             | done                                                            | `batonNotificationLink.ts`: a live thread opens the thread, and work whose thread has ended opens the Baton screen focused on it — the case upstream's thread links cannot express, and the one the object exists for |
+| Notification deep links             | done                                                            | `batonNotificationLink.ts`: a live thread opens the thread, and work whose thread has ended opens the Tessaya screen focused on it — the case upstream's thread links cannot express, and the one the object exists for |
 | See all active work                 | done                                                            | the fleet list, with §33's "Needs me" as a top-level filter                                                                                                                                                           |
 | Open the relevant WorkSession       | done                                                            | the deep link, and the row                                                                                                                                                                                            |
-| Approve / respond                   | **already upstream**                                            | T3's mobile client answers approvals and questions today (Phase 1's table); Baton adds the route to the right thread rather than a second approval surface                                                            |
+| Approve / respond                   | **already upstream**                                            | T3's mobile client answers approvals and questions today (Phase 1's table); Tessaya adds the route to the right thread rather than a second approval surface                                                            |
 | Mic button                          | **blocked**: no device, no mac                                  | and by D24 the fork contains no speech pipeline; the keyboard's dictation key is the microphone (D35)                                                                                                                 |
 | iOS App Intents                     | **blocked**: no Xcode, no signing identity, no device           | §19.1's supported entry points all need a native target                                                                                                                                                               |
 | Action Button shortcut              | **blocked**: same                                               |                                                                                                                                                                                                                       |
@@ -956,7 +956,7 @@ wired to routes and to the same RPC the desktop uses.
 
 ## Phase 8 — adopted sessions
 
-§29 Phase 8 brings terminals Baton did not start into the same fleet: a Herdr
+§29 Phase 8 brings terminals Tessaya did not start into the same fleet: a Herdr
 adapter, discovery, state mapping, an `AdoptedSession`, attachment to a work
 session, a raw terminal surface, "show X", and a safe send-input capability.
 
@@ -970,11 +970,11 @@ only thing proven.
 | ------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Herdr adapter                         | done, as a **port**                                      | `AdoptedRuntimeAdapter` + `HerdrAdapterLive.ts`: the only file that knows the runtime exists. Integrated, never vendored (D37, and its licence correction — upstream is Apache-2.0, not AGPL) |
 | Discover server/workspaces/panes      | **done, against a real runtime**                         | one `herdr api snapshot` call, parsed against fixtures captured from the live binary. `scripts/baton-herdr-proof.ts` returns `available=true candidates=2` from two real panes                |
-| Map semantic agent state              | done                                                     | `packages/shared/src/batonAdoptedSession.ts` — §9's four rows; a word Baton does not know is still refused (D38), and a pane with no agent maps by what is running in it (D59)                |
-| Create an AdoptedSession              | done                                                     | Baton migration 006, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                                |
+| Map semantic agent state              | done                                                     | `packages/shared/src/batonAdoptedSession.ts` — §9's four rows; a word Tessaya does not know is still refused (D38), and a pane with no agent maps by what is running in it (D59)                |
+| Create an AdoptedSession              | done                                                     | Tessaya migration 006, `AdoptedSessionService.test.ts`; registering twice with one id is a retry                                                                                                |
 | Attach to a WorkSession               | **done, live**                                           | the proof run adopts a _discovered_ pane into `ws-herdr-proof`, rather than one registered by hand                                                                                            |
 | Appear in the fleet                   | **done, live**                                           | `batonFleet.test.ts`, and the proof run's fleet query returns the adopted pane with its state                                                                                                 |
-| Declared capability limits            | done                                                     | every adopted session carries what Baton may not do to it, and each refusal says why (D39); printed in the proof run                                                                          |
+| Declared capability limits            | done                                                     | every adopted session carries what Tessaya may not do to it, and each refusal says why (D39); printed in the proof run                                                                          |
 | Safe send-input                       | done as a gate; wired and **deliberately not yet fired** | `pane send-text` then `pane send-keys enter`, tested against captured CLI output including the half-delivered case. Nothing has been typed into a pane anybody was using                      |
 | Read an adopted terminal              | **done, live**                                           | `fabric.adopted.readOutput`, gated on `showTerminal` and never on `readConversation` (D60); the proof run reads real lines off a running pane                                                 |
 | Raw terminal attach surface, "show X" | **partial** — the server half is done                    | the server returns the pane's text; _rendering_ a terminal is a desktop client's job, which Phase 6 still lists as blocked on a desktop session this box does not have                        |
@@ -1061,7 +1061,7 @@ claims to need the user.
 | Production policy templates    | done                                                    | development, supervised and production; production switches high-risk capabilities **off** rather than gating them, because the confirmation would be a tap on a phone in a taxi (D42)                                                                    |
 | Retention settings             | done                                                    | `packages/shared/src/batonRetention.ts`, applied to the intent log where it grows rather than on a timer (D43)                                                                                                                                            |
 | Audit log                      | done                                                    | `packages/shared/src/batonAudit.ts` — a view over the records that already exist, never a fourth table (D44)                                                                                                                                              |
-| Schema migration testing       | done                                                    | `apps/server/src/persistence/BatonMigrationsAdditive.test.ts` — D7 as a test: no Baton migration may drop, rename or rewrite anything, or touch a table Baton does not own                                                                                |
+| Schema migration testing       | done                                                    | `apps/server/src/persistence/BatonMigrationsAdditive.test.ts` — D7 as a test: no Tessaya migration may drop, rename or rewrite anything, or touch a table Tessaya does not own                                                                                |
 | Reconnect / offline resume     | **partial**                                             | against the snapshot: a connection dropped and remade returns identical fleet state, and two clients at once agree. A _mid-turn_ disconnection and a phone resume still need a client that can be backgrounded                                            |
 | Performance profiling          | done, at this scale                                     | `fabric.fleet.get` over the real snapshot: **min 18ms, median 26ms, max 40ms** for 10 work sessions. Recorded rather than assumed; it is not a load test                                                                                                  |
 | Observability                  | **already upstream**                                    | every `fabric.*` handler goes through `observeRpcEffect` with `rpc.aggregate: "fabric"`, so Baton's RPCs appear in the same traces and metrics as T3's                                                                                                    |
@@ -1072,12 +1072,12 @@ claims to need the user.
 
 ### The security review
 
-What Baton adds to T3's surface, and what holds it:
+What Tessaya adds to T3's surface, and what holds it:
 
 - **Every `fabric.*` RPC has a declared auth scope**, and the scope map's key set
   must equal the RPC group's — an unscoped method does not compile
   (`RpcAuthorization.test.ts`).
-- **No secret is read, written or forwarded by Baton code.** The provider
+- **No secret is read, written or forwarded by Tessaya code.** The provider
   credentials stay where T3 put them; nothing under `baton/` opens a credential
   file, and §30.14 is checked by the diff on every PR.
 - **Three boundaries are client-local by construction**, so the environment
@@ -1090,13 +1090,13 @@ What Baton adds to T3's surface, and what holds it:
 - **Automation is bounded**: rules have a durable firing bound, cannot be
   triggered by their own effect, and fire on a transition rather than while a
   state persists (D20, D29, D30).
-- **Adopted sessions declare what Baton may not do to them** (D39), so a
-  terminal Baton does not own cannot be typed into by accident.
+- **Adopted sessions declare what Tessaya may not do to them** (D39), so a
+  terminal Tessaya does not own cannot be typed into by accident.
 
 What the review did **not** cover, and should before daily use: a dependency
 audit of the fork against upstream, a look at the pairing/token lifetimes T3
 ships with, and a second pair of eyes on the WebSocket authentication path,
-which Baton inherits unchanged and did not test.
+which Tessaya inherits unchanged and did not test.
 
 ## One brain, screen context, voice and dictation on Windows, 2026-10-31 (D100 to D113)
 
@@ -1107,7 +1107,7 @@ Tested on the Windows laptop with his own Claude. `SCREEN.md` has the seven chec
 | One brain for voice and typed asks  | built, in `baton-shared`, reachable by `fabric.brain.decide`                      | `INTENT_TABLE.md`, 48 of 48, model median 1.5 s                                                                                                                                       |
 | Screen context                      | built                                                                             | scored set 22 of 24 before, 24 of 24 after, all 5 must-say-not-found cases right; 24 real traces                                                                                      |
 | Echo gate                           | built                                                                             | 0 transcripts from its own voice, barge-in fired, from audio (D102)                                                                                                                   |
-| Dictation paste, real window        | passed for the right window and clipboard restore; wrong window by a stale handle | `scripts/baton/voice-lab/dictation-window.mjs`. A live window switch and a window that never reads the clipboard need him there, as Windows will not give a lab window the foreground |
+| Dictation paste, real window        | passed for the right window and clipboard restore; wrong window by a stale handle | `scripts/tessaya/voice-lab/dictation-window.mjs`. A live window switch and a window that never reads the clipboard need him there, as Windows will not give a lab window the foreground |
 | Dictation cancel, five-minute limit | passed                                                                            | real exe with a fake mic: stopped at 300.8 s, 4,869 characters kept, nothing pasted                                                                                                   |
 | Live microphone                     | **not run**                                                                       | V1 below                                                                                                                                                                              |
 
@@ -1133,7 +1133,7 @@ See `TEST_MATRIX.md`, the section of the same name. Pure rules live in `packages
 
 ## Proof that the operator asks first (2026-11-01)
 
-`bash scripts/baton/operator-proof.sh` (needs `vp`; no microphone, pointer, model or network) feeds Claude's
+`bash scripts/tessaya/operator-proof.sh` (needs `vp`; no microphone, pointer, model or network) feeds Claude's
 `control_request` lines and Codex's approval requests through the real gate and prints PASS or FAIL for: a fetch after a
 read asks even with Act without asking on; a high-risk call asks, and a spoken question that runs out is a no (only a
 spoken yes lets it through); a Codex file change asks whatever the setting; a web search after a read asks. Cases:
@@ -1146,7 +1146,7 @@ Written 2026-11-01. Proven means seen working on his laptop; "tests" means unit 
 
 | Ask                                                                                                                  | State                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Baton's own window, sidebar and tabs, every setting                                                                  | Merged (PR #73, #76 fixed a script error). Mock-data renders; 0.1.18 is the first build to carry the fix. Not yet seen on his laptop                                                                                                                   |
+| Tessaya's own window, sidebar and tabs, every setting                                                                  | Merged (PR #73, #76 fixed a script error). Mock-data renders; 0.1.18 is the first build to carry the fix. Not yet seen on his laptop                                                                                                                   |
 | Real Wispr Flow audit                                                                                                | First pass from public sources merged (`research/wispr-audit-2026-11-01/`); the live-app capture waits for his yes                                                                                                                                     |
 | Open sessions opens T3                                                                                               | Merged (PR #74); not run in Electron                                                                                                                                                                                                                   |
 | Clean thread list, renames stick                                                                                     | Deployed to both boxes (0.1.5-baton.47); sweep ran, 7 to 3 and 134 to 7                                                                                                                                                                                |
@@ -1163,13 +1163,13 @@ Written 2026-11-01. Proven means seen working on his laptop; "tests" means unit 
 
 ## The one assistant (D143, D144), 2026-11-02
 
-Behind "One assistant (new)", off by default. Proven by tests and the proof script (`scripts/baton/operator-proof.sh`, 10 cases): the
+Behind "One assistant (new)", off by default. Proven by tests and the proof script (`scripts/tessaya/operator-proof.sh`, 10 cases): the
 tool server refuses no token, a wrong token and a browser; the gate runs inside every tool; plain typing of his own words needs no
 question even after a screenshot; other text after a screenshot asks; high risk, a command line, Enter, a drag and a send ask and a
 question that runs out is a no; the warm session is seeded with the last reply in full; the dry run of the hands' harness passes.
 Not proven: any of it against a real `claude` with a real screen, the first-word latency (the target is p50 1.5 s, p90 3 s, read
-with `scripts/baton/latency-report.mjs` once he allows a live test), `ui_tree`, Codex, and the six-task before and after (it waits
-for him to be away and told, `scripts/baton/computer-use-harness.sh real`).
+with `scripts/tessaya/latency-report.mjs` once he allows a live test), `ui_tree`, Codex, and the six-task before and after (it waits
+for him to be away and told, `scripts/tessaya/computer-use-harness.sh real`).
 
 Gate rulings (2026-11-02): keys after a read and the scope of one yes to typing are as D144 says. Proven: `operator-proof.sh` cases 10 and 11 (12 in all)
 and the dry run of the hands' harness. Not proven: against a real session.

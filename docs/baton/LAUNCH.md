@@ -18,7 +18,7 @@ nothing here claims Tessaya complies with anyone's terms. Items marked **Directo
 - The "Claude login for Tessaya" setting points the child at another login directory on the same machine
   (`CLAUDE_CONFIG_DIR`). Account rotation (`apps/server/src/baton/AccountPoolService.ts`) swaps the
   credential in a config directory using the third-party `cswap` tool, between turns, when one login is near
-  its limit. Token instances (`scripts/baton/provider-token-instances.py`, not shipped) run extra logins
+  its limit. Token instances (`scripts/tessaya/provider-token-instances.py`, not shipped) run extra logins
   from a setup token.
 
 **To check against the current published terms, before launch (Director):**
@@ -47,7 +47,7 @@ Sources: the project's README "License" section and the GitHub licence API (code
   non-commercial until the project says otherwise. (The embedding model originates from Google's speech
   embedding on TFHub, Apache-2.0, per the README, re-implemented by the author.)
 - Tessaya's four wake models (`sebastian`, `alfred`, `freya`, `onyx`) were trained here with openWakeWord's
-  trainer (`scripts/baton/wake-train/`, `.github/workflows/baton-wake-train.yml`) on Piper LibriTTS and
+  trainer (`scripts/tessaya/wake-train/`, `.github/workflows/baton-wake-train.yml`) on Piper LibriTTS and
   en_GB voices plus openWakeWord's published negative features. `THIRD_PARTY_NOTICES.md` records that those
   sets carry their own terms, "some non-commercial".
 - Effect: redistributing the installer commercially is **not** cleared today. Options named in the research

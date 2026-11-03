@@ -5,6 +5,8 @@
 import type {
   BatonCatalogCreateInput,
   BatonCatalogCreateResult,
+  BatonCatalogAutoResumeInput,
+  BatonCatalogAutoResumeResult,
   BatonCatalogCleanupInput,
   BatonCatalogCleanupResult,
   BatonCatalogFoldersInput,
@@ -29,6 +31,10 @@ export interface CatalogCommands {
     typeof BatonCatalogCreateInput.Type,
     typeof BatonCatalogCreateResult.Type
   >;
+  readonly autoResume: Command<
+    typeof BatonCatalogAutoResumeInput.Type,
+    typeof BatonCatalogAutoResumeResult.Type
+  >;
   readonly cleanup: Command<
     typeof BatonCatalogCleanupInput.Type,
     typeof BatonCatalogCleanupResult.Type
@@ -40,6 +46,17 @@ export interface CatalogCommands {
 }
 
 type Reply = { readonly ok: boolean; readonly detail: string };
+/** What the command said, in a few plain words, so a failed call is not a bare "could not". */
+const describeFailure = (answer: object): string => {
+  const cause = (answer as { cause?: unknown; _tag?: string }).cause;
+  const text =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : String((answer as { _tag?: string })._tag ?? "no answer");
+  return text.replace(/\s+/g, " ").slice(0, 160);
+};
 const NO = (detail: string): Reply => ({ ok: false, detail });
 const env = (id: string) => id as never;
 
@@ -76,6 +93,27 @@ export const answerCatalogRequest = async (
     );
     return { ok: true, detail: JSON.stringify(rows.flat()) };
   }
+  if (request.kind === "catalogStop") {
+    const answer = await commands.autoResume({
+      environmentId: env(request.environmentId),
+      input: { action: "stop", sessionId: request.sessionId },
+    });
+    return answer._tag === "Success"
+      ? { ok: true, detail: "Stopped." }
+      : NO("That session could not be stopped.");
+  }
+  if (request.kind === "catalogAutoResume") {
+    // The switch applies to every connected environment; it reads as on when any one is on.
+    const answers = await Promise.all(
+      deps.environmentIds.map((environmentId) =>
+        commands
+          .autoResume({ environmentId: env(environmentId), input: { action: request.action } })
+          .catch(() => null),
+      ),
+    );
+    const enabled = answers.some((a) => a?._tag === "Success" && a.value?.enabled === true);
+    return { ok: true, detail: JSON.stringify({ enabled }) };
+  }
   if (request.kind === "catalogCleanup") {
     // One batch per environment; the window shows each machine's counts and keeps the archived ids so it can be undone.
     const results = await Promise.all(
@@ -104,7 +142,7 @@ export const answerCatalogRequest = async (
       },
     });
     if (answer._tag !== "Success" || answer.value === undefined)
-      return NO("That session could not be resumed.");
+      return NO(`That session could not be resumed: ${describeFailure(answer)}`);
     return { ok: answer.value.state !== "failed", detail: JSON.stringify(answer.value) };
   }
   if (request.kind === "catalogCreate") {
