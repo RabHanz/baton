@@ -304,7 +304,15 @@ export const startBatonDesktop = Effect.gen(function* () {
     const catalog = (catalogStore = createCatalog({
       service:
         (hostEnvironment["BATON_MOCK_CATALOG"] ?? "") === ""
-          ? createBridgeCatalogService({ bridge: sessions, openMainWindow })
+          ? createBridgeCatalogService({
+              bridge: sessions,
+              openMainWindow,
+              saveCleanupList: (json) =>
+                NodeFS.writeFileSync(
+                  NodePath.join(environment.stateDir, `baton-cleanup-${Date.now()}.json`),
+                  json,
+                ),
+            })
           : mockCatalogService(),
       onChange: () => voice?.refresh(),
     }));
