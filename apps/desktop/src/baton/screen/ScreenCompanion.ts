@@ -39,6 +39,7 @@ import {
   runDrivePlan,
   screensDifference,
   isShellWindow,
+  missingDisplaysNote,
   screenLabel,
   shotFor,
   teachTurn,
@@ -1687,6 +1688,11 @@ export const startScreenCompanion = (input: {
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   const agentTools: string[] = [];
+  const agentResults: Array<{
+    readonly tool: string;
+    readonly ok: boolean;
+    readonly error?: string;
+  }> = [];
   /** Which browser route ran and why, for the turn log. */
   const agentRoutes: Array<{ readonly route: string; readonly why: string }> = [];
   let chromeRelaunched = false;
@@ -1860,17 +1866,21 @@ export const startScreenCompanion = (input: {
     },
     capture: async () => {
       if (!(await approveCapture("what is on your screen", null))) {
-        throw new Error("He did not allow looking at his screen.");
+        throw new Error(
+          "Looking at his screen was not allowed: he said no, or did not answer the question in time. Ask him again, or ask which screen he means.",
+        );
       }
       const captured = await capture();
       lastShots = captured.map((c) => c.shot);
+      const missing = missingDisplaysNote(captured.length, Electron.screen.getAllDisplays().length);
       return {
-        text: captured
-          .map(
+        text: [
+          ...captured.map(
             (c) =>
               `${screenLabel(c.shot, captured.length)}, image ${c.shot.width}x${c.shot.height}`,
-          )
-          .join("\n"),
+          ),
+          ...(missing === null ? [] : [missing]),
+        ].join("\n"),
         images: captured.map((c) => ({ data: c.jpeg.toString("base64"), mimeType: "image/jpeg" })),
       };
     },
@@ -2073,6 +2083,7 @@ export const startScreenCompanion = (input: {
       tools: withFailureGuard(buildBatonTools(toolHost)),
       gate: agentGate,
       scrub: (text) => vaultHost?.scrub(text) ?? text,
+      onResult: (r) => agentResults.push(r),
     });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
@@ -2105,6 +2116,7 @@ export const startScreenCompanion = (input: {
         memory.beginTurn();
         agentTaint.reset();
         agentTools.length = 0;
+        agentResults.length = 0;
         agentDecisions.length = 0;
         agentRoutes.length = 0;
         leftPointer = null;
@@ -2148,6 +2160,7 @@ export const startScreenCompanion = (input: {
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
         tools: [...agentTools],
+        toolResults: [...agentResults],
         route: "agent",
       });
     } catch (error) {
@@ -2158,6 +2171,7 @@ export const startScreenCompanion = (input: {
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
         tools: [...agentTools],
+        toolResults: [...agentResults],
         decisions: [...agentDecisions],
         routes: [...agentRoutes],
         route: "agent",
