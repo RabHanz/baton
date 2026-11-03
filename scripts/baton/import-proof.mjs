@@ -166,7 +166,8 @@ try {
     });
   const value = (exit) => (exit?._tag === "Success" ? exit.value : null);
 
-  const listed = value(await rpc("baton.sessions.list", { limit: 200 }));
+  const listExit = await rpc("baton.sessions.list", { limit: 200 });
+  const listed = value(listExit);
   check(
     "the catalog lists the transcripts of the throwaway profile",
     (listed?.sessions?.length ?? 0) > 50,
