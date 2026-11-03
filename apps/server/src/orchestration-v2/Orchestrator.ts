@@ -3318,6 +3318,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
     }
 
+    if (command.type === "thread.model-selection.set" || command.type === "provider.switch") {
+      const liveRefusal = liveThreadSwitchRefusal({
+        threadId: command.threadId,
+        currentInstance: thread.providerInstanceId,
+        targetInstance: command.modelSelection.instanceId,
+      });
+      if (liveRefusal !== null) {
+        yield* Effect.logWarning("live-thread-new-session-blocked", {
+          threadId: command.threadId,
+          command: command.type,
+          to: command.modelSelection.instanceId,
+        });
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: liveRefusal,
+        });
+      }
+    }
     const needsProviderState =
       command.type === "thread.runtime-mode.set" ||
       command.type === "thread.model-selection.set" ||
