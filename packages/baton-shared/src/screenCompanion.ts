@@ -195,6 +195,24 @@ export const toDesktop = (
   };
 };
 
+/**
+ * The capture source for one display: by its id, else (Linux X11 reports no display id) by position. A display with no
+ * source is reported as missing, never silently dropped.
+ */
+export const pickSource = <S extends { readonly display_id: string }>(
+  sources: ReadonlyArray<S>,
+  displayId: number,
+  index: number,
+): S | undefined =>
+  sources.find((s) => s.display_id === String(displayId)) ??
+  (sources.every((s) => s.display_id === "") ? sources[index] : undefined);
+
+/** What to tell the model when fewer displays came back than exist. */
+export const missingDisplaysNote = (captured: number, total: number): string | null =>
+  captured >= total
+    ? null
+    : `Only ${captured} of ${total} displays could be captured; the others gave no picture. Say which one is missing.`;
+
 /** Long edge capped at `max` (farzaa uses 1280: enough to read UI, cheap to send). */
 export const captureSize = (
   width: number,
