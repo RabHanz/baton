@@ -67,6 +67,8 @@ export const answerCatalogRequest = async (
     readonly commands: CatalogCommands;
     readonly environmentIds: ReadonlyArray<string>;
     readonly label: (environmentId: string) => string;
+    /** The environment this app itself runs on, so New session can default to this computer. */
+    readonly localEnvironmentId?: string | null;
   },
 ): Promise<Reply | null> => {
   const { commands } = deps;
@@ -88,6 +90,7 @@ export const answerCatalogRequest = async (
           ...row,
           environmentId,
           machine: deps.label(environmentId),
+          local: environmentId === deps.localEnvironmentId,
         }));
       }),
     );
