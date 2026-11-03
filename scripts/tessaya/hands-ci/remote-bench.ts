@@ -121,8 +121,10 @@ console.log(
 for (const r of rows)
   console.log(`| ${r.step} | ${r.n} | ${r.ok} | ${r.p50} | ${r.p90} | ${r.max} |`);
 NodeFS.writeFileSync(NodePath.join(OUT, "remote-bench.json"), JSON.stringify(rows, null, 2));
-ps(
-  "Get-Process -Name CalculatorApp,Calculator,win32calc,calc,notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
-);
+try {
+  ps("Get-Process -Name CalculatorApp,Calculator,win32calc,calc,notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
+} catch {
+  // best effort: nothing to stop is not a failure
+}
 kill();
 process.exit(0);
