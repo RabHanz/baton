@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off
+// @effect-diagnostics globalTimers:off globalDate:off -- audio callbacks run outside the Effect runtime
 /**
  * Baton's speech out of a hidden page, so playback is one code path everywhere and there is no
  * process per sentence. Samples are scheduled as they arrive, a little ahead so a slow chunk does
@@ -24,10 +24,16 @@ window.finish=()=>new Promise(r=>{if(!live.length)return r();done=r;});
 window.halt=()=>{for(const s of live){try{s.onended=null;s.stop();}catch{}}live=[];done&&done();};
 </script>`;
 
+/** The share of the voice's volume left while someone may be talking over it. */
+const DUCK_LEVEL = 0.25;
+
 export const createVoicePlayer = (
   onLevel: (level: number) => void,
   volume: () => number = () => 1,
+  /** What is about to sound (16-bit mono at `rate`) and when, for telling his voice from hers (echo guard). */
+  onReference?: (pcm: Int16Array, rate: number, soundsAtMs: number) => void,
 ): VoicePlayer => {
+  let ducked = false;
   let win: Electron.BrowserWindow | null = null;
   let ready: Promise<void> = Promise.resolve();
   let idle: ReturnType<typeof setTimeout> | null = null;
@@ -61,6 +67,7 @@ export const createVoicePlayer = (
       let head = Buffer.alloc(0);
       let odd = Buffer.alloc(0);
       let opened = false;
+      let rate = 24_000;
       let bytes = 0;
       const pulses = new Set<ReturnType<typeof setTimeout>>();
       try {
@@ -73,7 +80,8 @@ export const createVoicePlayer = (
             if (format === null && head.length < HEADER_BYTES) continue;
             if (format === null) return false;
             await run(`window.open_(${format.rate})`);
-            await run(`window.setVolume(${Math.min(1, Math.max(0.1, volume()))})`);
+            await run(`window.setVolume(${Math.min(1, Math.max(0.1, volume())) * (ducked ? DUCK_LEVEL : 1)})`);
+            rate = format.rate;
             opened = true;
             pcm = head.subarray(format.start);
           }
@@ -84,6 +92,11 @@ export const createVoicePlayer = (
           const samples = joined.subarray(0, even);
           bytes += even;
           const delay = await run(`window.push("${samples.toString("base64")}")`);
+          onReference?.(
+            new Int16Array(samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.length)),
+            rate,
+            Date.now() + delay,
+          );
           const pulse = setTimeout(() => {
             pulses.delete(pulse);
             onLevel(pcmLevel(samples));
@@ -99,7 +112,15 @@ export const createVoicePlayer = (
         idle = setTimeout(close, IDLE_CLOSE_MS);
       }
     },
+    duck: (on) => {
+      ducked = on;
+      if (win !== null && !win.isDestroyed()) {
+        const level = Math.min(1, Math.max(0.1, volume())) * (on ? DUCK_LEVEL : 1);
+        void win.webContents.executeJavaScript(`window.setVolume(${level})`).catch(() => undefined);
+      }
+    },
     stop: () => {
+      ducked = false;
       stamp += 1;
       if (win !== null && !win.isDestroyed()) {
         void win.webContents.executeJavaScript("window.halt()").catch(() => undefined);

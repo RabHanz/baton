@@ -11,6 +11,7 @@
  *
  * @module baton-voice/core
  */
+import type { EchoGuard } from "./echoGuard.ts";
 import type { ContextBusState } from "@t3tools/baton-shared/contextBus";
 import { emptyContextBus } from "@t3tools/baton-shared/contextBus";
 import { JOIN_WITHIN_MS, WAIT_DEFAULT_MS, commitMs } from "@t3tools/baton-shared/endOfTurn";
@@ -75,8 +76,10 @@ export type VoiceCoreEvent =
   /** The audio of a segment that is going to recognition, for the history's kept clips. */
   | { readonly type: "audio"; readonly pcm: Int16Array; readonly at: number }
   /** A segment went to speech recognition. */
-  /** A wake word over Baton's own voice: he is cutting in. */
+  /** Someone is cutting in over Baton's own voice (a wake word, or his voice heard through the echo). */
   | { readonly type: "barge_in" }
+  /** Probably him over it: lower the voice now; `on: false` when it turned out not to be. */
+  | { readonly type: "barge_duck"; readonly on: boolean }
   | { readonly type: "thinking" }
   /** Speech recognition came back with nothing usable. */
   | { readonly type: "nothing" }
@@ -113,6 +116,8 @@ export interface BatonVoiceCore extends VoiceCore {
    * after, the mic hears Baton: only a wake word gets through.
    */
   readonly setSpeaking: (active: boolean) => void;
+  /** What the player is about to play (16 kHz mono) and when it will sound, so his voice can be told from it. */
+  readonly reference: (pcm: Int16Array, soundsAtMs: number) => void;
   /**
    * A cue (a short sound of Baton's own) will play for this long: for that long the wake detector and
    * the segmenter are given silence instead of the microphone, so the cue can neither wake it nor
@@ -148,6 +153,9 @@ const STOP_END_SILENCE_MS = 350;
 const STOP_MAX_MS = 2_000;
 /** Generation reads ahead of playback, so this covers what is playing now. */
 const SPOKEN_KEPT = 12;
+/** Speech over her voice for this long ducks it, and for this long cuts in: well inside the 300 ms to stop. */
+const DUCK_MS = 40;
+const BARGE_MS = 120;
 
 const NOISE = /^(?:\[[^\]]*\]|\([^)]*\)|\s|[.,!?…-])*$/;
 
@@ -169,6 +177,10 @@ export const createVoiceCore = (input: {
    * wake as if it never happened. Absent, the model alone decides.
    */
   readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
+  readonly echo?: EchoGuard;
+  /** Headphones: the mic cannot hear the voice, so it listens all the time and his speech over it is a barge-in. */
+  readonly speakerMode?: () => "speakers" | "headphones";
 }): BatonVoiceCore => {
   const timings = input.timings ?? DEFAULT_TIMINGS;
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
@@ -584,14 +596,17 @@ export const createVoiceCore = (input: {
     } else echoUntil = samples + msToSamples(ECHO_TAIL_MS);
     enqueue(() => dispatch({ type: "keep_open", at: now() }));
   };
-  const hearingItself = () => speaking || samples < echoUntil;
+  const headphones = () => input.speakerMode?.() === "headphones";
+  const hearingItself = () => !headphones() && (speaking || samples < echoUntil);
+  let bargeRun = 0;
+  let ducked = false;
   let cueUntil = 0;
 
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
   const acceptWake = (score: number, firedAt: number, word: string | null, late: boolean) => {
-    if (hearingItself()) {
+    if (speaking || hearingItself()) {
       speaking = false;
       echoUntil = 0;
       barged = true;
@@ -675,6 +690,31 @@ export const createVoiceCore = (input: {
       if (at >= held.releaseAt && (!busy || at >= held.releaseAt + 3_000)) held.settle(true);
     }
 
+    // His voice over hers: through the echo guard over speakers, or plain speech detection on headphones.
+    if (speaking && !barged) {
+      const flagged = headphones()
+        ? input.vad.isSpeech(frame)
+        : input.echo !== undefined && ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
+      bargeRun = flagged ? bargeRun + frame.length : 0;
+      if (bargeRun >= msToSamples(BARGE_MS)) {
+        const onset = bargeRun;
+        bargeRun = 0;
+        if (ducked) emit({ type: "barge_duck", on: false });
+        ducked = false;
+        acceptWake(1, samples - onset, null, true);
+      } else if (bargeRun >= msToSamples(DUCK_MS) && !ducked) {
+        ducked = true;
+        emit({ type: "barge_duck", on: true });
+      } else if (bargeRun === 0 && ducked) {
+        ducked = false;
+        emit({ type: "barge_duck", on: false });
+      }
+    } else if (bargeRun > 0) {
+      bargeRun = 0;
+      if (ducked) emit({ type: "barge_duck", on: false });
+      ducked = false;
+    }
+
     if (hearingItself()) watchForStop(frame);
     else if (stopFrames.length > 0) clearStop();
 
@@ -751,6 +791,7 @@ export const createVoiceCore = (input: {
       currentTarget: machine.conversationTarget ?? lastTarget,
     }),
     setSpeaking,
+    reference: (pcm, soundsAtMs) => input.echo?.reference(pcm, soundsAtMs),
     playingCue: (ms) => {
       cueUntil = Math.max(cueUntil, samples + msToSamples(ms));
     },
