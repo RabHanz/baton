@@ -36,6 +36,7 @@ import { releasesUrl } from "@t3tools/baton-shared/repo";
 import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
+import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
@@ -92,6 +93,12 @@ export const startBatonDesktop = Effect.gen(function* () {
       runningFile: NodePath.join(environment.stateDir, "baton-running.json"),
       version: environment.appVersion,
     });
+    // A hung main thread names itself: stalls and the startup phase in progress go to the lifecycle log.
+    startStallWatch({
+      file: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),
+      version: environment.appVersion,
+    });
+    markPhase("start-guard:begin");
     // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
     const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");
     // Only a launch that owns the running marker counts: a second launch beside a live Tessaya must not reset the guard.
@@ -123,6 +130,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         if (answer.response === 0) void Electron.shell.openExternal(releasesUrl(process.env));
       });
     }
+    markPhase("start-guard:end");
     Electron.app.on("render-process-gone", (_event, contents, details) =>
       lifecycle.note("render-process-gone", {
         reason: details.reason,
@@ -142,6 +150,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     Electron.app.on("will-quit", () => lifecycle.note("will-quit"));
     Electron.app.on("window-all-closed", () => lifecycle.note("window-all-closed"));
     Electron.app.on("quit", (_event, exitCode) => lifecycle.note("quit", { exitCode }));
+    markPhase("crash-dumps:begin");
     // Minidumps of a native crash go to a known folder (no upload); a dump left since the last run is named at start.
     try {
       Electron.crashReporter.start({ uploadToServer: false, compress: true });
@@ -170,6 +179,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     } catch {
       // diagnostics only
     }
+    markPhase("crash-dumps:end");
     Electron.powerMonitor.on("shutdown", () => lifecycle.note("os-shutdown"));
     Electron.powerMonitor.on("suspend", () => lifecycle.note("suspend"));
     Electron.powerMonitor.on("resume", () => lifecycle.note("resume"));
@@ -330,6 +340,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         return `Opened ${page}.`;
       },
     };
+    markPhase("screen-companion:begin");
     try {
       screen = startScreenCompanion({
         remoteOps,
@@ -360,6 +371,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     } catch (cause) {
       Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
     }
+    markPhase("screen-companion:end");
     if (screen !== null) {
       const companion = screen;
       const post: HubPost = async (path, body) => {
@@ -412,6 +424,7 @@ export const startBatonDesktop = Effect.gen(function* () {
     }));
     setTimeout(() => void catalog.refresh(), 8_000).unref();
     setInterval(() => void catalog.refresh(), 45_000).unref();
+    markPhase("voice-start:begin");
     voice = startDesktopBatonVoice({
       loginEntry: environment.appUserModelId,
       stateDir: environment.stateDir,
@@ -509,5 +522,6 @@ export const startBatonDesktop = Effect.gen(function* () {
           })
         ).core,
     });
+    markPhase("voice-start:end");
   }).pipe(Effect.catchDefect((cause) => Effect.logWarning("baton voice did not start", cause)));
 });

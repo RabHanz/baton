@@ -1,0 +1,71 @@
+name: Tessaya startup proof
+
+# Installs a fresh Tessaya build with a laptop-sized state folder and checks after 60 s that the main thread
+# answers (scripts/tessaya/startup-proof.ps1): Responding, a fresh heartbeat, no main-stalled, alive after a click.
+
+on:
+  pull_request:
+    paths:
+      - scripts/tessaya/startup-proof.ps1
+      - apps/desktop/src/baton/lifecycle/**
+      - apps/desktop/src/baton/startBatonDesktop.ts
+      - .github/workflows/baton-startup-proof.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  startup:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply Tessaya branding (build only, not committed)
+        shell: bash
+        run: bash scripts/tessaya/apply-release-branding.sh
+
+      - name: T3 Connect public config
+        shell: bash
+        run: bash scripts/tessaya/hosted-public-config.sh >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Setup pnpm
+        run: corepack enable
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the Tessaya installer
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 \
+            --build-version 99.0.0 --output-dir release --verbose
+          ls release
+
+      - name: Start with a populated state, then check
+        shell: pwsh
+        run: |
+          $new = (Get-ChildItem release -Filter 'Tessaya-99.0.0-x64.exe').FullName
+          ./scripts/tessaya/startup-proof.ps1 -Installer $new
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: startup-proof-logs
+          path: ~/.t3/userdata/logs
+          if-no-files-found: ignore

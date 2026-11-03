@@ -179,6 +179,7 @@ import { createSnippetStore } from "../writing/snippetStore.ts";
 import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
 import { briefCommitments, needsFromCommitments } from "@t3tools/baton-shared/commitments";
+import { markPhase } from "../lifecycle/mainStall.ts";
 import { createCommitmentSync } from "../presence/commitmentSync.ts";
 import { createCommitmentStore } from "../presence/commitmentStore.ts";
 import { runCommitOp } from "../presence/commitTools.ts";
@@ -2312,11 +2313,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** The sidecar holds no key and no microphone until `configureDictation` gives it a model. */
   const startSidecar = async () => {
     if (binary === null || sidecar !== null) return;
+    markPhase("dictation-sidecar-spawn:begin");
     sidecar = startDictationSidecar({ binary, onEvent: onDictation });
+    markPhase("dictation-sidecar-spawn:end");
     dictionary =
       (await readDictionary(input.stateDir)) ??
       (await importWisprDictionary({ stateDir: input.stateDir, appData: input.env["APPDATA"] }));
+    markPhase("dictation-devices:begin");
     devices = await listSidecarDevices();
+    markPhase("dictation-devices:end");
     choice = selectInputDevice(devices, preference());
     note =
       choice.kind === "default" && choice.reason.includes("not connected") ? choice.reason : null;
@@ -2497,6 +2502,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         await startSidecar();
         for (;;) {
           const model = speechModel();
+          markPhase("speech-model-ensure:begin", { file: model.file });
           const path = await ensureModel({
             dir: modelsDir,
             model,
@@ -2508,6 +2514,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
               render();
             },
           });
+          markPhase("speech-model-ensure:end");
           if (model === speechModel()) {
             parakeetPath = path;
             note = null;
@@ -2547,6 +2554,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     await loadSpeechModel();
     step("speech-model-loaded", { sidecar: sidecar !== null });
     if (sidecar === null) throw new Error("Speech recognition is not installed.");
+    markPhase("voice-core:begin");
     core = await input.makeCore({
       intent: voiceIntent,
       onReply: flash,
@@ -2590,6 +2598,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return `Added ${word} to your dictionary.`;
       },
     });
+    markPhase("voice-core:end");
     pushContext();
     contextTimer = setInterval(pushContext, CONTEXT_REFRESH_MS);
     step("core-made");
@@ -3334,7 +3343,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let nowData: NowData = EMPTY_NOW;
   const probe = createProbes({});
   const readLastNightly = createNightlyCache(repoSlug(input.env));
-  const readSyncExtra = createSyncExtraCache(repoSlug(input.env), input.env["BATON_REPO_DIR"], runGh);
+  const readSyncExtra = createSyncExtraCache(
+    repoSlug(input.env),
+    input.env["BATON_REPO_DIR"],
+    runGh,
+  );
   /** Last read of the upstream sync; the rows below use it, and a failed read leaves it unknown. */
   const cloudNow = () => readCloudLogins(cloudLoginsFile(input.env));
   let syncNow: SyncState = { localBehind: null, status: null, pr: null };
@@ -4808,8 +4821,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.hideFromCapture") {
       save({ hideFromCapture: on });
       setHideFromCapture(on);
-    }
-    else if (id === "v.learnWords") save({ learnWords: on });
+    } else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });
       configureDictation();
@@ -4821,8 +4833,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.voiceBargeIn") {
       save({ voiceBargeIn: on });
       void relisten();
-    }
-    else if (id === "v.quietSpeech") {
+    } else if (id === "v.quietSpeech") {
       save({ quietSpeech: on });
       void relisten();
     } else if (id === "v.waitMs") save({ waitMs: clampWait(Number(value)) });
