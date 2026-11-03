@@ -116,7 +116,7 @@ void Electron.app.whenReady().then(async () => {
     const level = typeof d.level === "number" ? d.level : legacy[0];
     if (level === 3 || level === "error") errors.push(String(d.message ?? legacy[1]));
   });
-  await js("window.addEventListener('error',e=>console.error('page error: '+e.message))");
+  await js("window.__errs=[];window.addEventListener('error',e=>window.__errs.push(e.message))");
   await js(
     "window.__mut=0;new MutationObserver(m=>{window.__mut+=m.length}).observe(document.body,{subtree:true,childList:true,attributes:true,characterData:true});0",
   );
@@ -143,6 +143,9 @@ void Electron.app.whenReady().then(async () => {
   const press = async (group: string, c: Found) => {
     if (!c.ok) return rows.push({ group, control: c.name, result: "off screen", effect: "" });
     const before = await sig();
+    const hit = (await js(
+      `(()=>{const e=document.elementFromPoint(${c.x},${c.y});return e?e.tagName+"."+e.className+"#"+e.id+" in "+(e.parentElement?e.parentElement.tagName+"."+e.parentElement.className:""):"none"})()`,
+    )) as string;
     const bounds = win.getContentBounds();
     await driver.clickAt({ x: bounds.x + c.x, y: bounds.y + c.y }, "left", 1);
     await sleep(900);
