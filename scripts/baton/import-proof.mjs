@@ -5,6 +5,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 
@@ -166,6 +167,12 @@ try {
     });
   const value = (exit) => (exit?._tag === "Success" ? exit.value : null);
 
+  process.env.USERPROFILE = profile;
+  process.env.HOME = profile;
+  console.log(
+    `homedir under the server's environment: ${NodeOS.homedir()}; transcripts: ${NodeFS.readdirSync(transcriptsDir).length}`,
+  );
+  console.log(`folders: ${JSON.stringify(await rpc("baton.sessions.folders", {})).slice(0, 400)}`);
   const listExit = await rpc("baton.sessions.list", { limit: 200 });
   const listed = value(listExit);
   check(
