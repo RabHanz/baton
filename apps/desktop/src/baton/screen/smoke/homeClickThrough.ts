@@ -14,6 +14,7 @@ import * as Electron from "electron";
 import { createBatonHome } from "../../home/batonHome.ts";
 import { STATES } from "../../home/pageStates.ts";
 import { createInputDriver } from "../inputDriver.ts";
+import { createPointerOverlay } from "../pointerOverlay.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "home-click-out");
 NodeFS.mkdirSync(out, { recursive: true });
@@ -171,7 +172,7 @@ void Electron.app.whenReady().then(async () => {
     // A sidebar item must redraw the page, not only change which one is current.
     const redrew = before.split(",")[3] !== after.split(",")[3];
     const needsRedraw =
-      group === "sidebar" && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
+      group.startsWith("sidebar") && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
     if (needsRedraw && !redrew && before !== after) {
       rows.push({
         group,
@@ -201,6 +202,24 @@ void Electron.app.whenReady().then(async () => {
     await js("closeModal();go('home');0");
     await sleep(400);
   }
+
+  // After the assistant has looked at the screen (its layer shown, every window excluded for the grab and put back) the layer
+  // must still let a real click through to the window under it: a full-display layer that stops being click-through eats everything.
+  const overlay = createPointerOverlay("win32");
+  await overlay.point({ x: 520, y: 320 }, "look", undefined).catch(() => false);
+  await sleep(1500);
+  for (let look = 0; look < 3; look += 1) {
+    await overlay.hiddenFor(() => sleep(150));
+    await sleep(300);
+  }
+  for (const i of [2, 3, 6]) {
+    const c = await nth("#side .nav", i);
+    if (c !== undefined) await press("sidebar after a screen look", c);
+    await js("closeModal();go('home');0");
+    await sleep(400);
+  }
+  await overlay.clear();
+  overlay.dispose();
 
   // The header: each control does something; one that opens a dialog gets every dialog tab clicked, then is closed.
   const headerSel = "#top button, #top a, #top input, #top select";
