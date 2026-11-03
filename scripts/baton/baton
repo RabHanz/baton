@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# baton — start (or rejoin) work inside Baton + Herdr, so a session is owned from birth (D68).
+# baton — start (or rejoin) work inside Tessaya + Herdr, so a session is owned from birth (D68).
 #
 #   baton <project|dir> [claude|codex|<command…>]   new agent in a new tab of that project's space
 #   baton --resume <claude-session-id> [dir]          bring an existing Claude conversation into Herdr
 #   baton                                             attach to the space for the current directory
 #
 # Every agent started this way lives in a Herdr session named fab-<project>: it survives the
-# terminal, T3 and ssh going away, appears in the Baton fleet on every device, and takes input
+# terminal, T3 and ssh going away, appears in the Tessaya fleet on every device, and takes input
 # from the fleet's send field. Nothing here touches an account; rotation happens underneath.
 set -euo pipefail
 
