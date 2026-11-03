@@ -103,6 +103,32 @@ describe("sending to a stopped session", () => {
     expect(missing.state).toBe("failed");
   });
 
+  it("a long import answers 'resuming' at once, and the list gives the thread when it is done, or the reason it failed", async () => {
+    let finish: (v: { threadId: string } | { detail: string }) => void = () => undefined;
+    const { catalog } = machine({
+      resumeWaitMs: 5,
+      thread: () => new Promise((r) => (finish = r)),
+    });
+    const first = await catalog.resume({ sessionId: ID });
+    expect(first).toMatchObject({ state: "resuming", detail: expect.stringMatching(/Importing/) });
+    const during = (await catalog.list({})).sessions.find((s) => s.id === ID);
+    expect(during).toMatchObject({ state: "resuming" });
+    finish({ threadId: `import:claudeAgent:${ID}` });
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    const after = (await catalog.list({})).sessions.find((s) => s.id === ID);
+    expect(after).toMatchObject({ state: "running", threadId: `import:claudeAgent:${ID}` });
+    const failing = machine({
+      resumeWaitMs: 5,
+      thread: async () => ({ detail: "The transcript could not be read." }),
+    }).catalog;
+    await failing.resume({ sessionId: ID });
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    expect((await failing.list({})).sessions.find((s) => s.id === ID)).toMatchObject({
+      state: "failed",
+      detail: "The transcript could not be read.",
+    });
+  });
+
   it("resumes it in the right folder, waits until it is ready, then delivers the message once", async () => {
     const { catalog, typed, batonCalls } = machine();
     const sent = await catalog.send({ sessionId: ID, text: "carry on with the tests" });

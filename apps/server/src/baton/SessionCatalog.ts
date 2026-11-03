@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off
 /**
  * The session catalog's logic, with every outside thing passed in (the running sessions, the transcripts on
  * disk, the history index, the `baton` program, typing into a pane, the clock), so the stopped -> resume ->
@@ -58,6 +59,8 @@ export interface CatalogPorts {
   readonly readTail?: (file: string) => Promise<string>;
   /** Resumed by the watchdog in the last two hours: shown on the row. */
   readonly autoResumed?: (sessionId: string) => boolean;
+  /** How long a resume holds the caller before answering "resuming" (machines with no Herdr); tests shorten it. */
+  readonly resumeWaitMs?: number;
   /** What the Herdr pane shows now (the last lines), to explain a session that never became ready. */
   readonly screen?: (session: string, pane: string) => Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
@@ -65,6 +68,7 @@ export interface CatalogPorts {
 }
 
 /** Shown on a session the watchdog brought back, in the list; the thread shows the restart message itself. */
+export const IMPORTING = "Importing the conversation's history...";
 export const AUTO_RESUMED = "Resumed automatically after a crash";
 
 export const READY_TIMEOUT_MS = 45_000;
@@ -125,7 +129,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       ? "resuming"
       : failed.has(t.sessionId)
         ? "failed"
-        : "stopped";
+        : resumedThreads.has(t.sessionId)
+          ? "running"
+          : "stopped";
     const cwdOk = t.cwd !== null && ports.dirExists(t.cwd);
     return {
       id: t.sessionId,
@@ -140,12 +146,15 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       canResume: cwdOk,
       detail:
         failed.get(t.sessionId) ??
-        (cwdOk
-          ? ports.autoResumed?.(t.sessionId) === true
-            ? AUTO_RESUMED
-            : null
-          : "Its folder is not on this machine, so it cannot be resumed here."),
+        (state === "resuming"
+          ? IMPORTING
+          : cwdOk
+            ? ports.autoResumed?.(t.sessionId) === true
+              ? AUTO_RESUMED
+              : null
+            : "Its folder is not on this machine, so it cannot be resumed here."),
       waiting: waiting.get(t.sessionId)?.length ?? 0,
+      ...(resumedThreads.has(t.sessionId) ? { threadId: resumedThreads.get(t.sessionId)! } : {}),
     };
   };
 
@@ -300,12 +309,16 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
   };
 
   /** Idempotent: a resume already running is the one the caller waits on. */
+  /** Threads a resume brought back (machines with no Herdr), so the row can say where it is once it exists. */
+  const resumedThreads = new Map<string, string>();
+  const RESUME_WAIT_MS = ports.resumeWaitMs ?? 8_000;
   const resume = (input: { sessionId: string; cwd?: string }): Promise<ResumeResult> => {
     const existing = resuming.get(input.sessionId);
     if (existing !== undefined)
-      return Promise.resolve({ state: "resuming" as const, pane: null, detail: null });
+      return Promise.resolve({ state: "resuming" as const, pane: null, detail: IMPORTING });
     const job = doResume(input.sessionId, input.cwd).then(async (r) => {
       resuming.delete(input.sessionId);
+      if (r.threadId !== undefined) resumedThreads.set(input.sessionId, r.threadId);
       if (r.state === "failed") failed.set(input.sessionId, r.detail ?? "It could not be resumed.");
       else failed.delete(input.sessionId);
       // Messages that arrived while it came back go now, in order, once.
@@ -318,7 +331,18 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       return r;
     });
     resuming.set(input.sessionId, job);
-    return job;
+    // Bringing a long conversation in as a thread can take minutes (a 70 MB transcript): answer "resuming" after a few
+    // seconds and let the import finish on its own; the list says when it has a thread, or why it failed.
+    if (ports.thread === undefined) return job;
+    return Promise.race([
+      job,
+      new Promise<ResumeResult>((resolve) =>
+        setTimeout(
+          () => resolve({ state: "resuming", pane: null, detail: IMPORTING }),
+          RESUME_WAIT_MS,
+        ),
+      ),
+    ]);
   };
 
   const send = async (input: { sessionId: string; text: string; cwd?: string }) => {

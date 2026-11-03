@@ -46,6 +46,17 @@ export interface CatalogCommands {
 }
 
 type Reply = { readonly ok: boolean; readonly detail: string };
+/** What the command said, in a few plain words, so a failed call is not a bare "could not". */
+const describeFailure = (answer: object): string => {
+  const cause = (answer as { cause?: unknown; _tag?: string }).cause;
+  const text =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : String((answer as { _tag?: string })._tag ?? "no answer");
+  return text.replace(/\s+/g, " ").slice(0, 160);
+};
 const NO = (detail: string): Reply => ({ ok: false, detail });
 const env = (id: string) => id as never;
 
@@ -131,7 +142,7 @@ export const answerCatalogRequest = async (
       },
     });
     if (answer._tag !== "Success" || answer.value === undefined)
-      return NO("That session could not be resumed.");
+      return NO(`That session could not be resumed: ${describeFailure(answer)}`);
     return { ok: answer.value.state !== "failed", detail: JSON.stringify(answer.value) };
   }
   if (request.kind === "catalogCreate") {
