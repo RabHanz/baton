@@ -1304,6 +1304,58 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
       }),
     );
 
+    it.effect(
+      "imports the session it is asked for even when 100 newer ones, and the 30-day window, would exclude it",
+      () =>
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+          yield* TestClock.setTime(nowMs);
+          const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+          const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+          const workspace = yield* makeTempDir("t3code-workspace-");
+          const transcript = (sessionId: string) =>
+            `${JSON.stringify({
+              type: "user",
+              cwd: workspace,
+              sessionId,
+              timestamp: "2026-08-23T12:00:00.000Z",
+              message: { role: "user", content: `First message of ${sessionId}` },
+            })}\n${JSON.stringify({
+              type: "assistant",
+              sessionId,
+              timestamp: "2026-08-23T12:01:00.000Z",
+              message: { role: "assistant", content: [{ type: "text", text: "Done" }] },
+            })}\n`;
+          for (let index = 0; index < 105; index += 1) {
+            yield* writeTranscript({
+              filePath: path.join(claudeHomePath, "projects", "-folder", `recent-${index}.jsonl`),
+              contents: transcript(`recent-${index}`),
+              mtimeMs: nowMs - (index + 1) * 60_000,
+            });
+          }
+          // Older than the window and behind 105 newer ones: only a request by id brings it in.
+          yield* writeTranscript({
+            filePath: path.join(claudeHomePath, "projects", "-folder", "wanted.jsonl"),
+            contents: transcript("wanted"),
+            mtimeMs: nowMs - 40 * 24 * 60 * 60 * 1000,
+          });
+
+          yield* Effect.gen(function* () {
+            const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+            const without = yield* Stream.runCollect(scanner.recentThreads(workspace));
+            expect(
+              Array.from(without).some(
+                (o) => o._tag === "Importable" && o.thread.providerSessionId === "wanted",
+              ),
+            ).toBe(false);
+            const asked = yield* Stream.runCollect(scanner.recentThreads(workspace, [], "wanted"));
+            const first = Array.from(asked)[0];
+            expect(first?._tag === "Importable" && first.thread.providerSessionId).toBe("wanted");
+          }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
+        }),
+    );
+
     it.effect("excludes Codex subagents from discovery and the recent-thread budget", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
