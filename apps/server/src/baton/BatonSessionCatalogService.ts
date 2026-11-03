@@ -513,6 +513,7 @@ export const layer = Layer.effect(
                   : {
                       instanceId: String(shell.providerInstanceId),
                       running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+                      archived: shell.archivedAt !== null && shell.archivedAt !== undefined,
                     },
               ),
             selectLive: (threadId) =>
