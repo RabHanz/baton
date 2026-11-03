@@ -108,6 +108,14 @@ const BATON_QUIET = new Set([
   "remember_target",
   "wait",
   "wait_for",
+  // Remote hands (REMOTE_HANDS.md): the Director's baton:hands grant on that session is the yes for these; they exist only in the remote table.
+  "window_capture",
+  "app_version",
+  "log_tail",
+  "process_list",
+  "process_stop",
+  "app_update",
+  "open_page",
   "dictation_start",
   "dictation_stop",
   "screen_capture",
@@ -133,6 +141,16 @@ const BATON_QUIET = new Set([
   "approvals_list",
   "job_revoke",
   "job_stop",
+]);
+/** Tools only a remote hands session has; the assistant's own table never holds them. */
+export const REMOTE_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "window_capture",
+  "app_version",
+  "log_tail",
+  "process_list",
+  "process_stop",
+  "app_update",
+  "open_page",
 ]);
 const BATON_POINTER = new Set(["click", "click_element", "scroll"]);
 export const BATON_TOOLS: ReadonlySet<string> = new Set([
@@ -182,6 +200,8 @@ export const READS_OUTSIDE = new Set([
   "commandExecution",
   "screen_capture",
   "ui_tree",
+  "window_capture",
+  "log_tail",
   "session_show",
   "history_search",
   // Another session's reply is data from outside, whatever it says.

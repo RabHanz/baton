@@ -1,8 +1,9 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off cryptoRandomUUID:off
 /**
  * The phone page at /tessaya (docs/baton/MOBILE.md): the page itself, then a small API behind the server's own session
  * (the pairing cookie, or a bearer token), with the rules in BatonTessayaApi. Mounted by BatonServerLayer.routes.
  */
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { buildPhoneState } from "@t3tools/baton-shared/phone";
@@ -18,6 +19,8 @@ import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
+import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
+import { handleHands } from "./BatonHandsApi.ts";
 import { handlePhone, type PhoneDeps } from "./BatonTessayaApi.ts";
 import { transcribeWav } from "./BatonPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
@@ -137,6 +140,54 @@ export const routes = HttpRouter.use((router) =>
       "/tessaya/manifest.webmanifest",
       Effect.sync(() => page(MANIFEST, "application/manifest+json")),
     );
+    // Remote hands: a remote session asks, the desktop takes and answers (docs/baton/REMOTE_HANDS.md).
+    const hands = createHandsBroker({
+      now: () => Date.now(),
+      newId: () => globalThis.crypto.randomUUID(),
+      onAudit: (entry) =>
+        void NodeFS.promises
+          .appendFile(
+            NodePath.join(NodePath.dirname(config.dbPath), "baton-hands-audit.ndjson"),
+            `${JSON.stringify(entry)}\n`,
+          )
+          .catch(() => undefined),
+    });
+    const handsApi = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
+      if (session._tag === "None") {
+        return HttpServerResponse.jsonUnsafe(
+          { message: "Not paired." },
+          { status: 401, headers: PAGE_HEADERS },
+        );
+      }
+      const url = new URL(request.url, "http://local");
+      const json =
+        request.method === "POST"
+          ? yield* request.json.pipe(Effect.orElseSucceed(() => ({})))
+          : undefined;
+      const answer = yield* Effect.promise(() =>
+        handleHands(hands, {
+          method: request.method,
+          path: url.pathname.replace(/^\/tessaya\/hands\//, ""),
+          scopes: new Set(session.value.scopes),
+          session: session.value.subject,
+          ...(json === undefined ? {} : { json }),
+        }),
+      );
+      return HttpServerResponse.jsonUnsafe(answer.json, {
+        status: answer.status,
+        headers: PAGE_HEADERS,
+      });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe({ message: "That did not work." }, { status: 500 }),
+        ),
+      ),
+    );
+    yield* router.add("GET", "/tessaya/hands/*", handsApi);
+    yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);
     yield* router.add("POST", "/tessaya/api/*", api);
   }),
