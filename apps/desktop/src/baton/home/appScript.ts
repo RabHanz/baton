@@ -190,6 +190,9 @@ function catalogBar(c) {
   const seg = $('div', 'seg memseg'); for (const k of c.states) { const b = $('button', null, k.label); b.setAttribute('aria-pressed', String(k.value === c.stateFilter)); b.onclick = () => set('c.state', k.value); seg.appendChild(b); } w.appendChild(seg);
   const tools = $('div', 'memtools');
   if (c.machines.length > 2) { const m = $('select'); m.setAttribute('aria-label', c.words.machine); for (const o of c.machines) { const op = $('option', null, o.label); op.value = o.value; m.appendChild(op); } m.value = c.machine; m.onchange = () => set('c.machine', m.value); tools.appendChild(m); }
+  const bg = $('button', 'btn quiet', c.words.background); bg.setAttribute('aria-pressed', String(c.background)); bg.onclick = () => set('c.background', null); tools.appendChild(bg);
+  const td = $('button', 'btn quiet', c.words.tidy); td.onclick = () => set('c.tidy', null); tools.appendChild(td);
+  if (c.tidyFound > 0) { const ta = $('button', 'btn', c.words.tidyApply + ' (' + c.tidyFound + ')'); ta.onclick = () => set('c.tidyApply', null); tools.appendChild(ta); }
   const nb = $('button', 'btn', c.words.new); nb.setAttribute('aria-expanded', String(c.creating)); nb.onclick = () => set('c.new', null); tools.appendChild(nb); w.appendChild(tools);
   if (c.creating) {
     const nf = $('form', 'newses'); nf.setAttribute('aria-label', c.words.newTitle); nf.appendChild($('div', 'nstitle', c.words.newTitle));

@@ -238,7 +238,8 @@ export interface BatonUsageSummary {
 export type BatonSessionRequest =
   | { readonly kind: "open"; readonly environmentId: string; readonly threadId: string }
   /** The session catalog across every connected environment; the answer's detail is JSON (see baton/sessions/catalogBridge). */
-  | { readonly kind: "catalogList"; readonly query: string }
+  | { readonly kind: "catalogList"; readonly query: string; readonly background?: boolean }
+  | { readonly kind: "catalogCleanup"; readonly apply: boolean }
   | {
       readonly kind: "catalogResume";
       readonly environmentId: string;

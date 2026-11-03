@@ -23,6 +23,7 @@ import { ProjectService } from "../project/ProjectService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import { classifyHelperThread } from "./HelperThreads.ts";
 import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
 import { isProviderAvailable } from "@t3tools/baton-contracts";
 import { herdrSend } from "./HerdrSend.ts";
@@ -32,7 +33,12 @@ import { realCatalogPorts } from "./SessionCatalogLive.ts";
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
   {
-    readonly list: (input: { query?: string; limit?: number; before?: string }) => Effect.Effect<{
+    readonly list: (input: {
+      query?: string;
+      limit?: number;
+      before?: string;
+      background?: boolean;
+    }) => Effect.Effect<{
       readonly machine: string;
       readonly sessions: ReadonlyArray<BatonCatalogSession>;
       readonly more: boolean;
@@ -61,6 +67,11 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly pane: string | null;
       readonly detail: string | null;
       readonly threadId?: string;
+    }>;
+    readonly cleanup: (input: { apply: boolean }) => Effect.Effect<{
+      readonly found: ReadonlyArray<{ id: string; title: string; project: string; reason: string }>;
+      readonly archived: ReadonlyArray<string>;
+      readonly left: ReadonlyArray<{ id: string; title: string; reason: string }>;
     }>;
     readonly send: (input: { sessionId: string; text: string; cwd?: string }) => Effect.Effect<{
       readonly state: BatonCatalogState;
@@ -213,6 +224,7 @@ export const layer = Layer.effect(
         query?: string;
         limit?: number;
         before?: string;
+        background?: boolean;
       }) {
         return yield* Effect.promise(() => catalog.list(input));
       }),
@@ -234,6 +246,50 @@ export const layer = Layer.effect(
         message?: string;
       }) {
         return yield* Effect.promise(() => catalog.create(input));
+      }),
+      cleanup: Effect.fn("BatonSessionCatalogService.cleanup")(function* (input: {
+        apply: boolean;
+      }) {
+        if (Option.isNone(engine)) return { found: [], archived: [], left: [] };
+        const e = engine.value;
+        const shells = yield* e.threadShells;
+        const projects = yield* e.projects;
+        const root = new Map(projects.map((p) => [String(p.id), p.workspaceRoot] as const));
+        const found: Array<{ id: string; title: string; project: string; reason: string }> = [];
+        const left: Array<{ id: string; title: string; reason: string }> = [];
+        const archived: string[] = [];
+        for (const shell of shells) {
+          const projectRoot = root.get(String(shell.projectId)) ?? null;
+          const title = String(shell.title ?? "");
+          const looks =
+            isTessayaOwnFolder(projectRoot) ||
+            /^(userdata-[0-9a-f]+ · |Add sentence punctuation|shell in .*\(deleted\))/i.test(title);
+          if (!looks) continue;
+          const messages = (yield* e.recentMessages(shell.id, 2)).length;
+          const verdict = classifyHelperThread({
+            title,
+            projectRoot,
+            running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+            messages,
+          });
+          if (verdict === null) continue;
+          if (verdict.kind === "leave") {
+            left.push({ id: String(shell.id), title, reason: verdict.reason });
+            continue;
+          }
+          found.push({
+            id: String(shell.id),
+            title,
+            project: projectRoot ?? "",
+            reason: verdict.reason,
+          });
+          if (
+            input.apply &&
+            (yield* e.archiveThread({ tag: "helper-cleanup", threadId: shell.id }))
+          )
+            archived.push(String(shell.id));
+        }
+        return { found, archived, left };
       }),
       send: Effect.fn("BatonSessionCatalogService.send")(function* (input: {
         sessionId: string;

@@ -119,6 +119,8 @@ import {
   BATON_SESSIONS_WS_METHODS,
   BatonCatalogCreateInput,
   BatonCatalogCreateResult,
+  BatonCatalogCleanupInput,
+  BatonCatalogCleanupResult,
   BatonCatalogFoldersInput,
   BatonCatalogFoldersResult,
   BatonCatalogListInput,
@@ -368,11 +370,36 @@ const WsBatonCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
 });
 
 const CatalogErrors = EnvironmentAuthorizationError;
-const WsBatonSessionsListRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.list, { payload: BatonCatalogListInput, success: BatonCatalogListResult, error: CatalogErrors });
-const WsBatonSessionsFoldersRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.folders, { payload: BatonCatalogFoldersInput, success: BatonCatalogFoldersResult, error: CatalogErrors });
-const WsBatonSessionsResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.resume, { payload: BatonCatalogResumeInput, success: BatonCatalogResumeResult, error: CatalogErrors });
-const WsBatonSessionsCreateRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.create, { payload: BatonCatalogCreateInput, success: BatonCatalogCreateResult, error: CatalogErrors });
-const WsBatonSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, { payload: BatonCatalogSendInput, success: BatonCatalogSendResult, error: CatalogErrors });
+const WsBatonSessionsListRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.list, {
+  payload: BatonCatalogListInput,
+  success: BatonCatalogListResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsFoldersRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.folders, {
+  payload: BatonCatalogFoldersInput,
+  success: BatonCatalogFoldersResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.resume, {
+  payload: BatonCatalogResumeInput,
+  success: BatonCatalogResumeResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsCreateRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.create, {
+  payload: BatonCatalogCreateInput,
+  success: BatonCatalogCreateResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsCleanupRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.cleanup, {
+  payload: BatonCatalogCleanupInput,
+  success: BatonCatalogCleanupResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, {
+  payload: BatonCatalogSendInput,
+  success: BatonCatalogSendResult,
+  error: CatalogErrors,
+});
 
 const WeaveErrors = Schema.Union([BatonWeaveError, EnvironmentAuthorizationError]);
 const WsBatonWeaveSendRpc = Rpc.make(BATON_WEAVE_WS_METHODS.send, {
@@ -662,6 +689,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonPhoneCallRpc,
   WsBatonSessionsListRpc,
   WsBatonSessionsFoldersRpc,
+  WsBatonSessionsCleanupRpc,
   WsBatonSessionsResumeRpc,
   WsBatonSessionsCreateRpc,
   WsBatonSessionsSendRpc,

@@ -68,3 +68,9 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 2. The update prompt and the vocab toast onto `windows.ask` and the card.
 3. Done: the Windows proof run (`baton-teach-proof.yml`, with the UI Automation sidecar, cue playback logged). Still to do: drive it through the tools path instead of only the prefixes.
 4. Delete the router on the date above if the fallback has not fired.
+
+## 7. A session started from the app, and the app crashing
+
+On a machine with no Herdr (Windows) a New session is a T3 thread: the Claude Agent SDK runs as a child of the T3 server, and the server lives inside the desktop app. When the app dies, the session dies with it; its transcript is kept in the Claude config directory, so it can be resumed (Sessions > Resume) after a restart. Making a session outlive the app would need the server and its agents detached from the app (a service), which is a separate piece of work. Where Herdr exists (Linux, macOS) the session is a Herdr pane and does survive.
+
+The 0.1.45 crash (`xa11y...node_unloaded`, access violation) was the foreground-focus helper: T3 ran the native accessibility module in a worker and, after a one-second timeout, terminated the worker while a native call was still in flight. A slow call (the window busy starting a thread) therefore unloaded the module under itself. The worker is no longer terminated: a slow one is left to finish and its late answer is ignored (patch 0007).

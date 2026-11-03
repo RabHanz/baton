@@ -100,6 +100,75 @@ index 985f9c00775a0a37ae1027d3c75d158622beeb85..943e2167c147c5fb0d6124ad72033151
      );
      if (Option.isNone(first) || (yield* isWindowDestroyed(first.value))) {
        return Option.none<Electron.BrowserWindow>();
+diff --git a/apps/desktop/src/electron/WindowsForegroundFocusThread.test.ts b/apps/desktop/src/electron/WindowsForegroundFocusThread.test.ts
+index ac15b145e0c6a9589e347d290ee7ab50ff53b2d7..d347f13a2ec71333ad37c12f2f73202d9cb1be81 100644
+--- a/apps/desktop/src/electron/WindowsForegroundFocusThread.test.ts
++++ b/apps/desktop/src/electron/WindowsForegroundFocusThread.test.ts
+@@ -68,3 +68,24 @@ it("fails pending focus when the helper exits", async () => {
+   assert.lengthOf(workerConstructorMock.mock.calls, 2);
+   thread.close();
+ });
++
++it("never terminates a helper that is slow, because that unloads the native module under its call", () => {
++  vi.useFakeTimers();
++  try {
++    const replacement = makeWorker();
++    workerConstructorMock.mockReturnValueOnce(worker).mockReturnValueOnce(replacement);
++    const thread = startWindowsForegroundFocusThread("focus.cjs");
++    const focused = thread.focus(target);
++    worker.emit("message", "ready");
++    vi.advanceTimersByTime(1_500);
++    return focused.then((result) => {
++      assert.isFalse(result);
++      assert.lengthOf(worker.terminate.mock.calls, 0);
++      assert.lengthOf(workerConstructorMock.mock.calls, 2);
++      thread.close();
++      assert.lengthOf(replacement.terminate.mock.calls, 0);
++    });
++  } finally {
++    vi.useRealTimers();
++  }
++});
+diff --git a/apps/desktop/src/electron/WindowsForegroundFocusThread.ts b/apps/desktop/src/electron/WindowsForegroundFocusThread.ts
+index 53e18aaf8c29bb3666e185c5163d2309f97af9fa..fe8cb7021567586b2040ff292bde0cca3b323873 100644
+--- a/apps/desktop/src/electron/WindowsForegroundFocusThread.ts
++++ b/apps/desktop/src/electron/WindowsForegroundFocusThread.ts
+@@ -106,17 +106,22 @@ export function startWindowsForegroundFocusThread(
+ 
+   if (!start()) return unavailableThread();
+ 
++  // A worker with a native accessibility call in flight is never terminated: unloading the module under that call is an
++  // access violation that takes the whole app down (xa11y.node_unloaded). A slow worker is left to finish and its late
++  // answer is ignored; a few may be left behind, and past that the helper is simply off.
++  const MAX_ABANDONED = 3;
++  let abandoned = 0;
+   const restart = (timedOutWorker: NodeWorkerThreads.Worker | undefined) => {
+     if (!timedOutWorker || worker !== timedOutWorker) return;
+     worker = undefined;
+     ready = false;
+     for (const requestId of pending.keys()) finish(requestId, false);
+-    void timedOutWorker.terminate();
+-    start();
++    abandoned += 1;
++    if (abandoned <= MAX_ABANDONED) start();
+   };
+   const request = (type: FocusRequest["type"], target: WindowsForegroundFocusTarget) =>
+     new Promise<boolean>((resolve) => {
+-      if (closed || (!worker && !start())) {
++      if (closed || (!worker && (abandoned > MAX_ABANDONED || !start()))) {
+         resolve(false);
+         return;
+       }
+@@ -142,7 +147,8 @@ export function startWindowsForegroundFocusThread(
+       worker = undefined;
+       ready = false;
+       for (const requestId of pending.keys()) finish(requestId, false);
+-      if (activeWorker) void activeWorker.terminate();
++      // Not terminated, for the reason above: the worker is unref'd and ends with the process.
++      void activeWorker;
+     },
+   };
+ }
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
 index da56807186ac59aaf080e447fe3d763b3601c506..5870f3122dbd7cbf2f4e063d7658e91c7da88eac 100644
 --- a/apps/desktop/src/preload.ts

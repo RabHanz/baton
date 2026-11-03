@@ -5,6 +5,8 @@
 import type {
   BatonCatalogCreateInput,
   BatonCatalogCreateResult,
+  BatonCatalogCleanupInput,
+  BatonCatalogCleanupResult,
   BatonCatalogFoldersInput,
   BatonCatalogFoldersResult,
   BatonCatalogListInput,
@@ -26,6 +28,10 @@ export interface CatalogCommands {
   readonly create: Command<
     typeof BatonCatalogCreateInput.Type,
     typeof BatonCatalogCreateResult.Type
+  >;
+  readonly cleanup: Command<
+    typeof BatonCatalogCleanupInput.Type,
+    typeof BatonCatalogCleanupResult.Type
   >;
   readonly folders: Command<
     typeof BatonCatalogFoldersInput.Type,
@@ -51,7 +57,14 @@ export const answerCatalogRequest = async (
     const rows = await Promise.all(
       deps.environmentIds.map(async (environmentId) => {
         const answer = await commands
-          .list({ environmentId: env(environmentId), input: { query: request.query, limit: 200 } })
+          .list({
+            environmentId: env(environmentId),
+            input: {
+              query: request.query,
+              limit: 200,
+              ...(request.background === true ? { background: true } : {}),
+            },
+          })
           .catch(() => null);
         if (answer === null || answer._tag !== "Success" || answer.value === undefined) return [];
         return answer.value.sessions.map((row) => ({
@@ -62,6 +75,25 @@ export const answerCatalogRequest = async (
       }),
     );
     return { ok: true, detail: JSON.stringify(rows.flat()) };
+  }
+  if (request.kind === "catalogCleanup") {
+    // One batch per environment; the window shows each machine's counts and keeps the archived ids so it can be undone.
+    const results = await Promise.all(
+      deps.environmentIds.map(async (environmentId) => {
+        const answer = await commands
+          .cleanup({ environmentId: env(environmentId), input: { apply: request.apply } })
+          .catch(() => null);
+        return answer === null || answer._tag !== "Success" || answer.value === undefined
+          ? { environmentId, machine: deps.label(environmentId), failed: true as const }
+          : {
+              environmentId,
+              machine: deps.label(environmentId),
+              failed: false as const,
+              ...answer.value,
+            };
+      }),
+    );
+    return { ok: true, detail: JSON.stringify(results) };
   }
   if (request.kind === "catalogResume") {
     const answer = await commands.resume({
