@@ -6,10 +6,10 @@ use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPRO
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationElementArray, IUIAutomationExpandCollapsePattern,
     IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern, TreeScope_Descendants,
-    UIA_BoundingRectanglePropertyId, UIA_DataItemControlTypeId, UIA_ExpandCollapsePatternId,
+    UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_ExpandCollapsePatternId,
     UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsOffscreenPropertyId, UIA_ListItemControlTypeId,
     UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId,
-    UIA_TogglePatternId, UIA_TreeItemControlTypeId,
+    UIA_TextControlTypeId, UIA_TogglePatternId, UIA_TreeItemControlTypeId,
 };
 use windows::core::BOOL;
 use windows::Win32::Foundation::{HWND, LPARAM};
@@ -49,6 +49,8 @@ struct Snap {
     offscreen: bool,
     kind: String,
     focused: bool,
+    /// UIA control type id; 50020 is Text, which is never what a name should be pressed on.
+    control: i32,
 }
 
 /// One cross-process fetch per element (cached) or five (live). Offscreen is true when unreadable.
@@ -60,6 +62,7 @@ unsafe fn snap(element: &IUIAutomationElement, cached: bool) -> Snap {
             offscreen: element.CachedIsOffscreen().map(|o| o.as_bool()).unwrap_or(true),
             kind: element.CachedLocalizedControlType().map(|k| k.to_string()).unwrap_or_default(),
             focused: element.CachedHasKeyboardFocus().map(|f| f.as_bool()).unwrap_or(false),
+            control: element.CachedControlType().map(|c| c.0).unwrap_or(0),
         }
     } else {
         Snap {
@@ -68,6 +71,7 @@ unsafe fn snap(element: &IUIAutomationElement, cached: bool) -> Snap {
             offscreen: element.CurrentIsOffscreen().map(|o| o.as_bool()).unwrap_or(true),
             kind: element.CurrentLocalizedControlType().map(|k| k.to_string()).unwrap_or_default(),
             focused: element.CurrentHasKeyboardFocus().map(|f| f.as_bool()).unwrap_or(false),
+            control: element.CurrentControlType().map(|c| c.0).unwrap_or(0),
         }
     }
 }
@@ -89,6 +93,7 @@ unsafe fn descendants(automation: &IUIAutomation, root: &IUIAutomationElement, c
         UIA_IsOffscreenPropertyId,
         UIA_LocalizedControlTypePropertyId,
         UIA_HasKeyboardFocusPropertyId,
+        UIA_ControlTypePropertyId,
     ] {
         request.AddProperty(property)?;
     }
@@ -241,7 +246,8 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
                     let (cx, cy) = centre(&s.rect);
                     let distance = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2)).sqrt();
                     // Name first; among equals the one nearest the model's point.
-                    let rank = score * 10_000.0 - distance;
+                    // A display that shows "1" is not the button "1": static text ranks below any control of the same name.
+                    let rank = score * 10_000.0 - distance - if s.control == UIA_TextControlTypeId.0 { 5_000.0 } else { 0.0 };
                     if best.as_ref().map(|(r, _)| rank > *r).unwrap_or(true) {
                         best = Some((rank, Found { name: s.name, rect: s.rect, element }));
                     }
