@@ -80,6 +80,7 @@ import {
   resolveAttachmentPath,
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
+import { appendResumeLog } from "./ResumeLog.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
@@ -411,8 +412,7 @@ export const liveThreadId = (sessionId: string): ThreadId =>
   ThreadId.make(`${PREFIX}:${sessionId}`);
 
 const agentScript = (): string =>
-  process.env.BATON_LIVE_ACP ??
-  stateFile(NodeOS.homedir(), "baton-live-acp.mjs");
+  process.env.BATON_LIVE_ACP ?? stateFile(NodeOS.homedir(), "baton-live-acp.mjs");
 
 /** A Node for the agent: T3 itself is a single executable, so it cannot run a script. */
 export const findNode = (): string | null => {
@@ -729,7 +729,15 @@ interface Follow {
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const settings = yield* ServerSettingsService;
-  const { attachmentsDir, stateDir } = yield* ServerConfig.ServerConfig;
+  const { attachmentsDir, stateDir, logsDir } = yield* ServerConfig.ServerConfig;
+  // Every mirror decision lands in a file a person can read; the Effect log has no file on a desktop install.
+  const seenDecision = new Map<string, string>();
+  const mirrorLog = (key: string, record: Record<string, unknown>) => {
+    const text = JSON.stringify(record);
+    if (seenDecision.get(key) === text) return;
+    seenDecision.set(key, text);
+    appendResumeLog(NodePath.join(logsDir, "baton-mirror.ndjson"), record);
+  };
 
   const follows = new Map<string, Follow>();
   /** Sessions another T3 thread owns, so Baton stays out of them. */
@@ -1316,6 +1324,14 @@ const make = Effect.gen(function* () {
                 session.herdrPane === null ? "" : yield* readPaneScreen(session.herdrPane),
               )
             : null;
+      mirrorLog(`prompt:${session.sessionId}`, {
+        event: "prompt",
+        sessionId: session.sessionId,
+        status: session.status,
+        pane: session.herdrPane,
+        readable: read !== null && read.options.length > 0,
+        shown: found?.key ?? null,
+      });
       if (follow.ask !== null && follow.ask.key === found?.key) return;
       const now = yield* DateTime.now;
       if (follow.ask !== null) {
@@ -1597,6 +1613,26 @@ const make = Effect.gen(function* () {
 
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
+    mirrorLog("live-set", {
+      event: "live-sessions",
+      sessions: live
+        .map((s) => `${s.sessionId}:${s.status ?? "?"}:${s.herdrPane ?? "no-pane"}`)
+        .sort(),
+    });
+    for (const s of live) {
+      mirrorLog(`decision:${s.sessionId}`, {
+        event: "decision",
+        sessionId: s.sessionId,
+        thread: String(liveThreadId(s.sessionId)),
+        decision: owned.has(s.sessionId)
+          ? "skip-owned"
+          : follows.has(s.sessionId)
+            ? "following"
+            : "starting",
+        status: s.status,
+        pane: s.herdrPane,
+      });
+    }
     const fresh = live.filter((s) => !follows.has(s.sessionId) && !owned.has(s.sessionId));
     if (fresh.length > 0) {
       // A session upstream's importer copied is a snapshot, not the live conversation: the live
@@ -1642,6 +1678,15 @@ const make = Effect.gen(function* () {
               sessionId: session.sessionId,
               cause,
             }).pipe(
+              Effect.tap(() =>
+                Effect.sync(() =>
+                  mirrorLog(`failed:${session.sessionId}`, {
+                    event: "mirror-failed",
+                    sessionId: session.sessionId,
+                    cause: String(cause).slice(0, 600),
+                  }),
+                ),
+              ),
               // Start over from the thread's own state next tick rather than guess.
               Effect.tap(() => Effect.sync(() => follows.delete(session.sessionId))),
             ),
