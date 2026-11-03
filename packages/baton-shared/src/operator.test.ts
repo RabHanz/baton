@@ -415,3 +415,28 @@ describe("act_batch", () => {
     }
   });
 });
+
+describe("the target text a baton tool names", () => {
+  const baton = (tool: string, input: Record<string, unknown>): ToolCall => ({
+    tool: `mcp__baton__${tool}`,
+    input,
+  });
+
+  it("is read from every field that carries it, not only why", () => {
+    expect(
+      judgeToolCall(baton("click_element", { label: "Delete", why: "tidy up" }), off).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall(baton("click_element", { label: "Send", why: "go on" }), off).verdict,
+    ).toBe("ask");
+    expect(
+      judgeToolCall(baton("click_element", { label: "Help", why: "open the menu" }), off).verdict,
+    ).toBe("allow");
+    for (const [tool, input] of [
+      ["job_start", { goal: "delete the production database" }],
+      ["job_refine", { instruction: "pay the invoice" }],
+    ] as const) {
+      expect(judgeToolCall(baton(tool, input), off).verdict, tool).not.toBe("allow");
+    }
+  });
+});
