@@ -60,6 +60,8 @@ export interface LocatedElement {
   readonly height?: number;
   /** What is on top at the control's centre, when a click there would not reach it. */
   readonly covered_by?: string;
+  /** How the control was acted on without a pointer (invoke, select, toggle, expand); "pending" while a dialog it opened is up. */
+  readonly invoked?: string;
   readonly error?: string;
 }
 
@@ -127,8 +129,17 @@ export interface DictationSidecar {
     readonly y: number;
     /** Search the window with the keyboard instead of the one under the point. */
     readonly foreground?: boolean;
+    /** Search the window whose title contains this, wherever it is, without bringing it forward. */
+    readonly window?: string;
+    /** Also act on the control through its own UI Automation pattern: no pointer, no focus change. */
+    readonly invoke?: boolean;
   }) => Promise<LocatedElement>;
-  readonly uiTree: () => Promise<UiTree>;
+  readonly uiTree: (window?: string) => Promise<UiTree>;
+  /** A picture of one window (PrintWindow, so covered or in the background) written as a BMP at `out`. */
+  readonly captureWindow: (input: {
+    readonly window?: string;
+    readonly out: string;
+  }) => Promise<{ readonly width: number; readonly height: number; readonly error?: string }>;
   readonly dispose: () => void;
 }
 
@@ -288,7 +299,7 @@ export const startDictationSidecar = (input: {
               : null,
         });
       }
-      if (event["ev"] === "located" || event["ev"] === "tree") {
+      if (event["ev"] === "located" || event["ev"] === "tree" || event["ev"] === "captured") {
         return settle(event["id"] as number, { value: event });
       }
       if (event["ev"] === "text" && event["dictated"] !== true) {
@@ -344,7 +355,10 @@ export const startDictationSidecar = (input: {
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),
     nudge: (dx, dy) => send({ cmd: "nudge", dx, dy }),
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
-    uiTree: () => call<UiTree>({ cmd: "ui_tree" }),
+    uiTree: (window) =>
+      call<UiTree>({ cmd: "ui_tree", ...(window === undefined ? {} : { window }) }),
+    captureWindow: (input) =>
+      call<{ width: number; height: number; error?: string }>({ cmd: "capture_window", ...input }),
     dispose: () => {
       disposed = true;
       child?.stdin.end();
