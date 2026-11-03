@@ -870,12 +870,12 @@ function palOpenNow() {
 addEventListener('click', () => { if (bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palOpen) palClose(); else palOpenNow(); } }, true);
-let lastState = null, enterTimer = 0, indReady = false;
+let lastState = null, enterTimer = 0, indReady = false, entering = false;
 /** A page change plays the entrance once: transform and opacity only, and only while the window is live (see the style). */
 function enter() {
   const page = document.getElementById('page'); if (!page || !page.classList) return;
-  page.classList.remove('enter'); void page.offsetWidth; page.classList.add('enter');
-  clearTimeout(enterTimer); enterTimer = setTimeout(() => page.classList.remove('enter'), 700);
+  page.classList.remove('enter'); void page.offsetWidth; page.classList.add('enter'); entering = true;
+  clearTimeout(enterTimer); enterTimer = setTimeout(() => { entering = false; page.classList.remove('enter'); }, 700);
 }
 /** The sidebar's active mark is one element that slides to the current page (a transform, so the move costs no layout). */
 function syncInd(still) {
@@ -930,7 +930,7 @@ function render(state) {
     top.appendChild(pop); }
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
-  const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
+  const page = document.getElementById('page'); const pageClass = (cur === 'home' ? 'wide' : '') + (entering ? ' enter' : ''); if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
   syncModal(); syncChrome();
   if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }

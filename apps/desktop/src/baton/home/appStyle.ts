@@ -75,8 +75,9 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 #app::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(46% 40% at 2% 0%,color-mix(in srgb,var(--hue) 24%,transparent),transparent 72%),radial-gradient(42% 44% at 100% 100%,color-mix(in srgb,var(--indigo) 15%,transparent),transparent 70%)}
 html.glass-off #app::before,html.mica #app::before{display:none}
 #app.collapsed{grid-template-columns:0 1fr}
-#side{background:var(--side-fill);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:inset -1px 0 0 var(--edge),1px 0 0 var(--line);display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
-html.mica #side{backdrop-filter:none}
+#side{position:relative;isolation:isolate;display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
+#side::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--side-fill);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:inset -1px 0 0 var(--edge),1px 0 0 var(--line)}
+html.mica #side::before{backdrop-filter:none}
 #app.collapsed #side{visibility:hidden}
 .brand{display:flex;align-items:center;gap:12px;padding:0 6px 20px}
 .brand #mark{width:56px;height:56px;display:block;flex:none;color:var(--ink)}
