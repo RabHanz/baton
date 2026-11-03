@@ -23,6 +23,7 @@ import * as ServerConfig from "../config.ts";
 import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 
+import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
@@ -111,6 +112,15 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const adopted = yield* AdoptedSessionService;
     const services = yield* Effect.context<never>();
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    const resumeLog = (record: Record<string, unknown>) =>
+      appendResumeLog(
+        NodePath.join(
+          Option.isSome(config) ? config.value.logsDir : NodeOS.tmpdir(),
+          "baton-resume.ndjson",
+        ),
+        record,
+      );
     const projects = yield* Effect.serviceOption(ProjectService);
     const importer = yield* Effect.serviceOption(AgentSessionImporter);
     const engine = yield* Effect.serviceOption(BatonEngine);
@@ -144,6 +154,7 @@ export const layer = Layer.effect(
                 } catch {
                   bytes = null;
                 }
+                resumeLog({ event: "import-start", sessionId, folder: cwd, bytes });
                 yield* Effect.logInfo("Tessaya resume: importing a conversation as a thread", {
                   sessionId,
                   cwd,
@@ -168,6 +179,15 @@ export const layer = Layer.effect(
                 // The import commits events before it returns, but the thread's own record can trail them a moment.
                 for (let attempt = 0; attempt < 10; attempt += 1) {
                   if ((yield* engine.value.threadShell(threadId)) !== null) {
+                    resumeLog({
+                      event: "import-done",
+                      outcome: "ok",
+                      sessionId,
+                      folder: cwd,
+                      bytes,
+                      ms: Date.now() - startedAt,
+                      threadId: String(threadId),
+                    });
                     yield* Effect.logInfo("Tessaya resume: the thread is ready", {
                       sessionId,
                       bytes,
@@ -177,6 +197,17 @@ export const layer = Layer.effect(
                   }
                   yield* Effect.sleep("500 millis");
                 }
+                resumeLog({
+                  event: "import-done",
+                  outcome: "no-thread",
+                  sessionId,
+                  folder: cwd,
+                  bytes,
+                  ms: Date.now() - startedAt,
+                  threadId: String(threadId),
+                  imported: result.importedCount,
+                  skipped: result.skippedCount,
+                });
                 yield* Effect.logWarning(
                   "Tessaya resume: the import finished but no thread exists",
                   {
@@ -187,10 +218,17 @@ export const layer = Layer.effect(
                   },
                 );
                 return {
-                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). It may be unreadable or too large; the server log has its size and the reason.`,
+                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). It may be unreadable or too large; baton-resume.ndjson in the logs folder has its size and the reason.`,
                 };
               }),
             ).catch((cause) => {
+              resumeLog({
+                event: "import-done",
+                outcome: "failed",
+                sessionId,
+                folder: cwd,
+                error: String(cause instanceof Error ? cause.message : cause).slice(0, 500),
+              });
               void Effect.runPromiseWith(services)(
                 Effect.logWarning("Tessaya resume failed", {
                   sessionId,
@@ -277,7 +315,6 @@ export const layer = Layer.effect(
                 .slice(0, 160)}`,
             }));
     // The auto-resume watchdog's memory: sessions he stopped on purpose, and when each was last resumed.
-    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
     const stateFile = NodePath.join(
       Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
       "baton-autoresume.json",
