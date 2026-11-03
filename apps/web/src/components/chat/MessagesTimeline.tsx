@@ -590,7 +590,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
         }
       } else {
         setExpandedRunIds((existing) =>
-          expandedRunsAfterLatestRunChange(existing, previousRunId, keepWorkExpanded),
+          expandedRunsAfterLatestRunChange(existing, previousRunId),
         );
       }
     }
