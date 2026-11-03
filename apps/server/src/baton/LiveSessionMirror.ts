@@ -81,6 +81,7 @@ import {
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
+import { formOverview, pendingAskQuestions } from "./FormQuestions.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
@@ -1375,11 +1376,28 @@ const make = Effect.gen(function* () {
       const itemId = TurnItemId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       const nodeId = NodeId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
       // One line: T3 sends the answer back as "<question>\n<answer>".
-      const question = [found.context, found.question]
+      // A tabbed form shows its other questions too, from the transcript's exact text; the pane question stays last
+      // because T3 sends the answer back keyed by it.
+      const overview =
+        found.header !== null && follow.path !== null
+          ? formOverview(
+              pendingAskQuestions(
+                (() => {
+                  try {
+                    const size = NodeFS.statSync(follow.path).size;
+                    return readRange(follow.path, Math.max(0, size - 300_000), size);
+                  } catch {
+                    return "";
+                  }
+                })(),
+              ),
+            ).slice(0, 900)
+          : "";
+      const question = [overview, found.context, found.question]
         .filter((part) => part.length > 0)
         .join(". ")
         .replace(/[ \t]+/g, " ")
-        .slice(0, 1_200);
+        .slice(-1_400);
       const request = {
         id: requestId,
         nodeId,

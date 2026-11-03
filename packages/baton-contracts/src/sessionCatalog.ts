@@ -159,4 +159,6 @@ export const BatonRetireHandoffResult = Schema.Struct({
   state: Schema.Literals(["retired", "refused", "incomplete"]),
   detail: Schema.String,
   undoFile: Schema.NullOr(Schema.String),
+  archived: Schema.optionalKey(Schema.Literals(["already", "done", "failed"])),
+  deleted: Schema.optionalKey(Schema.Literals(["done", "refused"])),
 });

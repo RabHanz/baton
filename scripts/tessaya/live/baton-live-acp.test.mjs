@@ -588,3 +588,36 @@ NodeTest.test(
     NodeAssert.equal(prompt?.customIndex, 2);
   },
 );
+
+NodeTest.test(
+  "a question wrapped over several lines keeps all of it, and each option keeps its wrapped description",
+  () => {
+    const screen = [
+      "────────────────────────────────────────",
+      "←  ☐ CI account  ☐ Merge 4416  ✔ Submit  →",
+      "",
+      "│ #4416 (clip posting path) needs another cloud CI run after my one-line test fix. Which Claude",
+      "│ cloud account should run it? Only signzart is logged in for cloud right now.",
+      "",
+      "❯ 1. signzart",
+      "     The only cloud login that works today. Its weekly limit",
+      "     resets Monday 12:00 PKT.",
+      "  2. Don't run it",
+      "     Skip the rerun and decide #4416 on the current evidence.",
+      "  3. Type something.",
+      "────────────────────────────────────────",
+      "  4. Chat about this",
+      "",
+      "Enter to select · Tab/Arrow keys to navigate · Esc to cancel",
+    ].join("\n");
+    const prompt = parsePanePrompt(screen);
+    NodeAssert.equal(
+      prompt?.question,
+      "#4416 (clip posting path) needs another cloud CI run after my one-line test fix. Which Claude cloud account should run it? Only signzart is logged in for cloud right now.",
+    );
+    NodeAssert.equal(
+      prompt?.options[0].description,
+      "The only cloud login that works today. Its weekly limit resets Monday 12:00 PKT.",
+    );
+  },
+);
