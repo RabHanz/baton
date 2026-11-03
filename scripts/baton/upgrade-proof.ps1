@@ -30,9 +30,9 @@ $list = Join-Path $wavDir 'list.txt'; Set-Content $list "wake.wav 4000`n40000"
 
 function Install-App([string]$installer) { Start-Process -FilePath $installer -ArgumentList '/S' -Wait; Start-Sleep -Seconds 5; if (-not (Test-Path $exe)) { throw "Tessaya.exe is not at $exe" } }
 function Stop-App { Get-Process Tessaya, baton-dictation, pocket-tts -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3 }
-function Snapshot { # path, size, write time (ticks) of every file under voice\ except logs
+function Snapshot { # path, size, write time (ticks) of every file under voice\models and voice\pocket (settings files are not models)
   if (-not (Test-Path $voice)) { return @() }
-  Get-ChildItem $voice -Recurse -File | Sort-Object FullName | ForEach-Object { [pscustomobject]@{ path = $_.FullName.Substring($voice.Length); size = $_.Length; written = $_.LastWriteTimeUtc.Ticks } }
+  Get-ChildItem (Join-Path $voice 'models'), (Join-Path $voice 'pocket') -Recurse -File -ErrorAction SilentlyContinue | Sort-Object FullName | ForEach-Object { [pscustomobject]@{ path = $_.FullName.Substring($voice.Length); size = $_.Length; written = $_.LastWriteTimeUtc.Ticks } }
 }
 function Run-App([string]$label, [int]$maxSeconds) {
   Remove-Item $log -ErrorAction SilentlyContinue
