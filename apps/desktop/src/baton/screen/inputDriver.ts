@@ -13,6 +13,8 @@ export interface InputDriver {
   /** Global desktop points in Electron DIPs. Pointer and button go as one, past his hand. */
   readonly clickAt: (point: Point, button: "left" | "right", count: 1 | 2) => Promise<void>;
   readonly pressAt: (point: Point) => Promise<void>;
+  /** Moves the pointer, buttons as they are: a drag is pressAt, moveAt steps, releaseAt. */
+  readonly moveAt: (point: Point) => Promise<void>;
   readonly releaseAt: (point: Point) => Promise<void>;
   readonly scrollAt: (point: Point | null, amount: number) => Promise<void>;
   readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
@@ -256,6 +258,7 @@ export const createInputDriver = (input: {
         return ps.send(`at ${physical(p)} ${count === 2 ? `${once},${once}` : once}`);
       },
       pressAt: (p) => ps.send(`at ${physical(p)} 2`),
+      moveAt: (p) => ps.send(`at ${physical(p)} 0`),
       releaseAt: (p) => ps.send(`at ${physical(p)} 4`),
       scrollAt: (p, amount) =>
         ps.send(
@@ -292,6 +295,7 @@ export const createInputDriver = (input: {
           button === "right" ? "3" : "1",
         ),
       pressAt: (p) => xdo(...to(p), "mousedown", "1"),
+      moveAt: (p) => xdo(...to(p)),
       releaseAt: (p) => xdo(...to(p), "mouseup", "1"),
       scrollAt: async (p, amount) => {
         if (p !== null) await xdo(...to(p));
@@ -312,6 +316,7 @@ export const createInputDriver = (input: {
   return {
     clickAt: refuse,
     pressAt: refuse,
+    moveAt: refuse,
     releaseAt: refuse,
     scrollAt: refuse,
     press: refuse,
