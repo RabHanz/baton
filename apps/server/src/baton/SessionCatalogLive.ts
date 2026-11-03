@@ -70,6 +70,7 @@ const scanTranscripts = (limit: number): ReadonlyArray<TranscriptInfo> => {
       title,
       lastActivityAt: new Date(f.mtime).toISOString(),
       account: f.account,
+      file: f.file,
       background: isBackgroundRun({ cwd, entrypoint, title }),
     });
   }
@@ -95,6 +96,18 @@ export const realCatalogPorts = (type: CatalogPorts["type"]): CatalogPorts => ({
   history: async (query) => {
     const answer = await askHistory(process.env, { query });
     return answer.ok ? parseHistoryHits(answer.text) : [];
+  },
+  readTail: async (file) => {
+    const fd = NodeFS.openSync(file, "r");
+    try {
+      const size = NodeFS.fstatSync(fd).size;
+      const length = Math.min(size, 96 * 1024);
+      const buf = Buffer.alloc(length);
+      NodeFS.readSync(fd, buf, 0, length, size - length);
+      return buf.toString("utf8");
+    } finally {
+      NodeFS.closeSync(fd);
+    }
   },
   dirExists: (dir) => {
     try {
