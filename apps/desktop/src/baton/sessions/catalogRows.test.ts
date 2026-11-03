@@ -159,3 +159,39 @@ describe("New session", () => {
     ]);
   });
 });
+
+describe("clean-up of helper threads and background runs", () => {
+  it("looks first, then archives on the second press, and background runs are a toggle", async () => {
+    const calls: boolean[] = [];
+    const lists: Array<boolean | undefined> = [];
+    const service: CatalogService = {
+      list: async (_q, background) => (lists.push(background), rows),
+      resume: async () => undefined,
+      create: async () => undefined,
+      folders: async () => [],
+      open: () => undefined,
+      cleanup: async (apply) => (
+        calls.push(apply),
+        [{ machine: "Laptop", failed: false, found: 3, left: 1, archived: apply ? 3 : 0 }]
+      ),
+    };
+    const catalog = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    await catalog.refresh();
+    const bar = () => catalog.controls().find((c) => c.kind === "catalogBar");
+    catalog.apply("c.tidy", null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(
+      bar()?.kind === "catalogBar" && bar()?.kind === "catalogBar"
+        ? (bar() as { tidyFound: number }).tidyFound
+        : 0,
+    ).toBe(3);
+    catalog.apply("c.tidyApply", null);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toEqual([false, true]);
+    catalog.apply("c.background", null);
+    await Promise.resolve();
+    expect(lists.at(-1)).toBe(true);
+  });
+});

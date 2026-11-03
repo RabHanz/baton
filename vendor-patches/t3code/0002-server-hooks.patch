@@ -239,3 +239,18 @@ index e880551e65cce91f41f3f969b2d3a100786b08c1..9a69b36500cb9b12bf8717fd405b6dac
                ),
              ),
              Effect.forkScoped,
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index f291cec115f73f2862d63e651d9b0750c585ed65..bb009611b63752da10cdeed2973772f5f9f0edf0 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -1199,8 +1199,9 @@ export const ServerSettings = Schema.Struct({
+     Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
+   ),
+   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
++  // Off in Tessaya: after a restart a thread comes back stopped and resumable, never a Claude process the user did not ask for.
+   continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
+-    Schema.withDecodingDefault(Effect.succeed(true)),
++    Schema.withDecodingDefault(Effect.succeed(false)),
+   ),
+ 
+   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),

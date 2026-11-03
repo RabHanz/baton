@@ -66,17 +66,42 @@ export const createBridgeCatalogService = (input: {
   readonly bridge: SessionsBridge;
   readonly openMainWindow: () => void;
   readonly wait?: (ms: number) => Promise<void>;
+  /** Where the archived thread ids are written, so the clean-up can be undone. */
+  readonly saveCleanupList?: (json: string) => void;
 }): CatalogService => {
   const wait = input.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   /** Where a resumed session's thread is, when the server made one (a machine with no Herdr). */
   const threads = new Map<string, string>();
-  const list = async (query: string) => {
-    const answer = await input.bridge.request({ kind: "catalogList", query }, LIST_WAIT_MS);
+  const list = async (query: string, background?: boolean) => {
+    const answer = await input.bridge.request(
+      { kind: "catalogList", query, ...(background === true ? { background: true } : {}) },
+      LIST_WAIT_MS,
+    );
     if (answer === null) throw new Error("The sessions view did not answer.");
     return rowsFromAnswer(answer.detail);
   };
   return {
     list,
+    cleanup: async (apply) => {
+      const answer = await input.bridge.request({ kind: "catalogCleanup", apply }, LIST_WAIT_MS);
+      if (answer === null) throw new Error("The sessions view did not answer.");
+      const parsed = JSON.parse(answer.detail) as ReadonlyArray<{
+        machine: string;
+        failed: boolean;
+        found?: ReadonlyArray<unknown>;
+        left?: ReadonlyArray<unknown>;
+        archived?: ReadonlyArray<string>;
+      }>;
+      // The archived ids are kept so the clean-up can be undone.
+      if (apply) input.saveCleanupList?.(JSON.stringify(parsed, null, 2));
+      return parsed.map((m) => ({
+        machine: m.machine,
+        failed: m.failed,
+        found: m.found?.length ?? 0,
+        left: m.left?.length ?? 0,
+        archived: m.archived?.length ?? 0,
+      }));
+    },
     resume: async (row) => {
       const answer = await input.bridge.request(
         {
