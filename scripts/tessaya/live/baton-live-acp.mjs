@@ -385,6 +385,39 @@ export function findLiveSession(sessionId) {
   return null;
 }
 
+/** The one session to deliver to when a thread's session was lost: exactly one candidate, else null (never a guess). */
+export function soleCandidate(candidates) {
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/** Running Herdr sessions in a folder. */
+function liveSessionsAt(cwd) {
+  const found = [];
+  for (const dir of sessionsDirs()) {
+    let names = [];
+    try {
+      names = NodeFS.readdirSync(dir).filter((name) => /^\d+\.json$/.test(name));
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      try {
+        const d = JSON.parse(NodeFS.readFileSync(NodePath.join(dir, name), "utf8"));
+        if (
+          d?.cwd === cwd &&
+          d.kind === "interactive" &&
+          typeof d.pid === "number" &&
+          alive(d.pid)
+        ) {
+          const live = findLiveSession(d.sessionId);
+          if (live?.pane) found.push(d.sessionId);
+        }
+      } catch {}
+    }
+  }
+  return found;
+}
+
 function findIn(sessionId, dir) {
   let names = [];
   try {
@@ -502,12 +535,22 @@ export const lostNote = (reason, shown) => `Not delivered: ${reason} Your messag
 /** Messages held back (a resume is under way or failed): kept, in order, never handed back or dropped. */
 export function holdQueue(dir, sessionId, reason) {
   const items = readQueue(dir, sessionId);
-  if (items.length > 0) writeQueue(dir, sessionId, items.map((item) => ({ ...item, held: reason })));
+  if (items.length > 0)
+    writeQueue(
+      dir,
+      sessionId,
+      items.map((item) => ({ ...item, held: reason })),
+    );
 }
 
 export function releaseQueue(dir, sessionId) {
   const items = readQueue(dir, sessionId);
-  if (items.some((item) => item.held)) writeQueue(dir, sessionId, items.map(({ held: _gone, ...item }) => item));
+  if (items.some((item) => item.held))
+    writeQueue(
+      dir,
+      sessionId,
+      items.map(({ held: _gone, ...item }) => item),
+    );
 }
 
 export async function drainSession(dir, sessionId, deps) {
@@ -578,7 +621,10 @@ export async function sendToStopped(dir, sessionId, item, deps) {
 
 /** The prompt on the pane's screen now, or null. */
 export async function readPaneScreen(paneRef) {
-  const read = await run(HERDR, herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "40"]));
+  const read = await run(
+    HERDR,
+    herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "40"]),
+  );
   return read.ok ? screenTail(read.out) : "";
 }
 
@@ -674,22 +720,34 @@ const READY_MS = Number(process.env.BATON_LIVE_RESUME_READY_MS ?? 45_000);
  */
 export async function resumeSession(sessionId, deps) {
   const cwd = deps.cwdOf(sessionId);
-  if (cwd === null) return { error: "I do not know which folder this conversation was in, and its transcript is not on this machine." };
+  if (cwd === null)
+    return {
+      error:
+        "I do not know which folder this conversation was in, and its transcript is not on this machine.",
+    };
   if (!deps.dirExists(cwd)) return { error: `The folder ${cwd} is not on this machine.` };
   const out = await deps.baton(["--resume", sessionId, cwd]);
   if (!/running in (\S+) pane (\S+)/.test(out.out))
-    return { error: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.` };
+    return {
+      error: `Herdr would not start it: ${out.out.replace(/\s+/g, " ").slice(0, 160) || "no answer"}.`,
+    };
   const started = deps.now();
   for (;;) {
     const live = deps.findLive(sessionId);
     if (live !== null && live.pane !== null && live.status !== "busy") return { live };
     if (deps.now() - started >= READY_MS) {
       const at = /running in (\S+) pane (\S+)/.exec(out.out);
-      const screen = at === null || deps.screenOf === undefined ? "" : await deps.screenOf(at[1], at[2]).catch(() => "");
+      const screen =
+        at === null || deps.screenOf === undefined
+          ? ""
+          : await deps.screenOf(at[1], at[2]).catch(() => "");
       return {
-        error: /Is this a project you created or one you trust|trust this folder|Do you trust the files/i.test(screen)
-          ? `Claude Code is asking whether to trust this folder, and waits for you to choose in Herdr (herdr --session ${at[1]}). Choose, then resume again.`
-          : "It was started in Herdr but did not become ready within 45 seconds.",
+        error:
+          /Is this a project you created or one you trust|trust this folder|Do you trust the files/i.test(
+            screen,
+          )
+            ? `Claude Code is asking whether to trust this folder, and waits for you to choose in Herdr (herdr --session ${at[1]}). Choose, then resume again.`
+            : "It was started in Herdr but did not become ready within 45 seconds.",
       };
     }
     await deps.sleep(500);
@@ -800,11 +858,13 @@ function composeForSession(blocks, cwd) {
 
 const write = (message) =>
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+const aliases = new Map(); // a real Claude session id -> the ACP session id T3 knows it by
+const newSessionCwd = new Map(); // an unbound ACP session id -> the folder T3 asked for
 const say = (sessionId, text) =>
   write({
     method: "session/update",
     params: {
-      sessionId,
+      sessionId: aliases.get(sessionId) ?? sessionId,
       update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
     },
   });
@@ -812,9 +872,33 @@ const say = (sessionId, text) =>
 const turns = new Map(); // sessionId -> { cancelled: boolean, pane: string | null }
 
 async function prompt(params) {
-  const sessionId = params.sessionId;
-  if (typeof sessionId !== "string" || sessionId.startsWith(UNBOUND)) {
-    say(sessionId, "This thread is not bound to a running Claude Code session.");
+  let sessionId = params.sessionId;
+  if (typeof sessionId === "string" && sessionId.startsWith(UNBOUND)) {
+    // Unbound, but a running Herdr session in the thread's own folder, and only one: deliver to it.
+    const folder = newSessionCwd.get(sessionId);
+    const only = folder === undefined ? null : soleCandidate(liveSessionsAt(folder));
+    if (only !== null) {
+      aliases.set(only, sessionId);
+      sessionId = only;
+    } else {
+      // Kept, never dropped: written beside the queues and shown here with the words, so it can be sent again.
+      const words = promptText(params.prompt).trim();
+      try {
+        NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
+        NodeFS.appendFileSync(
+          NodePath.join(QUEUE_DIR, "unbound-messages.ndjson"),
+          `${JSON.stringify({ at: new Date().toISOString(), cwd: folder ?? null, text: words })}\n`,
+        );
+      } catch {}
+      say(
+        params.sessionId,
+        `This thread is not bound to a running Claude Code session, so nothing was delivered. Your message was kept: "${words}". Send it again after reopening the session.`,
+      );
+      return { stopReason: "end_turn" };
+    }
+  }
+  if (typeof sessionId !== "string") {
+    say(params.sessionId, "This thread is not bound to a running Claude Code session.");
     return { stopReason: "end_turn" };
   }
   if (isAppContinuation(promptText(params.prompt))) return { stopReason: "end_turn" };
@@ -827,8 +911,16 @@ async function prompt(params) {
     // Stopped: it is resumed and the message goes when it is ready. "Not delivered" is for nothing that can be fixed.
     const words = promptText(params.prompt);
     if (resumesInFlight.has(sessionId)) {
-      const count = enqueue(QUEUE_DIR, sessionId, { text: words.trim(), shown: words.replace(/\s+/g, " ").trim().slice(0, 200), at: new Date().toISOString(), held: "resuming" });
-      say(sessionId, `Still resuming. ${count} message${count === 1 ? "" : "s"} kept; they go when it is ready.`);
+      const count = enqueue(QUEUE_DIR, sessionId, {
+        text: words.trim(),
+        shown: words.replace(/\s+/g, " ").trim().slice(0, 200),
+        at: new Date().toISOString(),
+        held: "resuming",
+      });
+      say(
+        sessionId,
+        `Still resuming. ${count} message${count === 1 ? "" : "s"} kept; they go when it is ready.`,
+      );
       return { stopReason: "end_turn" };
     }
     const cwd = cwdFromTranscript(sessionId);
@@ -836,11 +928,18 @@ async function prompt(params) {
     resumesInFlight.add(sessionId);
     try {
       const wantsOnlyResume = isResumeRequest(words);
-      const item = { text: body, shown: words.replace(/\s+/g, " ").trim().slice(0, 200) || "(resume)", at: new Date().toISOString() };
+      const item = {
+        text: body,
+        shown: words.replace(/\s+/g, " ").trim().slice(0, 200) || "(resume)",
+        at: new Date().toISOString(),
+      };
       if (wantsOnlyResume) {
         say(sessionId, "Resuming this session in Herdr.");
         const result = await resumeSession(sessionId, resumeDeps);
-        say(sessionId, result.error ?? "Resumed in Herdr with its history. Messages sent here now reach it.");
+        say(
+          sessionId,
+          result.error ?? "Resumed in Herdr with its history. Messages sent here now reach it.",
+        );
         if (result.error === undefined) releaseQueue(QUEUE_DIR, sessionId);
         if (result.error === undefined) startDrainer();
       } else {
@@ -942,7 +1041,13 @@ const resumeDeps = {
   baton: (args) => run(BATON, args, 45_000).then((r) => ({ ok: r.ok, out: r.out })),
   findLive: findLiveSession,
   screenOf: async (session, pane) =>
-    (await run("herdr", ["--session", session, "agent", "read", pane, "--source", "visible", "--lines", "25"], 8_000)).out,
+    (
+      await run(
+        "herdr",
+        ["--session", session, "agent", "read", pane, "--source", "visible", "--lines", "25"],
+        8_000,
+      )
+    ).out,
   sleep,
   now: () => Date.now(),
 };
@@ -982,8 +1087,11 @@ async function handle(message) {
         },
         authMethods: [],
       };
-    case "session/new":
-      return { sessionId: `${UNBOUND}-${process.pid}-${id}` };
+    case "session/new": {
+      const unbound = `${UNBOUND}-${process.pid}-${id}`;
+      if (typeof params.cwd === "string") newSessionCwd.set(unbound, params.cwd);
+      return { sessionId: unbound };
+    }
     case "session/resume":
       return {};
     case "session/prompt":
@@ -1035,9 +1143,10 @@ if (
 ) {
   // `--pane-screen <pane>`: the last lines of a waiting pane, for a question it could not read as options.
   if (process.argv[2] === "--pane-screen" && process.argv[3])
-    readPaneScreen(process.argv[3]).then((text) => process.stdout.write(`${JSON.stringify({ text })}\n`));
-  else
-  // `--pane-prompt <pane>`: the server's mirror reads a waiting session's prompt through this (D88).
+    readPaneScreen(process.argv[3]).then((text) =>
+      process.stdout.write(`${JSON.stringify({ text })}\n`),
+    );
+  else // `--pane-prompt <pane>`: the server's mirror reads a waiting session's prompt through this (D88).
   if (process.argv[2] === "--pane-prompt" && process.argv[3])
     readPanePrompt(process.argv[3]).then((found) =>
       process.stdout.write(`${JSON.stringify(found)}\n`),

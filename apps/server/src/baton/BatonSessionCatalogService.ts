@@ -101,6 +101,7 @@ export class BatonSessionCatalogService extends Context.Service<
       twinThreadId: string;
       confirm: string;
       caughtUp: boolean;
+      twinOnly?: boolean;
     }) => Effect.Effect<RetireResult>;
     readonly cleanup: (input: { apply: boolean }) => Effect.Effect<{
       readonly found: ReadonlyArray<{ id: string; title: string; project: string; reason: string }>;
@@ -524,7 +525,8 @@ export const layer = Layer.effect(
               Effect.map(e.activeProviderThread(id(threadId)), (p) =>
                 p === null ? null : String(p.providerInstanceId),
               ),
-            archive: (threadId) => e.archiveThread({ tag: "retire-handoff", threadId: id(threadId) }),
+            archive: (threadId) =>
+              e.archiveThread({ tag: "retire-handoff", threadId: id(threadId) }),
             remove: (threadId) => e.deleteThread({ tag: "retire-handoff", threadId: id(threadId) }),
             writeUndo: (json) => {
               const file = NodePath.join(
@@ -541,7 +543,12 @@ export const layer = Layer.effect(
           },
           input,
         );
-        resumeLog({ event: "retire-handoff", thread: input.threadId, twin: input.twinThreadId, ...result });
+        resumeLog({
+          event: "retire-handoff",
+          thread: input.threadId,
+          twin: input.twinThreadId,
+          ...result,
+        });
         return result;
       }),
       cleanup: Effect.fn("BatonSessionCatalogService.cleanup")(function* (input: {

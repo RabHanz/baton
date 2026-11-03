@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { classifierStopReason, describeAnswerer, liveThreadSwitchRefusal } from "./liveThread.ts";
+import {
+  pinnedLiveSelection,
+  classifierStopReason,
+  describeAnswerer,
+  liveThreadSwitchRefusal,
+} from "./liveThread.ts";
 
 describe("a mirrored live thread", () => {
   const live = "baton-live4:cc828d1b";
@@ -53,5 +58,22 @@ describe("a reply stopped by the safety classifier", () => {
     ).toBe("Stopped by a safety classifier: rephrase or switch model for this session");
     expect(classifierStopReason("Here is the plan.")).toBeNull();
     expect(classifierStopReason(null)).toBeNull();
+  });
+});
+
+describe("a live thread's own selection", () => {
+  const sel = (instanceId: string, model: string) => ({ instanceId, model });
+  it("keeps the live selection when a stale one names another model on the live instance", () => {
+    const current = sel("baton-live", "live");
+    const stale = sel("baton-live", "claude-opus-5-5");
+    expect(pinnedLiveSelection("baton-live4:abc", stale, current)).toBe(current);
+  });
+  it("leaves other threads, other instances and an unchanged selection alone", () => {
+    const current = sel("baton-live", "live");
+    const other = sel("claudeAgent", "x");
+    expect(pinnedLiveSelection("baton-live4:abc", other, current)).toBe(other);
+    expect(
+      pinnedLiveSelection("import:claudeAgent:abc", sel("baton-live", "m"), current).model,
+    ).toBe("m");
   });
 });

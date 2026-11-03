@@ -7,7 +7,14 @@ import { retireHandoff, retireToken, type RetirePorts } from "./RetireHandoff.ts
 const MAIN = "baton-live4:cc828d1b";
 const TWIN = "baton-live4:a262f02b";
 
-const fixture = (over: Partial<{ mainInstance: string; running: boolean; switchWorks: boolean }> = {}) => {
+const fixture = (
+  over: Partial<{
+    mainInstance: string;
+    running: boolean;
+    switchWorks: boolean;
+    twinRunning: boolean;
+  }> = {},
+) => {
   const calls: string[] = [];
   let instance = over.mainInstance ?? "claudeAgent";
   const ports: RetirePorts = {
@@ -15,7 +22,7 @@ const fixture = (over: Partial<{ mainInstance: string; running: boolean; switchW
       Effect.succeed(
         id === MAIN
           ? { instanceId: instance, running: over.running ?? false }
-          : { instanceId: "baton-live", running: false },
+          : { instanceId: "baton-live", running: over.twinRunning ?? false },
       ),
     selectLive: (id) =>
       Effect.sync(() => {
@@ -49,22 +56,51 @@ describe("retiring a handoff session", () => {
     }),
   );
 
-  it.effect("switches back to the live session, then writes the undo list, archives, then deletes the twin", () =>
-    Effect.gen(function* () {
-      const f = fixture();
-      const result = yield* run(f);
-      expect(result.state).toBe("retired");
-      expect(f.calls).toEqual([`live:${MAIN}`, "undo", `archive:${TWIN}`, `delete:${TWIN}`]);
-    }),
+  it.effect(
+    "switches back to the live session, then writes the undo list, archives, then deletes the twin",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture();
+        const result = yield* run(f);
+        expect(result.state).toBe("retired");
+        expect(f.calls).toEqual([`live:${MAIN}`, "undo", `archive:${TWIN}`, `delete:${TWIN}`]);
+      }),
   );
 
-  it.effect("leaves the twin alone when the switch back did not take, or the thread is working or already live", () =>
-    Effect.gen(function* () {
-      const stuck = fixture({ switchWorks: false });
-      expect((yield* run(stuck)).state).toBe("incomplete");
-      expect(stuck.calls).toEqual([`live:${MAIN}`]);
-      expect((yield* run(fixture({ running: true }))).state).toBe("refused");
-      expect((yield* run(fixture({ mainInstance: "baton-live" }))).state).toBe("refused");
-    }),
+  it.effect(
+    "leaves the twin alone when the switch back did not take, or the thread is working or already live",
+    () =>
+      Effect.gen(function* () {
+        const stuck = fixture({ switchWorks: false });
+        expect((yield* run(stuck)).state).toBe("incomplete");
+        expect(stuck.calls).toEqual([`live:${MAIN}`]);
+        expect((yield* run(fixture({ running: true }))).state).toBe("refused");
+        expect((yield* run(fixture({ mainInstance: "baton-live" }))).state).toBe("refused");
+      }),
+  );
+
+  it.effect(
+    "twinOnly removes just the twin's mirror thread when the main thread is already live",
+    () =>
+      Effect.gen(function* () {
+        const f = fixture({ mainInstance: "baton-live" });
+        const result = yield* run(f, { twinOnly: true });
+        expect(result.state).toBe("retired");
+        expect(f.calls).toEqual(["undo", `archive:${TWIN}`, `delete:${TWIN}`]);
+        expect(
+          (yield* run(fixture({ mainInstance: "claudeAgent" }), { twinOnly: true })).state,
+        ).toBe("refused");
+        expect(
+          (yield* run(fixture({ mainInstance: "baton-live", twinRunning: true }), {
+            twinOnly: true,
+          })).state,
+        ).toBe("refused");
+        expect(
+          (yield* run(fixture({ mainInstance: "baton-live" }), {
+            twinOnly: true,
+            twinThreadId: MAIN,
+          })).state,
+        ).toBe("refused");
+      }),
   );
 });

@@ -1,4 +1,4 @@
-import { liveThreadSwitchRefusal } from "@t3tools/baton-shared/liveThread";
+import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -5605,7 +5605,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ]);
       projection = applyToProjection(projection, event);
     }
-    const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
+    const modelSelection = pinnedLiveSelection(
+      command.threadId,
+      command.modelSelection ?? projection.thread.modelSelection,
+      projection.thread.modelSelection,
+    );
     const liveRefusal = liveThreadSwitchRefusal({
       threadId: command.threadId,
       currentInstance: projection.thread.providerInstanceId,
