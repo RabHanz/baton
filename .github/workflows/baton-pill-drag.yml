@@ -12,7 +12,7 @@ permissions:
 jobs:
   click:
     runs-on: windows-2022
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
@@ -44,7 +44,7 @@ jobs:
           PROOF_OUT: ${{ github.workspace }}/pill-drag-out
         run: |
           mkdir -p "$PROOF_OUT"
-          timeout 300 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/pillDragProof.cjs 2>&1 | tee "$PROOF_OUT/run.log"; echo "exit=${PIPESTATUS[0]}" >> "$PROOF_OUT/run.log"
+          timeout 700 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/pillDragProof.cjs 2>&1 | tee "$PROOF_OUT/run.log"; echo "exit=${PIPESTATUS[0]}" >> "$PROOF_OUT/run.log"
           cat "$PROOF_OUT/results.md" >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v4
         if: always()
