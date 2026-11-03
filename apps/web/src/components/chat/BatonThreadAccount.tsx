@@ -27,11 +27,16 @@ import { AsyncResult } from "effect/reactivity";
 import { CheckIcon, ChevronDownIcon, RotateCwIcon, UserRoundIcon } from "lucide-react";
 import { useState } from "react";
 
-import { describeAnswerer, isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
+import {
+  classifierStopReason,
+  describeAnswerer,
+  isLiveThreadId,
+  LIVE_INSTANCE,
+} from "@t3tools/baton-shared/liveThread";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
-import { useQuietThreadShell } from "../../state/entities";
+import { useQuietThreadShell, useThreadVisibleTurnItems } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
@@ -209,7 +214,13 @@ function LiveAnswerer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const pool = useAtomValue(
     batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} }),
   );
-  if (shell === null || !isLiveThreadId(threadRef.threadId)) return null;
+  const live = isLiveThreadId(threadRef.threadId);
+  const items = useThreadVisibleTurnItems(live ? threadRef : null);
+  if (shell === null || !live) return null;
+  const lastItem = items.at(-1)?.item;
+  const stopped = classifierStopReason(
+    lastItem?.type === "assistant_message" ? lastItem.text : null,
+  );
   const accounts = Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
   const options = shell.modelSelection.options;
   const effort = Array.isArray(options)
@@ -230,6 +241,14 @@ function LiveAnswerer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
       >
         {answerer.line}
       </span>
+      {stopped === null ? null : (
+        <span
+          className="shrink-0 text-2xs text-warning-foreground"
+          data-testid="thread-classifier-stop"
+        >
+          {stopped}
+        </span>
+      )}
       {answerer.handedOff ? (
         <Button
           size="xs"

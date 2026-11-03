@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { describeAnswerer, liveThreadSwitchRefusal } from "./liveThread.ts";
+import { classifierStopReason, describeAnswerer, liveThreadSwitchRefusal } from "./liveThread.ts";
 
 describe("a mirrored live thread", () => {
   const live = "baton-live4:cc828d1b";
@@ -41,5 +41,17 @@ describe("who answers a thread", () => {
       model: "claude-opus-5-5",
     });
     expect(twin).toMatchObject({ harness: "t3-hosted", handedOff: true });
+  });
+});
+
+describe("a reply stopped by the safety classifier", () => {
+  it("names the reason from the session's own wording, and only then", () => {
+    expect(
+      classifierStopReason(
+        "Your response above was stopped by a safety classifier. Try rephrasing.",
+      ),
+    ).toBe("Stopped by a safety classifier: rephrase or switch model for this session");
+    expect(classifierStopReason("Here is the plan.")).toBeNull();
+    expect(classifierStopReason(null)).toBeNull();
   });
 });
