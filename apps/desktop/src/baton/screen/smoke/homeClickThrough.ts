@@ -14,6 +14,7 @@ import * as Electron from "electron";
 import { createBatonHome } from "../../home/batonHome.ts";
 import { STATES } from "../../home/pageStates.ts";
 import { createInputDriver } from "../inputDriver.ts";
+import { createPointerOverlay } from "../pointerOverlay.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "home-click-out");
 NodeFS.mkdirSync(out, { recursive: true });
@@ -83,6 +84,15 @@ interface Row {
   readonly effect: string;
 }
 
+// HOME_CLICK_LAPTOP=1 makes the run look like the laptop: full motion (so the splash and fade play), and the
+// window's own Mica where the runner's Windows has it. The click is still the system's real mouse.
+const laptop = process.env["HOME_CLICK_LAPTOP"] === "1";
+if (laptop) {
+  (
+    Electron.systemPreferences as unknown as { getAnimationSettings: () => object }
+  ).getAnimationSettings = () => ({ prefersReducedMotion: false });
+}
+
 void Electron.app.whenReady().then(async () => {
   const driver = createInputDriver({
     platform: "win32",
@@ -102,10 +112,14 @@ void Electron.app.whenReady().then(async () => {
     openSessions: () => undefined,
     appearance: () => "dark",
   }).open();
-  await sleep(4000);
-  const win = Electron.BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+  await sleep(laptop ? 9000 : 4000);
+  const win = Electron.BrowserWindow.getAllWindows().find(
+    (w) => !w.isDestroyed() && w.getTitle() === "Tessaya",
+  );
   if (win === undefined) throw new Error("the Home window did not open");
-  win.setBounds({ x: 0, y: 0, width: 1024, height: 740 });
+  win.setBounds(
+    laptop ? { x: 0, y: 0, width: 1138, height: 767 } : { x: 0, y: 0, width: 1024, height: 740 },
+  );
   win.show();
   win.focus();
   await sleep(1500);
@@ -143,6 +157,8 @@ void Electron.app.whenReady().then(async () => {
     return (await find(selector, i))[i];
   };
   const rows: Row[] = [];
+  const facts = `windows ${process.getSystemVersion()}, scale ${Electron.screen.getPrimaryDisplay().scaleFactor}, root classes "${String(await js("document.documentElement.className"))}", windows open ${Electron.BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).length}, opacity ${win.getOpacity()}`;
+  console.log(facts);
   const press = async (group: string, c: Found) => {
     if (!c.ok) return rows.push({ group, control: c.name, result: "off screen", effect: "" });
     const before = await sig();
@@ -156,7 +172,7 @@ void Electron.app.whenReady().then(async () => {
     // A sidebar item must redraw the page, not only change which one is current.
     const redrew = before.split(",")[3] !== after.split(",")[3];
     const needsRedraw =
-      group === "sidebar" && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
+      group.startsWith("sidebar") && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
     if (needsRedraw && !redrew && before !== after) {
       rows.push({
         group,
@@ -186,6 +202,24 @@ void Electron.app.whenReady().then(async () => {
     await js("closeModal();go('home');0");
     await sleep(400);
   }
+
+  // After the assistant has looked at the screen (its layer shown, every window excluded for the grab and put back) the layer
+  // must still let a real click through to the window under it: a full-display layer that stops being click-through eats everything.
+  const overlay = createPointerOverlay("win32");
+  await overlay.point({ x: 520, y: 320 }, "look", undefined).catch(() => false);
+  await sleep(1500);
+  for (let look = 0; look < 3; look += 1) {
+    await overlay.hiddenFor(() => sleep(150));
+    await sleep(300);
+  }
+  for (const i of [2, 3, 6]) {
+    const c = await nth("#side .nav", i);
+    if (c !== undefined) await press("sidebar after a screen look", c);
+    await js("closeModal();go('home');0");
+    await sleep(400);
+  }
+  await overlay.clear();
+  overlay.dispose();
 
   // The header: each control does something; one that opens a dialog gets every dialog tab clicked, then is closed.
   const headerSel = "#top button, #top a, #top input, #top select";
@@ -228,7 +262,7 @@ void Electron.app.whenReady().then(async () => {
   NodeFS.writeFileSync(
     NodePath.join(out, "results.md"),
     [
-      `### Home click-through: ${rows.length} controls, ${rows.length - dead.length} with a visible effect`,
+      `${facts}\n\n### Home click-through: ${rows.length} controls, ${rows.length - dead.length} with a visible effect`,
       "| group | control | result | effect |",
       "| --- | --- | --- | --- |",
       ...rows.map(

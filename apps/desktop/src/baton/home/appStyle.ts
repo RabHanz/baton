@@ -281,8 +281,8 @@ button.sname:hover{color:var(--hue-text)}
 .sess .reveal{display:inline-block;max-width:100%;vertical-align:bottom;margin-left:8px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:var(--field);font-size:12px;line-height:20px;color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none}
 .send{display:flex;gap:8px;margin-top:8px}.send input{flex:1}
 .vocab{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line)}.vocab input{flex:1}
-.membar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}.membar>*{grid-column:1/-1}
-.membar>.seg{grid-column:1;justify-self:start;margin:0 0 12px 18px;flex-wrap:wrap}.membar>.memtools{grid-column:2;justify-self:end;padding:0 18px 12px 0}
+.membar{display:flex;flex-wrap:wrap;align-items:center;column-gap:12px}.membar>*{flex:1 1 100%;min-width:0}
+.membar>.seg{flex:0 1 auto;margin:0 0 12px 18px;flex-wrap:wrap}.membar>.memtools{flex:1 1 auto;justify-content:flex-end;align-items:center;padding:0 18px 12px 0}
 .memtools{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 10px}.memstatus{padding:0 18px 12px}
 .membar>.vocab:first-child{border-top:0}
 .newses{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px 12px;margin:6px 18px 16px;padding:18px 20px 20px;border:1px solid var(--hue-edge);border-radius:var(--r);background:linear-gradient(180deg,var(--hue-wash),var(--card) 90px);box-shadow:var(--card-shadow)}

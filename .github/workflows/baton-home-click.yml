@@ -17,7 +17,14 @@ permissions:
 
 jobs:
   click:
-    runs-on: windows-2022
+    name: click (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: plain, os: windows-2022, laptop: "0" }
+          - { name: laptop-like, os: windows-2025, laptop: "1" }
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -48,6 +55,7 @@ jobs:
         working-directory: apps/desktop
         env:
           PROOF_OUT: ${{ github.workspace }}/home-click-out
+          HOME_CLICK_LAPTOP: ${{ matrix.laptop }}
         run: |
           mkdir -p "$PROOF_OUT"
           set +e
@@ -59,6 +67,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: home-click
+          name: home-click-${{ matrix.name }}
           path: home-click-out
           if-no-files-found: warn
