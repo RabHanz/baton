@@ -81,7 +81,7 @@ import {
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
-import { attachMarkdown, resolveMedia } from "../mentionedMedia.ts";
+import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -344,6 +344,18 @@ export const liveMedia = (input: {
       return;
     }
     const bytes = NodeFS.readFileSync(file);
+    // A file a reply sends is shown once, by its bytes, and one that is not the picture it is named for is not shown at all.
+    if (message.role === "assistant" && input.shown !== undefined) {
+      const mark = looksLikePicture(name, bytes)
+        ? NodeCrypto.createHash("sha256").update(bytes).digest("hex")
+        : `bad:${file}:${bytes.length}`;
+      if (input.shown.has(mark)) return;
+      input.shown.add(mark);
+      if (mark.startsWith("bad:")) {
+        notes.push(`_${label(name)}: image unavailable (not a picture)_`);
+        return;
+      }
+    }
     const extension = NodePath.extname(name).toLowerCase();
     const id = createDeterministicAttachmentId(
       threadId,
