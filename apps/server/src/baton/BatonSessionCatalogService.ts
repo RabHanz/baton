@@ -29,6 +29,9 @@ import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
+  DEFAULT_GRACE_MS,
+  MAX_AT_ONCE,
+  noteLive,
   classifyTranscriptTail,
   emptyAutoResumeState,
   HOUR_MS,
@@ -83,7 +86,7 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly threadId?: string;
     }>;
     readonly watchdog: (input: {
-      action: "run" | "status" | "stop";
+      action: "run" | "status" | "stop" | "mark" | "on" | "off";
       sessionId?: string;
     }) => Effect.Effect<{
       readonly enabled: boolean;
@@ -270,7 +273,24 @@ export const layer = Layer.effect(
     // On by default on a server; off on a person's own Windows computer until he turns it on (BATON_AUTO_RESUME=on).
     const autoEnabled = () => {
       const setting = (process.env["BATON_AUTO_RESUME"] ?? "").toLowerCase();
-      return setting === "on" ? true : setting === "off" ? false : !noHerdr;
+      if (setting === "on") return true;
+      if (setting === "off") return false;
+      return autoState.enabled ?? !noHerdr;
+    };
+    // The file is read again each pass, so a stop marked from outside (scripts/baton/mark-stopped.mjs) is seen at once.
+    const reloadAutoState = () => {
+      try {
+        const onDisk = JSON.parse(
+          NodeFS.readFileSync(stateFile, "utf8"),
+        ) as Partial<AutoResumeState>;
+        autoState = {
+          ...autoState,
+          stopped: [...new Set([...autoState.stopped, ...(onDisk.stopped ?? [])])],
+          ...(onDisk.enabled === undefined ? {} : { enabled: onDisk.enabled }),
+        };
+      } catch {
+        // nothing on disk yet
+      }
     };
     const FRESH_MS = 6 * HOUR_MS;
     const watchdogRun = async (): Promise<{
@@ -280,16 +300,28 @@ export const layer = Layer.effect(
     }> => {
       const resumed: string[] = [];
       const skipped: Array<{ id: string; why: string }> = [];
+      reloadAutoState();
       const enabled = autoEnabled();
+      const liveNow = await ports.live();
+      // What is running now is what may later be brought back; a session only listed in the catalog never is.
+      autoState = noteLive(
+        autoState,
+        liveNow.map((s) => s.sessionId),
+        Date.now(),
+      );
+      saveAutoState();
       if (!enabled || ports.readTail === undefined) return { enabled, resumed, skipped };
-      const live = new Set((await ports.live()).map((s) => s.sessionId));
+      const live = new Set(liveNow.map((s) => s.sessionId));
       for (const t of await ports.transcripts(60)) {
         if (t.file === undefined || live.has(t.sessionId)) continue;
         const now = Date.now();
         // Only what stopped recently: an old unfinished session was left that way long ago.
         if (now - Date.parse(t.lastActivityAt) > FRESH_MS) continue;
         const verdict = classifyTranscriptTail(await ports.readTail(t.file).catch(() => ""));
+        if (resumed.length >= MAX_AT_ONCE) break;
         const decision = autoResumeAllowed({
+          idleMs: now - Date.parse(t.lastActivityAt),
+          graceMs: Number(process.env["BATON_AUTO_RESUME_GRACE_MS"] ?? DEFAULT_GRACE_MS),
           sessionId: t.sessionId,
           verdict,
           background: t.background === true,
@@ -354,11 +386,28 @@ export const layer = Layer.effect(
         return yield* Effect.promise(() => catalog.create(input));
       }),
       watchdog: Effect.fn("BatonSessionCatalogService.watchdog")(function* (input: {
-        action: "run" | "status" | "stop";
+        action: "run" | "status" | "stop" | "mark" | "on" | "off";
         sessionId?: string;
       }) {
-        if (input.action === "stop" && input.sessionId !== undefined) {
+        if ((input.action === "stop" || input.action === "mark") && input.sessionId !== undefined) {
           autoState = markStoppedOnPurpose(autoState, input.sessionId);
+          saveAutoState();
+          // "stop" also ends the process here (a live session on this machine); "mark" is for one stopped from outside.
+          if (input.action === "stop") {
+            const target = (yield* Effect.promise(() => ports.live())).find(
+              (s) => s.sessionId === input.sessionId,
+            );
+            if (target !== undefined) {
+              try {
+                process.kill(target.pid, "SIGTERM");
+              } catch {
+                // already gone
+              }
+            }
+          }
+        }
+        if (input.action === "on" || input.action === "off") {
+          autoState = { ...autoState, enabled: input.action === "on" };
           saveAutoState();
         }
         if (input.action === "run") return yield* Effect.promise(() => watchdogRun());

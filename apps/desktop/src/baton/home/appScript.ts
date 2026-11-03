@@ -191,6 +191,7 @@ function catalogBar(c) {
   const tools = $('div', 'memtools');
   if (c.machines.length > 2) { const m = $('select'); m.setAttribute('aria-label', c.words.machine); for (const o of c.machines) { const op = $('option', null, o.label); op.value = o.value; m.appendChild(op); } m.value = c.machine; m.onchange = () => set('c.machine', m.value); tools.appendChild(m); }
   const bg = $('button', 'btn quiet', c.words.background); bg.setAttribute('aria-pressed', String(c.background)); bg.onclick = () => set('c.background', null); tools.appendChild(bg);
+  if (c.autoResume !== null) { const ar = $('button', 'sw'); ar.setAttribute('role', 'switch'); ar.setAttribute('aria-checked', String(c.autoResume)); ar.setAttribute('aria-label', c.words.autoResume); ar.title = c.words.autoResumeHint; ar.onclick = () => set('c.autoResume', !c.autoResume); const al = $('span', 'hint', c.words.autoResume); tools.append(al, ar); }
   const td = $('button', 'btn quiet', c.words.tidy); td.onclick = () => set('c.tidy', null); tools.appendChild(td);
   if (c.tidyFound > 0) { const ta = $('button', 'btn', c.words.tidyApply + ' (' + c.tidyFound + ')'); ta.onclick = () => set('c.tidyApply', null); tools.appendChild(ta); }
   const nb = $('button', 'btn', c.words.new); nb.setAttribute('aria-expanded', String(c.creating)); nb.onclick = () => set('c.new', null); tools.appendChild(nb); w.appendChild(tools);
@@ -226,6 +227,7 @@ function catalogRow(c) {
   if (c.state === 'running') name.onclick = () => set(c.id, null);
   const meta = $('div', 'hint'); meta.append(document.createTextNode([c.project, c.machine, c.stateLabel, c.when, c.source].filter(Boolean).join(' \\u00b7 ')));
   t.append(name, meta); if (c.note) t.appendChild($('div', 'hint', c.note)); r.append(dot, t);
+  if (c.stopLabel) { const sb = $('button', 'btn quiet', c.stopLabel); sb.setAttribute('aria-label', c.stopLabel + ' ' + c.label); sb.onclick = () => set(c.id, 'stop'); r.appendChild(sb); }
   if (c.resumeLabel) { const b = $('button', 'btn', c.resumeLabel); b.setAttribute('aria-label', c.resumeLabel + ' ' + c.label); b.onclick = () => set(c.id, 'resume'); r.appendChild(b); }
   return r;
 }

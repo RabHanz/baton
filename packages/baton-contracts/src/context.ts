@@ -240,6 +240,8 @@ export type BatonSessionRequest =
   /** The session catalog across every connected environment; the answer's detail is JSON (see baton/sessions/catalogBridge). */
   | { readonly kind: "catalogList"; readonly query: string; readonly background?: boolean }
   | { readonly kind: "catalogCleanup"; readonly apply: boolean }
+  | { readonly kind: "catalogStop"; readonly environmentId: string; readonly sessionId: string }
+  | { readonly kind: "catalogAutoResume"; readonly action: "status" | "on" | "off" }
   | {
       readonly kind: "catalogResume";
       readonly environmentId: string;

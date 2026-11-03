@@ -31,6 +31,10 @@ export interface CatalogRow {
 
 export interface CatalogService {
   readonly list: (query: string, background?: boolean) => Promise<ReadonlyArray<CatalogRow>>;
+  /** Ends a running session and keeps it stopped (the watchdog leaves it alone). */
+  readonly stop?: (row: CatalogRow) => Promise<void>;
+  /** The Auto-resume switch: its state, or turn it on or off everywhere. */
+  readonly autoResume?: (action: "status" | "on" | "off") => Promise<boolean>;
   /** Helper threads on every machine: what there is (apply false), or archives them (true). */
   readonly cleanup?: (apply: boolean) => Promise<ReadonlyArray<CleanupMachine>>;
   /** Makes the thread live; resolves when it is. */
@@ -135,6 +139,9 @@ const WORDS = {
   startFresh: "Start new",
   background: "Show background runs",
   tidy: "Clean up helper threads",
+  autoResume: "Auto-resume",
+  autoResumeHint: "Brings back a session that stopped in the middle of a turn",
+  stop: "Stop",
   tidyApply: "Archive them",
   resumeHint: "Continues this conversation with its full history",
   machine: "Machine",
@@ -154,6 +161,7 @@ export const catalogControls = (input: {
   readonly status: string;
   readonly loaded: boolean;
   readonly tidyFound?: number;
+  readonly autoResume?: boolean | null;
 }): ReadonlyArray<HomeControl> => {
   const { rows, view } = input;
   const machines: HomeOption[] = [{ value: "all", label: "All machines" }];
@@ -197,6 +205,7 @@ export const catalogControls = (input: {
     earlierHere: [...earlierByFolder.values()],
     background: view.background,
     tidyFound: input.tidyFound ?? 0,
+    autoResume: input.autoResume ?? null,
     models: [
       { value: "", label: "Default model" },
       { value: "opus", label: "Opus" },
@@ -225,6 +234,7 @@ export const catalogControls = (input: {
     resumeLabel:
       r.state === "stopped" || r.state === "failed" ? (r.canResume ? "Resume" : null) : null,
     note: (r.state === "stopped" || r.state === "failed") && r.canResume ? WORDS.resumeHint : "",
+    stopLabel: r.state === "running" ? WORDS.stop : null,
     source: r.detail ?? (r.source === "history" ? "From history" : ""),
   }));
   return [bar, ...list];
@@ -242,6 +252,7 @@ export const createCatalog = (input: {
   let status = "";
   let folders: ReadonlyArray<string> = [];
   let tidyFound = 0;
+  let autoResume: boolean | null = null;
   const now = input.now ?? (() => Date.now());
   const set = (patch: Partial<CatalogRow> & { id: string }) => {
     rows = rows.map((r) => (r.id === patch.id ? { ...r, ...patch } : r));
@@ -250,6 +261,7 @@ export const createCatalog = (input: {
   const refresh = async () => {
     try {
       rows = await input.service.list("", view.background);
+      autoResume = (await input.service.autoResume?.("status").catch(() => null)) ?? autoResume;
       status = "";
     } catch {
       status = "The session list is not reachable right now.";
@@ -303,7 +315,8 @@ export const createCatalog = (input: {
   return {
     tools,
     refresh,
-    controls: () => catalogControls({ rows, view, now: now(), folders, status, loaded, tidyFound }),
+    controls: () =>
+      catalogControls({ rows, view, now: now(), folders, status, loaded, tidyFound, autoResume }),
     /** An action from the window; true when it was the catalog's. */
     apply: (id: string, value: string | boolean | null): boolean => {
       if (!id.startsWith("c.") && !id.startsWith("c:")) return false;
@@ -320,6 +333,19 @@ export const createCatalog = (input: {
               input.onChange();
             })
             .catch(() => undefined);
+      } else if (id === "c.autoResume") {
+        const next = !(autoResume ?? false);
+        autoResume = next;
+        void (input.service.autoResume?.(next ? "on" : "off") ?? Promise.resolve(next))
+          .then((now) => {
+            autoResume = now;
+            input.onChange();
+          })
+          .catch(() => {
+            autoResume = !next;
+            status = "Could not change Auto-resume.";
+            input.onChange();
+          });
       } else if (id === "c.background") {
         view = { ...view, background: !view.background, shown: CATALOG_PAGE };
         void refresh();
@@ -400,7 +426,17 @@ export const createCatalog = (input: {
         const row = rows.find((r) => `c:${r.id}` === id);
         if (row === undefined) return true;
         if (value === null && row.state === "running") input.service.open(row);
-        else if (row.state === "stopped" || row.state === "failed") {
+        else if (value === "stop" && row.state === "running") {
+          void (input.service.stop?.(row) ?? Promise.resolve())
+            .then(() => {
+              set({ id: row.id, state: "stopped" });
+            })
+            .catch(() => {
+              status = "That session could not be stopped.";
+              input.onChange();
+            });
+          return true;
+        } else if (row.state === "stopped" || row.state === "failed") {
           set({ id: row.id, state: "resuming" });
           void input.service
             .resume(row)
