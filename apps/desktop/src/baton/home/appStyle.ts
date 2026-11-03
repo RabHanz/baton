@@ -48,7 +48,7 @@ ${FONT_FACES}
   --side-fill:color-mix(in srgb,var(--side) 56%,transparent);--glass-fill:color-mix(in srgb,var(--panel) 58%,transparent);--sheet-fill:color-mix(in srgb,var(--panel) 80%,transparent);
   --blur:blur(22px) saturate(1.6);
   --dur-instant:80ms;--dur-quick:140ms;--dur-base:220ms;--dur-slow:420ms;--dur-hero:900ms;--stagger:28ms;
-  --ease-out:cubic-bezier(.16,1,.3,1);--ease-spring:linear(0,.38 7%,.68 15%,.86 25%,.95 38%,.99 55%,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);--ease-settle:linear(0,.38 7%,.68 15%,.86 25%,.95 38%,.99 55%,1);
 }
 ${DARK_TOKENS}
 [data-g=voice]{--hue:var(--indigo);--hue-text:var(--indigo)}
@@ -108,7 +108,7 @@ nav{display:flex;flex-direction:column;gap:2px}
 .nav:active{transform:scale(.975)}
 .nav .n{margin-left:auto;font:600 11px var(--sans);min-width:18px;text-align:center;border-radius:999px;padding:1px 6px;background:var(--warn-wash);color:var(--warn)}
 #navind{position:absolute;left:3px;top:0;width:4px;height:18px;border-radius:4px;background:var(--hue);opacity:0;pointer-events:none;will-change:transform}
-html.live #navind.go{transition:transform var(--dur-slow) var(--ease-spring),opacity var(--dur-quick)}
+html.live #navind.go{transition:transform var(--dur-slow) var(--ease-settle),opacity var(--dur-quick)}
 .spacer{flex:1}
 .sidecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 2px 10px;box-shadow:var(--card-shadow)}
 .sidecard b{display:block;font-weight:600}
@@ -215,7 +215,7 @@ h2 small{font-weight:400;color:var(--faint);margin-left:8px}
 /* Controls */
 .sw{position:relative;isolation:isolate;width:44px;height:26px;flex:none;border-radius:13px;border:0;background:var(--line-strong);box-shadow:var(--field-shadow)}
 .sw::before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--accent);opacity:0;transition:opacity var(--dur-quick);z-index:-1}
-.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform var(--dur-base) var(--ease-spring)}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform var(--dur-base) var(--ease-settle)}
 .sw[aria-checked=true]::before{opacity:1}
 .sw[aria-checked=true]::after{transform:translateX(18px)}
 [data-theme=dark] .sw[aria-checked=true]::after{background:#0F1B1E}
@@ -389,7 +389,7 @@ ${delays("#page.enter>.group:nth-of-type(1)>*", STAGGER_ROWS, "120ms")}
 html.live #veil.on #modal,html.live .palbox,html.live .pop,html.live .newses{animation:sheet var(--dur-base) var(--ease-out) both}
 html.live #veil.on{animation:fade var(--dur-quick) ease backwards}
 html.live #veil.on.out{animation:fadeout .16s ease forwards}
-html.live .state.morph{animation:pop var(--dur-slow) var(--ease-spring) both}
+html.live .state.morph{animation:pop var(--dur-slow) var(--ease-settle) both}
 html.live .state.morph .dot::after{animation:ripple var(--dur-hero) var(--ease-out) both}
 html.live button:focus-visible,html.live input:focus-visible,html.live select:focus-visible,html.live textarea:focus-visible{animation:focusPop var(--dur-quick) var(--ease-out)}
 html.live.boot .brand .bt{animation:rise var(--dur-slow) var(--ease-out) 120ms both}
