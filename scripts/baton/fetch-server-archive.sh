@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Download a server archive built by the "Baton server archive" workflow and check its sha256, so a
+# Download a server archive built by the "Tessaya server archive" workflow and check its sha256, so a
 # deploy needs no local build.
 #
 #   scripts/baton/fetch-server-archive.sh <version> [dir]     e.g. 0.1.5-baton.49   (dir defaults to .)
