@@ -3,6 +3,7 @@
  * A hung main thread cannot report itself, so a worker watches a counter the main thread bumps; no change for
  * `limitMs` writes `main-stalled` (with startup phases and, if the inspector can, the JS stack), then `main-recovered`.
  */
+import * as NodeFS from "node:fs";
 import * as NodeWorkerThreads from "node:worker_threads";
 
 const BEAT_MS = 500;
@@ -82,6 +83,23 @@ export const startStallWatch = (input: {
   const beats = new Int32Array(counter);
   const beat = setInterval(() => Atomics.add(beats, 0, 1), BEAT_MS);
   beat.unref();
+  // A delay under the stall limit still names what was running: a tick that arrives 200 ms late is logged.
+  let lastPhase = "";
+  let expected = Date.now() + 1000;
+  const lag = setInterval(() => {
+    const late = Date.now() - expected;
+    expected = Date.now() + 1000;
+    if (late < 200) return;
+    try {
+      NodeFS.appendFileSync(
+        input.file,
+        `${JSON.stringify({ at: new Date().toISOString(), event: "main-slow", version: input.version, lateMs: late, phase: lastPhase })}\n`,
+      );
+    } catch {
+      // diagnostics only
+    }
+  }, 1000);
+  lag.unref();
   let worker: NodeWorkerThreads.Worker | null = null;
   try {
     worker = new NodeWorkerThreads.Worker(WATCH_SOURCE, {
@@ -102,6 +120,7 @@ export const startStallWatch = (input: {
   }
   const watch: StallWatch = {
     phase: (name, detail) => {
+      lastPhase = name;
       try {
         worker?.postMessage({ at: Date.now(), name, ...detail });
       } catch {
@@ -110,6 +129,7 @@ export const startStallWatch = (input: {
     },
     stop: () => {
       clearInterval(beat);
+      clearInterval(lag);
       void worker?.terminate();
     },
   };
