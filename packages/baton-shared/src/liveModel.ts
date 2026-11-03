@@ -129,3 +129,30 @@ export const setLiveModel = async (
   }
   return { state: "applied", detail: confirmed.join(" "), confirmed };
 };
+
+const RESUME_TRIES = 20;
+const RESUME_EVERY_MS = 1500;
+
+/**
+ * A change for a session that is not running resumes that same session id first (never another session), waits for it
+ * to be live, then tells it. A running session is told directly.
+ */
+export const setModelResumingStopped = async (deps: {
+  readonly run: () => Promise<LiveModelResult>;
+  readonly resume: () => Promise<boolean>;
+  readonly wait: (ms: number) => Promise<void>;
+}): Promise<LiveModelResult> => {
+  const first = await deps.run();
+  if (first.state !== "not_running") return first;
+  if (!(await deps.resume()))
+    return { ...first, detail: "That session is stopped and could not be resumed here." };
+  for (let i = 0; i < RESUME_TRIES; i += 1) {
+    await deps.wait(RESUME_EVERY_MS);
+    const again = await deps.run();
+    if (again.state !== "not_running") return again;
+  }
+  return {
+    ...first,
+    detail: "The session was resumed but is not live yet. Try again in a moment.",
+  };
+};

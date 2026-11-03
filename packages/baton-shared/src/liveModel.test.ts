@@ -5,6 +5,7 @@ import {
   modelCommand,
   readBack,
   setLiveModel,
+  setModelResumingStopped,
   type LiveModelDeps,
 } from "./liveModel.ts";
 
@@ -94,5 +95,44 @@ describe("setLiveModel", () => {
     expect((await setLiveModel(deps({ session: null }), { effort: "low" })).state).toBe(
       "not_running",
     );
+  });
+});
+
+describe("a model change on a stopped live session", () => {
+  const applied = { state: "applied", detail: "Set model", confirmed: ["Set model"] } as const;
+  const stopped = { state: "not_running", detail: "not here", confirmed: [] } as const;
+  it("resumes the same session once, then tells that session; a running one is never resumed", async () => {
+    const results = [stopped, applied];
+    let resumes = 0;
+    const got = await setModelResumingStopped({
+      run: async () => results.shift() ?? stopped,
+      resume: async () => ((resumes += 1), true),
+      wait: async () => undefined,
+    });
+    expect(got.state).toBe("applied");
+    expect(resumes).toBe(1);
+    let more = 0;
+    const running = await setModelResumingStopped({
+      run: async () => applied,
+      resume: async () => ((more += 1), true),
+      wait: async () => undefined,
+    });
+    expect(running.state).toBe("applied");
+    expect(more).toBe(0);
+  });
+  it("says so when the session could not be resumed, and never loops forever", async () => {
+    const failed = await setModelResumingStopped({
+      run: async () => stopped,
+      resume: async () => false,
+      wait: async () => undefined,
+    });
+    expect(failed.state).toBe("not_running");
+    expect(failed.detail).toContain("could not be resumed");
+    const never = await setModelResumingStopped({
+      run: async () => stopped,
+      resume: async () => true,
+      wait: async () => undefined,
+    });
+    expect(never.detail).toContain("not live yet");
   });
 });
