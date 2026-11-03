@@ -74,7 +74,7 @@ export const syncNeeds = (s: SyncState, now: number): ReadonlyArray<NeedItem> =>
         id: "sync:stalled",
         source: "ledger",
         title: "The upstream sync has not run",
-        why: `The last run was ${ago(age)}; it should run every night${behindOf(s) === null ? "" : `, and Baton is ${behindOf(s)} commits behind upstream`}.`,
+        why: `The last run was ${ago(age)}; it should run every night${behindOf(s) === null ? "" : `, and Tessaya is ${behindOf(s)} commits behind upstream`}.`,
         weight: 85,
         waitingMinutes: Math.round(age / 60_000),
       });
