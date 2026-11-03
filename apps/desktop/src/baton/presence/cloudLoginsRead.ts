@@ -8,9 +8,10 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { parseCloudLogins, type CloudLogins } from "@t3tools/baton-shared/cloudLogins";
+import { stateFile } from "@t3tools/baton-shared/stateDir";
 
 export const cloudLoginsFile = (env: NodeJS.ProcessEnv): string =>
-  env["BATON_CLOUD_LOGINS_FILE"] ?? NodePath.join(NodeOS.homedir(), ".t3", "baton", "cloud-logins.json");
+  env["BATON_CLOUD_LOGINS_FILE"] ?? stateFile(NodeOS.homedir(), "cloud-logins.json");
 
 export const readCloudLogins = (file: string): CloudLogins | null => {
   try {
