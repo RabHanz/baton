@@ -131,7 +131,8 @@ export const BatonCatalogCleanupResult = Schema.Struct({
 
 /** The auto-resume watchdog: run it once, read its switch, or mark a session as stopped on purpose so it stays stopped. */
 export const BatonCatalogAutoResumeInput = Schema.Struct({
-  action: Schema.Literals(["run", "status", "stop"]),
+  /** stop: end it and keep it stopped; mark: it was stopped from outside, keep it stopped; on / off: the Auto-resume switch. */
+  action: Schema.Literals(["run", "status", "stop", "mark", "on", "off"]),
   sessionId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
 });
 export const BatonCatalogAutoResumeResult = Schema.Struct({
