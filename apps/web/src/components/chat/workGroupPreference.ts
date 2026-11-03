@@ -1,6 +1,6 @@
 /**
  * "Keep work groups expanded" and the thread header's Expand all / Collapse all work: one small store so the header menu
- * and the timeline agree without threading props through the chat view. The setting is per browser and defaults on.
+ * and the timeline agree without threading props through the chat view. The setting is per browser and defaults off; on, it opens Worked groups only, never what is inside them.
  */
 import { useSyncExternalStore } from "react";
 
@@ -8,9 +8,9 @@ const KEY = "tessaya.keepWorkExpanded";
 const listeners = new Set<() => void>();
 const read = (): boolean => {
   try {
-    return globalThis.localStorage?.getItem(KEY) !== "false";
+    return globalThis.localStorage?.getItem(KEY) === "true";
   } catch {
-    return true;
+    return false;
   }
 };
 let keep = read();
@@ -32,7 +32,7 @@ export const useKeepWorkExpanded = (): boolean =>
   useSyncExternalStore(
     subscribe,
     () => keep,
-    () => true,
+    () => false,
   );
 
 /** Expand all / Collapse all work: the timeline applies the latest command once. */

@@ -4561,10 +4561,11 @@ describe("shouldCollapseUserMessage", () => {
 describe("Worked groups stay as the reader left them", () => {
   const a = RunId.make("run-a");
   const b = RunId.make("run-b");
-  it("a new reply does not fold the group he opened (upstream folds it unless the setting is on)", () => {
+  it("a new reply never changes a group's state, open or closed", () => {
     const open = new Set([a]);
-    expect(expandedRunsAfterLatestRunChange(open, a, true)).toBe(open);
-    expect([...expandedRunsAfterLatestRunChange(open, a, false)]).toEqual([]);
+    expect(expandedRunsAfterLatestRunChange(open, a)).toBe(open);
+    const none = new Set<RunId>();
+    expect(expandedRunsAfterLatestRunChange(none, a)).toBe(none);
   });
   it("with the setting on every group is open unless he closed that one, and closing it is remembered", () => {
     const all = [a, b];
