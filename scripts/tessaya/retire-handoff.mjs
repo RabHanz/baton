@@ -13,6 +13,7 @@ const base = (process.env.T3_URL ?? "http://127.0.0.1:3773").replace(/\/$/, "");
 const thread = option("--thread", process.env.THREAD_ID ?? "");
 const twin = option("--twin", "baton-live4:a262f02b-01b1-4368-bf2d-18fd0c22dec5");
 const dryRun = flag("--dry-run");
+const twinOnly = flag("--twin-only");
 if (!/^baton-live\d*:/.test(thread) || thread.length < 30) {
   console.error("Pass the full main thread id with --thread baton-live4:<session uuid>.");
   process.exit(2);
@@ -40,7 +41,9 @@ if (access === "") {
 }
 
 const root = NodePath.resolve(import.meta.dirname, "..", "..");
-const wsDir = (await import("node:fs")).readdirSync(NodePath.join(root, "node_modules", ".pnpm")).find((d) => d.startsWith("ws@8"));
+const wsDir = (await import("node:fs"))
+  .readdirSync(NodePath.join(root, "node_modules", ".pnpm"))
+  .find((d) => d.startsWith("ws@8"));
 const { WebSocket } = NodeModule.createRequire(
   NodePath.join(root, "node_modules", ".pnpm", wsDir, "node_modules/"),
 )("ws");
@@ -71,7 +74,9 @@ const read = async (threadId) => {
   return {
     found: projection !== null,
     instance: projection?.thread?.providerInstanceId ?? null,
-    working: (projection?.runs ?? []).some((run) => ["running", "queued", "starting"].includes(run.status)),
+    working: (projection?.runs ?? []).some((run) =>
+      ["running", "queued", "starting"].includes(run.status),
+    ),
     runs: projection?.runs?.length ?? 0,
   };
 };
@@ -83,15 +88,18 @@ try {
   console.log(`twin thread ${twin}: ${JSON.stringify(other)}`);
   const problems = [];
   if (!main.found) problems.push("the main thread does not exist");
-  else if (main.instance === "baton-live") problems.push("the main thread is already on its live session");
-  if (main.working) problems.push("the main thread is working");
+  else if (main.instance === "baton-live" && !twinOnly)
+    problems.push("the main thread is already on its live session (use --twin-only)");
+  else if (main.instance !== "baton-live" && twinOnly)
+    problems.push("--twin-only needs the main thread on its live session");
+  if (main.working && !twinOnly) problems.push("the main thread is working");
   if (!other.found) problems.push("the twin's mirror thread does not exist");
   else if (other.instance !== "baton-live") problems.push("the twin's thread is not a live mirror");
   if (dryRun) {
     console.log(
       problems.length > 0
         ? `DRY RUN: would be refused: ${problems.join("; ")}`
-        : `DRY RUN: would switch ${thread} back to its live session, archive then delete ${twin}, and write an undo list. Nothing was changed.`,
+        : `DRY RUN: would ${twinOnly ? "keep" : "switch back"} ${thread} on its live session, archive then delete ${twin}, and write an undo list. Nothing was changed.`,
     );
     process.exit(problems.length > 0 ? 1 : 0);
   }
@@ -100,6 +108,7 @@ try {
     twinThreadId: twin,
     confirm: `retire-handoff:${thread}`,
     caughtUp: flag("--caught-up"),
+    ...(twinOnly ? { twinOnly: true } : {}),
   });
   const result = exit?._tag === "Success" ? exit.value : null;
   console.log(JSON.stringify(result ?? exit, null, 2));

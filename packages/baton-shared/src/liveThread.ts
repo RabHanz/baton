@@ -66,3 +66,19 @@ export const classifierStopReason = (lastReply: string | null): string | null =>
   lastReply !== null && /stopped by a safety classifier/i.test(lastReply)
     ? "Stopped by a safety classifier: rephrase or switch model for this session"
     : null;
+
+/**
+ * A live thread's model is the terminal session's own. A turn that names another model on the live instance would
+ * restart the provider thread as a "live -> live" handoff, which leaves it without its session, so the thread keeps
+ * the selection it has. (Model changes go into the session itself.)
+ */
+export const pinnedLiveSelection = <S extends { readonly instanceId: string }>(
+  threadId: string,
+  requested: S,
+  current: S,
+): S =>
+  isLiveThreadId(threadId) &&
+  requested.instanceId === LIVE_INSTANCE &&
+  current.instanceId === LIVE_INSTANCE
+    ? current
+    : requested;
