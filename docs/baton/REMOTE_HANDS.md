@@ -22,7 +22,29 @@ hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool
 - **Ops tools**: `app_version`, `log_tail` (named logs only, last N lines), `process_list` / `process_stop` (only an id `process_list` returned),
   `app_update` (the app's own updater, to a given version, replacing scp and scheduled tasks), `open_page` (a page in the Home window).
 
-## Built so far
+## Built
 
-Broker, scope, HTTP routes and audit (this change). The desktop side (host loop, window picture, pattern actions, ops tools, away flag) and the
-latency numbers on the CI desktop follow in separate changes; this note is updated as each lands.
+Broker, scopes, HTTP routes and audit; the desktop's long-poll loop (`remoteHandsLoop.ts`) behind the same `judgeToolCall` gate and mouse guard
+as the assistant (its own gate instance: a question is refused while the Director-away toggle is on, and a call does not inherit what an earlier
+call read); the remote tool table (`remoteHandsTools.ts`); the sidecar's `capture_window` (PrintWindow), window targeting, pattern actions and
+`focus_window`; the ops tools, with `app_update` going through the existing desktop updater (`check`, `download`, then the tray's install at a
+quiet moment). Two toggles under "Working for you": remote hands (off by default; nothing is polled while off) and "I'm away".
+Measured on the CI Windows desktop (the bench and the end-to-end run in `baton-hands-bakeoff.yml`): UI action about 80 ms, window picture about
+47 ms, tree read about 70 ms; a full remote call over loopback HTTP through the hub, the loop and the gate 40 to 90 ms, plus the network.
+
+Not built: a way to start a process from a remote session, so `process_list` is empty and `process_stop` has nothing to stop; Home pages other
+than the window itself (`open_page` opens Home).
+
+## Granting it and calling it
+
+1. On the Director's computer, once per remote session, issue a token for that session only (it expires, and revoking it ends the session):
+   `auth session issue --scope baton:hands --ttl 8h --label hetzner-manager --token-only` (the app's bundled server CLI).
+2. In Tessaya, Working for you: turn on "Let a remote session drive this computer". Turn on "I'm away" when he is not there.
+3. From the remote box, with the hub's tailnet URL and that token:
+
+```
+curl -s -X POST "$HUB/tessaya/hands/call" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"tool":"ui_tree","args":{"window":"Notepad"}}'
+```
+
+The answer is `{ok, text, images?, error?}`; `images` holds a PNG (base64) for `window_capture`. `GET /tessaya/hands/audit` lists the recent calls.
