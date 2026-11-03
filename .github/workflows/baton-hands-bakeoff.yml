@@ -1,4 +1,4 @@
-name: Baton hands bake-off
+name: Tessaya hands bake-off
 
 # Issue #52, measured: the current hands against ported ideas on the same twelve tasks, three runs each, on a real
 # Windows desktop. The planner is scripted (a runner has no model login), so this measures the tool path and the
