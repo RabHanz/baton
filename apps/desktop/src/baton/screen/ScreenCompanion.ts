@@ -751,6 +751,11 @@ export const startScreenCompanion = (input: {
   let undoable: { typed: number } | null = null;
   /** A button on a step card: the same as saying it. */
   const cardAction = (id: string) => {
+    // A click on the card itself stops the talking and takes it down: a way out that needs no voice.
+    if (id === "stop") {
+      dismiss();
+      return;
+    }
     if (id === "look" && run?.mode === "teach") {
       run.step -= 1;
       void teachStep(LOOK_AGAIN).catch(fail);

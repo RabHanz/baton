@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off globalFetch:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off preferSchemaOverJson:off globalFetch:off
 /**
  * Everything Baton adds to the desktop main process, started by one call in `DesktopApp.ts`
  * (`vendor-patches/t3code/0007-desktop.patch`): the injection-report IPC handler and the voice
@@ -94,17 +94,18 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
     const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");
-    const started = beginStart(
-      readGuard(guardPath),
-      environment.appVersion,
-      lifecycle.previousRunEndedBadly(),
-    );
+    // Only a launch that owns the running marker counts: a second launch beside a live Tessaya must not reset the guard.
+    const started = lifecycle.anotherInstance
+      ? { file: readGuard(guardPath), failing: false, goBackTo: null }
+      : beginStart(readGuard(guardPath), environment.appVersion, lifecycle.previousRunEndedBadly());
     let guard = started.file;
-    writeGuard(guardPath, guard);
-    setTimeout(() => {
-      guard = markHealthy(guard);
+    if (!lifecycle.anotherInstance) {
       writeGuard(guardPath, guard);
-    }, 45_000).unref();
+      setTimeout(() => {
+        guard = markHealthy(guard);
+        writeGuard(guardPath, guard);
+      }, 45_000).unref();
+    }
     if (started.failing) {
       lifecycle.note("version-failed-twice", {
         version: environment.appVersion,
@@ -119,8 +120,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           defaultId: 0,
           cancelId: 1,
         });
-        if (answer.response === 0)
-          void Electron.shell.openExternal(releasesUrl(process.env));
+        if (answer.response === 0) void Electron.shell.openExternal(releasesUrl(process.env));
       });
     }
     Electron.app.on("render-process-gone", (_event, contents, details) =>
@@ -139,6 +139,40 @@ export const startBatonDesktop = Effect.gen(function* () {
       }),
     );
     Electron.app.on("before-quit", () => lifecycle.note("before-quit"));
+    Electron.app.on("will-quit", () => lifecycle.note("will-quit"));
+    Electron.app.on("window-all-closed", () => lifecycle.note("window-all-closed"));
+    Electron.app.on("quit", (_event, exitCode) => lifecycle.note("quit", { exitCode }));
+    // Minidumps of a native crash go to a known folder (no upload); a dump left since the last run is named at start.
+    try {
+      Electron.crashReporter.start({ uploadToServer: false, compress: true });
+      const dumps = Electron.app.getPath("crashDumps");
+      const seenFile = NodePath.join(environment.stateDir, "baton-dumps-seen.json");
+      const seen = new Set<string>(
+        (() => {
+          try {
+            return JSON.parse(NodeFS.readFileSync(seenFile, "utf8")) as string[];
+          } catch {
+            return [];
+          }
+        })(),
+      );
+      const found = (() => {
+        try {
+          return NodeFS.readdirSync(dumps, { recursive: true })
+            .map(String)
+            .filter((name) => name.endsWith(".dmp") && !seen.has(name));
+        } catch {
+          return [];
+        }
+      })();
+      lifecycle.note("crash-dumps", { folder: dumps, newDumps: found });
+      NodeFS.writeFileSync(seenFile, JSON.stringify([...seen, ...found]));
+    } catch {
+      // diagnostics only
+    }
+    Electron.powerMonitor.on("shutdown", () => lifecycle.note("os-shutdown"));
+    Electron.powerMonitor.on("suspend", () => lifecycle.note("suspend"));
+    Electron.powerMonitor.on("resume", () => lifecycle.note("resume"));
     // After an update install, tell him it worked; the marker says what ran.
     const pendingPath = NodePath.join(environment.stateDir, "baton-update-pending.json");
     const afterUpdate = (() => {

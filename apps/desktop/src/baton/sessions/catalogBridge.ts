@@ -48,6 +48,7 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
       source: raw["source"] === "history" ? "history" : "thread",
       canResume: raw["canResume"] === true,
       detail: asString(raw["detail"]),
+      ...(raw["local"] === true ? { local: true } : {}),
       ...(asString(raw["threadId"]) === null ? {} : { threadId: asString(raw["threadId"])! }),
     });
   }
