@@ -1,4 +1,4 @@
-name: Baton hands loop
+name: Tessaya hands loop
 
 # The assistant's real tool path on a real Windows desktop (issue #52): ui_tree, click_element, wait_for,
 # type, press and a screenshot check against Notepad, Calculator, File Explorer, Paint and Settings.

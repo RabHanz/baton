@@ -1,6 +1,6 @@
 # Nightly: the labelled sentences through the real router on a real Claude login. Skipped, not failed,
 # when the repository has no CLAUDE_CODE_OAUTH_TOKEN secret. The model-free version is a unit test.
-name: Baton intent accuracy (nightly)
+name: Tessaya intent accuracy (nightly)
 
 on:
   schedule:

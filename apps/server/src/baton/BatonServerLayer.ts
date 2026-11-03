@@ -46,6 +46,7 @@ import * as OrchestrationRuleService from "./OrchestrationRuleService.ts";
 import * as SynopsisReactor from "./SynopsisReactor.ts";
 import * as ThreadAccountMoves from "./ThreadAccountMoves.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
+import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 
 const readClaudeAccountInstances = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -104,7 +105,13 @@ const servicesInner = IntentService.layer.pipe(
 );
 
 /** The services, plus `BatonRuntime` so the `fabric.*` routes find them (BatonRpcHandlers). */
-export const services = BatonRpcHandlers.runtimeLayer.pipe(Layer.provideMerge(servicesInner));
+// First, so the services below read TESSAYA_* names (BATON_* still works).
+const adoptEnv = Layer.effectDiscard(Effect.sync(() => void adoptTessayaEnv(process.env)));
+
+export const services = BatonRpcHandlers.runtimeLayer.pipe(
+  Layer.provideMerge(servicesInner),
+  Layer.provide(adoptEnv),
+);
 
 export const workers = Layer.effectDiscard(
   Effect.gen(function* () {

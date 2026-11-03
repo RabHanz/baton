@@ -10,6 +10,7 @@
 # {"checkedAt": <epoch seconds>, "accounts": [{"account", "state": ok|renew-soon|expired|not-logged-in,
 #   "loginExpiresInDays", "accessTokenExpiresInHours"}]}  renew-soon is under 5 days of login left.
 set -uo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 root="${BATON_CLOUD_DIR:-$HOME/.claude-cloud}"
 out="${BATON_CLOUD_LOGINS_FILE:-${BATON_STATE:-$HOME/.t3/baton}/cloud-logins.json}"
 renew_days="${BATON_CLOUD_RENEW_DAYS:-5}"

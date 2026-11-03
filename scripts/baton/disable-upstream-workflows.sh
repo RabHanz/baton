@@ -5,8 +5,9 @@
 # secrets. An allowlist rather than a denylist, so a workflow upstream adds later is off by default.
 # Idempotent; upstream-sync.sh runs it after every sync.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
-repo="${BATON_REPO:-RabHanz/baton}"
+repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
 keep=(
   baton.yml      # Baton's patch-series check, GitHub-hosted
   pr-size.yml    # labels PR size, GitHub-hosted, no secrets

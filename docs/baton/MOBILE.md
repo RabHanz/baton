@@ -25,7 +25,7 @@ What this means: the phone is already a window onto his sessions. It is not yet 
 
 ## 2. The fork's own phone screen
 
-The fork's `apps/mobile` has a Baton screen (`BatonRouteScreen`): the fleet, three quick questions ("What needs me?", "What's
+The fork's `apps/mobile` has a Tessaya screen (`BatonRouteScreen`): the fleet, three quick questions ("What needs me?", "What's
 running?", "What finished?") sent through the same intent grammar as the laptop, and a handoff button. It deliberately has no
 microphone: he uses the keyboard's dictation key (D24). It is built, typechecks, and is **not what the App Store build runs**,
 because the store build is the official one.
@@ -49,7 +49,7 @@ Per the vision: one brain that hears him anywhere, across devices.
 ## 4. A minimal build plan (smallest first)
 
 1. **Ship the fork's mobile build to himself only.** `vp run mobile:install` already builds the dev client; an EAS internal build (or
-   TestFlight) of `apps/mobile` gives him the Baton screen without the App Store. Gate: it pairs to both servers and shows the fleet.
+   TestFlight) of `apps/mobile` gives him the Tessaya screen without the App Store. Gate: it pairs to both servers and shows the fleet.
 2. **Approvals tab.** A list from one server call (reuse `approvals` in `baton-shared`), with Agree / Deny for a job plan and
    Keep / Dismiss for a held memory proposal. No new server work; the RPCs exist.
 3. **Ask box with speech-to-text.** The phone's own recogniser fills the text field and sends it to the assistant; the reply is shown
