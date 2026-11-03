@@ -2,7 +2,7 @@ import { FONT_FACES } from "./fonts.ts";
 
 /**
  * Woad (#14505A, #5FB3B3 on dark) is the one primary accent; each page group adds a hint dye and three semantic colours say state.
- * Glass is a few large static surfaces over a still aurora, never a list. Motion is transform and opacity, once, behind html.live.
+ * Glass is the sidebar (translucent over a still aurora) and blurred sheets over a dimmed page, never a list. Motion is transform and opacity, once, behind html.live.
  * The "spring" easing is critically damped: it settles with no overshoot.
  */
 /** The dark theme: a near-black ground, panels one step lighter, hairline rules, edge light instead of shadow. */
@@ -18,9 +18,9 @@ export const DARK_TOKENS = `[data-theme=dark]{
   --modal-shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.7);--arrow:%23a6a8b0;color-scheme:dark;
 }`;
 
-/** Entrance stagger: at most six blocks and four rows play at once. */
-export const STAGGER_BLOCKS = 6;
-export const STAGGER_ROWS = 4;
+/** Entrance stagger: at most four blocks and three rows play at once. */
+export const STAGGER_BLOCKS = 4;
+export const STAGGER_ROWS = 3;
 const delays = (selector: string, n: number, extra = "0ms") =>
   Array.from(
     { length: n },
@@ -46,7 +46,7 @@ ${FONT_FACES}
   --modal-shadow:0 30px 80px -20px rgba(23,40,45,.5);--arrow:%23565961;color-scheme:light;
   --hue:var(--accent);--hue-text:var(--accent-text);
   --side-fill:color-mix(in srgb,var(--side) 56%,transparent);--glass-fill:color-mix(in srgb,var(--panel) 58%,transparent);--sheet-fill:color-mix(in srgb,var(--panel) 80%,transparent);
-  --blur:blur(12px);
+  --blur:blur(12px);--scrim:blur(7px);
   --dur-instant:80ms;--dur-quick:140ms;--dur-base:220ms;--dur-slow:420ms;--dur-hero:900ms;--stagger:28ms;
   --ease-out:cubic-bezier(.16,1,.3,1);--ease-settle:linear(0,.38 7%,.68 15%,.86 25%,.95 38%,.99 55%,1);
 }
@@ -55,10 +55,10 @@ ${DARK_TOKENS}
 [data-g=knowledge]{--hue:var(--damson);--hue-text:var(--damson)}
 [data-g=settings]{--hue:var(--lichen);--hue-text:var(--lichen)}
 #app,:root,.nav,.glabel,#navind,.log .tag{--hue-wash:color-mix(in srgb,var(--hue) 11%,var(--panel));--hue-edge:color-mix(in srgb,var(--hue) 34%,var(--panel))}
-html.glass-reduced,html.glass-off{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none}
+html.glass-reduced,html.glass-off{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none}
 html.mica{--side-fill:color-mix(in srgb,var(--side) 40%,transparent)}
 html.mica body{background:transparent}
-@media (prefers-reduced-transparency:reduce){:root{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none}}
+@media (prefers-reduced-transparency:reduce){:root{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none}}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--ground);color:var(--ink);font:14px/1.45 var(--sans);-webkit-font-smoothing:antialiased;user-select:none;cursor:default;overflow:hidden}
@@ -76,8 +76,7 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 html.glass-off #app::before,html.mica #app::before{display:none}
 #app.collapsed{grid-template-columns:0 1fr}
 #side{position:relative;isolation:isolate;display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
-#side::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--side-fill);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:inset -1px 0 0 var(--edge),1px 0 0 var(--line)}
-html.mica #side::before{backdrop-filter:none}
+#side::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--side-fill);box-shadow:inset -1px 0 0 var(--edge),1px 0 0 var(--line)}
 #app.collapsed #side{visibility:hidden}
 .brand{display:flex;align-items:center;gap:12px;padding:0 6px 20px}
 .brand #mark{width:56px;height:56px;display:block;flex:none;color:var(--ink)}
@@ -299,9 +298,9 @@ button.sname:hover{color:var(--hue-text)}
 .entry .arrow{color:var(--faint);text-align:center}
 
 /* Dialogs: the settings sheet, the palette and the popovers are glass over a dimmed page. */
-#veil{position:fixed;inset:0;background:var(--veil);display:none;place-items:center;z-index:5}
+#veil{position:fixed;inset:0;background:var(--veil);-webkit-backdrop-filter:var(--scrim);backdrop-filter:var(--scrim);display:none;place-items:center;z-index:5}
 #veil.on{display:grid}
-#modal{width:min(820px,calc(100vw - 48px));height:min(560px,calc(100vh - 48px));background:var(--sheet-fill);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--edge);border-radius:20px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden}
+#modal{width:min(820px,calc(100vw - 48px));height:min(560px,calc(100vh - 48px));background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--edge);border-radius:20px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden}
 #mnav{background:color-mix(in srgb,var(--sunk) 60%,transparent);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
 #mnav h4{font:600 11px var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}
 #mnav .nav{padding:7px 10px}
