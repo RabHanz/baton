@@ -1983,6 +1983,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       return {
         ...real,
         name: found.name ?? label,
+        ...(found.covered_by === undefined ? {} : { coveredBy: found.covered_by }),
         ...(found.width === undefined || found.height === undefined
           ? {}
           : { width: found.width / scale, height: found.height / scale }),
@@ -3369,7 +3370,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     exec: nodeExec,
     dir: NodePath.join(input.stateDir, "cloud"),
     hub: async (op, provider, args) => {
-      const kind = ["describe", "detect", "status", "list", "usage", "diff"].includes(op) ? "read" : ["approve", "deny"].includes(op) ? "approve" : "act";
+      const kind = ["describe", "detect", "status", "list", "usage", "diff"].includes(op)
+        ? "read"
+        : ["approve", "deny"].includes(op)
+          ? "approve"
+          : "act";
       try {
         const out = (await requestKept({
           kind: "cloud",

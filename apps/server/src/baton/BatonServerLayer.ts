@@ -38,6 +38,7 @@ import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import * as HerdrAdapter from "./HerdrAdapterLive.ts";
 import * as IntentExecutor from "./IntentExecutorLive.ts";
 import * as IntentService from "./IntentService.ts";
+import * as SessionWatchdog from "./SessionWatchdog.ts";
 import * as LiveSessionMirror from "./LiveSessionMirror.ts";
 import * as OrchestrationEffects from "./OrchestrationEffectsLive.ts";
 import * as OrchestrationReactor from "./OrchestrationReactor.ts";
@@ -119,6 +120,8 @@ export const workers = Layer.effectDiscard(
   Layer.provideMerge(AccountRotationReactor.layer),
   // Every live Claude Code session as a T3 thread, for T3's official apps (D83).
   Layer.provideMerge(LiveSessionMirror.layer),
+  // A session that died mid-turn is resumed by itself, within the guardrails in AutoResume.ts.
+  Layer.provideMerge(SessionWatchdog.layer),
 );
 
 /** The phone page at /tessaya and its API. */

@@ -142,11 +142,34 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:weave-tick",
       tag: BATON_WEAVE_WS_METHODS.tick,
     }),
-    sessionsList: createEnvironmentRpcCommand(runtime, { label: "environment-data:baton:sessions-list", tag: BATON_SESSIONS_WS_METHODS.list }),
-    sessionsFolders: createEnvironmentRpcCommand(runtime, { label: "environment-data:baton:sessions-folders", tag: BATON_SESSIONS_WS_METHODS.folders }),
-    sessionsResume: createEnvironmentRpcCommand(runtime, { label: "environment-data:baton:sessions-resume", tag: BATON_SESSIONS_WS_METHODS.resume }),
-    sessionsCreate: createEnvironmentRpcCommand(runtime, { label: "environment-data:baton:sessions-create", tag: BATON_SESSIONS_WS_METHODS.create }),
-    sessionsSend: createEnvironmentRpcCommand(runtime, { label: "environment-data:baton:sessions-send", tag: BATON_SESSIONS_WS_METHODS.send }),
+    sessionsList: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-list",
+      tag: BATON_SESSIONS_WS_METHODS.list,
+    }),
+    sessionsFolders: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-folders",
+      tag: BATON_SESSIONS_WS_METHODS.folders,
+    }),
+    sessionsResume: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-resume",
+      tag: BATON_SESSIONS_WS_METHODS.resume,
+    }),
+    sessionsCreate: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-create",
+      tag: BATON_SESSIONS_WS_METHODS.create,
+    }),
+    sessionsAutoResume: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-autoresume",
+      tag: BATON_SESSIONS_WS_METHODS.autoResume,
+    }),
+    sessionsCleanup: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-cleanup",
+      tag: BATON_SESSIONS_WS_METHODS.cleanup,
+    }),
+    sessionsSend: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-send",
+      tag: BATON_SESSIONS_WS_METHODS.send,
+    }),
     cloudRead: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:cloud-read",
       tag: BATON_CLOUD_WS_METHODS.read,

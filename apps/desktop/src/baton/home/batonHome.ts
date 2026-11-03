@@ -143,6 +143,9 @@ export type HomeControl =
         readonly count: number;
         readonly id: string;
       }>;
+      readonly background: boolean;
+      /** Helper threads a dry run found, waiting for "Archive them". */
+      readonly tidyFound: number;
       readonly models: ReadonlyArray<HomeOption>;
       readonly efforts: ReadonlyArray<HomeOption>;
       readonly status: string;
