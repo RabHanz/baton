@@ -362,6 +362,27 @@ describe("a picture a reply shows is shown once, however it got there", () => {
     expect(once("m1")).toMatch(/!\[/);
     expect(once("m2")).toBe("x");
   });
+  // Seen on a real thread: a file the session sent, or one a reply names, that is not a picture shows "Loading image..." on every reply.
+  it("a file that is not the picture it is named for, and a file sent twice, are shown once at most", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "bad-"));
+    const bad = NodePath.join(dir, "s1s.png");
+    NodeFS.writeFileSync(bad, "<html>not found</html>");
+    const good = NodePath.join(dir, "ok.png");
+    NodeFS.writeFileSync(good, Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"));
+    const shownSet = new Set<string>();
+    const reply = (id: string, files: string[], text = "x") =>
+      liveMedia({
+        attachmentsDir: NodePath.join(dir, "att"),
+        threadId: "t",
+        messageId: id,
+        message: { uuid: id, role: "assistant", text, createdAt: "2026-01-01T00:00:00Z", files },
+        cwd: dir,
+        shown: shownSet,
+      }).text;
+    expect(reply("m1", [bad, good])).toMatch(/s1s\.png: image unavailable[\s\S]*!\[ok\.png\]|!\[ok\.png\][\s\S]*s1s\.png: image unavailable/);
+    expect(reply("m2", [bad, good])).toBe("x");
+    expect(reply("m3", [], "see s1s.png")).toBe("see s1s.png");
+  });
 });
 
 describe("media that only appears in text is not shown", () => {
