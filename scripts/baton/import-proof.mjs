@@ -100,11 +100,21 @@ try {
     if (server.exitCode !== null) throw new Error(`server exited early: ${log.slice(-600)}`);
     await sleep(1000);
   }
-  const paired = NodeChildProcess.execFileSync(
-    process.execPath,
-    [NodePath.join(root, "apps/server/src/bin.ts"), "pair", "--base-dir", home, "--ttl", "10m"],
-    { env, encoding: "utf8" },
-  );
+  let paired = "";
+  for (let attempt = 0; attempt < 10 && paired === ""; attempt += 1) {
+    const pair = NodeChildProcess.spawnSync(
+      process.execPath,
+      [NodePath.join(root, "apps/server/src/bin.ts"), "pair", "--base-dir", home, "--ttl", "10m"],
+      { env, encoding: "utf8" },
+    );
+    if (pair.status === 0) paired = pair.stdout;
+    else {
+      console.log(
+        `pair attempt ${attempt + 1} failed: ${`${pair.stdout}${pair.stderr}`.slice(-500)}`,
+      );
+      await sleep(3000);
+    }
+  }
   const token =
     /token=([A-Za-z0-9_-]+)/.exec(paired)?.[1] ?? /\b([A-Za-z0-9_-]{20,})\b/.exec(paired)?.[1];
   if (!token) throw new Error(`no token in: ${paired.slice(0, 300)}`);
