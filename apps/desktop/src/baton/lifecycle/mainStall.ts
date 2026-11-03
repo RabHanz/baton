@@ -1,12 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off
 /**
- * A hung Electron main thread cannot report itself, so a worker watches it. The main thread bumps a shared counter
- * every half second; if the counter stands still for `limitMs` the worker writes `main-stalled` to the lifecycle log
- * with the startup phases it was told about, and the main JS stack when the inspector can get one. A stall that
- * ends writes `main-recovered` with how long it lasted. (A thread blocked inside a native call gives no JS stack;
- * the last phase marker then names the blocker.)
+ * A hung main thread cannot report itself, so a worker watches a counter the main thread bumps; no change for
+ * `limitMs` writes `main-stalled` (with startup phases and, if the inspector can, the JS stack), then `main-recovered`.
  */
-import * as NodeWorker from "node:worker_threads";
+import * as NodeWorkerThreads from "node:worker_threads";
 
 const BEAT_MS = 500;
 export const STALL_LIMIT_MS = 5_000;
@@ -85,9 +82,9 @@ export const startStallWatch = (input: {
   const beats = new Int32Array(counter);
   const beat = setInterval(() => Atomics.add(beats, 0, 1), BEAT_MS);
   beat.unref();
-  let worker: NodeWorker.Worker | null = null;
+  let worker: NodeWorkerThreads.Worker | null = null;
   try {
-    worker = new NodeWorker.Worker(WATCH_SOURCE, {
+    worker = new NodeWorkerThreads.Worker(WATCH_SOURCE, {
       eval: true,
       workerData: {
         file: input.file,
