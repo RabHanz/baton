@@ -5593,6 +5593,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       targetInstance: modelSelection.instanceId,
     });
     if (liveRefusal !== null) {
+      yield* Effect.logWarning("live-thread-new-session-blocked", {
+        threadId: command.threadId,
+        from: projection.thread.providerInstanceId,
+        to: modelSelection.instanceId,
+      });
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,
