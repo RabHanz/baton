@@ -1,0 +1,67 @@
+name: Tessaya home design proof
+
+# The real Home window on a Windows desktop, once on main (before) and once on this branch (after): a frame of every page and
+# state, clips of the signature motions, and what they cost (idle CPU, CPU and frame times while pages switch).
+on:
+  workflow_dispatch:
+  push:
+    branches: ["baton/home-redesign**"]
+
+permissions:
+  contents: read
+
+jobs:
+  design:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [before, after]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: The before is main's window with this branch's harness
+        if: matrix.variant == 'before'
+        shell: bash
+        run: |
+          git checkout origin/main -- apps/desktop/src/baton/home
+          git status --short | head
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch the Electron binary
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - name: Install ffmpeg for the recordings
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress -y > /dev/null || echo "no ffmpeg, so no clips"
+      - name: Bundle the harness
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
+          mkdir -p node_modules/.cache/baton-smoke
+          "$esbuild" src/baton/screen/smoke/homeDesignProof.ts --bundle --platform=node --format=cjs \
+            --external:electron --external:onnxruntime-node --log-level=warning \
+            --outfile=node_modules/.cache/baton-smoke/homeDesignProof.cjs
+      - name: Frames, clips and cost
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          PROOF_OUT: ${{ github.workspace }}/home-design-${{ matrix.variant }}
+        run: |
+          mkdir -p "$PROOF_OUT"
+          timeout 1200 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/homeDesignProof.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
+          { echo "## ${{ matrix.variant }}"; cat "$PROOF_OUT/results.md"; } >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: home-design-${{ matrix.variant }}
+          path: home-design-${{ matrix.variant }}
+          if-no-files-found: warn
