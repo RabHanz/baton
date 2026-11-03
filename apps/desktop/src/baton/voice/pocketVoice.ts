@@ -204,16 +204,22 @@ export const createPocketEngine = (input: {
         const bin = NodePath.dirname(NodePath.dirname(binary));
         const archive = NodePath.join(bin, build.asset);
         await NodeFSP.mkdir(bin, { recursive: true });
-        const response = await fetch(`${RELEASE}/${build.asset}`, {
-          signal: AbortSignal.timeout(DOWNLOAD_MS),
-        });
-        if (!response.ok) throw new Error(`Could not download the voice (${response.status}).`);
-        const bytes = Buffer.from(await response.arrayBuffer());
         const { createHash } = await import("node:crypto");
-        if (createHash("sha256").update(bytes).digest("hex") !== build.sha256) {
-          throw new Error("The voice did not match its checksum.");
+        const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+        // The archive stays after it is unpacked: if the program is removed (a virus scanner does this to a downloaded
+        // executable), unpacking the kept, checked archive restores it without going to the network again.
+        const kept = NodeFS.existsSync(archive) && digest(NodeFS.readFileSync(archive)) === build.sha256;
+        if (!kept) {
+          const response = await fetch(`${RELEASE}/${build.asset}`, {
+            signal: AbortSignal.timeout(DOWNLOAD_MS),
+          });
+          if (!response.ok) throw new Error(`Could not download the voice (${response.status}).`);
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (digest(bytes) !== build.sha256) {
+            throw new Error("The voice did not match its checksum.");
+          }
+          await NodeFSP.writeFile(archive, bytes);
         }
-        await NodeFSP.writeFile(archive, bytes);
         // Windows' own tar reads zip. By full path and a bare name: a Git tar first on PATH takes
         // "D:" for a remote host.
         const tar =
@@ -225,7 +231,6 @@ export const createPocketEngine = (input: {
             error === null ? resolve() : reject(error),
           ),
         );
-        await NodeFSP.rm(archive, { force: true });
       }
       await NodeFSP.writeFile(NodePath.join(plan.dir, "config.yaml"), plan.config, "utf8");
       ready.add(voice);
