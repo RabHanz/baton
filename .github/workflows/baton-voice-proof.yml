@@ -33,6 +33,12 @@ on:
       starved_only:
         type: boolean
         default: false
+      upgrade_from:
+        type: string
+        default: ""
+      upgrade_to:
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       tag:
@@ -64,13 +70,19 @@ on:
         description: "In the resource step, run only the starved starts (skip the four 60 s phases)"
         type: boolean
         default: false
+      upgrade_from:
+        description: "Upgrade proof: the older release tag to install first (empty skips the proof)"
+        default: ""
+      upgrade_to:
+        description: "Upgrade proof: the newer release tag to install over it (default baton-v0.1.44)"
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   prove:
-    if: ${{ !inputs.smoke_only }}
+    if: ${{ !inputs.smoke_only && inputs.upgrade_from == '' }}
     runs-on: windows-2022
     timeout-minutes: 75
     steps:
@@ -172,10 +184,40 @@ jobs:
           path: ${{ runner.temp }}/resource-proof
           if-no-files-found: ignore
 
+  # Upgrade in place: install release `upgrade_from`, let it fetch its models, install release `upgrade_to` over it, and assert that
+  # nothing under voice\models or voice\pocket was fetched, hashed or rewritten (scripts/baton/upgrade-proof.ps1).
+  upgrade:
+    if: ${{ inputs.upgrade_from != '' }}
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download both installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir from to
+          gh release download "${{ inputs.upgrade_from }}" -R "$GITHUB_REPOSITORY" --dir from --pattern '*-x64.exe'
+          gh release download "${{ inputs.upgrade_to != '' && inputs.upgrade_to || 'baton-v0.1.44' }}" -R "$GITHUB_REPOSITORY" --dir to --pattern '*-x64.exe'
+          ls from to
+      - name: Upgrade in place and compare
+        shell: pwsh
+        run: |
+          $a = (Get-ChildItem from -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
+          $b = (Get-ChildItem to -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
+          ./scripts/baton/upgrade-proof.ps1 -From $a -To $b -Out "$env:RUNNER_TEMP/upgrade-proof"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-proof
+          path: ${{ runner.temp }}/upgrade-proof
+
   # macOS and Linux: launch a RELEASED build headless with the same test hooks and report how far it got
   # (docs/baton/PLATFORMS.md). With `tag` it installs the released build; without, it builds this ref the way
   # baton-desktop-release.yml does (no release is made).
   smoke:
+    if: ${{ inputs.upgrade_from == '' }}
     name: smoke ${{ matrix.platform }}
     # macOS is reported, not required: its runner killed the app in 2 of 4 runs of the same build (docs/baton/PLATFORMS.md).
     continue-on-error: ${{ matrix.platform == 'macos' }}
