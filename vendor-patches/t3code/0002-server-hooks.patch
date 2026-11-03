@@ -27,10 +27,15 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 75df815127f397d403e64f9655d2f4d034c2d5cb..ff3a2b391b276b50dde4dd212e26bf08346f0883 100644
+index 75df815127f397d403e64f9655d2f4d034c2d5cb..5b495cca75fb10e798b2e30ac70530bdd83f1b47 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
-@@ -962,9 +962,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
+@@ -1,3 +1,4 @@
++import { liveThreadSwitchRefusal } from "@t3tools/baton-shared/liveThread";
+ import type {
+   GuestShareId,
+   OrchestrationV2SearchThreadInput,
+@@ -962,9 +963,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
    readonly hasCompletedRun: boolean;
    readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
    readonly legacyImportItemCount: number;
@@ -46,7 +51,26 @@ index 75df815127f397d403e64f9655d2f4d034c2d5cb..ff3a2b391b276b50dde4dd212e26bf08
    );
  }
  
-@@ -6275,6 +6280,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5581,6 +5587,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       projection = applyToProjection(projection, event);
+     }
+     const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
++    const liveRefusal = liveThreadSwitchRefusal({
++      threadId: command.threadId,
++      currentInstance: projection.thread.providerInstanceId,
++      targetInstance: modelSelection.instanceId,
++    });
++    if (liveRefusal !== null) {
++      return yield* new OrchestratorDispatchError({
++        commandId: command.commandId,
++        commandType: command.type,
++        cause: liveRefusal,
++      });
++    }
+     let dispatchMode = resolveMessageDispatchIntent(
+       projection,
+       command.dispatchMode,
+@@ -6275,6 +6293,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
