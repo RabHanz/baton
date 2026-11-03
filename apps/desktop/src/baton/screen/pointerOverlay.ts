@@ -200,7 +200,7 @@ const IDLE_CLOSE_MS = 120_000;
 const RETREAT_MS = 900;
 
 export const createPointerOverlay = (
-  _platform: string,
+  platform: string,
   onAction: (id: string) => void = () => undefined,
 ): PointerOverlay => {
   const windows = new Map<number, { win: Electron.BrowserWindow; ready: Promise<void> }>();
@@ -366,7 +366,7 @@ export const createPointerOverlay = (
       await clear();
     },
     clear,
-    hiddenFor: hiddenForCapture,
+    hiddenFor: (fn) => hiddenForCapture(fn, platform),
     dispose: () => {
       stopIdle();
       closeWindows();
