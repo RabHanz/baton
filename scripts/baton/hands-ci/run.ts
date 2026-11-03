@@ -646,6 +646,13 @@ $f.Controls.Add($b)
       "-File",
       script,
     ]);
+    // The banner appears a few seconds after its script starts; give the keyboard back to Notepad until it holds it.
+    for (let i = 0; i < 10; i += 1) {
+      await t.activate("Notepad");
+      if (/notepad/i.test(await host.call("ui_tree", {}))) break;
+      await sleep(800);
+    }
+    await sleep(1500);
     await t.activate("Notepad");
     const dismiss = async () => {
       await t.tool("screen_capture");
