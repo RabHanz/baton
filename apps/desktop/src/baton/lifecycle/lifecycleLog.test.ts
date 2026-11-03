@@ -35,6 +35,36 @@ describe("the lifecycle log", () => {
   });
 });
 
+describe("a second launch while the first is running", () => {
+  it("is not a crash, and leaves the running marker to its owner", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-life-"));
+    const file = NodePath.join(dir, "life.ndjson");
+    const running = NodePath.join(dir, "running.json");
+    NodeFS.writeFileSync(
+      running,
+      JSON.stringify({ at: "2026-11-03T10:00:00.000Z", pid: 99_999_999, version: "0.1.5" }),
+    );
+    const second = createLifecycleLog({
+      file,
+      runningFile: running,
+      version: "0.1.5",
+      isAlive: () => true,
+    });
+    expect(second.previousRunEndedBadly()).toBe(false);
+    expect(lines(file).map((l) => l["event"])).toEqual(["another-instance-running"]);
+    expect(JSON.parse(NodeFS.readFileSync(running, "utf8")).pid).toBe(99_999_999);
+    // The same marker with that process gone is a bad end.
+    const third = createLifecycleLog({
+      file,
+      runningFile: running,
+      version: "0.1.5",
+      isAlive: () => false,
+    });
+    expect(third.previousRunEndedBadly()).toBe(true);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("what a leftover marker means", () => {
   it("is an update when the version has changed, and a bad end only when it has not", () => {
     expect(classifyLeftover(null, "0.1.18")).toEqual({ kind: "none" });
