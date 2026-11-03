@@ -4,7 +4,7 @@ name: Tessaya pill drag
 on:
   workflow_dispatch:
   push:
-    branches: ["baton/c-pill-icon**"]
+    branches: ["baton/c-pill-drag2**"]
 
 permissions:
   contents: read

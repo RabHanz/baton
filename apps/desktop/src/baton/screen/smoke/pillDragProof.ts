@@ -34,7 +34,7 @@ const stopClip = () =>
     clip.stdin.write("q");
   });
 
-type Mode = "move handle" | "always-on rest" | "speaking";
+type Mode = "move handle" | "always-on rest" | "speaking" | "listening (Wake now)";
 const makePill = (stateDir: string, mode: Mode) =>
   createVoicePill({
     cueGain: () => 0,
@@ -49,8 +49,12 @@ const makePill = (stateDir: string, mode: Mode) =>
 const show = (pill: ReturnType<typeof createVoicePill>, mode: Mode) => {
   if (mode === "move handle") pill.showMove();
   else if (mode === "always-on rest") pill.setRest(true);
-  else {
+  else if (mode === "speaking") {
     pill.on({ type: "speaking", active: true });
+    pill.micLevel(0.3);
+  } else {
+    pill.on({ type: "wake", word: null });
+    pill.on({ type: "window_open" });
     pill.micLevel(0.3);
   }
 };
@@ -63,12 +67,12 @@ const pillWindow = async () => {
   }
   throw new Error("the pill window is not there");
 };
-const capsuleCentre = async (win: Electron.BrowserWindow) => {
+const capsuleCentre = async (win: Electron.BrowserWindow, grip = false) => {
   const r = (await win.webContents.executeJavaScript(
-    "(()=>{const r=document.getElementById('p').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()",
-  )) as { x: number; y: number };
+    "(()=>{const r=document.getElementById('p').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,w:r.width}})()",
+  )) as { x: number; y: number; w: number };
   const b = win.getBounds();
-  return { x: b.x + r.x, y: b.y + r.y };
+  return { x: b.x + r.x - (grip ? r.w / 2 - 8 : 0), y: b.y + r.y };
 };
 
 setInterval(() => progress("beat"), 1000);
@@ -84,7 +88,7 @@ void Electron.app.whenReady().then(async () => {
   void main;
   const lines: string[] = [];
   let allOk = true;
-  for (const mode of ["move handle", "always-on rest", "speaking"] as const) {
+  for (const [mode, grip] of [["move handle", false], ["always-on rest", false], ["speaking", false], ["listening (Wake now)", false], ["listening (Wake now)", true]] as const) {
     const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pill-drag-"));
     let pill = makePill(stateDir, mode);
     pill.warm();
@@ -93,17 +97,16 @@ void Electron.app.whenReady().then(async () => {
     await sleep(2000);
     let win = await pillWindow();
     const before = win.getBounds();
-    const from = await capsuleCentre(win);
+    const from = await capsuleCentre(win, grip);
     const to = { x: from.x - 260, y: from.y - 140 };
+    // The laptop's sequence: the cursor arrives, 150 ms of hover, button down, about 20 small moves over 600 ms, button up.
     await driver.moveAt(from);
-    await sleep(500);
+    await sleep(150);
     await driver.pressAt(from);
-    await sleep(200);
-    for (let i = 1; i <= 24; i += 1) {
-      await driver.moveAt({ x: from.x + ((to.x - from.x) * i) / 24, y: from.y + ((to.y - from.y) * i) / 24 });
-      await sleep(40);
+    for (let i = 1; i <= 20; i += 1) {
+      await driver.moveAt({ x: from.x + ((to.x - from.x) * i) / 20, y: from.y + ((to.y - from.y) * i) / 20 });
+      await sleep(30);
     }
-    await sleep(200);
     await driver.releaseAt(to);
     await sleep(1200);
     const after = win.getBounds();
@@ -120,7 +123,7 @@ void Electron.app.whenReady().then(async () => {
     const kept = Math.hypot(again.x - after.x, again.y - after.y);
     const ok = moved > 100 && kept < 4;
     allOk = allOk && ok;
-    lines.push(`| ${mode} | ${Math.round(moved)} px | ${Math.round(kept)} px | ${ok ? "ok" : "FAILED"} |`);
+    lines.push(`| ${mode}, from the ${grip ? "left grip" : "middle"} | ${Math.round(moved)} px | ${Math.round(kept)} px | ${ok ? "ok" : "FAILED"} |`);
     pill.dispose();
     await sleep(800);
   }
