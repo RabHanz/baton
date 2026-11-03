@@ -93,13 +93,14 @@ const rows: Array<{ step: string; n: number; p50: number; p90: number; max: numb
 const measure = async (step: string, n: number, args: () => [string, Record<string, unknown>]) => {
   const times: number[] = [];
   let ok = 0;
+  const seen = new Set<string | undefined>();
   for (let i = 0; i < n; i += 1) {
     const [tool, a] = args();
     const t0 = performance.now();
     const r = await broker.call("bench", tool, a);
     times.push(performance.now() - t0);
     if (r.ok) ok += 1;
-    else if (i === 0) console.log(`  ${step}: ${r.error}`);
+    else if (!seen.has(r.error)) (seen.add(r.error), console.log(`  ${step}: ${r.error}`));
   }
   const s = [...times].sort((x, y) => x - y);
   const q = (p: number) => Math.round(s[Math.min(s.length - 1, Math.floor(p * s.length))]!);
