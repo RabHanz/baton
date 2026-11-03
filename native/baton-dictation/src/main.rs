@@ -705,6 +705,19 @@ fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: 
 }
 
 #[cfg(windows)]
+fn focus_window_event(id: Option<u64>, window: isize) -> Value {
+    let mut v = capture::focus_window(window).unwrap_or_else(|e| json!({"error": e}));
+    v["ev"] = json!("focused");
+    v["id"] = json!(id);
+    v
+}
+
+#[cfg(not(windows))]
+fn focus_window_event(id: Option<u64>, _window: isize) -> Value {
+    json!({"ev": "focused", "id": id, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
 fn capture_window_event(id: Option<u64>, window: Option<&str>, out: &str) -> Value {
     let mut v = capture::capture_window(window, out).unwrap_or_else(|e| json!({"error": e}));
     v["ev"] = json!("captured");
@@ -917,6 +930,11 @@ fn serve() {
                         let id = value["id"].as_u64();
                         let window = value["window"].as_str().map(str::to_string);
                         thread::spawn(move || emit(ui_tree(id, window.as_deref())));
+                    }
+                    "focus_window" => {
+                        let id = value["id"].as_u64();
+                        let window = value["window"].as_i64().unwrap_or(0) as isize;
+                        thread::spawn(move || emit(focus_window_event(id, window)));
                     }
                     "capture_window" => {
                         let id = value["id"].as_u64();

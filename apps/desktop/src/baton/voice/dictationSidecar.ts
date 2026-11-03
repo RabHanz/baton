@@ -136,6 +136,8 @@ export interface DictationSidecar {
   }) => Promise<LocatedElement>;
   readonly uiTree: (window?: string) => Promise<UiTree>;
   /** A picture of one window (PrintWindow, so covered or in the background) written as a BMP at `out`. */
+  /** Gives the keyboard back to a window by the handle `foreground` reported. */
+  readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
   readonly captureWindow: (input: {
     readonly window?: string;
     readonly out: string;
@@ -299,7 +301,7 @@ export const startDictationSidecar = (input: {
               : null,
         });
       }
-      if (event["ev"] === "located" || event["ev"] === "tree" || event["ev"] === "captured") {
+      if (event["ev"] === "located" || event["ev"] === "tree" || event["ev"] === "captured" || event["ev"] === "focused") {
         return settle(event["id"] as number, { value: event });
       }
       if (event["ev"] === "text" && event["dictated"] !== true) {
@@ -357,6 +359,7 @@ export const startDictationSidecar = (input: {
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
     uiTree: (window) =>
       call<UiTree>({ cmd: "ui_tree", ...(window === undefined ? {} : { window }) }),
+    focusWindow: (window) => call<{ error?: string }>({ cmd: "focus_window", window }),
     captureWindow: (input) =>
       call<{ width: number; height: number; error?: string }>({ cmd: "capture_window", ...input }),
     dispose: () => {

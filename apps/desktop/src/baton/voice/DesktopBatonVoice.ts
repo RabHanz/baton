@@ -1961,6 +1961,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (tree === null || tree.controls === undefined) return null;
       return { window: tree.window ?? "", controls: tree.controls };
     },
+    hands: () =>
+      sidecar === null
+        ? null
+        : {
+            locate: sidecar.locate,
+            uiTree: sidecar.uiTree,
+            captureWindow: sidecar.captureWindow,
+            focusWindow: sidecar.focusWindow,
+          },
     locate: async (label, near, anywhere) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);
