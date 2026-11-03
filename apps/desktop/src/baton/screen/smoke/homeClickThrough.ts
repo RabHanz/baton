@@ -114,7 +114,10 @@ void Electron.app.whenReady().then(async () => {
   win.webContents.on("console-message", (details: unknown, ...legacy: unknown[]) => {
     const d = details as { level?: unknown; message?: string };
     const level = typeof d.level === "number" ? d.level : legacy[0];
-    if (level === 3 || level === "error") errors.push(String(d.message ?? legacy[1]));
+    const text = String(d.message ?? legacy[1]);
+    // The harness registers no history handler; that is not the page failing.
+    if ((level === 3 || level === "error") && !text.includes("No handler registered"))
+      errors.push(text);
   });
   await js("window.__errs=[];window.addEventListener('error',e=>window.__errs.push(e.message))");
   await js(
