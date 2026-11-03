@@ -116,7 +116,7 @@ jobs:
           MAIN_SHA: ${{ github.sha }}
           RELEASE_TAG: ${{ needs.plan.outputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: mkdir -p results && node scripts/baton/nightly-status.ts
+        run: mkdir -p results && node scripts/tessaya/nightly-status.ts
       - uses: actions/upload-artifact@v4
         with:
           name: nightly-status

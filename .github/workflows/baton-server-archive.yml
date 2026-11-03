@@ -1,8 +1,8 @@
 name: Tessaya server archive
 
-# Builds the Linux CLI/server archive a box runs (scripts/baton/release-build.sh) on a GitHub runner,
+# Builds the Linux CLI/server archive a box runs (scripts/tessaya/release-build.sh) on a GitHub runner,
 # so deploys need no local build. Published as a prerelease on tag server-<version>: never "Latest",
-# so it cannot shadow the desktop release feed the updater reads. Fetch with scripts/baton/fetch-server-archive.sh.
+# so it cannot shadow the desktop release feed the updater reads. Fetch with scripts/tessaya/fetch-server-archive.sh.
 
 on:
   workflow_dispatch:
@@ -52,7 +52,7 @@ jobs:
           echo "BATON_RESOURCE_MONITOR_DIR=$RUNNER_TEMP/resource-monitor" >> "$GITHUB_ENV"
 
       - name: Build and smoke-test the archive
-        run: NODE_ENV=production bash scripts/baton/release-build.sh "$VERSION"
+        run: NODE_ENV=production bash scripts/tessaya/release-build.sh "$VERSION"
 
       - name: Publish prerelease
         env:

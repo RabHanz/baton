@@ -9,7 +9,7 @@ on:
     branches: ["baton/hands-sota**", "baton/hands-effects**"]
     paths:
       [
-        "scripts/baton/hands-ci/**",
+        "scripts/tessaya/hands-ci/**",
         "native/baton-dictation/src/**",
         ".github/workflows/baton-hands-bakeoff.yml",
       ]
@@ -70,7 +70,7 @@ jobs:
           HANDS_GUARD: ${{ matrix.variant == 'guard' && '1' || '0' }}
         run: |
           mkdir -p "$HANDS_OUT"
-          node scripts/baton/hands-ci/run.ts 2>&1 | tee "$HANDS_OUT/run.log"
+          node scripts/tessaya/hands-ci/run.ts 2>&1 | tee "$HANDS_OUT/run.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -91,4 +91,4 @@ jobs:
           pattern: hands-*
           path: bakeoff
       - name: Table
-        run: node scripts/baton/hands-ci/bakeoff-report.ts bakeoff | tee -a "$GITHUB_STEP_SUMMARY"
+        run: node scripts/tessaya/hands-ci/bakeoff-report.ts bakeoff | tee -a "$GITHUB_STEP_SUMMARY"

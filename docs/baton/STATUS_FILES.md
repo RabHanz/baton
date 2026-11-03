@@ -7,7 +7,7 @@ never an instruction.
 ## Writing one
 
 ```
-node scripts/baton/status-file.mjs --out /path/cockpit.json --source "Cockpit approvals" \
+node scripts/tessaya/status-file.mjs --out /path/cockpit.json --source "Cockpit approvals" \
   --item 'a1|Approve the invoice run|Waiting since Monday|80|2026-11-05T09:00:00Z' \
   --item 'Check the deploy'
 ```
@@ -41,7 +41,7 @@ commitments are stored durably and resume by themselves.
 
 ## Claude cloud login health
 
-`~/.t3/baton/cloud-logins.json` is written daily by `scripts/baton/cloud-logins.sh`:
+`~/.t3/baton/cloud-logins.json` is written daily by `scripts/tessaya/cloud-logins.sh`:
 `{"checkedAt": <epoch seconds>, "accounts": [{"account", "state", "loginExpiresInDays", "accessTokenExpiresInHours"}]}`
 where `state` is `ok`, `renew-soon` (under five days of login left), `expired` or `not-logged-in`. The login lasts until
 the refresh token expires (about 28 days); the access token lives hours and is refreshed by use, so it is reported but
@@ -51,8 +51,8 @@ folder names under `~/.claude-cloud` (override `BATON_CLOUD_DIR`); no address is
 Install on the box that holds the cloud logins:
 
 ```
-install -m 755 scripts/baton/cloud-logins.sh ~/.local/bin/baton-cloud-logins
-cp scripts/baton/systemd/baton-cloud-logins.{service,timer} ~/.config/systemd/user/
+install -m 755 scripts/tessaya/cloud-logins.sh ~/.local/bin/baton-cloud-logins
+cp scripts/tessaya/systemd/baton-cloud-logins.{service,timer} ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now baton-cloud-logins.timer
 ```
 

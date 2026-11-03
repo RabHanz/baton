@@ -9,7 +9,7 @@
  * under the T3 project its directory belongs to, written with the same events upstream's own
  * agent-session import writes, and its transcript is followed so new messages arrive as they are
  * written. The thread's provider is the "Live session" instance: T3's own ACP Registry driver
- * running `scripts/baton/live/baton-live-acp.mjs`, so the composer's send becomes a turn that
+ * running `scripts/tessaya/live/baton-live-acp.mjs`, so the composer's send becomes a turn that
  * types into the session's Herdr pane (adopting it first when needed).
  *
  * Identity is the Claude conversation id: `baton-live:<session id>`. Account rotation and Herdr

@@ -33,7 +33,7 @@ The release tag format (`baton-v<ver>`, `server-<ver>`) does not change.
 
 - [ ] `curl -sIL https://github.com/RabHanz/baton/releases/latest/download/latest.yml` ends 200 (the installed apps' feed).
 - [ ] `git ls-remote https://github.com/RabHanz/baton.git` works (old clones).
-- [ ] `scripts/baton/fetch-server-archive.sh <version>` works with no env set.
+- [ ] `scripts/tessaya/fetch-server-archive.sh <version>` works with no env set.
 - [ ] `baton-ci` and `verify` run on a trivial PR and are still the required checks.
 - [ ] The next scheduled auto-sync (22:30 UTC) is watched once; it uses `BATON_REPO`/`TESSAYA_REPO`, default unchanged.
 - [ ] An installed app (not the laptop; a Linux/Windows test box) is pointed at an older build and updates.
@@ -41,7 +41,7 @@ The release tag format (`baton-v<ver>`, `server-<ver>`) does not change.
 ## Then flip (one PR, after the checks above)
 
 - [ ] `DEFAULT_REPO` in `packages/baton-shared/src/repo.ts` to `RabHanz/tessaya`; the shell scripts' default (`auto-sync.sh`, `disable-upstream-workflows.sh`, `fetch-server-archive.sh`) and `changelog.mjs`'s fallback likewise.
-- [ ] `scripts/baton/apply-release-branding.sh`: `RELEASES_URL` (patches upstream `DesktopStartupRecovery.ts`; its `must` assertion too). That is an upstream-file edit: run `patches.sh refresh`, and `verify` must stay green.
+- [ ] `scripts/tessaya/apply-release-branding.sh`: `RELEASES_URL` (patches upstream `DesktopStartupRecovery.ts`; its `must` assertion too). That is an upstream-file edit: run `patches.sh refresh`, and `verify` must stay green.
 - [ ] `.github/ISSUE_TEMPLATE/config.yml` security-advisory URL, which lives in `vendor-patches/t3code/0010-public-hygiene.patch`: refresh the patch, do not hand-edit it.
 - [ ] `codemagic.yaml` comment, `docs/baton/PUBLIC_RELEASE_CHECKLIST.md`, `docs/baton/UPSTREAM.md` (two refs, one is a `.git` clone URL), VentureOS notes that name the repo.
 - [ ] VentureOS: search its docs and scripts for `RabHanz/baton` and `fabric`/`baton` clone paths; update after the flip, not before.

@@ -32,4 +32,4 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Run the sentences
         if: steps.login.outputs.have == 'true'
-        run: node scripts/baton/intent-nightly.ts --claude claude
+        run: node scripts/tessaya/intent-nightly.ts --claude claude

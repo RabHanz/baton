@@ -1126,7 +1126,7 @@ Three options were considered. Baking the values into the fork's build was
 rejected: they are upstream's cloud, and this fork may be open-sourced. Carrying
 them in a committed `.env` was rejected for the same reason plus the standing no
 secrets rule. What ships instead is
-`scripts/baton/cloud-public-config.sh`, which reads them out of whichever
+`scripts/tessaya/cloud-public-config.sh`, which reads them out of whichever
 official release is installed on the machine and prints a systemd drop-in. No
 value ever enters the repository, and a machine with no official release gets a
 refusal that names what to install.
@@ -1197,7 +1197,7 @@ So the fork **absorbs** upstream through merge commits, and legibility comes fro
 table instead — every upstream file Tessaya edits, listed with the reason, everything else a new file
 under a `baton` name.
 
-`scripts/baton/upstream-sync.sh` does it: fetch, report the new commits, intersect upstream's
+`scripts/tessaya/upstream-sync.sh` does it: fetch, report the new commits, intersect upstream's
 changed files with the fork's, flag every hit against the conflicts table (read out of `UPSTREAM.md`
 itself, so the document stays the source of that list), merge onto a dated branch and open the PR
 with the report as its body. It refuses a dirty tree, never pushes to `main`, and stops with the
@@ -1936,7 +1936,7 @@ its account:
   A session in a plain terminal or VS Code is listed, not typed into: the only way into a running
   CLI that is not in a pane is Claude Code's private peer socket, so its row says
   `fab --resume <id>` instead.
-- **Birth inside Tessaya.** `fab <project> [claude|codex]` (scripts/baton/fab, installed to
+- **Birth inside Tessaya.** `fab <project> [claude|codex]` (scripts/tessaya/fab, installed to
   `~/.local/bin/fab`) starts the agent in a tab of the project's Herdr space, so new work is
   sendable and survivable from the start.
 
@@ -1950,7 +1950,7 @@ send path, no Remote Control step. Busy sessions are skipped (still working mean
 
 **Decided** 2026-10-26. Herdr's `--remote` runs plain `ssh` and reads the user's SSH config; the
 box-to-box key lives at `~/.config/venture-ssh/` and is in no SSH config. `fab-remote <target>
-[session]` (scripts/baton/fab-remote) puts a throwaway `ssh` shim first on PATH for that one
+[session]` (scripts/tessaya/fab-remote) puts a throwaway `ssh` shim first on PATH for that one
 command, adding `-i <key> -o IdentitiesOnly=yes -o BatchMode=yes`; nothing on the machine changes.
 Proven signzart → onnyx: a pane on onnyx printing `REMOTE-OK-onnyx` rendered in the local client.
 **onnyx → signzart is blocked**: onnyx holds no key for signzart, and signzart's SSH is Tailscale SSH
@@ -2066,7 +2066,7 @@ release chain in `scripts/` that builds the CLI archive we deploy. Each would ne
 find the moved tree, so the subdirectory adds patch points instead of removing them.
 
 The subdirectory's purpose is met another way. `vendor-patches/t3code/` holds the pin (`PIN`), the
-ordered `series`, and one patch per concern. `scripts/baton/patches.sh verify` proves that every
+ordered `series`, and one patch per concern. `scripts/tessaya/patches.sh verify` proves that every
 path upstream owns equals the pin plus the series, so an edit that bypasses the series fails the
 gate. A sync is `patches.sh rebase <commit>`: upstream's paths become the new commit's, and the
 series re-applies with `--3way`. `pnpm-lock.yaml` is listed in `REGENERATED` and re-resolved on
@@ -2081,7 +2081,7 @@ merge commit, where nobody can re-run it.
 ## D77 — The gates run locally, because upstream's CI cannot run in this repository
 
 Upstream's `ci.yml` runs on Blacksmith runners. RabHanz/baton has none, so its runs queue forever
-(PR #4's did). The gates are `scripts/baton/gates.sh`: the patch-series verify and its self-test,
+(PR #4's did). The gates are `scripts/tessaya/gates.sh`: the patch-series verify and its self-test,
 typecheck, lint, the tests of every package Tessaya adds to or patches, and the build. The sync job
 runs the same script, so a sync meets the same bar as a hand-made change.
 
@@ -2160,7 +2160,7 @@ agent-session import writes, and follows the transcript by Claude Code's record 
 
 Sending uses T3's own extension point rather than a patch: the thread's provider is a "Live
 session" instance of upstream's **ACP Registry → Local command** driver, running
-`scripts/baton/live/baton-live-acp.mjs` (Node built-ins; installed to `~/.t3/baton/` by
+`scripts/tessaya/live/baton-live-acp.mjs` (Node built-ins; installed to `~/.t3/baton/` by
 `deploy-beside.sh`; the server registers the instance in settings at start). `session/resume`
 binds to the conversation id; `session/prompt` strips T3's instruction wrappers, copies
 attachments into `<cwd>/.baton/inbox/` as `@path` (D73), types through `herdr agent prompt`
@@ -2283,7 +2283,7 @@ Rejected:
 - **A native input module** (nut.js, robotjs): a native rebuild per Electron version, for what
   user32 through one PowerShell already does.
 
-Proven on Linux with `scripts/baton/screen-smoke.sh` (Xvfb, a compositor, xdotool as the user, his
+Proven on Linux with `scripts/tessaya/screen-smoke.sh` (Xvfb, a compositor, xdotool as the user, his
 claude answering). Look pointed at the right field in 14 s. Teach gave step 1, noticed the typing
 without a "next", confirmed it ("Rabee is in the name field, so that step worked"), pointed at the
 next field, and finished on submit. Drive planned three steps, drew them, and after approval
@@ -2347,7 +2347,7 @@ the terminal leaves every agent running. Installed on both boxes by the coordina
 ## D87 — Make native: upstream's agent-session import, resumed rather than replayed
 
 A terminal Claude Code session becomes a native T3 thread through upstream's
-`agentSessions.import` (the onboarding wizard's RPC; `scripts/baton/live/agent-session-import.mjs`
+`agentSessions.import` (the onboarding wizard's RPC; `scripts/tessaya/live/agent-session-import.mjs`
 calls it as a paired client). The import writes an `import:<instance>:<sessionId>` thread whose
 provider thread names the session id. Upstream's first turn on it then failed every time: it
 opened the session with `sessionId` (a new session), which Claude Code refuses ("Session ID … is
@@ -2395,7 +2395,7 @@ built with no Clerk publishable key, JWT template or relay URL, so the T3 Connec
 loads and a relay connection can never authorize. Both boxes' servers were up (HTTP 200 on both
 tailnet Serve URLs from the laptop); the client was the only broken part.
 
-- `scripts/baton/hosted-public-config.sh` reads the four public values out of the official
+- `scripts/tessaya/hosted-public-config.sh` reads the four public values out of the official
   hosted client's bundle at build time and the release workflow appends them to `$GITHUB_ENV` in
   every build job; `loadRepoEnv` maps them to the `VITE_*` names the web build inlines.
 - Not committed, for the reason in `cloud-public-config.sh`: they are upstream's cloud. The relay
@@ -2419,7 +2419,7 @@ The inference API does report them: `anthropic-ratelimit-unified-{5h,7d}-{utiliz
 `-status`, on a 200 and on a 429. Scale checked on real replies: 0..1 (0.21 beside cswap's 21%, 1.0
 on the rejected accounts).
 
-- `scripts/baton/limits-probe.py` (timer, five minutes, signzart only): one 1-token Haiku call per
+- `scripts/tessaya/limits-probe.py` (timer, five minutes, signzart only): one 1-token Haiku call per
   account, 9 tokens on a 200 and none on a 429. An account already rejected is not called until its
   reset. Output goes through `cswap import-usage --hold 900` here, on onnyx and on the laptop, and
   the hold keeps cswap's own collectors off the throttled endpoint, so this lowers that traffic.
@@ -2434,7 +2434,7 @@ that moved us to tokens); anything needing TLS interception.
 
 ## D91 — Every Claude account is a T3 provider instance on its own setup token
 
-`scripts/baton/provider-token-instances.py` writes the slot's token to T3's secret store and adds
+`scripts/tessaya/provider-token-instances.py` writes the slot's token to T3's secret store and adds
 `claudeAgent_optima` / `claudeAgent_signzart` with `CLAUDE_CODE_OAUTH_TOKEN` marked sensitive and
 stored, the shape T3 writes. `--pin-default` does the same for slot 4 on the default instance; used
 on the laptop only, where the CLI keeps a full login for Remote Control. On the boxes the default
@@ -2738,7 +2738,7 @@ for itself that it needs the screen, by replying `[LOOK]`, and the capture rules
 
 Measured on his laptop: a routed sentence takes a median 1.6 s; first spoken sentence 1.2 to 1.4 s on a
 warm session and 2.8 to 4.7 s on a cold one. The intent table is 48 sentences in
-`scripts/baton/voice-lab/brain-table.ts`.
+`scripts/tessaya/voice-lab/brain-table.ts`.
 
 Rejected: letting the model confirm or refuse (a reply could then widen a guard); one model for both
 jobs (sonnet on every sentence spends quota to classify, and haiku answers too thinly); keeping the
@@ -2793,7 +2793,7 @@ Bottom centre of the cursor's display, 44 px above the work area, because Wispr'
 and he runs both. States against Wispr's: `research/companion-ui-2026-10-31.md`.
 
 Sounds are three warm two-note figures (350 to 780 Hz with a soft second harmonic, 0.2 s, about -27
-dBFS peak), replacing 1.3 to 1.8 kHz sines. `scripts/baton/voice-lab/sound-score.ts` puts the same
+dBFS peak), replacing 1.3 to 1.8 kHz sines. `scripts/tessaya/voice-lab/sound-score.ts` puts the same
 samples through `createOpenWakeWordScorer` and Silero, six repeats, at normal level and 9.5 and 18 dB
 louder: every wake word's peak is at most 0.0009 against thresholds of 0.9 and up, and Silero peaks at
 0.47 at the loudest, under its 0.5.
@@ -3280,7 +3280,7 @@ assistant's own account setting (queued separately). Copy ran through the uiux-s
 
 A rounded tile with three bars, one per capability he can switch on: listening, screen capture, acting without asking.
 Lit is on, dim is off. The tile colour is the state, exactly the old dot's colours; a slash across it is muted. One
-geometry (`voice/trayMark.ts`) draws the tray bitmap and the SVG that `scripts/baton/export-icons.mjs` turns into the
+geometry (`voice/trayMark.ts`) draws the tray bitmap and the SVG that `scripts/tessaya/export-icons.mjs` turns into the
 app and installer icons in `assets/prod/` (the fork's production icon set; dev and nightly are untouched). The home page
 opens once by itself on the first run after install (`baton-home.shown` in the state dir); a second launch still opens
 T3's window.
@@ -3321,7 +3321,7 @@ microphone" is pressed, and only while Tessaya is listening; Tessaya never opens
 
 ## D136 — A repeatable proof of the gate
 
-`scripts/baton/operator-proof.sh`. To make the gate provable, three pieces of `ScreenCompanion` moved to
+`scripts/tessaya/operator-proof.sh`. To make the gate provable, three pieces of `ScreenCompanion` moved to
 `packages/baton-shared/src/operator.ts` unchanged in behaviour (`taintedAfter`, `gatePrompt`, `spokenOutcome`), and the
 Claude permission reply to `claudeVision.ts` (`toolAnswerOf`). The proof runs the real functions, not copies.
 
@@ -3339,7 +3339,7 @@ server's environment. (2) The wake word "Freya" is off for a fresh install only:
 saved wake-word list keeps Freya on, and one with a list keeps exactly that list (`voice/wakeDefaults.ts`).
 (3) Example addresses in two comments. Left, by decision: the words "the Director" in comments, wake words
 Sebastian and Alfred (generic), the "Jarvis" speech prompt and the `jarvis|baton` prefix strip (a stock openWakeWord
-name), and everything under `scripts/baton/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
+name), and everything under `scripts/tessaya/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
 Facts for launch: `docs/baton/LAUNCH.md`.
 
 ## D137 — Tessaya updates itself from this repository's releases
@@ -3490,7 +3490,7 @@ a follow-up, not in this build.
 _Target:_ from the end of his speech to the first sound of Tessaya's voice, **p50 1.5 s and p90 3 s for a plain answer**, and a
 spoken first line within 1.5 s p50 for a turn that uses tools. _Measured_ from `voice-turns.ndjson`: each agent turn writes
 `agent_turn {endOfSpeechAt, firstTokenMs, firstAudioMs, tools:[name, ms], totalMs, route:"agent"}`, and
-`scripts/baton/latency-report.mjs` prints p50, p90 and the slowest five for the last 50 turns. I run it on his laptop only
+`scripts/tessaya/latency-report.mjs` prints p50, p90 and the slowest five for the last 50 turns. I run it on his laptop only
 after he has been told, and report the numbers, not a feeling.
 
 **Shipping.** Behind a setting, **One assistant (new)**, in Assistant, off by default, saved in the screen file as
@@ -3508,7 +3508,7 @@ the one conversation file in full and into `voice-turns.ndjson` as `reply`; ever
 and goes into both as `refusal {kind, reason, said}`: a guard, a declined screen capture, no plan, a paste that is too long,
 a shell, a screen that changed. A drive logs its plan (`drive_plan`) and what came of it (`drive_outcome`), and errors are
 logged. The router reads its recent lines from the store, full replies cut only at 600 characters. A dictation is a stub
-with its length. `scripts/baton/latency-report.mjs <voice-turns.ndjson>` prints p50, p90 and the slowest turns.
+with its length. `scripts/tessaya/latency-report.mjs <voice-turns.ndjson>` prints p50, p90 and the slowest turns.
 
 **D143 push 2.** `agent/batonMcp.ts` serves Tessaya's tools over MCP on 127.0.0.1, a random port, with the session's token on
 every request; a request without it, with the wrong host, or from a browser (an Origin header) is refused, and `close()`
@@ -3613,7 +3613,7 @@ is not where Tessaya left it, the next move is refused with a plain line (`agent
 once. Two changes to the gate's taint rule, to make a see-act-check loop usable, and flagged for his say: a key or chord (not
 Enter, not a sensitive one) no longer asks after a read, since it carries nothing out; and one explicit yes to typing after a
 read covers the rest of that turn's typing, while Enter, sends, fetch, search, a command line and high risk still ask every
-time. Text that is his own words or Tessaya's reply still types with no question. The harness: `scripts/baton/computer-use-harness.sh
+time. Text that is his own words or Tessaya's reply still types with no question. The harness: `scripts/tessaya/computer-use-harness.sh
 dry` replays recorded traces through the real tool server and gate, no pointer; `real <out>` runs the six tasks three times on the
 Windows desktop and refuses unless `LAB_AWAY` names a time within four hours and `BATON_LAB=1`. Finished is automatic for task one
 only; the rest is read from the frames, and misclicks are counted in review. Not yet measured: any of it on his laptop.
@@ -3672,7 +3672,7 @@ outcome-first: what changed for each outcome, the evidence, what is next, what b
 **Cost.** Mechanical worker steps run on a cheap model; planning and judgment on the strong one, by a routing table he can edit.
 The card shows which model each step used.
 
-**Private stays private.** His own pack is made on his machine, by `scripts/baton/import-operating-system.mjs <file>`: it reads his
+**Private stays private.** His own pack is made on his machine, by `scripts/tessaya/import-operating-system.mjs <file>`: it reads his
 document and distils the executive file and the role briefs with his own Claude login, into userdata. It is never committed and
 nothing leaves the machine except that one model call. The repo and the installer carry no part of it: a guard test hashes a
 list of private markers (never written in clear in the repo) and fails if any word run in a tracked file or the installer's file
@@ -3711,7 +3711,7 @@ marker's version with its own: a different version logs `replaced-by-update {fro
 
 **D146 approvals list.** One place for everything waiting for his yes: a job's plan that wants his OK, and a session that has asked him something, each with the exact action and the permission it would use (`buildApprovals`, pure). The Approvals tab shows them first on the list: Approve and Deny for a plan (Approve is the same agree as the voice path; Deny stops the worker, which has done nothing yet), Open T3 for a session's own question, which only he can answer in its thread. The assistant reads it with `approvals_list` and acts on a plan only through `job_agree` or `job_stop` after he says so; the gate is unchanged, so every high-risk action still asks aloud, with a default of no, when it happens. Not in the list: a gate question is spoken and answered on the spot, so it is never waiting; and a session's tool approval cannot be answered from here yet, only opened.
 
-**D148 built: the neutral pack and its loader.** `packages/baton-shared/src/osPack.ts` ships a neutral default written from scratch (the executive framing and four roles: engineering, marketing, research, operations) as data. `apps/server/src/baton/OperatingSystemPack.ts` reads the user's own pack from `<userdata>/operating-system/` (`executive.md`, `roles/<name>.md`; files over 64 KB or with bad names are ignored) and merges it over the default, user files winning by name, read fresh at each job. `startJob` puts the frame after his words and before the written permissions, so every plan begins with the job brief. The guard: `scripts/baton/private-markers.txt` holds SHA-256 hashes of four-word phrases from a private document (none listed yet; the phrases are never written down), and `privatePack.guard.test.ts` fails, naming only the file, if any appears in Tessaya's own tracked files. The people who hold the private pack add its hashes; nothing here contains it. Not built: `import-operating-system.mjs` (distilling his document with his own Claude login), `parseJobBrief` (a plan without the sections is not ready), editing the pack in the window, and the cost-routing table.
+**D148 built: the neutral pack and its loader.** `packages/baton-shared/src/osPack.ts` ships a neutral default written from scratch (the executive framing and four roles: engineering, marketing, research, operations) as data. `apps/server/src/baton/OperatingSystemPack.ts` reads the user's own pack from `<userdata>/operating-system/` (`executive.md`, `roles/<name>.md`; files over 64 KB or with bad names are ignored) and merges it over the default, user files winning by name, read fresh at each job. `startJob` puts the frame after his words and before the written permissions, so every plan begins with the job brief. The guard: `scripts/tessaya/private-markers.txt` holds SHA-256 hashes of four-word phrases from a private document (none listed yet; the phrases are never written down), and `privatePack.guard.test.ts` fails, naming only the file, if any appears in Tessaya's own tracked files. The people who hold the private pack add its hashes; nothing here contains it. Not built: `import-operating-system.mjs` (distilling his document with his own Claude login), `parseJobBrief` (a plan without the sections is not ready), editing the pack in the window, and the cost-routing table.
 
 **D146 skills, plugins and MCP servers in the window.** A Skills tab lists what Claude Code and Codex already have on this computer: Claude plugins (from the `enabledPlugins` of its settings file, with a switch), skills of both (from their `skills/*/SKILL.md`), and MCP servers of both (`mcpServers` in `~/.claude.json`, `[mcp_servers.*]` in Codex's `config.toml`). Tessaya adds no plugin system. The one switch it flips is Claude's own `enabledPlugins` for a plugin the file already lists: it keeps every other key, writes a `.tessaya-backup` first, refuses a file it cannot read or a plugin not listed, and says the change applies to the next session. Skills and MCP servers are shown, not switched: Claude and Codex define no per-file switch for them, and editing their server tables by hand would risk his config. The config folder follows `CLAUDE_CONFIG_DIR`, so the default account's; per-account folders are not listed. Never run against his real files.
 
@@ -3729,15 +3729,15 @@ marker's version with its own: a different version logs `replaced-by-update {fro
 
 **D148 the job brief and cost routing (built).** `parseJobBrief` checks that a plan shows the eight sections of the job brief (the job, the outcomes, the leverage point, build or do not build, the steps, the specialists, reversibility, the permissions), lenient about heading style. When a worker's planning turn ends without them, the reactor asks once ("Show the job brief... it is missing: ...") and records that it asked; the plan is accepted on the next completed turn whatever it holds, so a worker that will not comply cannot hold the job for ever (the missing sections are in the record). **Cost routing:** `routing.json` in his operating-system folder names `strong` and `cheap` models (default the Claude aliases `opus` and `haiku`, which follow the newest of each size); planning and judgment use the strong one and a part marked `routine` in `job_split` uses the cheap one. Each part's record says which model it used. Not built: the window editing of the routing table (it is a file he opens), and choosing between providers by price.
 
-**D148 the import script and the pack in the window (built).** `scripts/baton/import-operating-system.mjs <file>` reads a person's own document and asks their own `claude` (their login; metered keys stripped from its environment) to distil it into the executive framing and up to eight role briefs; `parseDistilled` checks the reply (JSON, sizes, role names) before anything is written. It writes `executive.md`, `roles/*.md` and a copy of the document under `reference/` in their operating-system folder, refuses to overwrite without `--force` (and keeps `.bak`), and has a `--dry-run`. Nothing is written to the repository, and the document goes nowhere but that one call. The Memory tab lists the framing, each role (the defaults and his own) and the routing table as rows: Edit writes the neutral default into the folder when he has no file yet and opens it; Use default moves his file aside (`.bak`), never touching the default; Open folder. Tested with a stand-in `claude`; not run with a real model call.
+**D148 the import script and the pack in the window (built).** `scripts/tessaya/import-operating-system.mjs <file>` reads a person's own document and asks their own `claude` (their login; metered keys stripped from its environment) to distil it into the executive framing and up to eight role briefs; `parseDistilled` checks the reply (JSON, sizes, role names) before anything is written. It writes `executive.md`, `roles/*.md` and a copy of the document under `reference/` in their operating-system folder, refuses to overwrite without `--force` (and keeps `.bak`), and has a `--dry-run`. Nothing is written to the repository, and the document goes nowhere but that one call. The Memory tab lists the framing, each role (the defaults and his own) and the routing table as rows: Edit writes the neutral default into the folder when he has no file yet and opens it; Use default moves his file aside (`.bak`), never touching the default; Open folder. Tested with a stand-in `claude`; not run with a real model call.
 
 **D148 dependencies between parts (built).** A part in `job_split` can list `after`: the earlier parts (numbered from 1) that must be done first. Only earlier parts can be named, so there is no cycle. A part with no `after` starts at once as before. A waiting part is recorded as a job of its own (migration 11, `part_spec_json`: what it waits on, its role and whether it is routine) with no thread. On each part's thread change the coordinator starts the waiting parts whose earlier parts are all done, in the same agreed, same-permission, same-model-rules way, and then waits for the next change before it looks at a summary. If a part it waited on failed it is never started: its record says which one failed, and the single summary lists it as "not started" and counts it among the failures. The summary is held back while any part is still waiting. Not built: waiting on something other than a sibling part (a time, an external event), and restarting a blocked part after its dependency is fixed. Never run live.
 
-**Public-release guard (2026-11-03).** D135's audit is now enforced. `scripts/baton/guard-private.mjs` (plain Node; CI runs it first, and a unit test runs it) fails on a maintainer host or account name, a cloud provider used as a machine name, a key or token, a tailnet address, or a hashed private-pack phrase, in the shipped code Tessaya owns. It has one allow-list entry (`ClaudeAccountInstances.ts`, the compatibility table for the maintainer's two boxes, to go once `BATON_CLAUDE_ACCOUNT_INSTANCES` is set there) and fails if an entry stops being needed. This pass also replaced the maintainer's names in comments and examples with neutral ones. `packages/baton-voice` is out of the guard's scope until the voice lane lands its branch. What still blocks a release is in `PUBLIC_RELEASE_CHECKLIST.md`.
+**Public-release guard (2026-11-03).** D135's audit is now enforced. `scripts/tessaya/guard-private.mjs` (plain Node; CI runs it first, and a unit test runs it) fails on a maintainer host or account name, a cloud provider used as a machine name, a key or token, a tailnet address, or a hashed private-pack phrase, in the shipped code Tessaya owns. It has one allow-list entry (`ClaudeAccountInstances.ts`, the compatibility table for the maintainer's two boxes, to go once `BATON_CLAUDE_ACCOUNT_INSTANCES` is set there) and fails if an entry stops being needed. This pass also replaced the maintainer's names in comments and examples with neutral ones. `packages/baton-voice` is out of the guard's scope until the voice lane lands its branch. What still blocks a release is in `PUBLIC_RELEASE_CHECKLIST.md`.
 
 **D3 first run for "Use my Chrome".** One switch, and a one-line check beside it: the Chrome extension is installed in a Chrome profile, and its native host is listening (a named pipe on Windows, a socket in the temp folder elsewhere). The line says what to do when it is not: install the extension, or open Chrome and sign in. At the first start, if the check passes and he has never chosen, the switch turns itself on once and a card says so; if it does not pass it stays off and the check runs again at the next start. Choosing the switch either way is final (`browserChromeSet`). Read-only: the check starts and changes nothing. Unverified until the laptop: the extension id and the pipe name are from the extension's published behaviour.
 
-**The hands loop on real apps (#52).** `scripts/baton/hands-ci/` runs the assistant's real tool path (the tool table, the input driver, the UI Automation sidecar) on a Windows desktop in CI (`baton-hands-loop.yml`, windows-2022) against Notepad, Calculator, File Explorer, Paint and Settings: 12 tasks, scripted planner, 12 of 12 passed on the final run. Results, what each run found and what is not measured (the model-planned variant, the gate, other languages and DPI) are in `docs/baton/research/hands-loop-tasks.md`. One change to the product came out of it: the rule "stop after two identical failures" is now enforced in code (`failureGuard.ts`, wrapped around the tool server) instead of only asked for in the prompt. A keystroke that returns "Pressed" is not proof it did anything (Ctrl+C in Notepad on the runner did not copy; the menu did): read the result back.
+**The hands loop on real apps (#52).** `scripts/tessaya/hands-ci/` runs the assistant's real tool path (the tool table, the input driver, the UI Automation sidecar) on a Windows desktop in CI (`baton-hands-loop.yml`, windows-2022) against Notepad, Calculator, File Explorer, Paint and Settings: 12 tasks, scripted planner, 12 of 12 passed on the final run. Results, what each run found and what is not measured (the model-planned variant, the gate, other languages and DPI) are in `docs/baton/research/hands-loop-tasks.md`. One change to the product came out of it: the rule "stop after two identical failures" is now enforced in code (`failureGuard.ts`, wrapped around the tool server) instead of only asked for in the prompt. A keystroke that returns "Pressed" is not proof it did anything (Ctrl+C in Notepad on the runner did not copy; the menu did): read the result back.
 
 **Copy right after typing.** Typing goes by the clipboard and puts his old clipboard back 400 ms after the paste. Two ways that could undo a copy made soon after: the put-back overwrote it (fixed first: it now happens only if the clipboard still holds what was pasted), and when the copy was of the same text as the paste, the content check could not tell (fixed now: pressing a copy chord, Ctrl+C, Ctrl+X or Ctrl+Insert, cancels the pending put-back). On the CI desktop the keystroke itself was never at fault: Notepad leaves the clipboard empty for about five seconds after a copy, so a read-back after one or two seconds saw "" and looked like a failed copy. A copy is confirmed by reading the clipboard back for several seconds, not by the keystroke's "Pressed" and not by one early read.
 

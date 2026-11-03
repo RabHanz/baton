@@ -1,6 +1,6 @@
 // @effect-diagnostics globalFetch:off
 /**
- * The repeatable proof of the operator's gate (D127, D128): `scripts/baton/operator-proof.sh` runs this.
+ * The repeatable proof of the operator's gate (D127, D128): `scripts/tessaya/operator-proof.sh` runs this.
  * No microphone, no pointer, no model. Each case feeds the harness's own protocol lines through the
  * real gate: Claude's `control_request` and Codex's approval requests in, the harness's reply out.
  */
