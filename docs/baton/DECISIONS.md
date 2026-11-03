@@ -4,7 +4,7 @@ Every deviation from the build specification, and every choice the specification
 the reason. Newest last. A decision that later turns out wrong is superseded by a new entry rather
 than edited, so the reasoning stays legible.
 
-The specification these refer to is the Baton implementation document dated 2026-09-18; section
+The specification these refer to is the Tessaya implementation document dated 2026-09-18; section
 numbers below are its sections.
 
 ---
@@ -18,7 +18,7 @@ or `claude -p`." Taken literally it forbids the transport T3 already uses, which
 T3's Claude adapter on day one — the exact thing rule 1 forbids.
 
 The Director's clarification: the rule protects **the subscription**, not a particular process
-shape. What must never happen is Baton quietly moving his work onto metered API billing or onto a
+shape. What must never happen is Tessaya quietly moving his work onto metered API billing or onto a
 harness that is not his real Claude Code.
 
 Upstream satisfies that reading. `apps/server/src/provider/Layers/ClaudeAdapter.ts` drives
@@ -28,20 +28,20 @@ Upstream satisfies that reading. `apps/server/src/provider/Layers/ClaudeAdapter.
 signed-out message names both paths — subscription login, or an instance's configured API
 credentials — so the distinction is explicit in upstream's own code.
 
-**Consequence:** Baton uses T3's provider transport unchanged. What Baton must guard is
+**Consequence:** Tessaya uses T3's provider transport unchanged. What Tessaya must guard is
 configuration: an instance configured with an API key is a different economic object from one
-configured with a subscription login, and any Baton surface that offers "continue with…" must show
-which it is before the user picks. Nothing in Baton may set `ANTHROPIC_API_KEY` in a provider
+configured with a subscription login, and any Tessaya surface that offers "continue with…" must show
+which it is before the user picks. Nothing in Tessaya may set `ANTHROPIC_API_KEY` in a provider
 environment.
 
 ---
 
-## D2 — T3's preview browser is Baton's shared browser
+## D2 — T3's preview browser is Tessaya's shared browser
 
 **Decided** 2026-09-18.
 
 The specification (§23 capability plane, §17 browser extension) assumes browser/computer use is a
-capability Baton will have to supply. It already exists upstream and is better than what was
+capability Tessaya will have to supply. It already exists upstream and is better than what was
 planned.
 
 `apps/server/src/mcp/toolkits/preview/tools.ts` publishes fourteen `preview_*` MCP tools to any
@@ -53,10 +53,10 @@ That last property is the whole point. One logged-in profile serves Claude A, Cl
 Codex alike. The browser-hopping the Director described — a different browser per account to keep
 sessions apart — stops being necessary.
 
-**Consequence:** Baton builds no browser and no per-account cookie mechanism. §23's browser
+**Consequence:** Tessaya builds no browser and no per-account cookie mechanism. §23's browser
 capability is "register the existing preview toolkit", not "implement". The limitation to record and
 surface honestly: the desktop app must be running, because it hosts the webview; web and mobile
-clients cannot host one. Baton's machine registry (§5.6) therefore carries
+clients cannot host one. Tessaya's machine registry (§5.6) therefore carries
 `browser-computer-use` as a capability of a _machine with a desktop client attached_, not of every
 environment.
 
@@ -77,7 +77,7 @@ So there are two browser surfaces with a clear rule between them:
 | agent research, scraping, checking a page an agent just built, recorded walkthroughs | T3 preview browser (D2)    |
 | sign-ups, logins to sensitive accounts, anything judged on IP or device fingerprint  | the operator's own browser |
 
-Baton's job is to make the second reachable from a WorkSession rather than replacing it. The
+Tessaya's job is to make the second reachable from a WorkSession rather than replacing it. The
 mechanism is deferred to Phase 6 or later: a bridge that exposes the operator's real browser to a
 thread as a second MCP toolkit, alongside `preview_*`, with a different name so an agent cannot
 confuse them. Nothing is built for this before Phase 6, and it is explicitly _not_ on the V1 path.
@@ -93,7 +93,7 @@ the fork publishable and possibly open-source it. Copying AGPL source into an MI
 the tree.
 
 **Consequence:** the Phase 8 adapter talks to Herdr over its socket/CLI control surface as a separate
-process. No Herdr source is vendored, no Herdr code is adapted, and Baton's dependency on it is
+process. No Herdr source is vendored, no Herdr code is adapted, and Tessaya's dependency on it is
 optional — an environment with no Herdr running loses adopted sessions and nothing else. `.repos/`
 in this tree is upstream's vendored read-only reference directory; Herdr does not go there either.
 
@@ -113,7 +113,7 @@ current provider session, a state, and a rule engine that can express "after thi
 domain that cannot yet answer the questions the intents ask, and then rebuilding it. Orchestration
 is also usable by keyboard the day it lands, which voice is not.
 
-**8 (Herdr) last but one.** Adopted sessions are the lowest-fidelity members of the fleet — Baton
+**8 (Herdr) last but one.** Adopted sessions are the lowest-fidelity members of the fleet — Tessaya
 cannot recover structured conversation state from a raw PTY, so they arrive with reduced
 capabilities. Landing them after the fleet model is settled avoids designing the fleet around its
 weakest member.
@@ -134,16 +134,16 @@ concerns, T3 already owns every one of them:
 - wire contracts → `packages/contracts`, which is where the RPC boundary and every persisted schema
   lives, and where `WsRpcGroup` is assembled;
 - durable state → `apps/server/src/persistence`, whose migrations are statically imported from one
-  manifest, so a Baton table in another package would still have to register there;
+  manifest, so a Tessaya table in another package would still have to register there;
 - client state shared by web and mobile → `packages/client-runtime`, which exists specifically so
   reconnect and multi-environment behavior do not diverge between clients.
 
 A parallel `packages/baton-domain` would either import all three or duplicate them, and would make
 every upstream rebase a three-way merge across package boundaries.
 
-**Consequence:** Baton server and contract code lives in the existing packages, in directories named
+**Consequence:** Tessaya server and contract code lives in the existing packages, in directories named
 `baton/` inside them (`packages/contracts/src/baton/`, `apps/server/src/baton/`, and so on), so
-the Baton diff is still greppable as a patch series. The §27 packages that do **not** have a natural
+the Tessaya diff is still greppable as a patch series. The §27 packages that do **not** have a natural
 upstream owner — the desktop voice sidecar, the OS context bus, the VS Code and browser extensions —
 are genuinely separate, because §38 says native OS integrations must not run on remote servers. Those
 arrive in Phases 5 and 6 as their own packages.
@@ -156,12 +156,12 @@ arrive in Phases 5 and 6 as their own packages.
 
 `apps/server/src/persistence/Migrations.ts` runs Effect's `Migrator` over a static list of numbered
 migrations and records applied ids in `effect_sql_migrations`. There is no `down` step anywhere in
-the tree, and adding one would be a structural change to upstream's persistence layer for Baton's
+the tree, and adding one would be a structural change to upstream's persistence layer for Tessaya's
 convenience.
 
-**Consequence:** Baton does not invent a rollback mechanism. Its reversibility discipline is:
+**Consequence:** Tessaya does not invent a rollback mechanism. Its reversibility discipline is:
 
-1. every Baton migration is additive — new tables, new nullable columns, new indexes. No column is
+1. every Tessaya migration is additive — new tables, new nullable columns, new indexes. No column is
    dropped, renamed, or retyped; no existing row is rewritten except by an explicitly reviewed
    backfill;
 2. a server built _before_ the migration must still open a database the migration has touched. That
@@ -174,7 +174,7 @@ convenience.
 
 ---
 
-## D8 — Baton ships behind two flags, both of them upstream's
+## D8 — Tessaya ships behind two flags, both of them upstream's
 
 **Decided** 2026-09-18. **Superseded by D14** the same day, once it was built.
 
@@ -185,7 +185,7 @@ does not exist. Every entry there carries a comment stating the skew contract, a
 `docs/internals/overview.md` documents the pattern with the pull-request linking rollout as its
 worked example.
 
-**Consequence:** Baton's development flag is a capability key plus a server setting, not a build
+**Consequence:** Tessaya's development flag is a capability key plus a server setting, not a build
 constant and not an environment variable:
 
 - `ExecutionEnvironmentCapabilities.batonWorkSessions` — advertised only when the server both
@@ -193,7 +193,7 @@ constant and not an environment variable:
   sidebar and never calls a `fabric.*` RPC;
 - a `ServerSettings` entry — the operator's switch, persisted per environment.
 
-Baton RPCs remain registered on the server whether or not the flag is on; the flag governs
+Tessaya RPCs remain registered on the server whether or not the flag is on; the flag governs
 advertisement and client behavior. Registering conditionally would make the RPC group's shape depend
 on runtime state, and `RPC_REQUIRED_SCOPES` is keyed off that group's type.
 
@@ -208,7 +208,7 @@ WorkSession spans machines. Upstream's `docs/internals/remote.md` is explicit th
 threads belong to one environment, that a repository identity can correlate clones across
 environments but never routes work between them, and that saved connections are client-local while
 server identity and state are not. There is no cross-environment durable store to put a shared
-WorkSession in, and inventing one would mean a Baton control plane above the environments — which
+WorkSession in, and inventing one would mean a Tessaya control plane above the environments — which
 §0 rule 7 and §25 both push against, and which would become the single point whose failure hides
 every machine's work.
 
@@ -232,12 +232,12 @@ entry, and it needs an answer for which environment is authoritative during a pa
 
 **Decided** 2026-09-18.
 
-Baton work lands on `baton/*` branches. The fork's `main` is fast-forwarded from `upstream/main`
-and carries no Baton commits of its own until a phase is deliberately frozen onto it.
+Tessaya work lands on `baton/*` branches. The fork's `main` is fast-forwarded from `upstream/main`
+and carries no Tessaya commits of its own until a phase is deliberately frozen onto it.
 
 The reason is rebase cost. §36 requires minimising divergence and rebasing regularly; a `main` that
-has both upstream commits and Baton commits interleaved makes every rebase a merge of two histories
-instead of replaying a patch series onto a moved base. It also keeps the answer to "what has Baton
+has both upstream commits and Tessaya commits interleaved makes every rebase a merge of two histories
+instead of replaying a patch series onto a moved base. It also keeps the answer to "what has Tessaya
 changed?" available as a single diff against `upstream/main`.
 
 The clone is a blobless partial clone (`--filter=blob:none`): full commit history, blobs fetched on
@@ -246,7 +246,7 @@ demand, `.git` under 100 MB instead of several hundred. Operations that need old
 
 ---
 
-## D11 — Baton events are a live broadcast; they do not go in T3's event store
+## D11 — Tessaya events are a live broadcast; they do not go in T3's event store
 
 **Decided** 2026-09-18, during Phase 2.
 
@@ -271,7 +271,7 @@ in-process `PubSub`. Clients apply them without a refetch because each event car
 record. The durable truth is `fabric_work_sessions` and `fabric_work_session_threads`, and a client
 that reconnects gets a fresh snapshot rather than replaying anything.
 
-If a durable Baton audit trail is later needed — Phase 10 lists one — it gets its own append-only
+If a durable Tessaya audit trail is later needed — Phase 10 lists one — it gets its own append-only
 table, not a place in `orchestration_events`.
 
 ---
@@ -312,7 +312,7 @@ orders by `(attached_at, id)` so equal timestamps order by insert, and the "one 
 thread" rule stays where it was: a partial unique index on `thread_id WHERE detached_at IS NULL`.
 
 Migration 054 was edited rather than superseded because it had never been applied outside this
-worktree's throwaway database. Once a Baton migration ships, D7's additive rule applies and a
+worktree's throwaway database. Once a Tessaya migration ships, D7's additive rule applies and a
 correction is a new migration.
 
 ---
@@ -321,7 +321,7 @@ correction is a new migration.
 
 **Decided** 2026-09-18, during Phase 2.
 
-D8 said Baton would ship behind an environment capability _plus_ a server setting, with the
+D8 said Tessaya would ship behind an environment capability _plus_ a server setting, with the
 capability advertised only when the operator enabled the feature. Building it showed that is the
 wrong shape on both counts.
 
@@ -716,7 +716,7 @@ the one path that re-evaluates as a direct result of a user's answer.
 **Decided** 2026-09-18, during Phase 6. **Reads together with** §12.3, §18 and §26.
 
 "Dictate: thanks, I'll send the revised contract tomorrow" is an email to
-somebody else. It is not work, it is not a prompt, and a Baton environment has
+somebody else. It is not work, it is not a prompt, and a Tessaya environment has
 no business receiving it, resolving it, or keeping it in an intent log that
 outlives the sentence.
 
@@ -836,7 +836,7 @@ That sentence then goes through the same deterministic grammar as one typed on a
 laptop, which is the property D24 exists to protect — a phone and a keyboard mean
 the same thing to the environment.
 
-**Consequence:** the phone's Baton screen is a text field, three quick-action
+**Consequence:** the phone's Tessaya screen is a text field, three quick-action
 sentences and the fleet. App Intents, the Action Button and any custom audio are
 listed as blocked on a device and a mac, not as design work that is pending.
 
@@ -869,7 +869,7 @@ session is.
 licence boundary. **Corrected 2026-09-18** once Herdr was actually installed;
 the correction changes the premise, not the decision.
 
-Herdr is a separate program. Baton adopts sessions _from_ it by speaking to its
+Herdr is a separate program. Tessaya adopts sessions _from_ it by speaking to its
 control surface from the outside, the way a person at a prompt would, and this
 repository contains none of its code.
 
@@ -902,12 +902,12 @@ would have reached the runtime answers with the reason it could not.
 
 ---
 
-## D38 — A state Baton cannot map is refused, never called idle
+## D38 — A state Tessaya cannot map is refused, never called idle
 
 **Decided** 2026-09-18, during Phase 8.
 
 §9 gives four mappings: blocked, working, done, idle. A runtime that says
-anything else — "compacting", a version Baton has not met — could be mapped to
+anything else — "compacting", a version Tessaya has not met — could be mapped to
 `idle` and forgotten about.
 
 It is refused instead, by name, and the session keeps whatever state it had.
@@ -928,18 +928,18 @@ Two smaller decisions inside the same table:
 
 ---
 
-## D39 — An adopted session declares what Baton may not do to it
+## D39 — An adopted session declares what Tessaya may not do to it
 
 **Decided** 2026-09-18, during Phase 8. **Implements** §9 principle 5.
 
 A terminal somebody else started has no structured conversation, no approval
-requests Baton can answer, and no diffs — those belong to a thread T3 owns.
+requests Tessaya can answer, and no diffs — those belong to a thread T3 owns.
 Rather than discovering that by trying, an adopted session carries a capability
 record, and a runtime that claims nothing gets `ADOPTED_MINIMUM_CAPABILITIES`:
 everything false except showing the terminal.
 
 Every refusal names the capability _and_ why it is missing — "approvals belong to
-a provider session Baton started; an adopted terminal has none to answer" —
+a provider session Tessaya started; an adopted terminal has none to answer" —
 because a bare "not supported" tells the user nothing about whether a different
 setup would help.
 
@@ -954,12 +954,12 @@ what it may offer rather than offering everything and apologising afterwards.
 
 The fleet's state for a work session is the most demanding of its live sessions.
 Adopted sessions are counted in that, so a Herdr pane that reports `blocked`
-makes the _work_ say it needs the user — even though Baton cannot answer it,
-and even when the work has no thread of Baton's own.
+makes the _work_ say it needs the user — even though Tessaya cannot answer it,
+and even when the work has no thread of Tessaya's own.
 
-The alternative — counting only sessions Baton controls — would produce a fleet
+The alternative — counting only sessions Tessaya controls — would produce a fleet
 that says "idle" about work that is visibly stuck, which is the specific failure
-§29 Phase 4's exit criterion was written against. A session Baton cannot
+§29 Phase 4's exit criterion was written against. A session Tessaya cannot
 control still tells the truth about what the work is waiting for.
 
 ---
@@ -969,7 +969,7 @@ control still tells the truth about what the work is waiting for.
 **Decided** 2026-09-18, during Phase 10. **Follows** §23's own instruction.
 
 §23 lists twelve provider-neutral capabilities and then says plainly: _do not
-implement every capability during the first Baton milestone; build the
+implement every capability during the first Tessaya milestone; build the
 registration/policy abstraction first, then migrate tools incrementally._
 
 So Phase 10 ships the registry and the policy and **none of the capabilities**.
@@ -995,7 +995,7 @@ production template does not use one: deployment, databases and email are
 `enabled: false` with a reason, and turning one on is a visible edit to the
 policy.
 
-The reason is where the confirmation would appear. Baton's surfaces are a
+The reason is where the confirmation would appear. Tessaya's surfaces are a
 sidebar, a phone and a spoken sentence; a production deploy confirmed by a tap
 on a phone in a taxi is not a confirmation, it is a formality with a witness.
 Making it an edit to the policy puts the decision somewhere it can be read
@@ -1013,7 +1013,7 @@ Two details that keep this honest rather than merely strict:
 
 ## D43 — Retention runs where the log grows, not on a timer
 
-**Decided** 2026-09-18, during Phase 10. **Implements** §26 for Baton's own
+**Decided** 2026-09-18, during Phase 10. **Implements** §26 for Tessaya's own
 records.
 
 The intent log only grows when somebody says something, so pruning on write runs
@@ -1053,15 +1053,15 @@ came back.
 
 ---
 
-## D45 — Baton is on by default in this fork
+## D45 — Tessaya is on by default in this fork
 
 **Decided** 2026-09-18 by the Director, for the first deploy: the fork is to be
-installed on his own running server and a Baton surface is to render "so he does
+installed on his own running server and a Tessaya surface is to render "so he does
 not have to find a setting".
 
 `fabricWorkSessionsEnabled` was introduced in Phase 2 as a client preference
 defaulting to **off**, which was right while the fork was a branch nobody ran and
-wrong the moment it became the thing he opens. A build of Baton where the user
+wrong the moment it became the thing he opens. A build of Tessaya where the user
 must first find a switch is a build nobody uses.
 
 It stays a _client preference_ rather than becoming an environment setting,
@@ -1071,12 +1071,12 @@ pointed at a stock T3 server renders the stock sidebar rather than erroring — 
 default moved, the safety did not.
 
 **Consequence:** `Schema.withDecodingDefault(Effect.succeed(true))`, so a profile
-that has never seen the setting gets Baton, and a profile that explicitly turned
+that has never seen the setting gets Tessaya, and a profile that explicitly turned
 it off keeps it off.
 
 **What this also exposes, said plainly:** the key is not in `ClientSettingsPatch`
 and there is no row for it in the settings panel — Phase 2 never added one,
-because the walk set it directly in the client's stored settings. Turning Baton
+because the walk set it directly in the client's stored settings. Turning Tessaya
 _off_ therefore means editing stored settings, not clicking something. That is
 acceptable while the default is the intended state and the Director wanted no
 setting to find, and it is deliberately not fixed here: the row would go in
@@ -1139,12 +1139,12 @@ it unset disables relay-client tracing.
 (`T3 Connect desired link reconciled on startup`) and a process to see
 (`cloudflared tunnel run`), not an assumption.
 
-## D48 — Baton's migrations leave upstream's number space alone
+## D48 — Tessaya's migrations leave upstream's number space alone
 
 **Decided** 2026-09-18, on the Director's instruction to fix the collision before the first upstream
 merge rather than after it.
 
-Phases 2–10 numbered Baton's six migrations 054–059 inside upstream's single ascending manifest.
+Phases 2–10 numbered Tessaya's six migrations 054–059 inside upstream's single ascending manifest.
 That was always borrowed time. Upstream's migrator runs exactly the entries whose id is greater than
 the highest id recorded in the tracking table, so the moment upstream publishes its own 054 one of
 two things happens:
@@ -1164,10 +1164,10 @@ takes the file they touch on _every_ schema change off the conflicts table.
 
 **Databases that already ran the old numbering are repaired, not re-migrated.** Both of the
 Director's machines carry rows 54–59 today. On the next boot `reclaimUpstreamMigrationIds` moves
-that record across — each legacy row is written into Baton's table under its new id and deleted
+that record across — each legacy row is written into Tessaya's table under its new id and deleted
 from upstream's — so the high-water mark drops back to upstream's real latest.
 
-The tempting alternative was to drop the rows and let Baton's migrator re-run 1–6 over tables that
+The tempting alternative was to drop the rows and let Tessaya's migrator re-run 1–6 over tables that
 already exist, on the grounds that every `CREATE TABLE` says `IF NOT EXISTS`. That is wrong, and the
 test found it before a machine did: `002_WorkSessionSynopsis` adds a column, and SQLite has no
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`. Re-running fails the boot with
@@ -1187,14 +1187,14 @@ upstream migration at 054 proven to run after the repair and proven to be skippe
 **Decided** 2026-09-18, replacing the rebase plan written at Phase 0.
 
 `UPSTREAM.md` originally said the fork's `main` would stay a fast-forward mirror of upstream's and
-Baton would live on `baton/*` branches rebased on top. That stopped being true the moment Baton
+Tessaya would live on `baton/*` branches rebased on top. That stopped being true the moment Tessaya
 merged into the fork's `main`, which is where it belongs now that the fork is what runs on the
-Director's machines. Keeping the old policy would mean rewriting every Baton commit on every sync:
+Director's machines. Keeping the old policy would mean rewriting every Tessaya commit on every sync:
 "what did the fork change" would have no stable answer, and every open branch would need a force
 push.
 
 So the fork **absorbs** upstream through merge commits, and legibility comes from the conflicts
-table instead — every upstream file Baton edits, listed with the reason, everything else a new file
+table instead — every upstream file Tessaya edits, listed with the reason, everything else a new file
 under a `baton` name.
 
 `scripts/baton/upstream-sync.sh` does it: fetch, report the new commits, intersect upstream's
@@ -1204,7 +1204,7 @@ with the report as its body. It refuses a dirty tree, never pushes to `main`, an
 file list when the merge conflicts rather than guessing.
 
 **Consequence:** the distance from upstream is a number somebody can read on demand, and a sync that
-would touch a file Baton depends on says so before the merge rather than during it.
+would touch a file Tessaya depends on says so before the merge rather than during it.
 
 ---
 
@@ -1333,7 +1333,7 @@ schema with no descriptions, so the only guidance was prose several paragraphs e
 in the prompt said "do not describe this request". Annotating the fields and adding that rule fixed
 it on the next call.
 
-**Consequence:** the synopsis is now the most expensive thing Baton does per turn, at one Sonnet
+**Consequence:** the synopsis is now the most expensive thing Tessaya does per turn, at one Sonnet
 call. It is bounded by the turn rate of work the user is actually running, and it is the line they
 read to decide whether to look — which is the one place in this product where a sentence is worth
 more than a label.
@@ -1350,9 +1350,9 @@ The shape, for both providers: the account directory holds **only that account's
 `settings.json` (which carries `hooks`), `CLAUDE.md`, `skills/`, `agents/`, `commands/`, `plugins/`
 and the `projects/` memory tree are the primary's, shared by symlink.
 
-**Upstream already does this for Codex, and Baton does not reinvent it.**
+**Upstream already does this for Codex, and Tessaya does not reinvent it.**
 `CodexHomeLayout.ts` implements a _shadow home_: `auth.json` private, every other entry in the
-shared home symlinked in, re-materialised on every session start. Baton's account plan simply
+shared home symlinked in, re-materialised on every session start. Tessaya's account plan simply
 names the shadow home and the setting that turns it on. Proven with upstream's own materializer
 against the real `~/.codex`: `config.toml`, the caches, the session stores and the rest linked,
 `auth.json` absent until somebody logs in.
@@ -1413,11 +1413,11 @@ decomposition is:
 | Claude Code's own system prompt                | ~26,000 tokens, cache-read every call                                         | **not ours**                   |
 | Model generation **with thinking**             | ~9 s                                                                          | ours to turn off               |
 | Model generation **without thinking**          | ~5 s                                                                          | the floor for this transport   |
-| Baton's own work (fleet read, grammar, memory) | milliseconds — a gate sentence that never reaches a model answers in **6 ms** | ours, and already negligible   |
+| Tessaya's own work (fleet read, grammar, memory) | milliseconds — a gate sentence that never reaches a model answers in **6 ms** | ours, and already negligible   |
 
 **The finding: his own `settings.json` turns thinking on**, reasonably, because he writes code with
 it. The CLI loads user settings, so a classification against a closed list of names inherited a
-scratchpad it has no use for. Turning it off for Baton's two model reads — as a model-selection
+scratchpad it has no use for. Turning it off for Tessaya's two model reads — as a model-selection
 option, which is upstream's own mechanism, rather than a special case inside the driver — took the
 same sentence from **10.0 s to 6.0 s** with 0 thinking tokens, and the ten-sentence median on the
 live server from ~10 s to **5.4 s**.
@@ -1590,18 +1590,18 @@ read. That is the whole difference between this feature and a transcript viewer.
 the document. The document is not the authority; he is. Verbatim:
 
 "I want all of my projects and the active sessions within those projects that I am
-managing to work on to be in the T3 code, or whatever UI the Baton should have,
+managing to work on to be in the T3 code, or whatever UI the Tessaya should have,
 beautifully and functionally in threads there. If it is working and any kind of provider
 reaches limits, it should automatically or manually swap seamlessly to the other
 provider, and the coding and work mustn't ever stop unless it is stopped manually. That
 was my hands-off vision for development and coding, but it is just a part, a small part
 of the grand scheme of things, because what I envision is a completely hands-off computer
-control using my voice. That is what Baton was brought to life for, across my devices,
+control using my voice. That is what Tessaya was brought to life for, across my devices,
 across my agents, across my projects, and across platforms."
 
 Three things follow, and they outrank the phase list:
 
-1. **A limit is an event Baton absorbs, not an interruption he sees.** "The coding and work
+1. **A limit is an event Tessaya absorbs, not an interruption he sees.** "The coding and work
    mustn't ever stop unless it is stopped manually" is the acceptance test for account
    rotation — not "a handoff exists", but that the work continued and he did not have to do
    anything. Same thread, same transcript, credential swapped underneath at a turn boundary.
@@ -1651,7 +1651,7 @@ config directory is precisely the thing that **cannot** continue another directo
 threads: upstream refuses a resume across instances whose continuation identity differs.
 Three instances would have made rotation impossible by construction.
 
-**The correct shape is one Claude instance on the default config directory, with Baton
+**The correct shape is one Claude instance on the default config directory, with Tessaya
 rotating the account under it.** That is what `fabric.account.use` does, and it is why the
 same thread, session id, transcript and working directory survive a switch.
 
@@ -1720,7 +1720,7 @@ so it inherits that survival, which is queued rather than pretended.
 **Decided** 2026-09-18, once Herdr was installed and discovery ran against it.
 **Refines** D38. **Implements** §9.
 
-D38 refuses a runtime state Baton does not know rather than calling it `idle`,
+D38 refuses a runtime state Tessaya does not know rather than calling it `idle`,
 and that stays. The first live discovery showed the rule swallowing the case §9
 was written for.
 
@@ -1730,11 +1730,11 @@ recognised coding agent — an infrastructure terminal, a test watcher, a
 `unknown`. Under D38 alone such a pane was **discoverable and never adoptable**:
 `herdr reported a state Baton does not know: 'unknown'`, every time, forever.
 
-`unknown` is not a word Baton failed to learn. It is Herdr saying it has no
+`unknown` is not a word Tessaya failed to learn. It is Herdr saying it has no
 agent state to give. So it falls through to another fact Herdr reports rather
 than to a guess — whether the pane has a foreground process:
 
-| Herdr says                              | Baton calls it        |
+| Herdr says                              | Tessaya calls it        |
 | --------------------------------------- | --------------------- |
 | `blocked` / `working` / `done` / `idle` | §9's table, unchanged |
 | `unknown`, something running            | `monitoring`          |
@@ -1777,7 +1777,7 @@ read every idle terminal as busy, and only the real capture showed it.
 the server for a client that has no terminal of its own to render into.
 
 It is emphatically **not** `readConversation`, which stays false for every
-adopted session. There is no structured conversation on a session Baton did not
+adopted session. There is no structured conversation on a session Tessaya did not
 start — no turns, no roles, no approvals — only characters a program wrote to a
 terminal. A capability check that conflated the two would be exactly the pretence
 §9 exists to prevent, and would put a "read the conversation" button on a session
@@ -1859,7 +1859,7 @@ SSH route needs a dedicated key alias that a T3 terminal does not have.
 
 ## D66 — The desktop owns the microphone, the HUD and where the words go
 
-**Decided** 2026-10-26. **Amends** D24 for the desktop only. The Director wants Baton hands-free and
+**Decided** 2026-10-26. **Amends** D24 for the desktop only. The Director wants Tessaya hands-free and
 always listening through his DJI mic, or any mic, with nothing touched. D24 kept speech out of the
 fork because the server sits on a box with no microphone. That still holds for the server. The
 desktop app does sit next to the mic, so it captures audio and hands it to the voice core
@@ -1880,7 +1880,7 @@ holds.
   `Tell it: <words>` and command speech goes as said. Both reach the intent bar over
   `desktopBridge.onBatonVoiceUtterance` and run through `fabric.intent.run`, the same path as a
   typed sentence.
-- **Opt-in**: "Always listening" and "Start Baton when I sign in" are tray checkboxes, both off by
+- **Opt-in**: "Always listening" and "Start Tessaya when I sign in" are tray checkboxes, both off by
   default, saved in `fabric-voice.json` in the state dir.
 - **Airdeck** is an explicit activation provider through global hotkeys, which Airdeck's `"keys"`
   action can already send. Airdeck needs no code change. The chords stay clear of Airdeck's own
@@ -1897,7 +1897,7 @@ holds.
 the real core (`desktopVoiceCore.ts`: openWakeWord, Silero, whisper.cpp, OS TTS) with the core's own
 router, so its rules hold on the desktop: high risk is refused by voice, medium risk needs a later
 "confirm", and dictation stays local. The router's four calls are answered here. `resolve` and `run`
-go to the Baton window's intent bar over `desktopBridge.onBatonVoiceRequest`; `sendToSession`
+go to the Tessaya window's intent bar over `desktopBridge.onBatonVoiceRequest`; `sendToSession`
 becomes `Tell it: <words>` with that session pinned; `insertText` is the paste adapter. The window
 reports the session on screen (`setBatonVoiceFocus`), which becomes the context bus's rung 3.
 Models and `whisper-cli(.exe)` are read from `<state dir>/voice/`, or from `BATON_VOICE_MODELS` /
@@ -1921,7 +1921,7 @@ tray, HUD, `getUserMedia` capture and SendKeys paste have not been run on a Wind
 ## D68 — One control surface for every session, independent of the account
 
 **Decided** 2026-10-26 on the Director's priority 1: Claude Remote Control is bound to an account,
-so every account change broke his control channel. Baton's channel is the session's _place_, not
+so every account change broke his control channel. Tessaya's channel is the session's _place_, not
 its account:
 
 - **The list.** Each environment's fleet now also carries every interactive Claude Code process on
@@ -1936,7 +1936,7 @@ its account:
   A session in a plain terminal or VS Code is listed, not typed into: the only way into a running
   CLI that is not in a pane is Claude Code's private peer socket, so its row says
   `fab --resume <id>` instead.
-- **Birth inside Baton.** `fab <project> [claude|codex]` (scripts/baton/fab, installed to
+- **Birth inside Tessaya.** `fab <project> [claude|codex]` (scripts/baton/fab, installed to
   `~/.local/bin/fab`) starts the agent in a tab of the project's Herdr space, so new work is
   sendable and survivable from the start.
 
@@ -2013,7 +2013,7 @@ drop-in names the exact path), but `t3 update` must never be pointed at a fork b
 
 **Decided** 2026-10-26 on the Director's binding shape: _"different sessions are one surface, even
 across accounts. One project, regardless of the account, shows as one session if it is running, or
-multiple."_ The sidebar's Baton block is now an input plus **Projects**: every connected
+multiple."_ The sidebar's Tessaya block is now an input plus **Projects**: every connected
 environment's fleet (T3 work sessions, Claude Code sessions, Herdr panes) is merged in the client,
 grouped by a project key, one line when one session runs. The key is T3's own repository identity
 (`RepositoryIdentityResolver`, the canonical remote) on both sides, so a checkout on signzart and one
@@ -2038,10 +2038,10 @@ path. The name is reduced to a basename and a safe character set before it touch
 
 ## D74 — A session outside Herdr is adopted in one tap, never reached through Claude's socket
 
-A Claude session in a plain terminal or VS Code has no input path Baton may use: its only one is
+A Claude session in a plain terminal or VS Code has no input path Tessaya may use: its only one is
 Claude Code's private peer socket (`messagingSocketPath` with a `.key`), which stays closed. Its row
 offers **Bring into Herdr to send**: after a confirm, and only when Claude Code reports it idle,
-Baton sends it SIGTERM, waits for it to exit, and runs `baton --resume <id> <cwd>`, which reopens the
+Tessaya sends it SIGTERM, waits for it to exit, and runs `baton --resume <id> <cwd>`, which reopens the
 same conversation in the project's Herdr space. The row keeps its key and gains a Send box.
 
 ## D75 — onnyx OOM protection needs one root command
@@ -2062,7 +2062,7 @@ Not applied by an agent: it restarts the user manager (every user service on the
 
 The port plan drew upstream under `vendor/t3code/`. Doing that moves every path upstream's own
 tooling assumes: the workspace globs, the root `package.json` scripts, `vite.config.ts`, and the
-release chain in `scripts/` that builds the CLI archive we deploy. Each would need a Baton edit to
+release chain in `scripts/` that builds the CLI archive we deploy. Each would need a Tessaya edit to
 find the moved tree, so the subdirectory adds patch points instead of removing them.
 
 The subdirectory's purpose is met another way. `vendor-patches/t3code/` holds the pin (`PIN`), the
@@ -2075,35 +2075,35 @@ every sync, because a lockfile patch would conflict on every upstream release.
 Rejected: `git subtree` under `vendor/` (above). A Debian-style overlay that assembles a build tree
 from pristine sources at build time, because every edit would then happen in a generated copy and
 the deploy would build from something that is not the commit. Plain `git merge upstream`, because
-nothing answers "what does Baton change in upstream", and a conflict is resolved once, inside a
+nothing answers "what does Tessaya change in upstream", and a conflict is resolved once, inside a
 merge commit, where nobody can re-run it.
 
 ## D77 — The gates run locally, because upstream's CI cannot run in this repository
 
 Upstream's `ci.yml` runs on Blacksmith runners. RabHanz/baton has none, so its runs queue forever
 (PR #4's did). The gates are `scripts/baton/gates.sh`: the patch-series verify and its self-test,
-typecheck, lint, the tests of every package Baton adds to or patches, and the build. The sync job
+typecheck, lint, the tests of every package Tessaya adds to or patches, and the build. The sync job
 runs the same script, so a sync meets the same bar as a hand-made change.
 
-## D78 — Baton's code moves into its own packages when the port rewrites it, not before
+## D78 — Tessaya's code moves into its own packages when the port rewrites it, not before
 
 The plan's `packages/baton-server`, `baton-contracts` and `baton-web` are the end state. At the
-pre-v2 pin, though, Baton's server code imports the v1 engine, the v1 Sqlite layer and server
+pre-v2 pin, though, Tessaya's server code imports the v1 engine, the v1 Sqlite layer and server
 internals that are not a package, and `contracts/rpc.ts` would import a package that imports
 `@t3tools/contracts` back. Moving it now means moving it twice: once at v1, and again when the port
 rewrites every one of those imports against v2. So Phase A ships the series and the sync. The
 package split happens in Phase B as part of the rewrite, with the RPC group merged at the server and
-the client so contracts never import Baton.
+the client so contracts never import Tessaya.
 
 Done in Phase B as: `packages/baton-contracts` (the `fabric.*` schemas and `BatonRpcGroup`, plus a
-re-export of `@t3tools/contracts` so Baton files import one module) and `packages/baton-shared`
+re-export of `@t3tools/contracts` so Tessaya files import one module) and `packages/baton-shared`
 (the pure logic and the client's work-session atoms). Server code stays in `apps/server/src/baton/`
 and web code in `apps/web/src/components/sidebar/Baton*`: both are new files, never patches, and
 moving them into packages would need upstream's apps to export internals they do not export.
 
-## D79 — Baton reaches upstream's engine through one service, `BatonEngine`
+## D79 — Tessaya reaches upstream's engine through one service, `BatonEngine`
 
-Six Baton modules called the v1 engine directly, which is why the v2 move was a port rather than a
+Six Tessaya modules called the v1 engine directly, which is why the v2 move was a port rather than a
 merge. Now one file, `apps/server/src/baton/BatonEngine.ts`, holds every call into
 `orchestration-v2`: thread shells, projects, the domain-event stream, launching a thread (upstream's
 `ThreadLaunchService`), sending a message (`ThreadManagementService.sendToThread`), switching
@@ -2113,7 +2113,7 @@ file. The model one-shots (D50, D51) run `claude -p --json-schema` through `Bato
 upstream's text generation exposes only its own five operations; they run as the box's primary
 Claude home, which is the account cswap has active.
 
-## D80 — "Continue with…" is upstream's `provider.switch`; Baton's capsule is gone
+## D80 — "Continue with…" is upstream's `provider.switch`; Tessaya's capsule is gone
 
 D62 moved work to another provider by starting a second thread seeded with a capsule. Upstream v2
 switches the provider on the same thread and carries the context with its own handoff service, so
@@ -2124,8 +2124,8 @@ session also settles its threads in upstream, so T3's own sidebar agrees.
 
 Also adopted from upstream rather than ported (the plan's list): restart resume and waiting out a
 limit (upstream's recovery workers), large-transcript import and its UI (upstream's scanner and
-importer; Baton's import dialog, presence section and landing are deleted), the Claude usage-probe
-deadline (upstream bounds it). Kept as Baton's: account rotation (D63, D69), adoption and live
+importer; Tessaya's import dialog, presence section and landing are deleted), the Claude usage-probe
+deadline (upstream bounds it). Kept as Tessaya's: account rotation (D63, D69), adoption and live
 sessions (D68, D73, D74), work sessions, rules, intents, synopsis, Herdr.
 
 ## D81 — Herdr terminals stay a two-line hook, not a PtyAdapter
@@ -2138,19 +2138,19 @@ a reopened terminal cannot re-attach. So `terminal/Manager.ts` keeps two hooks i
 Upstream's own `survivesRestart` puts the terminal's process in a separate systemd slice, which
 keeps it alive across a restart but leaves nothing to re-attach to, so it does not replace Herdr.
 
-## D82 — Baton files that predate upstream's newer lint and Effect rules opt out per file
+## D82 — Tessaya files that predate upstream's newer lint and Effect rules opt out per file
 
-Upstream's v2 tree enforces rules Baton's code predates: comments of at most four lines,
+Upstream's v2 tree enforces rules Tessaya's code predates: comments of at most four lines,
 `Effect.fn` for every generator, no manual memoisation and no effects in React files, no em dashes in
-copy. Bringing roughly 360 findings in 116 Baton files up to them is real work that would hold the
+copy. Bringing roughly 360 findings in 116 Tessaya files up to them is real work that would hold the
 port back. Each such file carries a first-line `oxlint-disable` (or `@effect-diagnostics`) naming
-the rules it is exempt from and pointing here. New Baton files follow upstream's rules. Phase C
+the rules it is exempt from and pointing here. New Tessaya files follow upstream's rules. Phase C
 rewrites the web block from T3's components and drops those headers there; the server files lose
 theirs as they are next touched.
 
 ## D83 — Live Claude Code sessions are ordinary T3 threads, so the official apps show them
 
-The Director uses T3's official phone, desktop and web apps, which carry none of Baton's sidebar
+The Director uses T3's official phone, desktop and web apps, which carry none of Tessaya's sidebar
 code, so he saw none of his sessions. The official apps render the server's read model and nothing
 else, so the fix is server-side: `apps/server/src/baton/LiveSessionMirror.ts` turns every session
 in Claude Code's registry (`~/.claude/sessions/*.json`, D68; SDK sessions excluded) into a thread
@@ -2181,7 +2181,7 @@ attached to the thread's latest run; a terminal-typed turn after a composer turn
 inside that run, and the run's earlier reply folds under "Worked for…". Status is native only for
 composer turns (Working/Completed); a session working from its terminal does not read as Working.
 The account is not shown. Patch cost: one line in 0002 exposing the runtime's memoized `EventSink`
-to Baton. Off per machine with `BATON_LIVE_THREADS=off`. Frames: `frames/live-threads-2026-10-27/`.
+to Tessaya. Off per machine with `BATON_LIVE_THREADS=off`. Frames: `frames/live-threads-2026-10-27/`.
 
 **D83 round 2 (2026-10-27, `0.1.2-baton.31` on both boxes).** Supersedes the "Known limits" above:
 
@@ -2194,7 +2194,7 @@ to Baton. Off per machine with `BATON_LIVE_THREADS=off`. Frames: `frames/live-th
   (`baton-live:run:<session>:<uuid>`, no provider attempt), so it renders as its own turn and the
   thread reads **Working** while Claude Code reports busy; the run completes on idle and dispatches
   `queue.resume` so a composer message queued behind it starts. T3's startup reconcile cancels such
-  a run; if the session is still busy Baton reopens it (timer from now). A thread with no runs gets
+  a run; if the session is still busy Tessaya reopens it (timer from now). A thread with no runs gets
   one around its last user message, so idle threads read Done, not Waiting.
 - **Title = session name · account · box** (T3's lists render only the title). The account is the
   config directory's `oauthAccount`; a thread keeps its first name across restarts unless the
@@ -2212,7 +2212,7 @@ provider attempt, so T3 features keyed to attempts (retry, checkpoints) do not a
 
 **D83 round 3 (2026-10-27, `0.1.2-baton.34` both boxes) — the Director's real sessions.** Misses
 found on his five long-running sessions: home-network was hidden behind an old upstream _import_
-snapshot of the same session (Baton treated it as owned) — the live thread now replaces an import
+snapshot of the same session (Tessaya treated it as owned) — the live thread now replaces an import
 nobody continued, and that import is archived; rabee.dev was auto-settled for age and filed under
 Settled — live threads now have auto-settle off and are unsettled; back-fill of older messages into
 existing threads sorted them after newer ones — threads were rebuilt (`baton-live3:` ids; retired
@@ -2239,8 +2239,8 @@ Built in `packages/baton-shared/src/screenCompanion.ts` (pure, tested without a 
   and the blue pointer flies to `[POINT:x,y:label:screenN]`. Follow-ups within five minutes share
   the conversation.
 - **Teach.** "Teach me / show me how / walk me through …": one step at a time, each pointed at.
-  Baton then watches a 320 px grey thumbnail, compared against the screenshot the step was judged
-  from. When it changes and then holds still for two polls, Baton captures again and the model
+  Tessaya then watches a 320 px grey thumbnail, compared against the screenshot the step was judged
+  from. When it changes and then holds still for two polls, Tessaya captures again and the model
   checks the previous step before giving the next, until `[DONE]`. "Next", "repeat" and "stop"
   work by voice. Thresholds were measured under Xvfb: a typed name changes 0.05 % of the
   thumbnail, a line of result text 0.15 %, a blinking caret 0.006 %.
@@ -2268,7 +2268,7 @@ search box, the form's name field), so clicky-windows' grid locator was not need
 research C11/C12 for Sonnet.
 
 **Voice.** `withScreenRoutes` sits in front of the voice router. A command `parseScreenIntent`
-recognises goes to the companion; everything else goes to Baton's grammar unchanged. The parser
+recognises goes to the companion; everything else goes to Tessaya's grammar unchanged. The parser
 is deliberately narrow, so "show me the scheduler session" stays §21's show.
 
 Rejected:
@@ -2319,7 +2319,7 @@ The Director, 2026-10-29: live-session threads were text only, every reply alert
   provider thread carries one `background_task` (`baton-live-turn`); T3 reads that as working
   (upstream's `backgroundWorkHoldsCompletion`) and alerts once when it clears. Work with no new
   user message (a background agent's report) is not a turn and does not alert. A thread the user
-  settles is muted (T3's relay sends no completion alert for a settled thread), and Baton no
+  settles is muted (T3's relay sends no completion alert for a settled thread), and Tessaya no
   longer unsettles it. T3's web client already skips the alert for the thread being viewed.
 - **Progress.** Each tool call is mirrored the moment Claude Code writes it, as the item upstream's
   Claude adapter writes (`Bash` as a command, anything else a named tool), running until its
@@ -2329,7 +2329,7 @@ Rejected: streaming assistant text from the Herdr pane. `herdr agent read` does 
 but Claude Code draws an assistant text block only when the block is complete (a spinner and a
 token count until then), the same moment it writes the transcript, so the pane holds nothing the
 transcript does not, behind a wrapped TUI that would need scraping. Sessions T3 starts itself run
-on T3's own Claude provider, which streams. Also rejected: a per-thread mute of Baton's own (T3
+on T3's own Claude provider, which streams. Also rejected: a per-thread mute of Tessaya's own (T3
 has Settle).
 
 Known limits: a turn's runs end at once, so T3's own Stop button on the run is gone; Stop on the
@@ -2388,7 +2388,7 @@ one option at a time. Proof frames in `frames/prompts-2026-10-29/`.
 
 ## D89 — Desktop releases carry T3 Connect's public config, read from app.t3.codes
 
-Baton 0.1.5 on the Windows laptop reached neither box. Its trace showed every saved environment
+Tessaya 0.1.5 on the Windows laptop reached neither box. Its trace showed every saved environment
 (onnyx, signzart-prod, both relay connections made by the stock T3 app) failing each attempt
 with `session-pending`: "Waiting for the T3 Connect sign-in to load." The desktop release was
 built with no Clerk publishable key, JWT template or relay URL, so the T3 Connect sign-in never
@@ -2409,7 +2409,7 @@ broken, and costs him a pairing per box).
 
 ## D90 — Claude limits for setup tokens come from inference response headers
 
-Moving the three accounts to setup tokens left cswap with `usage unavailable (http-429)` and Baton's
+Moving the three accounts to setup tokens left cswap with `usage unavailable (http-429)` and Tessaya's
 pool with no numbers, so rotation could only fire at the hard limit. `GET /api/oauth/usage` with a
 setup token answers `429 rate_limit_error` with a `retry-after`: a throttle, not a scope refusal, and
 what it would say once unthrottled is unproven. Claude Code's own `get_usage` returns no windows for
@@ -2467,7 +2467,7 @@ Not yet run live: a real switch needs a second account with quota, from 2 Nov.
 
 ## D93 — Split chat panes are ChatViews side by side, and the route is the focused pane
 
-**Decided** 2026-10-30 (Baton #40). Upstream has split terminals and no split for chat; the requests
+**Decided** 2026-10-30 (Tessaya #40). Upstream has split terminals and no split for chat; the requests
 (pingdotgg/t3code discussions 6746, 8149) have no shipped shape to follow. ChatView already takes
 `environmentId` and `threadId` as props, so a pane is a plain ChatView and the hook is one element in
 `ThreadRouteView` (`0008-web-panes.patch`), with the rest in `components/panes/`.
@@ -2495,7 +2495,7 @@ Not yet run live: a real switch needs a second account with quota, from 2 Nov.
 - Closing removes the slot only. The thread and its draft stay. When the focused pane closes the route
   leaves first, because a slot closed under the route would hand its thread to the neighbour.
 - Open with **Open in split** on a sidebar thread's menu, Alt+click on the row (Ctrl/Cmd+click is
-  upstream's multi-select), or **Open in split** on a Baton session. A full grid gives up its last
+  upstream's multi-select), or **Open in split** on a Tessaya session. A full grid gives up its last
   unfocused pane.
 - Below 1024 px only the focused pane renders and the slots stay. The brief said `md` (768), but with
   the sidebar open that leaves 250 px per pane.
@@ -2629,7 +2629,7 @@ Rejected: a second server or a login per window (he said the same one); a route 
 with heartbeats to detect a dead holder ("Bring it here" is one click and needs no liveness).
 
 Known limits: a closed web window leaves its small layout entry in localStorage. Web windows are
-restored by the browser, not by Baton.
+restored by the browser, not by Tessaya.
 
 ## D97 — Dictation is Handy's engine stack in our own sidecar, not Handy beside the app
 
@@ -2660,8 +2660,8 @@ transcribed but not pasted; Esc cancels. Nothing global exists until he asks: no
 hold or toggle key before Tray → Download speech model, ticking Always listening, or a first press of
 the Airdeck chord. Always listening needs Parakeet even with Wispr chosen, so ticking it downloads it.
 
-Wispr stays installed and untouched. Tray → Dictation chooses; on "Wispr Flow" Baton registers no
-dictation key, and a recording in progress is discarded. Baton's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (toggle), clear of the
+Wispr stays installed and untouched. Tray → Dictation chooses; on "Wispr Flow" Tessaya registers no
+dictation key, and a recording in progress is discarded. Tessaya's keys are Ctrl+Alt+Space (hold) and Ctrl+Alt+Shift+Space (toggle), clear of the
 Ctrl+Win, Ctrl+Win+Space and Ctrl+Alt+Win read from his Wispr config.
 Ctrl+Alt+Shift+F8 toggles for Airdeck, whose mic button is a tap with no hold.
 
@@ -2832,7 +2832,7 @@ Cloud option, not signed up for: ElevenLabs, which the original Clicky uses. Its
 2026-10-31: Starter $6 a month for 30,000 credits, Creator $22 for 121,000, Pro $99. Not heard or
 compared here, and every answer would leave the machine.
 
-In Baton's own process on the laptop, with the real speaker and player: cold start to first bytes 1.4 s,
+In Tessaya's own process on the laptop, with the real speaker and player: cold start to first bytes 1.4 s,
 four sentences played in order with no fall-back to the OS voice, and the sentences read ahead joined with no gap
 at the boundary. The first-run path downloaded and hash-checked the Quick files; a real run found the Windows
 zip has a folder inside and that a Git tar on PATH fails on "D:", both fixed. The full model's
@@ -2842,7 +2842,7 @@ How it runs: `pocket-tts serve` on a random loopback port with two threads, file
 hash-checked on first speech while the OS voice covers, stopped after ten quiet minutes because it holds 700 MB.
 Each sentence generates once the one before has finished generating, and plays as bytes arrive. Credit
 CC-BY-4.0 for weights and voices (THIRD_PARTY_NOTICES). The weights used are Kyutai's set without voice
-cloning, and Baton offers none.
+cloning, and Tessaya offers none.
 
 ## D101 — What was on screen, and what a pointer may do
 
@@ -2868,9 +2868,9 @@ Proved with markers at known positions on both displays (175 % and 125 %): captu
 regression checks. Rejected: routing with a screenshot on every sentence (a capture needs his yes, and
 most sentences do not need one).
 
-## D102 — Baton does not hear itself
+## D102 — Tessaya does not hear itself
 
-While Baton speaks, and for 500 ms after, the core runs only the wake detector. VAD and speech
+While Tessaya speaks, and for 500 ms after, the core runs only the wake detector. VAD and speech
 recognition get nothing, so its own voice cannot open a turn in a conversation window. A wake word over
 its voice cuts it off and listens. The desktop feeds `setSpeaking` from the one speaker, so this covers
 assistant answers as well as the core's own replies. Rejected: a lower wake threshold or echo
@@ -3001,14 +3001,14 @@ recording, and a holder that throws passes to the next.
 
 Every sentence reaches the speaker when it exists, so a cancel covers the queue, and an answer still streaming
 stays quiet after he silences it. A wake word over speech holds what he says next against the echo gate. A
-"confirm" that starts over Baton's own voice is ignored, since a reply can say the wake word and the word
+"confirm" that starts over Tessaya's own voice is ignored, since a reply can say the wake word and the word
 itself; he says it again after the voice stops. Stop and cancel still count. Limit: with nothing pending, a
 reply that says a wake word and then a command is heard as far as the cancel lets it, and the pre-roll can add
-Baton's own words. Dropping the pre-roll over its voice was tried on real audio and lost his first words.
+Tessaya's own words. Dropping the pre-roll over its voice was tried on real audio and lost his first words.
 
 Dictation clean-up is local until he rules otherwise (D105), and a "claude" saved by an earlier build of this
 branch does not stick: it needs his own click. Even on `claude`, password managers, sign-in and bank pages,
-private windows and any app Baton cannot name stay on this machine, judged where he spoke and where he is now.
+private windows and any app Tessaya cannot name stay on this machine, judged where he spoke and where he is now.
 
 Coordinator, relaying the Director, 2026-10-31: dictation clean-up stays local by default, and v3 stays the
 default model with 110M in the tray. "Black display" on the laptop was his FlipIt screen saver, which takes the
@@ -3026,7 +3026,7 @@ button takes no focus, so pressing it leaves the keys where they were.
 His hand must not misdirect a click, so pointer and button go in one `SendInput` call, which Windows does not
 interleave with his own input. Just before that, the sidecar reads the top-level window under the point and the
 foreground window. If the window differs from the one read when the last step settled, or focus moved, or either
-cannot be read, Baton clicks nothing and asks "Carry on?". A wheel step goes back to the plan's last point first.
+cannot be read, Tessaya clicks nothing and asks "Carry on?". A wheel step goes back to the plan's last point first.
 
 The check runs before the click, not after, because a good click may open a new window and a check afterwards
 could not tell. There is a gap of milliseconds between the read and the click, and that gap remains.
@@ -3043,7 +3043,7 @@ had BATON_LAB: they moved the pointer through PowerShell, and `nudge` has never 
 without it, because the sidecar would drop every nudge and the run would pass with nothing moved.
 
 Third review: a paste or right-click on a window seen to be a terminal is refused at the moment it would happen,
-even after a yes. Editors and Baton's own terminal drawer ask rather than refuse, and words in a plan's title
+even after a yes. Editors and Tessaya's own terminal drawer ask rather than refuse, and words in a plan's title
 never refuse, because he should not be blocked from pasting into an editor. A window change during a wait or
 scroll asks instead of being adopted. "Carry on?" takes no default focus, arms after 900 ms, and goes with Esc or
 Stop. A clipboard that cannot be written stops the drive, and a paste over 2,000 characters is refused.
@@ -3058,7 +3058,7 @@ would leave a loop that fails on every event.
 
 ## D117 — What the first installed build showed
 
-Baton can run with no main window: 0.1.10 did after install. A question then opened the ask box and the card, and
+Tessaya can run with no main window: 0.1.10 did after install. A question then opened the ask box and the card, and
 when the last of them closed, "last window closed" quit the whole app, 27 s after the answer. Quitting now needs a
 window he opened to have been the last of its kind to close. The companion windows no longer count. Closing the
 main window still quits, including with the pill up. Rejected: keeping a hidden window open (it hides real quits).
@@ -3066,7 +3066,7 @@ main window still quits, including with the pill up. Rejected: keeping a hidden 
 "Stop" during an answer went to the model, which asked what he meant. With no lesson or drive running the word was
 not treated as a control. While an answer is coming or being read out it now stops at once, with no model.
 
-## D118 — Baton lives in the tray, and only Quit ends it
+## D118 — Tessaya lives in the tray, and only Quit ends it
 
 Director, 2026-11-01, on 0.1.11: the tray icon vanished. Nothing crashed. `closedLast` went true when the main
 window closed and only another non-companion window could clear it, so when the last companion window went after
@@ -3087,7 +3087,7 @@ saw nothing. Reading the path found three real defects:
   `new BrowserWindow`, so they were never in that set. With the main window closed, a reveal could land on one.
   It succeeds, on a transparent window that ignores the mouse. `activate` and `second-instance` both go through it.
 - `second-instance` created nothing when no window existed.
-- The tray's Open Baton called `ensureMain` then `show()`, with no restore, no focus and no way past Windows'
+- The tray's Open Tessaya called `ensureMain` then `show()`, with no restore, no focus and no way past Windows'
   foreground lock. A left click on the icon did nothing at all.
 
 Companion windows are now excluded, a left click and a second launch open the window, and all three take
@@ -3100,7 +3100,7 @@ the two later symptoms (a reveal with nothing seen, a relaunch with no main wind
 confirming it. `voice-turns.ndjson` now writes an `open_main` line with visibility and bounds, so the next
 report can settle it.
 
-## D120 — A log of what Baton heard
+## D120 — A log of what Tessaya heard
 
 There was no record, so his exchange could not be reviewed. `<logs>/voice-turns.ndjson` takes one line a turn:
 wake word and score, transcript, route and source, decide, first-sentence and total ms. Also its own lines for a
@@ -3123,27 +3123,27 @@ A lone filler (yeah, um, hmm, okay and the like) is dropped unless a confirmatio
 "Yes" and "no" are not on the list, because a clarifying question can be waiting on one. Limit: "yeah" in answer
 to a clarifying question is dropped too, so he has to say yes.
 
-## D122 — Stop works over Baton's voice, with no wake word
+## D122 — Stop works over Tessaya's voice, with no wake word
 
 Director: saying "stop" mid-explanation does not stop it. D102 gave the mic to the wake detector alone while
-Baton speaks. Now the VAD and recogniser also run then, on short windows, and only a short list acts: stop,
+Tessaya speaks. Now the VAD and recogniser also run then, on short windows, and only a short list acts: stop,
 quiet, enough, that's enough, cancel, shut up, and near forms. Everything else said over its voice is discarded.
 The check runs on its own path, because the `work` queue is waiting on the routing and speech he is stopping.
 
 Its own voice cannot stop it: the speaker reports each sentence, and a phrase found in the last twelve is dropped
-as `own voice`. This means Baton saying "stop the service" can eat a real stop said during that sentence; he says
+as `own voice`. This means Tessaya saying "stop the service" can eat a real stop said during that sentence; he says
 it again. A stop reaches the tray's `dismiss`, so the voice, the answer's remaining words and the card go, and a
 lesson or drive ends. The conversation window stays open, so he can carry straight on. "Thanks", "cheers" and "go
 to sleep" end the window.
 
-Over speakers the mic hears Baton as continuous speech, so a window is cut every 2 s and recognition runs about
+Over speakers the mic hears Tessaya as continuous speech, so a window is cut every 2 s and recognition runs about
 that often during an answer. Its CPU cost alongside Pocket on his laptop is unmeasured. A real stop mixed with
-Baton's voice may also transcribe as something else and do nothing, which fails safe. Neither has been tried with
+Tessaya's voice may also transcribe as something else and do nothing, which fails safe. Neither has been tried with
 a real microphone. Rejected: echo cancellation (no reference signal yet, as in D102).
 
 ## D123 — Starting the sessions when he wakes it
 
-Measured on the box with Baton's exact flags, three runs each, first text in ms:
+Measured on the box with Tessaya's exact flags, three runs each, first text in ms:
 
 |        | new process      | process started 3 s earlier | warm, second turn |
 | ------ | ---------------- | --------------------------- | ----------------- |
@@ -3162,11 +3162,11 @@ the box.
 
 ## D124 — The pill says what state he is in
 
-Director: while Baton is listening the pill stays and names the state, so he can tell whether he needs the wake
+Director: while Tessaya is listening the pill stays and names the state, so he can tell whether he needs the wake
 word again. The pill was tied to a turn and left between turns, so a window that was open looked closed. It now
 follows the window: Listening between turns, then Thinking, Speaking, Dictating or the activity, and back to
 Listening. When the window closes it says "Not listening" and "Say the wake word", for 3.5 s, after any speech
-still playing. `pillAtRest` governs resting only. While Baton talks the window's deadline rolls forward, so a
+still playing. `pillAtRest` governs resting only. While Tessaya talks the window's deadline rolls forward, so a
 long answer no longer closes it underneath him. Esc goes back to his apps once a window has heard him.
 
 ## D125 — Hands-free, one session
@@ -3198,9 +3198,9 @@ is present and never invented a zero. The tile, the thread details and the poole
 Session when a weekly window is reported with no session one, and the weekly amount shows as before. The 5-hour code
 stays, so a downgraded plan shows its window again with no change.
 
-## D127 — The operator: Claude or Codex with their own tools, and Baton's gate in front
+## D127 — The operator: Claude or Codex with their own tools, and Tessaya's gate in front
 
-Director, 2026-11-01: Baton should have complete computer use, because the operator underneath is Claude or Codex
+Director, 2026-11-01: Tessaya should have complete computer use, because the operator underneath is Claude or Codex
 with full capabilities, not just reading the surface. This replaces the read-only limit first proposed for this work.
 
 A new route, `operate`, runs the harness with files, shell and the web. It starts in the folder of the focused Explorer
@@ -3222,7 +3222,7 @@ The gate is real only with these flags, and each was found by trying it on the C
 - `--setting-sources ""` did. It also shuts out a planted `.claude/settings.json` in the folder, which asked for bypass.
 - Codex: `app-server` with `approvalPolicy: untrusted`. A decline stopped the command.
 
-Live on the box, with Baton's own session code and the real judge: a folder explained, with a planted "run this" line
+Live on the box, with Tessaya's own session code and the real judge: a folder explained, with a planted "run this" line
 in a file not acted on. A delete reached the gate and was stopped on both Claude and Codex, and the file survived. The
 planted line's result is the model's restraint, not proof of the gate.
 
@@ -3267,13 +3267,13 @@ Two live sessions in one project (for example the manager beside `baton-autosync
 for as long as both sessions are live, each titled with its own session name. When one ends, its thread leaves the
 list after about five minutes unless he wrote in it from T3. Nothing is deleted.
 
-## D130 — Baton's own window
+## D130 — Tessaya's own window
 
 Tray left-click and "Open Baton" open Baton's own window (`apps/desktop/src/baton/home/`), not T3's web app. It is a
 local page in its own BrowserWindow, like the pill and the ask box. A few plain choices per section; "More options"
 reveals the raw ones. Each side owns its settings as data (`HomeControl`): the voice side in `DesktopBatonVoice.ts`
 (`v.` ids), the companion in `ScreenCompanion.ts` (`s.` ids). The tray right-click shrinks to status, listening, mute,
-wake now, Ask, Clear, Stop, Open Baton, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
+wake now, Ask, Clear, Stop, Open Tessaya, Quit. "Open sessions" in the window opens T3 as before. Not yet there: the
 assistant's own account setting (queued separately). Copy ran through the uiux-stack copy check.
 
 ## D131 — The mark
@@ -3300,9 +3300,9 @@ opens; a turn reads the remembered answer and never waits. A login that is gone 
 one plain line on the pill. The address is masked until clicked. Not done: per-account limits in this list (the server's
 pool has them; the desktop does not reach it), and Codex has no account choice.
 
-## D133 — First-run: what Baton works through
+## D133 — First-run: what Tessaya works through
 
-Until he picks, Baton's window opens by itself and leads with "Choose what Baton works through": Claude Code and Codex,
+Until he picks, Tessaya's window opens by itself and leads with "Choose what Tessaya works through": Claude Code and Codex,
 each with whose subscription or billing it uses; API key and local model are listed as coming soon and cannot be picked
 (the real choices are the only controls). Only a tool that is installed and signed in can be chosen: `claude auth status`
 and `codex login status`, asked at startup and on "Check again" (`brainChoice.ts`, `brainDetect.ts`). The pick is saved as
@@ -3312,12 +3312,12 @@ tick was in the tray's radio list, gone since D130; the voice turn log already r
 
 ## D134 — The Check area
 
-Baton's window, More options, "Check": one button runs the checks and shows a plain row for each, with a one-line fix when
+Tessaya's window, More options, "Check": one button runs the checks and shows a plain row for each, with a one-line fix when
 it is not fine (`voice/selfChecks.ts`, pure). Microphone present, wake word models (the voice core's own
 `resolveWakeModels` and `missingVoiceAssets`), speech model, Claude Code and Codex sign-in (the first-run detection),
 screen capture permission (macOS; elsewhere none is needed) and disk free against the models still to fetch. Nothing runs
 on its own. The level is read from the stream the voice loop already has open, for four seconds, only after "Test
-microphone" is pressed, and only while Baton is listening; Baton never opens a microphone for it.
+microphone" is pressed, and only while Tessaya is listening; Tessaya never opens a microphone for it.
 
 ## D136 — A repeatable proof of the gate
 
@@ -3342,22 +3342,22 @@ Sebastian and Alfred (generic), the "Jarvis" speech prompt and the `jarvis|baton
 name), and everything under `scripts/baton/` (operator tools, deploy and auto-sync for his boxes: not in the installer).
 Facts for launch: `docs/baton/LAUNCH.md`.
 
-## D137 — Baton updates itself from this repository's releases
+## D137 — Tessaya updates itself from this repository's releases
 
 **What the app did already.** T3's `electron-updater` is in the desktop app (`updates/DesktopUpdates.ts`). In a
 packaged build it checks 15 s after start and every 4 minutes, with auto-download and install-on-quit both off, so
-nothing happened until someone pressed Download and then Install in T3's own web UI, which Baton's window did not show.
-The feed is baked in at build time: `resolveGitHubPublishConfig` reads `GITHUB_REPOSITORY`, which the Baton release
+nothing happened until someone pressed Download and then Install in T3's own web UI, which Tessaya's window did not show.
+The feed is baked in at build time: `resolveGitHubPublishConfig` reads `GITHUB_REPOSITORY`, which the Tessaya release
 workflow sets to `RabHanz/baton`, and `app-update.yml` carries that. So the feed was already this repository's, never
 upstream's. electron-updater reads the newest published, non-prerelease release; it takes the version from `latest.yml`,
 so the tag name `baton-v<version>` is fine. The one upstream link left, the startup-recovery message
 (`DesktopStartupRecovery.ts`), is now rewritten at release time by `apply-release-branding.sh`.
 
-**What Baton adds** (`apps/desktop/src/baton/update/`): a downloaded-in-the-background flow on top of that updater,
-with no change to upstream's files. When the updater reports a newer version Baton downloads it at once (install-on-quit
-was dropped in D139: it quits without relaunching). Baton's window shows "Updates" (More options while up to date, up
+**What Tessaya adds** (`apps/desktop/src/baton/update/`): a downloaded-in-the-background flow on top of that updater,
+with no change to upstream's files. When the updater reports a newer version Tessaya downloads it at once (install-on-quit
+was dropped in D139: it quits without relaunching). Tessaya's window shows "Updates" (More options while up to date, up
 front once an update is ready) with "Install and restart"; the tray gets "● Update ready: Install and restart" and a dot
-on the icon. A click while Baton is speaking, listening past a wake word, dictating or driving waits for the quiet
+on the icon. A click while Tessaya is speaking, listening past a wake word, dictating or driving waits for the quiet
 moment (checked every 5 s) and then installs. A quit by hand installs it too. The 4-minute check is upstream's and is
 left as is (it is a request for a small atom feed, not the API).
 
@@ -3368,11 +3368,11 @@ every install, and a stolen GitHub token is a stolen fleet. Files fetched by the
 mark-of-the-web, so SmartScreen warns on the first manual install only, not on updates. Signing (an Azure Trusted Signing
 or EV certificate, plus `publisherName`) is the fix, and is a Director decision with a cost.
 
-## D139 — An update restarts Baton itself, and says so first
+## D139 — An update restarts Tessaya itself, and says so first
 
-The report: an install at 15:58 left Baton down until 16:09, and it looked like a crash. Upstream installs with
-`quitAndInstall(silent, forceRunAfter)`, which relaunches; an install on quit did not, so Baton no longer installs on
-quit. Now, once an update is downloaded and Baton is quiet (not speaking, not past a wake word, not dictating, no
+The report: an install at 15:58 left Tessaya down until 16:09, and it looked like a crash. Upstream installs with
+`quitAndInstall(silent, forceRunAfter)`, which relaunches; an install on quit did not, so Tessaya no longer installs on
+quit. Now, once an update is downloaded and Tessaya is quiet (not speaking, not past a wake word, not dictating, no
 assistant run), the window opens with "Baton is updating to X and restarts at HH:MM:SS. It reopens this window." and a
 Windows notification says "Restarting in 30 seconds"; the buttons are Restart now and Later (Later asks again in four
 hours). The notification's click is Restart now; Windows toasts from Electron carry no buttons, so Later is in the window.
@@ -3389,22 +3389,22 @@ child process dying; renderer loss was only handled in the window code.
 
 **Not proven:** the real restart on Windows, the toast, and `forceRunAfter` bringing the app back, all tests-only.
 
-## D138 — Sessions in Baton's own window
+## D138 — Sessions in Tessaya's own window
 
-Baton's window leads with Sessions: the five that matter (needs him, then working, then newest), "Show all" for the
+Tessaya's window leads with Sessions: the five that matter (needs him, then working, then newest), "Show all" for the
 rest. Each row: session, project, box, state (Working, Needs you, Idle) and the account, masked until clicked. A click
 on the name opens that thread in T3's window; a row with a terminal pane has a one-line Send.
 
 **One source.** The rows are the sidebar's own: `BatonProjectsBlock` builds them with `buildBatonProjects` from the
 fleet atoms it already subscribes to (every connected environment, Claude live sessions and Herdr panes included), and
-pushes a summary to the desktop shell whenever it changes (`setBatonSessions`). Nothing polls, and Baton's window has no
+pushes a summary to the desktop shell whenever it changes (`setBatonSessions`). Nothing polls, and Tessaya's window has no
 list of its own to disagree with the sidebar. Open and Send go back through the same sidebar (`onBatonSessionRequest`)
 and take the same paths as a click there: `onOpenThread`, and `herdrSend` for text. Because the rows come from T3's
 renderer, the list fills in once T3's window has loaded its sessions view; until then the window says so and offers
 "Open sessions". A work session that is a T3 thread has no pane, so it has Open and no Send; replying there is T3's
 composer.
 
-## D140 — Baton's window v2: a sidebar of tabs
+## D140 — Tessaya's window v2: a sidebar of tabs
 
 The Director rejected the single-column settings page ("way too simple"). The window is now an app: a sidebar of Home,
 Sessions, Dictation, Assistant, Voice, Screen, Usage and Checks, a top bar with the state, and a Settings dialog (General,
@@ -3423,13 +3423,13 @@ his own hardware). Quick actions (Wake now, Ask, Clear, Stop) and Quit use the s
 The Director's words, in `VISION.md` ("An employee, not a command line", "Semi-sentient, and public"): "It is like a semi-sentient assistant that can do everything and keep track of everything." Research on the comparison products is in `research/assistant-research-2026-11-01.md`. The plan items, all inside the one assistant (D143) and tracked on RabHanz/baton issue #78:
 
 - **Monitoring.** Sessions and projects are watched so none is "left unattended forever": crashed, failed, stalled, and what each did, from state the server already holds (T3 thread state, Herdr, the fleet), never inferred by a model where an event says it.
-- **Skills, plugins and MCPs** come from the Claude and Codex harnesses it drives. Baton does not build a second plugin system.
+- **Skills, plugins and MCPs** come from the Claude and Codex harnesses it drives. Tessaya does not build a second plugin system.
 - **One memory, learnings across projects.** Every learning from work across ventures goes into the one memory as compact notes plus searchable history, so it only improves (D145 skills; D142 store).
 - **Morning brief**: what finished, what failed, what waits, what it did overnight, spoken or written on his choice.
 - **An approval list as clear as Duet's**: one place listing everything that waits for his yes, with the exact action, the job it belongs to and the permission it would use.
 - **Memory he can open and edit like Muse**: plain files he can read, correct and delete; clearing never means deleting the assistant.
 - **A coordinator over workers**: the assistant plans and hands parts to worker threads (jobs, D145), watches them and reports.
-- **Public release.** Baton ships to strangers: no private defaults, no VentureOS dependency (D135), third-party licences kept clean for either MIT or a stricter licence, which he has not chosen. Known blockers to MIT redistribution are listed in `LAUNCH.md` section 2 (the openWakeWord models and Baton's own wake models) and need his pick; the Anthropic and OpenAI terms questions in section 1 are his to check.
+- **Public release.** Tessaya ships to strangers: no private defaults, no VentureOS dependency (D135), third-party licences kept clean for either MIT or a stricter licence, which he has not chosen. Known blockers to MIT redistribution are listed in `LAUNCH.md` section 2 (the openWakeWord models and Tessaya's own wake models) and need his pick; the Anthropic and OpenAI terms questions in section 1 are his to check.
 
 What it does not do: post to his social accounts. VentureOS owns phones, warm-up and posting rules; no integration is built until the two managers agree it.
 
@@ -3446,35 +3446,35 @@ length. This is the memory of the assistant in D143, and until D143 ships it als
 
 **Why.** "It couldn't type it because it doesn't have the context of all of its tools and memories and everything in
 one file." The router sends each sentence to answer, look, drive, operate or teach, each with its own session and a
-partial context, so no stage can do what another stage just said. Baton becomes one long-lived agent that holds the
+partial context, so no stage can do what another stage just said. Tessaya becomes one long-lived agent that holds the
 whole conversation and every tool, decides for itself and uses several tools in one turn.
 
 **The agent** is one warm session on the seam that exists: the user's own `claude` (`-p`, stream-json in and out, the
-operator session of D127) or `codex app-server`. It starts when Baton starts and again at a wake word, stays alive between
+operator session of D127) or `codex app-server`. It starts when Tessaya starts and again at a wake word, stays alive between
 turns, and is recycled after about 40 turns, six hours idle, or a failure; a new session is seeded from the
 conversation store (the last six turns in full, the current target, a one-paragraph summary of older days) so a restart or a
 recycle loses nothing. No separate router call. The router stays as the fallback behind the setting below.
 
-**Tools.** Baton's own tools are served by a local MCP server **inside Baton's main process**, streamable HTTP on
+**Tools.** Tessaya's own tools are served by a local MCP server **inside Tessaya's main process**, streamable HTTP on
 127.0.0.1 with a random port and a per-session bearer token, passed with `--mcp-config` (Claude) or the Codex MCP
 config. Rejected: a stdio MCP server, which needs a second packaged program and a channel back to the main process for the
 screen, the pointer, the fleet and the store; and the harness's built-ins alone, which have no screen, no pointer, no
 sessions. The harness's own tools stay for what they do well: Read, Glob, Grep, Bash, Write, Edit, WebFetch, WebSearch.
-Baton's tools: `screen_capture` (the existing consent), `click`, `double_click`, `type_text`, `press_keys`, `scroll`,
+Tessaya's tools: `screen_capture` (the existing consent), `click`, `double_click`, `type_text`, `press_keys`, `scroll`,
 `drag`, `wait`, `sessions_list`, `session_show`, `session_send` (through the intent run, so the same §24 gates as typing
 it), `fleet_status` (answers from state, §20, never by interrupting a session), `dictation_start`, `dictation_stop`,
 `memory_search`, `remember_target`. The agent is told each turn the context the founding document's §14 ranks: the explicit
 target in the sentence, the current target of the conversation, the focused session, the focused window and field, then the
 most recent session; it asks a short question only when the ambiguity matters.
 
-**The gate does not change shape.** Every tool call, built-in or Baton's, reaches `judgeToolCall` (D127) before it runs,
-because the MCP tools execute in Baton's own process and the harness's go through the permission seam already there.
+**The gate does not change shape.** Every tool call, built-in or Tessaya's, reaches `judgeToolCall` (D127) before it runs,
+because the MCP tools execute in Tessaya's own process and the harness's go through the permission seam already there.
 Extended for the new tools: reading is allowed (`sessions_list`, `session_show`, `fleet_status`, `memory_search`, `wait`);
 `screen_capture` runs the unchanged capture consent; `click`, `scroll`, `double_click` are routine; `type_text` is
 routine, with no Run it, when it types plain text, which is the rule that makes "type what you said" work on the first
 try; it asks when the text trips the high-risk list or `dangerousCommand`, when the focused window is a shell or its
 class cannot be told (`shellCheck`), or when the turn has read something outside the conversation and the text did not come
-from it (text that is his words or Baton's own earlier reply, found in the store, counts as his); `press_keys` with Enter
+from it (text that is his words or Tessaya's own earlier reply, found in the store, counts as his); `press_keys` with Enter
 or a send, `drag`, and anything that deletes, sends, pays or publishes asks; `session_send` is allowed and left to the intent
 gates; dictation is local and reversible. High risk is a spoken yes or no, with the box beside it, default no when the
 question runs out; the wake word alone never authorises it (§24); a refusal is said in plain words, aloud and on the pill,
@@ -3487,7 +3487,7 @@ on a model. Mute and the hotkeys too.
 tells it to say one short line before a tool that will take over a second ("Looking."), and to stay silent about tool churn
 (§20: progress silent; needs input, approval, completion and failure spoken). Speculative thinking at a pause comes later, as
 a follow-up, not in this build.
-_Target:_ from the end of his speech to the first sound of Baton's voice, **p50 1.5 s and p90 3 s for a plain answer**, and a
+_Target:_ from the end of his speech to the first sound of Tessaya's voice, **p50 1.5 s and p90 3 s for a plain answer**, and a
 spoken first line within 1.5 s p50 for a turn that uses tools. _Measured_ from `voice-turns.ndjson`: each agent turn writes
 `agent_turn {endOfSpeechAt, firstTokenMs, firstAudioMs, tools:[name, ms], totalMs, route:"agent"}`, and
 `scripts/baton/latency-report.mjs` prints p50, p90 and the slowest five for the last 50 turns. I run it on his laptop only
@@ -3500,7 +3500,7 @@ and the router and its stages are deleted in a later change, not this one. Small
 the tool table and the gate rules, with tests; (3) the warm session, seeding and recycling; (4) the voice wiring and the
 streaming; (5) the latency fields and the report; (6) the proof script extended.
 
-**Not decided here:** Codex's handling of MCP tool approvals through app-server; the gate runs in Baton's process either way,
+**Not decided here:** Codex's handling of MCP tool approvals through app-server; the gate runs in Tessaya's process either way,
 so the design does not depend on it, but the Codex path ships after the Claude one.
 
 **D143 push 1.** Every reply (answer, look, teach, drive, operate, clarify, and the sessions side's act replies) goes into
@@ -3510,7 +3510,7 @@ a shell, a screen that changed. A drive logs its plan (`drive_plan`) and what ca
 logged. The router reads its recent lines from the store, full replies cut only at 600 characters. A dictation is a stub
 with its length. `scripts/baton/latency-report.mjs <voice-turns.ndjson>` prints p50, p90 and the slowest turns.
 
-**D143 push 2.** `agent/batonMcp.ts` serves Baton's tools over MCP on 127.0.0.1, a random port, with the session's token on
+**D143 push 2.** `agent/batonMcp.ts` serves Tessaya's tools over MCP on 127.0.0.1, a random port, with the session's token on
 every request; a request without it, with the wrong host, or from a browser (an Origin header) is refused, and `close()`
 ends it. `agent/agentGate.ts` runs `judgeToolCall` inside every tool handler, with a spoken or clicked yes (high risk: no
 by default), and marks the turn tainted after a screenshot, a file read, a command, a fetch or a search. `agent/batonTools.ts`
@@ -3526,7 +3526,7 @@ hours idle, re-seeded, so nothing is lost. `agent/agentPrompt.ts` is what it is 
 quiet about progress, §24's lines, and "type what you said" as a recipe (screenshot, click the box, `type_text` exactly the
 words from the conversation). A test seeds a fixture conversation and checks that the session's first prompt holds the last
 reply in full and that the turn goes back into the file. `claudeVision` takes an `mcp` option: a private config file naming
-Baton's tool server and its token, passed with `--mcp-config --strict-mcp-config`, removed with the session.
+Tessaya's tool server and its token, passed with `--mcp-config --strict-mcp-config`, removed with the session.
 
 ## D144 — The assistant's hands (folds issue #52 into D143)
 
@@ -3546,15 +3546,15 @@ harness is built with a dry run on fixtures that touches no pointer, so the real
 Push order from here: 4 the host and the voice wiring behind "One assistant (new)"; 5 the hands tools and the harness;
 6 the proof script for every new tool.
 
-## D145 — Jobs: Baton takes long work like an employee (design; builds after the hands loop)
+## D145 — Jobs: Tessaya takes long work like an employee (design; builds after the hands loop)
 
 **A job is a T3 thread with a record.** The worker is an ordinary T3 thread on a server (`BatonEngine` makes it), so it
-survives Baton closing, shows in T3's phone app, and can be opened in T3. A server-side service, `BatonJobService`
+survives Tessaya closing, shows in T3's phone app, and can be opened in T3. A server-side service, `BatonJobService`
 (`apps/server/src/baton`), owns the job index in `baton.sqlite`: id, title, goal, thread, project, environment, account,
 written permissions, standing grants, schedule link, created and last-activity times. Status is not stored: it is read from
 the thread through the §10 ladder (running, needs you, done, failed), so it cannot drift. The same service methods serve the
-desktop tool, the web and Baton windows, the phone and an MCP tool on the server, per AGENTS.md: `create`, `list` (and a
-stream), `get`, `answer`, `stop`, `schedule`, `grant`, `revoke`. A job started on his laptop's own backend ends if Baton is
+desktop tool, the web and Tessaya windows, the phone and an MCP tool on the server, per AGENTS.md: `create`, `list` (and a
+stream), `get`, `answer`, `stop`, `schedule`, `grant`, `revoke`. A job started on his laptop's own backend ends if Tessaya is
 quit; started on a box (where the sessions live) it runs on. The default is a box, and a card says where.
 
 **Scheduled and recurring: T3's own service.** `ScheduledTaskService` already persists tasks (`scheduled_tasks` in the
@@ -3581,7 +3581,7 @@ first prompt), plus long-term notes (short facts about him and his work) beside 
 that need it.
 
 **Hands: the browser as well as the screen.** Per step the agent picks the more reliable: for a web page, the page's DOM and
-accessibility tree first (T3's preview browser, `apps/server/src/preview`, which is already Baton's shared browser, D2; the
+accessibility tree first (T3's preview browser, `apps/server/src/preview`, which is already Tessaya's shared browser, D2; the
 real Chrome through Claude in Chrome stays for flows that need a real fingerprint, D3, laptop only); for a native app, UIA
 first and pixels last (D144). The context line tells the agent which kind of window has focus; the gate is the same.
 
@@ -3596,10 +3596,10 @@ the account with most headroom, from the pool), and a per-job spend limit's unit
 
 **D143 push 4.** The setting "One assistant (new)" (Assistant, More options; `oneAssistant` in the screen file, off). On, every
 sentence except stop and its kin (`instantDecision` control, which never waits on a model) goes to the one assistant:
-`ScreenCompanion` starts Baton's tool server and a warm session for it, with the host that does the work (screenshot through the
+`ScreenCompanion` starts Tessaya's tool server and a warm session for it, with the host that does the work (screenshot through the
 existing consent, the pointer and keyboard through the input driver, sessions through the voice side's list and the intent path,
 dictation through the sidecar, memory search over the conversation file). The harness's own tools go through the same gate
-(`harnessGate`); Baton's tools through it inside the tool server, so a call is asked about once, in the tool. The reply streams:
+(`harnessGate`); Tessaya's tools through it inside the tool server, so a call is asked about once, in the tool. The reply streams:
 the first sentence goes to the speaker as it is written. Each turn writes `agent_turn` to `voice-turns.ndjson` with
 `firstTokenMs`, `firstAudioMs`, `totalMs` and the tools it used, measured from the transcript (the voice core does not hand over
 the moment his speech ended, so the time from his last word is these plus recognition; `latency-report.mjs` reads them).
@@ -3609,11 +3609,11 @@ and stays the default.
 **D143 push 5, the hands (D144).** New tools: `click_element` (a control by its name, through the accessibility tree: UIA first,
 pixels last) and `wait_for` (until a named control is on screen). `ui_tree`, a dump of the whole tree, waits for a command in the
 dictation sidecar, which today can only locate a named control near a point; it is not faked. The mouse stays his: if the pointer
-is not where Baton left it, the next move is refused with a plain line (`agent/pointerGuard.ts`), and Escape ends the turn at
+is not where Tessaya left it, the next move is refused with a plain line (`agent/pointerGuard.ts`), and Escape ends the turn at
 once. Two changes to the gate's taint rule, to make a see-act-check loop usable, and flagged for his say: a key or chord (not
 Enter, not a sensitive one) no longer asks after a read, since it carries nothing out; and one explicit yes to typing after a
 read covers the rest of that turn's typing, while Enter, sends, fetch, search, a command line and high risk still ask every
-time. Text that is his own words or Baton's reply still types with no question. The harness: `scripts/baton/computer-use-harness.sh
+time. Text that is his own words or Tessaya's reply still types with no question. The harness: `scripts/baton/computer-use-harness.sh
 dry` replays recorded traces through the real tool server and gate, no pointer; `real <out>` runs the six tasks three times on the
 Windows desktop and refuses unless `LAB_AWAY` names a time within four hours and `BATON_LAB=1`. Finished is automatic for task one
 only; the rest is read from the frames, and misclicks are counted in review. Not yet measured: any of it on his laptop.
@@ -3635,9 +3635,9 @@ asked again when the window with the keyboard or the box changes, after Enter or
 turns by default, dollars only for a metered key), standing permissions as a log, a phase, and a list of revisions (who said what, when, by
 voice, text or in the thread). The job's status is read from the fleet's state, never stored; `jobGroupFor` puts a job waiting for his OK in
 the group that needs him.
-_The flow:_ he gives a task by voice; Baton creates the worker thread through the engine (`launchThread` takes an `interactionMode`, here
+_The flow:_ he gives a task by voice; Tessaya creates the worker thread through the engine (`launchThread` takes an `interactionMode`, here
 plan mode) with a first message that carries his words verbatim, then the written permissions, then "plan first, do not start"
-(`workerFirstMessage`). The plan and its questions are written in that thread. Baton says one short line ("The plan for X is ready in its
+(`workerFirstMessage`). The plan and its questions are written in that thread. Tessaya says one short line ("The plan for X is ready in its
 thread.") and the Jobs page shows "Waiting for your OK" with Open thread and Approve. His refinements, by text or voice in the thread or
 through "tell it to", are appended to the job's revisions and the plan is made again. Work starts only on his explicit agreement (spoken "go
 ahead", the Approve button, or a reply in the thread), or at once when that job holds a standing permission to start (explicit, revocable,
@@ -3682,13 +3682,13 @@ list matches. The public build starts with the neutral default.
 
 The Director's request: the assistant works efficiently with an executive and specialist way of thinking, from an operating system he owns. Design, for the coordinator and the planning step of every job (D145):
 
-- **A pack of plain files the user owns**, in the user data folder, outside the repository and the installer: an executive file (how the top agent frames and decides), one file per specialist role (for example technical, marketing, research, operations), and the user's own full operating-system document kept as a reference they can open and edit. Loaded as a skill or memory pack (D146), viewable and editable in Baton's window.
+- **A pack of plain files the user owns**, in the user data folder, outside the repository and the installer: an executive file (how the top agent frames and decides), one file per specialist role (for example technical, marketing, research, operations), and the user's own full operating-system document kept as a reference they can open and edit. Loaded as a skill or memory pack (D146), viewable and editable in Tessaya's window.
 - **The framing every plan goes through.** (1) State the job in solution-free words with its functional, emotional and social side. (2) List the desired outcomes as direction, measure, object and circumstance. (3) Lay out the job's steps as the plan's skeleton (define, locate, prepare, confirm, execute, monitor, modify, conclude). (4) Name the highest-leverage point reachable, preferring rules, information flow and feedback loops over parameters. (5) Decide build or don't build: which outcome it serves, how underserved it is, whether it strengthens what exists, the whole cost, and how reversible it is (decide fast when reversible, slowly when not); "don't build" is a valid result with its reason. (6) Brief each specialist worker as persona, tools, memory, constraints and triggers, with the mental model of its role. (7) Ask him only the questions that change the decision.
 - **Workers report outcomes, not activity:** what changed against each desired outcome, the evidence, what is next, what blocks. The job card shows outcomes first.
 - **Cost by routing (value per unit of spend, not lowest spend):** mechanical and repeatable work goes to cheaper models, judgment and planning to the strong one; subscription jobs are capped by time and turns (D145); every job card shows what it used.
 - **Private by construction.** The user's own pack lives only in their user data folder. A test fails the build if the repository or the installer contains it. The public build ships a neutral default pack written from scratch (outcome first, frame the job, find the leverage, decide build or not, brief specialists, report outcomes) that a user replaces with their own.
 
-**D139, update label.** An install over a running Baton stops it by force, so the next start found its marker and logged a crash. The start now compares the
+**D139, update label.** An install over a running Tessaya stops it by force, so the next start found its marker and logged a crash. The start now compares the
 marker's version with its own: a different version logs `replaced-by-update {from, to}`; `previous-run-ended-badly` is kept for the same version (or one it cannot tell).
 
 **D143, shipped as the default.** The one assistant is on by default (setting "One assistant"). When it fails before saying anything (the harness will not start, or dies), the sentence goes to the older router and the card says "The one assistant couldn't answer, so the older router is handling this." (note `agent_fallback`). A stop he gives, or a failure after it has begun to speak, is not retried. Switching the setting off sends everything to the router, as before. Not proven: a live voice turn on his machine.
@@ -3699,7 +3699,7 @@ marker's version with its own: a different version logs `replaced-by-update {fro
 
 **D145 J2b (the desktop's job tools).** The assistant gets `jobs_list`, `job_start`, `job_refine`, `job_agree`, `job_grant` and `job_revoke`. Main asks the sidebar's window to make the job RPCs (the same bridge the intent calls use, request kind `job`); the window picks the project by the name he said and the first ready Claude as the worker, at `approval-required`, so whatever the worker would ask permission for becomes a card that needs him. The gate: a start, a refinement and an agreement run on his words and ask after a read; an agreement after a read always asks; `job_grant` asks every time and counts as high risk; `job_revoke` is free. The worker's model choice from the account pool by headroom is still open (D145 "not decided"). Never run live.
 
-**D145 J3 (the Jobs tab).** A Jobs tab in Baton's window, drawn by the window's generic rows (no new drawing code): cards grouped Needs you, Running, Failed, Done, each with its status, what it may do, and one button: Approve for a plan waiting for his OK (the same `job agree` as the voice path), otherwise Open T3. The cards are read through the sidebar's window (job list RPC) once he presses Load, then every 15 s while Tessaya runs; nothing opens T3's window unasked. Not here: Answer, Stop, Schedule and Standing permission buttons, and the reactor that notices a finished plan by itself (J4).
+**D145 J3 (the Jobs tab).** A Jobs tab in Tessaya's window, drawn by the window's generic rows (no new drawing code): cards grouped Needs you, Running, Failed, Done, each with its status, what it may do, and one button: Approve for a plan waiting for his OK (the same `job agree` as the voice path), otherwise Open T3. The cards are read through the sidebar's window (job list RPC) once he presses Load, then every 15 s while Tessaya runs; nothing opens T3's window unasked. Not here: Answer, Stop, Schedule and Standing permission buttons, and the reactor that notices a finished plan by itself (J4).
 
 **D146 monitoring (built, first step).** `watchFleet` (`packages/baton-shared/src/watch.ts`, pure, tested) reads the fleet and flags, from state and timestamps only: failed, account out of room, offline, stalled (working or starting and no activity in any thread for 30 minutes), waiting for his answer for 30 minutes, and finished but never looked at for 4 hours; settled and archived work is ignored, a busy thread keeps its session from being called stalled, and each finding carries what the session last did from its synopsis. RPC `baton.watch.get` (read scope) and the assistant's `watch_report` tool (answers "is anything stuck", "did anything fail overnight"). Thresholds are constants for now. Not yet: an unprompted notice or spoken line when a finding first appears, and the morning brief built on it.
 
@@ -3711,7 +3711,7 @@ marker's version with its own: a different version logs `replaced-by-update {fro
 
 **D146 approvals list.** One place for everything waiting for his yes: a job's plan that wants his OK, and a session that has asked him something, each with the exact action and the permission it would use (`buildApprovals`, pure). The Approvals tab shows them first on the list: Approve and Deny for a plan (Approve is the same agree as the voice path; Deny stops the worker, which has done nothing yet), Open T3 for a session's own question, which only he can answer in its thread. The assistant reads it with `approvals_list` and acts on a plan only through `job_agree` or `job_stop` after he says so; the gate is unchanged, so every high-risk action still asks aloud, with a default of no, when it happens. Not in the list: a gate question is spoken and answered on the spot, so it is never waiting; and a session's tool approval cannot be answered from here yet, only opened.
 
-**D148 built: the neutral pack and its loader.** `packages/baton-shared/src/osPack.ts` ships a neutral default written from scratch (the executive framing and four roles: engineering, marketing, research, operations) as data. `apps/server/src/baton/OperatingSystemPack.ts` reads the user's own pack from `<userdata>/operating-system/` (`executive.md`, `roles/<name>.md`; files over 64 KB or with bad names are ignored) and merges it over the default, user files winning by name, read fresh at each job. `startJob` puts the frame after his words and before the written permissions, so every plan begins with the job brief. The guard: `scripts/baton/private-markers.txt` holds SHA-256 hashes of four-word phrases from a private document (none listed yet; the phrases are never written down), and `privatePack.guard.test.ts` fails, naming only the file, if any appears in Baton's own tracked files. The people who hold the private pack add its hashes; nothing here contains it. Not built: `import-operating-system.mjs` (distilling his document with his own Claude login), `parseJobBrief` (a plan without the sections is not ready), editing the pack in the window, and the cost-routing table.
+**D148 built: the neutral pack and its loader.** `packages/baton-shared/src/osPack.ts` ships a neutral default written from scratch (the executive framing and four roles: engineering, marketing, research, operations) as data. `apps/server/src/baton/OperatingSystemPack.ts` reads the user's own pack from `<userdata>/operating-system/` (`executive.md`, `roles/<name>.md`; files over 64 KB or with bad names are ignored) and merges it over the default, user files winning by name, read fresh at each job. `startJob` puts the frame after his words and before the written permissions, so every plan begins with the job brief. The guard: `scripts/baton/private-markers.txt` holds SHA-256 hashes of four-word phrases from a private document (none listed yet; the phrases are never written down), and `privatePack.guard.test.ts` fails, naming only the file, if any appears in Tessaya's own tracked files. The people who hold the private pack add its hashes; nothing here contains it. Not built: `import-operating-system.mjs` (distilling his document with his own Claude login), `parseJobBrief` (a plan without the sections is not ready), editing the pack in the window, and the cost-routing table.
 
 **D146 skills, plugins and MCP servers in the window.** A Skills tab lists what Claude Code and Codex already have on this computer: Claude plugins (from the `enabledPlugins` of its settings file, with a switch), skills of both (from their `skills/*/SKILL.md`), and MCP servers of both (`mcpServers` in `~/.claude.json`, `[mcp_servers.*]` in Codex's `config.toml`). Tessaya adds no plugin system. The one switch it flips is Claude's own `enabledPlugins` for a plugin the file already lists: it keeps every other key, writes a `.tessaya-backup` first, refuses a file it cannot read or a plugin not listed, and says the change applies to the next session. Skills and MCP servers are shown, not switched: Claude and Codex define no per-file switch for them, and editing their server tables by hand would risk his config. The config folder follows `CLAUDE_CONFIG_DIR`, so the default account's; per-account folders are not listed. Never run against his real files.
 
