@@ -1,6 +1,4 @@
-// @effect-diagnostics globalTimers:off nodeBuiltinImport:off
-import * as NodeOS from "node:os";
-
+// @effect-diagnostics globalTimers:off
 /**
  * Overlay windows (pointer, cards, pill, toasts) can be kept out of every screen capture with content
  * protection. That also hides them from the person's own screenshot tool and from screen sharing, so it is a
@@ -47,10 +45,10 @@ export const setHideFromCapture = (on: boolean): void => {
  * from capture for an instant (content protection), which keeps it on screen and in place: hiding a window and
  * showing it again left the pill's first mouse press lost. Elsewhere the windows are hidden for the grab.
  */
-export const hiddenForCapture = async <T>(fn: () => Promise<T>): Promise<T> => {
+export const hiddenForCapture = async <T>(fn: () => Promise<T>, platform: string): Promise<T> => {
   if (wanted()) return fn();
   const live = [...windows].filter((w) => w.isDestroyed?.() !== true && w.isVisible?.() === true);
-  const excludes = NodeOS.platform() === "win32" || NodeOS.platform() === "darwin";
+  const excludes = platform === "win32" || platform === "darwin";
   for (const w of live) {
     if (excludes) w.setContentProtection(true);
     else w.hide?.();

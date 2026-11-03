@@ -112,7 +112,7 @@ void Electron.app.whenReady().then(async () => {
     await sleep(2000);
     // Tessaya looks at the screen on a turn: its windows are hidden for the grab and shown again.
     if (mode === "listening after a screen look") {
-      await hiddenForCapture(async () => sleep(300));
+      await hiddenForCapture(async () => sleep(300), "win32");
       await sleep(500);
     }
     let win = await pillWindow();
