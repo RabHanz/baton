@@ -97,8 +97,8 @@ const run = async (scenario: EchoScenario): Promise<EchoRun> => {
 };
 
 try {
-  const result = await evaluateGuard({ seconds: Number(process.argv[3] ?? 60), levelsDb: [-6, 0, 6, 12], rooms: ROOMS, source: realSpeech, run });
-  console.log(JSON.stringify({ vad: VAD, floorK: FLOOR_K, ...result }));
+  const result = await evaluateGuard({ seconds: Number(process.argv[3] ?? 60), levelsDb: [-6, 0, 6, 12], rooms: ROOMS, source: realSpeech, run, windowS: Number(process.env.AEC_WINDOW_S ?? 0.42) });
+  console.log(JSON.stringify({ vad: VAD, floorK: FLOOR_K, windowS: process.env.AEC_WINDOW_S ?? 0.42, ...result }));
   const ok = result.falsePer10Min <= 1 && (result.recall["0"] ?? 0) >= 0.9;
   console.log(ok ? "meets the target" : "does not meet the target (under 1 false per 10 min and recall >= 0.9 at 0 dB)");
 } finally {
