@@ -13,6 +13,7 @@ const fixture = (
     running: boolean;
     switchWorks: boolean;
     twinRunning: boolean;
+    twinArchived: boolean;
   }> = {},
 ) => {
   const calls: string[] = [];
@@ -22,7 +23,11 @@ const fixture = (
       Effect.succeed(
         id === MAIN
           ? { instanceId: instance, running: over.running ?? false }
-          : { instanceId: "baton-live", running: over.twinRunning ?? false },
+          : {
+              instanceId: "baton-live",
+              running: over.twinRunning ?? false,
+              archived: over.twinArchived ?? false,
+            },
       ),
     selectLive: (id) =>
       Effect.sync(() => {
@@ -102,5 +107,14 @@ describe("retiring a handoff session", () => {
           })).state,
         ).toBe("refused");
       }),
+  );
+
+  it.effect("an already archived twin is not archived again, and the delete still runs", () =>
+    Effect.gen(function* () {
+      const f = fixture({ mainInstance: "baton-live", twinArchived: true });
+      const result = yield* run(f, { twinOnly: true });
+      expect(result).toMatchObject({ state: "retired", archived: "already", deleted: "done" });
+      expect(f.calls).toEqual(["undo", `delete:${TWIN}`]);
+    }),
   );
 });
