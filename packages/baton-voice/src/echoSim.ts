@@ -112,7 +112,12 @@ export interface EchoRun {
  * Plays `tts` through the room into a mic with `interruptions` mixed in, and returns when the guard heard someone over it.
  * `unknownDelayMs` is what the guard is not told: the output device and the air.
  */
-export type EchoScenario = Omit<Parameters<typeof runEcho>[0], "frames" | "trace">;
+export type VoiceSource = (seconds: number, seed: number, pitchHz: number) => Float32Array;
+
+export type EchoScenario = Omit<Parameters<typeof runEcho>[0], "frames" | "trace"> & {
+  /** Where his voice comes from (default: the synthetic speech-like signal). */
+  readonly source?: VoiceSource;
+};
 
 /** The microphone signal for `tts` played through the room, with the interruptions mixed in. */
 export const synthMic = (input: EchoScenario): Float32Array => {
@@ -124,7 +129,7 @@ export const synthMic = (input: EchoScenario): Float32Array => {
   const mic = new Float32Array(input.tts.length);
   for (let i = 0; i < mic.length; i += 1) mic[i] = echo[i]! * echoGain + (rand() - 0.5) * 2 * input.noiseRms;
   for (const it of input.interruptions) {
-    const speech = speechLike(it.seconds, input.seed + Math.round(it.atS * 100), it.pitchHz);
+    const speech = (input.source ?? speechLike)(it.seconds, input.seed + Math.round(it.atS * 100), it.pitchHz);
     let s = 0;
     for (const v of speech) s += v * v;
     const gain = (input.echoRms * 10 ** (it.overEchoDb / 20)) / Math.sqrt(s / speech.length + 1e-12);
@@ -174,39 +179,49 @@ export interface GuardEvaluation {
   readonly secondsPlayed: number;
 }
 
-const ROOMS: ReadonlyArray<readonly [number, number]> = [
+export type Room = readonly [delayMs: number, rt60Ms: number];
+
+const ROOMS: ReadonlyArray<Room> = [
   [140, 250],
   [90, 400],
   [200, 180],
 ];
 
 /** The measurement behind docs/baton/BARGE_IN.md: the same rooms and levels every run. */
-export const evaluateGuard = (
-  input: { readonly seconds?: number; readonly levelsDb?: ReadonlyArray<number>; readonly run?: (scenario: EchoScenario) => EchoRun } = {},
-): GuardEvaluation => {
-  const runIt = input.run ?? ((scenario: EchoScenario) => runEcho({ ...scenario, frames: 6 }));
+export const evaluateGuard = async (
+  input: {
+    readonly seconds?: number;
+    readonly levelsDb?: ReadonlyArray<number>;
+    readonly rooms?: ReadonlyArray<Room>;
+    readonly source?: VoiceSource;
+    readonly run?: (scenario: EchoScenario) => EchoRun | Promise<EchoRun>;
+  } = {},
+): Promise<GuardEvaluation> => {
   const seconds = input.seconds ?? 60;
+  const rooms = input.rooms ?? ROOMS;
+  const voice = input.source ?? speechLike;
+  const runIt = input.run ?? ((scenario: EchoScenario) => runEcho({ ...scenario, frames: 6 }));
   let alarms = 0;
   let played = 0;
-  ROOMS.forEach(([delay, rt60], i) => {
-    const tts = speechLike(seconds, 11 + i, 105 + i * 8);
-    const run = runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [] });
+  for (const [i, [delay, rt60]] of rooms.entries()) {
+    const tts = voice(seconds, 11 + i, 105 + i * 8);
+    const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [], source: input.source });
     alarms += run.detections.length;
     played += run.seconds;
-  });
+  }
   const recall: Record<string, number> = {};
   for (const db of input.levelsDb ?? [-6, 0, 6]) {
     let hit = 0;
     let total = 0;
-    ROOMS.forEach(([delay, rt60], i) => {
-      const tts = speechLike(seconds, 11 + i, 105 + i * 8);
+    for (const [i, [delay, rt60]] of rooms.entries()) {
+      const tts = voice(seconds, 11 + i, 105 + i * 8);
       const interruptions = Array.from({ length: Math.floor((seconds - 12) / 6.5) }, (_, k) => ({ atS: 8 + k * 6.5, seconds: 1.5, overEchoDb: db, pitchHz: 170 + k * 12 }));
-      const run = runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions });
+      const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions, source: input.source });
       for (const it of interruptions) {
         total += 1;
         if (run.detections.some((t) => t >= it.atS && t <= it.atS + 0.3 + 6 * 0.02)) hit += 1;
       }
-    });
+    }
     recall[String(db)] = Math.round((hit / total) * 100) / 100;
   }
   return { falsePer10Min: Math.round((alarms / played) * 6_000) / 10, recall, secondsPlayed: played };
