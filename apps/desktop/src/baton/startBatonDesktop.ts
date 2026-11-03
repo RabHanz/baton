@@ -29,6 +29,7 @@ import {
   isBad,
   markHealthy,
 } from "@t3tools/baton-shared/startGuard";
+import { releasesUrl } from "@t3tools/baton-shared/repo";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
@@ -112,7 +113,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           cancelId: 1,
         });
         if (answer.response === 0)
-          void Electron.shell.openExternal("https://github.com/RabHanz/baton/releases");
+          void Electron.shell.openExternal(releasesUrl(process.env));
       });
     }
     Electron.app.on("render-process-gone", (_event, contents, details) =>
