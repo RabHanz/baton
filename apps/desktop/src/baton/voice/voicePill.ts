@@ -293,15 +293,22 @@ export const createVoicePill = (input: {
       // A test aid only.
     }
   };
+  const stopHitTest = () => {
+    if (hitTimer !== null) clearInterval(hitTimer);
+    hitTimer = null;
+    takingMouse = false;
+  };
+  const startHitTest = () => {
+    if (hitTimer !== null) return;
+    hitTimer = setInterval(hitTest, 40);
+    hitTimer.unref();
+  };
   /** The window takes the mouse exactly while the cursor is over the capsule, decided here, not by forwarded events. */
   const hitTest = () => {
     const target = window;
-    if (target === null || target.isDestroyed() || !target.isVisible()) {
-      if (hitTimer !== null) clearInterval(hitTimer);
-      hitTimer = null;
-      takingMouse = false;
-      return;
-    }
+    if (target === null || target.isDestroyed()) return stopHitTest();
+    // Hidden for a moment (a screen grab hides every Tessaya window): keep the timer, or the pill comes back click-through.
+    if (!target.isVisible()) return;
     if (dragTimer !== null) return;
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
@@ -480,16 +487,14 @@ export const createVoicePill = (input: {
     const target = window;
     const display = Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint());
     void ready.then(() => {
-      if (target === null || target.isDestroyed() || target.isVisible()) return;
+      if (target === null || target.isDestroyed()) return;
+      if (target.isVisible()) return startHitTest();
       const at = placeFor(display);
       target.setBounds({ ...at, width: WIDTH, height: HEIGHT });
       takingMouse = false;
       target.setIgnoreMouseEvents(true, { forward: true });
       target.showInactive();
-      if (hitTimer === null) {
-        hitTimer = setInterval(hitTest, 40);
-        hitTimer.unref();
-      }
+      startHitTest();
     });
   };
 
@@ -504,6 +509,7 @@ export const createVoicePill = (input: {
     const closing = window;
     hideTimer = setTimeout(() => {
       if (!closing.isDestroyed()) closing.hide();
+      stopHitTest();
     }, CLOSE_MS);
   };
 
@@ -761,6 +767,7 @@ export const createVoicePill = (input: {
     },
     setEdge: () => {
       if (window !== null && !window.isDestroyed()) window.hide();
+      stopHitTest();
       if (input.rest() && state.phase === "idle") {
         raise();
         call(`window.pill.rest(${JSON.stringify(why)})`);
