@@ -7,7 +7,7 @@
  * display, kept out of screenshots by content protection (Windows, macOS) or hidden for the
  * capture (Linux). Windows go after two idle minutes, so this layer never stops the app quitting.
  */
-import { overlaysVisibleToCapture, protectFromCapture } from "../captureProtection.ts";
+import { hiddenForCapture, protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
@@ -122,6 +122,7 @@ window.card=(c)=>{const on=!!(c&&(c.text||c.kicker));card.classList.toggle('on',
 // The page has no bridge to main: console lines are the message, and main answers by taking the mouse while it is over the card.
 card.addEventListener('mouseenter',()=>console.log('baton:card:hover:1'));
 card.addEventListener('mouseleave',()=>console.log('baton:card:hover:0'));
+card.addEventListener('click',e=>{if(!e.target.closest('button'))console.log('baton:card:act:stop');});
 $('cp').onclick=()=>{console.log('baton:card:copy');$('cp').textContent='Copied';setTimeout(()=>{$('cp').textContent='Copy';},1200);};
 window.timer=(ms)=>{const b=$('bar');b.getAnimations().forEach(a=>a.cancel());b.animate([{transform:'scaleX(1)'},{transform:'scaleX(0)'}],{duration:ms,easing:'linear',fill:'forwards'});};
 window.marks=(list)=>{const box=$('mks');box.replaceChildren();for(const m of list){const e=document.createElement('div');e.className='mk'+(m.state?' '+m.state:'');e.style.left=m.x+'px';e.style.top=m.y+'px';e.textContent=m.n;box.appendChild(e);}};
@@ -199,7 +200,7 @@ const IDLE_CLOSE_MS = 120_000;
 const RETREAT_MS = 900;
 
 export const createPointerOverlay = (
-  platform: string,
+  _platform: string,
   onAction: (id: string) => void = () => undefined,
 ): PointerOverlay => {
   const windows = new Map<number, { win: Electron.BrowserWindow; ready: Promise<void> }>();
@@ -365,21 +366,7 @@ export const createPointerOverlay = (
       await clear();
     },
     clear,
-    hiddenFor: async (fn) => {
-      // Content protection keeps the layer out of a capture, unless a test run turned it off to record itself.
-      if ((platform === "win32" || platform === "darwin") && !overlaysVisibleToCapture())
-        return fn();
-      const visible = [...windows.values()].filter(
-        ({ win }) => !win.isDestroyed() && win.isVisible(),
-      );
-      for (const { win } of visible) win.hide();
-      try {
-        await new Promise((r) => setTimeout(r, 120));
-        return await fn();
-      } finally {
-        for (const { win } of visible) if (!win.isDestroyed()) win.showInactive();
-      }
-    },
+    hiddenFor: hiddenForCapture,
     dispose: () => {
       stopIdle();
       closeWindows();
