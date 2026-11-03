@@ -101,4 +101,44 @@ describe("the assistant's tool table", () => {
       expect(buildBatonTools(bare).some((t) => t.name === "act_batch")).toBe(false);
     });
   });
+
+  describe("effects", () => {
+    const run = (prints: string[], tool: string, args: Record<string, unknown>) => {
+      const tools = buildBatonTools({
+        ...host([]),
+        fingerprint: async () => prints.shift() ?? prints.at(-1) ?? "",
+      });
+      return tools.find((t) => t.name === tool)!.run(args);
+    };
+    it("reports a click that changed the controls as confirmed, and one that changed nothing as a suspected no-op", async () => {
+      expect((await run(["a", "b"], "click_element", { label: "x", why: "w" })).text).toContain(
+        "Effect: confirmed",
+      );
+      expect(
+        (await run(["a", "a", "a", "a"], "click_element", { label: "x", why: "w" })).text,
+      ).toContain("suspected_noop");
+    });
+    it("calls an unchanged key unverifiable, not a failure", async () => {
+      expect(
+        (await run(["a", "a", "a", "a"], "press_keys", { keys: ["ctrl", "c"], why: "w" })).text,
+      ).toContain("unverifiable");
+    });
+    it("stops a batch at a suspected no-op", async () => {
+      const prints = ["a", "a", "a", "a", "z"];
+      const tools = buildBatonTools({
+        ...host([]),
+        fingerprint: async () => prints.shift() ?? "z",
+      });
+      const out = await tools
+        .find((t) => t.name === "act_batch")!
+        .run({
+          steps: [
+            { tool: "click_element", args: { label: "x", why: "w" } },
+            { tool: "click_element", args: { label: "y", why: "w" } },
+          ],
+        });
+      expect(out.text).toContain("Stopped: that step seems to have done nothing");
+      expect(out.text).not.toContain("2. click_element");
+    });
+  });
 });

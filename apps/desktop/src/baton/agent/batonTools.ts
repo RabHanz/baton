@@ -9,6 +9,8 @@ import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/baton-sh
 import type { BatonTool, ToolOutput } from "./batonMcp.ts";
 
 export interface ToolHost {
+  /** The window and its control names as one string, to tell whether an action changed anything. Without it results carry no effect. */
+  readonly fingerprint?: () => Promise<string>;
   /** Names the window with the keyboard; a batch stops when it changes. Without it there is no batch tool. */
   readonly windowKey?: () => Promise<string>;
   readonly capture: () => Promise<ToolOutput>;
@@ -1095,6 +1097,10 @@ const batchTool = (host: ToolHost, table: ReadonlyArray<BatonTool>): BatonTool =
           start = await key();
         }
         lines.push(`${label}: ${said}`);
+        if (/Effect: suspected_noop/.test(said)) {
+          lines.push("Stopped: that step seems to have done nothing.");
+          break;
+        }
       } catch (error) {
         lines.push(
           `${label} FAILED: ${(error as Error).message}`,
@@ -1107,7 +1113,40 @@ const batchTool = (host: ToolHost, table: ReadonlyArray<BatonTool>): BatonTool =
   },
 });
 
+const EFFECT_TOOLS = new Set(["click_element", "click", "press_keys"]);
+const SETTLE_MS = 150;
+const SETTLE_TRIES = 3;
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * cua's idea: an action says what it did, from a readback, not just that it ran. A click that changed neither the
+ * window nor its controls is a suspected no-op; a key often changes nothing visible, so it is only "unverifiable".
+ */
+const withEffect = (fingerprint: () => Promise<string>, tool: BatonTool): BatonTool => ({
+  ...tool,
+  run: async (args) => {
+    const before = await fingerprint().catch(() => "");
+    const out = await tool.run(args);
+    if (before === "") return out;
+    let after = before;
+    for (let i = 0; i < SETTLE_TRIES && after === before; i += 1) {
+      await pause(SETTLE_MS);
+      after = await fingerprint().catch(() => before);
+    }
+    const effect =
+      after !== before
+        ? "Effect: confirmed, the window or its controls changed."
+        : tool.name === "press_keys"
+          ? "Effect: unverifiable, a key often changes nothing visible (copy, for one)."
+          : "Effect: suspected_noop, nothing in the window or its controls changed. Look before you go on.";
+    return { ...out, text: `${out.text ?? ""} ${effect}`.trim() };
+  },
+});
+
 export const buildBatonTools = (host: ToolHost): ReadonlyArray<BatonTool> => {
-  const base = buildBaseTools(host);
+  const fp = host.fingerprint;
+  const plain = buildBaseTools(host);
+  const base =
+    fp === undefined ? plain : plain.map((t) => (EFFECT_TOOLS.has(t.name) ? withEffect(fp, t) : t));
   return host.windowKey === undefined ? base : [...base, batchTool(host, base)];
 };
