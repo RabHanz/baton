@@ -9,7 +9,7 @@
 set -euo pipefail
 version="${1:?usage: fetch-server-archive.sh <version> [dir]}"
 dir="${2:-.}"
-repo="${BATON_REPO:-RabHanz/baton}"
+repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
 name="t3-$version-linux-x64.tar.gz"
 mkdir -p "$dir"
 gh release download "server-$version" -R "$repo" --dir "$dir" --clobber -p "$name" -p "$name.sha256"
