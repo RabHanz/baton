@@ -9,6 +9,7 @@ import * as NodeTest from "node:test";
 import * as NodeURL from "node:url";
 
 import {
+  soleCandidate,
   isAdoptRequest,
   isAnswerInTerminal,
   screenTail,
@@ -130,7 +131,10 @@ NodeTest.test("a plain-terminal session is only moved into Herdr when asked", ()
   NodeAssert.equal(isAdoptRequest(" Bring it into herdr. "), true);
   NodeAssert.equal(isAdoptRequest("please fix the build"), false);
   NodeAssert.equal(isAdoptRequest("It waits in its terminal.\nBring it into Herdr"), true);
-  NodeAssert.equal(isAnswerInTerminal("Waiting in its terminal:\nProceed?\nI'll answer it in the terminal"), true);
+  NodeAssert.equal(
+    isAnswerInTerminal("Waiting in its terminal:\nProceed?\nI'll answer it in the terminal"),
+    true,
+  );
   NodeAssert.equal(isAnswerInTerminal("yes"), false);
   NodeAssert.equal(screenTail("a\n\n  \nb  \nc", 2), "b\nc");
   const note = notSentNote({ remoteControl: true, status: "idle" });
@@ -223,7 +227,7 @@ NodeTest.test(
       const calls = NodeFS.readFileSync(log, "utf8");
       NodeAssert.match(
         calls,
-        /^--session fab-x agent prompt p1 say ALPHA\nHe attached image shot\.png:\n@.*\/work\/\.baton\/inbox\/\d{4}-\d\d-\d\d\/shot-[0-9a-f]{4}\.png\n--session fab-x agent send-keys p1 enter\n--session fab-x agent send-keys p1 esc\n$/s,
+        /^--session fab-x agent prompt p1 say ALPHA\nHe attached image shot-[0-9a-f]{4}\.png:\n@.*\/work\/\.baton\/inbox\/\d{4}-\d\d-\d\d\/shot-[0-9a-f]{4}\.png\n--session fab-x agent send-keys p1 enter\n--session fab-x agent send-keys p1 esc\n$/s,
       );
       const day = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox"))[0];
       const inbox = NodeFS.readdirSync(NodePath.join(cwd, ".baton", "inbox", day));
@@ -457,22 +461,27 @@ const stoppedMachine = (over = {}) => {
   return { deps, said, typed, batonCalls };
 };
 
-NodeTest.test("a send to a stopped session is queued and shown, the session resumed in its folder, then the message delivered", async () => {
-  const dir = queueDir();
-  const { deps, said, typed, batonCalls } = stoppedMachine();
-  const result = await sendToStopped(dir, "s6", msg("carry on with the tests"), deps);
-  NodeAssert.equal(result.state, "resumed");
-  NodeAssert.deepEqual(batonCalls, [["--resume", "s6", "/work/shop"]]);
-  NodeAssert.equal(said[0], resumingNote("carry on with the tests"));
-  NodeAssert.deepEqual(typed, [["fab-shop~p1", "carry on with the tests"]]);
-  NodeAssert.ok(said.includes(deliveredNote("carry on with the tests")));
-  NodeAssert.ok(!said.some((line) => line.startsWith("Not delivered")), said.join("|"));
-  NodeAssert.equal(readQueue(dir, "s6").length, 0);
-});
+NodeTest.test(
+  "a send to a stopped session is queued and shown, the session resumed in its folder, then the message delivered",
+  async () => {
+    const dir = queueDir();
+    const { deps, said, typed, batonCalls } = stoppedMachine();
+    const result = await sendToStopped(dir, "s6", msg("carry on with the tests"), deps);
+    NodeAssert.equal(result.state, "resumed");
+    NodeAssert.deepEqual(batonCalls, [["--resume", "s6", "/work/shop"]]);
+    NodeAssert.equal(said[0], resumingNote("carry on with the tests"));
+    NodeAssert.deepEqual(typed, [["fab-shop~p1", "carry on with the tests"]]);
+    NodeAssert.ok(said.includes(deliveredNote("carry on with the tests")));
+    NodeAssert.ok(!said.some((line) => line.startsWith("Not delivered")), said.join("|"));
+    NodeAssert.equal(readQueue(dir, "s6").length, 0);
+  },
+);
 
 NodeTest.test("a resume that fails keeps the message, held and visible, and says why", async () => {
   const dir = queueDir();
-  const { deps, said, typed } = stoppedMachine({ baton: async () => ({ ok: false, out: "herdr: no server" }) });
+  const { deps, said, typed } = stoppedMachine({
+    baton: async () => ({ ok: false, out: "herdr: no server" }),
+  });
   const result = await sendToStopped(dir, "s7", msg("hello"), deps);
   NodeAssert.equal(result.state, "failed");
   NodeAssert.match(said.at(-1), /Could not resume: Herdr would not start it: herdr: no server\./);
@@ -483,39 +492,66 @@ NodeTest.test("a resume that fails keeps the message, held and visible, and says
   NodeAssert.ok(kept[0].held);
 });
 
-NodeTest.test("a held message is never handed back as lost, however long the session stays gone", async () => {
-  const dir = queueDir();
-  const { deps, said } = harness({ live: null, failure: null });
-  enqueue(dir, "s8", msg("keep me"));
-  holdQueue(dir, "s8", "resuming");
-  for (let i = 0; i < 30; i += 1) await drainSession(dir, "s8", deps);
-  NodeAssert.deepEqual(said, []);
-  NodeAssert.equal(readQueue(dir, "s8").length, 1);
-  releaseQueue(dir, "s8");
-  NodeAssert.equal(readQueue(dir, "s8")[0].held, undefined);
-});
+NodeTest.test(
+  "a held message is never handed back as lost, however long the session stays gone",
+  async () => {
+    const dir = queueDir();
+    const { deps, said } = harness({ live: null, failure: null });
+    enqueue(dir, "s8", msg("keep me"));
+    holdQueue(dir, "s8", "resuming");
+    for (let i = 0; i < 30; i += 1) await drainSession(dir, "s8", deps);
+    NodeAssert.deepEqual(said, []);
+    NodeAssert.equal(readQueue(dir, "s8").length, 1);
+    releaseQueue(dir, "s8");
+    NodeAssert.equal(readQueue(dir, "s8")[0].held, undefined);
+  },
+);
 
-NodeTest.test("resuming says plainly when the folder is unknown or gone, and times out readably", async () => {
-  const none = stoppedMachine({ cwdOf: () => null });
-  NodeAssert.match((await resumeSession("s9", none.deps)).error, /do not know which folder/);
-  const gone = stoppedMachine({ dirExists: () => false });
-  NodeAssert.equal((await resumeSession("s9", gone.deps)).error, "The folder /work/shop is not on this machine.");
-  const slow = stoppedMachine({ findLive: () => null });
-  NodeAssert.match((await resumeSession("s9", slow.deps)).error, /did not become ready within 45 seconds/);
-  NodeAssert.equal(slow.batonCalls.length, 1);
-});
+NodeTest.test(
+  "resuming says plainly when the folder is unknown or gone, and times out readably",
+  async () => {
+    const none = stoppedMachine({ cwdOf: () => null });
+    NodeAssert.match((await resumeSession("s9", none.deps)).error, /do not know which folder/);
+    const gone = stoppedMachine({ dirExists: () => false });
+    NodeAssert.equal(
+      (await resumeSession("s9", gone.deps)).error,
+      "The folder /work/shop is not on this machine.",
+    );
+    const slow = stoppedMachine({ findLive: () => null });
+    NodeAssert.match(
+      (await resumeSession("s9", slow.deps)).error,
+      /did not become ready within 45 seconds/,
+    );
+    NodeAssert.equal(slow.batonCalls.length, 1);
+  },
+);
 
-NodeTest.test("a session waiting on Claude's folder-trust question is named, not just 'not ready'", async () => {
-  const { deps } = stoppedMachine({
-    findLive: () => null,
-    screenOf: async () => "Quick safety check: Is this a project you created or one you trust?\n Yes, I trust this folder",
-  });
-  const out = await resumeSession("s10", deps);
-  NodeAssert.match(out.error, /asking whether to trust this folder.*herdr --session fab-shop/);
-});
+NodeTest.test(
+  "a session waiting on Claude's folder-trust question is named, not just 'not ready'",
+  async () => {
+    const { deps } = stoppedMachine({
+      findLive: () => null,
+      screenOf: async () =>
+        "Quick safety check: Is this a project you created or one you trust?\n Yes, I trust this folder",
+    });
+    const out = await resumeSession("s10", deps);
+    NodeAssert.match(out.error, /asking whether to trust this folder.*herdr --session fab-shop/);
+  },
+);
 
 NodeTest.test("'resume' on its own is a request to bring it back, not a message to send", () => {
-  for (const ok of ["resume", "Resume it", "resume this session.", " RESUME "]) NodeAssert.equal(isResumeRequest(ok), true, ok);
-  for (const no of ["resume the work on tests", "please resume", "bring into herdr"]) NodeAssert.equal(isResumeRequest(no), false, no);
+  for (const ok of ["resume", "Resume it", "resume this session.", " RESUME "])
+    NodeAssert.equal(isResumeRequest(ok), true, ok);
+  for (const no of ["resume the work on tests", "please resume", "bring into herdr"])
+    NodeAssert.equal(isResumeRequest(no), false, no);
   NodeAssert.match(resumeFailedNote("The folder is gone.", "hi"), /Your message is kept: "hi"\./);
 });
+
+NodeTest.test(
+  "a lost binding delivers only to exactly one running session in the folder, never a guess",
+  () => {
+    NodeAssert.equal(soleCandidate(["a"]), "a");
+    NodeAssert.equal(soleCandidate([]), null);
+    NodeAssert.equal(soleCandidate(["a", "b"]), null);
+  },
+);
