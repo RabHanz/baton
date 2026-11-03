@@ -24,6 +24,20 @@ const IMAGE_TYPES: Record<string, string> = {
 };
 const MAX_PER_MESSAGE = 4;
 
+const SIGNATURES: Record<string, ReadonlyArray<string>> = {
+  ".png": ["89504e47"],
+  ".jpg": ["ffd8ff"],
+  ".jpeg": ["ffd8ff"],
+  ".gif": ["47494638"],
+  ".webp": ["52494646"],
+};
+
+/** A file named like a picture but holding something else (an error page, a half-written file) loads as "Loading image..." forever, so it is never attached. */
+export const looksLikePicture = (name: string, bytes: Uint8Array): boolean => {
+  const wanted = SIGNATURES[NodePath.extname(name).toLowerCase()];
+  return wanted === undefined || wanted.some((sig) => Buffer.from(bytes.subarray(0, sig.length / 2)).toString("hex") === sig);
+};
+
 const real = (path: string): string | null => {
   try {
     return NodeFS.realpathSync(path);
@@ -100,7 +114,7 @@ export const attachMarkdown = (input: {
   readonly threadId: string;
   readonly messageId: string;
   readonly media: ReadonlyArray<ResolvedMedia>;
-  /** Content hashes already shown in this thread: the same picture is never attached twice. */
+  /** Content hashes already shown in this thread, and `bad:` marks for files that could not be shown: neither is attempted twice. */
   readonly shown?: Set<string>;
 }): ReadonlyArray<string> => {
   const lines: string[] = [];
@@ -111,8 +125,16 @@ export const attachMarkdown = (input: {
       return;
     }
     if (verdict.verdict !== "attach") return;
+    const unavailable = (why: string) => {
+      const mark = `bad:${file}:${size}`;
+      if (input.shown?.has(mark)) return;
+      input.shown?.add(mark);
+      lines.push(`_${name}: image unavailable (${why})_`);
+    };
+    if (input.shown?.has(`bad:${file}:${size}`)) return;
     try {
       const bytes = NodeFS.readFileSync(file);
+      if (!looksLikePicture(name, bytes)) return unavailable("not a picture");
       const hash = NodeCrypto.createHash("sha256").update(bytes).digest("hex");
       if (input.shown?.has(hash)) return;
       input.shown?.add(hash);
@@ -139,7 +161,9 @@ export const attachMarkdown = (input: {
         NodeFS.writeFileSync(copy, bytes);
       }
       lines.push(`![${name}](<${copy}>)`);
-    } catch {}
+    } catch {
+      unavailable("cannot be read");
+    }
   });
   return lines;
 };
