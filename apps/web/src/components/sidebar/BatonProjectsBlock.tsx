@@ -9,6 +9,7 @@ import {
   type BatonProjectRef,
   type EnvironmentId,
   type ProjectId,
+  type ThreadId,
 } from "@t3tools/baton-contracts";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { FolderIcon, PaperclipIcon, SendHorizontalIcon } from "lucide-react";
@@ -35,6 +36,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openThreadInSplit } from "../panes/batonPanesStore";
 import { BatonContinueWith, type HandoffTarget } from "./BatonContinueWith";
 import { usePrimaryEnvironmentId } from "../../state/environments";
+import { waitForThreadShell } from "../../state/entities";
 import { answerCatalogRequest } from "./batonCatalogRequests";
 
 export interface BatonProjectsBlockProps {
@@ -158,6 +160,16 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
       if (request.kind !== "open" && request.kind !== "send")
         return { ok: false, detail: "Not understood." };
       if (request.kind === "open") {
+        // An imported thread reaches the client a moment after the server made it: open it only once it is there.
+        const known = await waitForThreadShell(
+          scopeThreadRef(request.environmentId as EnvironmentId, request.threadId as ThreadId),
+          20_000,
+        );
+        if (!known)
+          return {
+            ok: false,
+            detail: "The conversation was imported but T3 does not show it yet. Try Open again.",
+          };
         answerWindow.current.open(request.environmentId as EnvironmentId, request.threadId);
         return { ok: true, detail: "Opened." };
       }

@@ -60,7 +60,7 @@ describe("the sessions browser's rows", () => {
   });
 });
 
-describe("a resume shows Resuming... until the thread is live", () => {
+describe("a resume shows Importing history... until the thread is live", () => {
   it("goes stopped, resuming, running, and opens the thread; a failure says so", async () => {
     let finish: () => void = () => undefined;
     const opened: string[] = [];
@@ -80,7 +80,7 @@ describe("a resume shows Resuming... until the thread is live", () => {
     };
     expect(state("s1")).toBe("Stopped");
     catalog.apply("c:s1", "resume");
-    expect(state("s1")).toBe("Resuming...");
+    expect(state("s1")).toBe("Importing history...");
     finish();
     await Promise.resolve();
     await Promise.resolve();
@@ -97,6 +97,20 @@ describe("a resume shows Resuming... until the thread is live", () => {
     for (let i = 0; i < 5; i += 1) await Promise.resolve();
     const row = failing.controls().find((c) => c.id === "c:s1");
     expect(row?.kind === "catalogRow" && row.resumeLabel).toBe("Resume");
+    // A thread T3 cannot open says why and stays Running, so the title button retries.
+    const stuck = createCatalog({
+      service: {
+        ...service,
+        resume: async () => undefined,
+        open: async () => Promise.reject(new Error("not shown yet")),
+      },
+      onChange: changed,
+      now: () => NOW,
+    });
+    await stuck.refresh();
+    stuck.apply("c:s1", "resume");
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    expect(JSON.stringify(stuck.controls())).toContain("not shown yet");
   });
 
   it("lets the assistant find a stopped session, bring it back and start another, in plain words", async () => {
