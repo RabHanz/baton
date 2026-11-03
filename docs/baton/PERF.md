@@ -75,3 +75,20 @@ must be heard. It now is (run 41479939470, as shipped and with `BATON_THREADS=1`
 speech-model download, about 15 s is verifying it and starting the sidecar and microphone list, and the voice loop itself starts under a second
 after that. The next starts skip the download (a `.verified` marker saves hashing). The window shows "Downloading the speech model: N%"
 meanwhile. Shipping the model in the installer would remove it at the cost of a 700 MB download for everyone.
+
+## Upgrades do not refetch models (2026-11-03)
+
+The Director asked why voices seem to download again on every new build. Audit: the only two fetchers are the speech model
+(`voiceModels.ts`) and the voice engine plus its files (`pocketVoice.ts`). Both write under the state folder
+(`.t3\userdata\voice\models` and `\voice\pocket`), neither installer touches it, and nothing is keyed by the app version: a model counts as
+present by its size and a `.verified` marker holding its hash, a voice file by existing. The wake and speech-detection models ship inside the
+installer and are replaced with it, which is a normal update, not a download.
+
+Proved on the Windows runner (`upgrade-proof.ps1`, run 41639171971): install 0.1.41, let it fetch the speech model, the voice engine, the
+model and the voice (11 files, 1 GB), install 0.1.44 over it, start it. All 11 files kept their size and write time; none was removed, no
+partial download appeared; the speech model loaded in 0.1 s (a download or a 740 MB hash takes many seconds). So an update does not refetch.
+
+What can still refetch: a `.verified` marker that is missing or holds another hash (the file is hashed again once, and deleted and fetched
+only if the hash is wrong), the voice engine's `pocket-tts.exe` removed from disk (a virus scanner does this to a downloaded program), and a
+change of voice or speech model, which fetches that one file. For the engine, the checked archive is now kept after unpacking, so a removed
+program is restored from it without the network.
