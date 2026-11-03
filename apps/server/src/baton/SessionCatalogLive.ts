@@ -25,9 +25,13 @@ const scanTranscripts = (limit: number): ReadonlyArray<TranscriptInfo> => {
     let slugs: string[] = [];
     try {
       slugs = NodeFS.readdirSync(root);
-    } catch {
+    } catch (error) {
+      if (process.env["BATON_CATALOG_DEBUG"] === "1")
+        console.error(`catalog: cannot read ${root}: ${String(error)}`);
       continue;
     }
+    if (process.env["BATON_CATALOG_DEBUG"] === "1")
+      console.error(`catalog: ${root} has ${slugs.length} folders`);
     const account = accountOfConfigDir(dir);
     for (const slug of slugs) {
       let names: string[] = [];

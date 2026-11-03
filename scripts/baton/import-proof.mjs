@@ -69,6 +69,7 @@ const env = {
   HOME: profile,
   USERPROFILE: profile,
   BATON_NO_HERDR: "1",
+  BATON_CATALOG_DEBUG: "1",
   BATON_AUTO_RESUME: "off",
 };
 const server = NodeChildProcess.spawn(
@@ -181,6 +182,13 @@ try {
     String(listed?.sessions?.length),
   );
 
+  console.log(
+    `server log: ${log
+      .split("\n")
+      .filter((l) => l.includes("catalog:"))
+      .slice(-8)
+      .join(" | ")}`,
+  );
   const resumed = value(await rpc("baton.sessions.resume", { sessionId: WANTED, cwd: project }));
   check(
     "Resume brings the old session back as a thread",
