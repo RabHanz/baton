@@ -71,7 +71,8 @@ describe("the mark breathes only while the window is in front", () => {
     expect(APP_CSS).toMatch(/@keyframes breathe\{[^@]*transform:scale\(1\.03\)/);
     expect(APP_CSS).not.toMatch(/(?<!html\.live )\.brand #mark\{[^}]*animation:/);
     expect(APP_CSS).toMatch(/html\.live \.brand #mark\{animation:breathe 7s/);
-    for (const event of ["'focus'", "'blur'", "'visibilitychange'"]) expect(APP_SCRIPT).toContain(event);
+    for (const event of ["'focus'", "'blur'", "'visibilitychange'"])
+      expect(APP_SCRIPT).toContain(event);
     expect(APP_CSS).toMatch(/prefers-reduced-motion:reduce\)\{\*\{[^}]*animation:none/);
   });
 });
@@ -79,14 +80,17 @@ describe("the mark breathes only while the window is in front", () => {
 describe("a refresh keeps the breathing mark", () => {
   it("leaves the brand in the page across a sidebar rebuild so its animation does not restart", () => {
     expect(APP_SCRIPT).toContain("fresh.remove(); el.append(...next.childNodes)");
-    expect(APP_SCRIPT).toMatch(/foot\.append\(t3, st\); side\.appendChild\(foot\);\s*\}, 'brand'\);/);
+    expect(APP_SCRIPT).toMatch(
+      /foot\.append\(t3, st\); side\.appendChild\(foot\);\s*\}, 'brand'\);/,
+    );
   });
 });
 
 describe("motion stays cheap", () => {
   // Two one-shot layout transitions predate the rule (sidebar collapse, group fold): they run once per click.
   const ONE_SHOT_LAYOUT = new Set(["grid-template-columns", "grid-template-rows"]);
-  const LAYOUT = /^(?:width|height|min-|max-|margin|padding|top|left|right|bottom|grid-|flex|font|line-height|border-width|gap)/;
+  const LAYOUT =
+    /^(?:width|height|min-|max-|margin|padding|top|left|right|bottom|grid-|flex|font|line-height|border-width|gap)/;
 
   it("never animates a layout property, apart from the two known one-shots", () => {
     const bad = [...APP_CSS.matchAll(/transition:([^;}]*)/g)]
@@ -100,13 +104,24 @@ describe("motion stays cheap", () => {
   });
 
   it("gates every infinite animation behind the live class", () => {
-    for (const rule of APP_CSS.matchAll(/([^{}]+)\{[^{}]*animation:[^;}]*infinite[^{}]*\}/g)) {
+    // The inlined fonts are long runs without braces and make this pattern crawl, so they are cut out first.
+    for (const rule of APP_CSS.replace(/url\([^)]*\)/g, "url()").matchAll(
+      /([^{}]+)\{[^{}]*animation:[^;}]*infinite[^{}]*\}/g,
+    )) {
       expect(rule[1]).toMatch(/html\.live /);
     }
   });
 
   it("has one set of duration and easing tokens", () => {
-    for (const token of ["--dur-instant", "--dur-quick", "--dur-base", "--dur-slow", "--dur-hero", "--stagger", "--ease-spring"]) {
+    for (const token of [
+      "--dur-instant",
+      "--dur-quick",
+      "--dur-base",
+      "--dur-slow",
+      "--dur-hero",
+      "--stagger",
+      "--ease-settle",
+    ]) {
       expect(APP_CSS).toContain(`${token}:`);
     }
   });
