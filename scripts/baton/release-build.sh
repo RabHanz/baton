@@ -7,6 +7,7 @@
 # Writes release-cli/t3-<version>-linux-x64.tar.gz and smoke-tests it. The package.json version
 # bump is release-time only and is put back afterwards, so the tree stays PIN + series.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)"
 version="${1:?usage: release-build.sh <version>}"
 out="${BATON_RELEASE_DIR:-release-cli}"

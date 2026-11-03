@@ -1,4 +1,4 @@
-name: Baton wake word training
+name: Tessaya wake word training
 
 # Free GitHub-hosted CPU runners (public repo). Pushing this branch runs it; models come back as artifacts.
 on:

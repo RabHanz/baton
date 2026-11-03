@@ -29,6 +29,8 @@ import {
   isBad,
   markHealthy,
 } from "@t3tools/baton-shared/startGuard";
+import { releasesUrl } from "@t3tools/baton-shared/repo";
+import { adoptTessayaEnv } from "@t3tools/baton-shared/tessayaEnv";
 import { readGuard, writeGuard } from "./health/startGuardFile.ts";
 import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
@@ -54,6 +56,7 @@ const VOICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const VOICE_LOG_MAX_FILES = 5;
 
 export const startBatonDesktop = Effect.gen(function* () {
+  adoptTessayaEnv(process.env);
   const ipc = yield* DesktopIpc.DesktopIpc;
   yield* ipc.handle(getBatonInjectionReport);
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -112,7 +115,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           cancelId: 1,
         });
         if (answer.response === 0)
-          void Electron.shell.openExternal("https://github.com/RabHanz/baton/releases");
+          void Electron.shell.openExternal(releasesUrl(process.env));
       });
     }
     Electron.app.on("render-process-gone", (_event, contents, details) =>

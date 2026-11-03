@@ -11,6 +11,7 @@
 # restarts, and waits for HTTP 200. With --host it copies the archive and itself to that box and
 # runs there. Exit 1 if the new version does not come up; the rollback script is printed either way.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
 archive="${1:?usage: deploy-beside.sh <archive> <version> [--host <target>]}"
 version="${2:?usage: deploy-beside.sh <archive> <version> [--host <target>]}"

@@ -25,6 +25,7 @@
 # Exit codes: 0 ok, 1 refused or drift found, 2 rebase left conflicts for a human.
 
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
 export LC_ALL=C
 cd "$(git rev-parse --show-toplevel)"

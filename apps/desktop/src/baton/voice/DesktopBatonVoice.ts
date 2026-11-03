@@ -66,6 +66,7 @@ import {
 import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
+import { releasesUrl, repoSlug } from "@t3tools/baton-shared/repo";
 import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
 import { parseWeaveHosts } from "@t3tools/baton-shared/weaveBoxes";
@@ -3269,7 +3270,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ],
       about: {
         version: input.appVersion,
-        source: "github.com/RabHanz/baton/releases",
+        source: releasesUrl(input.env).replace("https://", ""),
         licence: "MIT, with third-party notices",
         notices: "docs/baton/THIRD_PARTY_NOTICES.md",
       },
@@ -3279,8 +3280,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // The Now page (D149): read every few minutes, not on every redraw, because it can call gh.
   let nowData: NowData = EMPTY_NOW;
   const probe = createProbes({});
-  const readLastNightly = createNightlyCache("RabHanz/baton");
-  const readSyncExtra = createSyncExtraCache("RabHanz/baton", input.env["BATON_REPO_DIR"], runGh);
+  const readLastNightly = createNightlyCache(repoSlug(input.env));
+  const readSyncExtra = createSyncExtraCache(repoSlug(input.env), input.env["BATON_REPO_DIR"], runGh);
   /** Last read of the upstream sync; the rows below use it, and a failed read leaves it unknown. */
   const cloudNow = () => readCloudLogins(cloudLoginsFile(input.env));
   let syncNow: SyncState = { localBehind: null, status: null, pr: null };

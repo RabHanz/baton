@@ -17,12 +17,14 @@
 # Exit codes: 0 synced or nothing to do, 2 a patch needs a human, 3 gates failed, 4 deploy failed,
 # 5 the volume is below its free-space floor.
 set -euo pipefail
+# Runs from a copy in ~/.t3, so the shared lib/tessaya-env.sh is not beside it: same rule inlined.
+for k in $(compgen -e); do case "$k" in TESSAYA_ENV_NOTED) ;; TESSAYA_*) export "BATON_${k#TESSAYA_}=${!k}" ;; esac; done
 
 # The clone the worktree hangs off. The timer runs a copy of this script taken from origin/main
 # (systemd/baton-auto-sync.service), so an edit that lands mid-run cannot change it under bash.
 repo_dir="${BATON_REPO_DIR:-/mnt/HC_Volume_106652742/dev/t3code}"
 work="${BATON_AUTOSYNC_DIR:-/mnt/HC_Volume_106652742/dev/baton-autosync}"
-repo="${BATON_REPO:-RabHanz/baton}"
+repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
 onnyx="${BATON_SECOND_BOX:-onnyx@onnyx}"
 alarm_days="${BATON_ALARM_DAYS:-3}"
 deploy=1 dry=0
@@ -102,9 +104,9 @@ supersede() { # supersede <keeper-url>
 
 if [ "$age_days" -gt "$alarm_days" ]; then
   body="$(mktemp)"
-  printf 'Baton is %s upstream commits behind; the oldest has waited %s days (alarm at %s).\n\nLog: `%s` on signzart.\n' \
+  printf 'Tessaya is %s upstream commits behind; the oldest has waited %s days (alarm at %s).\n\nLog: `%s` on signzart.\n' \
     "$behind" "$age_days" "$alarm_days" "$log" > "$body"
-  [ "$dry" -eq 1 ] || issue "Baton is more than $alarm_days days behind upstream" "$body"
+  [ "$dry" -eq 1 ] || issue "Tessaya is more than $alarm_days days behind upstream" "$body"
   echo "ALARM: $age_days days behind"
 fi
 
@@ -140,7 +142,7 @@ if [ "$rc" -ne 0 ]; then
   { printf 'The daily sync stopped: %s (exit %s).\n\n' "$what" "$rc"
     cat "$report" 2> /dev/null || true
     printf '\n<details><summary>Log tail</summary>\n\n```\n'; tail -80 "$log"; printf '```\n</details>\n'
-    printf '\nA Claude fix session was started in Herdr session `fab-baton-autosync` on signzart; it shows in Baton.\n'
+    printf '\nA Claude fix session was started in Herdr session `fab-baton-autosync` on signzart; it shows in Tessaya.\n'
   } > "$body"
   issue "Upstream sync blocked: $what" "$body"
   # Which patches and which files, so a human (or the fix session) starts from the answer.
@@ -154,9 +156,9 @@ if [ "$rc" -ne 0 ]; then
     gh pr create -R "$repo" --draft --base main --head "$branch" --title "sync: upstream to $(git rev-parse --short upstream/main) (gates failed)" --body-file "$report" > /dev/null 2>&1 || true
   fi
   prompt="$log_dir/$stamp.fix-prompt.md"
-  { printf 'You are fixing the daily Baton upstream sync, which stopped because %s.\n' "$what"
+  { printf 'You are fixing the daily Tessaya upstream sync, which stopped because %s.\n' "$what"
     printf 'Worktree: %s, branch %s. Read docs/baton/UPSTREAM.md (the sync) and vendor-patches/t3code/README.md.\n' "$work" "$branch"
-    printf 'Upstream wins where it overlaps Baton: adopt its version and keep Baton to its patches and its own files.\n'
+    printf 'Upstream wins where it overlaps Tessaya: adopt its version and keep Tessaya to its patches and its own files.\n'
     printf 'Fix the conflict markers or the failing gate, then: scripts/baton/patches.sh refresh && scripts/baton/patches.sh verify && scripts/baton/gates.sh --install --build.\n'
     printf 'Commit on %s, push it, open the PR, and stop. Report and log: %s, %s.\n' "$branch" "$report" "$log"
   } > "$prompt"

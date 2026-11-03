@@ -1,6 +1,6 @@
 # Third-party notices
 
-Code in Baton adapted from other projects, with their licences. Each entry names the files that
+Code in Tessaya adapted from other projects, with their licences. Each entry names the files that
 carry the adapted code.
 
 ## farzaa/clicky (MIT)
