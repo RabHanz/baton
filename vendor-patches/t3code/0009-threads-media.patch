@@ -264,7 +264,7 @@ index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70
        expect(live?.groupId).toBe("work-group:work-entry-0");
        const details = rows.filter((row) => row.kind === "work");
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index e32a7eb485fc69e9b2d39ea65a82ea6cc5a1b109..24fd6194d7512b26f7ba66a254701efcdbe18fdd 100644
+index e32a7eb485fc69e9b2d39ea65a82ea6cc5a1b109..5772321def1ecdf81dd63aadcd5c24ff06ce6c82 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -21,6 +21,11 @@ import {
@@ -471,7 +471,7 @@ index e32a7eb485fc69e9b2d39ea65a82ea6cc5a1b109..24fd6194d7512b26f7ba66a254701efc
        "closing-2",
      ]);
    });
-@@ -4418,3 +4557,46 @@ describe("shouldCollapseUserMessage", () => {
+@@ -4418,3 +4557,47 @@ describe("shouldCollapseUserMessage", () => {
      expect(shouldCollapseUserMessage(`${citation} ${"More text. ".repeat(60)}`)).toBe(true);
    });
  });
@@ -479,10 +479,11 @@ index e32a7eb485fc69e9b2d39ea65a82ea6cc5a1b109..24fd6194d7512b26f7ba66a254701efc
 +describe("Worked groups stay as the reader left them", () => {
 +  const a = RunId.make("run-a");
 +  const b = RunId.make("run-b");
-+  it("a new reply does not fold the group he opened (upstream folds it unless the setting is on)", () => {
++  it("a new reply never changes a group's state, open or closed", () => {
 +    const open = new Set([a]);
-+    expect(expandedRunsAfterLatestRunChange(open, a, true)).toBe(open);
-+    expect([...expandedRunsAfterLatestRunChange(open, a, false)]).toEqual([]);
++    expect(expandedRunsAfterLatestRunChange(open, a)).toBe(open);
++    const none = new Set<RunId>();
++    expect(expandedRunsAfterLatestRunChange(none, a)).toBe(none);
 +  });
 +  it("with the setting on every group is open unless he closed that one, and closing it is remembered", () => {
 +    const all = [a, b];
@@ -519,7 +520,7 @@ index e32a7eb485fc69e9b2d39ea65a82ea6cc5a1b109..24fd6194d7512b26f7ba66a254701efc
 +  });
 +});
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 8a4a7552901a210fef0c36ccdb0aa7d6a1e43236..cae940c977284e56119a918541e0bdfb9c61dfc0 100644
+index 8a4a7552901a210fef0c36ccdb0aa7d6a1e43236..319c17ee4df443647252c15824bef8b8125cb643 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -27,6 +27,7 @@ import {
@@ -685,24 +686,17 @@ index 8a4a7552901a210fef0c36ccdb0aa7d6a1e43236..cae940c977284e56119a918541e0bdfb
        );
      }
  
-@@ -2574,3 +2640,44 @@ export function sameRowsInput(
+@@ -2574,3 +2640,37 @@ export function sameRowsInput(
    }
    return Object.keys(left).length === Object.keys(right).length;
  }
 +
-+/**
-+ * When the latest run changes (a new reply), upstream folds the run before it. With "Keep work groups expanded" the
-+ * set is left exactly as the reader had it.
-+ */
++/** A new reply leaves every Worked group as the reader had it; upstream folded the previous run's. */
 +export function expandedRunsAfterLatestRunChange(
 +  expanded: ReadonlySet<RunId>,
-+  previousRunId: RunId,
-+  keep: boolean,
++  _previousRunId: RunId,
 +): ReadonlySet<RunId> {
-+  if (keep || !expanded.has(previousRunId)) return expanded;
-+  const next = new Set(expanded);
-+  next.delete(previousRunId);
-+  return next;
++  return expanded;
 +}
 +
 +/** The runs whose work shows: with the setting on, all of them except the ones he closed; off, only the ones he opened. */
@@ -731,7 +725,7 @@ index 8a4a7552901a210fef0c36ccdb0aa7d6a1e43236..cae940c977284e56119a918541e0bdfb
 +  return next;
 +}
 diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
-index cea2daa1112074180220f9253a83830ea38e28a3..2b96ee17fe6c44de0baf14142677a3cc8d137209 100644
+index cea2daa1112074180220f9253a83830ea38e28a3..2a105a67840c3b6d5f8103a11a5618a15ef0c7a7 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.tsx
 @@ -83,10 +83,13 @@ import {
@@ -818,7 +812,7 @@ index cea2daa1112074180220f9253a83830ea38e28a3..2b96ee17fe6c44de0baf14142677a3cc
 -          return next;
 -        });
 +        setExpandedRunIds((existing) =>
-+          expandedRunsAfterLatestRunChange(existing, previousRunId, keepWorkExpanded),
++          expandedRunsAfterLatestRunChange(existing, previousRunId),
 +        );
        }
      }

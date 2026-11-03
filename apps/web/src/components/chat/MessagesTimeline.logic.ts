@@ -2641,19 +2641,12 @@ export function sameRowsInput(
   return Object.keys(left).length === Object.keys(right).length;
 }
 
-/**
- * When the latest run changes (a new reply), upstream folds the run before it. With "Keep work groups expanded" the
- * set is left exactly as the reader had it.
- */
+/** A new reply leaves every Worked group as the reader had it; upstream folded the previous run's. */
 export function expandedRunsAfterLatestRunChange(
   expanded: ReadonlySet<RunId>,
-  previousRunId: RunId,
-  keep: boolean,
+  _previousRunId: RunId,
 ): ReadonlySet<RunId> {
-  if (keep || !expanded.has(previousRunId)) return expanded;
-  const next = new Set(expanded);
-  next.delete(previousRunId);
-  return next;
+  return expanded;
 }
 
 /** The runs whose work shows: with the setting on, all of them except the ones he closed; off, only the ones he opened. */
