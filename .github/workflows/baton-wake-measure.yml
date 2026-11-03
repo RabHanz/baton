@@ -1,7 +1,7 @@
 name: Wake word false-wake measurement
 
 # Replays public speech, TV-style speech over music, speaker bleed and noise through the shipped wake
-# models and reports false wakes per hour per word (scripts/baton/wake-train/false_wakes.py). Free
+# models and reports false wakes per hour per word (scripts/tessaya/wake-train/false_wakes.py). Free
 # GitHub CPU runner; the report and the false-fire clips (negative samples) come back as an artifact.
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ on:
         description: "Folder with the wake .onnx files"
         default: native/baton-dictation/models
   pull_request:
-    paths: [scripts/baton/wake-train/false_wakes.py, .github/workflows/baton-wake-measure.yml]
+    paths: [scripts/tessaya/wake-train/false_wakes.py, .github/workflows/baton-wake-measure.yml]
 
 permissions:
   contents: read
@@ -54,7 +54,7 @@ jobs:
           PY
           df -h . | tail -1
       - name: Measure
-        run: python scripts/baton/wake-train/false_wakes.py --models "${{ inputs.models || 'native/baton-dictation/models' }}" --data data --out out --near scripts/baton/wake-train/near_misses.txt --hours "${{ inputs.hours || '1' }}"
+        run: python scripts/tessaya/wake-train/false_wakes.py --models "${{ inputs.models || 'native/baton-dictation/models' }}" --data data --out out --near scripts/tessaya/wake-train/near_misses.txt --hours "${{ inputs.hours || '1' }}"
       - name: Summary
         run: cat out/report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

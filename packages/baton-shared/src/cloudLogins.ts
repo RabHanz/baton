@@ -1,6 +1,6 @@
 /**
  * Health of the Claude cloud logins, from the file the box's daily check writes
- * (scripts/baton/cloud-logins.sh -> ~/.t3/baton/cloud-logins.json). These logins are cloud-only: this
+ * (scripts/tessaya/cloud-logins.sh -> ~/.t3/baton/cloud-logins.json). These logins are cloud-only: this
  * only reads the report, and nothing here uses the credentials behind it. Pure.
  */
 import type { NeedItem } from "./needsMe.ts";

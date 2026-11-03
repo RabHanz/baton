@@ -317,7 +317,7 @@ export const layer = Layer.effect(
       if (setting === "off") return false;
       return autoState.enabled ?? !noHerdr;
     };
-    // The file is read again each pass, so a stop marked from outside (scripts/baton/mark-stopped.mjs) is seen at once.
+    // The file is read again each pass, so a stop marked from outside (scripts/tessaya/mark-stopped.mjs) is seen at once.
     const reloadAutoState = () => {
       try {
         const onDisk = JSON.parse(

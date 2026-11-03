@@ -17,7 +17,7 @@ const rows = JSON.parse(
 /**
  * Labelled sentences of the kind he actually says. The model is stubbed out, so this pins the cheap
  * rule layer: when a rule changes what a sentence does, a row here changes with it and says so.
- * The nightly job (scripts/baton/intent-nightly.ts) runs the `assistant` labels through the real one.
+ * The nightly job (scripts/tessaya/intent-nightly.ts) runs the `assistant` labels through the real one.
  */
 describe("intent quality", () => {
   it("is a real spread of what he says", () => {

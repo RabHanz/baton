@@ -1,5 +1,5 @@
 {
-  "comment": "Every third-party thing Tessaya's own code ships or downloads must have an entry here AND be named in THIRD_PARTY_NOTICES.md. scripts/baton/check-notices.mjs fails CI when a dependency, crate, model file or font is missing. Upstream T3 Code's own dependencies are covered by third-party-licenses.config.json.",
+  "comment": "Every third-party thing Tessaya's own code ships or downloads must have an entry here AND be named in THIRD_PARTY_NOTICES.md. scripts/tessaya/check-notices.mjs fails CI when a dependency, crate, model file or font is missing. Upstream T3 Code's own dependencies are covered by third-party-licenses.config.json.",
   "licenceFiles": {
     "MIT": "docs/baton/licences/MIT.txt",
     "Apache-2.0": "docs/baton/licences/Apache-2.0.txt",
