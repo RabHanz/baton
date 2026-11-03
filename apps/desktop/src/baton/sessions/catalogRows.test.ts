@@ -229,3 +229,21 @@ describe("Stop and the Auto-resume switch", () => {
     });
   });
 });
+
+describe("New session defaults to the computer the app runs on", () => {
+  it("picks the local machine and labels it", () => {
+    const withLocal = rows.map((r) => ({ ...r, local: r.environmentId === "server" }));
+    const bar = catalogControls({
+      rows: withLocal,
+      view: INITIAL_VIEW,
+      now: NOW,
+      folders: [],
+      status: "",
+      loaded: true,
+    }).find((c) => c.kind === "catalogBar");
+    expect(bar).toMatchObject({ newMachine: "server" });
+    expect(
+      bar?.kind === "catalogBar" && bar.machines.some((m) => m.label.endsWith("(this computer)")),
+    ).toBe(true);
+  });
+});

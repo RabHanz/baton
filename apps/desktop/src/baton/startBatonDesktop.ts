@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off preferSchemaOverJson:off globalFetch:off
 /**
  * Everything Baton adds to the desktop main process, started by one call in `DesktopApp.ts`
  * (`vendor-patches/t3code/0007-desktop.patch`): the injection-report IPC handler and the voice
@@ -22,6 +22,9 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
+import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
+import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
 import { createConversationLog } from "./conversation/conversationLog.ts";
 import {
   beginStart,
@@ -72,6 +75,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     maxFiles: VOICE_LOG_MAX_FILES,
   }).pipe(Effect.option);
   const updates = yield* DesktopUpdates.DesktopUpdates;
+  const pool = yield* DesktopBackendPool.DesktopBackendPool;
+  const localAuth = yield* DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth;
   const { latest: initialUpdateState, changes: updateChanges } = yield* updates.subscribe;
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
@@ -89,17 +94,18 @@ export const startBatonDesktop = Effect.gen(function* () {
     });
     // A version that fails to start twice is remembered, never installed again by itself, and he is told what worked.
     const guardPath = NodePath.join(environment.stateDir, "baton-start-guard.json");
-    const started = beginStart(
-      readGuard(guardPath),
-      environment.appVersion,
-      lifecycle.previousRunEndedBadly(),
-    );
+    // Only a launch that owns the running marker counts: a second launch beside a live Tessaya must not reset the guard.
+    const started = lifecycle.anotherInstance
+      ? { file: readGuard(guardPath), failing: false, goBackTo: null }
+      : beginStart(readGuard(guardPath), environment.appVersion, lifecycle.previousRunEndedBadly());
     let guard = started.file;
-    writeGuard(guardPath, guard);
-    setTimeout(() => {
-      guard = markHealthy(guard);
+    if (!lifecycle.anotherInstance) {
       writeGuard(guardPath, guard);
-    }, 45_000).unref();
+      setTimeout(() => {
+        guard = markHealthy(guard);
+        writeGuard(guardPath, guard);
+      }, 45_000).unref();
+    }
     if (started.failing) {
       lifecycle.note("version-failed-twice", {
         version: environment.appVersion,
@@ -114,8 +120,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           defaultId: 0,
           cancelId: 1,
         });
-        if (answer.response === 0)
-          void Electron.shell.openExternal(releasesUrl(process.env));
+        if (answer.response === 0) void Electron.shell.openExternal(releasesUrl(process.env));
       });
     }
     Electron.app.on("render-process-gone", (_event, contents, details) =>
@@ -134,6 +139,40 @@ export const startBatonDesktop = Effect.gen(function* () {
       }),
     );
     Electron.app.on("before-quit", () => lifecycle.note("before-quit"));
+    Electron.app.on("will-quit", () => lifecycle.note("will-quit"));
+    Electron.app.on("window-all-closed", () => lifecycle.note("window-all-closed"));
+    Electron.app.on("quit", (_event, exitCode) => lifecycle.note("quit", { exitCode }));
+    // Minidumps of a native crash go to a known folder (no upload); a dump left since the last run is named at start.
+    try {
+      Electron.crashReporter.start({ uploadToServer: false, compress: true });
+      const dumps = Electron.app.getPath("crashDumps");
+      const seenFile = NodePath.join(environment.stateDir, "baton-dumps-seen.json");
+      const seen = new Set<string>(
+        (() => {
+          try {
+            return JSON.parse(NodeFS.readFileSync(seenFile, "utf8")) as string[];
+          } catch {
+            return [];
+          }
+        })(),
+      );
+      const found = (() => {
+        try {
+          return NodeFS.readdirSync(dumps, { recursive: true })
+            .map(String)
+            .filter((name) => name.endsWith(".dmp") && !seen.has(name));
+        } catch {
+          return [];
+        }
+      })();
+      lifecycle.note("crash-dumps", { folder: dumps, newDumps: found });
+      NodeFS.writeFileSync(seenFile, JSON.stringify([...seen, ...found]));
+    } catch {
+      // diagnostics only
+    }
+    Electron.powerMonitor.on("shutdown", () => lifecycle.note("os-shutdown"));
+    Electron.powerMonitor.on("suspend", () => lifecycle.note("suspend"));
+    Electron.powerMonitor.on("resume", () => lifecycle.note("resume"));
     // After an update install, tell him it worked; the marker says what ran.
     const pendingPath = NodePath.join(environment.stateDir, "baton-update-pending.json");
     const afterUpdate = (() => {
@@ -266,8 +305,34 @@ export const startBatonDesktop = Effect.gen(function* () {
       onUnavailable: () =>
         voice?.onNote("The voice is not ready, so replies show as text. Voice tab: Voice."),
     });
+    // Remote hands (docs/baton/REMOTE_HANDS.md): the app's own operations a remote session may ask for.
+    const remoteOps = {
+      version: () => environment.appVersion,
+      logs: {
+        "voice-turns": NodePath.join(environment.logDir, "voice-turns.ndjson"),
+        lifecycle: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),
+      },
+      // Nothing in the app starts a process a remote session may stop yet, so the list is empty.
+      processes: async () => [],
+      stop: async () => undefined,
+      update: async (version: string) => {
+        await run(updates.check("remote-hands"));
+        const state = await run(updates.getState);
+        if (state.availableVersion !== version && state.downloadedVersion !== version) {
+          return `The update feed offers ${state.availableVersion ?? "nothing"}, not ${version}. Nothing was changed.`;
+        }
+        void run(updates.download).then(() => batonUpdates.install());
+        return `Downloading ${version}; the app restarts itself at the first quiet moment.`;
+      },
+      pages: ["home"],
+      openPage: async (page: string) => {
+        voice?.openHome();
+        return `Opened ${page}.`;
+      },
+    };
     try {
       screen = startScreenCompanion({
+        remoteOps,
         catalog: () => catalogStore?.tools,
         stateDir: environment.stateDir,
         conversation,
@@ -294,6 +359,29 @@ export const startBatonDesktop = Effect.gen(function* () {
       });
     } catch (cause) {
       Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
+    }
+    if (screen !== null) {
+      const companion = screen;
+      const post: HubPost = async (path, body) => {
+        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+        const primary = await run(pool.primary);
+        const config = await run(primary.currentConfig);
+        if (config._tag === "None") throw new Error("The local backend is not ready.");
+        const response = await fetch(new URL(`/tessaya/hands/${path}`, config.value.httpBaseUrl), {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(40_000),
+        });
+        return { status: response.status, json: await response.json().catch(() => ({})) };
+      };
+      const hands = createRemoteHandsLoop({
+        post,
+        enabled: () => companion.remoteHands.enabled(),
+        run: (call) => companion.remoteHands.run(call),
+      });
+      hands.start();
+      Electron.app.on("will-quit", hands.stop);
     }
     const sessions = createSessionsBridge({
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),

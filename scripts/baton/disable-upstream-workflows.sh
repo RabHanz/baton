@@ -1,28 +1,3 @@
 #!/usr/bin/env bash
-# Disable every inherited upstream workflow except a short allowlist, through the GitHub API so
-# the files stay byte-identical to upstream. Upstream's workflows either run on Blacksmith runners
-# this repository does not have (they queue forever, D77) or deploy and publish with upstream's
-# secrets. An allowlist rather than a denylist, so a workflow upstream adds later is off by default.
-# Idempotent; upstream-sync.sh runs it after every sync.
-set -euo pipefail
-. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
-
-repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
-keep=(
-  baton.yml      # Baton's patch-series check, GitHub-hosted
-  pr-size.yml    # labels PR size, GitHub-hosted, no secrets
-  baton-desktop-release.yml # the desktop release; the sync must not switch it off
-  issue-labels.yml
-  baton-dictation-build.yml # the Windows dictation sidecar on its own
-  baton-wake-train.yml # wake word models on free runners
-)
-
-gh api "repos/$repo/actions/workflows" --paginate --jq '.workflows[] | "\(.state) \(.path)"' |
-  while read -r state path; do
-    file="$(basename "$path")"
-    if printf '%s\n' "${keep[@]}" | grep -qxF "$file"; then
-      echo "keep     $file ($state)"
-    elif [ "$state" = active ]; then
-      gh workflow disable "$file" -R "$repo" > /dev/null && echo "disabled $file"
-    fi
-  done
+# Old path of scripts/tessaya/disable-upstream-workflows.sh; kept so existing callers keep working.
+exec "$(dirname "$(readlink -f "$0")")/../tessaya/disable-upstream-workflows.sh" "$@"

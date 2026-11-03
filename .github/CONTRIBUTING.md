@@ -6,15 +6,15 @@ This file covers Tessaya's own layer. For the upstream T3 Code rules (one proble
 
 The repository root is upstream T3 Code at a pinned commit plus a patch series plus files Tessaya adds.
 
-- **Tessaya code goes in new files** (`apps/*/src/baton`, `packages/baton-*`, `docs/baton`, `scripts/baton`). Prefer a new file plus a one-line hook to a bigger edit of an upstream file.
-- **An edit to an upstream path goes through the patch series.** Edit it in place, then `bash scripts/baton/patches.sh refresh` (the first edit to a path no patch owns needs `--assign <patch> <path>`). `bash scripts/baton/patches.sh verify` must pass; CI checks it.
+- **Tessaya code goes in new files** (`apps/*/src/baton`, `packages/baton-*`, `docs/baton`, `scripts/tessaya`). Prefer a new file plus a one-line hook to a bigger edit of an upstream file.
+- **An edit to an upstream path goes through the patch series.** Edit it in place, then `bash scripts/tessaya/patches.sh refresh` (the first edit to a path no patch owns needs `--assign <patch> <path>`). `bash scripts/tessaya/patches.sh verify` must pass; CI checks it.
 - Do not change the logo or the colour tokens in a feature PR.
 
 ## Before you push
 
 ```bash
 vp run check:changed          # format, lint, typecheck of what you touched, tests beside changes
-node scripts/baton/guard-private.mjs   # no personal names, hosts or paths ship
+node scripts/tessaya/guard-private.mjs   # no personal names, hosts or paths ship
 ```
 
 Do not run the repo-wide suites locally; CI owns them. Both `verify` and `baton-ci` must be green before a merge.
@@ -27,7 +27,7 @@ Do not run the repo-wide suites locally; CI owns them. Both `verify` and `baton-
 - **A feature reachable one way is usually reachable others**: window, tray, voice, phone page, assistant tool. Say which you did.
 - **Tests:** behaviour that can break (parsing, state, persistence, permission checks). Use the project's no-sleep, no-timeout style.
 - **Docs:** user-facing features get a short page in `docs/user` (what it does, how to start, anything unintuitive). Design reasons go in `docs/baton`.
-- Conventional commit titles (`feat(voice): ...`); the CHANGELOG is generated from them (`node scripts/baton/changelog.mjs`).
+- Conventional commit titles (`feat(voice): ...`); the CHANGELOG is generated from them (`node scripts/tessaya/changelog.mjs`).
 
 ## Reporting
 

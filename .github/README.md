@@ -22,7 +22,7 @@ vp run dev          # server and web, with a seeded copy of your data
 vp run check:changed
 ```
 
-Desktop packaging: `scripts/baton/release-build.sh` and `.github/workflows/baton-desktop-release.yml`. The dictation sidecar is in `native/baton-dictation` (Rust). Details: `docs/operations/development.md`.
+Desktop packaging: `scripts/tessaya/release-build.sh` and `.github/workflows/baton-desktop-release.yml`. The dictation sidecar is in `native/baton-dictation` (Rust). Details: `docs/operations/development.md`.
 
 ## Where things are
 
@@ -30,7 +30,7 @@ Desktop packaging: `scripts/baton/release-build.sh` and `.github/workflows/baton
 | ------------------------------------------------- | ------------------------------------------------------------------------ |
 | `apps/desktop/src/baton`, `apps/server/src/baton` | Tessaya's desktop and server code                                        |
 | `packages/baton-*`                                | shared logic, contracts, voice core                                      |
-| `vendor-patches/t3code`                           | the patches over upstream; `scripts/baton/patches.sh verify` checks them |
+| `vendor-patches/t3code`                           | the patches over upstream; `scripts/tessaya/patches.sh verify` checks them |
 | `docs/user`                                       | what each feature does and how to start                                  |
 | `docs/baton`                                      | design notes, platform status, vault and memory rules                    |
 

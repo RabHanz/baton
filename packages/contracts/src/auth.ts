@@ -52,6 +52,14 @@ export const AuthRelayWriteScope = "relay:write" as const;
  * session client can approve its own request.
  */
 export const AuthBatonCloudApproveScope = "baton:cloud-approve" as const;
+/**
+ * Driving this computer's apps from a remote session (docs/baton/REMOTE_HANDS.md). Never in the standard scopes: the
+ * Director issues it to one session's token on his own machine (`auth token --scopes baton:hands`), and revoking that
+ * session ends it.
+ */
+export const AuthBatonHandsScope = "baton:hands" as const;
+/** The desktop app's own session takes the remote calls and answers them; no client holds it. */
+export const AuthBatonHandsHostScope = "baton:hands-host" as const;
 export const AuthEnvironmentScope = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
@@ -71,6 +79,8 @@ export const AuthEnvironmentScope = Schema.Literals([
   AuthRelayReadScope,
   AuthRelayWriteScope,
   AuthBatonCloudApproveScope,
+  AuthBatonHandsScope,
+  AuthBatonHandsHostScope,
 ]);
 export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
 export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
@@ -121,6 +131,8 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
 const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>> = {
   ...legacyParents,
   [AuthBatonCloudApproveScope]: AuthOrchestrationOperateScope,
+  [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
+  [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
 };
 
 /** Keep permission denials decodable by clients with the original scope enum. */

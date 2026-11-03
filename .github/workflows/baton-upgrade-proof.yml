@@ -1,14 +1,14 @@
 name: Tessaya upgrade proof
 
 # Installs the latest published Baton release silently, then a fresh Tessaya build over it, and checks
-# the upgrade replaced the old install (scripts/baton/upgrade-proof.ps1). The Tessaya build is made the
+# the upgrade replaced the old install (scripts/tessaya/upgrade-proof.ps1). The Tessaya build is made the
 # way the release workflow makes it, at a version above any real one so it counts as the upgrade.
 
 on:
   pull_request:
     paths:
-      - scripts/baton/apply-release-branding.sh
-      - scripts/baton/upgrade-proof.ps1
+      - scripts/tessaya/apply-release-branding.sh
+      - scripts/tessaya/upgrade-proof.ps1
       - apps/desktop/resources/installer.nsh
       - scripts/build-desktop-artifact.ts
       - .github/workflows/baton-upgrade-proof.yml
@@ -26,11 +26,11 @@ jobs:
 
       - name: Apply Tessaya branding (build only, not committed)
         shell: bash
-        run: bash scripts/baton/apply-release-branding.sh
+        run: bash scripts/tessaya/apply-release-branding.sh
 
       - name: T3 Connect public config
         shell: bash
-        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+        run: bash scripts/tessaya/hosted-public-config.sh >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -78,4 +78,4 @@ jobs:
         run: |
           $old = (Get-ChildItem previous -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
           $new = (Get-ChildItem release -Filter 'Tessaya-99.0.0-x64.exe').FullName
-          ./scripts/baton/upgrade-proof.ps1 -Old $old -New $new
+          ./scripts/tessaya/upgrade-proof.ps1 -Old $old -New $new

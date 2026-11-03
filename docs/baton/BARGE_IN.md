@@ -24,7 +24,7 @@ predicted echo, and calls it speech over her when the residual, relative to what
 detector, not a cleaner: the recogniser listens after the voice has stopped, when the mic is clean. Until the room is learned (about a second
 of her speech) it says nothing and the fallbacks are what is left.
 
-## Measured (synthetic room, `scripts/baton/bargein-eval.ts`, 3 rooms x 120 s, deterministic)
+## Measured (synthetic room, `scripts/tessaya/bargein-eval.ts`, 3 rooms x 120 s, deterministic)
 
 Speech-like audio through a room (delay 60 to 200 ms, reverberant tail up to 400 ms), echo and his voice mixed at the mic, confirmation 120 ms.
 

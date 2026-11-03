@@ -28,25 +28,30 @@ index 4e940cd36cc51989f8c03cfc7d9150101f35b070..f1a55954afdcb3b8f150816388918eb8
      }).pipe(
        Effect.provide(
 diff --git a/apps/server/src/auth/PairingGrantStore.ts b/apps/server/src/auth/PairingGrantStore.ts
-index 0709f371684fb90b7f97893bae780d3f0d1ecf95..e855eee79b4f072e367f180fe3928779c559e062 100644
+index 0709f371684fb90b7f97893bae780d3f0d1ecf95..a728c92917728a1cb01a496c672025c8551e0778 100644
 --- a/apps/server/src/auth/PairingGrantStore.ts
 +++ b/apps/server/src/auth/PairingGrantStore.ts
-@@ -1,4 +1,5 @@
+@@ -1,4 +1,6 @@
  import {
 +  AuthBatonCloudApproveScope,
++  AuthBatonHandsHostScope,
    AuthStandardClientScopes,
    type AuthEnvironmentScope,
    type AuthPairingLink,
-@@ -249,6 +250,8 @@ type ConsumeResult =
+@@ -249,6 +251,12 @@ type ConsumeResult =
      };
  
  const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
 +/** The desktop app's own session may also approve cloud tasks; a paired client never gets that by default. */
-+const DESKTOP_SCOPES = [...AuthStandardClientScopes, AuthBatonCloudApproveScope] as const;
++const DESKTOP_SCOPES = [
++  ...AuthStandardClientScopes,
++  AuthBatonCloudApproveScope,
++  AuthBatonHandsHostScope,
++] as const;
  const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
  const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
  const PAIRING_TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -320,7 +323,7 @@ const make = Effect.gen(function* () {
+@@ -320,7 +328,7 @@ const make = Effect.gen(function* () {
      const now = yield* DateTime.now;
      yield* seedGrant(config.desktopBootstrapToken, {
        method: "desktop-bootstrap",
@@ -55,7 +60,7 @@ index 0709f371684fb90b7f97893bae780d3f0d1ecf95..e855eee79b4f072e367f180fe3928779
        subject: "desktop-bootstrap",
        expiresAt: DateTime.add(now, {
          milliseconds: Duration.toMillis(DESKTOP_BOOTSTRAP_TTL_HOURS),
-@@ -441,7 +444,7 @@ const make = Effect.gen(function* () {
+@@ -441,7 +449,7 @@ const make = Effect.gen(function* () {
        if (consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
          return {
            method: "desktop-bootstrap",
@@ -93,10 +98,10 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..7ffde23dc3a6320e92ab1d94897e4c3a
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..0d3edb894f3e906ec51d74a10506cb35e14799cb 100644
+index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..b95f491978bcc8fc1038623dde54aa7a6fbb1a43 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
-@@ -46,6 +46,12 @@ export const AuthAccessReadScope = "access:read" as const;
+@@ -46,6 +46,20 @@ export const AuthAccessReadScope = "access:read" as const;
  export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
@@ -106,18 +111,28 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..0d3edb894f3e906ec51d74a10506cb35
 + * session client can approve its own request.
 + */
 +export const AuthBatonCloudApproveScope = "baton:cloud-approve" as const;
++/**
++ * Driving this computer's apps from a remote session (docs/baton/REMOTE_HANDS.md). Never in the standard scopes: the
++ * Director issues it to one session's token on his own machine (`auth token --scopes baton:hands`), and revoking that
++ * session ends it.
++ */
++export const AuthBatonHandsScope = "baton:hands" as const;
++/** The desktop app's own session takes the remote calls and answers them; no client holds it. */
++export const AuthBatonHandsHostScope = "baton:hands-host" as const;
  export const AuthEnvironmentScope = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
-@@ -64,6 +70,7 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -64,6 +78,9 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
 +  AuthBatonCloudApproveScope,
++  AuthBatonHandsScope,
++  AuthBatonHandsHostScope,
  ]);
  export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
  export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
-@@ -109,10 +116,17 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -109,10 +126,19 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -126,6 +141,8 @@ index 555fa7e90b268550d27fbf2a447be89f4be8fc4b..0d3edb894f3e906ec51d74a10506cb35
 +const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>> = {
 +  ...legacyParents,
 +  [AuthBatonCloudApproveScope]: AuthOrchestrationOperateScope,
++  [AuthBatonHandsScope]: AuthOrchestrationOperateScope,
++  [AuthBatonHandsHostScope]: AuthOrchestrationOperateScope,
 +};
 +
  /** Keep permission denials decodable by clients with the original scope enum. */

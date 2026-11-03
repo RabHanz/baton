@@ -5,7 +5,7 @@ name: Tessaya voice proof
 # the audio hook run, did the phrase wake it. Give `tag` (baton-v0.1.31) to test a released installer, or
 # leave it empty to build this branch (about 10 minutes more). With `stranger` on (the default), the same run
 # also proves what a person who is not the maintainer gets: a clean machine, a first run, nothing private, and an
-# uninstall that leaves the user's data (scripts/baton/stranger-proof.ps1).
+# uninstall that leaves the user's data (scripts/tessaya/stranger-proof.ps1).
 on:
   workflow_call:
     inputs:
@@ -63,7 +63,7 @@ on:
         description: "Extra environment for the smoke jobs, KEY=VALUE separated by spaces (an experiment)"
         default: ""
       perf_enforce:
-        description: "Fail the resource step when a budget in scripts/baton/perf-budgets.json is exceeded"
+        description: "Fail the resource step when a budget in scripts/tessaya/perf-budgets.json is exceeded"
         type: boolean
         default: false
       starved_only:
@@ -101,12 +101,12 @@ jobs:
       - name: Apply Tessaya branding (build only, not committed)
         if: inputs.tag == ''
         shell: bash
-        run: bash scripts/baton/apply-release-branding.sh
+        run: bash scripts/tessaya/apply-release-branding.sh
 
       - name: T3 Connect public config
         if: inputs.tag == ''
         shell: bash
-        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+        run: bash scripts/tessaya/hosted-public-config.sh >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         if: inputs.tag == ''
@@ -146,7 +146,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = (Get-ChildItem installer -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
-          ./scripts/baton/stranger-proof.ps1 -Phase first -Installer $exe -Out "$env:RUNNER_TEMP/stranger-proof"
+          ./scripts/tessaya/stranger-proof.ps1 -Phase first -Installer $exe -Out "$env:RUNNER_TEMP/stranger-proof"
 
       - name: Install, launch with the test audio, read the log
         shell: pwsh
@@ -154,16 +154,16 @@ jobs:
           $exe = (Get-ChildItem installer -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
           $extra = @{}
           if ('${{ inputs.require_wake }}' -ne 'false') { $extra.RequireWake = $true }
-          ./scripts/baton/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @extra
+          ./scripts/tessaya/voice-proof.ps1 -Installer $exe -Out "$env:RUNNER_TEMP/voice-proof" @extra
 
       - name: Resource budget (idle, wake-listen, dictation, assistant turn, starved start)
         shell: pwsh
-        run: ./scripts/baton/resource-proof.ps1 -Out "$env:RUNNER_TEMP/resource-proof" ${{ inputs.perf_enforce && '-Enforce' || '' }} ${{ inputs.starved_only && '-OnlyStarved' || '' }}
+        run: ./scripts/tessaya/resource-proof.ps1 -Out "$env:RUNNER_TEMP/resource-proof" ${{ inputs.perf_enforce && '-Enforce' || '' }} ${{ inputs.starved_only && '-OnlyStarved' || '' }}
 
       - name: "Stranger - uninstall keeps the user's data, removes the app"
         if: inputs.stranger
         shell: pwsh
-        run: ./scripts/baton/stranger-proof.ps1 -Phase uninstall -Out "$env:RUNNER_TEMP/stranger-proof"
+        run: ./scripts/tessaya/stranger-proof.ps1 -Phase uninstall -Out "$env:RUNNER_TEMP/stranger-proof"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -185,7 +185,7 @@ jobs:
           if-no-files-found: ignore
 
   # Upgrade in place: install release `upgrade_from`, let it fetch its models, install release `upgrade_to` over it, and assert that
-  # nothing under voice\models or voice\pocket was fetched, hashed or rewritten (scripts/baton/model-upgrade-proof.ps1).
+  # nothing under voice\models or voice\pocket was fetched, hashed or rewritten (scripts/tessaya/model-upgrade-proof.ps1).
   upgrade:
     if: ${{ inputs.upgrade_from != '' }}
     runs-on: windows-2022
@@ -206,7 +206,7 @@ jobs:
         run: |
           $a = (Get-ChildItem from -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
           $b = (Get-ChildItem to -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
-          ./scripts/baton/model-upgrade-proof.ps1 -From $a -To $b -Out "$env:RUNNER_TEMP/upgrade-proof"
+          ./scripts/tessaya/model-upgrade-proof.ps1 -From $a -To $b -Out "$env:RUNNER_TEMP/upgrade-proof"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -248,7 +248,7 @@ jobs:
           ls release
       - name: Apply Tessaya branding (build only, not committed)
         if: inputs.tag == ''
-        run: bash scripts/baton/apply-release-branding.sh
+        run: bash scripts/tessaya/apply-release-branding.sh
       - uses: actions/setup-node@v4
         if: inputs.tag == ''
         with:
@@ -276,7 +276,7 @@ jobs:
           REQUIRE_WAKE: ${{ inputs.require_wake && matrix.platform != 'macos' && '1' || '0' }}
           SMOKE_ARGS: ${{ inputs.smoke_args }}
           SMOKE_ENV: ${{ inputs.smoke_env }}
-        run: bash scripts/baton/platform-smoke.sh "${{ matrix.platform }}" "$(find release \( -name "*.AppImage" -o -name "*.dmg" \) | head -1)" "$RUNNER_TEMP/smoke"
+        run: bash scripts/tessaya/platform-smoke.sh "${{ matrix.platform }}" "$(find release \( -name "*.AppImage" -o -name "*.dmg" \) | head -1)" "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

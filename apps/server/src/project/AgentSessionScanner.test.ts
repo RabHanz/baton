@@ -1356,6 +1356,53 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
         }),
     );
 
+    it.effect(
+      "reads a very long session when it is asked for by id, though the shared record budget would skip it",
+      () =>
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
+          yield* TestClock.setTime(nowMs);
+          const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
+          const codexHomePath = yield* makeTempDir("t3code-codex-home-");
+          const workspace = yield* makeTempDir("t3code-workspace-");
+          const line = (o: unknown) => JSON.stringify(o);
+          const records = [
+            line({
+              type: "user",
+              cwd: workspace,
+              sessionId: "long",
+              timestamp: "2026-08-23T12:00:00.000Z",
+              message: { role: "user", content: "First of a long session" },
+            }),
+            ...Array.from({ length: 101_000 }, (_, i) =>
+              line({
+                type: "assistant",
+                sessionId: "long",
+                timestamp: "2026-08-23T12:01:00.000Z",
+                message: { role: "assistant", content: [{ type: "text", text: `n${i}` }] },
+              }),
+            ),
+          ];
+          yield* writeTranscript({
+            filePath: path.join(claudeHomePath, "projects", "-folder", "long.jsonl"),
+            contents: `${records.join("\n")}\n`,
+            mtimeMs: nowMs - 60_000,
+          });
+          yield* Effect.gen(function* () {
+            const scanner = yield* AgentSessionScanner.AgentSessionScanner;
+            const without = Array.from(yield* Stream.runCollect(scanner.recentThreads(workspace)));
+            expect(without.some((o) => o._tag === "Importable")).toBe(false);
+            const asked = Array.from(
+              yield* Stream.runCollect(scanner.recentThreads(workspace, [], "long")),
+            );
+            expect(asked[0]?._tag === "Importable" && asked[0].thread.providerSessionId).toBe(
+              "long",
+            );
+          }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
+        }),
+    );
+
     it.effect("excludes Codex subagents from discovery and the recent-thread budget", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;

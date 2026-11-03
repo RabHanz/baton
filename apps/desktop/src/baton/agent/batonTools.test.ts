@@ -1,4 +1,4 @@
-import { BATON_TOOLS } from "@t3tools/baton-shared/operator";
+import { BATON_TOOLS, REMOTE_ONLY_TOOLS } from "@t3tools/baton-shared/operator";
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildBatonTools, type ToolHost } from "./batonTools.ts";
@@ -32,7 +32,9 @@ const host = (log: string[], windows: string[] = ["w1"]): ToolHost => ({
 describe("the assistant's tool table", () => {
   it("names exactly the tools the gate knows", () => {
     const names = buildBatonTools(host([])).map((t) => t.name);
-    expect(new Set(names)).toEqual(new Set(BATON_TOOLS));
+    expect(new Set(names)).toEqual(
+      new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t))),
+    );
   });
   it("checks arguments before touching anything", async () => {
     const log: string[] = [];

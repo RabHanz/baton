@@ -1,7 +1,7 @@
 # Intent table
 
 Real sentences through the real brain on his own `claude`, with the real grammar and guards behind it.
-`scripts/baton/voice-lab/brain-table.ts`, Windows laptop, 2026-10-31. **48 of 48 routed as expected.**
+`scripts/tessaya/voice-lab/brain-table.ts`, Windows laptop, 2026-10-31. **48 of 48 routed as expected.**
 Model decisions: 36, median 1.5 s, p95 2.2 s, max 3.9 s. The rest took the instant path. "Crack on with the
 tests" routes to act and the grammar refuses it, so nothing runs: the guard is the last word, and that is
 the expected result.

@@ -56,8 +56,6 @@ ${DARK_TOKENS}
 [data-g=settings]{--hue:var(--lichen);--hue-text:var(--lichen)}
 #app,:root,.nav,.glabel,#navind,.log .tag{--hue-wash:color-mix(in srgb,var(--hue) 11%,var(--panel));--hue-edge:color-mix(in srgb,var(--hue) 34%,var(--panel))}
 html.glass-reduced,html.glass-off{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none}
-html.mica{--side-fill:color-mix(in srgb,var(--side) 40%,transparent)}
-html.mica body{background:transparent}
 @media (prefers-reduced-transparency:reduce){:root{--side-fill:var(--side);--glass-fill:var(--panel);--sheet-fill:var(--panel);--blur:none;--scrim:none}}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -73,7 +71,7 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 /* Shell: a still aurora behind a glass sidebar, floating capsules in the top bar, one raised panel. */
 #app{position:relative;isolation:isolate;display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:100%;transition:grid-template-columns .22s var(--ease)}
 #app::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(46% 40% at 2% 0%,color-mix(in srgb,var(--hue) 24%,transparent),transparent 72%),radial-gradient(42% 44% at 100% 100%,color-mix(in srgb,var(--indigo) 15%,transparent),transparent 70%)}
-html.glass-off #app::before,html.mica #app::before{display:none}
+html.glass-off #app::before{display:none}
 #app.collapsed{grid-template-columns:0 1fr}
 #side{position:relative;isolation:isolate;display:flex;flex-direction:column;padding:16px 12px 12px;overflow:hidden;min-width:0}
 #side::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--side-fill);box-shadow:inset -1px 0 0 var(--edge),1px 0 0 var(--line)}
@@ -104,9 +102,8 @@ nav{display:flex;flex-direction:column;gap:2px}
 .nav[aria-current=page]{color:var(--ink);font-weight:600}
 .nav[aria-current=page]::before{opacity:1;background:var(--hue-wash);box-shadow:inset 0 0 0 1px var(--hue-edge)}
 .nav[aria-current=page] svg{color:var(--hue-text)}
-.nav:active{transform:scale(.975)}
 .nav .n{margin-left:auto;font:600 11px var(--sans);min-width:18px;text-align:center;border-radius:999px;padding:1px 6px;background:var(--warn-wash);color:var(--warn)}
-#navind{position:absolute;left:3px;top:0;width:4px;height:18px;border-radius:4px;background:var(--hue);opacity:0;pointer-events:none;will-change:transform}
+#navind{position:absolute;left:3px;top:0;width:4px;height:18px;border-radius:4px;background:var(--hue);opacity:0;pointer-events:none}
 html.live #navind.go{transition:transform var(--dur-slow) var(--ease-settle),opacity var(--dur-quick)}
 .spacer{flex:1}
 .sidecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 2px 10px;box-shadow:var(--card-shadow)}
@@ -390,23 +387,23 @@ button.sname:hover{color:var(--hue-text)}
 @keyframes ripple{from{opacity:.55;transform:scale(1)}to{opacity:0;transform:scale(3)}}
 @keyframes focusPop{from{transform:scale(.985)}to{transform:none}}
 html.live .brand #mark{animation:breathe 7s ease-in-out infinite;will-change:transform,opacity}
-html.live #page.enter>*:nth-child(-n+${STAGGER_BLOCKS}){animation:rise var(--dur-base) var(--ease-out) both}
-html.live #page.enter>.group:nth-of-type(1)>*:nth-child(-n+${STAGGER_ROWS}){animation:rise-s var(--dur-base) var(--ease-out) both}
+html.live #page.enter>*:nth-child(-n+${STAGGER_BLOCKS}){animation:rise var(--dur-base) var(--ease-out) backwards}
+html.live #page.enter>.group:nth-of-type(1)>*:nth-child(-n+${STAGGER_ROWS}){animation:rise-s var(--dur-base) var(--ease-out) backwards}
 ${delays("#page.enter>*", STAGGER_BLOCKS)}
 ${delays("#page.enter>.group:nth-of-type(1)>*", STAGGER_ROWS, "120ms")}
-html.live #veil.on #modal,html.live .palbox,html.live .pop,html.live .newses{animation:sheet var(--dur-base) var(--ease-out) both}
+html.live #veil.on #modal,html.live .palbox,html.live .pop,html.live .newses{animation:sheet var(--dur-base) var(--ease-out) backwards}
 html.live #veil.on{animation:fade var(--dur-quick) ease backwards}
 html.live #veil.on.out{animation:fadeout .16s ease forwards}
-html.live .state.morph{animation:pop var(--dur-slow) var(--ease-settle) both}
-html.live .state.morph .dot::after{animation:ripple var(--dur-hero) var(--ease-out) both}
+html.live .state.morph{animation:pop var(--dur-slow) var(--ease-settle) backwards}
+html.live .state.morph .dot::after{animation:ripple var(--dur-hero) var(--ease-out) backwards}
 html.live button:focus-visible,html.live input:focus-visible,html.live select:focus-visible,html.live textarea:focus-visible{animation:focusPop var(--dur-quick) var(--ease-out)}
-html.live.boot .brand .bt{animation:rise var(--dur-slow) var(--ease-out) 120ms both}
-html.live.boot #navlist>*:nth-child(-n+12){animation:rise-s var(--dur-slow) var(--ease-out) both}
+html.live.boot .brand .bt{animation:rise var(--dur-slow) var(--ease-out) 120ms backwards}
+html.live.boot #navlist>*:nth-child(-n+12){animation:rise-s var(--dur-slow) var(--ease-out) backwards}
 ${delays("#navlist>*", 12, "200ms").replace(/html\.live /g, "html.live.boot ")}
-html.live.boot #top .search,html.live.boot #top .state{animation:fade var(--dur-slow) ease 300ms both}
+html.live.boot #top .search,html.live.boot #top .state{animation:fade var(--dur-slow) ease 300ms backwards}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 html.motion-reduced *,html.motion-off *{animation:none!important;transition:none!important}
-html.motion-reduced #page.enter{animation:fade var(--dur-quick) ease both!important}
+html.motion-reduced #page.enter{animation:fade var(--dur-quick) ease backwards!important}
 html.motion-off #navind{transition:none!important}
 @media (max-width:1020px){.split{grid-template-columns:1fr}}
 `;

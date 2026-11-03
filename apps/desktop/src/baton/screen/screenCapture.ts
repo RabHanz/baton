@@ -3,7 +3,7 @@
  * first, each scaled so its long edge is at most 1280 px (farzaa/clicky's size), as JPEG.
  * Nothing is captured unless the companion asks, and the companion asks only after his approval.
  */
-import { captureSize, type ScreenShot } from "@t3tools/baton-shared/screenCompanion";
+import { captureSize, pickSource, type ScreenShot } from "@t3tools/baton-shared/screenCompanion";
 import * as Electron from "electron";
 
 export interface CapturedScreen {
@@ -23,15 +23,6 @@ const orderedDisplays = (
     .sort((a, b) => Number(b.cursorHere) - Number(a.cursorHere));
 };
 
-// Linux X11 reports no display_id; there the sources come in display order.
-const sourceFor = (
-  sources: ReadonlyArray<Electron.DesktopCapturerSource>,
-  display: Electron.Display,
-  index: number,
-): Electron.DesktopCapturerSource | undefined =>
-  sources.find((s) => s.display_id === String(display.id)) ??
-  (sources.every((s) => s.display_id === "") ? sources[index] : undefined);
-
 export const captureScreens = async (
   anchor?: { readonly x: number; readonly y: number } | null,
 ): Promise<ReadonlyArray<CapturedScreen>> => {
@@ -47,7 +38,7 @@ export const captureScreens = async (
   });
   const out: CapturedScreen[] = [];
   ordered.forEach(({ display, cursorHere }, i) => {
-    const source = sourceFor(sources, display, all.indexOf(display));
+    const source = pickSource(sources, display.id, all.indexOf(display));
     if (source === undefined || source.thumbnail.isEmpty()) return;
     const physical = captureSize(
       display.size.width * display.scaleFactor,
@@ -86,7 +77,7 @@ export const screenFingerprint = async (): Promise<ReadonlyArray<Uint8Array>> =>
   // Every display, in a fixed order: the cursor moving must not read as the screen changing, and
   // his step may land on the display the cursor is not on.
   return Electron.screen.getAllDisplays().flatMap((display, index) => {
-    const source = sourceFor(sources, display, index);
+    const source = pickSource(sources, display.id, index);
     if (source === undefined) return [];
     const bitmap = source.thumbnail.toBitmap(); // BGRA
     const gray = new Uint8Array(bitmap.length / 4);

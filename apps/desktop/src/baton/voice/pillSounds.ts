@@ -1,6 +1,6 @@
 /**
  * The pill's three sounds as data: played in the page by Web Audio and rendered here so
- * scripts/baton/voice-lab/sound-score.ts can put the same waves through the wake models and Silero.
+ * scripts/tessaya/voice-lab/sound-score.ts can put the same waves through the wake models and Silero.
  * Warm, short and low on purpose. D112 has the numbers and what they replaced.
  */
 export interface PillNote {

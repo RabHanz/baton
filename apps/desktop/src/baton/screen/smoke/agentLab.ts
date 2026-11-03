@@ -3,7 +3,7 @@
  * The real run of the assistant's hands (D144): the six tasks, three runs each, on a Windows desktop,
  * through the real companion with the one assistant on. It moves the pointer, so it runs only when he is
  * away and has been told: `LAB_AWAY` must name the time he said so, within the last four hours, and
- * `BATON_LAB=1` must be set. `scripts/baton/computer-use-harness.sh real` checks both and starts it.
+ * `BATON_LAB=1` must be set. `scripts/tessaya/computer-use-harness.sh real` checks both and starts it.
  */
 /* oxlint-disable t3code/no-global-process-runtime -- standalone lab harness, no Effect runtime */
 import * as NodeFS from "node:fs";

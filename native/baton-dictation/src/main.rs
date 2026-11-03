@@ -10,6 +10,8 @@ mod mouse;
 mod mouse_windows;
 #[cfg(windows)]
 mod uia;
+#[cfg(windows)]
+mod capture;
 mod live;
 #[cfg(windows)]
 mod paste_windows;
@@ -690,28 +692,54 @@ fn window_at(_x: i32, _y: i32) -> isize {
 }
 
 #[cfg(windows)]
-fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32, foreground: bool) -> Value {
-    let mut out = uia::locate(label, x, y, foreground).unwrap_or_else(|e| json!({"found": false, "error": e}));
+fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool) -> Value {
+    let mut out = uia::locate(label, x, y, foreground, window, invoke).unwrap_or_else(|e| json!({"found": false, "error": e}));
     out["ev"] = json!("located");
     out["id"] = json!(id);
     out
 }
 
 #[cfg(not(windows))]
-fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: bool) -> Value {
+fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: bool, _window: Option<&str>, _invoke: bool) -> Value {
     json!({"ev": "located", "id": id, "found": false, "error": "not on this platform yet"})
 }
 
 #[cfg(windows)]
-fn ui_tree(id: Option<u64>) -> Value {
-    let mut out = uia::tree(120).unwrap_or_else(|e| json!({"error": e}));
+fn focus_window_event(id: Option<u64>, window: isize) -> Value {
+    let mut v = capture::focus_window(window).unwrap_or_else(|e| json!({"error": e}));
+    v["ev"] = json!("focused");
+    v["id"] = json!(id);
+    v
+}
+
+#[cfg(not(windows))]
+fn focus_window_event(id: Option<u64>, _window: isize) -> Value {
+    json!({"ev": "focused", "id": id, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
+fn capture_window_event(id: Option<u64>, window: Option<&str>, out: &str) -> Value {
+    let mut v = capture::capture_window(window, out).unwrap_or_else(|e| json!({"error": e}));
+    v["ev"] = json!("captured");
+    v["id"] = json!(id);
+    v
+}
+
+#[cfg(not(windows))]
+fn capture_window_event(id: Option<u64>, _window: Option<&str>, _out: &str) -> Value {
+    json!({"ev": "captured", "id": id, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
+fn ui_tree(id: Option<u64>, window: Option<&str>) -> Value {
+    let mut out = uia::tree(120, window).unwrap_or_else(|e| json!({"error": e}));
     out["ev"] = json!("tree");
     out["id"] = json!(id);
     out
 }
 
 #[cfg(not(windows))]
-fn ui_tree(id: Option<u64>) -> Value {
+fn ui_tree(id: Option<u64>, _window: Option<&str>) -> Value {
     json!({"ev": "tree", "id": id, "error": "not on this platform yet"})
 }
 
@@ -894,11 +922,25 @@ fn serve() {
                         let (x, y) = (value["x"].as_i64().unwrap_or(0) as i32, value["y"].as_i64().unwrap_or(0) as i32);
                         // Its own thread: a big page can take a while, and the keys must not wait.
                         let foreground = value["foreground"].as_bool().unwrap_or(false);
-                        thread::spawn(move || emit(locate_element(id, &label, x, y, foreground)));
+                        let invoke = value["invoke"].as_bool().unwrap_or(false);
+                        let window = value["window"].as_str().map(str::to_string);
+                        thread::spawn(move || emit(locate_element(id, &label, x, y, foreground, window.as_deref(), invoke)));
                     }
                     "ui_tree" => {
                         let id = value["id"].as_u64();
-                        thread::spawn(move || emit(ui_tree(id)));
+                        let window = value["window"].as_str().map(str::to_string);
+                        thread::spawn(move || emit(ui_tree(id, window.as_deref())));
+                    }
+                    "focus_window" => {
+                        let id = value["id"].as_u64();
+                        let window = value["window"].as_i64().unwrap_or(0) as isize;
+                        thread::spawn(move || emit(focus_window_event(id, window)));
+                    }
+                    "capture_window" => {
+                        let id = value["id"].as_u64();
+                        let window = value["window"].as_str().map(str::to_string);
+                        let out = value["out"].as_str().unwrap_or("").to_string();
+                        thread::spawn(move || emit(capture_window_event(id, window.as_deref(), &out)));
                     }
                     "toggle" => {
                         if recording.is_some() {
@@ -1151,11 +1193,11 @@ fn main() {
         Some("locate") => {
             let number = |name: &str| flag(&args, name).and_then(|v| v.parse().ok()).unwrap_or(0);
             let label = flag(&args, "--label").unwrap_or_default();
-            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground")));
+            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground"), flag(&args, "--window").as_deref(), args.iter().any(|a| a == "--invoke")));
             Ok(())
         }
         Some("ui_tree") => {
-            println!("{}", ui_tree(None));
+            println!("{}", ui_tree(None, flag(&args, "--window").as_deref()));
             Ok(())
         }
         Some("transcribe") => cli_transcribe(&args[1..]),

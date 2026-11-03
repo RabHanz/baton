@@ -1,7 +1,7 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalDateInEffect:off
 /**
- * Writes into the live-thread message queue that `scripts/baton/live/baton-live-acp.mjs` drains:
+ * Writes into the live-thread message queue that `scripts/tessaya/live/baton-live-acp.mjs` drains:
  * one JSON file per Claude session id under `~/.t3/baton/live-queue`. A text item is typed into the
  * session's pane once it has one; a `note` item is only shown in that session's thread.
  * shortcut: read-modify-write without a lock, so an append can lose to a drain that rewrites at the
@@ -11,9 +11,11 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { stateSubdir } from "@t3tools/baton-shared/stateDir";
+
 export const liveQueueDir = (): string =>
   process.env["BATON_LIVE_QUEUE_DIR"] ??
-  NodePath.join(NodeOS.homedir(), ".t3", "baton", "live-queue");
+  stateSubdir(NodeOS.homedir(), "live-queue");
 
 const queueFile = (dir: string, sessionId: string): string =>
   NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);

@@ -27,6 +27,10 @@ export interface CatalogRow {
   /** A live thread, or an old session found in the history index. */
   readonly source: "thread" | "history";
   readonly canResume: boolean;
+  /** The row is on the computer this app runs on. */
+  readonly local?: boolean;
+  /** Where a resumed session lives, when the server has made the thread. */
+  readonly threadId?: string;
 }
 
 export interface CatalogService {
@@ -167,7 +171,10 @@ export const catalogControls = (input: {
   const machines: HomeOption[] = [{ value: "all", label: "All machines" }];
   for (const r of rows)
     if (!machines.some((m) => m.value === r.environmentId))
-      machines.push({ value: r.environmentId, label: r.machine });
+      machines.push({
+        value: r.environmentId,
+        label: r.local === true ? `${r.machine} (this computer)` : r.machine,
+      });
   const shownRows = visibleRows(rows, view);
   const states: HomeOption[] = [
     { value: "all", label: "All" },
@@ -200,7 +207,12 @@ export const catalogControls = (input: {
     states,
     words: WORDS,
     creating: view.creating,
-    newMachine: view.newMachine || machines[1]?.value || "",
+    // New session starts on the computer the app runs on unless he picks another.
+    newMachine:
+      view.newMachine ||
+      rows.find((r) => r.local === true)?.environmentId ||
+      machines[1]?.value ||
+      "",
     folders: input.folders,
     earlierHere: [...earlierByFolder.values()],
     background: view.background,
@@ -385,7 +397,13 @@ export const createCatalog = (input: {
       else if (id === "c.more") view = { ...view, shown: view.shown + CATALOG_PAGE };
       else if (id === "c.new") {
         view = { ...view, creating: !view.creating };
-        if (view.creating) void loadFolders(view.newMachine || rows[0]?.environmentId || "");
+        if (view.creating)
+          void loadFolders(
+            view.newMachine ||
+              rows.find((r) => r.local === true)?.environmentId ||
+              rows[0]?.environmentId ||
+              "",
+          );
       } else if (id === "c.newMachine") {
         view = { ...view, newMachine: text };
         void loadFolders(text);
@@ -399,7 +417,11 @@ export const createCatalog = (input: {
         }
         const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
         const folder = str(form.cwd);
-        const environmentId = view.newMachine || rows[0]?.environmentId || "";
+        const environmentId =
+          view.newMachine ||
+          rows.find((r) => r.local === true)?.environmentId ||
+          rows[0]?.environmentId ||
+          "";
         if (folder === "" || environmentId === "") return true;
         view = { ...view, creating: false };
         status = "Starting a session...";

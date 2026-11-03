@@ -810,7 +810,7 @@ function syncModal() {
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { if (modal === 'setup') return setupFinish(); stopMeter(); modal = null; aboutSeen = false; render(); }
-function go(t) { if (t !== cur) enter(); cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
+function go(t) { if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
 function paletteRank(items, q) {
@@ -889,7 +889,6 @@ function syncInd(still) {
   if (!ind) { ind = $('div'); ind.id = 'navind'; ind.setAttribute('aria-hidden', 'true'); app.appendChild(ind); }
   const a = document.querySelector('#navlist .nav[aria-current]');
   if (!a || collapsed) { ind.style.opacity = '0'; return; }
-  if (!still && a.scrollIntoView) a.scrollIntoView({ block: 'nearest' });
   const ar = app.getBoundingClientRect(), r = a.getBoundingClientRect(); const nr = document.getElementById('navlist').getBoundingClientRect();
   const y = r.top - ar.top + (r.height - 18) / 2;
   ind.setAttribute('data-g', GROUP_OF[cur] || 'now');
@@ -936,7 +935,7 @@ function render(state) {
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = (cur === 'home' ? 'wide' : '') + (entering ? ' enter' : ''); if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
-  syncModal(); syncChrome();
+  syncModal(); try { syncChrome(); } catch (e) {}
   if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => {
