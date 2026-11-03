@@ -10,7 +10,7 @@ import type { SessionsBridge } from "./sessionsBridge.ts";
 
 const RESUME_WAIT_MS = 70_000;
 const LIST_WAIT_MS = 15_000;
-const OPEN_WAIT_MS = 8_000;
+const OPEN_WAIT_MS = 30_000;
 const WATCH_MS = 3_000;
 // A long conversation takes minutes to bring in as a thread; the row says "Importing" while this watches.
 const WATCH_FOR_MS = 15 * 60_000;
@@ -197,14 +197,17 @@ export const createBridgeCatalogService = (input: {
       }
     },
     // The thread opens in T3's own window; a resumed session's own thread is selected there when the server made one.
-    open: (row) => {
+    open: async (row) => {
       input.openMainWindow();
-      const threadId = threads.get(row.id);
-      if (threadId !== undefined)
-        void input.bridge.request(
-          { kind: "open", environmentId: row.environmentId, threadId },
-          OPEN_WAIT_MS,
-        );
+      const threadId = row.threadId ?? threads.get(row.id);
+      if (threadId === undefined)
+        throw new Error("This session has no thread in T3 yet. Press Resume again.");
+      const answer = await input.bridge.request(
+        { kind: "open", environmentId: row.environmentId, threadId },
+        OPEN_WAIT_MS,
+      );
+      if (answer === null) throw new Error("T3 did not answer. Open the T3 window and try again.");
+      if (!answer.ok) throw new Error(reasonOf(answer.detail) ?? answer.detail);
     },
   };
 };

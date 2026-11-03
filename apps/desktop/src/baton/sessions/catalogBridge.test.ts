@@ -48,6 +48,7 @@ describe("the real catalog service", () => {
           threadId: "import:claudeAgent:abc",
         }),
       },
+      { ok: true, detail: "Opened." },
     ];
     const bridge = {
       request: async (r: unknown) => (sent.push(r), answers.shift() ?? null),
@@ -59,12 +60,23 @@ describe("the real catalog service", () => {
     });
     const [stopped] = rowsFromAnswer(JSON.stringify([row]));
     await service.resume(stopped!);
-    service.open(stopped!);
+    await service.open(stopped!);
     expect(sent.at(-1)).toEqual({
       kind: "open",
       environmentId: "e1",
       threadId: "import:claudeAgent:abc",
     });
+  });
+
+  it("says why when T3 cannot show the thread", async () => {
+    const service = createBridgeCatalogService({
+      bridge: {
+        request: async () => ({ ok: false, detail: "T3 does not show it yet." }),
+      } as unknown as SessionsBridge,
+      openMainWindow: () => undefined,
+    });
+    const [r] = rowsFromAnswer(JSON.stringify([{ ...row, threadId: "import:claudeAgent:abc" }]));
+    await expect(service.open(r!)).rejects.toThrow("T3 does not show it yet.");
   });
 
   it("reads rows from the sidebar's answer and drops malformed ones", () => {
