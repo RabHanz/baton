@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off preferSchemaOverJson:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off globalTimersInEffect:off preferSchemaOverJson:off globalFetch:off
 /**
  * Everything Baton adds to the desktop main process, started by one call in `DesktopApp.ts`
  * (`vendor-patches/t3code/0007-desktop.patch`): the injection-report IPC handler and the voice
@@ -22,6 +22,9 @@ import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopIpc from "../ipc/DesktopIpc.ts";
 import { getBatonInjectionReport } from "../ipc/methods/baton.ts";
 import * as DesktopUpdates from "../updates/DesktopUpdates.ts";
+import * as DesktopBackendPool from "../backend/DesktopBackendPool.ts";
+import * as DesktopLocalEnvironmentAuth from "../backend/DesktopLocalEnvironmentAuth.ts";
+import { createRemoteHandsLoop, type HubPost } from "./agent/remoteHandsLoop.ts";
 import { createConversationLog } from "./conversation/conversationLog.ts";
 import {
   beginStart,
@@ -72,6 +75,8 @@ export const startBatonDesktop = Effect.gen(function* () {
     maxFiles: VOICE_LOG_MAX_FILES,
   }).pipe(Effect.option);
   const updates = yield* DesktopUpdates.DesktopUpdates;
+  const pool = yield* DesktopBackendPool.DesktopBackendPool;
+  const localAuth = yield* DesktopLocalEnvironmentAuth.DesktopLocalEnvironmentAuth;
   const { latest: initialUpdateState, changes: updateChanges } = yield* updates.subscribe;
   yield* Effect.sync(() => {
     let voice: DesktopBatonVoice | null = null;
@@ -298,8 +303,34 @@ export const startBatonDesktop = Effect.gen(function* () {
       onUnavailable: () =>
         voice?.onNote("The voice is not ready, so replies show as text. Voice tab: Voice."),
     });
+    // Remote hands (docs/baton/REMOTE_HANDS.md): the app's own operations a remote session may ask for.
+    const remoteOps = {
+      version: () => environment.appVersion,
+      logs: {
+        "voice-turns": NodePath.join(environment.logDir, "voice-turns.ndjson"),
+        lifecycle: NodePath.join(environment.logDir, "baton-lifecycle.ndjson"),
+      },
+      // Nothing in the app starts a process a remote session may stop yet, so the list is empty.
+      processes: async () => [],
+      stop: async () => undefined,
+      update: async (version: string) => {
+        await run(updates.check("remote-hands"));
+        const state = await run(updates.getState);
+        if (state.availableVersion !== version && state.downloadedVersion !== version) {
+          return `The update feed offers ${state.availableVersion ?? "nothing"}, not ${version}. Nothing was changed.`;
+        }
+        void run(updates.download).then(() => batonUpdates.install());
+        return `Downloading ${version}; the app restarts itself at the first quiet moment.`;
+      },
+      pages: ["home"],
+      openPage: async (page: string) => {
+        voice?.openHome();
+        return `Opened ${page}.`;
+      },
+    };
     try {
       screen = startScreenCompanion({
+        remoteOps,
         catalog: () => catalogStore?.tools,
         stateDir: environment.stateDir,
         conversation,
@@ -326,6 +357,29 @@ export const startBatonDesktop = Effect.gen(function* () {
       });
     } catch (cause) {
       Effect.runForkWith(context)(Effect.logWarning("baton screen companion did not start", cause));
+    }
+    if (screen !== null) {
+      const companion = screen;
+      const post: HubPost = async (path, body) => {
+        const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+        const primary = await run(pool.primary);
+        const config = await run(primary.currentConfig);
+        if (config._tag === "None") throw new Error("The local backend is not ready.");
+        const response = await fetch(new URL(`/tessaya/hands/${path}`, config.value.httpBaseUrl), {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(40_000),
+        });
+        return { status: response.status, json: await response.json().catch(() => ({})) };
+      };
+      const hands = createRemoteHandsLoop({
+        post,
+        enabled: () => companion.remoteHands.enabled(),
+        run: (call) => companion.remoteHands.run(call),
+      });
+      hands.start();
+      Electron.app.on("will-quit", hands.stop);
     }
     const sessions = createSessionsBridge({
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
