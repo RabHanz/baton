@@ -9,6 +9,7 @@ import { evaluateGuard, synthMic, type EchoRun, type EchoScenario } from "../../
 const FRAME = 320; // 20 ms at 16 kHz, the core's frame
 const CONFIRM_FRAMES = 6; // 120 ms
 const OVER_RATIO = Number(process.env.AEC_OVER_RATIO ?? 0.3); // processed over mic energy: an echo is mostly removed, speech over it is not
+const OVER_BASE = Number(process.env.AEC_OVER_BASE ?? 0); // and this many times the usual ratio for this room (0: ignore)
 
 const pcm = (f: Float32Array) => Buffer.from(Int16Array.from(f, (v) => Math.max(-32768, Math.min(32767, Math.round(v * 32768)))).buffer);
 const energy = (a: Int16Array, from: number, n: number) => {
@@ -32,10 +33,13 @@ const run = (scenario: EchoScenario): EchoRun => {
   const micI = new Int16Array(pcm(mic).buffer);
   const detections: number[] = [];
   let streak = 0;
+  let base = 0.1;
   for (let f = 0; (f + 1) * FRAME <= out.length; f += 1) {
     const eo = energy(out, f * FRAME, FRAME);
     const em = energy(micI, f * FRAME, FRAME);
-    const flagged = em > 1e4 && eo / em > OVER_RATIO && f * 0.02 > 1.5; // not before the filter has had a second or so to converge
+    const ratio = em > 1e4 ? eo / em : 0;
+    const flagged = ratio > OVER_RATIO && ratio > OVER_BASE * base && f * 0.02 > 1.5; // not before the filter has had a second or so to converge
+    if (!flagged && ratio > 0) base += (ratio - base) * 0.01;
     streak = flagged ? streak + 1 : 0;
     if (streak === CONFIRM_FRAMES) detections.push(((f + 1) * FRAME) / 16_000);
   }
