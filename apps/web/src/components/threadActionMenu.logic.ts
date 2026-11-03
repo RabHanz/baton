@@ -3,6 +3,9 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
 
 export type ThreadActionMenuId =
   | "find"
+  | "expand-work"
+  | "collapse-work"
+  | "keep-work-expanded"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "turn-into-project"
@@ -70,6 +73,8 @@ export function buildDraftActionMenuItems(options: {
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
   readonly canFind?: boolean;
+  /** "Keep work groups expanded", for the toggle's label; absent where the thread has no work groups to manage. */
+  readonly keepWorkExpanded?: boolean;
   readonly branch: string | null;
   readonly projectFilter: {
     readonly label: string;
@@ -101,6 +106,9 @@ export interface ThreadActionMenuState {
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
   return ![
     "find",
+    "expand-work",
+    "collapse-work",
+    "keep-work-expanded",
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
@@ -120,6 +128,19 @@ export function buildThreadActionMenuItems(
     ...(state.canFind
       ? [{ id: "find" as const, label: "Find in thread", icon: "text-search" }]
       : []),
+    ...(state.keepWorkExpanded === undefined
+      ? []
+      : [
+          { id: "expand-work" as const, label: "Expand all work", icon: "chevrons-up-down" },
+          { id: "collapse-work" as const, label: "Collapse all work", icon: "chevrons-down-up" },
+          {
+            id: "keep-work-expanded" as const,
+            label: state.keepWorkExpanded
+              ? "Stop keeping work groups expanded"
+              : "Keep work groups expanded",
+            icon: "chevrons-up-down",
+          },
+        ]),
     ...(state.branch
       ? [
           {

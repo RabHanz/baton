@@ -1,10 +1,10 @@
 # Dictation clean-up eval
 
-`scripts/baton/cleanup-eval.mjs` degrades real messages the way a recogniser's raw text reads (no
+`scripts/tessaya/cleanup-eval.mjs` degrades real messages the way a recogniser's raw text reads (no
 capitals or punctuation, fillers, a false start, a "scratch that" self-correction), cleans them with
 Tessaya's local pass and with local-then-Claude (haiku), and scores 0..1 per criterion against the
 original. The corpus is his own messages from the history index and is **not** in the repo; pass its
-path. Run: `node scripts/baton/cleanup-eval.mjs <corpus.json> --claude --limit 30 --out results.json`.
+path. Run: `node scripts/tessaya/cleanup-eval.mjs <corpus.json> --claude --limit 30 --out results.json`.
 
 Criteria: wording (words kept, in order), filler (none left that he did not say), selfcorrect (the
 taken-back phrase and the marker are gone), punct (capital start, a closing mark, "I" capitalised),

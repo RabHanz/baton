@@ -1,6 +1,6 @@
 # Third-party notices
 
-Code in Baton adapted from other projects, with their licences. Each entry names the files that
+Code in Tessaya adapted from other projects, with their licences. Each entry names the files that
 carry the adapted code.
 
 ## farzaa/clicky (MIT)
@@ -117,7 +117,7 @@ SOFTWARE.
 ## What ships, and under which licence (checked by CI)
 
 `docs/baton/notices.json` lists every dependency, crate, model file and font that Tessaya's own code ships or downloads, and
-`scripts/baton/check-notices.mjs` (run by the `verify` job) fails when one is missing here or has no licence text. Upstream T3
+`scripts/tessaya/check-notices.mjs` (run by the `verify` job) fails when one is missing here or has no licence text. Upstream T3
 Code's own dependencies are covered by `third-party-licenses.config.json`. Licence texts are in `docs/baton/licences/`.
 
 ### Runtime

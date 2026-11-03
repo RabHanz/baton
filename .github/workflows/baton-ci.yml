@@ -25,7 +25,7 @@ jobs:
       - uses: ./.github/actions/setup-ci-deps
 
       - name: Typecheck (new errors fail; known ones sit in typecheck-baseline.txt)
-        run: node scripts/baton/typecheck-gate.mjs
+        run: node scripts/tessaya/typecheck-gate.mjs
 
       - name: Lint (errors fail; it was not gated before and had drifted to 115)
         run: vp lint --report-unused-disable-directives
@@ -69,4 +69,4 @@ jobs:
           mkdir -p "$RUNNER_TEMP/resource-monitor/linux-x64"
           cp native/resource-monitor/target/release/t3-resource-monitor "$RUNNER_TEMP/resource-monitor/linux-x64/"
           export BATON_RESOURCE_MONITOR_DIR="$RUNNER_TEMP/resource-monitor"
-          NODE_ENV=production bash scripts/baton/release-build.sh 0.0.0-baton.0
+          NODE_ENV=production bash scripts/tessaya/release-build.sh 0.0.0-baton.0

@@ -29,6 +29,9 @@ import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
 import {
   autoResumeAllowed,
   autoResumedWithin,
+  DEFAULT_GRACE_MS,
+  MAX_AT_ONCE,
+  noteLive,
   classifyTranscriptTail,
   emptyAutoResumeState,
   HOUR_MS,
@@ -83,7 +86,7 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly threadId?: string;
     }>;
     readonly watchdog: (input: {
-      action: "run" | "status" | "stop";
+      action: "run" | "status" | "stop" | "mark" | "on" | "off";
       sessionId?: string;
     }) => Effect.Effect<{
       readonly enabled: boolean;
@@ -115,7 +118,7 @@ export const layer = Layer.effect(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
     // No Herdr here (Windows): a missing piece must say so, not fall through to a Herdr program that is not there.
-    const noHerdr = NodePath.sep === "\\";
+    const noHerdr = NodePath.sep === "\\" || process.env["BATON_NO_HERDR"] === "1";
     const OWN_FOLDER =
       "That folder belongs to Tessaya's own data, not to a project, so no session is started there.";
     const MISSING =
@@ -130,6 +133,22 @@ export const layer = Layer.effect(
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
                 if (isTessayaOwnFolder(cwd)) return { detail: OWN_FOLDER };
+                // The size and time of an import go to the log: a long transcript is slow, and a failure names its session.
+                const startedAt = Date.now();
+                const info = (yield* Effect.promise(() => real.transcripts(600))).find(
+                  (t) => t.sessionId === sessionId,
+                );
+                let bytes: number | null = null;
+                try {
+                  bytes = info?.file === undefined ? null : NodeFS.statSync(info.file).size;
+                } catch {
+                  bytes = null;
+                }
+                yield* Effect.logInfo("Tessaya resume: importing a conversation as a thread", {
+                  sessionId,
+                  cwd,
+                  bytes,
+                });
                 const found = yield* projects.value.getByWorkspaceRoot(cwd);
                 const project = Option.isSome(found)
                   ? found.value
@@ -148,21 +167,45 @@ export const layer = Layer.effect(
                 );
                 // The import commits events before it returns, but the thread's own record can trail them a moment.
                 for (let attempt = 0; attempt < 10; attempt += 1) {
-                  if ((yield* engine.value.threadShell(threadId)) !== null)
+                  if ((yield* engine.value.threadShell(threadId)) !== null) {
+                    yield* Effect.logInfo("Tessaya resume: the thread is ready", {
+                      sessionId,
+                      bytes,
+                      ms: Date.now() - startedAt,
+                    });
                     return { threadId: String(threadId) };
+                  }
                   yield* Effect.sleep("500 millis");
                 }
+                yield* Effect.logWarning(
+                  "Tessaya resume: the import finished but no thread exists",
+                  {
+                    sessionId,
+                    bytes,
+                    imported: result.importedCount,
+                    skipped: result.skippedCount,
+                  },
+                );
                 return {
-                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). Only conversations from the last 30 days are imported.`,
+                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). It may be unreadable or too large; the server log has its size and the reason.`,
                 };
               }),
-            ).catch((cause) => ({
-              detail: `Tessaya could not bring that conversation back as a thread here: ${String(
-                cause instanceof Error ? cause.message : cause,
-              )
-                .replace(/\s+/g, " ")
-                .slice(0, 160)}`,
-            }));
+            ).catch((cause) => {
+              void Effect.runPromiseWith(services)(
+                Effect.logWarning("Tessaya resume failed", {
+                  sessionId,
+                  cwd,
+                  cause: String(cause),
+                }),
+              );
+              return {
+                detail: `Tessaya could not bring that conversation back as a thread here: ${String(
+                  cause instanceof Error ? cause.message : cause,
+                )
+                  .replace(/\s+/g, " ")
+                  .slice(0, 160)}`,
+              };
+            });
     // A new session on a machine with no Herdr: a T3 thread in that folder's project, on the Claude provider, with the
     // model, effort and first message asked for. The project is found by its exact folder, so no other project is touched.
     const claudeInstance = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));
@@ -270,7 +313,24 @@ export const layer = Layer.effect(
     // On by default on a server; off on a person's own Windows computer until he turns it on (BATON_AUTO_RESUME=on).
     const autoEnabled = () => {
       const setting = (process.env["BATON_AUTO_RESUME"] ?? "").toLowerCase();
-      return setting === "on" ? true : setting === "off" ? false : !noHerdr;
+      if (setting === "on") return true;
+      if (setting === "off") return false;
+      return autoState.enabled ?? !noHerdr;
+    };
+    // The file is read again each pass, so a stop marked from outside (scripts/tessaya/mark-stopped.mjs) is seen at once.
+    const reloadAutoState = () => {
+      try {
+        const onDisk = JSON.parse(
+          NodeFS.readFileSync(stateFile, "utf8"),
+        ) as Partial<AutoResumeState>;
+        autoState = {
+          ...autoState,
+          stopped: [...new Set([...autoState.stopped, ...(onDisk.stopped ?? [])])],
+          ...(onDisk.enabled === undefined ? {} : { enabled: onDisk.enabled }),
+        };
+      } catch {
+        // nothing on disk yet
+      }
     };
     const FRESH_MS = 6 * HOUR_MS;
     const watchdogRun = async (): Promise<{
@@ -280,16 +340,28 @@ export const layer = Layer.effect(
     }> => {
       const resumed: string[] = [];
       const skipped: Array<{ id: string; why: string }> = [];
+      reloadAutoState();
       const enabled = autoEnabled();
+      const liveNow = await ports.live();
+      // What is running now is what may later be brought back; a session only listed in the catalog never is.
+      autoState = noteLive(
+        autoState,
+        liveNow.map((s) => s.sessionId),
+        Date.now(),
+      );
+      saveAutoState();
       if (!enabled || ports.readTail === undefined) return { enabled, resumed, skipped };
-      const live = new Set((await ports.live()).map((s) => s.sessionId));
+      const live = new Set(liveNow.map((s) => s.sessionId));
       for (const t of await ports.transcripts(60)) {
         if (t.file === undefined || live.has(t.sessionId)) continue;
         const now = Date.now();
         // Only what stopped recently: an old unfinished session was left that way long ago.
         if (now - Date.parse(t.lastActivityAt) > FRESH_MS) continue;
         const verdict = classifyTranscriptTail(await ports.readTail(t.file).catch(() => ""));
+        if (resumed.length >= MAX_AT_ONCE) break;
         const decision = autoResumeAllowed({
+          idleMs: now - Date.parse(t.lastActivityAt),
+          graceMs: Number(process.env["BATON_AUTO_RESUME_GRACE_MS"] ?? DEFAULT_GRACE_MS),
           sessionId: t.sessionId,
           verdict,
           background: t.background === true,
@@ -354,11 +426,28 @@ export const layer = Layer.effect(
         return yield* Effect.promise(() => catalog.create(input));
       }),
       watchdog: Effect.fn("BatonSessionCatalogService.watchdog")(function* (input: {
-        action: "run" | "status" | "stop";
+        action: "run" | "status" | "stop" | "mark" | "on" | "off";
         sessionId?: string;
       }) {
-        if (input.action === "stop" && input.sessionId !== undefined) {
+        if ((input.action === "stop" || input.action === "mark") && input.sessionId !== undefined) {
           autoState = markStoppedOnPurpose(autoState, input.sessionId);
+          saveAutoState();
+          // "stop" also ends the process here (a live session on this machine); "mark" is for one stopped from outside.
+          if (input.action === "stop") {
+            const target = (yield* Effect.promise(() => ports.live())).find(
+              (s) => s.sessionId === input.sessionId,
+            );
+            if (target !== undefined) {
+              try {
+                process.kill(target.pid, "SIGTERM");
+              } catch {
+                // already gone
+              }
+            }
+          }
+        }
+        if (input.action === "on" || input.action === "off") {
+          autoState = { ...autoState, enabled: input.action === "on" };
           saveAutoState();
         }
         if (input.action === "run") return yield* Effect.promise(() => watchdogRun());

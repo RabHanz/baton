@@ -56,7 +56,7 @@ jobs:
         working-directory: apps/desktop
         env:
           PROOF_OUT: ${{ github.workspace }}/teach-proof-out
-          PROOF_FAKE: ${{ github.workspace }}/scripts/baton/teach-proof/fake-claude.mjs
+          PROOF_FAKE: ${{ github.workspace }}/scripts/tessaya/teach-proof/fake-claude.mjs
           SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
           HANDS_RECORD: "1"
         run: |

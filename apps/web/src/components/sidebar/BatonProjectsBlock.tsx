@@ -104,6 +104,9 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
   const catalogList = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const catalogResume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
   const catalogCreate = useAtomCommand(batonWorkSessions.sessionsCreate, { reportFailure: false });
+  const catalogAutoResume = useAtomCommand(batonWorkSessions.sessionsAutoResume, {
+    reportFailure: false,
+  });
   const catalogCleanup = useAtomCommand(batonWorkSessions.sessionsCleanup, {
     reportFailure: false,
   });
@@ -117,6 +120,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
       create: catalogCreate,
       folders: catalogFolders,
       cleanup: catalogCleanup,
+      autoResume: catalogAutoResume,
     },
     environmentIds: props.environmentIds as ReadonlyArray<string>,
     label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,
@@ -132,6 +136,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
         create: catalogCreate,
         folders: catalogFolders,
         cleanup: catalogCleanup,
+        autoResume: catalogAutoResume,
       },
       environmentIds: props.environmentIds as ReadonlyArray<string>,
       label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,

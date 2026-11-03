@@ -49,6 +49,12 @@ export const startBatonMcp = async (input: {
   readonly gate: Gate;
   /** Removes vault values from anything headed back to the model (D151). */
   readonly scrub?: (text: string) => string;
+  /** Every tool call's outcome, with the error text when it failed: the turn log keeps it. */
+  readonly onResult?: (result: {
+    readonly tool: string;
+    readonly ok: boolean;
+    readonly error?: string;
+  }) => void;
 }): Promise<BatonMcp> => {
   const token = NodeCrypto.randomBytes(32).toString("hex");
   let port = 0;
@@ -67,6 +73,11 @@ export const startBatonMcp = async (input: {
       .gate({ tool: `${BATON_TOOL_PREFIX}${name}`, input: args })
       .catch(() => ({ allow: false as const, reason: "Baton could not check that." }));
     if (!verdict.allow) {
+      input.onResult?.({
+        tool: name,
+        ok: false,
+        error: `refused: ${verdict.reason}`.slice(0, 300),
+      });
       return {
         isError: true,
         content: [{ type: "text", text: `Baton refused: ${verdict.reason}` }],
@@ -74,6 +85,7 @@ export const startBatonMcp = async (input: {
     }
     try {
       const out = await tool.run(args);
+      input.onResult?.({ tool: name, ok: true });
       return {
         content: [
           ...(out.text === undefined
@@ -83,6 +95,13 @@ export const startBatonMcp = async (input: {
         ],
       };
     } catch (error) {
+      input.onResult?.({
+        tool: name,
+        ok: false,
+        error: (input.scrub ?? ((t) => t))(
+          error instanceof Error ? error.message : String(error),
+        ).slice(0, 300),
+      });
       return {
         isError: true,
         content: [

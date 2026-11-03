@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  noteLive,
   autoResumeAllowed,
   classifyTranscriptTail,
   emptyAutoResumeState,
@@ -75,6 +76,22 @@ describe("what the end of a transcript says about the last turn", () => {
 });
 
 describe("when the watchdog may resume a session", () => {
+  it("only for a session that was live, and not in the first minutes after it stopped", () => {
+    const base2 = {
+      verdict: "unfinished" as const,
+      background: false,
+      enabled: true,
+      running: false,
+      now: 1_000_000_000,
+      sessionId: "s1",
+    };
+    expect(autoResumeAllowed({ ...base2, state: emptyAutoResumeState }).why).toMatch(/only listed/);
+    const seen = noteLive(emptyAutoResumeState, ["s1"], base2.now - 600_000);
+    expect(autoResumeAllowed({ ...base2, state: seen, idleMs: 30_000 }).why).toMatch(
+      /can still be marked/,
+    );
+    expect(autoResumeAllowed({ ...base2, state: seen, idleMs: 300_000 }).resume).toBe(true);
+  });
   const base = {
     verdict: "unfinished" as const,
     background: false,
@@ -82,14 +99,13 @@ describe("when the watchdog may resume a session", () => {
     running: false,
     now: 1_000_000_000,
   };
+  const live = (id: string) => noteLive(emptyAutoResumeState, [id], base.now - 600_000);
   it("resumes an unfinished session and says it was restarted", () => {
-    expect(
-      autoResumeAllowed({ ...base, state: emptyAutoResumeState, sessionId: "s1" }).resume,
-    ).toBe(true);
+    expect(autoResumeAllowed({ ...base, state: live("s1"), sessionId: "s1" }).resume).toBe(true);
     expect(RESTART_NOTICE).toMatch(/restarted after your process stopped/);
   });
   it("never when it is off, finished, a background run, already live, or he stopped it on purpose", () => {
-    const stopped = markStoppedOnPurpose(emptyAutoResumeState, "s1");
+    const stopped = markStoppedOnPurpose(live("s1"), "s1");
     for (const input of [
       { ...base, enabled: false },
       { ...base, verdict: "finished" as const },
@@ -97,13 +113,14 @@ describe("when the watchdog may resume a session", () => {
       { ...base, background: true },
       { ...base, running: true },
     ])
-      expect(
-        autoResumeAllowed({ ...input, state: emptyAutoResumeState, sessionId: "s1" }).resume,
-      ).toBe(false);
+      expect(autoResumeAllowed({ ...input, state: live("s1"), sessionId: "s1" }).resume).toBe(
+        false,
+      );
     expect(autoResumeAllowed({ ...base, state: stopped, sessionId: "s1" }).resume).toBe(false);
   });
   it("at most three times an hour for one session", () => {
-    let state = emptyAutoResumeState;
+    let state = live("s1");
+    state = noteLive(state, ["other"], base.now - 600_000);
     for (let i = 0; i < 3; i += 1) state = recordAutoResume(state, "s1", base.now + i * 1000);
     expect(
       autoResumeAllowed({ ...base, now: base.now + 5000, state, sessionId: "s1" }).resume,

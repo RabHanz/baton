@@ -1,4 +1,4 @@
-name: Baton dictation build
+name: Tessaya dictation build
 
 # Builds the sidecar on its own for every platform, so it can be tried without a desktop release. Windows is the
 # one the app shipped with; Linux x64 and macOS arm64 + x64 are built and tested here the same way.

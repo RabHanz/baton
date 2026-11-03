@@ -5,9 +5,9 @@ short list. Nothing here decides the licence or any legal question: those are th
 
 ## Done and guarded
 
-- **No private names, keys or addresses in shipped code.** `scripts/baton/guard-private.mjs` fails CI (and a unit
+- **No private names, keys or addresses in shipped code.** `scripts/tessaya/guard-private.mjs` fails CI (and a unit
   test) on a maintainer host or account, a cloud provider used as a machine name, an API key or token, a tailnet
-  address, or a hashed phrase of a private operating-system pack. Tests, fixtures and `scripts/baton/` (the
+  address, or a hashed phrase of a private operating-system pack. Tests, fixtures and `scripts/tessaya/` (the
   maintainer's operator tools, not in the installer) are out of scope. Its allow list is one file and only shrinks.
 - **The operating-system pack is neutral by default**; a user's own pack loads from their user data folder and can
   never be committed (D148).
@@ -15,7 +15,7 @@ short list. Nothing here decides the licence or any legal question: those are th
   and need nothing of the maintainer's machines. Rotation and token instances are off unless set.
 - **Voice is local**; nothing but the user's text goes to the brain they chose (LAUNCH section 4).
 - **Third-party notices are checked by CI.** `docs/baton/notices.json` lists every dependency, crate, model file and font that
-  Tessaya's own code ships or downloads; `scripts/baton/check-notices.mjs` (in `verify`) fails when one has no entry, no mention
+  Tessaya's own code ships or downloads; `scripts/tessaya/check-notices.mjs` (in `verify`) fails when one has no entry, no mention
   in `THIRD_PARTY_NOTICES.md`, or no licence text. Texts are in `docs/baton/licences/`.
 - **The stranger-install proof exists** (`baton-voice-proof.yml`, `stranger-proof.ps1`): clean Windows machine, silent install,
   first run, nothing private in the user data, only default wake words, no user pack, uninstall removes the app and keeps the

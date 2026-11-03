@@ -1,4 +1,4 @@
-name: Baton hands bake-off
+name: Tessaya hands bake-off
 
 # Issue #52, measured: the current hands against ported ideas on the same twelve tasks, three runs each, on a real
 # Windows desktop. The planner is scripted (a runner has no model login), so this measures the tool path and the
@@ -9,7 +9,7 @@ on:
     branches: ["baton/hands-sota**", "baton/hands-effects**", "baton/remote-hands**"]
     paths:
       [
-        "scripts/baton/hands-ci/**",
+        "scripts/tessaya/hands-ci/**",
         "native/baton-dictation/src/**",
         ".github/workflows/baton-hands-bakeoff.yml",
       ]
@@ -70,7 +70,7 @@ jobs:
           HANDS_GUARD: ${{ matrix.variant == 'guard' && '1' || '0' }}
         run: |
           mkdir -p "$HANDS_OUT"
-          node scripts/baton/hands-ci/run.ts 2>&1 | tee "$HANDS_OUT/run.log"
+          node scripts/tessaya/hands-ci/run.ts 2>&1 | tee "$HANDS_OUT/run.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -91,7 +91,7 @@ jobs:
           pattern: hands-*
           path: bakeoff
       - name: Table
-        run: node scripts/baton/hands-ci/bakeoff-report.ts bakeoff | tee -a "$GITHUB_STEP_SUMMARY"
+        run: node scripts/tessaya/hands-ci/bakeoff-report.ts bakeoff | tee -a "$GITHUB_STEP_SUMMARY"
 
   remote:
     needs: sidecar
@@ -116,7 +116,7 @@ jobs:
           HANDS_OUT: ${{ github.workspace }}/remote-out
         run: |
           mkdir -p remote-out
-          node scripts/baton/hands-ci/remote-bench.ts 2>&1 | tee remote-out/run.log | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/tessaya/hands-ci/remote-bench.ts 2>&1 | tee remote-out/run.log | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
