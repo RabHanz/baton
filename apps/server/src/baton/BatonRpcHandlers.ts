@@ -69,6 +69,7 @@ import * as FleetQuery from "./FleetQuery.ts";
 import { herdrSend } from "./HerdrSend.ts";
 import { BatonIntentService } from "./IntentService.ts";
 import { liveAdopt, liveAttach, liveSetModel } from "./LiveActions.ts";
+import { setModelResumingStopped } from "@t3tools/baton-shared/liveModel";
 import { BatonOrchestrationReactor } from "./OrchestrationReactor.ts";
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
@@ -298,7 +299,27 @@ export const make = Effect.gen(function* () {
       run(Effect.flatMap(AdoptedSessionService, (adopted) => liveAttach(adopted, input))),
     [BATON_LIVE_WS_METHODS.liveAdopt]: (input) => liveAdopt(input),
     [BATON_LIVE_WS_METHODS.liveSetModel]: (input) =>
-      run(Effect.flatMap(AdoptedSessionService, (adopted) => liveSetModel(adopted, input))),
+      run(
+        Effect.gen(function* () {
+          const adopted = yield* AdoptedSessionService;
+          const catalog = yield* BatonSessionCatalogService;
+          const services = yield* Effect.context<never>();
+          return yield* Effect.promise(() =>
+            setModelResumingStopped({
+              run: () => Effect.runPromiseWith(services)(liveSetModel(adopted, input)),
+              // The same session id, in Herdr; a resume that made no pane did not bring it back.
+              resume: async () =>
+                (
+                  await Effect.runPromiseWith(services)(
+                    catalog.resume({ sessionId: input.sessionId }),
+                  )
+                ).pane !== null,
+              // @effect-diagnostics-next-line globalTimers:off
+              wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+            }),
+          );
+        }),
+      ),
     [BATON_LIVE_WS_METHODS.herdrSend]: (input) =>
       run(Effect.flatMap(AdoptedSessionService, (adopted) => herdrSend(adopted, input))),
     // Settling a work session settles its threads in upstream too, so T3's own sidebar agrees.
