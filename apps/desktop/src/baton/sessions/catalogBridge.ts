@@ -82,6 +82,21 @@ export const createBridgeCatalogService = (input: {
   };
   return {
     list,
+    stop: async (row) => {
+      const answer = await input.bridge.request(
+        { kind: "catalogStop", environmentId: row.environmentId, sessionId: row.sessionId },
+        LIST_WAIT_MS,
+      );
+      if (answer === null || !answer.ok) throw new Error("not stopped");
+    },
+    autoResume: async (action) => {
+      const answer = await input.bridge.request(
+        { kind: "catalogAutoResume", action },
+        LIST_WAIT_MS,
+      );
+      if (answer === null) throw new Error("The sessions view did not answer.");
+      return (JSON.parse(answer.detail) as { enabled?: boolean }).enabled === true;
+    },
     cleanup: async (apply) => {
       const answer = await input.bridge.request({ kind: "catalogCleanup", apply }, LIST_WAIT_MS);
       if (answer === null) throw new Error("The sessions view did not answer.");

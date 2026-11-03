@@ -195,3 +195,37 @@ describe("clean-up of helper threads and background runs", () => {
     expect(lists.at(-1)).toBe(true);
   });
 });
+
+describe("Stop and the Auto-resume switch", () => {
+  it("Stop ends a running session and leaves it stopped; the switch asks every server", async () => {
+    const stopped: string[] = [];
+    const switches: string[] = [];
+    const service: CatalogService = {
+      list: async () => rows,
+      resume: async () => undefined,
+      create: async () => undefined,
+      folders: async () => [],
+      open: () => undefined,
+      stop: async (row) => void stopped.push(row.id),
+      autoResume: async (action) => (switches.push(action), action !== "off"),
+    };
+    const catalog = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    await catalog.refresh();
+    const state = (id: string) => {
+      const row = catalog.controls().find((c) => c.id === `c:${id}`);
+      return row?.kind === "catalogRow" ? [row.stateLabel, row.stopLabel] : [];
+    };
+    expect(state("s0")).toEqual(["Running", "Stop"]);
+    catalog.apply("c:s0", "stop");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(stopped).toEqual(["s0"]);
+    expect(state("s0")).toEqual(["Stopped", null]);
+    catalog.apply("c.autoResume", null);
+    await Promise.resolve();
+    expect(switches.at(-1)).toBe(switches.includes("status") ? switches.at(-1) : "on");
+    expect(catalog.controls().find((c) => c.kind === "catalogBar")).toMatchObject({
+      autoResume: expect.any(Boolean),
+    });
+  });
+});

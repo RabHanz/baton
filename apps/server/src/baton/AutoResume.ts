@@ -64,9 +64,34 @@ export interface AutoResumeState {
   readonly stopped: ReadonlyArray<string>;
   /** When each session was last resumed by the watchdog, newest last, for the hourly cap. */
   readonly resumes: Readonly<Record<string, ReadonlyArray<number>>>;
+  /** When each session was last seen running: only sessions that were live are ever resumed by themselves. */
+  readonly seenLive: Readonly<Record<string, number>>;
+  /** The Auto-resume switch as the user set it; absent means the default for this machine. */
+  readonly enabled?: boolean;
 }
 
-export const emptyAutoResumeState: AutoResumeState = { stopped: [], resumes: {} };
+export const emptyAutoResumeState: AutoResumeState = { stopped: [], resumes: {}, seenLive: {} };
+
+export const noteLive = (
+  state: AutoResumeState,
+  ids: ReadonlyArray<string>,
+  now: number,
+): AutoResumeState => ({
+  ...state,
+  seenLive: {
+    ...Object.fromEntries(
+      Object.entries(state.seenLive).filter(([, at]) => now - at < 24 * HOUR_MS),
+    ),
+    ...Object.fromEntries(ids.map((id) => [id, now])),
+  },
+});
+
+/** A kill from outside looks like a crash, so a fresh stop waits this long: time to mark a deliberate one first. */
+export const DEFAULT_GRACE_MS = 120_000;
+/** How long after it was last seen live a session still counts as one that was running. */
+export const LIVE_MEMORY_MS = 6 * 3_600_000;
+/** At most this many sessions are brought back in one pass, so a box is never flooded. */
+export const MAX_AT_ONCE = 2;
 
 export const HOUR_MS = 3_600_000;
 export const MAX_PER_HOUR = 3;
@@ -103,6 +128,9 @@ export const autoResumeAllowed = (input: {
   readonly running: boolean;
   readonly state: AutoResumeState;
   readonly now: number;
+  /** How long ago its transcript was last written; a very fresh stop is still inside the grace. */
+  readonly idleMs?: number;
+  readonly graceMs?: number;
 }): { readonly resume: boolean; readonly why: string } => {
   if (!input.enabled) return { resume: false, why: "auto-resume is off here" };
   if (input.verdict !== "unfinished")
@@ -111,6 +139,11 @@ export const autoResumeAllowed = (input: {
   if (input.running) return { resume: false, why: "it is running" };
   if (input.state.stopped.includes(input.sessionId))
     return { resume: false, why: "he stopped it on purpose" };
+  const seen = input.state.seenLive[input.sessionId];
+  if (seen === undefined || input.now - seen > LIVE_MEMORY_MS)
+    return { resume: false, why: "it was not a live session, only listed" };
+  if ((input.idleMs ?? Number.POSITIVE_INFINITY) < (input.graceMs ?? DEFAULT_GRACE_MS))
+    return { resume: false, why: "it just stopped: a deliberate stop can still be marked" };
   const recent = (input.state.resumes[input.sessionId] ?? []).filter(
     (t) => input.now - t < HOUR_MS,
   ).length;
