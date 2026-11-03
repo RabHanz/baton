@@ -127,6 +127,11 @@ void Electron.app.whenReady().then(async () => {
   win.setBounds({ x: 0, y: 0, width: 1024, height: 740 });
   win.show();
   win.focus();
+  // The runner's Windows asks for reduced motion, which switches every animation off; the proof measures the full-motion window.
+  win.webContents.debugger.attach("1.3");
+  await win.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "no-preference" }],
+  });
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
   const lines: string[] = ["# Home design proof", ""];
   const log = (s: string) => (lines.push(s), console.log(s));
