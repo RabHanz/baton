@@ -1,3 +1,5 @@
+import * as NodeOS from "node:os";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -29,7 +31,12 @@ describe("overlay windows and screen capture", () => {
     protectFromCapture(fakeWindow(log));
     expect(log).toEqual(["protect false"]);
     await hiddenForCapture(async () => void log.push("grab"));
-    expect(log.slice(1)).toEqual(["hide", "grab", "show"]);
+    // Windows and macOS keep the window up and only exclude it from the grab; elsewhere it is hidden.
+    expect(log.slice(1)).toEqual(
+      NodeOS.platform() === "win32" || NodeOS.platform() === "darwin"
+        ? ["protect true", "grab", "protect false"]
+        : ["hide", "grab", "show"],
+    );
     log.length = 0;
     setHideFromCapture(true);
     await hiddenForCapture(async () => void log.push("grab"));
