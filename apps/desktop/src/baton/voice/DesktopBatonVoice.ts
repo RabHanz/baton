@@ -32,9 +32,11 @@ import {
   type DictationMode,
 } from "@t3tools/baton-shared/dictationCleanup";
 import {
+  createEchoGuard,
   createVoiceRouter,
   encodeWav,
   type BatonVoiceCore,
+  type EchoGuard,
   type SttProvider,
   type VoiceCoreEvent,
   type VoiceIntentClient,
@@ -426,6 +428,10 @@ interface VoiceSettings {
   readonly learnWords: boolean;
   /** For whispering or a far mic: audio is lifted and wake thresholds lowered. Off by default. */
   readonly quietSpeech: boolean;
+  /** Headphones: the mic cannot hear Tessaya, so it listens all the time and speech over her voice cuts in. */
+  readonly headphones: boolean;
+  /** Over speakers: hear him through her voice (the echo guard). Measured, not yet reliable enough to be the default. */
+  readonly voiceBargeIn: boolean;
   /** Two quick taps of the dictation key keep the microphone open until the next press. */
   readonly doubleTap: boolean;
   /** Keep the audio of dictations and spoken turns (Opus), never anything else. Off until he says so. */
@@ -519,6 +525,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   verifyWake: true,
   learnWords: true,
   quietSpeech: false,
+  headphones: false,
+  voiceBargeIn: false,
   doubleTap: true,
   keepVoice: false,
   keepDays: 30,
@@ -598,6 +606,8 @@ export const readSettings = (path: string): VoiceSettings => {
       bindings: parseBindings(saved["bindings"]),
       learnWords: saved["learnWords"] !== false,
       quietSpeech: saved["quietSpeech"] === true,
+      headphones: saved["headphones"] === true,
+      voiceBargeIn: saved["voiceBargeIn"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
       motion: parseMotion(saved["motion"]),
@@ -700,7 +710,23 @@ export interface VoiceCoreHooks {
   readonly listening: () => { readonly commandWindowMs: number; readonly conversationMs: number };
   /** The second check before a wake from sleep: was the wake word really said. */
   readonly verifyWake: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
+  readonly echo: EchoGuard | undefined;
+  readonly speakerMode: () => "speakers" | "headphones";
 }
+
+/** Linear resampling to the microphone's 16 kHz, for the echo guard's reference only. */
+export const resampleTo16k = (pcm: Int16Array, rate: number): Int16Array => {
+  if (rate === 16_000) return pcm;
+  const out = new Int16Array(Math.floor((pcm.length * 16_000) / rate));
+  for (let i = 0; i < out.length; i += 1) {
+    const at = (i * rate) / 16_000;
+    const k = Math.floor(at);
+    const frac = at - k;
+    out[i] = Math.round((pcm[k] ?? 0) * (1 - frac) + (pcm[k + 1] ?? pcm[k] ?? 0) * frac);
+  }
+  return out;
+};
 
 /** The assistant, as the voice side sees it: its tray entries (D84) and the one brain (D100). */
 export interface TrayExtras extends BrainVoiceHook {
@@ -765,6 +791,8 @@ export interface DesktopBatonVoiceInput {
   readonly dictationBinary: string | null;
   /** A wake word cut across Baton's voice. */
   readonly onBargeIn?: () => void;
+  /** Lower Tessaya's voice while someone may be talking over it; false brings it back. */
+  readonly onDuck?: (on: boolean) => void;
   readonly extras?: TrayExtras;
   /** The Sessions area's rows and actions (D138). */
   readonly sessions?: SessionsBridge;
@@ -819,6 +847,8 @@ export interface DesktopBatonVoice {
   readonly cue: (name: "start" | "stepDone" | "waiting" | "error" | "finished") => void;
   /** How loud Baton's voice is right now, for the pill. */
   readonly onSpeechLevel: (level: number) => void;
+  /** What the player is about to play (16-bit mono at `rate`) and when it will sound. */
+  readonly onReference: (pcm: Int16Array, rate: number, soundsAtMs: number) => void;
   /** He dismissed the assistant's output. */
   readonly onDismissed: () => void;
   /** A line for the tray: a voice downloading, or why it could not. */
@@ -2192,6 +2222,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   /** How long the sidecar has been reading the speech model, from its "loading" lines (0 when it is not). */
   let speechLoadMs = 0;
+  /** What Tessaya plays, against what the microphone hears, so his voice over hers can be told apart. */
+  const echoGuard = createEchoGuard();
   const onDictation = (event: DictationEvent) => {
     if (event.ev === "loading") {
       if (speechLoadMs === 0) step("speech-model-loading");
@@ -2429,6 +2461,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "barge_in":
           input.onBargeIn?.();
           return null;
+        case "barge_duck":
+          input.onDuck?.(event.on);
+          return null;
         case "effect":
           return null;
       }
@@ -2519,6 +2554,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           ? settings.conversationOpenMs
           : 30_000,
       }),
+      echo: settings.voiceBargeIn ? echoGuard : undefined,
+      speakerMode: () => (settings.headphones ? "headphones" : "speakers"),
       verifyWake: async (pcm, word) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;
@@ -3940,6 +3977,22 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         })),
       },
       {
+        id: "v.headphones",
+        section: "Wake and listening",
+        label: "I am wearing headphones",
+        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it listens through her voice (learning your room), and the wake word, a stop phrase, Esc and the pill's stop button always work.",
+        kind: "toggle",
+        on: settings.headphones,
+      },
+      {
+        id: "v.voiceBargeIn",
+        section: "Wake and listening",
+        label: "Cut in by talking over her (speakers, experimental)",
+        hint: "Tessaya learns your room from her own voice and stops when you speak over her. In tests it still mistakes her own voice for yours about once in six minutes of continuous speech and misses some quiet interruptions, so it is off. The wake word, a stop phrase, Esc and the pill's stop button always work, and with headphones you can simply talk.",
+        kind: "toggle",
+        on: settings.voiceBargeIn,
+      },
+      {
         id: "v.quietSpeech",
         section: "Wake and listening",
         label: "Quiet speech",
@@ -4736,6 +4789,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.cues") save({ cues: parseCueLevel(value) });
     else if (id === "v.holdKeyCues") save({ holdKeyCues: on });
     else if (id === "v.verifyWake") save({ verifyWake: on });
+    else if (id === "v.headphones") save({ headphones: on });
+    else if (id === "v.voiceBargeIn") {
+      save({ voiceBargeIn: on });
+      void relisten();
+    }
     else if (id === "v.quietSpeech") {
       save({ quietSpeech: on });
       void relisten();
@@ -5025,6 +5083,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     onActivity: (label, caption) =>
       pill.on({ type: "activity", label, ...(caption === undefined ? {} : { caption }) }),
     onSpeechLevel: pill.speechLevel,
+    onReference: (pcm, rate, soundsAtMs) => core?.reference(resampleTo16k(pcm, rate), soundsAtMs),
     onDismissed: () => pill.on({ type: "dismissed" }),
     onNote: (message) => {
       note = message;

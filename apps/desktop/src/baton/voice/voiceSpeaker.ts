@@ -14,6 +14,8 @@ import type { TtsProvider } from "@t3tools/baton-voice";
 export interface VoicePlayer {
   readonly play: (wav: AsyncIterable<Buffer>) => Promise<boolean>;
   readonly stop: () => void;
+  /** Lower the voice while someone may be talking over it; `false` brings it back. */
+  readonly duck?: (on: boolean) => void;
   readonly dispose: () => void;
 }
 

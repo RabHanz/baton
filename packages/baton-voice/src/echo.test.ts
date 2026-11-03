@@ -419,3 +419,71 @@ describe("speech that starts while he is cutting in", () => {
     expect(turns()).toBe(after);
   });
 });
+
+describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
+  const rigWith = (extra: { echo?: { process: () => { ready: boolean; nearEnd: boolean; erleDb: number } }; headphones?: boolean }) => {
+    const events: VoiceCoreEvent[] = [];
+    const spoken = { value: false };
+    const core = createVoiceCore({
+      waitMs: () => 0,
+      wake: { name: "fake", reset: () => {}, process: () => null },
+      vad: { name: "fake", reset: () => {}, isSpeech: () => spoken.value },
+      stt: { name: "fake", transcribe: async () => "something he said" },
+      ...(extra.echo === undefined ? {} : { echo: { reference: () => {}, reset: () => {}, state: () => ({ delayMs: 0, erleDb: 0, converged: true }), ...extra.echo } }),
+      ...(extra.headphones ? { speakerMode: () => "headphones" as const } : {}),
+    });
+    core.subscribe((event) => events.push(event));
+    const push = (seconds: number) => {
+      for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    };
+    return { core, push, events, spoken };
+  };
+  const kinds = (events: VoiceCoreEvent[]) =>
+    events.flatMap((e) => (e.type === "barge_duck" ? [`duck:${e.on}`] : e.type === "barge_in" || e.type === "wake" ? [e.type] : []));
+
+  it("over speakers, ducks the voice at once and cuts in after 120 ms when the echo guard hears him", () => {
+    let him = false;
+    const r = rigWith({ echo: { process: () => ({ ready: true, nearEnd: him, erleDb: 12 }) } });
+    r.core.setSpeaking(true);
+    r.push(1);
+    him = true;
+    r.push(0.5);
+    expect(kinds(r.events)).toEqual(expect.arrayContaining(["duck:true", "barge_in", "wake"]));
+    expect(kinds(r.events).indexOf("duck:true")).toBeLessThan(kinds(r.events).indexOf("barge_in"));
+  });
+
+  it("over speakers, gives the voice back when it was only a blip, and never cuts in on an echo guard that is not ready", () => {
+    let flag = false;
+    let ready = true;
+    const r = rigWith({ echo: { process: () => ({ ready, nearEnd: flag, erleDb: 12 }) } });
+    r.core.setSpeaking(true);
+    flag = true;
+    r.push(0.05);
+    flag = false;
+    r.push(0.2);
+    expect(kinds(r.events)).toEqual(["duck:true", "duck:false"]);
+    r.events.length = 0;
+    ready = false;
+    flag = true;
+    r.push(1);
+    expect(kinds(r.events)).not.toContain("barge_in");
+  });
+
+  it("with no echo guard, speech over her voice does nothing: only a wake or stop phrase gets through", () => {
+    const r = rigWith({});
+    r.spoken.value = true;
+    r.core.setSpeaking(true);
+    r.push(2);
+    expect(kinds(r.events)).not.toContain("barge_in");
+  });
+
+  it("on headphones it listens through her voice, and speech over it cuts in", () => {
+    const r = rigWith({ headphones: true });
+    r.core.setSpeaking(true);
+    r.push(1);
+    expect(kinds(r.events)).not.toContain("barge_in");
+    r.spoken.value = true;
+    r.push(0.5);
+    expect(kinds(r.events)).toEqual(expect.arrayContaining(["duck:true", "barge_in"]));
+  });
+});
