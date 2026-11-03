@@ -44,7 +44,7 @@ const makePill = () =>
     stateDir,
     holdEscape: () => () => undefined,
     onDismiss: () => undefined,
-    onDrag: (o) => console.log("drag outcome", JSON.stringify(o)),
+    onDrag: (o) => progress(`drag outcome ${JSON.stringify(o)}`),
   });
 
 const pillWindow = async () => {
@@ -63,6 +63,7 @@ const capsuleCentre = async (win: Electron.BrowserWindow) => {
   return { x: b.x + r.x, y: b.y + r.y };
 };
 
+setInterval(() => progress("beat"), 1000);
 void Electron.app.whenReady().then(async () => {
   const driver = createInputDriver({
     platform: "win32",
@@ -91,6 +92,7 @@ void Electron.app.whenReady().then(async () => {
   await driver.releaseAt(to);
   progress("dragged");
   await sleep(1200);
+  progress("slept");
   const after = win.getBounds();
   const moved = Math.hypot(after.x - before.x, after.y - before.y);
   lines.push(`- before ${JSON.stringify(before)}`, `- after the drag ${JSON.stringify(after)}`, `- moved ${Math.round(moved)} px (needs more than 100)`);
