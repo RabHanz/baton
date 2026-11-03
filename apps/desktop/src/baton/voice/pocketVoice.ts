@@ -12,7 +12,8 @@ import * as NodePath from "node:path";
 
 import { POCKET_CONFIG_FULL, POCKET_CONFIG_QUICK } from "./pocketConfigs.ts";
 import type { Synthesise } from "./voiceSpeaker.ts";
-import { ensureModel, type DownloadableModel } from "./voiceModels.ts";
+import { ensureModel, hashFile, type DownloadableModel } from "./voiceModels.ts";
+import { markPhase } from "../lifecycle/mainStall.ts";
 
 export const POCKET_VOICES = ["anna", "vera", "charles", "paul"] as const;
 /** A chosen voice: the full model's four, or the small model for a tight machine. */
@@ -208,7 +209,10 @@ export const createPocketEngine = (input: {
         const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
         // The archive stays after it is unpacked: if the program is removed (a virus scanner does this to a downloaded
         // executable), unpacking the kept, checked archive restores it without going to the network again.
-        const kept = NodeFS.existsSync(archive) && digest(NodeFS.readFileSync(archive)) === build.sha256;
+        // Streamed, so a large kept archive never holds the main thread.
+        markPhase("pocket-archive-check:begin");
+        const kept = NodeFS.existsSync(archive) && (await hashFile(archive)) === build.sha256;
+        markPhase("pocket-archive-check:end");
         if (!kept) {
           const response = await fetch(`${RELEASE}/${build.asset}`, {
             signal: AbortSignal.timeout(DOWNLOAD_MS),
