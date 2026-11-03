@@ -106,17 +106,22 @@ export function startWindowsForegroundFocusThread(
 
   if (!start()) return unavailableThread();
 
+  // A worker with a native accessibility call in flight is never terminated: unloading the module under that call is an
+  // access violation that takes the whole app down (xa11y.node_unloaded). A slow worker is left to finish and its late
+  // answer is ignored; a few may be left behind, and past that the helper is simply off.
+  const MAX_ABANDONED = 3;
+  let abandoned = 0;
   const restart = (timedOutWorker: NodeWorkerThreads.Worker | undefined) => {
     if (!timedOutWorker || worker !== timedOutWorker) return;
     worker = undefined;
     ready = false;
     for (const requestId of pending.keys()) finish(requestId, false);
-    void timedOutWorker.terminate();
-    start();
+    abandoned += 1;
+    if (abandoned <= MAX_ABANDONED) start();
   };
   const request = (type: FocusRequest["type"], target: WindowsForegroundFocusTarget) =>
     new Promise<boolean>((resolve) => {
-      if (closed || (!worker && !start())) {
+      if (closed || (!worker && (abandoned > MAX_ABANDONED || !start()))) {
         resolve(false);
         return;
       }
@@ -142,7 +147,8 @@ export function startWindowsForegroundFocusThread(
       worker = undefined;
       ready = false;
       for (const requestId of pending.keys()) finish(requestId, false);
-      if (activeWorker) void activeWorker.terminate();
+      // Not terminated, for the reason above: the worker is unref'd and ends with the process.
+      void activeWorker;
     },
   };
 }

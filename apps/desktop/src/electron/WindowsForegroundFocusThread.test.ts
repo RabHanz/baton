@@ -68,3 +68,24 @@ it("fails pending focus when the helper exits", async () => {
   assert.lengthOf(workerConstructorMock.mock.calls, 2);
   thread.close();
 });
+
+it("never terminates a helper that is slow, because that unloads the native module under its call", () => {
+  vi.useFakeTimers();
+  try {
+    const replacement = makeWorker();
+    workerConstructorMock.mockReturnValueOnce(worker).mockReturnValueOnce(replacement);
+    const thread = startWindowsForegroundFocusThread("focus.cjs");
+    const focused = thread.focus(target);
+    worker.emit("message", "ready");
+    vi.advanceTimersByTime(1_500);
+    return focused.then((result) => {
+      assert.isFalse(result);
+      assert.lengthOf(worker.terminate.mock.calls, 0);
+      assert.lengthOf(workerConstructorMock.mock.calls, 2);
+      thread.close();
+      assert.lengthOf(replacement.terminate.mock.calls, 0);
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
