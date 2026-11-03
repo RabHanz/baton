@@ -67,7 +67,7 @@ if __name__ == "__main__":
             else {"ACAV100M_sample": "./openwakeword_features_ACAV100M_2000_hrs_16bit.npy"}
         ),
         "batch_n_per_class": (
-            {"clean_negatives": 1024, "adversarial_negative": 70, "positive": 70} if CLEAN
+            {"clean_negatives": 1024, "adversarial_negative": 150, "positive": 250} if CLEAN
             else {"ACAV100M_sample": 1024, "adversarial_negative": 70, "positive": 70}
         ),
         "model_type": "dnn",
