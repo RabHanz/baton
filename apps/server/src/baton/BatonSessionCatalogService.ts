@@ -118,7 +118,7 @@ export const layer = Layer.effect(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
     // No Herdr here (Windows): a missing piece must say so, not fall through to a Herdr program that is not there.
-    const noHerdr = NodePath.sep === "\\";
+    const noHerdr = NodePath.sep === "\\" || process.env["BATON_NO_HERDR"] === "1";
     const OWN_FOLDER =
       "That folder belongs to Tessaya's own data, not to a project, so no session is started there.";
     const MISSING =
