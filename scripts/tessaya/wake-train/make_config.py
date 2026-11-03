@@ -71,8 +71,8 @@ if __name__ == "__main__":
             else {"ACAV100M_sample": 1024, "adversarial_negative": 70, "positive": 70}
         ),
         "model_type": "dnn",
-        "layer_size": 64,
+        "layer_size": 128,
         "steps": steps,
-        "max_negative_weight": 3000,
-        "target_false_positives_per_hour": 0.2,
+        "max_negative_weight": 5000,
+        "target_false_positives_per_hour": 0.1,
     }))
