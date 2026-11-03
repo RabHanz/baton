@@ -614,12 +614,26 @@ export async function answerPrompt(sessionId, paneRef, text) {
     ]);
     await run(HERDR, herdrArgs(paneRef, "send-keys", ["enter"]));
   }
+  // The last question of a form is followed by "Ready to submit your answers?". He already submitted once, so
+  // Submit is pressed for him (never Cancel or Go back); a different question is left to be shown as a new card.
+  let submitted = false;
   for (let i = 0; i < PROMPT_CLEAR_TRIES; i += 1) {
     await sleep(500);
     const now = await readPanePrompt(paneRef);
+    if (now?.review === true && shown.review !== true) {
+      const confirm = submitted ? null : answerKeys(now, "Submit answers");
+      if (confirm !== null) {
+        await run(HERDR, herdrArgs(paneRef, "send-keys", confirm.keys));
+        submitted = true;
+      }
+      continue;
+    }
     if (now === null || now.key !== shown.key) {
+      const told = `Answered in the terminal: ${plan.text ?? answer}.`;
+      if (now !== null) return `${told} The session is asking again now.`;
+      if (submitted) return `${told} Your answers were submitted.`;
       const status = findLiveSession(sessionId)?.status ?? "gone";
-      return `Answered in the terminal: ${plan.text ?? answer}. The session is ${status === "waiting" ? "asking again" : status} now.`;
+      return `${told} The session is ${status === "waiting" ? "asking again" : status} now.`;
     }
   }
   return `The answer "${plan.text ?? answer}" was pressed, but the terminal still shows the question.`;

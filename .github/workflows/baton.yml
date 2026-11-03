@@ -23,7 +23,7 @@ jobs:
           node scripts/baton/check-notices.mjs
           node --test scripts/baton/check-notices.test.mjs
       - name: Status-file writer
-        run: node --test scripts/baton/status-file.test.mjs scripts/baton/cloud-logins.test.mjs
+        run: node --test scripts/baton/status-file.test.mjs scripts/baton/cloud-logins.test.mjs scripts/baton/live/answer-review.test.mjs
       - name: Upstream paths equal PIN + series
         run: bash scripts/baton/patches.sh verify
       - name: patches.sh self-test
