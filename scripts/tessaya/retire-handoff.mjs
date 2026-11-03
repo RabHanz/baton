@@ -1,10 +1,5 @@
-// Puts a live (mirrored) thread back on its own session and removes the twin a provider switch started.
-//   T3_URL=http://127.0.0.1:3773 T3_TOKEN=<access token> node scripts/tessaya/retire-handoff.mjs \
-//     --thread baton-live4:cc828d1b-<full id> [--twin baton-live4:a262f02b-01b1-4368-bf2d-18fd0c22dec5] [--dry-run] [--caught-up]
-// Token: either T3_TOKEN (an access token with orchestration:operate), or T3_PAIRING_TOKEN (a one-time token from
-// `node apps/server/src/bin.ts pair --base-dir <T3 home> --ttl 10m`), which is exchanged for one here.
-// --dry-run only reads both threads and prints what would happen. The real call needs --caught-up.
-
+// Retire a handoff session: T3_URL, T3_TOKEN (or T3_PAIRING_TOKEN, exchanged), --thread <full id> [--twin <id>].
+// --dry-run only reads both threads; the real call needs --caught-up. Pairing token: bin.ts pair --base-dir <T3 home>.
 import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 
