@@ -400,6 +400,7 @@ export const startBatonDesktop = Effect.gen(function* () {
           ? createBridgeCatalogService({
               bridge: sessions,
               openMainWindow,
+              note: lifecycle.note,
               saveCleanupList: (json) =>
                 NodeFS.writeFileSync(
                   NodePath.join(environment.stateDir, `baton-cleanup-${Date.now()}.json`),

@@ -266,6 +266,8 @@ export const createCatalog = (input: {
   const openRow = async (row: CatalogRow): Promise<void> => {
     try {
       await input.service.open(row);
+      status = `Opened "${row.title}" in T3.`;
+      input.onChange();
     } catch (error: unknown) {
       status =
         error instanceof Error && error.message !== ""
