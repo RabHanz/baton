@@ -44,6 +44,11 @@ import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
+import {
+  getKeepWorkExpanded,
+  issueWorkGroupCommand,
+  setKeepWorkExpanded,
+} from "../components/chat/workGroupPreference";
 import { useClientSettings } from "./useSettings";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
 
@@ -135,6 +140,7 @@ export function useThreadActionMenu(input: {
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
         canFind: onFind !== undefined,
+        keepWorkExpanded: getKeepWorkExpanded(),
         branch: thread.branch ?? null,
         projectFilter: null,
         isPinned: thread.pinnedAt != null,
@@ -191,6 +197,13 @@ export function useThreadActionMenu(input: {
       switch (action) {
         case "find":
           onFind?.(threadRef);
+          return;
+        case "expand-work":
+        case "collapse-work":
+          issueWorkGroupCommand(action === "expand-work" ? "expand" : "collapse");
+          return;
+        case "keep-work-expanded":
+          setKeepWorkExpanded(!getKeepWorkExpanded());
           return;
         case "project-settings": {
           const project = projects.find(

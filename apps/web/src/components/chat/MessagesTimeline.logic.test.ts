@@ -21,6 +21,11 @@ import {
 import { makeStreamingTimelineFixture } from "../../test-fixtures";
 import type { TurnDiffSummary } from "../../types";
 import { describe, expect, it } from "vite-plus/test";
+import {
+  collapsedWorkRunsAfterToggle,
+  effectiveExpandedRunIds,
+  expandedRunsAfterLatestRunChange,
+} from "./MessagesTimeline.logic";
 import { EnvironmentId, MessageId, RunId } from "@t3tools/contracts";
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
 import {
@@ -4550,5 +4555,48 @@ describe("shouldCollapseUserMessage", () => {
 
     expect(shouldCollapseUserMessage(`${citation} Can you expand on this?`)).toBe(false);
     expect(shouldCollapseUserMessage(`${citation} ${"More text. ".repeat(60)}`)).toBe(true);
+  });
+});
+
+describe("Worked groups stay as the reader left them", () => {
+  const a = RunId.make("run-a");
+  const b = RunId.make("run-b");
+  it("a new reply does not fold the group he opened (upstream folds it unless the setting is on)", () => {
+    const open = new Set([a]);
+    expect(expandedRunsAfterLatestRunChange(open, a, true)).toBe(open);
+    expect([...expandedRunsAfterLatestRunChange(open, a, false)]).toEqual([]);
+  });
+  it("with the setting on every group is open unless he closed that one, and closing it is remembered", () => {
+    const all = [a, b];
+    expect(
+      [
+        ...effectiveExpandedRunIds({
+          keep: true,
+          allRunIds: all,
+          expanded: new Set(),
+          collapsed: new Set(),
+        }),
+      ].sort(),
+    ).toEqual([a, b]);
+    expect([
+      ...effectiveExpandedRunIds({
+        keep: true,
+        allRunIds: all,
+        expanded: new Set(),
+        collapsed: new Set([a]),
+      }),
+    ]).toEqual([b]);
+    // Off: only what he opened.
+    expect([
+      ...effectiveExpandedRunIds({
+        keep: false,
+        allRunIds: all,
+        expanded: new Set([b]),
+        collapsed: new Set(),
+      }),
+    ]).toEqual([b]);
+    const closed = collapsedWorkRunsAfterToggle(new Set(), a, true);
+    expect([...closed]).toEqual([a]);
+    expect([...collapsedWorkRunsAfterToggle(closed, a, true)]).toEqual([]);
   });
 });
