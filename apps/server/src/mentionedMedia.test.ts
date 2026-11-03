@@ -4,7 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
-import { withMentionedMedia } from "./mentionedMedia.ts";
+import { attachMarkdown, resolveMedia, withMentionedMedia } from "./mentionedMedia.ts";
 
 const make = () => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mentioned-"));
@@ -62,5 +62,22 @@ describe("withMentionedMedia", () => {
     NodeFS.symlinkSync(key, NodePath.join(w.cwd, "innocent.png"));
     expect(run("see innocent.png", w)).toBe("see innocent.png");
     NodeFS.rmSync(elsewhere, { recursive: true, force: true });
+  });
+
+  it("a file named like a picture that is not one says it is unavailable, once, and never attaches", () => {
+    const w = make();
+    NodeFS.writeFileSync(NodePath.join(w.cwd, "s1s.png"), "<html>error</html>");
+    const shown = new Set<string>();
+    const go = () =>
+      attachMarkdown({
+        attachmentsDir: w.attachmentsDir,
+        threadId: "t",
+        messageId: "m",
+        media: resolveMedia({ text: "see s1s.png", cwd: w.cwd }),
+        shown,
+      });
+    expect(go()).toEqual(["_s1s.png: image unavailable (not a picture)_"]);
+    expect(go()).toEqual([]);
+    expect(NodeFS.existsSync(w.attachmentsDir)).toBe(false);
   });
 });
