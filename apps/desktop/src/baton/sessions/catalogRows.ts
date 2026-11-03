@@ -53,7 +53,7 @@ export interface CatalogService {
   /** Recent folders on a machine, for the New session box. */
   readonly folders: (environmentId: string) => Promise<ReadonlyArray<string>>;
   /** Opens a live session's thread. */
-  readonly open: (row: CatalogRow) => void;
+  readonly open: (row: CatalogRow) => void | Promise<void>;
 }
 
 export interface CleanupMachine {
@@ -90,7 +90,7 @@ export const INITIAL_VIEW: CatalogView = {
 const STATE_WORDS: Readonly<Record<CatalogState, string>> = {
   running: "Running",
   stopped: "Stopped",
-  resuming: "Resuming...",
+  resuming: "Importing history...",
   failed: "Could not resume",
 };
 
@@ -262,6 +262,18 @@ export const createCatalog = (input: {
   let view = INITIAL_VIEW;
   let loaded = false;
   let status = "";
+  // Running means the thread exists; if T3 cannot show it, say why and leave the title button as the retry.
+  const openRow = async (row: CatalogRow): Promise<void> => {
+    try {
+      await input.service.open(row);
+    } catch (error: unknown) {
+      status =
+        error instanceof Error && error.message !== ""
+          ? error.message
+          : "T3 could not open that thread.";
+      input.onChange();
+    }
+  };
   let folders: ReadonlyArray<string> = [];
   let tidyFound = 0;
   let autoResume: boolean | null = null;
@@ -303,7 +315,7 @@ export const createCatalog = (input: {
       try {
         await input.service.resume(row);
         set({ id: row.id, state: "running" });
-        input.service.open(row);
+        await openRow(row);
         return `${row.title} is running again on ${row.machine}.`;
       } catch {
         set({ id: row.id, state: "failed" });
@@ -447,7 +459,7 @@ export const createCatalog = (input: {
       } else if (id.startsWith("c:")) {
         const row = rows.find((r) => `c:${r.id}` === id);
         if (row === undefined) return true;
-        if (value === null && row.state === "running") input.service.open(row);
+        if (value === null && row.state === "running") void openRow(row);
         else if (value === "stop" && row.state === "running") {
           void (input.service.stop?.(row) ?? Promise.resolve())
             .then(() => {
@@ -464,7 +476,7 @@ export const createCatalog = (input: {
             .resume(row)
             .then(() => {
               set({ id: row.id, state: "running" });
-              input.service.open(row);
+              void openRow(row);
             })
             .catch((error: unknown) =>
               set({
