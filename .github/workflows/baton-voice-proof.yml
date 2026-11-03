@@ -185,7 +185,7 @@ jobs:
           if-no-files-found: ignore
 
   # Upgrade in place: install release `upgrade_from`, let it fetch its models, install release `upgrade_to` over it, and assert that
-  # nothing under voice\models or voice\pocket was fetched, hashed or rewritten (scripts/baton/upgrade-proof.ps1).
+  # nothing under voice\models or voice\pocket was fetched, hashed or rewritten (scripts/baton/model-upgrade-proof.ps1).
   upgrade:
     if: ${{ inputs.upgrade_from != '' }}
     runs-on: windows-2022
@@ -206,7 +206,7 @@ jobs:
         run: |
           $a = (Get-ChildItem from -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
           $b = (Get-ChildItem to -Filter '*-x64.exe' | Where-Object { $_.Name -notmatch 'blockmap' } | Select-Object -First 1).FullName
-          ./scripts/baton/upgrade-proof.ps1 -From $a -To $b -Out "$env:RUNNER_TEMP/upgrade-proof"
+          ./scripts/baton/model-upgrade-proof.ps1 -From $a -To $b -Out "$env:RUNNER_TEMP/upgrade-proof"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

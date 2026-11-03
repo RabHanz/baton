@@ -84,7 +84,7 @@ The Director asked why voices seem to download again on every new build. Audit: 
 present by its size and a `.verified` marker holding its hash, a voice file by existing. The wake and speech-detection models ship inside the
 installer and are replaced with it, which is a normal update, not a download.
 
-Proved on the Windows runner (`upgrade-proof.ps1`, run 41639171971): install 0.1.41, let it fetch the speech model, the voice engine, the
+Proved on the Windows runner (`model-upgrade-proof.ps1`, run 41639171971): install 0.1.41, let it fetch the speech model, the voice engine, the
 model and the voice (11 files, 1 GB), install 0.1.44 over it, start it. All 11 files kept their size and write time; none was removed, no
 partial download appeared; the speech model loaded in 0.1 s (a download or a 740 MB hash takes many seconds). So an update does not refetch.
 
