@@ -12,9 +12,11 @@ import type { BatonEngineError } from "./BatonEngine.ts";
 export const retireToken = (threadId: string): string => `retire-handoff:${threadId}`;
 
 export interface RetirePorts {
-  readonly shell: (
-    threadId: string,
-  ) => Effect.Effect<{ readonly instanceId: string; readonly running: boolean } | null>;
+  readonly shell: (threadId: string) => Effect.Effect<{
+    readonly instanceId: string;
+    readonly running: boolean;
+    readonly archived?: boolean;
+  } | null>;
   /** Back to the live instance; the provider layer releases the handoff session. */
   readonly selectLive: (threadId: string) => Effect.Effect<void, BatonEngineError>;
   readonly activeInstance: (threadId: string) => Effect.Effect<string | null>;
@@ -28,6 +30,9 @@ export interface RetireResult {
   readonly state: "retired" | "refused" | "incomplete";
   readonly detail: string;
   readonly undoFile: string | null;
+  /** Each step on its own: the twin may already have been archived by hand. */
+  readonly archived?: "already" | "done" | "failed";
+  readonly deleted?: "done" | "refused";
 }
 
 const refused = (detail: string): RetireResult => ({ state: "refused", detail, undoFile: null });
@@ -77,30 +82,42 @@ export const retireHandoff = Effect.fn("RetireHandoff.retire")(function* (
       } satisfies RetireResult;
   }
 
+  const alreadyArchived = twin.archived === true;
+  // The undo list names only what this call changed.
   const undoFile = ports.writeUndo(
-    JSON.stringify({ archived: [input.twinThreadId], mainThread: input.threadId }),
+    JSON.stringify({
+      archived: alreadyArchived ? [] : [input.twinThreadId],
+      mainThread: input.threadId,
+    }),
   );
   if (undoFile === null)
     return {
       state: "incomplete",
       detail:
-        "The thread is back on its live session, but the undo list could not be written, so the twin was not archived.",
+        "The thread is back on its live session, but the undo list could not be written, so the twin was not touched.",
       undoFile: null,
     } satisfies RetireResult;
-  const archived = yield* ports.archive(input.twinThreadId);
-  if (!archived)
+  const archivedStep = alreadyArchived
+    ? ("already" as const)
+    : (yield* ports.archive(input.twinThreadId))
+      ? ("done" as const)
+      : ("failed" as const);
+  if (archivedStep === "failed")
     return {
       state: "incomplete",
       detail:
         "The thread is back on its live session; the twin's mirror thread could not be archived.",
       undoFile,
+      archived: archivedStep,
     } satisfies RetireResult;
   const removed = yield* ports.remove(input.twinThreadId);
   return {
-    state: "retired",
+    state: removed ? "retired" : "incomplete",
     detail: removed
-      ? "Back on its live session. The twin's session is released and its mirror thread is archived and deleted."
-      : "Back on its live session. The twin's mirror thread is archived (delete failed; undo list written).",
+      ? `On its live session. The twin's mirror thread was ${archivedStep === "already" ? "already archived and is now" : "archived and"} deleted.`
+      : "On its live session. The twin's mirror thread is archived; the delete was refused.",
     undoFile,
+    archived: archivedStep,
+    deleted: removed ? ("done" as const) : ("refused" as const),
   } satisfies RetireResult;
 });

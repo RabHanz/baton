@@ -288,11 +288,24 @@ export function parsePanePrompt(screen) {
   let q = first - 1;
   while (q >= 0 && clean(lines[q]).length === 0) q -= 1;
   if (q < 0 || RULE.test(lines[q])) return null;
-  const question = clean(lines[q]);
-  let top = q - 1;
-  while (top >= 0 && q - top < 30 && !SOLID.test(lines[top])) top -= 1;
+  // A long question wraps over several lines with no blank between them: they are one question.
+  let qTop = q;
+  while (
+    qTop - 1 >= 0 &&
+    q - qTop < 12 &&
+    clean(lines[qTop - 1]).length > 0 &&
+    !RULE.test(lines[qTop - 1]) &&
+    !/^[←☐☒✔]/.test(clean(lines[qTop - 1]))
+  )
+    qTop -= 1;
+  const question = lines
+    .slice(qTop, q + 1)
+    .map(clean)
+    .join(" ");
+  let top = qTop - 1;
+  while (top >= 0 && qTop - top < 30 && !SOLID.test(lines[top])) top -= 1;
   const context = lines
-    .slice(top + 1, q)
+    .slice(top + 1, qTop)
     .filter((l) => !RULE.test(l))
     .map(clean)
     .filter((l) => l.length > 0);
