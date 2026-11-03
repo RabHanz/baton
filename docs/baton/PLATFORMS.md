@@ -6,7 +6,7 @@ a Mac or a Linux desktop.
 
 How to read it again: dispatch `baton-voice-proof.yml` with a release `tag`. The `prove` job is Windows (including the
 stranger-install proof), `smoke linux` runs the AppImage under xvfb, `smoke macos` runs the arm64 dmg's app.
-`scripts/baton/platform-smoke.sh` and `scripts/baton/stranger-proof.ps1` are the checks.
+`scripts/tessaya/platform-smoke.sh` and `scripts/tessaya/stranger-proof.ps1` are the checks.
 
 ## What was observed
 

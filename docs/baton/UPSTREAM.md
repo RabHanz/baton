@@ -70,7 +70,7 @@ upstream file this fork touches is in it; everything else Tessaya contributes is
 
 ### Release build overrides (not a source edit)
 
-`.github/workflows/baton-desktop-release.yml` runs `scripts/baton/apply-release-branding.sh`
+`.github/workflows/baton-desktop-release.yml` runs `scripts/tessaya/apply-release-branding.sh`
 (a new Tessaya file, not an edit) before building each platform's installer. It `sed`s three
 upstream constants in the release job's own ephemeral checkout only — nothing it touches is
 committed, so these three files stay byte-identical to upstream everywhere else (dev builds, the
@@ -122,7 +122,7 @@ Merged `52e4b44293..024d49520e`, 430 upstream commits, as `0.0.45-baton.20` (PR 
 - The version label is `0.0.45-baton.20` on upstream's `0.0.45`. Service protocol is still 3.
 
 The upstream workflows that deploy or publish with upstream's secrets are disabled through the
-GitHub API, not by editing the files. That is `scripts/baton/disable-upstream-workflows.sh`, and
+GitHub API, not by editing the files. That is `scripts/tessaya/disable-upstream-workflows.sh`, and
 `upstream-sync.sh` re-runs it after every merge. CI is kept.
 
 ### Where upstream went (2026-10-02 onward)
@@ -148,7 +148,7 @@ going past `024d49520e` is a **port**, not a conflict resolution.
 
 ### Patch points after the v2 port (2026-10-26)
 
-`vendor-patches/t3code/series` is the list and `scripts/baton/patches.sh files` prints the paths:
+`vendor-patches/t3code/series` is the list and `scripts/tessaya/patches.sh files` prints the paths:
 six patches over 13 upstream files, about 300 lines.
 
 | Patch                      | Upstream files                                                       |
@@ -196,7 +196,7 @@ packages/baton-server/    work sessions, fleet, intents, rules, accounts, Herdr,
 packages/baton-contracts/ fabric.* schemas and Rpc definitions
 packages/baton-web/       sidebar Projects block, intent bar, Continue with…
 packages/baton-voice/     (exists)
-scripts/baton/            sync, patch apply/refresh, deploy, workflow disable
+scripts/tessaya/            sync, patch apply/refresh, deploy, workflow disable
 ```
 
 The sync job does five things in order. It moves the pin, re-applies the series with `git apply --3way`,
@@ -266,7 +266,7 @@ too small), `nice -n 10`, one build at a time.
 
 ## The daily sync: what is automatic and what is manual (2026-11-02)
 
-`baton-auto-sync.timer` runs `scripts/baton/auto-sync.sh` on signzart at 22:30 UTC (a copy taken from `origin/main`, so an edit
+`baton-auto-sync.timer` runs `scripts/tessaya/auto-sync.sh` on signzart at 22:30 UTC (a copy taken from `origin/main`, so an edit
 cannot change a run in flight).
 
 **Automatic**
@@ -336,9 +336,9 @@ git remote -v
 To take upstream changes:
 
 ```sh
-scripts/baton/upstream-sync.sh --report-only     # what upstream did, which patched paths it touched
-scripts/baton/upstream-sync.sh [--to <commit>]   # move the pin, re-apply the series, gates, PR
-scripts/baton/gates.sh [--install] [--build]     # the same gates by hand
+scripts/tessaya/upstream-sync.sh --report-only     # what upstream did, which patched paths it touched
+scripts/tessaya/upstream-sync.sh [--to <commit>]   # move the pin, re-apply the series, gates, PR
+scripts/tessaya/gates.sh [--install] [--build]     # the same gates by hand
 ```
 
 Since 2026-10-26 (D76) the sync does not merge. Tessaya's edits to upstream are the patch series in

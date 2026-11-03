@@ -7,7 +7,7 @@ and terms before clean-up (`biasTranscript`), and the same list goes into his ow
 
 **The offline set.** Each turn he fixes in the field is stored with the words as heard, what Tessaya
 wrote and what he changed it to (`history.sqlite`, `corrected = 1`, `fixed`), plus the clip when
-"Keep my voice recordings" is on. `node scripts/baton/clip-eval.mjs <state-dir>` scores word error
+"Keep my voice recordings" is on. `node scripts/tessaya/clip-eval.mjs <state-dir>` scores word error
 against his fix before and after the vocabulary step. That is a text-level number; it says nothing
 about recognition, and no improvement is claimed from it.
 

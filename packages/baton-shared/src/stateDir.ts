@@ -13,7 +13,7 @@ const mtime = (path: string): number | null => {
 /**
  * Where a file under the T3 state dir lives: `~/.t3/tessaya/<rel>` or the legacy `~/.t3/baton/<rel>`.
  * The newer copy wins, so a producer still writing the old path is never shadowed by a stale copy
- * (scripts/baton/state-migrate.sh copies, never deletes). With neither, the new path.
+ * (scripts/tessaya/state-migrate.sh copies, never deletes). With neither, the new path.
  */
 export function stateFile(home: string, ...rel: string[]): string {
   const next = NodePath.join(home, ".t3", "tessaya", ...rel);

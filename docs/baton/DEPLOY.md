@@ -1,7 +1,7 @@
 # Deploying this fork onto a machine that runs stock T3 Code
 
-**Since the v2 port this page is scripts.** `scripts/baton/release-build.sh <version>` builds the
-archive (§1); `scripts/baton/deploy-beside.sh <archive> <version> [--host onnyx@onnyx]` does §0,
+**Since the v2 port this page is scripts.** `scripts/tessaya/release-build.sh <version>` builds the
+archive (§1); `scripts/tessaya/deploy-beside.sh <archive> <version> [--host onnyx@onnyx]` does §0,
 §2, §3 and §5's first check, backing up every `*.sqlite` and writing `rollback.sh` before it
 switches; `rehearse.sh` boots an archive on a `snapshot-userdata.sh` copy first; `auto-sync.sh`
 chains them daily. `live-proof.mjs` and `revoke-proof-sessions.sh` prove the sidebar, Send and a
@@ -110,7 +110,7 @@ published binary, so they are read out of the installed release at deploy time
 rather than committed here:
 
 ```bash
-scripts/baton/cloud-public-config.sh --systemd \
+scripts/tessaya/cloud-public-config.sh --systemd \
   > ~/.config/systemd/user/t3code.service.d/fabric-cloud-config.conf
 ```
 
@@ -192,6 +192,6 @@ which is exactly the case D7 was written to keep safe.
 
 ## Provider instances after a release that adds one
 
-`scripts/baton/provider-token-instances.py` runs once per machine with cswap's interpreter
+`scripts/tessaya/provider-token-instances.py` runs once per machine with cswap's interpreter
 (`--pin-default` on the laptop only). It is safe to rerun. D95 added `claudeAgent_rabee`, so every box
 needs one run or that account cannot be pinned there.

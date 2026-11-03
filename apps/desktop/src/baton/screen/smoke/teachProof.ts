@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off globalRandom:off globalTimers:off nodeBuiltinImport:off globalConsole:off
 /**
  * The CI proof of teach and drive (design: docs/baton/research/teach-mode-2026-11-02.md): the real companion and the
- * real overlay on a Windows desktop, a scripted `claude` (scripts/baton/teach-proof/fake-claude.mjs), and Notepad's
+ * real overlay on a Windows desktop, a scripted `claude` (scripts/tessaya/teach-proof/fake-claude.mjs), and Notepad's
  * font size as the task. The harness is the "user": it clicks and types through the real input driver when the card
  * says it is waiting, and presses Go ahead on the real approval card. The desktop is recorded with ffmpeg.
  */
@@ -36,7 +36,7 @@ const timeline = NodeFS.createWriteStream(NodePath.join(out, "timeline.jsonl"));
 const t0 = Date.now();
 const note = (event: string, data: object = {}) =>
   timeline.write(`${JSON.stringify({ t: Date.now() - t0, event, ...data })}\n`);
-// One clip per scenario, as the hands loop does (scripts/baton/hands-ci/record.ts): 10 fps, 720p, a six-frame sheet.
+// One clip per scenario, as the hands loop does (scripts/tessaya/hands-ci/record.ts): 10 fps, 720p, a six-frame sheet.
 const startClip = (id: string) => {
   const file = NodePath.join(out, `${id}.mp4`);
   const child = NodeChildProcess.spawn(
