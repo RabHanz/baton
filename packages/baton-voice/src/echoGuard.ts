@@ -1,14 +1,6 @@
-/**
- * Hearing him over Tessaya's own voice. The mic hears the speakers, so while she speaks the core could not tell his voice
- * from hers. The player hands over what it is about to play and when it will sound (`reference`); this learns the room
- * (a delay and a short adaptive filter, at 8 kHz) from that, subtracts the predicted echo from each mic frame, and says
- * when what is left is not an echo: someone speaking over it. It is a detector, not a cleaner: the recogniser listens
- * once the speech has stopped, when the mic is clean again. Until it has learned the room (`ready`), it says nothing,
- * and the stop phrase and the non-voice stops are what is left.
- */
+/** Detects speech over Tessaya's own voice: learns the room from the player's reference, subtracts the predicted echo, flags the residual. A detector, not a cleaner; silent until `ready`. */
 
 const RATE = 8_000;
-const HOP = 160; // one 20 ms mic frame at 8 kHz
 const TAPS = 768; // 96 ms of room
 const BEFORE = 128; // taps before the estimated delay: 16 ms
 const RING = RATE * 6;
@@ -67,7 +59,6 @@ export const createEchoGuard = (): EchoGuard => {
   let delay = -1; // in 8 kHz samples
   let w = new Float32Array(TAPS);
   let erle = 0;
-  let residualAvg = 0;
   let qFast = 0;
   let qBase = 0;
   let sinceEstimate = 0;
@@ -127,7 +118,6 @@ export const createEchoGuard = (): EchoGuard => {
         w = new Float32Array(TAPS);
         erle = 0;
         converged = false;
-        residualAvg = 0;
         qFast = 0;
         qBase = 0;
       }
@@ -217,7 +207,6 @@ export const createEchoGuard = (): EchoGuard => {
     delay = -1;
     w = new Float32Array(TAPS);
     erle = 0;
-    residualAvg = 0;
     qFast = 0;
     qBase = 0;
     converged = false;
