@@ -1949,13 +1949,6 @@ export const startScreenCompanion = (input: {
       );
       return "Clicked.";
     },
-    // Local only, never shown to the model, so it needs no consent the way ui_tree does.
-    fingerprint: async () => {
-      const tree = await actions?.uiTree?.();
-      return tree === null || tree === undefined
-        ? ""
-        : `${tree.window}\n${tree.controls.join("\n")}`;
-    },
     windowKey: async () => {
       const seen = await focusSoon();
       if (seen?.window === undefined)

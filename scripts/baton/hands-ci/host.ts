@@ -139,7 +139,6 @@ export const setClipboardText = (text: string) => clipboard.writeText(text);
 /** What the bake-off counts besides time: the size of what the tree calls returned. */
 export const stats = { treeBytes: 0, clicks: 0, misclicks: 0 };
 const GUARD = process.env["HANDS_GUARD"] === "1";
-const EFFECTS = process.env["HANDS_EFFECTS"] === "1";
 
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
@@ -178,14 +177,6 @@ export const makeHost = (outDir: string): Host => {
     return file;
   };
   const host: ToolHost = {
-    ...(EFFECTS
-      ? {
-          fingerprint: async () => {
-            const tree = await side(["ui_tree"]);
-            return `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
-          },
-        }
-      : {}),
     windowKey: async () => String((await side(["foreground"]))["window"]),
     capture: async () => {
       const file = await shot("capture");
