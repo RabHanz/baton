@@ -210,7 +210,7 @@ function catalogBar(c) {
     const grow = () => { ms.style.height = 'auto'; ms.style.height = Math.min(ms.scrollHeight, 160) + 'px'; };
     ms.oninput = () => { drafts.set('c-msg', ms.value); grow(); };
     const go = $('button', 'btn primary', c.words.startNew); go.type = 'submit';
-    nf.append(field(c.words.machine, nm), field(c.words.folder, fbox), earlier, field(c.words.model, md), field(c.words.effort, ef), field(c.words.message, ms), go);
+    nf.append(field(c.words.machine, nm), field(c.words.folder.split(',')[0], fbox), earlier, field(c.words.model, md), field(c.words.effort, ef), field(c.words.message, ms), go);
     nf.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('c-folder'); drafts.delete('c-msg'); set('c.start', JSON.stringify({ cwd: v, model: md.value, effort: ef.value, message: ms.value })); };
     w.appendChild(nf); showEarlier(); grow();
   }
