@@ -21,6 +21,7 @@ import {
   createVoiceRouter,
   DEFAULT_TIMINGS,
   type BatonVoiceCore,
+  type EchoGuard,
   type SttProvider,
   type TtsProvider,
   type VoiceCoreEvent,
@@ -280,6 +281,9 @@ export const createDesktopVoiceCore = async (input: {
   readonly tts?: TtsProvider | null;
   /** Everything the core reports, for the cue after a wake word. */
   readonly onEvent?: (event: VoiceCoreEvent) => void;
+  /** Hears him over Baton's own voice through the speakers. */
+  readonly echo?: EchoGuard;
+  readonly speakerMode?: () => "speakers" | "headphones";
 }): Promise<{ readonly core: BatonVoiceCore; readonly drain: () => Promise<void> }> => {
   const missing = missingVoiceAssets(input.assets);
   if (missing.length > 0) {
@@ -320,6 +324,8 @@ export const createDesktopVoiceCore = async (input: {
     ...(input.origin === undefined ? {} : { origin: input.origin }),
     ...(input.waitMs === undefined ? {} : { waitMs: input.waitMs }),
     ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
+    ...(input.echo === undefined ? {} : { echo: input.echo }),
+    ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),
   });
   if (input.onEvent !== undefined) core.subscribe(input.onEvent);
   if (input.onReply !== undefined) {

@@ -250,13 +250,15 @@ export const startBatonDesktop = Effect.gen(function* () {
         ? { kind: "wait", ready: pocket.ensure(name) }
         : { kind: "synth", synth };
     };
+    const voicePlayer = createVoicePlayer(
+      (level) => voice?.onSpeechLevel(level),
+      () => screen?.volume() ?? 1,
+      (pcm, rate, soundsAtMs) => voice?.onReference(pcm, rate, soundsAtMs),
+    );
     const speaker = createSpeaker({
       os: createOsTts(environment.platform),
       voice: () => chooseVoice(screen?.voice() ?? "anna"),
-      player: createVoicePlayer(
-        (level) => voice?.onSpeechLevel(level),
-        () => screen?.volume() ?? 1,
-      ),
+      player: voicePlayer,
       silent: () => screen?.writtenOnly() ?? false,
       onActive: (active) => voice?.onSpeaking(active),
       onText: (text) => voice?.onSpoken(text),
@@ -341,9 +343,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       onPillDrag: (outcome) => turnLog.note("pill_drag", outcome),
       onTestAudio: (event) => turnLog.note("test-audio", event),
       onBargeIn: () => {
+        voicePlayer.duck?.(false);
         speaker.cancel();
         screen?.hush();
       },
+      onDuck: (on) => voicePlayer.duck?.(on),
       onDismiss: () => {
         speaker.cancel();
         screen?.dismissQuietly();
@@ -383,6 +387,8 @@ export const startBatonDesktop = Effect.gen(function* () {
         waitMs,
         listening,
         verifyWake,
+        echo,
+        speakerMode,
       }) =>
         (
           await createDesktopVoiceCore({
@@ -408,6 +414,8 @@ export const startBatonDesktop = Effect.gen(function* () {
             waitMs,
             listening,
             verifyWake,
+            ...(echo === undefined ? {} : { echo }),
+            speakerMode,
             ...(screen === null ? {} : { brain: screen }),
           })
         ).core,
