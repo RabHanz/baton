@@ -650,6 +650,7 @@ export const createVoicePill = (input: {
     if (mine(event)) lastBeat = Date.now();
   });
   Electron.ipcMain.on("baton-pill:drag", (event, on: unknown, why: unknown) => {
+    trace({ kind: "pill_drag", on, why, mine: mine(event), bounds: window?.getBounds() });
     if (!mine(event) || window === null || window.isDestroyed()) return;
     if (on !== true) return stopDrag(why !== "cancel", typeof why === "string" ? why : "up");
     stopDrag(false);
