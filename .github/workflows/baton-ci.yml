@@ -85,10 +85,9 @@ jobs:
             echo "--- WebRTC AEC3 ---" | tee -a "$GITHUB_STEP_SUMMARY"
             rustup update stable --no-self-update > /dev/null 2>&1 || true
             cargo build --release --manifest-path native/baton-aec/Cargo.toml
-            for cfg in "0.3 0" "0.15 0" "0.2 3" "0.1 4" "0.1 6" "0.05 8"; do
+            for cfg in "0.5 3" "0.5 1" "0.5 6" "0.3 3" "0.7 3" "0.3 6"; do
               set -- $cfg
-              echo "over-ratio $1, over-base $2" | tee -a "$RUNNER_TEMP/aec.txt"
-              AEC_OVER_RATIO=$1 AEC_OVER_BASE=$2 node scripts/tessaya/aec-eval.ts native/baton-aec/target/release/aec-eval 60 | tr -d '\n ' | tee -a "$RUNNER_TEMP/aec.txt"; echo | tee -a "$RUNNER_TEMP/aec.txt"
+              AEC_VAD=$1 AEC_FLOOR_K=$2 node scripts/tessaya/aec-eval.ts native/baton-aec/target/release/aec-eval 60 | head -1 | tee -a "$RUNNER_TEMP/aec.txt"
             done
             cat "$RUNNER_TEMP/aec.txt" >> "$GITHUB_STEP_SUMMARY"
           else echo "voice core and echo guard unchanged; skipping"; fi
