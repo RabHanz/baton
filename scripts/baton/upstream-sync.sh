@@ -22,6 +22,7 @@
 # The tree is left on the sync branch in cases 2 and 3 so the fix starts from it.
 
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)"
 export LC_ALL=C
 

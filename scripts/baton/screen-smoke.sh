@@ -10,6 +10,7 @@
 # enough: set BATON_SMOKE_XBIN to its usr/bin), and `pnpm install` done. Frames, the approval
 # boxes' text and results.json land in <out-dir>.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)/apps/desktop"
 out="$(realpath -m "${1:?out dir}")"
 only="${2:-look,teach,drive}"

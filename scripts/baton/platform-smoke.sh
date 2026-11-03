@@ -4,6 +4,7 @@
 # Passes when the app drew a window (a PNG in BATON_TEST_DIR) and logged the voice start steps. It prints what it
 # found either way, because the point is an honest per-platform report.
 set -uo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 platform="${1:?linux|macos}"; artifact="${2:?path to the AppImage or dmg}"; out="${3:?output folder}"
 mkdir -p "$out/shots" "$out/wav"
 home="$(mktemp -d)"; export HOME="$home"            # a clean user: nothing of anyone's

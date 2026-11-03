@@ -5,6 +5,7 @@
 # secrets. An allowlist rather than a denylist, so a workflow upstream adds later is off by default.
 # Idempotent; upstream-sync.sh runs it after every sync.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
 repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
 keep=(
