@@ -159,7 +159,7 @@ void Electron.app.whenReady().then(async () => {
         group,
         control: c.name,
         result: "no effect",
-        effect: `page did not redraw: ${before.slice(0, 90)} -> ${after.slice(0, 90)}`,
+        effect: `page did not redraw; under the pointer at ${Math.round(c.x)},${Math.round(c.y)}: ${hit}; errors ${String(await js("JSON.stringify(window.__errs||[])"))}`,
       });
       return;
     }
