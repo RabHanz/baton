@@ -11,6 +11,8 @@ import * as NodePath from "node:path";
 
 import * as Electron from "electron";
 
+import { createBatonHome } from "../../home/batonHome.ts";
+import { STATES } from "../../home/pageStates.ts";
 import { createInputDriver } from "../inputDriver.ts";
 import { createVoicePill } from "../../voice/voicePill.ts";
 
@@ -83,9 +85,21 @@ void Electron.app.whenReady().then(async () => {
     clipboard: Electron.clipboard,
   });
   // The app always has a main window; without one the pill's own close-with-the-last-window rule would end the run.
-  const main = new Electron.BrowserWindow({ show: false });
   Electron.app.on("window-all-closed", () => undefined);
-  void main;
+  // The real Home window, focused, as when Wake now is pressed there.
+  const base = STATES["empty"]!;
+  createBatonHome({
+    stateDir: out,
+    state: () => ({ status: { label: "Listening", tone: "good", device: "", mark: "", brandMark: "" }, controls: base.controls, ...(base.extra === undefined ? {} : { extra: base.extra }) }) as never,
+    apply: () => undefined,
+    openSessions: () => undefined,
+    appearance: () => "dark",
+  }).open();
+  await sleep(4000);
+  const home = Electron.BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+  home?.setBounds({ x: 0, y: 0, width: 800, height: 500 });
+  home?.show();
+  home?.focus();
   const lines: string[] = [];
   let allOk = true;
   for (const [mode, grip] of [["move handle", false], ["always-on rest", false], ["speaking", false], ["listening (Wake now)", false], ["listening (Wake now)", true]] as const) {
