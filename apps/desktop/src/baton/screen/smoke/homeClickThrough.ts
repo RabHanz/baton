@@ -83,11 +83,10 @@ interface Row {
   readonly effect: string;
 }
 
-// HOME_CLICK_LAPTOP=1 makes the run look like the laptop: 175 % scale, full motion (so the splash and fade play), and the
+// HOME_CLICK_LAPTOP=1 makes the run look like the laptop: full motion (so the splash and fade play), and the
 // window's own Mica where the runner's Windows has it. The click is still the system's real mouse.
 const laptop = process.env["HOME_CLICK_LAPTOP"] === "1";
 if (laptop) {
-  Electron.app.commandLine.appendSwitch("force-device-scale-factor", "1.75");
   (
     Electron.systemPreferences as unknown as { getAnimationSettings: () => object }
   ).getAnimationSettings = () => ({ prefersReducedMotion: false });
