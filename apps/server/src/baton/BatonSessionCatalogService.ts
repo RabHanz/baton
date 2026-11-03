@@ -119,6 +119,7 @@ export const layer = Layer.effect(
                     });
                 const result = yield* importer.value.importRecentAgentThreads({
                   projectId: project.id,
+                  preferSessionId: sessionId,
                 });
                 const threadId = ThreadId.make(
                   `import:${defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"))}:${sessionId}`,
