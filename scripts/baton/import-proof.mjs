@@ -61,6 +61,126 @@ for (let i = 0; i < 105; i += 1)
   write(NodeCrypto.randomUUID(), `Recent conversation ${i}`, (i + 1) * 60_000);
 write(WANTED, FIRST, 40 * 24 * 3_600_000);
 
+// The Director's real case: a 70 MB transcript (long tool output, thousands of records), a few days old.
+const BIG = "0b16b16b-0b16-4b16-8b16-0b16b16b16b1";
+// And one with more records than the importer's usual budget (100,000 lines), as a very long session has.
+const MANY = "0c17c17c-0c17-4c17-8c17-0c17c17c17c1";
+const MANY_FIRST = `Many records ${NodeCrypto.randomUUID().slice(0, 8)}`;
+{
+  const file = NodePath.join(transcriptsDir, `${MANY}.jsonl`);
+  const fd = NodeFS.openSync(file, "w");
+  const put = (o) => NodeFS.writeSync(fd, `${JSON.stringify(o)}\n`);
+  put({
+    type: "user",
+    cwd: project,
+    sessionId: MANY,
+    entrypoint: "cli",
+    timestamp: "2026-10-30T10:00:00.000Z",
+    message: { role: "user", content: MANY_FIRST },
+  });
+  for (let turn = 0; turn < 40_000; turn += 1) {
+    const id = `toolu_${turn}`;
+    put({
+      type: "assistant",
+      sessionId: MANY,
+      timestamp: "2026-10-30T10:01:00.000Z",
+      message: {
+        role: "assistant",
+        stop_reason: "tool_use",
+        content: [{ type: "tool_use", id, name: "Bash", input: { command: "ls" } }],
+      },
+    });
+    put({
+      type: "user",
+      sessionId: MANY,
+      timestamp: "2026-10-30T10:02:00.000Z",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] },
+    });
+    put({
+      type: "assistant",
+      sessionId: MANY,
+      timestamp: "2026-10-30T10:03:00.000Z",
+      message: {
+        role: "assistant",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: `Done with ${turn}` }],
+      },
+    });
+  }
+  put({
+    type: "user",
+    sessionId: MANY,
+    timestamp: "2026-10-30T10:04:00.000Z",
+    message: { role: "user", content: "Last question" },
+  });
+  NodeFS.closeSync(fd);
+  const at = (Date.now() - 5 * 24 * 3_600_000) / 1000;
+  NodeFS.utimesSync(file, at, at);
+}
+const BIG_FIRST = `Help me with my printer setup ${NodeCrypto.randomUUID().slice(0, 8)}`;
+{
+  const file = NodePath.join(transcriptsDir, `${BIG}.jsonl`);
+  const fd = NodeFS.openSync(file, "w");
+  const put = (o) => NodeFS.writeSync(fd, `${JSON.stringify(o)}\n`);
+  const blob = "x".repeat(2_000);
+  put({
+    type: "user",
+    cwd: project,
+    sessionId: BIG,
+    entrypoint: "cli",
+    timestamp: "2026-10-30T10:00:00.000Z",
+    message: { role: "user", content: BIG_FIRST },
+  });
+  let written = 0;
+  for (let turn = 0; written < Number(process.env.BIG_MB ?? 70) * 1024 * 1024; turn += 1) {
+    const id = `toolu_${turn}`;
+    put({
+      type: "assistant",
+      sessionId: BIG,
+      timestamp: "2026-10-30T10:01:00.000Z",
+      message: {
+        role: "assistant",
+        stop_reason: "tool_use",
+        content: [
+          { type: "text", text: `Step ${turn}` },
+          { type: "tool_use", id, name: "Bash", input: { command: `echo ${turn}` } },
+        ],
+      },
+    });
+    for (let part = 0; part < 12; part += 1) {
+      put({
+        type: "user",
+        sessionId: BIG,
+        timestamp: "2026-10-30T10:02:00.000Z",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: id, content: `${blob}${part}` }],
+        },
+      });
+      written += blob.length + 250;
+    }
+    put({
+      type: "assistant",
+      sessionId: BIG,
+      timestamp: "2026-10-30T10:03:00.000Z",
+      message: {
+        role: "assistant",
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: `Done with ${turn}` }],
+      },
+    });
+    put({
+      type: "user",
+      sessionId: BIG,
+      timestamp: "2026-10-30T10:04:00.000Z",
+      message: { role: "user", content: `Next question ${turn}` },
+    });
+  }
+  NodeFS.closeSync(fd);
+  const at = (Date.now() - 5 * 24 * 3_600_000) / 1000;
+  NodeFS.utimesSync(file, at, at);
+}
+
 const env = {
   ...process.env,
   T3CODE_HOME: home,
@@ -211,6 +331,55 @@ try {
       `${text.length} bytes`,
     );
   }
+  const started = Date.now();
+  const bigExit = await rpc("baton.sessions.resume", { sessionId: BIG, cwd: project });
+  const big = value(bigExit);
+  console.log(
+    `big resume answered in ${Math.round((Date.now() - started) / 1000)} s: ${JSON.stringify(bigExit).slice(0, 500)}`,
+  );
+  let bigThread = big?.threadId ?? null;
+  // A long import may answer "resuming"; the session is then watched through the list until it has a thread.
+  for (let i = 0; i < 120 && bigThread === null; i += 1) {
+    await sleep(2000);
+    const row = value(await rpc("baton.sessions.list", { limit: 200 }))?.sessions?.find(
+      (r) => r.id === BIG,
+    );
+    if (row?.state === "failed") break;
+    bigThread = row?.threadId ?? null;
+  }
+  check(
+    "a 70 MB transcript is brought back as a thread",
+    typeof bigThread === "string",
+    String(bigThread),
+  );
+  if (typeof bigThread === "string") {
+    const text = JSON.stringify(
+      await rpc("orchestration.getThreadProjection", { threadId: bigThread }),
+    );
+    check(
+      "its history holds the first message and the latest turn",
+      text.includes(BIG_FIRST) && text.includes("Next question"),
+      `${text.length} bytes`,
+    );
+  }
+  const many = value(await rpc("baton.sessions.resume", { sessionId: MANY, cwd: project }));
+  let manyThread = many?.threadId ?? null;
+  for (let i = 0; i < 120 && manyThread === null; i += 1) {
+    await sleep(2000);
+    const row = value(await rpc("baton.sessions.list", { limit: 200 }))?.sessions?.find(
+      (r) => r.id === MANY,
+    );
+    if (row?.state === "failed") {
+      console.log(`many failed: ${row.detail}`);
+      break;
+    }
+    manyThread = row?.threadId ?? null;
+  }
+  check(
+    "a session with 120,000 records is brought back as a thread",
+    typeof manyThread === "string",
+    String(manyThread),
+  );
   socket.close();
   finish(results.every(Boolean) ? 0 : 1);
 } catch (error) {

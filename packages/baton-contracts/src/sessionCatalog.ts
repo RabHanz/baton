@@ -36,6 +36,8 @@ export const BatonCatalogSession = Schema.Struct({
   detail: Schema.NullOr(Schema.String),
   /** Messages waiting for it to be ready. */
   waiting: Schema.Number,
+  /** On a machine with no Herdr: the thread it was brought back as, once it exists. */
+  threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonCatalogSession = typeof BatonCatalogSession.Type;
 
