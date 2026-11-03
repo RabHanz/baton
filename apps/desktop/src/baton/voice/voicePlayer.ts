@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off
+// @effect-diagnostics globalTimers:off globalDate:off -- audio callbacks run outside the Effect runtime
 /**
  * Baton's speech out of a hidden page, so playback is one code path everywhere and there is no
  * process per sentence. Samples are scheduled as they arrive, a little ahead so a slow chunk does
