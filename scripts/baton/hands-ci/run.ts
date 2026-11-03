@@ -655,7 +655,9 @@ $f.Controls.Add($b)
       await sleep(500);
     }
     await sleep(500);
-    await t.activate("Notepad");
+    // AppActivate loses to the banner; a real click in the text area (below the banner) gives Notepad the keyboard.
+    await host.call("click", { x: left + 200, y: top + 250, why: "focus Notepad" });
+    await sleep(500);
     const dismiss = async () => {
       await t.tool("screen_capture");
       t.replan("the screenshot shows a banner over the menu bar; dismissing it");
