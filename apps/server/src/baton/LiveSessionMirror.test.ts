@@ -278,7 +278,7 @@ describe("media across a turn's replies", () => {
   it("shows a touched image on exactly one of three replies", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "reply-"));
     const shot = NodePath.join(dir, "screen.png");
-    NodeFS.writeFileSync(shot, Buffer.from("png-bytes"));
+    NodeFS.writeFileSync(shot, Buffer.from("89504e470d0a1a0a706e672d6279746573", "hex"));
     const follow = { touched: new Set([shot]), shots: [] };
     const shown = ["one", "two", "three"].map((text, i) => {
       const reply = nextReply(follow, {
@@ -413,8 +413,8 @@ describe("media that only appears in text is not shown", () => {
     NodeFS.mkdirSync(att);
     const stored = NodePath.join(att, "old.png");
     const shot = NodePath.join(dir, "shot.png");
-    NodeFS.writeFileSync(stored, Buffer.from("a"));
-    NodeFS.writeFileSync(shot, Buffer.from("b"));
+    NodeFS.writeFileSync(stored, Buffer.from("89504e470d0a1a0a61", "hex"));
+    NodeFS.writeFileSync(shot, Buffer.from("89504e470d0a1a0a62", "hex"));
     expect(liveMedia(reply(dir, { touched: [stored] })).text).toBe("Done.");
     const shown = new Set<string>();
     const first = liveMedia(reply(dir, { touched: [shot], shown })).text;
