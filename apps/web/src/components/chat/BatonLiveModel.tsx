@@ -17,10 +17,9 @@ import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } fro
 import { toastManager } from "../ui/toast";
 
 const HEADER_CONTROL = "shrink-0 [-webkit-app-region:no-drag]";
-const LIVE_PREFIX = "baton-live:";
-
+// baton-live4: is the current namespace; the older ones were retired but the id shape is the same.
 export const liveSessionIdOf = (threadId: string): string | null =>
-  threadId.startsWith(LIVE_PREFIX) ? threadId.slice(LIVE_PREFIX.length) : null;
+  /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
 
 export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const sessionId = liveSessionIdOf(threadRef.threadId);

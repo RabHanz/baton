@@ -27,6 +27,7 @@ import { AsyncResult } from "effect/reactivity";
 import { CheckIcon, ChevronDownIcon, RotateCwIcon, UserRoundIcon } from "lucide-react";
 import { useState } from "react";
 
+import { describeAnswerer, isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -84,7 +85,7 @@ function failureMessage(cause: Cause.Cause<unknown>): string | undefined {
   return failure instanceof Error ? failure.message : undefined;
 }
 
-export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+function AccountMenu({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const shell = useQuietThreadShell(threadRef);
   const providers = useEnvironmentProviders().get(threadRef.environmentId) ?? [];
   const provider = providers.find((entry) => entry.instanceId === shell?.providerInstanceId);
@@ -199,5 +200,62 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
         ) : null}
       </MenuPopup>
     </Menu>
+  );
+}
+
+/** Who answers this thread, and a banner when a live thread has been handed to a new session. */
+function LiveAnswerer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const shell = useQuietThreadShell(threadRef);
+  const pool = useAtomValue(
+    batonWorkSessions.accountPoolQuery({ environmentId: threadRef.environmentId, input: {} }),
+  );
+  if (shell === null || !isLiveThreadId(threadRef.threadId)) return null;
+  const accounts = Option.getOrNull(AsyncResult.value(pool))?.accounts ?? [];
+  const options = shell.modelSelection.options;
+  const effort = Array.isArray(options)
+    ? options.find((option) => option.id === "effort" || option.id === "reasoningEffort")?.value
+    : undefined;
+  const answerer = describeAnswerer({
+    threadId: threadRef.threadId,
+    instanceId: shell.providerInstanceId,
+    model: shell.modelSelection.model,
+    effort: typeof effort === "string" ? effort : null,
+    account: accountForInstance(shell.providerInstanceId, accounts)?.label ?? null,
+  });
+  return (
+    <>
+      <span
+        className="shrink-0 truncate text-2xs text-muted-foreground"
+        data-testid="thread-answerer"
+        title={answerer.line}
+      >
+        {answerer.line}
+      </span>
+      {answerer.handedOff ? (
+        <Button
+          size="xs"
+          variant="outline"
+          className={HEADER_CONTROL}
+          data-testid="thread-handoff-banner"
+          onClick={() =>
+            useComposerDraftStore.getState().setModelSelection(threadRef, {
+              ...shell.modelSelection,
+              instanceId: ProviderInstanceId.make(LIVE_INSTANCE),
+            } as ModelSelection)
+          }
+        >
+          This thread is now answered by a new session (summary handoff). Switch back
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  return (
+    <>
+      <LiveAnswerer threadRef={threadRef} />
+      <AccountMenu threadRef={threadRef} />
+    </>
   );
 }

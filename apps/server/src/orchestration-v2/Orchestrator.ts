@@ -1,3 +1,4 @@
+import { liveThreadSwitchRefusal } from "@t3tools/baton-shared/liveThread";
 import type {
   GuestShareId,
   OrchestrationV2SearchThreadInput,
@@ -5586,6 +5587,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projection = applyToProjection(projection, event);
     }
     const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
+    const liveRefusal = liveThreadSwitchRefusal({
+      threadId: command.threadId,
+      currentInstance: projection.thread.providerInstanceId,
+      targetInstance: modelSelection.instanceId,
+    });
+    if (liveRefusal !== null) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: liveRefusal,
+      });
+    }
     let dispatchMode = resolveMessageDispatchIntent(
       projection,
       command.dispatchMode,
