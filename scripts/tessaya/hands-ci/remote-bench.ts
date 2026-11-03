@@ -2,56 +2,22 @@
 // Remote hands latency on a real Windows desktop: the remote tool table over ONE long-lived sidecar (as the app runs it), called
 // through the broker exactly as a remote session's call would be (call, take, run, reply). No network hop is included: add the
 // round trip of the connection. Prints a table and writes remote-bench.json.
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import * as NodeReadline from "node:readline";
 
+import { ps, startSidecar } from "./sidecarClient.ts";
 import { createHandsBroker } from "../../../packages/baton-shared/src/remoteHands.ts";
 import { buildRemoteHandsTools } from "../../../apps/desktop/src/baton/agent/remoteHandsTools.ts";
 
 const OUT = process.env["HANDS_OUT"] ?? NodePath.join(process.cwd(), "remote-out");
 NodeFS.mkdirSync(OUT, { recursive: true });
-const sidecar = NodeChildProcess.spawn(process.env["SIDECAR"] ?? "baton-dictation.exe", ["serve"], {
-  windowsHide: true,
-  stdio: ["pipe", "pipe", "ignore"],
-});
-const waiting = new Map<number, (v: Record<string, unknown>) => void>();
-NodeReadline.createInterface({ input: sidecar.stdout }).on("line", (line) => {
-  try {
-    const e = JSON.parse(line) as Record<string, unknown>;
-    if (typeof e["id"] === "number") waiting.get(e["id"])?.(e);
-  } catch {
-    // other events
-  }
-});
-let nextId = 0;
-const call = <T>(message: Record<string, unknown>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    const id = (nextId += 1);
-    const timer = setTimeout(
-      () => reject(new Error(`sidecar silent for ${JSON.stringify(message).slice(0, 80)}`)),
-      20_000,
-    );
-    waiting.set(id, (v) => (clearTimeout(timer), waiting.delete(id), resolve(v as T)));
-    sidecar.stdin.write(`${JSON.stringify({ ...message, id })}\n`);
-  });
+const { call, kill, sidecar } = startSidecar(process.env["SIDECAR"] ?? "baton-dictation.exe");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const ps = (script: string) =>
-  NodeChildProcess.execFileSync(
-    "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    { encoding: "utf8" },
-  ).trim();
 
 const tools = new Map(
   buildRemoteHandsTools({
-    sidecar: {
-      locate: (i) => call({ cmd: "locate", ...i }),
-      uiTree: (window) => call({ cmd: "ui_tree", ...(window === undefined ? {} : { window }) }),
-      captureWindow: (i) => call({ cmd: "capture_window", ...i }),
-    },
+    sidecar,
     scratchDir: NodeOS.tmpdir(),
     ops: {
       version: () => "bench",
@@ -116,6 +82,13 @@ await measure("click_element by pattern (Calculator, no focus)", 20, () => [
   "click_element",
   { label: "1", window: "Calculator", why: "bench" },
 ]);
+{
+  // Why a pattern click can fail: what the tree holds and what a plain locate finds for "1".
+  const where = await call<Record<string, unknown>>({ cmd: "locate", label: "1", x: 0, y: 0, window: "Calculator" });
+  const tree = await call<{ controls?: string[] }>({ cmd: "ui_tree", window: "Calculator" });
+  console.log(`  locate "1": ${JSON.stringify(where)}`);
+  console.log(`  tree: ${(tree.controls ?? []).slice(0, 40).join(" | ")}`);
+}
 await measure("act_batch of 3 clicks (one call)", 10, () => [
   "act_batch",
   {
@@ -151,5 +124,5 @@ NodeFS.writeFileSync(NodePath.join(OUT, "remote-bench.json"), JSON.stringify(row
 ps(
   "Get-Process -Name CalculatorApp,Calculator,win32calc,calc,notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
 );
-sidecar.kill();
+kill();
 process.exit(0);

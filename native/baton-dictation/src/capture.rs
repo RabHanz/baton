@@ -8,7 +8,7 @@ use windows::Win32::Graphics::Gdi::{
     BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, RGBQUAD,
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect};
+use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
 
 /// PW_RENDERFULLCONTENT: also captures windows drawn by DirectComposition (modern apps, browsers).
 const RENDER_FULL_CONTENT: u32 = 2;
@@ -67,5 +67,20 @@ pub fn capture_window(window: Option<&str>, out: &str) -> Result<Value, String> 
         head.extend_from_slice(&[0u8; 24]);
         file.write_all(&head).and_then(|_| file.write_all(&pixels)).map_err(|e| e.to_string())?;
         Ok(json!({"path": out, "width": w, "height": h}))
+    }
+}
+
+/// Gives the keyboard back to a window (after foreground input into another one). A minimised window is restored first.
+pub fn focus_window(window: isize) -> Result<Value, String> {
+    unsafe {
+        let hwnd = HWND(window as *mut _);
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        if SetForegroundWindow(hwnd).as_bool() {
+            Ok(json!({"focused": true}))
+        } else {
+            Err("Windows would not give that window the keyboard.".into())
+        }
     }
 }

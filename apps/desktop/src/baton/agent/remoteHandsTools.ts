@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off globalRandom:off
 /**
  * The tool table a remote session gets (docs/baton/REMOTE_HANDS.md): the assistant's own hands, rebuilt on UI Automation
  * patterns and background capture so nothing needs focus or a visible window, plus a few operations on the app. The gate and

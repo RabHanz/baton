@@ -90,6 +90,8 @@ import {
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
+import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
@@ -138,6 +140,10 @@ interface ScreenSettings {
   readonly volume: number;
   /** Low-risk work runs with no Run it box and no spoken yes. Off until he turns it on. */
   readonly actWithoutAsking: boolean;
+  /** A remote session the Director gave baton:hands may drive this computer (REMOTE_HANDS.md). Off until he turns it on. */
+  readonly remoteHands: boolean;
+  /** He is away: a remote call that would ask him is refused instead, since nobody can answer. */
+  readonly remoteHandsAway: boolean;
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
@@ -166,6 +172,8 @@ const DEFAULTS: ScreenSettings = {
   voice: "anna",
   volume: 1,
   actWithoutAsking: false,
+  remoteHands: false,
+  remoteHandsAway: false,
   operator: "claude",
   codexBinary: "codex",
   oneAssistant: true,
@@ -240,6 +248,8 @@ export interface AssistantActions {
     readonly width?: number;
     readonly height?: number;
   } | null>;
+  /** The sidecar's window-targeted hands, for remote sessions; null while the sidecar is not running. */
+  readonly hands?: () => (RemoteHandsDeps["sidecar"] & { readonly focusWindow: (window: number) => Promise<{ readonly error?: string }> }) | null;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
   readonly uiTree?: () => Promise<{
     readonly window: string;
@@ -326,6 +336,14 @@ export interface TurnTimings {
 }
 
 export interface ScreenCompanion {
+  /** Runs one remote hands call behind the same gate and mouse guard as the assistant's own tools. */
+  readonly remoteHands: {
+    readonly enabled: () => boolean;
+    readonly run: (call: {
+      readonly tool: string;
+      readonly args: Readonly<Record<string, unknown>>;
+    }) => Promise<HandsResult>;
+  };
   /** Decide what was said and carry it out. "act" comes back for the caller's own guards. */
   readonly said: (
     text: string,
@@ -428,6 +446,8 @@ const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["cata
 
 export const startScreenCompanion = (input: {
   readonly stateDir: string;
+  /** What the app can do for a remote session besides drive windows: version, logs, processes, update, pages. */
+  readonly remoteOps?: RemoteHandsDeps["ops"];
   /** The sessions catalog, which starts after this does: asked for at each use. */
   readonly catalog?: () => ToolHost["catalog"];
   /** Bring Tessaya's window forward, on a tab when it can (the vault asks to be unlocked there). */
@@ -1687,6 +1707,7 @@ export const startScreenCompanion = (input: {
   let agentMcp: BatonMcp | null = null;
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
+  type BatonToolType = ReturnType<typeof buildBatonTools>[number];
   const agentTools: string[] = [];
   const agentResults: Array<{
     readonly tool: string;
@@ -1739,6 +1760,66 @@ export const startScreenCompanion = (input: {
   /** Built-in tools go through the gate here; Baton's own run it inside the tool server. */
   const harnessGate: ToolGate = async (call) =>
     call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call);
+
+  // Remote hands: its own gate and taint. The caller is a session the Director gave baton:hands, so what it read is not
+  // carried from one call to the next; every rule judgeToolCall has still applies to each call. Away, a question is a no.
+  const remoteTaint = createTaint();
+  const remoteGate = createAgentGate({
+    actWithoutAsking: () => false,
+    taint: remoteTaint,
+    textIsHis: () => false,
+    focusedWindow: async () => {
+      const seen = await focusSoon();
+      return seen === null
+        ? { label: "unknown", shell: true }
+        : { label: seen.label, shell: isShellWindow(seen.label) };
+    },
+    confirm: async (p) =>
+      settings.remoteHandsAway
+        ? false
+        : (await askHandsFree(
+            { title: `Remote: ${p.title}`, detail: p.detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true },
+            p.spoken,
+            0,
+            p.noOnExpiry,
+          )) === 0,
+    record: (entry) => input.onAction?.({ by: "remote-hands", ...entry }),
+  });
+  let remoteTools: ReadonlyMap<string, BatonToolType> | null = null;
+  const remoteToolsOf = (): ReadonlyMap<string, BatonToolType> => {
+    if (remoteTools !== null) return remoteTools;
+    const side = actions?.hands?.() ?? null;
+    if (side === null || input.remoteOps === undefined) {
+      throw new Error("The sensing helper is not running, so remote hands are not ready.");
+    }
+    remoteTools = new Map(
+      withFailureGuard(
+        buildRemoteHandsTools({
+          sidecar: side,
+          scratchDir: NodePath.join(input.stateDir, "screen"),
+          ops: input.remoteOps,
+          foreground: {
+            clickAt: async (to, double) => {
+              const dip = Electron.screen.screenToDipPoint(to);
+              await pointerAction(dip, () => driverFor().clickAt(dip, "left", double ? 2 : 1));
+            },
+            type: (text) => driverFor().type(text),
+            press: (keys) => driverFor().press(keys),
+            // Foreground input goes where the keyboard is; the window that had it gets it back afterwards.
+            restoreFocus: async (run) => {
+              const before = await focusSoon();
+              try {
+                return await run();
+              } finally {
+                if (before?.window !== undefined) await side.focusWindow(before.window).catch(() => undefined);
+              }
+            },
+          },
+        }),
+      ).map((t) => [t.name, t]),
+    );
+    return remoteTools;
+  };
 
   const driverFor = () => {
     driver ??= createInputDriver({
@@ -2395,6 +2476,29 @@ export const startScreenCompanion = (input: {
       linger("Tessaya", text);
     },
     writtenOnly: () => settings.output === "written",
+    remoteHands: {
+      enabled: () => settings.remoteHands,
+      run: async (call) => {
+        if (!settings.remoteHands) return { ok: false, error: "Remote hands are off on this computer." };
+        remoteTaint.reset();
+        try {
+          const tool = remoteToolsOf().get(call.tool);
+          if (tool === undefined) return { ok: false, error: `${call.tool} is not a remote hands tool.` };
+          const verdict = await remoteGate({ tool: `${BATON_TOOL_PREFIX}${call.tool}`, input: call.args }).catch(
+            () => ({ allow: false as const, reason: "Tessaya could not check that." }),
+          );
+          if (!verdict.allow) return { ok: false, error: `Refused: ${verdict.reason}` };
+          const out = await tool.run(call.args);
+          return {
+            ok: true,
+            ...(out.text === undefined ? {} : { text: vaultHost?.scrub(out.text) ?? out.text }),
+            ...(out.images === undefined ? {} : { images: out.images }),
+          };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+    },
     voice: () => settings.voice,
     volume: () => settings.volume,
     ask: windows.ask,
@@ -2516,6 +2620,22 @@ export const startScreenCompanion = (input: {
         on: settings.actWithoutAsking,
       },
       {
+        id: "s.hands",
+        section: "Working for you",
+        label: "Let a remote session drive this computer",
+        hint: "A session you gave remote hands (baton:hands) can read windows, press named controls and take pictures of windows, through this app and the same checks as the assistant. Off, none of it is listened for.",
+        kind: "toggle",
+        on: settings.remoteHands,
+      },
+      {
+        id: "s.handsAway",
+        section: "Working for you",
+        label: "I'm away: remote hands never ask me",
+        hint: "With this on, anything a remote call would ask you about is refused instead, because nobody can answer.",
+        kind: "toggle",
+        on: settings.remoteHandsAway,
+      },
+      {
         id: "s.account",
         section: "Working for you",
         label: "Claude login for Tessaya",
@@ -2606,6 +2726,8 @@ export const startScreenCompanion = (input: {
         }
       } else if (id === "s.social") save({ socialOn: value === true });
       else if (id === "s.act") save({ actWithoutAsking: value === true });
+      else if (id === "s.hands") save({ remoteHands: value === true });
+      else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
     dispose: () => {
