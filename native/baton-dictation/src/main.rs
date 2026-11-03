@@ -1175,7 +1175,7 @@ fn main() {
         Some("locate") => {
             let number = |name: &str| flag(&args, name).and_then(|v| v.parse().ok()).unwrap_or(0);
             let label = flag(&args, "--label").unwrap_or_default();
-            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground")));
+            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground"), flag(&args, "--window").as_deref(), args.iter().any(|a| a == "--invoke")));
             Ok(())
         }
         Some("ui_tree") => {
