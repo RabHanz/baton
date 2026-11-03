@@ -68,6 +68,21 @@ describe("the real catalog service", () => {
     });
   });
 
+  it("writes the outcome of a failed open as a structured line", async () => {
+    const lines: Array<[string, Record<string, unknown>]> = [];
+    const service = createBridgeCatalogService({
+      bridge: {
+        request: async () => ({ ok: false, detail: "T3 does not show it yet." }),
+      } as unknown as SessionsBridge,
+      openMainWindow: () => undefined,
+      note: (event, detail) => void lines.push([event, detail]),
+    });
+    const [r] = rowsFromAnswer(JSON.stringify([{ ...row, threadId: "import:claudeAgent:abc" }]));
+    await expect(service.open(r!)).rejects.toThrow();
+    expect(lines[0]![0]).toBe("resume-open");
+    expect(lines[0]![1]).toMatchObject({ outcome: "failed", error: "T3 does not show it yet." });
+  });
+
   it("says why when T3 cannot show the thread", async () => {
     const service = createBridgeCatalogService({
       bridge: {

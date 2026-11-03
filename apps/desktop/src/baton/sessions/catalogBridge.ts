@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 // @effect-diagnostics globalTimers:off
 /**
  * The catalog service against the real thing: Baton's window asks the T3 sidebar, which asks every connected
@@ -71,6 +72,8 @@ export const createBridgeCatalogService = (input: {
   readonly wait?: (ms: number) => Promise<void>;
   /** Where the archived thread ids are written, so the clean-up can be undone. */
   readonly saveCleanupList?: (json: string) => void;
+  /** One structured line for the resume record (baton-lifecycle.ndjson). */
+  readonly note?: (event: string, detail: Record<string, unknown>) => void;
 }): CatalogService => {
   const wait = input.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   /** Where a resumed session's thread is, when the server made one (a machine with no Herdr). */
@@ -83,7 +86,7 @@ export const createBridgeCatalogService = (input: {
     if (answer === null) throw new Error("The sessions view did not answer.");
     return rowsFromAnswer(answer.detail);
   };
-  return {
+  const service: CatalogService = {
     list,
     stop: async (row) => {
       const answer = await input.bridge.request(
@@ -209,5 +212,33 @@ export const createBridgeCatalogService = (input: {
       if (answer === null) throw new Error("T3 did not answer. Open the T3 window and try again.");
       if (!answer.ok) throw new Error(reasonOf(answer.detail) ?? answer.detail);
     },
+  };
+  // Every resume and open leaves a line a user can read: which session, how long, and the outcome.
+  const note = input.note ?? (() => undefined);
+  const timed = async (event: string, row: CatalogRow, run: () => Promise<void>): Promise<void> => {
+    const startedAt = Date.now();
+    const base = { sessionId: row.sessionId, folder: row.cwd, environmentId: row.environmentId };
+    try {
+      await run();
+      note(event, {
+        ...base,
+        outcome: "ok",
+        threadId: row.threadId ?? threads.get(row.id) ?? null,
+        ms: Date.now() - startedAt,
+      });
+    } catch (error) {
+      note(event, {
+        ...base,
+        outcome: "failed",
+        error: error instanceof Error ? error.message : String(error),
+        ms: Date.now() - startedAt,
+      });
+      throw error;
+    }
+  };
+  return {
+    ...service,
+    resume: (row) => timed("resume", row, () => service.resume(row)),
+    open: (row) => timed("resume-open", row, async () => service.open(row)),
   };
 };
