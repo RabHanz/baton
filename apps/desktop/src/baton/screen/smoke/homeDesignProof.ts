@@ -230,8 +230,31 @@ void Electron.app.whenReady().then(async () => {
     framesOver34ms: ft.d.filter((x) => x > 34).length,
     peakAnimationsAtOnce: ft.peak,
   };
+  // Which part costs what: the same page switching with one thing switched off by an injected rule.
+  const experiments: Record<string, number> = {};
+  for (const [name, css] of [
+    ["control", ""],
+    ["no-blur", "#side::before,.state,#top .search,#modal,.palbox,.pop{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}"],
+    ["no-entrance", "#page.enter>*,#page.enter>.group>*{animation:none!important}"],
+    ["no-wash", "#app::before,#page::before{display:none!important}"],
+    ["no-blur-no-entrance", "#side::before,.state,#top .search{backdrop-filter:none!important}#page.enter>*,#page.enter>.group>*{animation:none!important}"],
+  ] as const) {
+    await js(`(()=>{let e=document.getElementById('exp');if(!e){e=document.createElement('style');e.id='exp';document.head.appendChild(e)}e.textContent=${JSON.stringify(css)}})();0`);
+    await sleep(500);
+    const run = (async () => {
+      for (const p of cycle) {
+        await js(`go(${JSON.stringify(p)});0`);
+        await sleep(450);
+      }
+    })();
+    const r = await cpu(4000);
+    await run;
+    experiments[name] = Number(r.mean.toFixed(2));
+  }
+  await js("document.getElementById('exp').textContent='';0");
+  Object.assign(metrics, { experimentsSwitchingCpuMeanPercent: experiments });
   NodeFS.writeFileSync(NodePath.join(out, "metrics.json"), JSON.stringify(metrics, null, 2));
-  for (const [k, v] of Object.entries(metrics)) log(`- ${k}: ${v}`);
+  for (const [k, v] of Object.entries(metrics)) log(`- ${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`);
 
   // 3. Clips of the signature motions.
   await show("home");
