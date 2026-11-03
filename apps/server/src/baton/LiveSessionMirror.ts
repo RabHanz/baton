@@ -87,6 +87,7 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
+import { stateFile } from "@t3tools/baton-shared/stateDir";
 
 export const LIVE_INSTANCE_ID = ProviderInstanceId.make("baton-live");
 const DRIVER = ProviderDriverKind.make("acpRegistry");
@@ -399,7 +400,7 @@ export const liveThreadId = (sessionId: string): ThreadId =>
 
 const agentScript = (): string =>
   process.env.BATON_LIVE_ACP ??
-  NodePath.join(NodeOS.homedir(), ".t3", "baton", "baton-live-acp.mjs");
+  stateFile(NodeOS.homedir(), "baton-live-acp.mjs");
 
 /** A Node for the agent: T3 itself is a single executable, so it cannot run a script. */
 export const findNode = (): string | null => {
@@ -413,7 +414,7 @@ export const findNode = (): string | null => {
   } catch {}
   const candidates = [
     process.env.BATON_LIVE_NODE,
-    NodePath.join(home, ".t3", "baton", "node"),
+    stateFile(home, "node"),
     NodePath.join(home, "bin", "node"),
     ...nvmNodes,
     "/usr/local/bin/node",
