@@ -110,12 +110,17 @@ void Electron.app.whenReady().then(async () => {
   win.focus();
   await sleep(1500);
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const errors: string[] = [];
+  win.webContents.on("console-message", (_e, level, message) => {
+    if (level >= 3) errors.push(message);
+  });
+  await js("window.addEventListener('error',e=>console.error('page error: '+e.message))");
   await js(
     "window.__mut=0;new MutationObserver(m=>{window.__mut+=m.length}).observe(document.body,{subtree:true,childList:true,attributes:true,characterData:true});0",
   );
   const sig = () =>
     js(
-      "JSON.stringify([typeof cur==='undefined'?'':cur, typeof modal==='undefined'?'':modal, (document.getElementById('page')||{}).innerText?.length, !!document.getElementById('modal'), document.activeElement&&document.activeElement.tagName+':'+document.activeElement.id, window.__mut])",
+      "JSON.stringify([typeof cur==='undefined'?'':cur, typeof modal==='undefined'?'':modal, (document.getElementById('page')||{}).innerText?.length, ((document.querySelector('#page h1')||{}).textContent||''), !!document.getElementById('modal'), document.activeElement&&document.activeElement.tagName+':'+document.activeElement.id, window.__mut])",
     ) as Promise<string>;
   interface Found {
     name: string;
@@ -140,6 +145,14 @@ void Electron.app.whenReady().then(async () => {
     await driver.clickAt({ x: bounds.x + c.x, y: bounds.y + c.y }, "left", 1);
     await sleep(900);
     const after = await sig();
+    // A sidebar item must redraw the page, not only change which one is current.
+    const redrew = before.split(",")[3] !== after.split(",")[3];
+    const needsRedraw =
+      group === "sidebar" && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
+    if (needsRedraw && !redrew && before !== after) {
+      rows.push({ group, control: c.name, result: "no effect", effect: "page did not redraw" });
+      return;
+    }
     rows.push({
       group,
       control: c.name,
@@ -153,9 +166,9 @@ void Electron.app.whenReady().then(async () => {
   await sleep(1500);
 
   // The sidebar: each item opens its page.
-  const sideCount = (await find("#side button, #side a")).length;
+  const sideCount = (await find("#side .nav")).length;
   for (let i = 0; i < sideCount; i += 1) {
-    const c = await nth("#side button, #side a", i);
+    const c = await nth("#side .nav", i);
     if (c !== undefined) await press("sidebar", c);
     await js("closeModal();go('home');0");
     await sleep(400);
@@ -210,6 +223,13 @@ void Electron.app.whenReady().then(async () => {
       ),
     ].join("\n"),
   );
-  console.log(`controls ${rows.length}, without effect ${dead.length}`);
-  Electron.app.exit(0);
+  if (errors.length > 0)
+    NodeFS.appendFileSync(
+      NodePath.join(out, "results.md"),
+      `\n\nPage errors:\n${errors.join("\n")}\n`,
+    );
+  console.log(
+    `controls ${rows.length}, without effect ${dead.length}, page errors ${errors.length}`,
+  );
+  Electron.app.exit(dead.length > 0 || errors.length > 0 ? 1 : 0);
 });
