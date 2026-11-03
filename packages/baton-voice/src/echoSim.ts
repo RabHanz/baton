@@ -200,12 +200,13 @@ export const evaluateGuard = async (
   const seconds = input.seconds ?? 60;
   const rooms = input.rooms ?? ROOMS;
   const voice = input.source ?? speechLike;
+  const withSource = input.source === undefined ? {} : { source: input.source };
   const runIt = input.run ?? ((scenario: EchoScenario) => runEcho({ ...scenario, frames: 6 }));
   let alarms = 0;
   let played = 0;
   for (const [i, [delay, rt60]] of rooms.entries()) {
     const tts = voice(seconds, 11 + i, 105 + i * 8);
-    const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [], source: input.source });
+    const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [], ...withSource });
     alarms += run.detections.length;
     played += run.seconds;
   }
@@ -216,7 +217,7 @@ export const evaluateGuard = async (
     for (const [i, [delay, rt60]] of rooms.entries()) {
       const tts = voice(seconds, 11 + i, 105 + i * 8);
       const interruptions = Array.from({ length: Math.floor((seconds - 12) / 6.5) }, (_, k) => ({ atS: 8 + k * 6.5, seconds: 1.5, overEchoDb: db, pitchHz: 170 + k * 12 }));
-      const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions, source: input.source });
+      const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions, ...withSource });
       for (const it of interruptions) {
         total += 1;
         if (run.detections.some((t) => t >= it.atS && t <= it.atS + 0.3 + 6 * 0.02)) hit += 1;
