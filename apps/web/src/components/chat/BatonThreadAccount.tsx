@@ -227,7 +227,6 @@ function LiveAnswerer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
       <span
         className="shrink-0 truncate text-2xs text-muted-foreground"
         data-testid="thread-answerer"
-        title={answerer.line}
       >
         {answerer.line}
       </span>
