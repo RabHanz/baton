@@ -6,7 +6,7 @@ name: Baton hands bake-off
 on:
   workflow_dispatch:
   push:
-    branches: ["baton/hands-sota**"]
+    branches: ["baton/hands-sota**", "baton/hands-effects**"]
     paths:
       [
         "scripts/baton/hands-ci/**",
