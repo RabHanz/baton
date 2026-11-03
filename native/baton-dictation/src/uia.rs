@@ -91,6 +91,7 @@ unsafe fn descendants(automation: &IUIAutomation, root: &IUIAutomationElement, c
 struct Found {
     name: String,
     rect: RECT,
+    element: IUIAutomationElement,
 }
 
 /// The element under the model's point, or an ancestor of it, when it carries the label.
@@ -101,13 +102,31 @@ unsafe fn at_point(automation: &IUIAutomation, label: &str, x: i32, y: i32) -> w
         let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
         let rect = element.CurrentBoundingRectangle().unwrap_or_default();
         if name_score(label, &name) > 0.0 && rect.right - rect.left >= MIN_SIDE && rect.bottom - rect.top >= MIN_SIDE {
-            return Ok(Some(Found { name, rect }));
+            return Ok(Some(Found { name, rect, element }));
         }
         // The top of the tree answers with no element, which is simply the end of the walk.
         let Ok(parent) = walker.GetParentElement(&element) else { break };
         element = parent;
     }
     Ok(None)
+}
+
+/// The name of what is on top at the element's centre when that is not the element or inside it; None when a click
+/// there reaches the element (or the hit test cannot tell, which counts as reachable).
+unsafe fn covered_by(automation: &IUIAutomation, element: &IUIAutomationElement, rect: &RECT) -> Option<String> {
+    let (cx, cy) = centre(rect);
+    let walker = automation.ControlViewWalker().ok()?;
+    let top = automation.ElementFromPoint(POINT { x: cx as i32, y: cy as i32 }).ok()?;
+    let mut hit = top.clone();
+    for _ in 0..8 {
+        if automation.CompareElements(&hit, element).map(|b| b.as_bool()).unwrap_or(false) {
+            return None;
+        }
+        let Ok(parent) = walker.GetParentElement(&hit) else { break };
+        hit = parent;
+    }
+    let name = top.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+    Some(if name.is_empty() { "another window".to_string() } else { name })
 }
 
 /// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
@@ -149,7 +168,7 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, St
                     // Name first; among equals the one nearest the model's point.
                     let rank = score * 10_000.0 - distance;
                     if best.as_ref().map(|(r, _)| rank > *r).unwrap_or(true) {
-                        best = Some((rank, Found { name: s.name, rect: s.rect }));
+                        best = Some((rank, Found { name: s.name, rect: s.rect, element }));
                     }
                 }
                 (best.map(|(_, f)| f), count)
@@ -161,11 +180,17 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, St
             ),
         };
         Ok(match found {
-            Some(f) => json!({
-                "found": true, "name": f.name, "elements": count,
-                "x": (f.rect.left + f.rect.right) / 2, "y": (f.rect.top + f.rect.bottom) / 2,
-                "width": f.rect.right - f.rect.left, "height": f.rect.bottom - f.rect.top,
-            }),
+            Some(f) => {
+                let mut out = json!({
+                    "found": true, "name": f.name, "elements": count,
+                    "x": (f.rect.left + f.rect.right) / 2, "y": (f.rect.top + f.rect.bottom) / 2,
+                    "width": f.rect.right - f.rect.left, "height": f.rect.bottom - f.rect.top,
+                });
+                if let Some(by) = covered_by(&automation, &f.element, &f.rect) {
+                    out["covered_by"] = json!(by);
+                }
+                out
+            }
             None => json!({"found": false, "elements": count}),
         })
     }

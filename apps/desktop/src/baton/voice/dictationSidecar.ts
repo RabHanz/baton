@@ -58,6 +58,8 @@ export interface LocatedElement {
   /** The control's size in physical pixels. */
   readonly width?: number;
   readonly height?: number;
+  /** What is on top at the control's centre, when a click there would not reach it. */
+  readonly covered_by?: string;
   readonly error?: string;
 }
 
