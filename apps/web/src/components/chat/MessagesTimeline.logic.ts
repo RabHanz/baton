@@ -1411,6 +1411,9 @@ export function deriveMessagesTimelineRows(input: {
   expandedRunIds?: ReadonlySet<RunId>;
   expandedAttemptIds?: ReadonlySet<RunAttemptId>;
   expandedWorkGroupIds?: ReadonlySet<string>;
+  /** "Keep work groups expanded": a finished turn's work shows unless its run is in `collapsedRunIds`. */
+  keepWorkExpanded?: boolean;
+  collapsedRunIds?: ReadonlySet<RunId>;
   /** Thinking rows he closed, by item id; every other one of the latest turn is open. */
   closedThoughtIds?: ReadonlySet<string>;
   isWorking: boolean;
@@ -1481,7 +1484,10 @@ export function deriveMessagesTimelineRows(input: {
   const collapsedEntryIds = new Set<string>();
   const collapsedFoldMemberIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {
-    if (!input.expandedRunIds?.has(fold.runId)) {
+    const open =
+      input.expandedRunIds?.has(fold.runId) === true ||
+      (input.keepWorkExpanded === true && input.collapsedRunIds?.has(fold.runId) !== true);
+    if (!open) {
       for (const entryId of fold.hiddenEntryIds) {
         collapsedEntryIds.add(entryId);
       }
@@ -2633,4 +2639,45 @@ export function sameRowsInput(
     return false;
   }
   return Object.keys(left).length === Object.keys(right).length;
+}
+
+/**
+ * When the latest run changes (a new reply), upstream folds the run before it. With "Keep work groups expanded" the
+ * set is left exactly as the reader had it.
+ */
+export function expandedRunsAfterLatestRunChange(
+  expanded: ReadonlySet<RunId>,
+  previousRunId: RunId,
+  keep: boolean,
+): ReadonlySet<RunId> {
+  if (keep || !expanded.has(previousRunId)) return expanded;
+  const next = new Set(expanded);
+  next.delete(previousRunId);
+  return next;
+}
+
+/** The runs whose work shows: with the setting on, all of them except the ones he closed; off, only the ones he opened. */
+export function effectiveExpandedRunIds(input: {
+  readonly keep: boolean;
+  readonly allRunIds: Iterable<RunId>;
+  readonly expanded: ReadonlySet<RunId>;
+  readonly collapsed: ReadonlySet<RunId>;
+}): ReadonlySet<RunId> {
+  if (!input.keep) return input.expanded;
+  const open = new Set<RunId>();
+  for (const runId of input.allRunIds) if (!input.collapsed.has(runId)) open.add(runId);
+  for (const runId of input.expanded) if (!input.collapsed.has(runId)) open.add(runId);
+  return open;
+}
+
+/** Closing a group with the setting on is remembered; opening it again forgets that. */
+export function collapsedWorkRunsAfterToggle(
+  collapsed: ReadonlySet<RunId>,
+  runId: RunId,
+  keep: boolean,
+): ReadonlySet<RunId> {
+  if (!keep) return collapsed;
+  const next = new Set(collapsed);
+  if (!next.delete(runId)) next.add(runId);
+  return next;
 }

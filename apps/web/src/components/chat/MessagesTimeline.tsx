@@ -83,10 +83,13 @@ import {
   isTimelineMinimapRowVisible,
   resolveTimelineMinimapVisibleRange,
   resolveTimelineMinimapHitStripWidth,
+  collapsedWorkRunsAfterToggle,
+  expandedRunsAfterLatestRunChange,
   timelineTurnFoldRunIdsByEntryId,
   type MessagesTimelineRow,
   type TimelineLatestRun,
 } from "./MessagesTimeline.logic";
+import { useKeepWorkExpanded, useWorkGroupCommand } from "./workGroupPreference";
 import { type ThreadFindMatch } from "./threadFind";
 import { useThreadFindNavigation } from "./useThreadFindNavigation";
 import { TooltipScrollDismissArea } from "../ui/tooltip";
@@ -416,6 +419,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [expandedRunIds, setExpandedRunIds] = useState<ReadonlySet<RunId>>(
     () => listState.rememberedPosition?.disclosures?.runs ?? new Set(),
   );
+  const keepWorkExpanded = useKeepWorkExpanded();
+  const [collapsedWorkRunIds, setCollapsedWorkRunIds] = useState<ReadonlySet<RunId>>(
+    () => new Set(),
+  );
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
     () => listState.rememberedPosition?.disclosures?.workGroups ?? new Set(),
   );
@@ -458,6 +465,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     paintedExpandedWorkGroupIds = rememberedPosition?.disclosures?.workGroups ?? new Set();
     paintedExpandedAttemptIds = rememberedPosition?.disclosures?.attempts ?? new Set();
     setExpandedRunIds(paintedExpandedRunIds);
+    setCollapsedWorkRunIds(new Set());
     setExpandedWorkGroupIds(paintedExpandedWorkGroupIds);
     setExpandedAttemptIds(paintedExpandedAttemptIds);
   }
@@ -501,6 +509,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
 
   const onToggleTurnFold = (runId: RunId) => {
     suspendEndScrollMaintenanceForDisclosure(`turn-fold:${runId}`);
+    if (keepWorkExpanded) {
+      // Open by default: a click closes this group, and that stays until he opens it again.
+      setCollapsedWorkRunIds((existing) => collapsedWorkRunsAfterToggle(existing, runId, true));
+      setExpandedRunIds((existing) => {
+        if (!existing.has(runId)) return existing;
+        const next = new Set(existing);
+        next.delete(runId);
+        return next;
+      });
+      return;
+    }
     setExpandedRunIds((existing) => {
       const next = new Set(existing);
       if (next.has(runId)) {
@@ -570,12 +589,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
           setExpandedRunIds((existing) => new Set(existing).add(latestRun.runId));
         }
       } else {
-        setExpandedRunIds((existing) => {
-          if (!existing.has(previousRunId)) return existing;
-          const next = new Set(existing);
-          next.delete(previousRunId);
-          return next;
-        });
+        setExpandedRunIds((existing) =>
+          expandedRunsAfterLatestRunChange(existing, previousRunId, keepWorkExpanded),
+        );
       }
     }
   }
@@ -649,6 +665,40 @@ const ConversationTimeline = memo(function ConversationTimeline({
       ? paintedExpandedRunIds
       : new Set(paintedExpandedRunIds).add(activeFindRunId);
 
+  // The header menu's Expand all / Collapse all work, applied once per command.
+  const workCommand = useWorkGroupCommand();
+  const [appliedWorkCommandId, setAppliedWorkCommandId] = useState(workCommand.id);
+  if (appliedWorkCommandId !== workCommand.id) {
+    setAppliedWorkCommandId(workCommand.id);
+    if (workCommand.mode === "expand") {
+      setCollapsedWorkRunIds(new Set());
+      setExpandedRunIds(
+        new Set(
+          timelineTurnFoldRunIdsByEntryId({
+            timelineEntries,
+            latestRun,
+            runningRunId,
+            isWorking,
+            runlessWorkActive,
+          }).values(),
+        ),
+      );
+    } else {
+      setExpandedRunIds(new Set());
+      setCollapsedWorkRunIds(
+        new Set(
+          timelineTurnFoldRunIdsByEntryId({
+            timelineEntries,
+            latestRun,
+            runningRunId,
+            isWorking,
+            runlessWorkActive,
+          }).values(),
+        ),
+      );
+    }
+  }
+
   const activeFindAttemptId = activeFindMatch
     ? timelineEntries.find((entry) => entry.id === activeFindMatch.entryId)?.attempt?.id
     : undefined;
@@ -677,6 +727,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     latestRun,
     runningRunId,
     expandedRunIds: visibleExpandedRunIds,
+    keepWorkExpanded,
+    collapsedRunIds: collapsedWorkRunIds,
     expandedAttemptIds: visibleExpandedAttemptIds,
     expandedWorkGroupIds,
     closedThoughtIds,
