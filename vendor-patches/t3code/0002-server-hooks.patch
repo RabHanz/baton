@@ -68,8 +68,25 @@ index 62a9e8b88e96d1057c2afbd7cb11577dda84931b..2a12d36abfb29a5d26ac4af885a1e884
            (legacyInputRunIds.size > 0 &&
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
+diff --git a/apps/server/src/project/AgentSessionImporter.ts b/apps/server/src/project/AgentSessionImporter.ts
+index 211ad06fc267a4c4730c159db166d25651be3e77..e22f3d6edf48d6e1fad98d7bd5f8e71c5f141aef 100644
+--- a/apps/server/src/project/AgentSessionImporter.ts
++++ b/apps/server/src/project/AgentSessionImporter.ts
+@@ -231,7 +231,11 @@ const make = Effect.gen(function* () {
+       }
+       return payload.value.importedTranscripts ?? [];
+     });
+-    const outcomes = scanner.recentThreads(project.workspaceRoot, completedSources);
++    const outcomes = scanner.recentThreads(
++      project.workspaceRoot,
++      completedSources,
++      input.preferSessionId,
++    );
+     const importedThreadIds = new Set<ThreadId>();
+     let importedCount = 0;
+     let skippedCount = 0;
 diff --git a/apps/server/src/project/AgentSessionScanner.test.ts b/apps/server/src/project/AgentSessionScanner.test.ts
-index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..2efbd17dc6a3d6f6a2e530440c061ffe147ac67a 100644
+index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..d280567650e6bf08997a1928a34bdf8f6ec57d5a 100644
 --- a/apps/server/src/project/AgentSessionScanner.test.ts
 +++ b/apps/server/src/project/AgentSessionScanner.test.ts
 @@ -1075,6 +1075,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
@@ -88,8 +105,67 @@ index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..2efbd17dc6a3d6f6a2e530440c061ffe
          yield* writeTranscript({
            filePath: path.join(claudeHomePath, "projects", "-other", "claude-other.jsonl"),
            contents: claudeTranscript(otherWorkspace, "claude-other"),
+@@ -1295,6 +1304,58 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
+       }),
+     );
+ 
++    it.effect(
++      "imports the session it is asked for even when 100 newer ones, and the 30-day window, would exclude it",
++      () =>
++        Effect.gen(function* () {
++          const path = yield* Path.Path;
++          const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
++          yield* TestClock.setTime(nowMs);
++          const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
++          const codexHomePath = yield* makeTempDir("t3code-codex-home-");
++          const workspace = yield* makeTempDir("t3code-workspace-");
++          const transcript = (sessionId: string) =>
++            `${JSON.stringify({
++              type: "user",
++              cwd: workspace,
++              sessionId,
++              timestamp: "2026-08-23T12:00:00.000Z",
++              message: { role: "user", content: `First message of ${sessionId}` },
++            })}\n${JSON.stringify({
++              type: "assistant",
++              sessionId,
++              timestamp: "2026-08-23T12:01:00.000Z",
++              message: { role: "assistant", content: [{ type: "text", text: "Done" }] },
++            })}\n`;
++          for (let index = 0; index < 105; index += 1) {
++            yield* writeTranscript({
++              filePath: path.join(claudeHomePath, "projects", "-folder", `recent-${index}.jsonl`),
++              contents: transcript(`recent-${index}`),
++              mtimeMs: nowMs - (index + 1) * 60_000,
++            });
++          }
++          // Older than the window and behind 105 newer ones: only a request by id brings it in.
++          yield* writeTranscript({
++            filePath: path.join(claudeHomePath, "projects", "-folder", "wanted.jsonl"),
++            contents: transcript("wanted"),
++            mtimeMs: nowMs - 40 * 24 * 60 * 60 * 1000,
++          });
++
++          yield* Effect.gen(function* () {
++            const scanner = yield* AgentSessionScanner.AgentSessionScanner;
++            const without = yield* Stream.runCollect(scanner.recentThreads(workspace));
++            expect(
++              Array.from(without).some(
++                (o) => o._tag === "Importable" && o.thread.providerSessionId === "wanted",
++              ),
++            ).toBe(false);
++            const asked = yield* Stream.runCollect(scanner.recentThreads(workspace, [], "wanted"));
++            const first = Array.from(asked)[0];
++            expect(first?._tag === "Importable" && first.thread.providerSessionId).toBe("wanted");
++          }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
++        }),
++    );
++
+     it.effect("excludes Codex subagents from discovery and the recent-thread budget", () =>
+       Effect.gen(function* () {
+         const path = yield* Path.Path;
 diff --git a/apps/server/src/project/AgentSessionScanner.ts b/apps/server/src/project/AgentSessionScanner.ts
-index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6408e9357 100644
+index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a19f1df10 100644
 --- a/apps/server/src/project/AgentSessionScanner.ts
 +++ b/apps/server/src/project/AgentSessionScanner.ts
 @@ -90,6 +90,7 @@ const TranscriptRecord = Schema.Struct({
@@ -100,7 +176,16 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6
    isSidechain: Schema.optional(Schema.Boolean),
    isMeta: Schema.optional(Schema.Boolean),
    isCompactSummary: Schema.optional(Schema.Boolean),
-@@ -278,6 +279,8 @@ interface ClaudeFields {
+@@ -175,6 +176,8 @@ export class AgentSessionScanner extends Context.Service<
+     readonly recentThreads: (
+       workspaceRoot: string,
+       completedSources?: ReadonlyArray<AgentSessionImportSource>,
++      /** A session asked for by id: read first and exempt from the 30-day window, so the 100-transcript budget cannot leave it out. */
++      preferSessionId?: string,
+     ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
+   }
+ >()("t3/project/AgentSessionScanner") {}
+@@ -278,6 +281,8 @@ interface ClaudeFields {
    readonly title: string | undefined;
    readonly customTitle: string | null;
    readonly model: string | undefined;
@@ -109,7 +194,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6
  }
  
  const emptyClaudeFields: ClaudeFields = {
-@@ -285,12 +288,14 @@ const emptyClaudeFields: ClaudeFields = {
+@@ -285,12 +290,14 @@ const emptyClaudeFields: ClaudeFields = {
    title: undefined,
    customTitle: null,
    model: undefined,
@@ -124,7 +209,38 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6
      sessionId: record.sessionId?.trim() || fields.sessionId,
      title: record.aiTitle?.trim() || fields.title,
      // Claude flushes the AI title after the user's rename; an empty rename clears it.
-@@ -1636,7 +1641,7 @@ export const make = Effect.gen(function* () {
+@@ -1512,7 +1519,10 @@ export const make = Effect.gen(function* () {
+   const prepareRecentThreads = Effect.fn("AgentSessionScanner.prepareRecentThreads")(function* (
+     workspaceRoot: string,
+     completedSources: ReadonlyArray<AgentSessionImportSource>,
++    preferSessionId?: string,
+   ) {
++    const isPreferred = (filePath: string) =>
++      preferSessionId !== undefined && path.basename(filePath, ".jsonl") === preferSessionId;
+     const root = path.resolve(expandHomePath(workspaceRoot, homeDir));
+     const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
+     if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot)) return Stream.empty;
+@@ -1536,7 +1546,7 @@ export const make = Effect.gen(function* () {
+       for (const transcript of candidate.transcripts) {
+         if (
+           transcript.mtimeMs === null ||
+-          transcript.mtimeMs < cutoffMs ||
++          (transcript.mtimeMs < cutoffMs && !isPreferred(transcript.filePath)) ||
+           transcript.mtimeMs > nowMs
+         ) {
+           continue;
+@@ -1549,6 +1559,10 @@ export const make = Effect.gen(function* () {
+     }
+ 
+     eligibleTranscripts.sort((left, right) => {
++      const asked =
++        Number(isPreferred(right.transcript.filePath)) -
++        Number(isPreferred(left.transcript.filePath));
++      if (asked !== 0) return asked;
+       if (left.transcript.mtimeMs !== right.transcript.mtimeMs) {
+         return right.transcript.mtimeMs - left.transcript.mtimeMs;
+       }
+@@ -1636,7 +1650,7 @@ export const make = Effect.gen(function* () {
              snapshot.records,
              snapshot.claudeFields,
            );
@@ -133,6 +249,16 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..e60d87c0a8a3f7d8a33e19b117e1e6a6
              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
            }
            let savedTitle: string | undefined;
+@@ -1675,7 +1689,8 @@ export const make = Effect.gen(function* () {
+   const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
+     workspaceRoot,
+     completedSources = [],
+-  ) => Stream.unwrap(prepareRecentThreads(workspaceRoot, completedSources));
++    preferSessionId,
++  ) => Stream.unwrap(prepareRecentThreads(workspaceRoot, completedSources, preferSessionId));
+ 
+   return AgentSessionScanner.of({ scan, recentThreads });
+ });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
 index 67418010e38ecece06eea57678a9bf24588b4615..ccdba5809e1111876546c5d2fc2e78e622c3cec2 100644
 --- a/apps/server/src/server.ts
@@ -239,3 +365,31 @@ index e880551e65cce91f41f3f969b2d3a100786b08c1..9a69b36500cb9b12bf8717fd405b6dac
                ),
              ),
              Effect.forkScoped,
+diff --git a/packages/contracts/src/agentSessions.ts b/packages/contracts/src/agentSessions.ts
+index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc40e13108e 100644
+--- a/packages/contracts/src/agentSessions.ts
++++ b/packages/contracts/src/agentSessions.ts
+@@ -51,6 +51,8 @@ export type AgentSessionScanResult = typeof AgentSessionScanResult.Type;
+ export const AgentSessionImportInput = Schema.Struct({
+   projectId: ProjectId,
+   expectedWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
++  /** A session to import first and regardless of the recent-thread window and budget (Resume by id). */
++  preferSessionId: Schema.optional(TrimmedNonEmptyString),
+ });
+ export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
+ 
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index f291cec115f73f2862d63e651d9b0750c585ed65..bb009611b63752da10cdeed2973772f5f9f0edf0 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -1199,8 +1199,9 @@ export const ServerSettings = Schema.Struct({
+     Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
+   ),
+   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
++  // Off in Tessaya: after a restart a thread comes back stopped and resumable, never a Claude process the user did not ask for.
+   continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
+-    Schema.withDecodingDefault(Effect.succeed(true)),
++    Schema.withDecodingDefault(Effect.succeed(false)),
+   ),
+ 
+   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),

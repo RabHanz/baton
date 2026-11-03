@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off nodeBuiltinImport:off
+// @effect-diagnostics globalDate:off nodeBuiltinImport:off tryCatchInEffectGen:off preferSchemaOverJson:off globalDateInEffect:off
 /** The session catalog as a service, so the RPC door, agents and MCP all reach the same methods. */
 import type { BatonCatalogSession, BatonCatalogState } from "@t3tools/baton-contracts";
 import {
@@ -15,7 +15,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as ServerConfig from "../config.ts";
 
 import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
@@ -23,6 +26,18 @@ import { ProjectService } from "../project/ProjectService.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
+import {
+  autoResumeAllowed,
+  autoResumedWithin,
+  classifyTranscriptTail,
+  emptyAutoResumeState,
+  HOUR_MS,
+  markStoppedOnPurpose,
+  recordAutoResume,
+  RESTART_NOTICE,
+  type AutoResumeState,
+} from "./AutoResume.ts";
+import { classifyHelperThread } from "./HelperThreads.ts";
 import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
 import { isProviderAvailable } from "@t3tools/baton-contracts";
 import { herdrSend } from "./HerdrSend.ts";
@@ -32,7 +47,12 @@ import { realCatalogPorts } from "./SessionCatalogLive.ts";
 export class BatonSessionCatalogService extends Context.Service<
   BatonSessionCatalogService,
   {
-    readonly list: (input: { query?: string; limit?: number; before?: string }) => Effect.Effect<{
+    readonly list: (input: {
+      query?: string;
+      limit?: number;
+      before?: string;
+      background?: boolean;
+    }) => Effect.Effect<{
       readonly machine: string;
       readonly sessions: ReadonlyArray<BatonCatalogSession>;
       readonly more: boolean;
@@ -61,6 +81,19 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly pane: string | null;
       readonly detail: string | null;
       readonly threadId?: string;
+    }>;
+    readonly watchdog: (input: {
+      action: "run" | "status" | "stop";
+      sessionId?: string;
+    }) => Effect.Effect<{
+      readonly enabled: boolean;
+      readonly resumed: ReadonlyArray<string>;
+      readonly skipped: ReadonlyArray<{ id: string; why: string }>;
+    }>;
+    readonly cleanup: (input: { apply: boolean }) => Effect.Effect<{
+      readonly found: ReadonlyArray<{ id: string; title: string; project: string; reason: string }>;
+      readonly archived: ReadonlyArray<string>;
+      readonly left: ReadonlyArray<{ id: string; title: string; reason: string }>;
     }>;
     readonly send: (input: { sessionId: string; text: string; cwd?: string }) => Effect.Effect<{
       readonly state: BatonCatalogState;
@@ -108,6 +141,7 @@ export const layer = Layer.effect(
                     });
                 const result = yield* importer.value.importRecentAgentThreads({
                   projectId: project.id,
+                  preferSessionId: sessionId,
                 });
                 const threadId = ThreadId.make(
                   `import:${defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"))}:${sessionId}`,
@@ -199,20 +233,104 @@ export const layer = Layer.effect(
                 .replace(/\s+/g, " ")
                 .slice(0, 160)}`,
             }));
-    const catalog = createSessionCatalog({
-      ...realCatalogPorts((pane, text) =>
-        Effect.runPromiseWith(services)(herdrSend(adopted, { pane, text, submit: true })).then(
-          (r) => r.delivered,
-        ),
+    // The auto-resume watchdog's memory: sessions he stopped on purpose, and when each was last resumed.
+    const config = yield* Effect.serviceOption(ServerConfig.ServerConfig);
+    const stateFile = NodePath.join(
+      Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
+      "baton-autoresume.json",
+    );
+    let autoState: AutoResumeState = emptyAutoResumeState;
+    try {
+      autoState = {
+        ...emptyAutoResumeState,
+        ...(JSON.parse(NodeFS.readFileSync(stateFile, "utf8")) as Partial<AutoResumeState>),
+      };
+    } catch {
+      // first run
+    }
+    const saveAutoState = () => {
+      try {
+        NodeFS.writeFileSync(stateFile, JSON.stringify(autoState));
+      } catch {
+        // a read-only data directory only loses the memory across restarts
+      }
+    };
+    const real = realCatalogPorts((pane, text) =>
+      Effect.runPromiseWith(services)(herdrSend(adopted, { pane, text, submit: true })).then(
+        (r) => r.delivered,
       ),
+    );
+    const ports: CatalogPorts = {
+      ...real,
       ...(thread === undefined ? {} : { thread }),
       ...(launch === undefined ? {} : { launch }),
-    });
+      autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
+    };
+    const catalog = createSessionCatalog(ports);
+    // On by default on a server; off on a person's own Windows computer until he turns it on (BATON_AUTO_RESUME=on).
+    const autoEnabled = () => {
+      const setting = (process.env["BATON_AUTO_RESUME"] ?? "").toLowerCase();
+      return setting === "on" ? true : setting === "off" ? false : !noHerdr;
+    };
+    const FRESH_MS = 6 * HOUR_MS;
+    const watchdogRun = async (): Promise<{
+      enabled: boolean;
+      resumed: string[];
+      skipped: Array<{ id: string; why: string }>;
+    }> => {
+      const resumed: string[] = [];
+      const skipped: Array<{ id: string; why: string }> = [];
+      const enabled = autoEnabled();
+      if (!enabled || ports.readTail === undefined) return { enabled, resumed, skipped };
+      const live = new Set((await ports.live()).map((s) => s.sessionId));
+      for (const t of await ports.transcripts(60)) {
+        if (t.file === undefined || live.has(t.sessionId)) continue;
+        const now = Date.now();
+        // Only what stopped recently: an old unfinished session was left that way long ago.
+        if (now - Date.parse(t.lastActivityAt) > FRESH_MS) continue;
+        const verdict = classifyTranscriptTail(await ports.readTail(t.file).catch(() => ""));
+        const decision = autoResumeAllowed({
+          sessionId: t.sessionId,
+          verdict,
+          background: t.background === true,
+          enabled,
+          running: false,
+          state: autoState,
+          now,
+        });
+        if (!decision.resume) {
+          if (verdict === "unfinished") skipped.push({ id: t.sessionId, why: decision.why });
+          continue;
+        }
+        autoState = recordAutoResume(autoState, t.sessionId, now);
+        saveAutoState();
+        const result = await catalog.resume({
+          sessionId: t.sessionId,
+          ...(t.cwd === null ? {} : { cwd: t.cwd }),
+        });
+        if (result.state !== "running") {
+          skipped.push({ id: t.sessionId, why: result.detail ?? "it could not be resumed" });
+          continue;
+        }
+        if (result.pane !== null) await ports.type(result.pane, RESTART_NOTICE);
+        else if (result.threadId !== undefined && Option.isSome(engine))
+          await Effect.runPromiseWith(services)(
+            engine.value.sendMessage({
+              tag: "auto-resume",
+              threadId: ThreadId.make(result.threadId),
+              text: RESTART_NOTICE,
+            }),
+          );
+        resumed.push(t.sessionId);
+      }
+      return { enabled, resumed, skipped };
+    };
     return BatonSessionCatalogService.of({
       list: Effect.fn("BatonSessionCatalogService.list")(function* (input: {
         query?: string;
         limit?: number;
         before?: string;
+        background?: boolean;
       }) {
         return yield* Effect.promise(() => catalog.list(input));
       }),
@@ -234,6 +352,61 @@ export const layer = Layer.effect(
         message?: string;
       }) {
         return yield* Effect.promise(() => catalog.create(input));
+      }),
+      watchdog: Effect.fn("BatonSessionCatalogService.watchdog")(function* (input: {
+        action: "run" | "status" | "stop";
+        sessionId?: string;
+      }) {
+        if (input.action === "stop" && input.sessionId !== undefined) {
+          autoState = markStoppedOnPurpose(autoState, input.sessionId);
+          saveAutoState();
+        }
+        if (input.action === "run") return yield* Effect.promise(() => watchdogRun());
+        return { enabled: autoEnabled(), resumed: [], skipped: [] };
+      }),
+      cleanup: Effect.fn("BatonSessionCatalogService.cleanup")(function* (input: {
+        apply: boolean;
+      }) {
+        if (Option.isNone(engine)) return { found: [], archived: [], left: [] };
+        const e = engine.value;
+        const shells = yield* e.threadShells;
+        const projects = yield* e.projects;
+        const root = new Map(projects.map((p) => [String(p.id), p.workspaceRoot] as const));
+        const found: Array<{ id: string; title: string; project: string; reason: string }> = [];
+        const left: Array<{ id: string; title: string; reason: string }> = [];
+        const archived: string[] = [];
+        for (const shell of shells) {
+          const projectRoot = root.get(String(shell.projectId)) ?? null;
+          const title = String(shell.title ?? "");
+          const looks =
+            isTessayaOwnFolder(projectRoot) ||
+            /^(userdata-[0-9a-f]+ · |Add sentence punctuation|shell in .*\(deleted\))/i.test(title);
+          if (!looks) continue;
+          const messages = (yield* e.recentMessages(shell.id, 2)).length;
+          const verdict = classifyHelperThread({
+            title,
+            projectRoot,
+            running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+            messages,
+          });
+          if (verdict === null) continue;
+          if (verdict.kind === "leave") {
+            left.push({ id: String(shell.id), title, reason: verdict.reason });
+            continue;
+          }
+          found.push({
+            id: String(shell.id),
+            title,
+            project: projectRoot ?? "",
+            reason: verdict.reason,
+          });
+          if (
+            input.apply &&
+            (yield* e.archiveThread({ tag: "helper-cleanup", threadId: shell.id }))
+          )
+            archived.push(String(shell.id));
+        }
+        return { found, archived, left };
       }),
       send: Effect.fn("BatonSessionCatalogService.send")(function* (input: {
         sessionId: string;

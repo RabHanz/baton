@@ -233,6 +233,8 @@ export interface AssistantActions {
     readonly x: number;
     readonly y: number;
     readonly name: string;
+    /** What is on top of it, when a click would land there instead. */
+    readonly coveredBy?: string;
     /** The control's size in desktop points, when the tree gave it. */
     readonly width?: number;
     readonly height?: number;
@@ -366,7 +368,10 @@ export interface ScreenCompanion {
   /** The one look for a yes or no, for the voice side's confirmations too. */
   readonly ask: ReturnType<typeof createCompanionWindows>["ask"];
   /** The same question, also put to a paired phone: the first answer counts. */
-  readonly askMirrored: (box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0], needs?: "cloud-approve") => Promise<number>;
+  readonly askMirrored: (
+    box: Parameters<ReturnType<typeof createCompanionWindows>["ask"]>[0],
+    needs?: "cloud-approve",
+  ) => Promise<number>;
   readonly menuItems: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   readonly controls: () => ReadonlyArray<HomeControl>;
   readonly needsBrainChoice: () => boolean;
@@ -1944,11 +1949,22 @@ export const startScreenCompanion = (input: {
       );
       return "Clicked.";
     },
+    windowKey: async () => {
+      const seen = await focusSoon();
+      if (seen?.window === undefined)
+        throw new Error("The window with the keyboard can't be told apart, so a batch cannot run.");
+      return String(seen.window);
+    },
     clickElement: async (label, double) => {
       const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
       if (found === null || found === undefined) {
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
+        );
+      }
+      if (found.coveredBy !== undefined) {
+        throw new Error(
+          `"${found.name}" is covered by "${found.coveredBy}", so a click would land there. Take a screenshot, deal with what covers it, then click.`,
         );
       }
       const to = { x: found.x, y: found.y };

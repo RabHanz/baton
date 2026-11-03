@@ -30,7 +30,9 @@ export interface CatalogRow {
 }
 
 export interface CatalogService {
-  readonly list: (query: string) => Promise<ReadonlyArray<CatalogRow>>;
+  readonly list: (query: string, background?: boolean) => Promise<ReadonlyArray<CatalogRow>>;
+  /** Helper threads on every machine: what there is (apply false), or archives them (true). */
+  readonly cleanup?: (apply: boolean) => Promise<ReadonlyArray<CleanupMachine>>;
   /** Makes the thread live; resolves when it is. */
   readonly resume: (row: CatalogRow) => Promise<void>;
   readonly create: (target: {
@@ -46,11 +48,21 @@ export interface CatalogService {
   readonly open: (row: CatalogRow) => void;
 }
 
+export interface CleanupMachine {
+  readonly machine: string;
+  readonly failed: boolean;
+  readonly found: number;
+  readonly left: number;
+  readonly archived: number;
+}
+
 export interface CatalogView {
   readonly query: string;
   readonly machine: string;
   readonly state: "all" | "running" | "stopped";
   readonly shown: number;
+  /** Show background runs too. */
+  readonly background: boolean;
   readonly creating: boolean;
   readonly newMachine: string;
 }
@@ -62,6 +74,7 @@ export const INITIAL_VIEW: CatalogView = {
   machine: "all",
   state: "all",
   shown: CATALOG_PAGE,
+  background: false,
   creating: false,
   newMachine: "",
 };
@@ -120,6 +133,9 @@ const WORDS = {
   earlier: "earlier sessions here",
   latest: "Resume latest",
   startFresh: "Start new",
+  background: "Show background runs",
+  tidy: "Clean up helper threads",
+  tidyApply: "Archive them",
   resumeHint: "Continues this conversation with its full history",
   machine: "Machine",
   folder: "Folder, for example C:\\work\\project",
@@ -137,6 +153,7 @@ export const catalogControls = (input: {
   readonly folders: ReadonlyArray<string>;
   readonly status: string;
   readonly loaded: boolean;
+  readonly tidyFound?: number;
 }): ReadonlyArray<HomeControl> => {
   const { rows, view } = input;
   const machines: HomeOption[] = [{ value: "all", label: "All machines" }];
@@ -178,6 +195,8 @@ export const catalogControls = (input: {
     newMachine: view.newMachine || machines[1]?.value || "",
     folders: input.folders,
     earlierHere: [...earlierByFolder.values()],
+    background: view.background,
+    tidyFound: input.tidyFound ?? 0,
     models: [
       { value: "", label: "Default model" },
       { value: "opus", label: "Opus" },
@@ -222,6 +241,7 @@ export const createCatalog = (input: {
   let loaded = false;
   let status = "";
   let folders: ReadonlyArray<string> = [];
+  let tidyFound = 0;
   const now = input.now ?? (() => Date.now());
   const set = (patch: Partial<CatalogRow> & { id: string }) => {
     rows = rows.map((r) => (r.id === patch.id ? { ...r, ...patch } : r));
@@ -229,7 +249,7 @@ export const createCatalog = (input: {
   };
   const refresh = async () => {
     try {
-      rows = await input.service.list("");
+      rows = await input.service.list("", view.background);
       status = "";
     } catch {
       status = "The session list is not reachable right now.";
@@ -283,7 +303,7 @@ export const createCatalog = (input: {
   return {
     tools,
     refresh,
-    controls: () => catalogControls({ rows, view, now: now(), folders, status, loaded }),
+    controls: () => catalogControls({ rows, view, now: now(), folders, status, loaded, tidyFound }),
     /** An action from the window; true when it was the catalog's. */
     apply: (id: string, value: string | boolean | null): boolean => {
       if (!id.startsWith("c.") && !id.startsWith("c:")) return false;
@@ -300,6 +320,34 @@ export const createCatalog = (input: {
               input.onChange();
             })
             .catch(() => undefined);
+      } else if (id === "c.background") {
+        view = { ...view, background: !view.background, shown: CATALOG_PAGE };
+        void refresh();
+      } else if (id === "c.tidy" || id === "c.tidyApply") {
+        const apply = id === "c.tidyApply";
+        status = apply ? "Archiving helper threads..." : "Looking for helper threads...";
+        void (input.service.cleanup?.(apply) ?? Promise.resolve([]))
+          .then((machines) => {
+            const found = machines.reduce((n, m) => n + m.found, 0);
+            const left = machines.reduce((n, m) => n + m.left, 0);
+            const archived = machines.reduce((n, m) => n + m.archived, 0);
+            tidyFound = apply ? 0 : found;
+            const where = machines
+              .map((m) =>
+                m.failed
+                  ? `${m.machine}: no answer`
+                  : `${m.machine}: ${apply ? m.archived : m.found}`,
+              )
+              .join(", ");
+            status = apply
+              ? `Archived ${archived} helper threads (${where}). They can be restored from T3's archive.`
+              : `${found} helper threads to archive (${where})${left > 0 ? `; ${left} left alone` : ""}.`;
+            input.onChange();
+          })
+          .catch(() => {
+            status = "Could not reach the machines to clean up.";
+            input.onChange();
+          });
       } else if (id === "c.machine")
         view = { ...view, machine: text || "all", shown: CATALOG_PAGE };
       else if (id === "c.state")

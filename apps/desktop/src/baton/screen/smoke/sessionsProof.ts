@@ -247,6 +247,38 @@ void Electron.app.whenReady().then(async () => {
   check("a missing folder says why", /not on this machine/.test(await text()));
   await frame("8-error");
 
+  // The crash on Start (xa11y unloaded under a call): the real focus helper, the real native module, the real window,
+  // for 30 s while the page redraws, with the 1 s timeout path hit on purpose by asking faster than it answers.
+  const workerPath = process.env["FOCUS_WORKER"] ?? "";
+  if (workerPath !== "" && NodeFS.existsSync(workerPath)) {
+    const { startWindowsForegroundFocusThread } =
+      await import("../../../electron/WindowsForegroundFocusThread.ts");
+    const thread = startWindowsForegroundFocusThread(workerPath);
+    const target = () => ({
+      windowId: win.id,
+      processId: process.pid,
+      title: win.getTitle(),
+      bounds: win.getBounds(),
+      contentBounds: win.getContentBounds(),
+    });
+    let answers = 0;
+    let slow = 0;
+    const until = Date.now() + 30_000;
+    while (Date.now() < until) {
+      await Promise.all([
+        thread.prepare(target()).then(() => (answers += 1)),
+        thread.focus(target()).then(() => (answers += 1)),
+        js("go('sessions');0").then(() => (slow += 1)),
+      ]);
+      await sleep(150);
+    }
+    check(
+      "the focus helper answered for 30 s and the app stayed alive",
+      answers > 0 && !win.isDestroyed(),
+      `${answers} answers, ${slow} redraws`,
+    );
+    thread.close();
+  }
   const seconds = (Date.now() - began) / 1000;
   await stopClip(seconds);
   NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(steps, null, 2));

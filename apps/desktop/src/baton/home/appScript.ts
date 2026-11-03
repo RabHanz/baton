@@ -191,6 +191,9 @@ function catalogBar(c) {
   const seg = $('div', 'seg memseg'); for (const k of c.states) { const b = $('button', null, k.label); b.setAttribute('aria-pressed', String(k.value === c.stateFilter)); b.onclick = () => set('c.state', k.value); seg.appendChild(b); } w.appendChild(seg);
   const tools = $('div', 'memtools');
   if (c.machines.length > 2) { const m = $('select'); m.setAttribute('aria-label', c.words.machine); for (const o of c.machines) { const op = $('option', null, o.label); op.value = o.value; m.appendChild(op); } m.value = c.machine; m.onchange = () => set('c.machine', m.value); tools.appendChild(m); }
+  const bg = $('button', 'btn quiet', c.words.background); bg.setAttribute('aria-pressed', String(c.background)); bg.onclick = () => set('c.background', null); tools.appendChild(bg);
+  const td = $('button', 'btn quiet', c.words.tidy); td.onclick = () => set('c.tidy', null); tools.appendChild(td);
+  if (c.tidyFound > 0) { const ta = $('button', 'btn', c.words.tidyApply + ' (' + c.tidyFound + ')'); ta.onclick = () => set('c.tidyApply', null); tools.appendChild(ta); }
   const nb = $('button', 'btn', c.words.new); nb.setAttribute('aria-expanded', String(c.creating)); nb.onclick = () => set('c.new', null); tools.appendChild(nb); w.appendChild(tools);
   if (c.creating) {
     const nf = $('form', 'newses'); nf.setAttribute('aria-label', c.words.newTitle); nf.appendChild($('div', 'nstitle', c.words.newTitle));
@@ -210,7 +213,7 @@ function catalogBar(c) {
     const grow = () => { ms.style.height = 'auto'; ms.style.height = Math.min(ms.scrollHeight, 160) + 'px'; };
     ms.oninput = () => { drafts.set('c-msg', ms.value); grow(); };
     const go = $('button', 'btn primary', c.words.startNew); go.type = 'submit';
-    nf.append(field(c.words.machine, nm), field(c.words.folder.split(',')[0], fbox), earlier, field(c.words.model, md), field(c.words.effort, ef), field(c.words.message, ms), go);
+    nf.append(field(c.words.folder.split(',')[0], fbox), earlier, field(c.words.machine, nm), field(c.words.model, md), field(c.words.effort, ef), field(c.words.message, ms), go);
     nf.onsubmit = e => { e.preventDefault(); const v = fi.value.trim(); if (!v) return; drafts.delete('c-folder'); drafts.delete('c-msg'); set('c.start', JSON.stringify({ cwd: v, model: md.value, effort: ef.value, message: ms.value })); };
     w.appendChild(nf); showEarlier(); grow();
   }
@@ -343,7 +346,7 @@ function find(id) { return S.controls.find(c => c.id === id); }
 
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
 function chipEl(t, plain) { return $('span', 'chip' + (plain ? ' plain' : ''), t); }
-function pageHead(title, lede) { const f = document.createDocumentFragment(); f.appendChild($('h1', null, title)); if (lede) f.appendChild($('p', 'lede', lede)); return f; }
+function pageHead(title, lede) { const f = document.createDocumentFragment(); const h1 = $('h1'); h1.appendChild($('span', 'hl', title)); f.appendChild(h1); if (lede) f.appendChild($('p', 'lede', lede)); return f; }
 function banner(kind, em, title, text, btn, onclick) {
   const b = $('div', 'banner' + (kind ? ' ' + kind : '')); const d = $('div'); const h = $('h3'); h.append(document.createTextNode(title + ' ')); h.appendChild($('em', null, em)); d.append(h, $('p', null, text)); b.appendChild(d);
   if (btn) { const x = $('button', 'btn', btn); x.onclick = onclick; b.appendChild(x); }
@@ -367,7 +370,7 @@ function wakeLine(words) { return words.length ? words.join(', ') : 'Off'; }
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
   p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
-  const h = $('h1'); h.append(document.createTextNode(greeting() + '.')); p.appendChild(h);
+  const h = $('h1'); h.append($('span', 'hl', greeting()), document.createTextNode('.')); p.appendChild(h);
   const sub = $('p', 'lede');
   sub.textContent = sayWords(words);
   p.appendChild(sub);
@@ -394,7 +397,7 @@ function home(p) {
     const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.setAttribute('data-k', a.kind); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
   }
   if (allItems.length > items.length) { const all = $('button', 'btn quiet', SEE_ALL); all.style.marginTop = '8px'; all.onclick = () => go('history'); left.appendChild(all); }
-  const st = $('div', 'stats'); const s2 = x.stats || {};
+  const st = $('div', 'stats tiles'); const s2 = x.stats || {};
   for (const [n, l] of [[s2.turns || 0, 'turns today'], [s2.dictations || 0, 'dictations today'], [s2.sessions || 0, 'live sessions']]) { const r = $('div', 'stat'); r.append($('b', null, String(n)), $('span', null, l)); st.appendChild(r); }
   right.appendChild($('div', 'day first', 'At a glance')); right.appendChild(st);
   const ins = (S.extra && S.extra.insights) || null;

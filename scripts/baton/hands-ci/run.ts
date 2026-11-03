@@ -14,6 +14,7 @@ import {
   ps,
   setClipboardText,
   sleep,
+  stats,
   type Host,
 } from "./host.ts";
 import { startClip } from "./record.ts";
@@ -40,7 +41,13 @@ interface Result {
   evidence: string;
   cause: string;
   steps: Step[];
+  /** Model turns a planner would spend: one per tool call, a batch counting once. */
+  turns: number;
+  treeBytes: number;
+  clicks: number;
+  misclicks: number;
 }
+const BATCH = process.env["HANDS_BATCH"] === "1";
 
 class Task {
   readonly steps: Step[] = [];
@@ -58,6 +65,7 @@ class Task {
   ];
   before: number[] = [];
   evidence = "";
+  turns = 0;
   readonly id: string;
   constructor(id: string) {
     this.id = id;
@@ -70,6 +78,7 @@ class Task {
   /** One tool call, logged as a see (ui_tree, screenshot) or an act. */
   async tool(name: string, args: Record<string, unknown> = {}): Promise<string> {
     const started = Date.now();
+    this.turns += 1;
     const kind = name === "ui_tree" || name === "screen_capture" ? "see" : "act";
     const label = `${name} ${JSON.stringify(args).slice(0, 120)}`;
     try {
@@ -154,7 +163,7 @@ class Task {
     console.log(`  windows before cleanup: ${open.replaceAll("\n", " ").slice(0, 300)}`);
     await ps(
       `Get-Process -Name ${Task.APPS.join(",")} -ErrorAction SilentlyContinue | Where-Object { @(${this.before.join(",") || "0"}) -notcontains $_.Id } | Stop-Process -Force -ErrorAction SilentlyContinue; ` +
-        `(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.LocationName -like 'explore*' } | ForEach-Object { $_.Quit() }`,
+        `(New-Object -ComObject Shell.Application).Windows() | Where-Object { $_.LocationName -like 'explore*' -or $_.LocationURL -like '*hands-*' } | ForEach-Object { $_.Quit() }`,
     ).catch(() => undefined);
     for (const pid of this.pids)
       await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(
@@ -171,6 +180,7 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
   const clip = startClip(OUT, id);
   await sleep(clip === null ? 0 : 1500);
   const started = Date.now();
+  const before = { ...stats };
   let result: Result["result"] = "pass";
   let cause = "";
   try {
@@ -197,6 +207,10 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
     evidence: t.evidence,
     cause,
     steps: t.steps,
+    turns: t.turns,
+    treeBytes: stats.treeBytes - before.treeBytes,
+    clicks: stats.clicks - before.clicks,
+    misclicks: stats.misclicks - before.misclicks,
   };
   results.push(r);
   console.log(
@@ -215,12 +229,35 @@ await task(
     const file = NodePath.join(WORK, "fox.txt");
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("type_text", { text: SENTENCE, why: "the sentence" });
-    await t.tool("press_keys", { keys: ["ctrl", "s"], why: "save" });
-    const waited = await t.tool("wait_for", { label: "File name", seconds: 10 });
-    t.check(/is there/.test(waited), "the Save As dialog showed up (waited for its File name box)");
-    await t.tool("type_text", { text: file, why: "the file name" });
-    await t.tool("press_keys", { keys: ["enter"], why: "confirm" });
+    if (BATCH) {
+      const first = await t.tool("act_batch", {
+        steps: [
+          { tool: "type_text", args: { text: SENTENCE, why: "the sentence" } },
+          { tool: "press_keys", args: { keys: ["ctrl", "s"], why: "save" } },
+          { tool: "wait_for", args: { label: "File name", seconds: 10 } },
+        ],
+      });
+      t.check(
+        !/FAILED|Stopped/.test(first),
+        "the batch typed, saved and the File name box showed up",
+      );
+      await t.tool("act_batch", {
+        steps: [
+          { tool: "type_text", args: { text: file, why: "the file name" } },
+          { tool: "press_keys", args: { keys: ["enter"], why: "confirm" } },
+        ],
+      });
+    } else {
+      await t.tool("type_text", { text: SENTENCE, why: "the sentence" });
+      await t.tool("press_keys", { keys: ["ctrl", "s"], why: "save" });
+      const waited = await t.tool("wait_for", { label: "File name", seconds: 10 });
+      t.check(
+        /is there/.test(waited),
+        "the Save As dialog showed up (waited for its File name box)",
+      );
+      await t.tool("type_text", { text: file, why: "the file name" });
+      await t.tool("press_keys", { keys: ["enter"], why: "confirm" });
+    }
     for (let i = 0; i < 20 && !NodeFS.existsSync(file); i += 1) await sleep(400);
     t.check(
       NodeFS.existsSync(file) && NodeFS.readFileSync(file, "utf8").trim() === SENTENCE,
@@ -236,8 +273,17 @@ await task(
   async (t) => {
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("click_element", { label: "Help", why: "open the menu" });
-    await t.tool("click_element", { label: "About Notepad", why: "the menu item" });
+    if (BATCH) {
+      await t.tool("act_batch", {
+        steps: [
+          { tool: "click_element", args: { label: "Help", why: "open the menu" } },
+          { tool: "click_element", args: { label: "About Notepad", why: "the menu item" } },
+        ],
+      });
+    } else {
+      await t.tool("click_element", { label: "Help", why: "open the menu" });
+      await t.tool("click_element", { label: "About Notepad", why: "the menu item" });
+    }
     const tree = await t.waitTree(/about notepad/i, 8);
     t.check(
       /about notepad/i.test(tree),
@@ -257,17 +303,26 @@ await task(
     );
     const pid = await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("click_element", { label: "Format", why: "open the menu" });
-    const tree = await t.tool("ui_tree");
-    t.replan(
-      `looked at the menu: ${
-        tree
-          .split("\n")
-          .filter((l) => /word wrap/i.test(l))
-          .join(" | ") || "no Word Wrap line"
-      }`,
-    );
-    await t.tool("click_element", { label: "Word Wrap", why: "the setting" });
+    if (BATCH) {
+      await t.tool("act_batch", {
+        steps: [
+          { tool: "click_element", args: { label: "Format", why: "open the menu" } },
+          { tool: "click_element", args: { label: "Word Wrap", why: "the setting" } },
+        ],
+      });
+    } else {
+      await t.tool("click_element", { label: "Format", why: "open the menu" });
+      const tree = await t.tool("ui_tree");
+      t.replan(
+        `looked at the menu: ${
+          tree
+            .split("\n")
+            .filter((l) => /word wrap/i.test(l))
+            .join(" | ") || "no Word Wrap line"
+        }`,
+      );
+      await t.tool("click_element", { label: "Word Wrap", why: "the setting" });
+    }
     await t.tool("press_keys", { keys: ["alt", "f4"], why: "close so it saves its settings" });
     await sleep(1500);
     await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(() => undefined);
@@ -285,6 +340,30 @@ await task(
   async (t) => {
     await t.launch("calc.exe", [], "Calculator");
     await t.waitTree(/calculator/i, 15);
+    if (BATCH) {
+      // The planner read the tree first (it names the buttons), then sends the whole sum.
+      const tree = await t.tool("ui_tree");
+      const pick = (...names: string[]) =>
+        names.find((n) => tree.split("\n").some((l) => l.endsWith(`: ${n}`))) ?? names[0]!;
+      const labels = [
+        pick("One", "1"),
+        pick("Two", "2"),
+        pick("Multiply by", "Multiply", "×"),
+        pick("Three", "3"),
+        pick("Four", "4"),
+        pick("Equals", "="),
+      ];
+      await t.tool("act_batch", {
+        steps: labels.map((label) => ({
+          tool: "click_element",
+          args: { label, why: "a calculator button" },
+        })),
+      });
+      const done = await t.tool("ui_tree");
+      const shown = done.split("\n").find((l) => /408/.test(l)) ?? "";
+      t.check(shown !== "", `the display reads: ${shown || "(nothing with 408)"}`);
+      return;
+    }
     const names: ReadonlyArray<ReadonlyArray<string>> = [
       ["One", "1"],
       ["Two", "2"],
@@ -414,14 +493,29 @@ await task(
   async (t) => {
     const pid = await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
-    await t.tool("type_text", { text: "unsaved words", why: "something to lose" });
-    await t.tool("press_keys", { keys: ["alt", "f4"], why: "close it" });
-    const waited = await t.tool("wait_for", { label: "Don't Save", seconds: 10 });
-    t.check(
-      /is there/.test(waited),
-      "the save question appeared and was found by its button's name",
-    );
-    await t.tool("click_element", { label: "Don't Save", why: "discard" });
+    if (BATCH) {
+      const out = await t.tool("act_batch", {
+        steps: [
+          { tool: "type_text", args: { text: "unsaved words", why: "something to lose" } },
+          { tool: "press_keys", args: { keys: ["alt", "f4"], why: "close it" } },
+          { tool: "wait_for", args: { label: "Don't Save", seconds: 10 } },
+          { tool: "click_element", args: { label: "Don't Save", why: "discard" } },
+        ],
+      });
+      t.check(
+        !/FAILED|Stopped/.test(out),
+        "the batch found the save question by name and answered it",
+      );
+    } else {
+      await t.tool("type_text", { text: "unsaved words", why: "something to lose" });
+      await t.tool("press_keys", { keys: ["alt", "f4"], why: "close it" });
+      const waited = await t.tool("wait_for", { label: "Don't Save", seconds: 10 });
+      t.check(
+        /is there/.test(waited),
+        "the save question appeared and was found by its button's name",
+      );
+      await t.tool("click_element", { label: "Don't Save", why: "discard" });
+    }
     await sleep(1500);
     const alive = await ps(
       `if (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }`,
@@ -485,6 +579,112 @@ await task(
         .split("\n")
         .find((l) => /windows (server|10|11)/i.test(l) && !/specification/i.test(l)) ?? "";
     t.check(line !== "", `read from the page: ${line || tree.split("\n").slice(0, 3).join(" | ")}`);
+  },
+);
+
+// 13. A big window: the tree call's cost on a folder of 400 files (where one cached read matters most).
+await task(
+  "big-tree",
+  "Read the controls of a File Explorer window holding 400 files, three times",
+  async (t) => {
+    const dir = NodePath.join(WORK, "many");
+    NodeFS.mkdirSync(dir, { recursive: true });
+    for (let i = 0; i < 400; i += 1) NodeFS.writeFileSync(NodePath.join(dir, `file-${i}.txt`), "x");
+    await t.launch("explorer.exe", [dir]);
+    await t.activate("many");
+    await t.waitTree(/many/i, 15);
+    let lines = 0;
+    for (let i = 0; i < 3; i += 1) lines = (await t.tool("ui_tree")).split("\n").length;
+    t.check(lines > 20, `the tree listed ${lines} lines`);
+  },
+);
+
+// 14. A banner covers the menu bar (a cookie banner, a pop-up): the click on the covered menu lands on the banner.
+// The planner reacts only to what the tools tell it: an error, or an effect of suspected_noop. Otherwise it finds out at the next step.
+await task(
+  "covered-control",
+  "Turn on Word Wrap while a banner covers Notepad's menu bar, dismissing the banner first",
+  async (t) => {
+    const key = "HKCU:\\Software\\Microsoft\\Notepad";
+    const before = await ps(
+      `(Get-ItemProperty -Path '${key}' -Name fWrap -ErrorAction SilentlyContinue).fWrap`,
+    );
+    const pid = await t.launch("notepad.exe", [], "Notepad");
+    await t.waitTree(/notepad/i);
+    const rect = (
+      await ps(
+        `Add-Type 'using System;using System.Runtime.InteropServices;public struct R{public int L,T,Rt,B;} public class W2{[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out R r);}'; ` +
+          `$p = Get-Process -Id ${pid}; $r = New-Object R; [void][W2]::GetWindowRect($p.MainWindowHandle,[ref]$r); "$($r.L),$($r.T),$($r.Rt),$($r.B)"`,
+      )
+    )
+      .split(",")
+      .map(Number);
+    const [left, top] = [rect[0]!, rect[1]!];
+    const [bx, by, bw, bh] = [left + 10, top + 28, 520, 80];
+    const script = NodePath.join(WORK, "cover.ps1");
+    NodeFS.writeFileSync(
+      script,
+      `Add-Type -AssemblyName System.Windows.Forms
+Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing @"
+public class Cover : System.Windows.Forms.Form {
+  protected override bool ShowWithoutActivation { get { return true; } }
+  protected override System.Windows.Forms.CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08000000 | 0x8; return p; } }
+}
+"@
+$f = New-Object Cover
+$f.Text = 'cookie-banner'; $f.FormBorderStyle = 'None'; $f.StartPosition = 'Manual'; $f.Location = New-Object System.Drawing.Point(${bx}, ${by}); $f.Size = New-Object System.Drawing.Size(${bw}, ${bh}); $f.TopMost = $true
+$b = New-Object System.Windows.Forms.Button; $b.Text = 'Dismiss cookie banner'; $b.Dock = 'Fill'; $b.Add_Click({ $f.Close() })
+$f.Controls.Add($b)
+[System.Windows.Forms.Application]::Run($f)
+`,
+    );
+    await t.launch("powershell.exe", [
+      "-NoProfile",
+      "-WindowStyle",
+      "Hidden",
+      "-STA",
+      "-File",
+      script,
+    ]);
+    // The banner's script takes a while to compile; wait for its window, then give the keyboard back to Notepad.
+    for (let i = 0; i < 40; i += 1) {
+      const shown = await ps(
+        "@(Get-Process | Where-Object { $_.MainWindowTitle -eq 'cookie-banner' }).Count",
+      ).catch(() => "0");
+      if (shown !== "0") break;
+      await sleep(500);
+    }
+    await sleep(500);
+    // AppActivate loses to the banner; a real click in the text area (below the banner) gives Notepad the keyboard.
+    await host.call("click", { x: left + 200, y: top + 250, why: "focus Notepad" });
+    await sleep(500);
+    const dismiss = async () => {
+      await t.tool("screen_capture");
+      t.replan("the screenshot shows a banner over the menu bar; dismissing it");
+      await t.tool("click", { x: bx + bw / 2, y: by + bh / 2, why: "dismiss the banner" });
+      await sleep(500);
+      await t.activate("Notepad");
+    };
+    let blocked = false;
+    const first = await t.tryTool("click_element", { label: "Format", why: "open the menu" });
+    blocked = first === null || /suspected_noop/.test(first);
+    if (!blocked) {
+      // Nothing told it otherwise, so it goes on and finds out here.
+      blocked =
+        (await t.tryTool("click_element", { label: "Word Wrap", why: "the setting" })) === null;
+    }
+    if (blocked) {
+      await dismiss();
+      await t.tool("click_element", { label: "Format", why: "open the menu" });
+      await t.tool("click_element", { label: "Word Wrap", why: "the setting" });
+    }
+    await t.tool("press_keys", { keys: ["alt", "f4"], why: "close so it saves its settings" });
+    await sleep(1500);
+    await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(() => undefined);
+    const after = await ps(
+      `(Get-ItemProperty -Path '${key}' -Name fWrap -ErrorAction SilentlyContinue).fWrap`,
+    );
+    t.check(after !== before, `fWrap went from "${before}" to "${after}"`);
   },
 );
 

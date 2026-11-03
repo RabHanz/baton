@@ -16,6 +16,10 @@ export interface TranscriptInfo {
   /** ISO time of the last write. */
   readonly lastActivityAt: string;
   readonly account: string | null;
+  /** A non-interactive or helper run: hidden from the list unless asked for. */
+  readonly background?: boolean;
+  /** The transcript file, so the end of it can be read. */
+  readonly file?: string;
 }
 
 export interface HistoryHit {
@@ -50,11 +54,18 @@ export interface CatalogPorts {
     readonly effort?: string;
     readonly message?: string;
   }) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  /** The last part of a transcript file, for the auto-resume watchdog. */
+  readonly readTail?: (file: string) => Promise<string>;
+  /** Resumed by the watchdog in the last two hours: shown on the row. */
+  readonly autoResumed?: (sessionId: string) => boolean;
   /** What the Herdr pane shows now (the last lines), to explain a session that never became ready. */
   readonly screen?: (session: string, pane: string) => Promise<string>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
 }
+
+/** Shown on a session the watchdog brought back, in the list; the thread shows the restart message itself. */
+export const AUTO_RESUMED = "Resumed automatically after a crash";
 
 export const READY_TIMEOUT_MS = 45_000;
 const POLL_MS = 500;
@@ -103,7 +114,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     detail:
       s.herdrPane === null
         ? "It is running in a plain terminal. Bring it into Herdr to send to it from here."
-        : null,
+        : ports.autoResumed?.(s.sessionId) === true
+          ? AUTO_RESUMED
+          : null,
     waiting: waiting.get(s.sessionId)?.length ?? 0,
   });
 
@@ -127,17 +140,27 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       canResume: cwdOk,
       detail:
         failed.get(t.sessionId) ??
-        (cwdOk ? null : "Its folder is not on this machine, so it cannot be resumed here."),
+        (cwdOk
+          ? ports.autoResumed?.(t.sessionId) === true
+            ? AUTO_RESUMED
+            : null
+          : "Its folder is not on this machine, so it cannot be resumed here."),
       waiting: waiting.get(t.sessionId)?.length ?? 0,
     };
   };
 
-  const list = async (input: { query?: string; limit?: number; before?: string }) => {
+  const list = async (input: {
+    query?: string;
+    limit?: number;
+    before?: string;
+    background?: boolean;
+  }) => {
     const limit = Math.max(1, Math.min(200, input.limit ?? 50));
     const liveSessions = await ports.live();
     const transcripts = await ports.transcripts(600);
     const byId = new Map<string, BatonCatalogSession>();
-    for (const t of transcripts) byId.set(t.sessionId, stoppedRow(t));
+    for (const t of transcripts)
+      if (t.background !== true || input.background === true) byId.set(t.sessionId, stoppedRow(t));
     for (const s of liveSessions)
       byId.set(s.sessionId, {
         ...liveRow(s),
