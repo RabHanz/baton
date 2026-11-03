@@ -86,7 +86,7 @@ index 211ad06fc267a4c4730c159db166d25651be3e77..e22f3d6edf48d6e1fad98d7bd5f8e71c
      let importedCount = 0;
      let skippedCount = 0;
 diff --git a/apps/server/src/project/AgentSessionScanner.test.ts b/apps/server/src/project/AgentSessionScanner.test.ts
-index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..d280567650e6bf08997a1928a34bdf8f6ec57d5a 100644
+index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..4f71ab067178d655f727f48e2ff8e0d2bd139755 100644
 --- a/apps/server/src/project/AgentSessionScanner.test.ts
 +++ b/apps/server/src/project/AgentSessionScanner.test.ts
 @@ -1075,6 +1075,15 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
@@ -105,7 +105,7 @@ index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..d280567650e6bf08997a1928a34bdf8f
          yield* writeTranscript({
            filePath: path.join(claudeHomePath, "projects", "-other", "claude-other.jsonl"),
            contents: claudeTranscript(otherWorkspace, "claude-other"),
-@@ -1295,6 +1304,58 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
+@@ -1295,6 +1304,105 @@ it.layer(NodeServices.layer)("AgentSessionScanner", (it) => {
        }),
      );
  
@@ -161,14 +161,71 @@ index 688b974e7658d1dab967bd8f16f49a3c87e4a12d..d280567650e6bf08997a1928a34bdf8f
 +        }),
 +    );
 +
++    it.effect(
++      "reads a very long session when it is asked for by id, though the shared record budget would skip it",
++      () =>
++        Effect.gen(function* () {
++          const path = yield* Path.Path;
++          const nowMs = Date.parse("2026-08-24T12:00:00.000Z");
++          yield* TestClock.setTime(nowMs);
++          const claudeHomePath = yield* makeTempDir("t3code-claude-home-");
++          const codexHomePath = yield* makeTempDir("t3code-codex-home-");
++          const workspace = yield* makeTempDir("t3code-workspace-");
++          const line = (o: unknown) => JSON.stringify(o);
++          const records = [
++            line({
++              type: "user",
++              cwd: workspace,
++              sessionId: "long",
++              timestamp: "2026-08-23T12:00:00.000Z",
++              message: { role: "user", content: "First of a long session" },
++            }),
++            ...Array.from({ length: 101_000 }, (_, i) =>
++              line({
++                type: "assistant",
++                sessionId: "long",
++                timestamp: "2026-08-23T12:01:00.000Z",
++                message: { role: "assistant", content: [{ type: "text", text: `n${i}` }] },
++              }),
++            ),
++          ];
++          yield* writeTranscript({
++            filePath: path.join(claudeHomePath, "projects", "-folder", "long.jsonl"),
++            contents: `${records.join("\n")}\n`,
++            mtimeMs: nowMs - 60_000,
++          });
++          yield* Effect.gen(function* () {
++            const scanner = yield* AgentSessionScanner.AgentSessionScanner;
++            const without = Array.from(yield* Stream.runCollect(scanner.recentThreads(workspace)));
++            expect(without.some((o) => o._tag === "Importable")).toBe(false);
++            const asked = Array.from(
++              yield* Stream.runCollect(scanner.recentThreads(workspace, [], "long")),
++            );
++            expect(asked[0]?._tag === "Importable" && asked[0].thread.providerSessionId).toBe(
++              "long",
++            );
++          }).pipe(Effect.provide(layerScannerTest({ claudeHomePath, codexHomePath })));
++        }),
++    );
++
      it.effect("excludes Codex subagents from discovery and the recent-thread budget", () =>
        Effect.gen(function* () {
          const path = yield* Path.Path;
 diff --git a/apps/server/src/project/AgentSessionScanner.ts b/apps/server/src/project/AgentSessionScanner.ts
-index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a19f1df10 100644
+index bbd3ba5a631e05cfac663685e2946b28b8726ff3..3d512a1b6083ba650cdf76a8d81723f1da5258bf 100644
 --- a/apps/server/src/project/AgentSessionScanner.ts
 +++ b/apps/server/src/project/AgentSessionScanner.ts
-@@ -90,6 +90,7 @@ const TranscriptRecord = Schema.Struct({
+@@ -63,6 +63,9 @@ const MAX_IMPORT_HISTORY_BYTES = 32 * 1024 * 1024;
+ const MAX_IMPORT_BYTES = 4 * 1024 * 1024 * 1024;
+ const MAX_IMPORT_TRANSCRIPTS = 100;
+ const MAX_IMPORT_RECORDS = 100_000;
++/** A session asked for by id may be a very long one: it is read within this many records instead of the shared budget. */
++const MAX_PREFERRED_IMPORT_RECORDS = 5_000_000;
++const MAX_PREFERRED_HISTORY_BYTES = 384 * 1024 * 1024;
+ 
+ const TranscriptContentBlock = Schema.Struct({
+   type: Schema.optional(Schema.String),
+@@ -90,6 +93,7 @@ const TranscriptRecord = Schema.Struct({
    sessionId: Schema.optional(Schema.String),
    aiTitle: Schema.optional(Schema.String),
    customTitle: Schema.optional(Schema.String),
@@ -176,7 +233,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
    isSidechain: Schema.optional(Schema.Boolean),
    isMeta: Schema.optional(Schema.Boolean),
    isCompactSummary: Schema.optional(Schema.Boolean),
-@@ -175,6 +176,8 @@ export class AgentSessionScanner extends Context.Service<
+@@ -175,6 +179,8 @@ export class AgentSessionScanner extends Context.Service<
      readonly recentThreads: (
        workspaceRoot: string,
        completedSources?: ReadonlyArray<AgentSessionImportSource>,
@@ -185,7 +242,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
      ) => Stream.Stream<AgentSessionRecentThread, AgentSessionScanError>;
    }
  >()("t3/project/AgentSessionScanner") {}
-@@ -278,6 +281,8 @@ interface ClaudeFields {
+@@ -278,6 +284,8 @@ interface ClaudeFields {
    readonly title: string | undefined;
    readonly customTitle: string | null;
    readonly model: string | undefined;
@@ -194,7 +251,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
  }
  
  const emptyClaudeFields: ClaudeFields = {
-@@ -285,12 +290,14 @@ const emptyClaudeFields: ClaudeFields = {
+@@ -285,12 +293,14 @@ const emptyClaudeFields: ClaudeFields = {
    title: undefined,
    customTitle: null,
    model: undefined,
@@ -209,7 +266,21 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
      sessionId: record.sessionId?.trim() || fields.sessionId,
      title: record.aiTitle?.trim() || fields.title,
      // Claude flushes the AI title after the user's rename; an empty rename clears it.
-@@ -1512,7 +1519,10 @@ export const make = Effect.gen(function* () {
+@@ -924,7 +934,12 @@ export const make = Effect.gen(function* () {
+             let bytesRead = 0;
+             const reserve = (bytes: number) => {
+               recordBytes += bytes;
+-              if (historyBytes + recordBytes > MAX_IMPORT_HISTORY_BYTES) {
++              if (
++                historyBytes + recordBytes >
++                (recordLimit > MAX_IMPORT_RECORDS
++                  ? MAX_PREFERRED_HISTORY_BYTES
++                  : MAX_IMPORT_HISTORY_BYTES)
++              ) {
+                 throw new TranscriptJsonLimitError(
+                   "Transcript selected history exceeds the 32 MiB memory budget",
+                 );
+@@ -1512,7 +1527,10 @@ export const make = Effect.gen(function* () {
    const prepareRecentThreads = Effect.fn("AgentSessionScanner.prepareRecentThreads")(function* (
      workspaceRoot: string,
      completedSources: ReadonlyArray<AgentSessionImportSource>,
@@ -220,7 +291,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
      const root = path.resolve(expandHomePath(workspaceRoot, homeDir));
      const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
      if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot)) return Stream.empty;
-@@ -1536,7 +1546,7 @@ export const make = Effect.gen(function* () {
+@@ -1536,7 +1554,7 @@ export const make = Effect.gen(function* () {
        for (const transcript of candidate.transcripts) {
          if (
            transcript.mtimeMs === null ||
@@ -229,7 +300,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
            transcript.mtimeMs > nowMs
          ) {
            continue;
-@@ -1549,6 +1559,10 @@ export const make = Effect.gen(function* () {
+@@ -1549,6 +1567,10 @@ export const make = Effect.gen(function* () {
      }
  
      eligibleTranscripts.sort((left, right) => {
@@ -240,7 +311,42 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
        if (left.transcript.mtimeMs !== right.transcript.mtimeMs) {
          return right.transcript.mtimeMs - left.transcript.mtimeMs;
        }
-@@ -1636,7 +1650,7 @@ export const make = Effect.gen(function* () {
+@@ -1572,6 +1594,7 @@ export const make = Effect.gen(function* () {
+           );
+           if (
+             completed === undefined &&
++            !isPreferred(transcript.filePath) &&
+             (transcriptsRemaining === 0 || bytesRemaining === 0 || recordsRemaining === 0)
+           ) {
+             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+@@ -1595,8 +1618,8 @@ export const make = Effect.gen(function* () {
+             });
+           }
+           if (
+-            transcriptsRemaining === 0 ||
+-            recordsRemaining === 0 ||
++            (!isPreferred(transcript.filePath) &&
++              (transcriptsRemaining === 0 || recordsRemaining === 0)) ||
+             identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES ||
+             identity.size > bytesRemaining
+           ) {
+@@ -1607,13 +1630,13 @@ export const make = Effect.gen(function* () {
+           const snapshot = yield* readTranscript(
+             transcript.filePath,
+             identity,
+-            recordsRemaining,
++            isPreferred(transcript.filePath) ? MAX_PREFERRED_IMPORT_RECORDS : recordsRemaining,
+             candidate.source,
+           );
+           if (snapshot === null) {
+             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+           }
+-          recordsRemaining -= snapshot.recordCount;
++          if (!isPreferred(transcript.filePath)) recordsRemaining -= snapshot.recordCount;
+ 
+           if (Option.isNone(snapshot.cwd)) {
+             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
+@@ -1636,7 +1659,7 @@ export const make = Effect.gen(function* () {
              snapshot.records,
              snapshot.claudeFields,
            );
@@ -249,7 +355,7 @@ index bbd3ba5a631e05cfac663685e2946b28b8726ff3..b4010c2045e4bfebcd03c61a0ca7705a
              return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
            }
            let savedTitle: string | undefined;
-@@ -1675,7 +1689,8 @@ export const make = Effect.gen(function* () {
+@@ -1675,7 +1698,8 @@ export const make = Effect.gen(function* () {
    const recentThreads: AgentSessionScanner["Service"]["recentThreads"] = (
      workspaceRoot,
      completedSources = [],

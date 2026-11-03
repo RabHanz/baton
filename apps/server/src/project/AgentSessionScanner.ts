@@ -63,6 +63,9 @@ const MAX_IMPORT_HISTORY_BYTES = 32 * 1024 * 1024;
 const MAX_IMPORT_BYTES = 4 * 1024 * 1024 * 1024;
 const MAX_IMPORT_TRANSCRIPTS = 100;
 const MAX_IMPORT_RECORDS = 100_000;
+/** A session asked for by id may be a very long one: it is read within this many records instead of the shared budget. */
+const MAX_PREFERRED_IMPORT_RECORDS = 5_000_000;
+const MAX_PREFERRED_HISTORY_BYTES = 384 * 1024 * 1024;
 
 const TranscriptContentBlock = Schema.Struct({
   type: Schema.optional(Schema.String),
@@ -931,7 +934,12 @@ export const make = Effect.gen(function* () {
             let bytesRead = 0;
             const reserve = (bytes: number) => {
               recordBytes += bytes;
-              if (historyBytes + recordBytes > MAX_IMPORT_HISTORY_BYTES) {
+              if (
+                historyBytes + recordBytes >
+                (recordLimit > MAX_IMPORT_RECORDS
+                  ? MAX_PREFERRED_HISTORY_BYTES
+                  : MAX_IMPORT_HISTORY_BYTES)
+              ) {
                 throw new TranscriptJsonLimitError(
                   "Transcript selected history exceeds the 32 MiB memory budget",
                 );
@@ -1586,6 +1594,7 @@ export const make = Effect.gen(function* () {
           );
           if (
             completed === undefined &&
+            !isPreferred(transcript.filePath) &&
             (transcriptsRemaining === 0 || bytesRemaining === 0 || recordsRemaining === 0)
           ) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
@@ -1609,8 +1618,8 @@ export const make = Effect.gen(function* () {
             });
           }
           if (
-            transcriptsRemaining === 0 ||
-            recordsRemaining === 0 ||
+            (!isPreferred(transcript.filePath) &&
+              (transcriptsRemaining === 0 || recordsRemaining === 0)) ||
             identity.size > MAX_IMPORTED_TRANSCRIPT_BYTES ||
             identity.size > bytesRemaining
           ) {
@@ -1621,13 +1630,13 @@ export const make = Effect.gen(function* () {
           const snapshot = yield* readTranscript(
             transcript.filePath,
             identity,
-            recordsRemaining,
+            isPreferred(transcript.filePath) ? MAX_PREFERRED_IMPORT_RECORDS : recordsRemaining,
             candidate.source,
           );
           if (snapshot === null) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
-          recordsRemaining -= snapshot.recordCount;
+          if (!isPreferred(transcript.filePath)) recordsRemaining -= snapshot.recordCount;
 
           if (Option.isNone(snapshot.cwd)) {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });

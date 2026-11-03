@@ -133,6 +133,22 @@ export const layer = Layer.effect(
             Effect.runPromiseWith(services)(
               Effect.gen(function* () {
                 if (isTessayaOwnFolder(cwd)) return { detail: OWN_FOLDER };
+                // The size and time of an import go to the log: a long transcript is slow, and a failure names its session.
+                const startedAt = Date.now();
+                const info = (yield* Effect.promise(() => real.transcripts(600))).find(
+                  (t) => t.sessionId === sessionId,
+                );
+                let bytes: number | null = null;
+                try {
+                  bytes = info?.file === undefined ? null : NodeFS.statSync(info.file).size;
+                } catch {
+                  bytes = null;
+                }
+                yield* Effect.logInfo("Tessaya resume: importing a conversation as a thread", {
+                  sessionId,
+                  cwd,
+                  bytes,
+                });
                 const found = yield* projects.value.getByWorkspaceRoot(cwd);
                 const project = Option.isSome(found)
                   ? found.value
@@ -151,21 +167,45 @@ export const layer = Layer.effect(
                 );
                 // The import commits events before it returns, but the thread's own record can trail them a moment.
                 for (let attempt = 0; attempt < 10; attempt += 1) {
-                  if ((yield* engine.value.threadShell(threadId)) !== null)
+                  if ((yield* engine.value.threadShell(threadId)) !== null) {
+                    yield* Effect.logInfo("Tessaya resume: the thread is ready", {
+                      sessionId,
+                      bytes,
+                      ms: Date.now() - startedAt,
+                    });
                     return { threadId: String(threadId) };
+                  }
                   yield* Effect.sleep("500 millis");
                 }
+                yield* Effect.logWarning(
+                  "Tessaya resume: the import finished but no thread exists",
+                  {
+                    sessionId,
+                    bytes,
+                    imported: result.importedCount,
+                    skipped: result.skippedCount,
+                  },
+                );
                 return {
-                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). Only conversations from the last 30 days are imported.`,
+                  detail: `Tessaya read ${cwd} but could not bring that conversation in as a thread (imported ${result.importedCount}, skipped ${result.skippedCount}). It may be unreadable or too large; the server log has its size and the reason.`,
                 };
               }),
-            ).catch((cause) => ({
-              detail: `Tessaya could not bring that conversation back as a thread here: ${String(
-                cause instanceof Error ? cause.message : cause,
-              )
-                .replace(/\s+/g, " ")
-                .slice(0, 160)}`,
-            }));
+            ).catch((cause) => {
+              void Effect.runPromiseWith(services)(
+                Effect.logWarning("Tessaya resume failed", {
+                  sessionId,
+                  cwd,
+                  cause: String(cause),
+                }),
+              );
+              return {
+                detail: `Tessaya could not bring that conversation back as a thread here: ${String(
+                  cause instanceof Error ? cause.message : cause,
+                )
+                  .replace(/\s+/g, " ")
+                  .slice(0, 160)}`,
+              };
+            });
     // A new session on a machine with no Herdr: a T3 thread in that folder's project, on the Claude provider, with the
     // model, effort and first message asked for. The project is found by its exact folder, so no other project is touched.
     const claudeInstance = defaultInstanceIdForDriver(ProviderDriverKind.make("claudeAgent"));

@@ -27,6 +27,8 @@ export interface CatalogRow {
   /** A live thread, or an old session found in the history index. */
   readonly source: "thread" | "history";
   readonly canResume: boolean;
+  /** Where a resumed session lives, when the server has made the thread. */
+  readonly threadId?: string;
 }
 
 export interface CatalogService {
