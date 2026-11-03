@@ -638,7 +638,14 @@ $f.Controls.Add($b)
 [System.Windows.Forms.Application]::Run($f)
 `,
     );
-    await t.launch("powershell.exe", ["-NoProfile", "-STA", "-File", script]);
+    await t.launch("powershell.exe", [
+      "-NoProfile",
+      "-WindowStyle",
+      "Hidden",
+      "-STA",
+      "-File",
+      script,
+    ]);
     await t.activate("Notepad");
     const dismiss = async () => {
       await t.tool("screen_capture");
