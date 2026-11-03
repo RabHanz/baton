@@ -193,6 +193,8 @@ export const evaluateGuard = async (
     readonly seconds?: number;
     readonly levelsDb?: ReadonlyArray<number>;
     readonly rooms?: ReadonlyArray<Room>;
+    /** How long after he starts a detection still counts (default: 300 ms and the 120 ms confirmation). */
+    readonly windowS?: number;
     readonly source?: VoiceSource;
     readonly run?: (scenario: EchoScenario) => EchoRun | Promise<EchoRun>;
   } = {},
@@ -220,7 +222,7 @@ export const evaluateGuard = async (
       const run = await runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions, ...withSource });
       for (const it of interruptions) {
         total += 1;
-        if (run.detections.some((t) => t >= it.atS && t <= it.atS + 0.3 + 6 * 0.02)) hit += 1;
+        if (run.detections.some((t) => t >= it.atS && t <= it.atS + (input.windowS ?? 0.3 + 6 * 0.02))) hit += 1;
       }
     }
     recall[String(db)] = Math.round((hit / total) * 100) / 100;
