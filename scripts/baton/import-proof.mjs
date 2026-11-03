@@ -69,7 +69,6 @@ const env = {
   HOME: profile,
   USERPROFILE: profile,
   BATON_NO_HERDR: "1",
-  BATON_CATALOG_DEBUG: "1",
   BATON_AUTO_RESUME: "off",
 };
 const server = NodeChildProcess.spawn(
