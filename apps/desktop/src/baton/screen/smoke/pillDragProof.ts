@@ -16,8 +16,9 @@ import { createVoicePill } from "../../voice/voicePill.ts";
 
 const out = process.env["PROOF_OUT"] ?? NodePath.join(process.cwd(), "pill-drag-out");
 NodeFS.mkdirSync(out, { recursive: true });
+const progress = (m: string) => NodeFS.appendFileSync(NodePath.join(out, "progress.log"), `${new Date().toISOString()} ${m}\n`);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-setTimeout(() => Electron.app.exit(3), 4 * 60_000).unref();
+setTimeout(() => (progress("timed out"), Electron.app.exit(3)), 4 * 60_000).unref();
 
 const clip = NodeChildProcess.spawn(
   "ffmpeg",
@@ -88,14 +89,17 @@ void Electron.app.whenReady().then(async () => {
   }
   await sleep(200);
   await driver.releaseAt(to);
+  progress("dragged");
   await sleep(1200);
   const after = win.getBounds();
   const moved = Math.hypot(after.x - before.x, after.y - before.y);
   lines.push(`- before ${JSON.stringify(before)}`, `- after the drag ${JSON.stringify(after)}`, `- moved ${Math.round(moved)} px (needs more than 100)`);
 
   // A restart: the same folder, a new pill.
+  progress("before dispose");
   pill.dispose();
   await sleep(800);
+  progress("restarted");
   pill = makePill();
   pill.warm();
   await sleep(2500);
@@ -105,6 +109,7 @@ void Electron.app.whenReady().then(async () => {
   const again = win.getBounds();
   const kept = Math.hypot(again.x - after.x, again.y - after.y);
   lines.push(`- after a restart ${JSON.stringify(again)}, ${Math.round(kept)} px from where it was left (needs under 4)`);
+  progress("before stopClip");
   await stopClip();
   const ok = moved > 100 && kept < 4;
   const text = [`### Pill drag with the real mouse: ${ok ? "works and the place is kept" : "FAILED"}`, ...lines].join("\n");

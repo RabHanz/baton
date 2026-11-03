@@ -12,7 +12,7 @@ permissions:
 jobs:
   click:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
