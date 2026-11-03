@@ -39,6 +39,8 @@ export const retireHandoff = Effect.fn("RetireHandoff.retire")(function* (
     readonly twinThreadId: string;
     readonly confirm: string;
     readonly caughtUp: boolean;
+    /** The main thread is already back on its live session: only the twin's mirror thread goes. */
+    readonly twinOnly?: boolean;
   },
 ) {
   if (input.confirm !== retireToken(input.threadId))
@@ -51,22 +53,29 @@ export const retireHandoff = Effect.fn("RetireHandoff.retire")(function* (
     return refused("Not done: the twin cannot be the main thread.");
   const main = yield* ports.shell(input.threadId);
   if (main === null) return refused("Not done: the main thread does not exist.");
-  if (main.instanceId === LIVE_INSTANCE)
-    return refused("Not done: that thread is already answered by its live session.");
-  if (main.running) return refused("Not done: the handoff session is working; wait for its turn.");
+  const twinOnly = input.twinOnly === true;
+  if (!twinOnly && main.instanceId === LIVE_INSTANCE)
+    return refused("Not done: that thread is already answered by its live session (use twinOnly).");
+  if (twinOnly && main.instanceId !== LIVE_INSTANCE)
+    return refused("Not done: twinOnly needs the main thread to be on its live session already.");
+  if (!twinOnly && main.running)
+    return refused("Not done: the handoff session is working; wait for its turn.");
   const twin = yield* ports.shell(input.twinThreadId);
   if (twin === null) return refused("Not done: the twin's mirror thread does not exist.");
   if (twin.instanceId !== LIVE_INSTANCE)
     return refused("Not done: the twin's mirror thread is not a live mirror.");
+  if (twin.running) return refused("Not done: the twin's thread has a running turn.");
 
-  const switched = yield* Effect.exit(ports.selectLive(input.threadId));
-  const now = yield* ports.activeInstance(input.threadId);
-  if (switched._tag === "Failure" || now !== LIVE_INSTANCE)
-    return {
-      state: "incomplete",
-      detail: `The thread is still on ${now ?? "no provider"}; the twin's mirror thread was left alone.`,
-      undoFile: null,
-    } satisfies RetireResult;
+  if (!twinOnly) {
+    const switched = yield* Effect.exit(ports.selectLive(input.threadId));
+    const now = yield* ports.activeInstance(input.threadId);
+    if (switched._tag === "Failure" || now !== LIVE_INSTANCE)
+      return {
+        state: "incomplete",
+        detail: `The thread is still on ${now ?? "no provider"}; the twin's mirror thread was left alone.`,
+        undoFile: null,
+      } satisfies RetireResult;
+  }
 
   const undoFile = ports.writeUndo(
     JSON.stringify({ archived: [input.twinThreadId], mainThread: input.threadId }),
@@ -74,14 +83,16 @@ export const retireHandoff = Effect.fn("RetireHandoff.retire")(function* (
   if (undoFile === null)
     return {
       state: "incomplete",
-      detail: "The thread is back on its live session, but the undo list could not be written, so the twin was not archived.",
+      detail:
+        "The thread is back on its live session, but the undo list could not be written, so the twin was not archived.",
       undoFile: null,
     } satisfies RetireResult;
   const archived = yield* ports.archive(input.twinThreadId);
   if (!archived)
     return {
       state: "incomplete",
-      detail: "The thread is back on its live session; the twin's mirror thread could not be archived.",
+      detail:
+        "The thread is back on its live session; the twin's mirror thread could not be archived.",
       undoFile,
     } satisfies RetireResult;
   const removed = yield* ports.remove(input.twinThreadId);

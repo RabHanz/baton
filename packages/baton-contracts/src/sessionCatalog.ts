@@ -152,6 +152,8 @@ export const BatonRetireHandoffInput = Schema.Struct({
   confirm: Schema.String.check(Schema.isMaxLength(200)),
   /** The live session has caught up on what the twin did. */
   caughtUp: Schema.Boolean,
+  /** The main thread is already back on its live session: remove only the twin's mirror thread. */
+  twinOnly: Schema.optionalKey(Schema.Boolean),
 });
 export const BatonRetireHandoffResult = Schema.Struct({
   state: Schema.Literals(["retired", "refused", "incomplete"]),
