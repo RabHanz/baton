@@ -27,7 +27,7 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 75df815127f397d403e64f9655d2f4d034c2d5cb..95905f3b117a3a7fd7f127db9f5b405b185c5652 100644
+index 75df815127f397d403e64f9655d2f4d034c2d5cb..fdbffa6cce479bff731f0e777398eb3ffeefa7cd 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,4 @@
@@ -51,7 +51,33 @@ index 75df815127f397d403e64f9655d2f4d034c2d5cb..95905f3b117a3a7fd7f127db9f5b405b
    );
  }
  
-@@ -5581,6 +5587,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -3312,6 +3318,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       }
+     }
+ 
++    if (command.type === "thread.model-selection.set" || command.type === "provider.switch") {
++      const liveRefusal = liveThreadSwitchRefusal({
++        threadId: command.threadId,
++        currentInstance: thread.providerInstanceId,
++        targetInstance: command.modelSelection.instanceId,
++      });
++      if (liveRefusal !== null) {
++        yield* Effect.logWarning("live-thread-new-session-blocked", {
++          threadId: command.threadId,
++          command: command.type,
++          to: command.modelSelection.instanceId,
++        });
++        return yield* new OrchestratorDispatchError({
++          commandId: command.commandId,
++          commandType: command.type,
++          cause: liveRefusal,
++        });
++      }
++    }
+     const needsProviderState =
+       command.type === "thread.runtime-mode.set" ||
+       command.type === "thread.model-selection.set" ||
+@@ -5581,6 +5606,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
        projection = applyToProjection(projection, event);
      }
      const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
@@ -75,7 +101,7 @@ index 75df815127f397d403e64f9655d2f4d034c2d5cb..95905f3b117a3a7fd7f127db9f5b405b
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6275,6 +6298,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6275,6 +6317,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
