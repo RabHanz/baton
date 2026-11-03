@@ -21,15 +21,16 @@ const HEADER_CONTROL = "shrink-0 [-webkit-app-region:no-drag]";
 export const liveSessionIdOf = (threadId: string): string | null =>
   /^baton-live\d*:/.test(threadId) ? threadId.replace(/^baton-live\d*:/, "") : null;
 
-export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const sessionId = liveSessionIdOf(threadRef.threadId);
+/** Model and effort changes of a mirrored terminal session, applied inside that session (never a new one). */
+export function useLiveSessionChange(threadRef: ScopedThreadRef | null) {
+  const sessionId = threadRef === null ? null : liveSessionIdOf(threadRef.threadId);
   const setModel = useAtomCommand(batonWorkSessions.liveSetModel, { reportFailure: false });
   const adopt = useAtomCommand(batonWorkSessions.liveAdopt, { reportFailure: false });
   const [busy, setBusy] = useState(false);
-  if (sessionId === null) return null;
-  const environmentId: EnvironmentId = threadRef.environmentId;
+  const environmentId: EnvironmentId | null = threadRef?.environmentId ?? null;
 
   const apply = (wanted: { model?: string; effort?: string }) => {
+    if (environmentId === null || sessionId === null) return;
     setBusy(true);
     void setModel({ environmentId, input: { sessionId, ...wanted } }).then((result) => {
       setBusy(false);
@@ -52,7 +53,7 @@ export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThread
           actionProps: {
             children: "Bring it in",
             onClick: () => {
-              void adopt({ environmentId, input: { sessionId } }).then((adopted) => {
+              void adopt({ environmentId, input: { sessionId: sessionId } }).then((adopted) => {
                 if (adopted._tag === "Success" && adopted.value.adopted) apply(wanted);
                 else {
                   toastManager.add({
@@ -75,6 +76,12 @@ export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThread
       }
     });
   };
+  return { sessionId, busy, apply };
+}
+
+export function BatonLiveModel({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+  const { sessionId, busy, apply } = useLiveSessionChange(threadRef);
+  if (sessionId === null) return null;
 
   return (
     <Menu>
