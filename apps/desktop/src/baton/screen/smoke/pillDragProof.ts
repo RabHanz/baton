@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 
 import * as Electron from "electron";
 
+import { hiddenForCapture } from "../../captureProtection.ts";
 import { createBatonHome } from "../../home/batonHome.ts";
 import { STATES } from "../../home/pageStates.ts";
 import { createInputDriver } from "../inputDriver.ts";
@@ -36,7 +37,7 @@ const stopClip = () =>
     clip.stdin.write("q");
   });
 
-type Mode = "move handle" | "always-on rest" | "speaking" | "listening (Wake now)";
+type Mode = "move handle" | "always-on rest" | "speaking" | "listening (Wake now)" | "listening after a screen look";
 const makePill = (stateDir: string, mode: Mode) =>
   createVoicePill({
     cueGain: () => 0,
@@ -102,13 +103,18 @@ void Electron.app.whenReady().then(async () => {
   home?.focus();
   const lines: string[] = [];
   let allOk = true;
-  for (const [mode, grip] of [["move handle", false], ["always-on rest", false], ["speaking", false], ["listening (Wake now)", false], ["listening (Wake now)", true]] as const) {
+  for (const [mode, grip] of [["move handle", false], ["always-on rest", false], ["speaking", false], ["listening (Wake now)", false], ["listening (Wake now)", true], ["listening after a screen look", false]] as const) {
     const stateDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pill-drag-"));
     let pill = makePill(stateDir, mode);
     pill.warm();
     await sleep(2500);
     show(pill, mode);
     await sleep(2000);
+    // Tessaya looks at the screen on a turn: its windows are hidden for the grab and shown again.
+    if (mode === "listening after a screen look") {
+      await hiddenForCapture(async () => sleep(300));
+      await sleep(500);
+    }
     let win = await pillWindow();
     const before = win.getBounds();
     const from = await capsuleCentre(win, grip);
