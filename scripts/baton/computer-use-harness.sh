@@ -10,6 +10,7 @@
 #       The six tasks, three runs each, on this Windows desktop, with the pointer moving. Only when he
 #       is away and has been told. Writes results.json and notes.jsonl to <out-dir>.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)/apps/desktop"
 case "${1:-}" in
   dry)

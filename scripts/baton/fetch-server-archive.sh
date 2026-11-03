@@ -7,6 +7,7 @@
 #
 # Prints the archive path. Feed it to deploy-beside.sh / rehearse.sh.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 version="${1:?usage: fetch-server-archive.sh <version> [dir]}"
 dir="${2:-.}"
 repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"

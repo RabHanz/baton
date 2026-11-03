@@ -3,6 +3,7 @@
 #   scripts/baton/toolchain-install.sh            into $BATON_TOOLCHAIN_DIR or the default
 # Node comes from nodejs.org with SHASUMS256.txt checked; pnpm is installed into that Node.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 cd "$(git rev-parse --show-toplevel)"
 
 dir="${BATON_TOOLCHAIN_DIR:-}"

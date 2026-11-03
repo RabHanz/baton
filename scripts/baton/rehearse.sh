@@ -10,6 +10,7 @@
 # environment's tunnel) and has thread continuation and limit auto-resume off (so no agent
 # resumes work in a real checkout). Leaves the server running; stop it with the printed pid.
 set -euo pipefail
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 archive="${1:?usage: rehearse.sh <archive> <backup-dir> [port]}"
 backup="${2:?usage: rehearse.sh <archive> <backup-dir> [port]}"
 port="${3:-3790}"

@@ -17,6 +17,8 @@
 # Exit codes: 0 synced or nothing to do, 2 a patch needs a human, 3 gates failed, 4 deploy failed,
 # 5 the volume is below its free-space floor.
 set -euo pipefail
+# Runs from a copy in ~/.t3, so the shared lib/tessaya-env.sh is not beside it: same rule inlined.
+for k in $(compgen -e); do case "$k" in TESSAYA_ENV_NOTED) ;; TESSAYA_*) export "BATON_${k#TESSAYA_}=${!k}" ;; esac; done
 
 # The clone the worktree hangs off. The timer runs a copy of this script taken from origin/main
 # (systemd/baton-auto-sync.service), so an edit that lands mid-run cannot change it under bash.
