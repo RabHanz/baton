@@ -60,3 +60,9 @@ export const describeAnswerer = (input: {
     line: parts.join(" · "),
   };
 };
+
+/** The header line for a reply the session says a safety classifier stopped; null for any other text. */
+export const classifierStopReason = (lastReply: string | null): string | null =>
+  lastReply !== null && /stopped by a safety classifier/i.test(lastReply)
+    ? "Stopped by a safety classifier: rephrase or switch model for this session"
+    : null;
