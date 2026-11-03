@@ -1,4 +1,4 @@
-name: Baton nightly
+name: Tessaya nightly
 
 # The self-check: every night, and on demand, the proofs that say whether Tessaya still works, on the latest release and on
 # main. One status file (nightly.json) is kept as an artifact and committed to the baton/status branch (never main). The Now

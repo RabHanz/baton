@@ -1,6 +1,6 @@
 # Baton's own check, on GitHub-hosted runners. Upstream's ci.yml needs Blacksmith runners this
 # repository does not have (D77); the full gates run locally via scripts/baton/gates.sh.
-name: Baton patch series
+name: Tessaya patch series
 
 on:
   pull_request:
