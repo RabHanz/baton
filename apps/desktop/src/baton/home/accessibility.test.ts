@@ -120,7 +120,7 @@ describe("motion stays cheap", () => {
       "--dur-slow",
       "--dur-hero",
       "--stagger",
-      "--ease-spring",
+      "--ease-settle",
     ]) {
       expect(APP_CSS).toContain(`${token}:`);
     }
