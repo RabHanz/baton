@@ -85,6 +85,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_SESSIONS_WS_METHODS.resume]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.create]: AuthOrchestrationOperateScope,
   [BATON_SESSIONS_WS_METHODS.send]: AuthOrchestrationOperateScope,
+  [BATON_SESSIONS_WS_METHODS.cleanup]: AuthOrchestrationOperateScope,
   // Cloud tasks: looking is a read; creating, approving or applying is operate.
   [BATON_CLOUD_WS_METHODS.read]: AuthOrchestrationReadScope,
   [BATON_CLOUD_WS_METHODS.act]: AuthOrchestrationOperateScope,
