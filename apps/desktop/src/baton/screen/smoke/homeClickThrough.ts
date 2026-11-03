@@ -111,8 +111,10 @@ void Electron.app.whenReady().then(async () => {
   await sleep(1500);
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
   const errors: string[] = [];
-  win.webContents.on("console-message", (_e, level, message) => {
-    if (level >= 3) errors.push(message);
+  win.webContents.on("console-message", (details: unknown, ...legacy: unknown[]) => {
+    const d = details as { level?: unknown; message?: string };
+    const level = typeof d.level === "number" ? d.level : legacy[0];
+    if (level === 3 || level === "error") errors.push(String(d.message ?? legacy[1]));
   });
   await js("window.addEventListener('error',e=>console.error('page error: '+e.message))");
   await js(
@@ -150,7 +152,12 @@ void Electron.app.whenReady().then(async () => {
     const needsRedraw =
       group === "sidebar" && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
     if (needsRedraw && !redrew && before !== after) {
-      rows.push({ group, control: c.name, result: "no effect", effect: "page did not redraw" });
+      rows.push({
+        group,
+        control: c.name,
+        result: "no effect",
+        effect: `page did not redraw: ${before.slice(0, 90)} -> ${after.slice(0, 90)}`,
+      });
       return;
     }
     rows.push({
