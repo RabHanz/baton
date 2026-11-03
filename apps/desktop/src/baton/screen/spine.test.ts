@@ -8,7 +8,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import { entryRoute, fallbackDecision, instantDecision } from "@t3tools/baton-shared/brain";
-import { BATON_TOOLS, judgeToolCall } from "@t3tools/baton-shared/operator";
+import { BATON_TOOLS, REMOTE_ONLY_TOOLS, judgeToolCall } from "@t3tools/baton-shared/operator";
 
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 
@@ -46,7 +46,9 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
     judgeToolCall({ tool, input }, { actWithoutAsking: false, tainted: false });
 
   it("every tool is in the table the gate reads", () => {
-    expect(new Set(tools)).toEqual(new Set(BATON_TOOLS));
+    expect(new Set(tools)).toEqual(
+      new Set([...BATON_TOOLS].filter((t) => !REMOTE_ONLY_TOOLS.has(t))),
+    );
   });
   it("seeing, pointing and the two guided modes are allowed here because each asks where it runs", () => {
     for (const name of ["screen_capture", "ui_tree", "point_at", "teach_start", "drive_start"])

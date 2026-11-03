@@ -6,7 +6,7 @@ name: Baton hands bake-off
 on:
   workflow_dispatch:
   push:
-    branches: ["baton/hands-sota**", "baton/hands-effects**"]
+    branches: ["baton/hands-sota**", "baton/hands-effects**", "baton/remote-hands**"]
     paths:
       [
         "scripts/baton/hands-ci/**",
@@ -92,3 +92,33 @@ jobs:
           path: bakeoff
       - name: Table
         run: node scripts/baton/hands-ci/bakeoff-report.ts bakeoff | tee -a "$GITHUB_STEP_SUMMARY"
+
+  remote:
+    needs: sidecar
+    name: remote hands latency
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: sidecar
+          path: sidecar
+      - name: Remote hands latency
+        shell: bash
+        env:
+          SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
+          HANDS_OUT: ${{ github.workspace }}/remote-out
+        run: |
+          mkdir -p remote-out
+          node scripts/baton/hands-ci/remote-bench.ts 2>&1 | tee remote-out/run.log | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: remote-hands
+          path: remote-out

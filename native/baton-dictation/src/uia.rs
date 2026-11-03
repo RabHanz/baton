@@ -4,11 +4,18 @@ use serde_json::{json, Value};
 use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationElementArray, TreeScope_Descendants,
-    UIA_BoundingRectanglePropertyId, UIA_HasKeyboardFocusPropertyId, UIA_IsOffscreenPropertyId,
-    UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationElementArray, IUIAutomationExpandCollapsePattern,
+    IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern, TreeScope_Descendants,
+    UIA_BoundingRectanglePropertyId, UIA_DataItemControlTypeId, UIA_ExpandCollapsePatternId,
+    UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsOffscreenPropertyId, UIA_ListItemControlTypeId,
+    UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId,
+    UIA_TogglePatternId, UIA_TreeItemControlTypeId,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, WindowFromPoint, GA_ROOT};
+use windows::core::BOOL;
+use windows::Win32::Foundation::{HWND, LPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetAncestor, GetForegroundWindow, GetWindowTextW, IsWindowVisible, WindowFromPoint, GA_ROOT,
+};
 
 const MAX_ELEMENTS: i32 = 4000;
 const MIN_SIDE: i32 = 8;
@@ -129,16 +136,84 @@ unsafe fn covered_by(automation: &IUIAutomation, element: &IUIAutomationElement,
     Some(if name.is_empty() { "another window".to_string() } else { name })
 }
 
+/// The first visible top-level window whose title contains `title` (case-insensitive): a window to work on without
+/// bringing it forward.
+pub fn find_window(title: &str) -> Option<HWND> {
+    struct Search {
+        want: String,
+        found: Option<HWND>,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &mut *(lparam.0 as *mut Search);
+        if !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        let mut buf = [0u16; 256];
+        let n = GetWindowTextW(hwnd, &mut buf).max(0) as usize;
+        if String::from_utf16_lossy(&buf[..n]).to_lowercase().contains(&search.want) {
+            search.found = Some(hwnd);
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+    let mut search = Search { want: title.to_lowercase(), found: None };
+    unsafe {
+        let _ = EnumWindows(Some(each), LPARAM(&mut search as *mut Search as isize));
+    }
+    search.found
+}
+
+/// A control acted on by its own pattern, with no pointer and no focus change. Invoke on a list item opens it (a
+/// double click), so items are only ever selected; None means a plain click is the right action.
+unsafe fn act(element: &IUIAutomationElement) -> Option<&'static str> {
+    let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+    if [UIA_ListItemControlTypeId, UIA_DataItemControlTypeId, UIA_TreeItemControlTypeId, UIA_TabItemControlTypeId]
+        .iter()
+        .any(|k| k.0 == kind)
+    {
+        let p = element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId).ok()?;
+        return p.Select().ok().map(|_| "select");
+    }
+    if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId) {
+        return p.Invoke().ok().map(|_| "invoke");
+    }
+    if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId) {
+        return p.Toggle().ok().map(|_| "toggle");
+    }
+    if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId) {
+        return p.Expand().ok().map(|_| "expand");
+    }
+    None
+}
+
 /// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
 /// searches the window with the keyboard, wherever the pointer is; otherwise the window under (x, y).
-pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, String> {
+pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool) -> Result<Value, String> {
+    if !invoke {
+        return locate_here(label, x, y, foreground, window, false);
+    }
+    // Invoke can block while a modal dialog it opens is up, so it runs apart and is reported pending after two seconds.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (label_owned, window_owned) = (label.to_string(), window.map(str::to_string));
+    std::thread::spawn(move || {
+        let _ = tx.send(locate_here(&label_owned, x, y, foreground, window_owned.as_deref(), true));
+    });
+    match rx.recv_timeout(std::time::Duration::from_millis(2000)) {
+        Ok(done) => done,
+        Err(_) => Ok(json!({"found": true, "name": label, "invoked": "pending"})),
+    }
+}
+
+fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     let cached = cache_on();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
-        let top = if foreground {
+        let top = if let Some(title) = window {
+            find_window(title).ok_or_else(|| format!("No window is titled like \"{title}\"."))?
+        } else if foreground {
             GetForegroundWindow()
         } else {
             GetAncestor(WindowFromPoint(POINT { x, y }), GA_ROOT)
@@ -186,6 +261,13 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, St
                     "x": (f.rect.left + f.rect.right) / 2, "y": (f.rect.top + f.rect.bottom) / 2,
                     "width": f.rect.right - f.rect.left, "height": f.rect.bottom - f.rect.top,
                 });
+                // A control acted on by its pattern needs no clear spot to click, so only a click can be covered.
+                if invoke {
+                    if let Some(how) = act(&f.element) {
+                        out["invoked"] = json!(how);
+                        return Ok(out);
+                    }
+                }
                 if let Some(by) = covered_by(&automation, &f.element, &f.rect) {
                     out["covered_by"] = json!(by);
                 }
@@ -198,14 +280,18 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool) -> Result<Value, St
 
 /// What the keyboard's window offers, by name and kind: the agent reads this before it takes a
 /// screenshot, and clicks a line of it with `locate`. Names only, so no coordinates leave here.
-pub fn tree(max: usize) -> Result<Value, String> {
+pub fn tree(max: usize, window: Option<&str>) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     let cached = cache_on();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
-        let root = automation.ElementFromHandle(GetForegroundWindow()).map_err(err)?;
+        let top = match window {
+            Some(title) => find_window(title).ok_or_else(|| format!("No window is titled like \"{title}\"."))?,
+            None => GetForegroundWindow(),
+        };
+        let root = automation.ElementFromHandle(top).map_err(err)?;
         let title = root.CurrentName().map(|n| n.to_string()).unwrap_or_default();
         let all = descendants(&automation, &root, cached).map_err(err)?;
         let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
