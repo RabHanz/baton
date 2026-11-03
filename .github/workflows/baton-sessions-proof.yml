@@ -37,11 +37,20 @@ jobs:
           "$esbuild" src/baton/screen/smoke/sessionsProof.ts --bundle --platform=node --format=cjs \
             --external:electron --external:onnxruntime-node --log-level=warning \
             --outfile=node_modules/.cache/baton-smoke/sessionsProof.cjs
+      - name: Bundle the focus helper
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
+          "$esbuild" src/electron/WindowsForegroundFocusWorker.ts --bundle --platform=node --format=cjs \
+            --external:@crowecawcaw/xa11y --log-level=warning \
+            --outfile=node_modules/.cache/baton-smoke/WindowsForegroundFocusWorker.cjs
       - name: Click everything, recorded
         shell: bash
         working-directory: apps/desktop
         env:
           PROOF_OUT: ${{ github.workspace }}/sessions-proof-out
+          FOCUS_WORKER: ${{ github.workspace }}/apps/desktop/node_modules/.cache/baton-smoke/WindowsForegroundFocusWorker.cjs
         run: |
           mkdir -p "$PROOF_OUT"
           timeout 900 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/sessionsProof.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
