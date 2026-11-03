@@ -158,6 +158,20 @@ void Electron.app.whenReady().then(async () => {
     "the browser lists sessions from two machines",
     /Laptop/.test(await text()) && /Build server/.test(await text()),
   );
+  // The toolbar under the search box lays out on one wrapping flow: no two of its pieces may overlap, at a wide and a narrow window.
+  const overlapScript = `(()=>{const bar=document.querySelector('.membar');if(!bar)return ['no toolbar'];const kids=[...bar.querySelectorAll(':scope > .seg > button, :scope > .memtools > *, :scope > .vocab > *')].filter(e=>e.getBoundingClientRect().width>0);const r=kids.map(e=>[(e.getAttribute('aria-label')||e.textContent||e.className).trim().slice(0,24),e.getBoundingClientRect()]);const out=[];for(let i=0;i<r.length;i+=1)for(let j=i+1;j<r.length;j+=1){const a=r[i][1],b=r[j][1];if(a.left<b.right-1&&b.left<a.right-1&&a.top<b.bottom-1&&b.top<a.bottom-1)out.push(r[i][0]+' x '+r[j][0]);}return out})()`;
+  for (const width of [1138, 1100, 900]) {
+    win.setBounds({ x: 0, y: 0, width, height: 740 });
+    await sleep(700);
+    const clashes = (await js(overlapScript)) as string[];
+    check(
+      `the toolbar has no overlapping pieces at ${width} px`,
+      clashes.length === 0,
+      clashes.join("; "),
+    );
+  }
+  win.setBounds({ x: 0, y: 0, width: 1024, height: 740 });
+  await sleep(500);
   await frame("1-list");
   // Search, typed with the real keyboard.
   await click("#in-c-q");
