@@ -632,7 +632,7 @@ public class Cover : System.Windows.Forms.Form {
 }
 "@
 $f = New-Object Cover
-$f.FormBorderStyle = 'None'; $f.StartPosition = 'Manual'; $f.Location = New-Object System.Drawing.Point(${bx}, ${by}); $f.Size = New-Object System.Drawing.Size(${bw}, ${bh}); $f.TopMost = $true
+$f.Text = 'cookie-banner'; $f.FormBorderStyle = 'None'; $f.StartPosition = 'Manual'; $f.Location = New-Object System.Drawing.Point(${bx}, ${by}); $f.Size = New-Object System.Drawing.Size(${bw}, ${bh}); $f.TopMost = $true
 $b = New-Object System.Windows.Forms.Button; $b.Text = 'Dismiss cookie banner'; $b.Dock = 'Fill'; $b.Add_Click({ $f.Close() })
 $f.Controls.Add($b)
 [System.Windows.Forms.Application]::Run($f)
@@ -646,13 +646,15 @@ $f.Controls.Add($b)
       "-File",
       script,
     ]);
-    // The banner appears a few seconds after its script starts; give the keyboard back to Notepad until it holds it.
-    for (let i = 0; i < 10; i += 1) {
-      await t.activate("Notepad");
-      if (/notepad/i.test(await host.call("ui_tree", {}))) break;
-      await sleep(800);
+    // The banner's script takes a while to compile; wait for its window, then give the keyboard back to Notepad.
+    for (let i = 0; i < 40; i += 1) {
+      const shown = await ps(
+        "@(Get-Process | Where-Object { $_.MainWindowTitle -eq 'cookie-banner' }).Count",
+      ).catch(() => "0");
+      if (shown !== "0") break;
+      await sleep(500);
     }
-    await sleep(1500);
+    await sleep(500);
     await t.activate("Notepad");
     const dismiss = async () => {
       await t.tool("screen_capture");
