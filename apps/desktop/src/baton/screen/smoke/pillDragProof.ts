@@ -70,6 +70,10 @@ void Electron.app.whenReady().then(async () => {
     toPhysical: (p) => Electron.screen.dipToScreenPoint(p),
     clipboard: Electron.clipboard,
   });
+  // The app always has a main window; without one the pill's own close-with-the-last-window rule would end the run.
+  const main = new Electron.BrowserWindow({ show: false });
+  Electron.app.on("window-all-closed", () => undefined);
+  void main;
   const lines: string[] = [];
   let pill = makePill();
   pill.warm();
