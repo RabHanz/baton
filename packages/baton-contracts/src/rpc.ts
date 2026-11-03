@@ -119,6 +119,8 @@ import {
   BATON_SESSIONS_WS_METHODS,
   BatonCatalogCreateInput,
   BatonCatalogCreateResult,
+  BatonCatalogAutoResumeInput,
+  BatonCatalogAutoResumeResult,
   BatonCatalogCleanupInput,
   BatonCatalogCleanupResult,
   BatonCatalogFoldersInput,
@@ -393,6 +395,11 @@ const WsBatonSessionsCreateRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.create, {
 const WsBatonSessionsCleanupRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.cleanup, {
   payload: BatonCatalogCleanupInput,
   success: BatonCatalogCleanupResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsAutoResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.autoResume, {
+  payload: BatonCatalogAutoResumeInput,
+  success: BatonCatalogAutoResumeResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, {
@@ -690,6 +697,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonSessionsListRpc,
   WsBatonSessionsFoldersRpc,
   WsBatonSessionsCleanupRpc,
+  WsBatonSessionsAutoResumeRpc,
   WsBatonSessionsResumeRpc,
   WsBatonSessionsCreateRpc,
   WsBatonSessionsSendRpc,

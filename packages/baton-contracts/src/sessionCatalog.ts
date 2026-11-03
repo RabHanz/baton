@@ -12,6 +12,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   create: "baton.sessions.create",
   send: "baton.sessions.send",
   cleanup: "baton.sessions.cleanup",
+  autoResume: "baton.sessions.autoresume",
 } as const;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
@@ -126,4 +127,15 @@ export const BatonCatalogCleanupResult = Schema.Struct({
   left: Schema.Array(
     Schema.Struct({ id: Schema.String, title: Schema.String, reason: Schema.String }),
   ),
+});
+
+/** The auto-resume watchdog: run it once, read its switch, or mark a session as stopped on purpose so it stays stopped. */
+export const BatonCatalogAutoResumeInput = Schema.Struct({
+  action: Schema.Literals(["run", "status", "stop"]),
+  sessionId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
+});
+export const BatonCatalogAutoResumeResult = Schema.Struct({
+  enabled: Schema.Boolean,
+  resumed: Schema.Array(Schema.String),
+  skipped: Schema.Array(Schema.Struct({ id: Schema.String, why: Schema.String })),
 });
