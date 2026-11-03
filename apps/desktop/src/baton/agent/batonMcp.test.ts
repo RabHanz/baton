@@ -124,4 +124,37 @@ describe("Baton's tool server", () => {
     expect(r.ran).toEqual([]);
     await r.mcp.close();
   });
+
+  it("keeps the error text of a tool that failed, so the turn log says why", async () => {
+    const results: Array<{ tool: string; ok: boolean; error?: string }> = [];
+    const gate = async () => ({ allow: true as const });
+    const mcp = await startBatonMcp({
+      tools: [
+        {
+          name: "screen_capture",
+          description: "x",
+          inputSchema: { type: "object" },
+          run: async () => {
+            throw new Error("Looking at his screen was not allowed.");
+          },
+        },
+      ],
+      gate,
+      onResult: (r) => results.push(r),
+    });
+    const out = await fetch(mcp.url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${mcp.token}`, "content-type": "application/json" },
+      body: rpc("tools/call", { name: "screen_capture", arguments: {} }),
+    }).then(
+      (r) =>
+        r.json() as Promise<{ result: { isError?: boolean; content: Array<{ text: string }> } }>,
+    );
+    expect(out.result.isError).toBe(true);
+    expect(out.result.content[0]?.text).toContain("not allowed");
+    expect(results).toEqual([
+      { tool: "screen_capture", ok: false, error: "Looking at his screen was not allowed." },
+    ]);
+    await mcp.close();
+  });
 });
