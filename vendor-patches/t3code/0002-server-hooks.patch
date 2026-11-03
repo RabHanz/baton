@@ -27,11 +27,11 @@ index 911c1b8de7df58ba468a2c530ae3ae49f834d0ca..4eee02669579c4e1160a4705fc8165a2
    assert.isTrue(
      shouldPrepareLegacyImportHandoff({
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index 75df815127f397d403e64f9655d2f4d034c2d5cb..fdbffa6cce479bff731f0e777398eb3ffeefa7cd 100644
+index 75df815127f397d403e64f9655d2f4d034c2d5cb..bc78196c07f4243fa9a950f5be30dc2c670f2c87 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -1,3 +1,4 @@
-+import { liveThreadSwitchRefusal } from "@t3tools/baton-shared/liveThread";
++import { liveThreadSwitchRefusal, pinnedLiveSelection } from "@t3tools/baton-shared/liveThread";
  import type {
    GuestShareId,
    OrchestrationV2SearchThreadInput,
@@ -77,10 +77,16 @@ index 75df815127f397d403e64f9655d2f4d034c2d5cb..fdbffa6cce479bff731f0e777398eb3f
      const needsProviderState =
        command.type === "thread.runtime-mode.set" ||
        command.type === "thread.model-selection.set" ||
-@@ -5581,6 +5606,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -5580,7 +5605,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+       ]);
        projection = applyToProjection(projection, event);
      }
-     const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
+-    const modelSelection = command.modelSelection ?? projection.thread.modelSelection;
++    const modelSelection = pinnedLiveSelection(
++      command.threadId,
++      command.modelSelection ?? projection.thread.modelSelection,
++      projection.thread.modelSelection,
++    );
 +    const liveRefusal = liveThreadSwitchRefusal({
 +      threadId: command.threadId,
 +      currentInstance: projection.thread.providerInstanceId,
@@ -101,7 +107,7 @@ index 75df815127f397d403e64f9655d2f4d034c2d5cb..fdbffa6cce479bff731f0e777398eb3f
      let dispatchMode = resolveMessageDispatchIntent(
        projection,
        command.dispatchMode,
-@@ -6275,6 +6317,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
+@@ -6275,6 +6321,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
          historyOrigin: projection.thread.historyOrigin,
          hasCompletedRun: latestCompletedRun !== undefined,
          legacyImportItemCount: legacyImportItems.length,
