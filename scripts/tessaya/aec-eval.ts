@@ -39,7 +39,17 @@ const corpus = (() => {
 })();
 const realSpeech: VoiceSource = (seconds, seed) => {
   const out = new Float32Array(Math.round(seconds * 16_000));
-  const from = (seed * 7_919) % corpus.length;
+  let from = (seed * 7_919) % corpus.length;
+  // An interruption is somebody speaking, not a pause: slide to the next stretch where every 100 ms block carries speech.
+  if (seconds < 5) {
+    const block = (at: number) => {
+      let e = 0;
+      for (let i = 0; i < 1_600; i += 1) e += corpus[(at + i) % corpus.length]! ** 2;
+      return Math.sqrt(e / 1_600);
+    };
+    const live = (at: number) => Array.from({ length: Math.round(seconds * 10) }, (_, k) => block(at + k * 1_600)).every((r) => r > 0.01);
+    for (let tries = 0; tries < corpus.length / 800 && !live(from); tries += 1) from = (from + 800) % corpus.length;
+  }
   for (let i = 0; i < out.length; i += 1) out[i] = corpus[(from + i) % corpus.length]!;
   let e = 0;
   for (const v of out) e += v * v;
