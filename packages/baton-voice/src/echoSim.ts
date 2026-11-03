@@ -112,20 +112,10 @@ export interface EchoRun {
  * Plays `tts` through the room into a mic with `interruptions` mixed in, and returns when the guard heard someone over it.
  * `unknownDelayMs` is what the guard is not told: the output device and the air.
  */
-export const runEcho = (input: {
-  readonly tts: Float32Array;
-  readonly seed: number;
-  readonly unknownDelayMs: number;
-  readonly rt60Ms: number;
-  readonly echoRms: number;
-  readonly noiseRms: number;
-  readonly interruptions: ReadonlyArray<Interruption>;
-  /** Consecutive flagged frames that count as a detection (the core's debounce). */
-  readonly frames?: number;
-  readonly trace?: (atS: number, state: { delayMs: number; erleDb: number; converged: boolean; ratio: number; over: number; ne: boolean }) => void;
-}): EchoRun => {
-  const need = input.frames ?? 5;
-  const guard = createEchoGuard();
+export type EchoScenario = Omit<Parameters<typeof runEcho>[0], "frames" | "trace">;
+
+/** The microphone signal for `tts` played through the room, with the interruptions mixed in. */
+export const synthMic = (input: EchoScenario): Float32Array => {
   const echo = convolve(input.tts, room(input.unknownDelayMs, input.rt60Ms, input.seed));
   let eSum = 0;
   for (const v of echo) eSum += v * v;
@@ -141,6 +131,24 @@ export const runEcho = (input: {
     const from = Math.round(it.atS * RATE_16K);
     for (let i = 0; i < speech.length && from + i < mic.length; i += 1) mic[from + i] = mic[from + i]! + speech[i]! * gain;
   }
+  return mic;
+};
+
+export const runEcho = (input: {
+  readonly tts: Float32Array;
+  readonly seed: number;
+  readonly unknownDelayMs: number;
+  readonly rt60Ms: number;
+  readonly echoRms: number;
+  readonly noiseRms: number;
+  readonly interruptions: ReadonlyArray<Interruption>;
+  /** Consecutive flagged frames that count as a detection (the core's debounce). */
+  readonly frames?: number;
+  readonly trace?: (atS: number, state: { delayMs: number; erleDb: number; converged: boolean; ratio: number; over: number; ne: boolean }) => void;
+}): EchoRun => {
+  const need = input.frames ?? 5;
+  const guard = createEchoGuard();
+  const mic = synthMic(input);
   const detections: number[] = [];
   let run = 0;
   let readyAt: number | null = null;
@@ -173,13 +181,16 @@ const ROOMS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /** The measurement behind docs/baton/BARGE_IN.md: the same rooms and levels every run. */
-export const evaluateGuard = (input: { readonly seconds?: number; readonly levelsDb?: ReadonlyArray<number> } = {}): GuardEvaluation => {
+export const evaluateGuard = (
+  input: { readonly seconds?: number; readonly levelsDb?: ReadonlyArray<number>; readonly run?: (scenario: EchoScenario) => EchoRun } = {},
+): GuardEvaluation => {
+  const runIt = input.run ?? ((scenario: EchoScenario) => runEcho({ ...scenario, frames: 6 }));
   const seconds = input.seconds ?? 60;
   let alarms = 0;
   let played = 0;
   ROOMS.forEach(([delay, rt60], i) => {
     const tts = speechLike(seconds, 11 + i, 105 + i * 8);
-    const run = runEcho({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [], frames: 6 });
+    const run = runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions: [] });
     alarms += run.detections.length;
     played += run.seconds;
   });
@@ -190,7 +201,7 @@ export const evaluateGuard = (input: { readonly seconds?: number; readonly level
     ROOMS.forEach(([delay, rt60], i) => {
       const tts = speechLike(seconds, 11 + i, 105 + i * 8);
       const interruptions = Array.from({ length: Math.floor((seconds - 12) / 6.5) }, (_, k) => ({ atS: 8 + k * 6.5, seconds: 1.5, overEchoDb: db, pitchHz: 170 + k * 12 }));
-      const run = runEcho({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions, frames: 6 });
+      const run = runIt({ tts, seed: 5 + i, unknownDelayMs: delay, rt60Ms: rt60, echoRms: 0.07, noiseRms: 0.003, interruptions });
       for (const it of interruptions) {
         total += 1;
         if (run.detections.some((t) => t >= it.atS && t <= it.atS + 0.3 + 6 * 0.02)) hit += 1;
