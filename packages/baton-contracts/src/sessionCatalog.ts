@@ -11,6 +11,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   resume: "baton.sessions.resume",
   create: "baton.sessions.create",
   send: "baton.sessions.send",
+  cleanup: "baton.sessions.cleanup",
 } as const;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
@@ -42,6 +43,8 @@ export const BatonCatalogListInput = Schema.Struct({
   limit: Schema.optionalKey(Schema.Number),
   /** Rows older than this ISO time: the next page. */
   before: Schema.optionalKey(Schema.String),
+  /** Include background runs (non-interactive, SDK and Tessaya's own helpers); off by default. */
+  background: Schema.optionalKey(Schema.Boolean),
 });
 export const BatonCatalogListResult = Schema.Struct({
   machine: Schema.String,
@@ -103,4 +106,24 @@ export const BatonCatalogSendResult = Schema.Struct({
   state: BatonCatalogState,
   delivered: Schema.Boolean,
   detail: Schema.NullOr(Schema.String),
+});
+
+/** Archives (reversibly) the threads that only mirror Tessaya's own helper sessions; without `apply` it only lists them. */
+export const BatonCatalogCleanupInput = Schema.Struct({ apply: Schema.Boolean });
+export const BatonCatalogCleanupResult = Schema.Struct({
+  /** What it would archive (or did). */
+  found: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      title: Schema.String,
+      project: Schema.String,
+      reason: Schema.String,
+    }),
+  ),
+  /** The ids archived by this call; empty unless `apply`. */
+  archived: Schema.Array(Schema.String),
+  /** Looked like helper threads but were left alone, and why. */
+  left: Schema.Array(
+    Schema.Struct({ id: Schema.String, title: Schema.String, reason: Schema.String }),
+  ),
 });

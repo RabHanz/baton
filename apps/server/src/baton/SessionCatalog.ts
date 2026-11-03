@@ -16,6 +16,8 @@ export interface TranscriptInfo {
   /** ISO time of the last write. */
   readonly lastActivityAt: string;
   readonly account: string | null;
+  /** A non-interactive or helper run: hidden from the list unless asked for. */
+  readonly background?: boolean;
 }
 
 export interface HistoryHit {
@@ -132,12 +134,18 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     };
   };
 
-  const list = async (input: { query?: string; limit?: number; before?: string }) => {
+  const list = async (input: {
+    query?: string;
+    limit?: number;
+    before?: string;
+    background?: boolean;
+  }) => {
     const limit = Math.max(1, Math.min(200, input.limit ?? 50));
     const liveSessions = await ports.live();
     const transcripts = await ports.transcripts(600);
     const byId = new Map<string, BatonCatalogSession>();
-    for (const t of transcripts) byId.set(t.sessionId, stoppedRow(t));
+    for (const t of transcripts)
+      if (t.background !== true || input.background === true) byId.set(t.sessionId, stoppedRow(t));
     for (const s of liveSessions)
       byId.set(s.sessionId, {
         ...liveRow(s),
