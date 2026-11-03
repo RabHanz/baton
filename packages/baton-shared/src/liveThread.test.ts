@@ -18,6 +18,8 @@ describe("a mirrored live thread", () => {
       liveThreadSwitchRefusal({ threadId, currentInstance, targetInstance });
     expect(ok(live, "baton-live", "baton-live")).toBeNull();
     expect(ok(live, "claudeAgent", "baton-live")).toBeNull();
+    // A thread already moved to a handoff session cannot wake it again.
+    expect(ok(live, "claudeAgent", "claudeAgent")).toContain("handoff session");
     expect(ok("import:claudeAgent:x", "claudeAgent", "codex")).toBeNull();
   });
 });
