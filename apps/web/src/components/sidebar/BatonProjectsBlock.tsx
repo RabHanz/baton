@@ -137,7 +137,6 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
         folders: catalogFolders,
         cleanup: catalogCleanup,
         autoResume: catalogAutoResume,
-        autoResume: catalogAutoResume,
       },
       environmentIds: props.environmentIds as ReadonlyArray<string>,
       label: (id: string) => props.resolveEnvironmentLabel(id as EnvironmentId) ?? id,
