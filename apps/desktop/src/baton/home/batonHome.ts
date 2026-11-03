@@ -452,13 +452,21 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     }
   };
   const theme = () => resolveTheme(input.appearance(), Electron.nativeTheme.shouldUseDarkColors);
+  // What each window was last given, so a burst of refreshes does not repeat synchronous window-manager calls.
+  const applied = new WeakMap<object, string>();
+  const bars = new WeakMap<object, string>();
   /** The page and the window's own colour, set live: no reload, no flicker. */
   const applyTheme = () => {
     const open = live();
     if (open === null) return;
-    open.setBackgroundColor(THEME_GROUND[theme()]);
+    open.setBackgroundColor(
+      process.platform === "win32" && material().backgroundMaterial === "mica"
+        ? "#00000000"
+        : THEME_GROUND[theme()],
+    );
     // The window controls follow the page, both ways, live.
-    if (process.platform !== "darwin") {
+    if (process.platform !== "darwin" && bars.get(open) !== theme()) {
+      bars.set(open, theme());
       try {
         open.setTitleBarOverlay(overlayFor(theme()));
       } catch {
@@ -479,6 +487,10 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       )
       .catch(() => undefined);
     if (process.platform === "win32") {
+      // Each of these is a synchronous call into the window manager: only when the value changed, never per refresh.
+      const key = `${material().backgroundMaterial ?? "none"}|${theme()}`;
+      if (applied.get(open) === key) return;
+      applied.set(open, key);
       try {
         open.setBackgroundMaterial(material().backgroundMaterial ?? "none");
         open.setBackgroundColor(
