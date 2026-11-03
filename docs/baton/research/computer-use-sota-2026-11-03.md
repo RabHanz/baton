@@ -112,17 +112,40 @@ word-wrap 5 to 3, calculator 13 to 4, late-dialog 5 to 2; the rest are unchanged
   licence check) and a model to read it. Per-app memory needs a model-planned second run. Neither can be measured with a scripted planner. A tree diff
   would save tokens and the scripted planner cannot show that either (tree bytes per task are 1.7 KB).
 
+### Second round: covered controls and effect results (runs 41553192253 and 41623148452)
+
+A 14th task, `covered-control`, puts a topmost banner (a borderless window that does not take the keyboard) over Notepad's menu bar, then
+asks for Word Wrap. The planner reacts only to what the tools tell it. A misclick is a `click_element` that went ahead while the sidecar's hit test
+said something else was on top at the control's centre. Variants: base; **guard** (refuse the click and name what covers the control: `covered_by`
+from UI Automation `ElementFromPoint` plus a parent walk, `uia.rs`); **effects** (before and after readback of the window and control names,
+reported as `confirmed` / `suspected_noop` / `unverifiable`, cua's idea); both. Three runs each, 14 tasks, success 42/42 everywhere.
+
+| Variant | Misclicks (3 runs) | Model turns/task | p50 call ms | p90 call ms | Covered-control turns |
+| ------- | ------------------ | ---------------- | ----------- | ----------- | --------------------- |
+| base    | 3                  | 5.2              | 92          | 267         | 8                     |
+| guard   | 0                  | 5.1              | 94          | 265         | 7                     |
+| effects | 3                  | 5.1              | 268         | 719         | 7                     |
+| both    | 0                  | 5.1              | 277         | 719         | not read              |
+
+- **guard counts and ships.** Misclicks 3 to 0 at equal success and equal latency (p50 92 vs 94 ms), one turn fewer on the covered task. No false
+  positive: it refused nothing in the other 13 tasks (48 element clicks, all went ahead). `ScreenCompanion.clickElement` refuses with
+  "covered by X, take a screenshot".
+- **effects did not count, and the code is not shipped.** It found the no-op one step earlier than base (turns 8 to 7), but guard prevents the
+  misclick altogether, and the readback tripled the per-call time (p50 92 to 268 ms: two extra tree reads and a settle wait per click or key; in the
+  harness each read also starts a process, about 70 ms, so a product read would cost less, not measured). It also called the banner-dismiss click a
+  suspected no-op, because the banner is outside Notepad's tree: a false alarm. cua can afford this because its driver owns the window state; here it
+  needs a cheaper readback (the focused control's value, not the whole tree) before it is worth another round.
+- **High DPI: not measured.** A hosted runner cannot change display scaling without a sign-out, and the harness cannot change it mid-job. The
+  scale-aware code path (`toPhysical` in `inputDriver.ts`) has unit tests but no real-desktop run. Needs a runner image or VM with 150% scaling.
+
 ## What is still lacking
 
-1. **No model-planned measurement.** The biggest unknown is how the subscription model does with `act_batch` and with the full tool set on real apps.
-   A runner with a model login, or an overnight run on a machine that has one, is the next step; the harness takes a planner swap.
-2. **No occlusion, DPI, multi-monitor or non-English task** in the set, so misclick counts are all zero for want of cases.
-3. **No effect classes.** cua returns `confirmed / suspected_noop / refused` with a readback per action; Tessaya still says "Clicked" and "Pressed"
-   (the Ctrl+C no-op in #52 is this gap). This is the most valuable next port.
-4. **No pixel route when the tree is empty** other than the model's own pointing. The Anthropic `zoom` action and Gemini/OpenAI coordinate
-   models show where the closed systems put effort; OmniParser is the open option and costs a GPU.
-5. **`click_element` does not look at what covers a control.** `ClickableElementDetector` and paint-order filtering in Browser Use do.
-6. **The gate does not read `click_element`'s `label`** (only `why`): `actionText` in `packages/baton-shared/src/operator.ts` has no `label` key, so a
-   click on a button called "Delete" with a harmless `why` is allowed. Found while writing the batch gate test; left as is because the brief said keep
-   the gate intact. One word added to that list fixes it.
-7. **p50 step time in a real run** (model plus tools) is still not measured; the table above is tool time only.
+1. **No model-planned measurement.** The biggest unknown is how the subscription model does with `act_batch` and the guard on real apps.
+   A runner with a model login, or a machine that has one, is the next step; the harness takes a planner swap.
+2. **No high-DPI, multi-monitor or non-English task** (see above). Occlusion now has one task; more cases (a dropdown over a control, a toast) would
+   test the hit test for false positives.
+3. **Effect results** need a cheaper readback before they pay (see above). The no-op class is still the right idea: Tessaya says "Clicked" and
+   "Pressed" with no evidence, and the Ctrl+C no-op in #52 is the same problem.
+4. **No pixel route when the tree is empty** other than the model's own pointing. The Anthropic `zoom` action and Gemini/OpenAI coordinate models
+   show where the closed systems put effort; OmniParser is the open option and costs a GPU.
+5. **p50 step time in a real run** (model plus tools) is still not measured; the tables are tool time only.

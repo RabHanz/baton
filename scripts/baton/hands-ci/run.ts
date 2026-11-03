@@ -44,6 +44,8 @@ interface Result {
   /** Model turns a planner would spend: one per tool call, a batch counting once. */
   turns: number;
   treeBytes: number;
+  clicks: number;
+  misclicks: number;
 }
 const BATCH = process.env["HANDS_BATCH"] === "1";
 
@@ -207,6 +209,8 @@ const task = async (id: string, goal: string, body: (t: Task) => Promise<void>) 
     steps: t.steps,
     turns: t.turns,
     treeBytes: stats.treeBytes - before.treeBytes,
+    clicks: stats.clicks - before.clicks,
+    misclicks: stats.misclicks - before.misclicks,
   };
   results.push(r);
   console.log(
@@ -592,6 +596,95 @@ await task(
     let lines = 0;
     for (let i = 0; i < 3; i += 1) lines = (await t.tool("ui_tree")).split("\n").length;
     t.check(lines > 20, `the tree listed ${lines} lines`);
+  },
+);
+
+// 14. A banner covers the menu bar (a cookie banner, a pop-up): the click on the covered menu lands on the banner.
+// The planner reacts only to what the tools tell it: an error, or an effect of suspected_noop. Otherwise it finds out at the next step.
+await task(
+  "covered-control",
+  "Turn on Word Wrap while a banner covers Notepad's menu bar, dismissing the banner first",
+  async (t) => {
+    const key = "HKCU:\\Software\\Microsoft\\Notepad";
+    const before = await ps(
+      `(Get-ItemProperty -Path '${key}' -Name fWrap -ErrorAction SilentlyContinue).fWrap`,
+    );
+    const pid = await t.launch("notepad.exe", [], "Notepad");
+    await t.waitTree(/notepad/i);
+    const rect = (
+      await ps(
+        `Add-Type 'using System;using System.Runtime.InteropServices;public struct R{public int L,T,Rt,B;} public class W2{[DllImport("user32.dll")]public static extern bool GetWindowRect(IntPtr h,out R r);}'; ` +
+          `$p = Get-Process -Id ${pid}; $r = New-Object R; [void][W2]::GetWindowRect($p.MainWindowHandle,[ref]$r); "$($r.L),$($r.T),$($r.Rt),$($r.B)"`,
+      )
+    )
+      .split(",")
+      .map(Number);
+    const [left, top] = [rect[0]!, rect[1]!];
+    const [bx, by, bw, bh] = [left + 10, top + 28, 520, 80];
+    const script = NodePath.join(WORK, "cover.ps1");
+    NodeFS.writeFileSync(
+      script,
+      `Add-Type -AssemblyName System.Windows.Forms
+Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing @"
+public class Cover : System.Windows.Forms.Form {
+  protected override bool ShowWithoutActivation { get { return true; } }
+  protected override System.Windows.Forms.CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08000000 | 0x8; return p; } }
+}
+"@
+$f = New-Object Cover
+$f.Text = 'cookie-banner'; $f.FormBorderStyle = 'None'; $f.StartPosition = 'Manual'; $f.Location = New-Object System.Drawing.Point(${bx}, ${by}); $f.Size = New-Object System.Drawing.Size(${bw}, ${bh}); $f.TopMost = $true
+$b = New-Object System.Windows.Forms.Button; $b.Text = 'Dismiss cookie banner'; $b.Dock = 'Fill'; $b.Add_Click({ $f.Close() })
+$f.Controls.Add($b)
+[System.Windows.Forms.Application]::Run($f)
+`,
+    );
+    await t.launch("powershell.exe", [
+      "-NoProfile",
+      "-WindowStyle",
+      "Hidden",
+      "-STA",
+      "-File",
+      script,
+    ]);
+    // The banner's script takes a while to compile; wait for its window, then give the keyboard back to Notepad.
+    for (let i = 0; i < 40; i += 1) {
+      const shown = await ps(
+        "@(Get-Process | Where-Object { $_.MainWindowTitle -eq 'cookie-banner' }).Count",
+      ).catch(() => "0");
+      if (shown !== "0") break;
+      await sleep(500);
+    }
+    await sleep(500);
+    // AppActivate loses to the banner; a real click in the text area (below the banner) gives Notepad the keyboard.
+    await host.call("click", { x: left + 200, y: top + 250, why: "focus Notepad" });
+    await sleep(500);
+    const dismiss = async () => {
+      await t.tool("screen_capture");
+      t.replan("the screenshot shows a banner over the menu bar; dismissing it");
+      await t.tool("click", { x: bx + bw / 2, y: by + bh / 2, why: "dismiss the banner" });
+      await sleep(500);
+      await t.activate("Notepad");
+    };
+    let blocked = false;
+    const first = await t.tryTool("click_element", { label: "Format", why: "open the menu" });
+    blocked = first === null || /suspected_noop/.test(first);
+    if (!blocked) {
+      // Nothing told it otherwise, so it goes on and finds out here.
+      blocked =
+        (await t.tryTool("click_element", { label: "Word Wrap", why: "the setting" })) === null;
+    }
+    if (blocked) {
+      await dismiss();
+      await t.tool("click_element", { label: "Format", why: "open the menu" });
+      await t.tool("click_element", { label: "Word Wrap", why: "the setting" });
+    }
+    await t.tool("press_keys", { keys: ["alt", "f4"], why: "close so it saves its settings" });
+    await sleep(1500);
+    await ps(`Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`).catch(() => undefined);
+    const after = await ps(
+      `(Get-ItemProperty -Path '${key}' -Name fWrap -ErrorAction SilentlyContinue).fWrap`,
+    );
+    t.check(after !== before, `fWrap went from "${before}" to "${after}"`);
   },
 );
 

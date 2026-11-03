@@ -9,6 +9,8 @@ interface Row {
   steps: Array<{ kind: string; ms: number }>;
   turns: number;
   treeBytes: number;
+  clicks: number;
+  misclicks: number;
 }
 
 const root = process.argv[2] ?? "bakeoff";
@@ -30,8 +32,8 @@ const pct = (xs: number[], p: number) => {
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 const lines = [
-  "| Variant | Runs | Tasks passed | Tool calls/task | Model turns/task | p50 call ms | p90 call ms | Seconds/task | Tree bytes/task |",
-  "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  "| Variant | Runs | Tasks passed | Tool calls/task | Model turns/task | p50 call ms | p90 call ms | Seconds/task | Tree bytes/task | Element clicks | Misclicks |",
+  "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
 ];
 for (const [variant, runs] of byVariant) {
   const rows = runs.flat();
@@ -47,7 +49,7 @@ for (const [variant, runs] of byVariant) {
     )} | ${pct(
       calls.map((c) => c.ms),
       0.9,
-    )} | ${f(sum(rows.map((r) => r.seconds)) / n)} | ${Math.round(sum(rows.map((r) => r.treeBytes)) / n)} |`,
+    )} | ${f(sum(rows.map((r) => r.seconds)) / n)} | ${Math.round(sum(rows.map((r) => r.treeBytes)) / n)} | ${sum(rows.map((r) => r.clicks ?? 0))} | ${sum(rows.map((r) => r.misclicks ?? 0))} |`,
   );
 }
 console.log(lines.join("\n"));
