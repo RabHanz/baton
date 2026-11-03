@@ -233,6 +233,8 @@ export interface AssistantActions {
     readonly x: number;
     readonly y: number;
     readonly name: string;
+    /** What is on top of it, when a click would land there instead. */
+    readonly coveredBy?: string;
     /** The control's size in desktop points, when the tree gave it. */
     readonly width?: number;
     readonly height?: number;
@@ -1947,6 +1949,13 @@ export const startScreenCompanion = (input: {
       );
       return "Clicked.";
     },
+    // Local only, never shown to the model, so it needs no consent the way ui_tree does.
+    fingerprint: async () => {
+      const tree = await actions?.uiTree?.();
+      return tree === null || tree === undefined
+        ? ""
+        : `${tree.window}\n${tree.controls.join("\n")}`;
+    },
     windowKey: async () => {
       const seen = await focusSoon();
       if (seen?.window === undefined)
@@ -1958,6 +1967,11 @@ export const startScreenCompanion = (input: {
       if (found === null || found === undefined) {
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
+        );
+      }
+      if (found.coveredBy !== undefined) {
+        throw new Error(
+          `"${found.name}" is covered by "${found.coveredBy}", so a click would land there. Take a screenshot, deal with what covers it, then click.`,
         );
       }
       const to = { x: found.x, y: found.y };

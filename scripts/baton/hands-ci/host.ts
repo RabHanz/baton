@@ -137,7 +137,9 @@ export const clipboardText = () => clipboard.readText();
 export const setClipboardText = (text: string) => clipboard.writeText(text);
 
 /** What the bake-off counts besides time: the size of what the tree calls returned. */
-export const stats = { treeBytes: 0 };
+export const stats = { treeBytes: 0, clicks: 0, misclicks: 0 };
+const GUARD = process.env["HANDS_GUARD"] === "1";
+const EFFECTS = process.env["HANDS_EFFECTS"] === "1";
 
 export interface Host {
   readonly call: (name: string, args: Record<string, unknown>) => Promise<string>;
@@ -162,7 +164,12 @@ export const makeHost = (outDir: string): Host => {
       "--foreground",
     ]);
     return found["found"] === true
-      ? { x: Number(found["x"]), y: Number(found["y"]), name: String(found["name"] ?? label) }
+      ? {
+          x: Number(found["x"]),
+          y: Number(found["y"]),
+          name: String(found["name"] ?? label),
+          coveredBy: typeof found["covered_by"] === "string" ? found["covered_by"] : null,
+        }
       : null;
   };
   const shot = async (name: string) => {
@@ -171,6 +178,14 @@ export const makeHost = (outDir: string): Host => {
     return file;
   };
   const host: ToolHost = {
+    ...(EFFECTS
+      ? {
+          fingerprint: async () => {
+            const tree = await side(["ui_tree"]);
+            return `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
+          },
+        }
+      : {}),
     windowKey: async () => String((await side(["foreground"]))["window"]),
     capture: async () => {
       const file = await shot("capture");
@@ -193,6 +208,13 @@ export const makeHost = (outDir: string): Host => {
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
+      if (GUARD && found.coveredBy !== null)
+        throw new Error(
+          `"${found.name}" is covered by "${found.coveredBy}", so a click would land there. Take a screenshot, deal with what covers it, then click.`,
+        );
+      stats.clicks += 1;
+      // A click that goes ahead onto something else is a misclick, whatever the variant.
+      if (found.coveredBy !== null) stats.misclicks += 1;
       await driver.clickAt(found, "left", double ? 2 : 1);
       return `Clicked ${found.name}.`;
     },

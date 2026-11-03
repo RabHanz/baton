@@ -48,9 +48,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # base: the old per-property UI Automation reads. cache: one cached read per element. batch: cache plus
-        # several steps per model turn (act_batch).
-        variant: [base, cache, batch]
+        # base: the hands as they were. guard: refuse a click on a covered control. effects: every click and key
+        # reports confirmed / suspected_noop / unverifiable. both: the two together.
+        variant: [base, guard, effects, both]
         rep: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
@@ -68,8 +68,8 @@ jobs:
         env:
           SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
           HANDS_OUT: ${{ github.workspace }}/hands-${{ matrix.variant }}-${{ matrix.rep }}
-          BATON_UIA_CACHE: ${{ matrix.variant == 'base' && '0' || '1' }}
-          HANDS_BATCH: ${{ matrix.variant == 'batch' && '1' || '0' }}
+          HANDS_GUARD: ${{ (matrix.variant == 'guard' || matrix.variant == 'both') && '1' || '0' }}
+          HANDS_EFFECTS: ${{ (matrix.variant == 'effects' || matrix.variant == 'both') && '1' || '0' }}
         run: |
           mkdir -p "$HANDS_OUT"
           node scripts/baton/hands-ci/run.ts 2>&1 | tee "$HANDS_OUT/run.log"
