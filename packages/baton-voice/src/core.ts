@@ -606,7 +606,7 @@ export const createVoiceCore = (input: {
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
   const acceptWake = (score: number, firedAt: number, word: string | null, late: boolean) => {
-    if (hearingItself()) {
+    if (speaking || hearingItself()) {
       speaking = false;
       echoUntil = 0;
       barged = true;
