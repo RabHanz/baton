@@ -6,6 +6,11 @@ on:
   workflow_dispatch:
   push:
     branches: ["baton/home-click**"]
+  pull_request:
+    paths:
+      - "apps/desktop/src/baton/home/**"
+      - "apps/desktop/src/baton/screen/smoke/homeClickThrough.ts"
+      - ".github/workflows/baton-home-click.yml"
 
 permissions:
   contents: read
@@ -45,8 +50,12 @@ jobs:
           PROOF_OUT: ${{ github.workspace }}/home-click-out
         run: |
           mkdir -p "$PROOF_OUT"
-          timeout 900 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/homeClick.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
-          cat "$PROOF_OUT/results.md" >> "$GITHUB_STEP_SUMMARY" || true
+          set +e
+          timeout 900 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/homeClick.cjs 2>&1 | tee "$PROOF_OUT/run.log"
+          cat "$PROOF_OUT/results.md" >> "$GITHUB_STEP_SUMMARY"
+          # A control that does nothing, or a page error, fails the run.
+          grep -q "| no effect \|| not found \|Page errors" "$PROOF_OUT/results.md" && exit 1
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
