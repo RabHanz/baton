@@ -26,6 +26,7 @@ import {
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { loadDocument } from "./loadDocument.ts";
+import { applyLookScript, lookClasses, type Glass, type Motion } from "../home/look.ts";
 import { LISTENING_WEBP, STING_WEBP } from "./pillMotionArt.ts";
 import { TRAY_PNG } from "./trayArt.ts";
 import { isPillClick } from "./pillGesture.ts";
@@ -87,7 +88,7 @@ body{display:flex;align-items:center;justify-content:center}
 #p.rest[data-rest=off]{border-style:dashed;border-color:rgba(255,255,255,.3);background:rgba(13,13,17,.4);box-shadow:none}
 #p.rest>*{display:none}
 #mk{display:none;width:20px;height:20px;flex:none}
-#p[data-mark=on] #mk{display:block}
+#p[data-mark=on] #mk[src]{display:block}
 #w{display:none;align-items:center;gap:2px;height:14px;flex:none}
 #w i{display:block;width:2px;height:12px;border-radius:1px;background:var(--bar,#fff);transform:scaleY(.17);transition:transform .09s linear;will-change:transform}
 #p[data-wave=on] #w{display:flex}
@@ -99,6 +100,8 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-dots=on] #d{display:flex}
 #p[data-phase=speaking] #w{gap:3px}
 #p[data-phase=speaking] #w i{width:3px;border-radius:2px}
+#st{display:none;color:var(--soft);font-weight:500;padding-left:2px;border-left:1px solid var(--line);padding-left:7px}
+#p[data-phase=speaking] #st{display:block}
 #t{white-space:nowrap}
 #t:empty,#c:empty{display:none}
 #c{color:var(--soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -109,10 +112,13 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-tone=warn]{border-color:var(--amber)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 @media (prefers-reduced-motion:reduce){#p,#w i{transition:none}#d b{animation:none;opacity:.7}}
-</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
+html.motion-reduced #p,html.motion-reduced #w i,html.motion-off #p,html.motion-off #w i{transition:none}html.motion-reduced #d b,html.motion-off #d b{animation:none;opacity:.7}
+html.glass-reduced #p.rest,html.glass-off #p.rest{background:var(--ink)}
+</style></head><body><div id="p" role="status" aria-live="polite"><img id="mk" alt="" width="20" height="20"><span id="w"></span><span id="d"><b></b><b></b><b></b></span><span id="st">Stop</span><span id="t"></span><span id="c"></span><span id="sr" class="sr"></span></div>
 <script>
 const $=i=>document.getElementById(i),BARS=8,SOUNDS=${JSON.stringify(PILL_SOUNDS)},PARTIAL=${PILL_PARTIAL},WAVE=${JSON.stringify(WAVE_PHASES)};
-const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const reduce=matchMedia('(prefers-reduced-motion:reduce)'),root=document.documentElement.classList;
+const isCalm=()=>reduce.matches||root.contains('motion-reduced')||root.contains('motion-off');
 const ART={sting:'data:image/webp;base64,${STING_WEBP}',listening:'data:image/webp;base64,${LISTENING_WEBP}',still:'data:image/png;base64,${TRAY_PNG["white-40"]}'};
 const MARKED=['listening','thinking','speaking','working','dictating'];
 let shown='none',stinging=false,want='still',stingTimer=0;
@@ -121,7 +127,7 @@ const setMark=name=>{if(name===shown)return;shown=name;const m=$('mk'),n=m.clone
 const bars=Array.from({length:BARS},()=>{const b=document.createElement('i');$('w').appendChild(b);return b;});
 const shape=bars.map((_,i)=>{const h=Math.abs((BARS-1)/2-i);return Math.max(.25,1-h*h/18);});
 let ctx=null,live=false,tick=0;
-const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=calm?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.transform='scaleY('+((2+10*shape[i]*n*wobble)/12).toFixed(3)+')';});};
+const draw=n=>{tick+=1;bars.forEach((b,i)=>{const wobble=isCalm()?1:.7+.3*Math.sin(tick*1.9+i*1.3);b.style.transform='scaleY('+((2+10*shape[i]*n*wobble)/12).toFixed(3)+')';});};
 const note=(n,start)=>{for(const[f,g]of[[n.hz,n.gain],[n.hz*2,n.gain*PARTIAL]]){const o=ctx.createOscillator(),a=ctx.createGain(),t=start+n.at;o.type='sine';o.frequency.value=f;a.gain.setValueAtTime(0,t);a.gain.linearRampToValueAtTime(g,t+.004);a.gain.exponentialRampToValueAtTime(g*.002,t+n.len);o.connect(a).connect(ctx.destination);o.start(t);o.stop(t+n.len+.02);}};
 const {ipcRenderer}=typeof require==='function'?require('electron'):{ipcRenderer:{send(){}}};
 const isClick=${isPillClick.toString()};
@@ -148,15 +154,15 @@ for(const t of['pointerdown','pointerup','pointermove','pointercancel'])addEvent
 let bypass=false;const setBypass=e=>{const b=e.altKey||e.shiftKey;if(b!==bypass){bypass=b;ipcRenderer.send('baton-pill:bypass',b);}};
 addEventListener('pointermove',setBypass);addEventListener('pointerdown',setBypass);addEventListener('keydown',setBypass);addEventListener('keyup',setBypass);
 window.pill={
- show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':calm||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
+ show(v){const p=$('p'),wave=WAVE.includes(v.phase);const marked=MARKED.includes(v.phase);p.dataset.mark=marked?'on':'off';want=!marked?'none':isCalm()||v.phase!=='listening'?'still':'listening';if(!stinging)setMark(want);p.dataset.tone=v.tone;p.dataset.phase=v.phase;p.className='on';p.dataset.wave=wave?'on':'off';p.dataset.dots=v.phase==='thinking'||v.phase==='working'?'on':'off';p.setAttribute('aria-label',v.label);if($('sr').textContent!==v.label)$('sr').textContent=v.label;
   live=wave&&v.wave==='live';if(wave)draw(live?.15:.1);
   // A word only when the waveform does not say it; soft text only for where words go or an error.
   $('t').textContent=wave||v.phase==='ended'||v.phase==='thinking'?'':v.label;
   $('c').textContent=v.phase==='ended'?'Say the wake word':(v.caption&&/^to /.test(v.caption)?v.caption:'');},
- rest(why){const p=$('p');p.className='on rest';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
- level(n){if(live&&!calm)draw(Math.min(1,n));},
- hide(){$('p').className='';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
- sting(){if(calm)return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
+ rest(why){const p=$('p');p.className='on rest';p.dataset.mark='off';clearTimeout(stingTimer);stinging=false;setMark('none');delete p.dataset.phase;delete p.dataset.tone;p.dataset.wave='off';p.dataset.dots='off';p.dataset.rest=why||'sleeping';live=false;},
+ level(n){if(live&&!isCalm())draw(Math.min(1,n));},
+ hide(){$('p').className='';$('p').dataset.mark='off';live=false;clearTimeout(stingTimer);stinging=false;setMark('none');},
+ sting(){if(isCalm())return;clearTimeout(stingTimer);stinging=true;shown='';setMark('sting');stingTimer=setTimeout(()=>{stinging=false;setMark(want);},2050);},
  move(){const p=$('p');p.className='on';p.dataset.mark='off';p.dataset.wave='off';p.dataset.dots='off';p.dataset.tone='voice';p.dataset.phase='move';$('t').textContent='Drag to move';$('c').textContent='';sendRect();},
  why(w){const p=$('p');if(p.classList.contains('rest'))p.dataset.rest=w;},
  sound(name,gain){ctx??=new AudioContext();const t=ctx.currentTime+.01;for(const n of SOUNDS[name])note({...n,gain:n.gain*gain},t);return ctx.state+':'+SOUNDS[name].length;},
@@ -227,6 +233,8 @@ export const createVoicePill = (input: {
     readonly playing: (ms: number) => void;
   };
   readonly rest: () => boolean;
+  /** The motion and glass he chose in Settings: the pill's page follows them. */
+  readonly look?: () => { readonly motion: Motion; readonly glass: Glass };
   /** Extra items at the end of the right-click menu. */
   readonly menuItems?: () => ReadonlyArray<Electron.MenuItemConstructorOptions>;
   /** BATON_TEST_DIR: a PNG of the pill's own page at every state change, taken from inside the app. */
@@ -414,8 +422,10 @@ export const createVoicePill = (input: {
     const target = window;
     void ready.then(() => {
       if (target !== null && !target.isDestroyed()) {
+        const now = input.look?.();
+        const prefix = now === undefined ? "" : `${applyLookScript(lookClasses(now.motion, now.glass))};`;
         void target.webContents
-          .executeJavaScript(code)
+          .executeJavaScript(`${prefix}${code}`)
           .then((result: unknown) => done?.(result))
           .catch(() => undefined);
       }

@@ -34,6 +34,7 @@ import { Textarea } from "../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openThreadInSplit } from "../panes/batonPanesStore";
 import { BatonContinueWith, type HandoffTarget } from "./BatonContinueWith";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { answerCatalogRequest } from "./batonCatalogRequests";
 
 export interface BatonProjectsBlockProps {
@@ -113,7 +114,9 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
   const catalogFolders = useAtomCommand(batonWorkSessions.sessionsFolders, {
     reportFailure: false,
   });
+  const localEnvironmentId = usePrimaryEnvironmentId();
   const catalogDeps = useRef({
+    localEnvironmentId: localEnvironmentId as string | null,
     commands: {
       list: catalogList,
       resume: catalogResume,
@@ -130,6 +133,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
   useEffect(() => {
     answerWindow.current = { open: props.onOpenThreadById, send: sendToPane };
     catalogDeps.current = {
+      localEnvironmentId: localEnvironmentId as string | null,
       commands: {
         list: catalogList,
         resume: catalogResume,
