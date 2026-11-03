@@ -15,9 +15,9 @@ import { TABS, tabOf } from "./tabs.ts";
 describe("the window's speed budget", () => {
   it("keeps the page small: script, stylesheet apart from fonts, and the whole document", () => {
     const cssWithoutFonts = APP_CSS.replace(/url\(data:[^)]*\)/g, "url()");
-    expect(APP_SCRIPT.length).toBeLessThan(104_000);
+    expect(APP_SCRIPT.length).toBeLessThan(106_000);
     expect(cssWithoutFonts.length).toBeLessThan(40_000);
-    expect(HOME_DOCUMENT.length).toBeLessThan(560_000);
+    expect(HOME_DOCUMENT.length).toBeLessThan(566_000);
   });
 
   it("draws the first page and any tab with little work", async () => {

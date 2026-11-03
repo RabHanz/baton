@@ -62,3 +62,19 @@ describe.each([
     expect(ratio(tokens["accent"]!, tokens["panel"]!)).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe.each([
+  ["dark", darkTokens],
+  ["light", lightTokens],
+] as const)("the %s theme's page hues and cards", (_name, tokens) => {
+  it("reads at AA as text on a panel and a card, and soft text on a card", () => {
+    for (const hue of ["indigo", "damson", "lichen", "leaf"])
+      for (const surface of ["panel", "card"])
+        expect(
+          ratio(tokens[hue]!, tokens[surface]!),
+          `${hue} on ${surface}`,
+        ).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(tokens["soft"]!, tokens["card"]!)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(tokens["ink"]!, tokens["field"]!)).toBeGreaterThanOrEqual(4.5);
+  });
+});
