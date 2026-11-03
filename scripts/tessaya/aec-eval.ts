@@ -1,9 +1,9 @@
 // The same barge-in measurement as bargein-eval.ts, with WebRTC AEC3 (native/baton-aec) in place of the heuristic echo guard.
 // node scripts/tessaya/aec-eval.ts <path-to-aec-eval> [seconds-per-room]
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { evaluateGuard, synthMic, type EchoRun, type EchoScenario } from "../../packages/baton-voice/src/echoSim.ts";
 
 const FRAME = 320; // 20 ms at 16 kHz, the core's frame
@@ -19,15 +19,15 @@ const energy = (a: Int16Array, from: number, n: number) => {
 
 const binary = process.argv[2];
 if (binary === undefined) throw new Error("usage: aec-eval.ts <path-to-aec-eval> [seconds]");
-const dir = mkdtempSync(join(tmpdir(), "aec-"));
+const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "aec-"));
 
 const run = (scenario: EchoScenario): EchoRun => {
   const mic = synthMic(scenario);
-  writeFileSync(join(dir, "ref.raw"), pcm(scenario.tts));
-  writeFileSync(join(dir, "mic.raw"), pcm(mic));
-  const r = spawnSync(binary, [join(dir, "ref.raw"), join(dir, "mic.raw"), join(dir, "out.raw")], { stdio: "inherit" });
+  NodeFS.writeFileSync(NodePath.join(dir, "ref.raw"), pcm(scenario.tts));
+  NodeFS.writeFileSync(NodePath.join(dir, "mic.raw"), pcm(mic));
+  const r = NodeChildProcess.spawnSync(binary, [NodePath.join(dir, "ref.raw"), NodePath.join(dir, "mic.raw"), NodePath.join(dir, "out.raw")], { stdio: "inherit" });
   if (r.status !== 0) throw new Error("aec-eval failed");
-  const raw = readFileSync(join(dir, "out.raw"));
+  const raw = NodeFS.readFileSync(NodePath.join(dir, "out.raw"));
   const out = new Int16Array(raw.buffer, raw.byteOffset, raw.length / 2);
   const micI = new Int16Array(pcm(mic).buffer);
   const detections: number[] = [];
@@ -48,5 +48,5 @@ try {
   const ok = result.falsePer10Min <= 1 && (result.recall["0"] ?? 0) >= 0.9;
   console.log(ok ? "meets the target" : "does not meet the target (under 1 false per 10 min and recall >= 0.9 at 0 dB)");
 } finally {
-  rmSync(dir, { recursive: true, force: true });
+  NodeFS.rmSync(dir, { recursive: true, force: true });
 }
