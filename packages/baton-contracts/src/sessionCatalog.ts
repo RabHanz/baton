@@ -13,6 +13,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   send: "baton.sessions.send",
   cleanup: "baton.sessions.cleanup",
   autoResume: "baton.sessions.autoresume",
+  retireHandoff: "baton.sessions.retirehandoff",
 } as const;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
@@ -141,4 +142,19 @@ export const BatonCatalogAutoResumeResult = Schema.Struct({
   enabled: Schema.Boolean,
   resumed: Schema.Array(Schema.String),
   skipped: Schema.Array(Schema.Struct({ id: Schema.String, why: Schema.String })),
+});
+
+/** Put a live thread back on its own session and remove the twin a provider switch started. */
+export const BatonRetireHandoffInput = Schema.Struct({
+  threadId: Schema.String.check(Schema.isMaxLength(120)),
+  twinThreadId: Schema.String.check(Schema.isMaxLength(120)),
+  /** Must be `retire-handoff:<threadId>`. */
+  confirm: Schema.String.check(Schema.isMaxLength(200)),
+  /** The live session has caught up on what the twin did. */
+  caughtUp: Schema.Boolean,
+});
+export const BatonRetireHandoffResult = Schema.Struct({
+  state: Schema.Literals(["retired", "refused", "incomplete"]),
+  detail: Schema.String,
+  undoFile: Schema.NullOr(Schema.String),
 });

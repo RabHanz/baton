@@ -23,6 +23,8 @@ import * as ServerConfig from "../config.ts";
 import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 
+import { LIVE_INSTANCE_ID } from "./LiveSessionMirror.ts";
+import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
@@ -94,6 +96,12 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly resumed: ReadonlyArray<string>;
       readonly skipped: ReadonlyArray<{ id: string; why: string }>;
     }>;
+    readonly retireHandoff: (input: {
+      threadId: string;
+      twinThreadId: string;
+      confirm: string;
+      caughtUp: boolean;
+    }) => Effect.Effect<RetireResult>;
     readonly cleanup: (input: { apply: boolean }) => Effect.Effect<{
       readonly found: ReadonlyArray<{ id: string; title: string; project: string; reason: string }>;
       readonly archived: ReadonlyArray<string>;
@@ -489,6 +497,52 @@ export const layer = Layer.effect(
         }
         if (input.action === "run") return yield* Effect.promise(() => watchdogRun());
         return { enabled: autoEnabled(), resumed: [], skipped: [] };
+      }),
+      retireHandoff: Effect.fn("BatonSessionCatalogService.retireHandoff")(function* (input) {
+        if (Option.isNone(engine))
+          return { state: "refused", detail: "No thread engine here.", undoFile: null } as const;
+        const e = engine.value;
+        const id = (value: string) => ThreadId.make(value);
+        const result = yield* retireHandoff(
+          {
+            shell: (threadId) =>
+              Effect.map(e.threadShell(id(threadId)), (shell) =>
+                shell === null
+                  ? null
+                  : {
+                      instanceId: String(shell.providerInstanceId),
+                      running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+                    },
+              ),
+            selectLive: (threadId) =>
+              e.setThreadSelection({
+                tag: "retire-handoff",
+                threadId: id(threadId),
+                modelSelection: { instanceId: LIVE_INSTANCE_ID, model: "live" },
+              }),
+            activeInstance: (threadId) =>
+              Effect.map(e.activeProviderThread(id(threadId)), (p) =>
+                p === null ? null : String(p.providerInstanceId),
+              ),
+            archive: (threadId) => e.archiveThread({ tag: "retire-handoff", threadId: id(threadId) }),
+            remove: (threadId) => e.deleteThread({ tag: "retire-handoff", threadId: id(threadId) }),
+            writeUndo: (json) => {
+              const file = NodePath.join(
+                Option.isSome(config) ? NodePath.dirname(config.value.dbPath) : NodeOS.homedir(),
+                `baton-retire-undo-${Date.now()}.json`,
+              );
+              try {
+                NodeFS.writeFileSync(file, json);
+                return file;
+              } catch {
+                return null;
+              }
+            },
+          },
+          input,
+        );
+        resumeLog({ event: "retire-handoff", thread: input.threadId, twin: input.twinThreadId, ...result });
+        return result;
       }),
       cleanup: Effect.fn("BatonSessionCatalogService.cleanup")(function* (input: {
         apply: boolean;
