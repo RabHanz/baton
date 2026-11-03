@@ -467,7 +467,9 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     if (open === null) return;
     const now = look();
     void open.webContents
-      .executeJavaScript(applyLookScript(lookClasses(now.motion, now.glass)))
+      .executeJavaScript(
+        `${applyLookScript(lookClasses(now.motion, now.glass))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`,
+      )
       .catch(() => undefined);
     if (process.platform === "win32") {
       try {
