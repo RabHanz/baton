@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalDate:off preferSchemaOverJson:off
 /**
  * Retire a handoff session: a live (mirrored) thread that a provider switch moved onto a T3-hosted twin goes back to
  * its own live provider, the twin's session is released by the provider layer (never by killing a pid), and the twin's
@@ -7,6 +7,8 @@
 import { isLiveThreadId, LIVE_INSTANCE } from "@t3tools/baton-shared/liveThread";
 import * as Effect from "effect/Effect";
 
+import type { BatonEngineError } from "./BatonEngine.ts";
+
 export const retireToken = (threadId: string): string => `retire-handoff:${threadId}`;
 
 export interface RetirePorts {
@@ -14,7 +16,7 @@ export interface RetirePorts {
     threadId: string,
   ) => Effect.Effect<{ readonly instanceId: string; readonly running: boolean } | null>;
   /** Back to the live instance; the provider layer releases the handoff session. */
-  readonly selectLive: (threadId: string) => Effect.Effect<void, unknown>;
+  readonly selectLive: (threadId: string) => Effect.Effect<void, BatonEngineError>;
   readonly activeInstance: (threadId: string) => Effect.Effect<string | null>;
   readonly archive: (threadId: string) => Effect.Effect<boolean>;
   readonly remove: (threadId: string) => Effect.Effect<boolean>;
