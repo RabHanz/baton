@@ -131,13 +131,13 @@ void Electron.app.whenReady().then(async () => {
     ok: boolean;
   }
   // Fresh every time, and scrolled into view: a click moves things, and a long sidebar scrolls.
-  const find = (selector: string) =>
+  const find = (selector: string, only?: number) =>
     js(
-      `[...document.querySelectorAll(${JSON.stringify(selector)})].map(e=>{e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();const name=(e.getAttribute('aria-label')||e.textContent||e.id||e.tagName).trim().slice(0,32);return {name,x:r.x+r.width/2,y:r.y+r.height/2,ok:r.width>2&&r.height>2&&r.x>=0&&r.y>=0&&r.x<innerWidth&&r.y<innerHeight}})`,
+      `[...document.querySelectorAll(${JSON.stringify(selector)})].map((e,i)=>{if(${only ?? -1}>=0&&i!==${only ?? -1})return {name:'',x:0,y:0,ok:false};e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();const name=(e.getAttribute('aria-label')||e.textContent||e.id||e.tagName).trim().slice(0,32);return {name,x:r.x+r.width/2,y:r.y+r.height/2,ok:r.width>2&&r.height>2&&r.x>=0&&r.y>=0&&r.x<innerWidth&&r.y<innerHeight}})`,
     ) as Promise<Found[]>;
   const nth = async (selector: string, i: number) => {
     await sleep(250);
-    return (await find(selector))[i];
+    return (await find(selector, i))[i];
   };
   const rows: Row[] = [];
   const press = async (group: string, c: Found) => {
