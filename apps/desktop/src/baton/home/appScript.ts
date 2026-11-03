@@ -57,6 +57,7 @@ if (real) {
   });
 }
 const GROUPS = [['Now', ['home','now','sessions','approvals','jobs','cloud']], ['Voice', ['dictation','history','snippets','transforms','style','scratchpad','insights']], ['Knowledge', ['memory','vault','tools']], ['Settings', ['assistant','voice','screen','usage','trust','checks','help']]];
+const GROUP_OF = {}; for (const [gname, ids] of GROUPS) for (const gid of ids) GROUP_OF[gid] = gname.toLowerCase();
 const foldedGroups = (() => { try { return new Set(JSON.parse(localStorage.getItem('tessaya.folded') || '[]')); } catch (e) { return new Set(); } })();
 const saveFolded = () => { try { localStorage.setItem('tessaya.folded', JSON.stringify([...foldedGroups])); } catch (e) {} };
 const TABS = ['home','now','snippets','insights','scratchpad','style','transforms','sessions','approvals','jobs','cloud','dictation','history','memory','vault','tools','assistant','voice','screen','usage','trust','checks','help'].map(id => [id, L('tab.' + id)]);
@@ -390,7 +391,7 @@ function home(p) {
   let day = null, log = null; if (items.length) { log = $('div', 'log'); left.appendChild(log); day = 'Today'; }
   for (const a of items) {
     const d = dayLabel(a.at); if (d !== day) { day = d; left.appendChild($('div', 'day', d)); log = $('div', 'log'); left.appendChild(log); }
-    const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
+    const li = $('div', 'li' + (a.dim ? ' dim' : '')); li.setAttribute('data-k', a.kind); li.append($('time', null, clock(a.at)), $('div', 'tx', a.text), $('span', 'tag', a.kind)); log.appendChild(li);
   }
   if (allItems.length > items.length) { const all = $('button', 'btn quiet', SEE_ALL); all.style.marginTop = '8px'; all.onclick = () => go('history'); left.appendChild(all); }
   const st = $('div', 'stats'); const s2 = x.stats || {};
@@ -804,7 +805,7 @@ function syncModal() {
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
 function closeModal() { if (modal === 'setup') return setupFinish(); stopMeter(); modal = null; aboutSeen = false; render(); }
-function go(t) { cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
+function go(t) { if (t !== cur) enter(); cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
 function paletteRank(items, q) {
@@ -869,20 +870,46 @@ function palOpenNow() {
 addEventListener('click', () => { if (bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palOpen) palClose(); else palOpenNow(); } }, true);
+let lastState = null, enterTimer = 0, indReady = false;
+/** A page change plays the entrance once: transform and opacity only, and only while the window is live (see the style). */
+function enter() {
+  const page = document.getElementById('page'); if (!page || !page.classList) return;
+  page.classList.remove('enter'); void page.offsetWidth; page.classList.add('enter');
+  clearTimeout(enterTimer); enterTimer = setTimeout(() => page.classList.remove('enter'), 700);
+}
+/** The sidebar's active mark is one element that slides to the current page (a transform, so the move costs no layout). */
+function syncInd(still) {
+  const app = document.getElementById('app'); if (!app) return;
+  let ind = document.getElementById('navind');
+  if (!ind) { ind = $('div'); ind.id = 'navind'; ind.setAttribute('aria-hidden', 'true'); app.appendChild(ind); }
+  const a = document.querySelector('#navlist .nav[aria-current]');
+  if (!a || collapsed) { ind.style.opacity = '0'; return; }
+  if (!still && a.scrollIntoView) a.scrollIntoView({ block: 'nearest' });
+  const ar = app.getBoundingClientRect(), r = a.getBoundingClientRect(); const nr = document.getElementById('navlist').getBoundingClientRect();
+  const y = r.top - ar.top + (r.height - 18) / 2;
+  ind.setAttribute('data-g', GROUP_OF[cur] || 'now');
+  ind.style.transform = 'translateY(' + Math.round(y) + 'px)'; ind.style.opacity = r.bottom > nr.top && r.top < nr.bottom ? '1' : '0';
+  if (!indReady && !still) { indReady = true; requestAnimationFrame(() => ind.classList.add('go')); }
+}
+function syncChrome() {
+  try { syncInd(); const nl = document.getElementById('navlist'); if (nl && !nl.onscroll) nl.onscroll = () => syncInd(true); } catch (e) {}
+  if (!booted) { booted = true; const h = document.documentElement; h.classList.add('boot'); setTimeout(() => h.classList.remove('boot'), 1400); }
+}
+let booted = false;
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
   if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.show) { setupAuto = true; modal = 'setup'; }
   const keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
-  const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : '';
+  const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : ''; app.setAttribute('data-g', GROUP_OF[cur] || 'now');
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');
   setRegion(document.getElementById('side'), side => {
   const brand = $('div', 'brand'); brand.id = 'brand'; const mk = $('span'); mk.id = 'mark'; mk.innerHTML = markHtml(); const bt = $('span', 'bt'); bt.append($('b', null, 'Tessaya'), $('span', 'plan', 'v' + (((S.extra || {}).about || {}).version || ''))); brand.append(mk, bt); side.appendChild(brand);
   const nav = $('nav'); nav.setAttribute('aria-label', 'Tessaya pages'); nav.id = 'navlist';
   const names = Object.fromEntries(TABS);
   for (const [gname, ids] of GROUPS) {
-    const folded = foldedGroups.has(gname); const gl = $('button', 'glabel'); gl.setAttribute('aria-expanded', String(!folded)); gl.append($('span', null, gname), icon('fold', 14));
+    const folded = foldedGroups.has(gname); const gl = $('button', 'glabel'); gl.setAttribute('data-g', gname.toLowerCase()); gl.setAttribute('aria-expanded', String(!folded)); gl.append($('span', null, gname), icon('fold', 14));
     gl.onclick = () => { if (foldedGroups.has(gname)) foldedGroups.delete(gname); else foldedGroups.add(gname); saveFolded(); render(); }; nav.appendChild(gl);
-    for (const id of ids) { if (folded && cur !== id) continue; const b = $('button', 'nav'); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
+    for (const id of ids) { if (folded && cur !== id) continue; const b = $('button', 'nav'); b.setAttribute('data-g', GROUP_OF[id]); if (cur === id) b.setAttribute('aria-current', 'page'); b.append(icon(id), $('span', null, names[id])); if (id === 'sessions' && need) b.appendChild($('span', 'n', String(need))); b.onclick = () => go(id); nav.appendChild(b); }
   }
   side.appendChild(nav);
   if (up && up.lead) { const c = $('div', 'sidecard go'); c.append($('b', null, 'Update ready'), $('p', null, 'Tessaya restarts itself and reopens this window.')); const bt = $('button', 'btn', up.button); bt.onclick = () => set('u.act', null); c.appendChild(bt); side.appendChild(c); }
@@ -893,7 +920,7 @@ function render(state) {
   setRegion(document.getElementById('top'), top => {
   const sb = $('input', 'search'); sb.id = 'q'; sb.type = 'search'; sb.placeholder = 'Search settings'; sb.setAttribute('aria-label', 'Search settings'); sb.value = query; sb.oninput = () => { query = sb.value; render(); }; sb.onkeydown = e => { if (e.key === 'Escape' && query) { query = ''; render(); } };
   const tg = $('button', 'ibtn'); tg.setAttribute('aria-label', 'Show or hide the sidebar'); tg.appendChild(icon('side')); tg.onclick = () => { collapsed = !collapsed; render(); }; top.appendChild(tg);
-  const stt = $('div', 'state'); stt.setAttribute('role', 'status'); const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
+  const stt = $('div', 'state'); stt.setAttribute('role', 'status'); stt.setAttribute('data-tone', S.status.tone); if (lastState !== null && lastState !== S.status.label) stt.className += ' morph'; lastState = S.status.label; const d = $('span', 'dot'); d.setAttribute('data-tone', S.status.tone); stt.append(d, $('span', null, S.status.label + (S.status.device ? ' \\u00b7 ' + S.status.device : ''))); top.appendChild(stt);
   const vb = find('vt.bar'); if (vb && vb.state === 'unlocked') { const lk = $('button', 'ibtn'); lk.setAttribute('aria-label', 'Lock the vault'); lk.setAttribute('title', 'Lock the vault'); lk.appendChild(icon('vault')); lk.onclick = () => set('vt.lock', null); top.appendChild(lk); }
   const bell = $('button', 'ibtn'); bell.setAttribute('aria-label', L('alerts.title')); bell.appendChild(icon('bell')); if ((up && up.lead) || need) bell.appendChild($('span', 'pip')); bell.setAttribute('aria-expanded', String(bellOpen)); bell.onclick = e => { e.stopPropagation(); bellOpen = !bellOpen; render(); }; top.appendChild(bell);
   if (bellOpen) { const pop = $('div', 'pop'); pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', L('alerts.title')); pop.appendChild($('b', null, L('alerts.title')));
@@ -904,7 +931,7 @@ function render(state) {
   const ac = $('button', 'ibtn'); ac.setAttribute('aria-label', 'Account'); ac.appendChild(icon('user')); ac.onclick = () => { modal = 'account'; render(); }; top.appendChild(sb); top.appendChild(ac);
   });
   const page = document.getElementById('page'); const pageClass = cur === 'home' ? 'wide' : ''; if (page.className !== pageClass) page.className = pageClass; setRegion(page, tabPage);
-  syncModal();
+  syncModal(); syncChrome();
   if (keep && (keep.indexOf('in-') === 0 || keep === 'q')) { const e = document.getElementById(keep); if (e) { e.focus(); if (pos != null) e.setSelectionRange(pos, pos); } }
 }
 addEventListener('keydown', e => {
