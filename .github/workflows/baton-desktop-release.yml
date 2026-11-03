@@ -75,12 +75,12 @@ jobs:
 
       - name: Apply Tessaya branding (release build only, not committed)
         shell: bash
-        run: bash scripts/baton/apply-release-branding.sh
+        run: bash scripts/tessaya/apply-release-branding.sh
 
       # Without these the app cannot sign in to T3 Connect and relay environments never connect (D89).
       - name: T3 Connect public config (read from app.t3.codes at build time, not committed)
         shell: bash
-        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+        run: bash scripts/tessaya/hosted-public-config.sh >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -136,12 +136,12 @@ jobs:
 
       - name: Apply Tessaya branding (release build only, not committed)
         shell: bash
-        run: bash scripts/baton/apply-release-branding.sh
+        run: bash scripts/tessaya/apply-release-branding.sh
 
       # Without these the app cannot sign in to T3 Connect and relay environments never connect (D89).
       - name: T3 Connect public config (read from app.t3.codes at build time, not committed)
         shell: bash
-        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+        run: bash scripts/tessaya/hosted-public-config.sh >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -190,12 +190,12 @@ jobs:
 
       - name: Apply Tessaya branding (release build only, not committed)
         shell: bash
-        run: bash scripts/baton/apply-release-branding.sh
+        run: bash scripts/tessaya/apply-release-branding.sh
 
       # Without these the app cannot sign in to T3 Connect and relay environments never connect (D89).
       - name: T3 Connect public config (read from app.t3.codes at build time, not committed)
         shell: bash
-        run: bash scripts/baton/hosted-public-config.sh >> "$GITHUB_ENV"
+        run: bash scripts/tessaya/hosted-public-config.sh >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:

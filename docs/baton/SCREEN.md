@@ -93,7 +93,7 @@ overlay is excluded from capture, so set `LAB_VISIBLE=1` to see it in screenshot
 
 ```bash
 # xdotool and xcompmgr can be user-local: apt-get download + dpkg -x, then
-BATON_SMOKE_XBIN=<extracted>/usr/bin scripts/baton/screen-smoke.sh /tmp/screen-smoke look,teach,drive
+BATON_SMOKE_XBIN=<extracted>/usr/bin scripts/tessaya/screen-smoke.sh /tmp/screen-smoke look,teach,drive
 ```
 
 It opens a small form, asks a Look question, runs a lesson with xdotool as the user, and drives

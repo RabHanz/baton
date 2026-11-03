@@ -110,12 +110,22 @@ void Electron.app.whenReady().then(async () => {
   win.focus();
   await sleep(1500);
   const js = (code: string) => win.webContents.executeJavaScript(code) as Promise<unknown>;
+  const errors: string[] = [];
+  win.webContents.on("console-message", (details: unknown, ...legacy: unknown[]) => {
+    const d = details as { level?: unknown; message?: string };
+    const level = typeof d.level === "number" ? d.level : legacy[0];
+    const text = String(d.message ?? legacy[1]);
+    // The harness registers no history handler; that is not the page failing.
+    if ((level === 3 || level === "error") && !text.includes("No handler registered"))
+      errors.push(text);
+  });
+  await js("window.__errs=[];window.addEventListener('error',e=>window.__errs.push(e.message))");
   await js(
     "window.__mut=0;new MutationObserver(m=>{window.__mut+=m.length}).observe(document.body,{subtree:true,childList:true,attributes:true,characterData:true});0",
   );
   const sig = () =>
     js(
-      "JSON.stringify([typeof cur==='undefined'?'':cur, typeof modal==='undefined'?'':modal, (document.getElementById('page')||{}).innerText?.length, !!document.getElementById('modal'), document.activeElement&&document.activeElement.tagName+':'+document.activeElement.id, window.__mut])",
+      "JSON.stringify([typeof cur==='undefined'?'':cur, typeof modal==='undefined'?'':modal, (document.getElementById('page')||{}).innerText?.length, ((document.querySelector('#page h1')||{}).textContent||''), !!document.getElementById('modal'), document.activeElement&&document.activeElement.tagName+':'+document.activeElement.id, window.__mut])",
     ) as Promise<string>;
   interface Found {
     name: string;
@@ -124,22 +134,38 @@ void Electron.app.whenReady().then(async () => {
     ok: boolean;
   }
   // Fresh every time, and scrolled into view: a click moves things, and a long sidebar scrolls.
-  const find = (selector: string) =>
+  const find = (selector: string, only?: number) =>
     js(
-      `[...document.querySelectorAll(${JSON.stringify(selector)})].map(e=>{e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();const name=(e.getAttribute('aria-label')||e.textContent||e.id||e.tagName).trim().slice(0,32);return {name,x:r.x+r.width/2,y:r.y+r.height/2,ok:r.width>2&&r.height>2&&r.x>=0&&r.y>=0&&r.x<innerWidth&&r.y<innerHeight}})`,
+      `[...document.querySelectorAll(${JSON.stringify(selector)})].map((e,i)=>{if(${only ?? -1}>=0&&i!==${only ?? -1})return {name:'',x:0,y:0,ok:false};e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();const name=(e.getAttribute('aria-label')||e.textContent||e.id||e.tagName).trim().slice(0,32);return {name,x:r.x+r.width/2,y:r.y+r.height/2,ok:r.width>2&&r.height>2&&r.x>=0&&r.y>=0&&r.x<innerWidth&&r.y<innerHeight}})`,
     ) as Promise<Found[]>;
   const nth = async (selector: string, i: number) => {
     await sleep(250);
-    return (await find(selector))[i];
+    return (await find(selector, i))[i];
   };
   const rows: Row[] = [];
   const press = async (group: string, c: Found) => {
     if (!c.ok) return rows.push({ group, control: c.name, result: "off screen", effect: "" });
     const before = await sig();
+    const hit = (await js(
+      `(()=>{const e=document.elementFromPoint(${c.x},${c.y});return e?e.tagName+"."+e.className+"#"+e.id+" in "+(e.parentElement?e.parentElement.tagName+"."+e.parentElement.className:""):"none"})()`,
+    )) as string;
     const bounds = win.getContentBounds();
     await driver.clickAt({ x: bounds.x + c.x, y: bounds.y + c.y }, "left", 1);
     await sleep(900);
     const after = await sig();
+    // A sidebar item must redraw the page, not only change which one is current.
+    const redrew = before.split(",")[3] !== after.split(",")[3];
+    const needsRedraw =
+      group === "sidebar" && !["Home", "Open T3 sessions", "Settings"].includes(c.name);
+    if (needsRedraw && !redrew && before !== after) {
+      rows.push({
+        group,
+        control: c.name,
+        result: "no effect",
+        effect: `page did not redraw; under the pointer at ${Math.round(c.x)},${Math.round(c.y)}: ${hit}; errors ${String(await js("JSON.stringify(window.__errs||[])"))}`,
+      });
+      return;
+    }
     rows.push({
       group,
       control: c.name,
@@ -153,9 +179,9 @@ void Electron.app.whenReady().then(async () => {
   await sleep(1500);
 
   // The sidebar: each item opens its page.
-  const sideCount = (await find("#side button, #side a")).length;
+  const sideCount = (await find("#side .nav")).length;
   for (let i = 0; i < sideCount; i += 1) {
-    const c = await nth("#side button, #side a", i);
+    const c = await nth("#side .nav", i);
     if (c !== undefined) await press("sidebar", c);
     await js("closeModal();go('home');0");
     await sleep(400);
@@ -210,6 +236,13 @@ void Electron.app.whenReady().then(async () => {
       ),
     ].join("\n"),
   );
-  console.log(`controls ${rows.length}, without effect ${dead.length}`);
-  Electron.app.exit(0);
+  if (errors.length > 0)
+    NodeFS.appendFileSync(
+      NodePath.join(out, "results.md"),
+      `\n\nPage errors:\n${errors.join("\n")}\n`,
+    );
+  console.log(
+    `controls ${rows.length}, without effect ${dead.length}, page errors ${errors.length}`,
+  );
+  Electron.app.exit(dead.length > 0 || errors.length > 0 ? 1 : 0);
 });

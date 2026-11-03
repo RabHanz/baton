@@ -118,7 +118,7 @@ export const nightlyRow = (
   return { name, state: "works", why: `All ${ran.length} checks passed ${when}.` };
 };
 
-/** `upstream-sync.json` as the nightly sync writes it (scripts/baton/sync-status.mjs). */
+/** `upstream-sync.json` as the nightly sync writes it (scripts/tessaya/sync-status.mjs). */
 export interface SyncStatus {
   readonly at: string;
   readonly result: string;

@@ -265,6 +265,7 @@ import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, modelShipped, wakeWordsFor } from "./wakeDefaults.ts";
 import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
+import { setHideFromCapture } from "../captureProtection.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseGlass, parseMotion, type Glass, type Motion } from "../home/look.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
@@ -412,6 +413,8 @@ interface VoiceSettings {
   /** Motion and glass (Settings, General); the system can ask for less on top of this. */
   readonly motion: Motion;
   readonly glass: Glass;
+  /** Content protection on Tessaya's windows: out of screenshots, recordings and screen sharing. Off unless he asks. */
+  readonly hideFromCapture: boolean;
   /** The soft cues when listening starts, when a turn ends, after a long wait and on an error. */
   readonly cues: CueLevel;
   /** Hold-key dictation plays no cue unless he asks. */
@@ -517,6 +520,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   appearance: "system",
   motion: "full",
   glass: "on",
+  hideFromCapture: false,
   cues: "normal",
   holdKeyCues: false,
   waitMs: WAIT_DEFAULT_MS,
@@ -612,6 +616,7 @@ export const readSettings = (path: string): VoiceSettings => {
       appearance: parseAppearance(saved["appearance"]),
       motion: parseMotion(saved["motion"]),
       glass: parseGlass(saved["glass"]),
+      hideFromCapture: saved["hideFromCapture"] === true,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -864,6 +869,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Written once on a fresh install; the guide is shown while it exists and is not marked done. */
   const setupMarker = NodePath.join(input.stateDir, "baton-setup.pending");
   let settings = readSettings(settingsPath);
+  setHideFromCapture(settings.hideFromCapture);
   /** The window is told again whenever settings change, so Home never keeps the list it was first built from. */
   const pushHome = () => {
     try {
@@ -1991,6 +1997,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (tree === null || tree.controls === undefined) return null;
       return { window: tree.window ?? "", controls: tree.controls };
     },
+    hands: () =>
+      sidecar === null
+        ? null
+        : {
+            locate: sidecar.locate,
+            uiTree: sidecar.uiTree,
+            captureWindow: sidecar.captureWindow,
+            focusWindow: sidecar.focusWindow,
+          },
     locate: async (label, near, anywhere) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);
@@ -2310,6 +2325,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
 
   const pill: VoicePill = createVoicePill({
+    look: () => ({ motion: settings.motion, glass: settings.glass }),
     menuItems: () => [
       {
         label: Date.now() < settings.snoozeUntil ? "End the snooze" : "Snooze for an hour",
@@ -4030,6 +4046,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        id: "v.hideFromCapture",
+        section: "On screen",
+        label: "Hide Tessaya from screenshots and screen sharing",
+        hint: "Off by default, so your screenshot tool, recordings and screen sharing show Tessaya's cards and pill. Turn it on to keep them out. Tessaya's own look at your screen never includes them either way.",
+        kind: "toggle",
+        on: settings.hideFromCapture,
+      },
+      {
         id: "v.pillMove",
         section: "On screen",
         label: "Move the pill",
@@ -4781,6 +4805,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
     else if (id === "v.motion") save({ motion: parseMotion(value) });
     else if (id === "v.glass") save({ glass: parseGlass(value) });
+    else if (id === "v.hideFromCapture") {
+      save({ hideFromCapture: on });
+      setHideFromCapture(on);
+    }
     else if (id === "v.learnWords") save({ learnWords: on });
     else if (id === "v.doubleTap") {
       save({ doubleTap: on });

@@ -1,6 +1,6 @@
 # What Tessaya costs (2026-11-02)
 
-Measured by `scripts/baton/resource-proof.ps1` inside the Windows voice-proof job (`baton-voice-proof.yml`), on a GitHub
+Measured by `scripts/tessaya/resource-proof.ps1` inside the Windows voice-proof job (`baton-voice-proof.yml`), on a GitHub
 `windows-2022` runner (4 vCPU, no GPU). Each phase is 60 seconds of sampling every 2 seconds, after a start-up wait that is not counted.
 CPU is the percent of ONE core summed over the app and every process under it. RAM is the working set of the same processes, added up
 (shared pages are counted once per process, so it overstates what Task Manager's "memory" column adds to). GPU is Windows' per-process
@@ -35,7 +35,7 @@ The goal was idle under 2% of one core and under 450 MB across processes.
 
 ## Budgets
 
-`scripts/baton/perf-budgets.json` holds regression guards about 30% above these first numbers, enforced by the `perf_enforce` input of
+`scripts/tessaya/perf-budgets.json` holds regression guards about 30% above these first numbers, enforced by the `perf_enforce` input of
 the voice-proof workflow (off by default until a few more runs show the noise). They stop things getting worse; they do not claim the goal.
 
 | Phase          | CPU avg % | RSS max MB |

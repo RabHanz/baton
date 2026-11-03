@@ -1,0 +1,5 @@
+# SHA-256 of private phrases that must never appear in the repository or the installer (D148).
+# One lowercase hex hash per line. Each is the hash of four consecutive lowercase words (letters and digits
+# only, joined by single spaces) taken from a private document. The phrases themselves are never written here.
+# Add one with: node -e 'console.log(require("crypto").createHash("sha256").update("four words from it").digest("hex"))'
+# scripts/tessaya/guard-private.mjs (run by CI and by a unit test) fails on a match and names only the file.

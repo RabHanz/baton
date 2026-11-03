@@ -1,0 +1,278 @@
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off globalRandom:off
+/**
+ * The tool table a remote session gets (docs/baton/REMOTE_HANDS.md): the assistant's own hands, rebuilt on UI Automation
+ * patterns and background capture so nothing needs focus or a visible window, plus a few operations on the app. The gate and
+ * the allowlist sit in front of every call; this file only does the work, through the sidecar and injected deps.
+ */
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import { REMOTE_HANDS_TOOLS, createHandleRegistry } from "@t3tools/baton-shared/remoteHands";
+
+import type { LocatedElement, UiTree } from "../voice/dictationSidecar.ts";
+import type { BatonTool } from "./batonMcp.ts";
+import { bmpToPng } from "./bmpToPng.ts";
+import { buildBatonTools, type ToolHost } from "./batonTools.ts";
+
+export interface RemoteHandsDeps {
+  readonly sidecar: {
+    readonly locate: (input: {
+      label: string;
+      x: number;
+      y: number;
+      foreground?: boolean;
+      window?: string;
+      invoke?: boolean;
+    }) => Promise<LocatedElement>;
+    readonly uiTree: (window?: string) => Promise<UiTree>;
+    readonly captureWindow: (input: {
+      window?: string;
+      out: string;
+    }) => Promise<{ error?: string }>;
+  };
+  /** Where window pictures are written before they become PNGs. */
+  readonly scratchDir: string;
+  /** Pointer and keyboard input in the foreground, behind the mouse guard; absent means remote sessions get none. */
+  readonly foreground?: {
+    readonly clickAt: (to: { x: number; y: number }, double: boolean) => Promise<void>;
+    readonly type: (text: string) => Promise<void>;
+    readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
+    /** The previous window gets the keyboard back after foreground input. */
+    readonly restoreFocus: <T>(run: () => Promise<T>) => Promise<T>;
+  };
+  readonly ops: {
+    readonly version: () => string;
+    /** Names a remote session may read, mapped to files. */
+    readonly logs: Readonly<Record<string, string>>;
+    readonly processes: () => Promise<
+      ReadonlyArray<{ readonly name: string; readonly pid: number }>
+    >;
+    readonly stop: (pid: number) => Promise<void>;
+    readonly update: (version: string) => Promise<string>;
+    readonly pages: ReadonlyArray<string>;
+    readonly openPage: (page: string) => Promise<string>;
+  };
+  readonly newId?: () => string;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const POLL_MS = 150;
+const LOG_TAIL_BYTES = 256_000;
+
+export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<BatonTool> => {
+  const located = (label: string, window: string | undefined, invoke: boolean) =>
+    deps.sidecar.locate({
+      label,
+      x: 0,
+      y: 0,
+      ...(window === undefined ? { foreground: true } : { window }),
+      ...(invoke ? { invoke: true } : {}),
+    });
+
+  const host: ToolHost = {
+    capture: async () => {
+      throw new Error("Use window_capture.");
+    },
+    uiTree: async (window) => {
+      const tree = await deps.sidecar.uiTree(window);
+      if (typeof tree.error === "string")
+        throw new Error(`The window's controls can't be read: ${tree.error}`);
+      return `${tree.window ?? ""}\n${(tree.controls ?? []).join("\n")}`;
+    },
+    clickElement: async (label, double, window) => {
+      const found = await located(label, window, !double);
+      if (!found.found)
+        throw new Error(
+          `No control is named "${label}" in ${window === undefined ? "the window with the keyboard" : `the window "${window}"`}.`,
+        );
+      if (found.invoked !== undefined)
+        return `Pressed ${found.name ?? label} (${found.invoked}, no pointer, no focus change).`;
+      if (found.covered_by !== undefined) {
+        throw new Error(
+          `"${found.name ?? label}" is covered by "${found.covered_by}", so a click would land there.`,
+        );
+      }
+      const fg = deps.foreground;
+      if (fg === undefined || found.x === undefined || found.y === undefined) {
+        throw new Error(
+          `"${label}" has no pattern to act on and pointer clicks are not allowed for remote sessions here.`,
+        );
+      }
+      const to = { x: found.x, y: found.y };
+      await fg.restoreFocus(() => fg.clickAt(to, double));
+      return `Clicked ${found.name ?? label} (pointer, focus restored).`;
+    },
+    waitFor: async (label, seconds, window) => {
+      const until = Date.now() + seconds * 1000;
+      do {
+        const found = await located(label, window, false).catch(() => null);
+        if (found?.found === true) return `${found.name ?? label} is there.`;
+        await sleep(POLL_MS);
+      } while (Date.now() < until);
+      return `No control named "${label}" appeared in ${seconds} seconds.`;
+    },
+    // A targeted window has no keyboard owner to watch; its title stands in, so a dialog that replaces it stops a batch.
+    windowKey: async (window) => (await deps.sidecar.uiTree(window)).window ?? "",
+    click: async () => {
+      throw new Error("Raw coordinates are not a remote hands tool.");
+    },
+    scroll: async () => {
+      throw new Error("Scrolling is not a remote hands tool.");
+    },
+    drag: async () => {
+      throw new Error("Dragging is not a remote hands tool.");
+    },
+    type: async (text) => {
+      const fg = deps.foreground;
+      if (fg === undefined)
+        throw new Error("Typing needs the foreground and is not allowed for remote sessions here.");
+      await fg.restoreFocus(() => fg.type(text));
+      return "Typed (focus restored).";
+    },
+    press: async (keys) => {
+      const fg = deps.foreground;
+      if (fg === undefined)
+        throw new Error("Keys need the foreground and are not allowed for remote sessions here.");
+      await fg.restoreFocus(() => fg.press(keys));
+      return "Pressed (focus restored).";
+    },
+    sessions: async () => "none",
+    session: async () => "none",
+    send: async () => "none",
+    fleet: async () => "none",
+    dictation: async () => "none",
+    memory: async () => "none",
+    remember: async () => "none",
+    forget: async () => "none",
+    jobs: async () => "none",
+    target: async () => "none",
+  };
+
+  const handles = createHandleRegistry<number>(
+    deps.newId ?? (() => `p${Math.random().toString(36).slice(2, 8)}`),
+  );
+  const text = (t: string) => ({ text: t });
+  const arg = (a: Readonly<Record<string, unknown>>, key: string): string => {
+    const v = a[key];
+    if (typeof v !== "string" || v === "" || v.length > 300)
+      throw new Error(`${key} must be a short, non-empty string.`);
+    return v;
+  };
+  const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
+    type: "object",
+    properties,
+    required,
+    additionalProperties: false,
+  });
+
+  const extra: BatonTool[] = [
+    {
+      name: "window_capture",
+      description:
+        "A picture of one window by part of its title, drawn by the window itself: it works when the window is covered or in the background and never brings it forward. Default: the window with the keyboard.",
+      inputSchema: obj({ window: { type: "string" } }),
+      run: async (a) => {
+        const out = NodePath.join(deps.scratchDir, `capture-${Date.now()}.bmp`);
+        const window = typeof a["window"] === "string" ? a["window"] : undefined;
+        const done = await deps.sidecar.captureWindow({
+          ...(window === undefined ? {} : { window }),
+          out,
+        });
+        if (typeof done.error === "string") throw new Error(done.error);
+        try {
+          const png = bmpToPng(NodeFS.readFileSync(out));
+          return {
+            text: `Window ${window ?? "with the keyboard"}`,
+            images: [{ data: png.toString("base64"), mimeType: "image/png" }],
+          };
+        } finally {
+          NodeFS.rmSync(out, { force: true });
+        }
+      },
+    },
+    {
+      name: "app_version",
+      description: "The version of the app running here.",
+      inputSchema: obj({}),
+      run: async () => text(deps.ops.version()),
+    },
+    {
+      name: "log_tail",
+      description: `The last lines of a named log: ${Object.keys(deps.ops.logs).join(", ") || "none are configured"}.`,
+      inputSchema: obj(
+        { name: { type: "string" }, lines: { type: "integer", minimum: 1, maximum: 500 } },
+        ["name"],
+      ),
+      run: async (a) => {
+        const file = deps.ops.logs[arg(a, "name")];
+        if (file === undefined) throw new Error(`No log is named ${String(a["name"])}.`);
+        const n = Math.max(
+          1,
+          Math.min(500, typeof a["lines"] === "number" ? Math.floor(a["lines"]) : 50),
+        );
+        const size = NodeFS.statSync(file).size;
+        const fd = NodeFS.openSync(file, "r");
+        try {
+          const len = Math.min(size, LOG_TAIL_BYTES);
+          const buf = Buffer.alloc(len);
+          NodeFS.readSync(fd, buf, 0, len, size - len);
+          return text(
+            buf
+              .toString("utf8")
+              .split(/\r?\n/)
+              .filter((l) => l !== "")
+              .slice(-n)
+              .join("\n"),
+          );
+        } finally {
+          NodeFS.closeSync(fd);
+        }
+      },
+    },
+    {
+      name: "process_list",
+      description:
+        "The processes Tessaya can stop, each with an id. process_stop takes only an id from here.",
+      inputSchema: obj({}),
+      run: async () => {
+        handles.clear();
+        const list = await deps.ops.processes();
+        return text(list.map((p) => `${handles.add(p.pid)}: ${p.name}`).join("\n") || "none");
+      },
+    },
+    {
+      name: "process_stop",
+      description: "Stop a process by an id process_list returned.",
+      inputSchema: obj({ id: { type: "string" } }, ["id"]),
+      run: async (a) => {
+        const pid = handles.get(arg(a, "id"));
+        if (pid === undefined)
+          throw new Error("That is not an id process_list returned. List again.");
+        await deps.ops.stop(pid);
+        return text("Stopped.");
+      },
+    },
+    {
+      name: "app_update",
+      description:
+        "Start the app's own updater to a given version (it downloads, then restarts itself at a quiet moment).",
+      inputSchema: obj({ version: { type: "string" } }, ["version"]),
+      run: async (a) => text(await deps.ops.update(arg(a, "version"))),
+    },
+    {
+      name: "open_page",
+      description: `Open a page in the app's own window: ${deps.ops.pages.join(", ")}.`,
+      inputSchema: obj({ page: { enum: [...deps.ops.pages] } }, ["page"]),
+      run: async (a) => {
+        const page = arg(a, "page");
+        if (!deps.ops.pages.includes(page)) throw new Error(`No page is named ${page}.`);
+        return text(await deps.ops.openPage(page));
+      },
+    },
+  ];
+
+  const hands = buildBatonTools(host, { remote: true }).filter((t) =>
+    REMOTE_HANDS_TOOLS.has(t.name),
+  );
+  return [...hands, ...extra];
+};

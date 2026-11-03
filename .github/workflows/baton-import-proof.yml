@@ -1,0 +1,36 @@
+name: Tessaya Resume import proof
+
+# The real server on a Windows desktop, with a throwaway T3 home and profile: Resume of a stopped session that is older
+# than the importer's 30-day window and behind 105 newer transcripts must open a thread holding its first message.
+# A pairing token is minted with `bin.ts pair`, exchanged for a bearer token, and the RPCs are spoken over a WebSocket.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["baton/import-proof**"]
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+      - run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Resume imports the requested old session
+        shell: bash
+        run: node scripts/baton/import-proof.mjs "$RUNNER_TEMP/import-proof" 3797 | tee "$RUNNER_TEMP/import-proof.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: import-proof
+          path: |
+            ${{ runner.temp }}/import-proof/server.log
+            ${{ runner.temp }}/import-proof.log
+          if-no-files-found: warn

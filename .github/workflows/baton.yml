@@ -1,5 +1,5 @@
 # Baton's own check, on GitHub-hosted runners. Upstream's ci.yml needs Blacksmith runners this
-# repository does not have (D77); the full gates run locally via scripts/baton/gates.sh.
+# repository does not have (D77); the full gates run locally via scripts/tessaya/gates.sh.
 name: Tessaya patch series
 
 on:
@@ -17,17 +17,17 @@ jobs:
           fetch-depth: 0
           filter: blob:none
       - name: Nothing private ships by default
-        run: node scripts/baton/guard-private.mjs
+        run: node scripts/tessaya/guard-private.mjs
       - name: Every shipped third-party piece has a notice
         run: |
-          node scripts/baton/check-notices.mjs
-          node --test scripts/baton/check-notices.test.mjs
+          node scripts/tessaya/check-notices.mjs
+          node --test scripts/tessaya/check-notices.test.mjs
       - name: Status-file writer
-        run: node --test scripts/baton/status-file.test.mjs scripts/baton/cloud-logins.test.mjs scripts/baton/live/answer-review.test.mjs
+        run: node --test scripts/tessaya/status-file.test.mjs scripts/tessaya/cloud-logins.test.mjs scripts/tessaya/live/answer-review.test.mjs
       - name: Upstream paths equal PIN + series
-        run: bash scripts/baton/patches.sh verify
+        run: bash scripts/tessaya/patches.sh verify
       - name: patches.sh self-test
         run: |
           git config --global user.email ci@baton.invalid
           git config --global user.name ci
-          bash scripts/baton/patches.test.sh
+          bash scripts/tessaya/patches.test.sh
