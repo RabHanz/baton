@@ -2,7 +2,7 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalDateInEffect:off
 /**
  * Writes into the live-thread message queue that `scripts/tessaya/live/baton-live-acp.mjs` drains:
- * one JSON file per Claude session id under `~/.t3/baton/live-queue`. A text item is typed into the
+ * one JSON file per Claude session id in `liveQueueDir()`, the same folder the script picks. A text item is typed into the
  * session's pane once it has one; a `note` item is only shown in that session's thread.
  * shortcut: read-modify-write without a lock, so an append can lose to a drain that rewrites at the
  * same instant; move to an append-only log if that is ever seen.
@@ -14,8 +14,7 @@ import * as NodePath from "node:path";
 import { stateSubdir } from "@t3tools/baton-shared/stateDir";
 
 export const liveQueueDir = (): string =>
-  process.env["BATON_LIVE_QUEUE_DIR"] ??
-  stateSubdir(NodeOS.homedir(), "live-queue");
+  process.env["BATON_LIVE_QUEUE_DIR"] ?? stateSubdir(NodeOS.homedir(), "live-queue");
 
 const queueFile = (dir: string, sessionId: string): string =>
   NodePath.join(dir, `${sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
