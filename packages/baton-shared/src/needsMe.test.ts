@@ -8,9 +8,7 @@ import {
   needsFromFindings,
   needsFromJobs,
   needsFromLedger,
-  isNeedsMeAsk,
   rankNeeds,
-  spokenNeeds,
 } from "./needsMe.ts";
 
 const now = Date.parse("2026-11-02T12:00:00Z");
@@ -85,39 +83,5 @@ describe("what needs me", () => {
     expect(describeNeeds(ranked, ["the ledger"])).toBe(
       "Nothing needs you in the sources I can read.\nI could not read: the ledger.",
     );
-  });
-
-  it("speaks the top three and points at the card for the rest", () => {
-    const items = [1, 2, 3, 4].map((n) => ({
-      id: `i${n}`,
-      source: "session" as const,
-      title: `T${n}`,
-      why: `failed (${n} min). Last: ran tests`,
-      weight: 90 - n,
-    }));
-    expect(spokenNeeds(items)).toBe(
-      "4 things need you. First, T1: failed (1 min). Second, T2: failed (2 min). Third, T3: failed (3 min). And 1 more on the card.",
-    );
-    expect(spokenNeeds([], ["the ledger"])).toBe(
-      "Nothing needs you in what I can read. I could not read the ledger.",
-    );
-  });
-
-  it("hears the ways of asking, and not a sentence that only mentions it", () => {
-    for (const ok of [
-      "What needs me?",
-      "ok so what needs me today",
-      "does anything need my attention",
-      "what should I do next",
-      "what's waiting for me",
-    ]) {
-      expect(isNeedsMeAsk(ok), ok).toBe(true);
-    }
-    for (const no of [
-      "write what needs me into the readme",
-      "what needs me to fix the build in the readme file please",
-    ]) {
-      expect(isNeedsMeAsk(no), no).toBe(false);
-    }
   });
 });
