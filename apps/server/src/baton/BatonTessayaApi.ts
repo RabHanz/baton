@@ -12,7 +12,7 @@ import type { Transcription } from "./BatonPhoneVoice.ts";
 
 export const READ_SCOPE = "orchestration:read";
 export const OPERATE_SCOPE = "orchestration:operate";
-/** A phone may answer a cloud approval only if it was paired with this permission on purpose. */
+/** A phone may answer the desktop's own questions (cloud approvals, hands and vault confirms) only if it was paired with this permission on purpose. */
 export const CLOUD_APPROVE_SCOPE = "baton:cloud-approve";
 
 export interface PhoneDeps {
@@ -83,16 +83,29 @@ export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<P
   if (parts[0] === "approvals" && parts.length === 2) {
     const now = await deps.state();
     const approval = now.approvals.find((a) => a.id === parts[1]);
-    if (approval?.needs === "cloud-approve" && !req.scopes.has(CLOUD_APPROVE_SCOPE)) {
-      return say(403, "This phone is not allowed to approve cloud tasks. Allow it on your computer, under Cloud, and pair it again.");
+    // A question the desktop mirrored is its own consent gate (hands, vault, screen, cloud), so operate alone is not enough.
+    if (approval?.kind === "prompt" && !req.scopes.has(CLOUD_APPROVE_SCOPE)) {
+      return say(
+        403,
+        "This phone is not allowed to answer your computer's own questions. Answer it on your computer, or pair this phone again with the approval permission (baton:cloud-approve).",
+      );
     }
     const choice = body["choice"];
     // A question with a button for each answer (the cloud card): the phone sends which one, never a key.
-    if (typeof choice === "number" && approval !== undefined && approval.kind === "prompt" && approval.buttons !== undefined) {
-      if (!Number.isInteger(choice) || choice < 0 || choice >= approval.buttons.length) return say(400, "That is not one of the buttons.");
-      if (body["action"] !== approval.action) return say(409, "It changed since you looked. Look again.");
+    if (
+      typeof choice === "number" &&
+      approval !== undefined &&
+      approval.kind === "prompt" &&
+      approval.buttons !== undefined
+    ) {
+      if (!Number.isInteger(choice) || choice < 0 || choice >= approval.buttons.length)
+        return say(400, "That is not one of the buttons.");
+      if (body["action"] !== approval.action)
+        return say(409, "It changed since you looked. Look again.");
       const took = await deps.answerPrompt(approval.ref, choice);
-      return took ? say(200, "Sent. Your computer carries on.") : say(409, "It was already answered on your computer.");
+      return took
+        ? say(200, "Sent. Your computer carries on.")
+        : say(409, "It was already answered on your computer.");
     }
     const decision = parseDecision(body["decision"]);
     if (decision === null) return say(400, "Say approve or deny.");

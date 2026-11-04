@@ -8,11 +8,11 @@ know either.
 
 ## Transports
 
-| | How | Needs | Default |
-| --- | --- | --- | --- |
-| 1. Local | Tessaya runs the harness's own program on this computer with this computer's own login (`claude --cloud`, `codex cloud exec`). | The harness installed and signed in. Nothing else. | yes |
-| 2. Hub | One computer holds the logins and runs the program; the others call it over the T3 connection they already have, as `baton.cloud.call`. | A paired connection (scopes read, operate). | no |
-| 3. SSH | The VentureOS `cloud-dispatch-shell` over SSH with one key per caller and a separate approver key. | Host, user, key files. Advanced, named by what it holds. | no |
+|          | How                                                                                                                                     | Needs                                                    | Default |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------- |
+| 1. Local | Tessaya runs the harness's own program on this computer with this computer's own login (`claude --cloud`, `codex cloud exec`).          | The harness installed and signed in. Nothing else.       | yes     |
+| 2. Hub   | One computer holds the logins and runs the program; the others call it over the T3 connection they already have, as `baton.cloud.call`. | A paired connection (scopes read, operate).              | no      |
+| 3. SSH   | The VentureOS `cloud-dispatch-shell` over SSH with one key per caller and a separate approver key.                                      | Host, user, key files. Advanced, named by what it holds. | no      |
 
 A request waits for a yes in the place that owns the login: the central shell on transport 3 (its own
 `awaiting-director` state), Tessaya's list on transports 1 and 2. Nothing starts before the Director picks
@@ -45,15 +45,15 @@ for calls with no stdin; `dispatch` sends the brief (4,000 characters at most) o
 to letters, digits and `. _ : / @ -`. `approve` and `deny` use the separate approver key and go over this
 transport only; the shell refuses the approver caller when run locally.
 
-| Command | Answer (fields Tessaya reads) |
-| --- | --- |
-| `dispatch --provider P --repo R --branch B --task-file - [--label L]` | `{id, state:"awaiting-director", card:{asked_by, task, repo, branch, cap_points, usage, suggested_provider}}` |
-| `status <id>` | `provider, account, answer_ref, started_at, weekly_before, session, ledger, error, closed_at, weekly_after, points_used, over_cap, pr` |
-| `list [--mine] [--label L] [--state S]` | `{requests:[{id, provider, state, account, branch, repo, caller, label, points_used}]}` |
-| `usage` | `{cap_points_per_run, points_used_7d:{provider:{account:points}}, providers:{id:{ready, needs, accounts:{name:{available, pct, rejected, resets_pkt}}}}}` |
-| `approve <id> --provider P --account A --answer-ref R` | the request, now `running`, with `session` and `weekly_before` |
-| `deny <id> --reason R`, `cancel <id>` | `{id, state}` |
-| `close <id> [--pr URL]` (approver) | `{id, state:"closed", provider, account, points_used, over_cap, pr}` |
+| Command                                                               | Answer (fields Tessaya reads)                                                                                                                             |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dispatch --provider P --repo R --branch B --task-file - [--label L]` | `{id, state:"awaiting-director", card:{asked_by, task, repo, branch, cap_points, usage, suggested_provider}}`                                             |
+| `status <id>`                                                         | `provider, account, answer_ref, started_at, weekly_before, session, ledger, error, closed_at, weekly_after, points_used, over_cap, pr`                    |
+| `list [--mine] [--label L] [--state S]`                               | `{requests:[{id, provider, state, account, branch, repo, caller, label, points_used}]}`                                                                   |
+| `usage`                                                               | `{cap_points_per_run, points_used_7d:{provider:{account:points}}, providers:{id:{ready, needs, accounts:{name:{available, pct, rejected, resets_pkt}}}}}` |
+| `approve <id> --provider P --account A --answer-ref R`                | the request, now `running`, with `session` and `weekly_before`                                                                                            |
+| `deny <id> --reason R`, `cancel <id>`                                 | `{id, state}`                                                                                                                                             |
+| `close <id> [--pr URL]` (approver)                                    | `{id, state:"closed", provider, account, points_used, over_cap, pr}`                                                                                      |
 
 Ids are strings (`YYYYMMDD-HHMM-xxxx`, UTC). States: `awaiting-director`, `running`, `failed-to-start`
 (shown as failed, with `error`), `denied`, `cancelled`, `closed`. `pct: null` is unknown: never zero, never
@@ -108,11 +108,11 @@ the Director picks a provider and an account. Keys are file paths in settings an
   with PATHEXT, folders with spaces are fine, and a named login is passed as `CLAUDE_CONFIG_DIR` or
   `CODEX_HOME` for that one call.
 - **Approve is never a tool:** `cloud_approve` reads the card back and opens a dialog only the Director can
-  press. The hub's `approve` is operate-scope like any change, so a client paired with operate scope can
-  reach it; a separate approve scope would need a new auth scope in the contracts (a question for the
-  manager).
+  press. The hub's `approve` needs the `baton:cloud-approve` scope, which a paired client never gets by
+  default. A phone needs the same scope to answer any question the desktop mirrors to it (cloud cards,
+  hands, vault and screen confirms).
 
 ## Not built yet
 
-The hub door has no scope of its own for approving, and the Claude and Codex commands are unproven until the
+The Claude and Codex commands are unproven until the
 pilot (see the assumptions above).
