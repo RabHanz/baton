@@ -82,6 +82,7 @@ import {
 import * as ServerConfig from "../config.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { formOverview, pendingAskQuestions } from "./FormQuestions.ts";
+import { decideBinding } from "./BindingHealth.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
@@ -1629,6 +1630,69 @@ const make = Effect.gen(function* () {
     }
   });
 
+  /**
+   * Every 30 s, per followed session: if the thread is not bound to the session it mirrors (moved to a handoff provider,
+   * or left without its session) and that session is running, bind it again and say so in baton-mirror.ndjson.
+   */
+  const lastHeal = new Map<string, number>();
+  const healBinding = (follow: Follow, session: ClaudeLiveSession) =>
+    Effect.gen(function* () {
+      const nowMs = Date.now();
+      if (nowMs - (lastHeal.get(session.sessionId) ?? 0) < 30_000) return;
+      lastHeal.set(session.sessionId, nowMs);
+      const shell = yield* engine.threadShell(follow.threadId);
+      if (shell === null) return;
+      const active = yield* engine.activeProviderThread(follow.threadId);
+      const action = decideBinding({
+        threadId: String(follow.threadId),
+        sessionId: session.sessionId,
+        session: { status: session.status, pane: session.herdrPane },
+        thread: {
+          instanceId: String(shell.providerInstanceId),
+          nativeId: active?.nativeThreadRef?.nativeId ?? null,
+          running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+        },
+      });
+      if (action.kind === "ok" || action.kind === "no-session" || action.kind === "wait") return;
+      if (action.kind === "rebind-instance") {
+        yield* engine.setThreadSelection({
+          tag: "live-heal",
+          threadId: follow.threadId,
+          modelSelection: { instanceId: LIVE_INSTANCE_ID, model: MODEL },
+        });
+      } else if (active !== null) {
+        const now = yield* DateTime.now;
+        yield* engine.writeEvents({
+          events: [
+            {
+              id: EventId.make(`${PREFIX}:rebind:${follow.threadId}:${nowMs}`),
+              type: "provider-thread.updated",
+              threadId: follow.threadId,
+              driver: DRIVER,
+              providerInstanceId: LIVE_INSTANCE_ID,
+              occurredAt: now,
+              payload: {
+                ...active,
+                nativeThreadRef: {
+                  driver: DRIVER,
+                  nativeId: session.sessionId,
+                  strength: "strong",
+                },
+                updatedAt: now,
+              },
+            },
+          ],
+        });
+      }
+      mirrorLog(`rebound:${session.sessionId}:${nowMs}`, {
+        event: "rebound",
+        sessionId: session.sessionId,
+        thread: String(follow.threadId),
+        action: action.kind,
+        pane: session.herdrPane,
+      });
+    });
+
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
     mirrorLog("live-set", {
@@ -1688,6 +1752,7 @@ const make = Effect.gen(function* () {
             : step(session, follow).pipe(
                 Effect.andThen(working(follow, session)),
                 Effect.andThen(relayPrompt(follow, session)),
+                Effect.andThen(healBinding(follow, session)),
                 Effect.andThen(retitle(follow, session)),
               )
         ).pipe(
