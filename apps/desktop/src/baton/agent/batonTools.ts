@@ -90,6 +90,8 @@ export interface ToolHost {
 }
 
 type JobOp =
+  | "rule_preview"
+  | "rule_run"
   | "list"
   | "start"
   | "agree"
@@ -1024,6 +1026,20 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         });
         return { text: await host.jobs("split", { id: str(a, "id", 200), parts: clean }) };
       },
+    },
+    {
+      name: "rule_create",
+      description:
+        "A standing rule about a session or job: when it finishes, fails or needs him, have a worker (Claude, Codex) review it, send it back, or tell him. Put what he asked as one sentence in this shape: 'when <session name> finishes, have Codex review it and tell me'. Without confirmed it only reads the rule back: say that read-back to him. Call again with confirmed: true only after he says yes to it.",
+      inputSchema: object(
+        { sentence: { type: "string", maxLength: 400 }, confirmed: { type: "boolean" } },
+        ["sentence"],
+      ),
+      run: async (a) => ({
+        text: await host.jobs(a["confirmed"] === true ? "rule_run" : "rule_preview", {
+          sentence: str(a, "sentence", 400),
+        }),
+      }),
     },
     {
       name: "job_stop",

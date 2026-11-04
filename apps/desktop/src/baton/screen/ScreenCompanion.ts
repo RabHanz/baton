@@ -339,7 +339,9 @@ export interface AssistantActions {
       | "retry"
       | "skill_draft"
       | "handoff"
-      | "split",
+      | "split"
+      | "rule_preview"
+      | "rule_run",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
   /** A session by id or name: what it is called, for the intent path. Null when none matches. */

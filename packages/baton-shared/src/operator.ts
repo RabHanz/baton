@@ -166,6 +166,7 @@ export const BATON_TOOLS: ReadonlySet<string> = new Set([
   "job_split",
   "job_refine",
   "job_agree",
+  "rule_create",
   "job_grant",
   "job_schedule",
   "memory_remember",
@@ -298,9 +299,10 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
     case "job_refine":
     case "job_retry":
     case "job_agree":
+    case "rule_create":
       // A job's words are his own or they came from something it read; only the second asks.
       // Starting work is his agreement, not the model's: after a read it always asks.
-      return outgoing || (name === "job_agree" && context.tainted)
+      return outgoing || ((name === "job_agree" || name === "rule_create") && context.tainted)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "text_transform":

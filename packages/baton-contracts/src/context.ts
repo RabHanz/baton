@@ -341,7 +341,9 @@ export interface BatonJobBridgeRequest {
     | "stop"
     | "schedule"
     | "split"
-    | "handoff";
+    | "handoff"
+    | "rule_preview"
+    | "rule_run";
   readonly args: Readonly<Record<string, unknown>>;
 }
 

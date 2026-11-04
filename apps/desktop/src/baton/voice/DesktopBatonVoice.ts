@@ -1948,6 +1948,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         stopped?: boolean;
         threadId?: string;
       } | null;
+      if (op === "rule_preview" || op === "rule_run")
+        return (value as { text?: string } | null)?.text ?? "Nothing was set up.";
       if (op === "list") return describeJobs(value?.jobs ?? []);
       if (op === "watch") return describeWatch(value?.findings ?? []);
       if (op === "start") {

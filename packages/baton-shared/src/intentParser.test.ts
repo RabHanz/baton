@@ -352,6 +352,11 @@ describe("resolveBatonIntent — rules", () => {
     expect(result.risk).toBe("medium");
   });
 
+  it("leaves a sentence that starts with 'after' to the rest of the grammar", () => {
+    const result = resolve("After lunch, remind me to call Sam.");
+    expect(result.outcome === "refused" && result.refusal.reason).not.toBe("rule_not_understood");
+  });
+
   it("passes the rule grammar's refusal through with its own words", () => {
     const result = resolve("When Claude finishes, deploy to staging.", {
       focusedWorkSessionId: "ws-scheduler",
