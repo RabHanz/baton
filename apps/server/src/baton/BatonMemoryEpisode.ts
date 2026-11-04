@@ -4,16 +4,32 @@ import * as Effect from "effect/Effect";
 
 import { BatonJobService } from "./BatonJobService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
+import { WorkSessionService } from "./WorkSessionService.ts";
 
 export const dayOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
+const DAY_MS = 86_400_000;
+
+/** The day before `nowMs` (UTC), once: a restart or a second tick that day adds nothing. */
 export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(function* (nowMs: number) {
   const memory = yield* BatonMemoryService;
-  const day = dayOf(nowMs);
+  const day = dayOf(nowMs - DAY_MS);
+  if (!(yield* memory.noteOnce(`episode:${day}`, "written"))) return null;
+  const start = `${day}T00:00:00.000Z`;
+  const end = new Date(Date.parse(start) + DAY_MS).toISOString();
   const said = yield* memory.talks(day);
-  const since = new Date(nowMs - 86_400_000).toISOString();
-  const jobs = (yield* (yield* BatonJobService).allTerms()).filter((t) => t.updatedAt >= since);
-  if (said.length === 0 && jobs.length === 0) return null;
+  const jobs = (yield* (yield* BatonJobService).allTerms()).filter(
+    (t) => t.updatedAt >= start && t.updatedAt < end,
+  );
+  // Each work session's own summary, so "what did my sessions do yesterday" has a line per session.
+  const sessions = (yield* (yield* WorkSessionService)
+    .list({ includeArchived: true })
+    .pipe(Effect.orElseSucceed(() => []))).flatMap((s) =>
+    s.synopsis?.currentAction != null && s.synopsis.updatedAt >= start
+      ? [`${s.title.slice(0, 40)}: ${s.synopsis.currentAction.slice(0, 100)}`]
+      : [],
+  );
+  if (said.length === 0 && jobs.length === 0 && sessions.length === 0) return null;
   const parts = [
     said.length === 0 ? null : `Talked about: ${said.slice(0, 6).join("; ")}.`,
     jobs.length === 0
@@ -22,6 +38,7 @@ export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(functio
           .slice(0, 4)
           .map((j) => `${j.goal.slice(0, 50)} (${j.phase.replace("_", " ")})`)
           .join("; ")}.`,
+    sessions.length === 0 ? null : `Sessions: ${sessions.slice(0, 6).join("; ")}.`,
   ].filter((x): x is string => x !== null);
   return yield* memory
     .add({

@@ -7,7 +7,7 @@ import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
 import { dailyEpisode } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
-import { layer as workSessionLayer } from "./WorkSessionService.ts";
+import { WorkSessionService, layer as workSessionLayer } from "./WorkSessionService.ts";
 
 const layer = it.layer(
   memoryLayer.pipe(
@@ -18,23 +18,41 @@ const layer = it.layer(
 );
 
 layer("dailyEpisode", (it) => {
-  it.effect("sums up the day's talks and jobs as one episode, and nothing on a quiet day", () =>
-    Effect.gen(function* () {
-      const memory = yield* BatonMemoryService;
-      assert.isNull(yield* dailyEpisode(0));
-      yield* memory.noteTalk("1970-01-01", "plan the shop launch");
-      yield* (yield* BatonJobService).create({
-        id: WorkSessionId.make("job-1"),
-        projectId: ProjectId.make("p"),
-        title: "Site",
-        goal: "Rebuild the site",
-        permissions: { folders: [], projects: [], tools: ["read"] },
-      });
-      const episode = yield* dailyEpisode(0);
-      assert.strictEqual(episode?.kind, "episode");
-      assert.include(episode?.text ?? "", "plan the shop launch");
-      assert.include(episode?.text ?? "", "Rebuild the site");
-      assert.isNotNull(episode?.expiresAt);
-    }),
+  it.effect(
+    "sums up yesterday's talks, jobs and sessions as one episode, once, and nothing on a quiet day",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const DAY = 86_400_000;
+        assert.isNull(yield* dailyEpisode(DAY));
+        yield* memory.noteTalk("1970-01-02", "plan the shop launch");
+        yield* (yield* BatonJobService).create({
+          id: WorkSessionId.make("job-1"),
+          projectId: ProjectId.make("p"),
+          title: "Site",
+          goal: "Rebuild the site",
+          permissions: { folders: [], projects: [], tools: ["read"] },
+        });
+        yield* (yield* WorkSessionService).applySynopsis({
+          workSessionId: WorkSessionId.make("job-1"),
+          signals: [
+            {
+              kind: "written",
+              at: "1970-01-02T15:00:00.000Z",
+              currentAction: "The header is rebuilt and the tests pass",
+              next: "Ship it",
+            },
+          ],
+        });
+        // Run at 09:00 on the 3rd: the whole of the 2nd, not the morning's first ten minutes.
+        const episode = yield* dailyEpisode(2 * DAY + 9 * 3_600_000);
+        assert.strictEqual(episode?.kind, "episode");
+        assert.include(episode?.text ?? "", "1970-01-02");
+        assert.include(episode?.text ?? "", "plan the shop launch");
+        assert.include(episode?.text ?? "", "Site: The header is rebuilt");
+        assert.isNotNull(episode?.expiresAt);
+        // A restart the same day writes no second episode for the 2nd.
+        assert.isNull(yield* dailyEpisode(2 * DAY + 10 * 3_600_000));
+      }),
   );
 });
