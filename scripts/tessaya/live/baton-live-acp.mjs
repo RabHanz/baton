@@ -359,6 +359,23 @@ export function answerKeys(prompt, answer) {
 }
 
 /** What T3 sends back for an answered question: "<question>\n<answer>". */
+const squash = (value) =>
+  String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+/** True when `text` is what the question card sends: the question, a line break, then the answer. */
+export function isCardAnswer(text, prompt) {
+  const body = String(text ?? "").trim();
+  const asked = squash(prompt.question);
+  if (asked === "") return false;
+  for (let at = body.indexOf("\n"); at > 0; at = body.indexOf("\n", at + 1))
+    if (squash(body.slice(0, at)).endsWith(asked)) return true;
+  return false;
+}
+
+export const questionWaitingNote = (question, count) =>
+  `A question is waiting${question ? ` (${squash(question).slice(0, 160)})` : ""}. Answer it on its card; this message is not an answer, so it is kept (${count} waiting) and goes after the question is answered.`;
+
 export function answerFrom(text, prompt) {
   const body = String(text ?? "").trim();
   const asked = prompt.question;
@@ -657,6 +674,8 @@ export async function readPanePrompt(paneRef) {
 export async function answerPrompt(sessionId, paneRef, text) {
   const shown = await readPanePrompt(paneRef);
   if (shown === null) return null;
+  // A plain message is never an answer: only the question card's own "<question>\n<answer>" presses keys.
+  if (!isCardAnswer(text, shown)) return null;
   const answer = answerFrom(text, shown);
   const plan = answerKeys(shown, answer);
   if (plan === null) return null;
@@ -1011,12 +1030,9 @@ async function prompt(params) {
       const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
       say(
         sessionId,
-        queuedNote(
-          live.status === "waiting"
-            ? "the session is waiting on a question."
-            : "earlier messages are still waiting.",
-          count,
-        ),
+        live.status === "waiting"
+          ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
+          : queuedNote("earlier messages are still waiting.", count),
       );
       startDrainer();
       return { stopReason: "end_turn" };
@@ -1033,12 +1049,9 @@ async function prompt(params) {
       const count = enqueue(QUEUE_DIR, sessionId, { text, shown, at: new Date().toISOString() });
       say(
         sessionId,
-        queuedNote(
-          failure === BLOCKED_NOTE
-            ? "the session is waiting on a question."
-            : "Herdr did not take it yet.",
-          count,
-        ),
+        failure === BLOCKED_NOTE
+          ? questionWaitingNote((await readPanePrompt(live.pane))?.question, count)
+          : queuedNote("Herdr did not take it yet.", count),
       );
       startDrainer();
       return { stopReason: "end_turn" };
