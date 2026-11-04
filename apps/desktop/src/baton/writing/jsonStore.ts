@@ -23,9 +23,12 @@ export const createJsonStore = <T>(
       return fallback;
     }
   },
-  write: (value: T): void => {
-    NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
-    NodeFS.writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2));
-    NodeFS.renameSync(`${file}.tmp`, file);
-  },
+  write: (value: T): void => writeJsonFile(file, value),
 });
+
+/** Written whole and renamed into place, so a crash leaves the old file or the new one, never half of one. */
+export const writeJsonFile = (file: string, value: unknown): void => {
+  NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+  NodeFS.writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2));
+  NodeFS.renameSync(`${file}.tmp`, file);
+};

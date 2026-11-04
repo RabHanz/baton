@@ -4,10 +4,11 @@
  * (`<state dir>/voice/dictionary.json`, a list of phrase and replacement); the dictation clean-up reads
  * the in-memory copy, so a change here takes effect on the next dictation with no restart.
  */
-import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import type { DictionaryEntry } from "@t3tools/baton-shared/dictationCleanup";
+
+import { writeJsonFile } from "../writing/jsonStore.ts";
 
 /** A word, with where it came from. A file written before this has none of the extras, and is "added". */
 export type VocabEntry = DictionaryEntry & {
@@ -57,8 +58,5 @@ export const editEntry = (
 export const forgetLearned = (list: ReadonlyArray<VocabEntry>): ReadonlyArray<VocabEntry> =>
   list.filter((e) => e.source !== "learned");
 
-export const saveDictionary = (stateDir: string, list: ReadonlyArray<VocabEntry>): void => {
-  const file = NodePath.join(stateDir, "voice", "dictionary.json");
-  NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
-  NodeFS.writeFileSync(file, JSON.stringify(list, null, 2));
-};
+export const saveDictionary = (stateDir: string, list: ReadonlyArray<VocabEntry>): void =>
+  writeJsonFile(NodePath.join(stateDir, "voice", "dictionary.json"), list);

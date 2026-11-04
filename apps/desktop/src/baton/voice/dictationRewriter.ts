@@ -4,7 +4,6 @@
  * and has no tools (D84). It can never hold dictation up: past `HARD_LIMIT_MS` the local text goes
  * in, the session is dropped, and the next dictation starts another.
  */
-import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
 import {
@@ -19,6 +18,7 @@ import {
 
 import { parseVocabulary, type VocabularyEntry } from "@t3tools/baton-shared/vocabulary";
 import { startVisionSession, type VisionSession } from "../screen/claudeVision.ts";
+import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 
 /** A long dictation takes longer to write out, so the limit grows with it, but it always ends. */
 export const hardLimitMs = (text: string): number => Math.min(45_000, 2_500 + text.length * 8);
@@ -134,33 +134,22 @@ const isEntry = (value: unknown): value is DictionaryEntry =>
   value !== null &&
   typeof (value as DictionaryEntry).phrase === "string";
 
-/** `<state dir>/voice/dictionary.json`, a list he can edit; a bad file is no dictionary, not an error. */
-export const readDictionary = async (
-  stateDir: string,
-): Promise<ReadonlyArray<VocabularyEntry> | null> => {
-  try {
-    const parsed: unknown = JSON.parse(
-      await NodeFSP.readFile(NodePath.join(stateDir, "voice", fileName), "utf8"),
-    );
-    return Array.isArray(parsed) ? parseVocabulary(parsed.filter(isEntry)) : [];
-  } catch {
-    return null;
-  }
-};
+export const dictionaryPath = (stateDir: string): string =>
+  NodePath.join(stateDir, "voice", fileName);
 
-/** Saves his vocabulary; the file is re-read and merged first, since the window edits it too. */
-export const writeDictionary = async (
+const isList = (value: unknown): value is ReadonlyArray<unknown> => Array.isArray(value);
+
+/**
+ * `<state dir>/voice/dictionary.json`, a list he can edit by hand. A missing or damaged file gives
+ * `fallback`, never an empty list, and a damaged one is kept aside as `.bad` for him to mend.
+ */
+export const readDictionary = (
   stateDir: string,
-  change: (current: ReadonlyArray<VocabularyEntry>) => ReadonlyArray<VocabularyEntry>,
-): Promise<ReadonlyArray<VocabularyEntry>> => {
-  const next = change((await readDictionary(stateDir)) ?? []);
-  await NodeFSP.mkdir(NodePath.join(stateDir, "voice"), { recursive: true });
-  await NodeFSP.writeFile(
-    NodePath.join(stateDir, "voice", fileName),
-    JSON.stringify(next, null, 2),
+  fallback: ReadonlyArray<VocabularyEntry>,
+): ReadonlyArray<VocabularyEntry> =>
+  parseVocabulary(
+    createJsonStore(dictionaryPath(stateDir), fallback, isList).read().filter(isEntry),
   );
-  return next;
-};
 
 /** Wispr's table, read-only, once: what he taught it should not have to be taught twice. */
 export const importWisprDictionary = async (input: {
@@ -182,11 +171,7 @@ export const importWisprDictionary = async (input: {
         ? []
         : [{ phrase: row.phrase, replacement: row.replacement?.length ? row.replacement : null }],
     );
-    await NodeFSP.mkdir(NodePath.join(input.stateDir, "voice"), { recursive: true });
-    await NodeFSP.writeFile(
-      NodePath.join(input.stateDir, "voice", fileName),
-      JSON.stringify(entries, null, 2),
-    );
+    writeJsonFile(dictionaryPath(input.stateDir), entries);
     return entries;
   } catch {
     return [];
