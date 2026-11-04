@@ -14,7 +14,8 @@ const DAY_MS = 86_400_000;
 export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(function* (nowMs: number) {
   const memory = yield* BatonMemoryService;
   const day = dayOf(nowMs - DAY_MS);
-  if (!(yield* memory.noteOnce(`episode:${day}`, "written"))) return null;
+  const done = `episode:${day}`;
+  if (yield* memory.flag(done)) return null;
   const start = `${day}T00:00:00.000Z`;
   const end = new Date(Date.parse(start) + DAY_MS).toISOString();
   const said = yield* memory.talks(day);
@@ -40,7 +41,7 @@ export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(functio
           .join("; ")}.`,
     sessions.length === 0 ? null : `Sessions: ${sessions.slice(0, 6).join("; ")}.`,
   ].filter((x): x is string => x !== null);
-  return yield* memory
+  const episode = yield* memory
     .add({
       kind: "episode",
       text: `${day}. ${parts.join(" ")}`.slice(0, 500),
@@ -48,4 +49,7 @@ export const dailyEpisode = Effect.fn("BatonMemoryReactor.dailyEpisode")(functio
       sourceRef: `day:${day}`,
     })
     .pipe(Effect.orElseSucceed(() => null));
+  // Marked only once it is written, so a failed write is tried again on the next tick.
+  if (episode !== null) yield* memory.setFlag(done, true);
+  return episode;
 });

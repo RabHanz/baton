@@ -25,6 +25,8 @@ layer("dailyEpisode", (it) => {
         const memory = yield* BatonMemoryService;
         const DAY = 86_400_000;
         assert.isNull(yield* dailyEpisode(DAY));
+        // A tick that finds nothing yet does not mark the day as done.
+        assert.isNull(yield* dailyEpisode(2 * DAY + 3_600_000));
         yield* memory.noteTalk("1970-01-02", "plan the shop launch");
         yield* (yield* BatonJobService).create({
           id: WorkSessionId.make("job-1"),
