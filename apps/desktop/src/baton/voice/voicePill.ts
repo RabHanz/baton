@@ -56,6 +56,10 @@ const HEIGHT = 52;
 const ABOVE_WORK_AREA = 44;
 const TOP_MARGIN = 10;
 const DRAG_MS = 16;
+// The hit test runs fast only while the cursor is near the capsule; the resting bar can stay up all day.
+const HIT_MS = 40;
+const FAR_HIT_MS = 250;
+const NEAR_PX = 120;
 /** No heartbeat from the page for this long means the release was lost. */
 const BEAT_TIMEOUT_MS = 700;
 const LEVEL_MS = 80;
@@ -281,7 +285,7 @@ export const createVoicePill = (input: {
   let capsule = { x: 302, y: 26, width: 132, height: 41 };
   let takingMouse = false;
   let overTicks = 0;
-  let hitTimer: ReturnType<typeof setInterval> | null = null;
+  let hitTimer: ReturnType<typeof setTimeout> | null = null;
   let moveTimer: ReturnType<typeof setTimeout> | null = null;
   const trace = (record: Record<string, unknown>) => {
     if (input.captureDir === undefined) return;
@@ -296,31 +300,43 @@ export const createVoicePill = (input: {
     }
   };
   const stopHitTest = () => {
-    if (hitTimer !== null) clearInterval(hitTimer);
+    if (hitTimer !== null) clearTimeout(hitTimer);
     hitTimer = null;
     takingMouse = false;
   };
   const startHitTest = () => {
     if (hitTimer !== null) return;
-    hitTimer = setInterval(hitTest, 40);
+    const tick = () => {
+      const near = hitTest();
+      if (hitTimer === null) return;
+      hitTimer = setTimeout(tick, near ? HIT_MS : FAR_HIT_MS);
+      hitTimer.unref();
+    };
+    hitTimer = setTimeout(tick, HIT_MS);
     hitTimer.unref();
   };
   /** The window takes the mouse exactly while the cursor is over the capsule, decided here, not by forwarded events. */
-  const hitTest = () => {
+  /** Whether the cursor is near enough that the next check should come soon. */
+  const hitTest = (): boolean => {
     const target = window;
-    if (target === null || target.isDestroyed()) return stopHitTest();
+    if (target === null || target.isDestroyed()) {
+      stopHitTest();
+      return false;
+    }
     // Hidden for a moment (a screen grab hides every Tessaya window): keep the timer, or the pill comes back click-through.
-    if (!target.isVisible()) return;
-    if (dragTimer !== null) return;
+    if (!target.isVisible()) return false;
+    if (dragTimer !== null) return true;
     const cursor = Electron.screen.getCursorScreenPoint();
     const b = target.getBounds();
     const over = cursorOverCapsule(cursor, b, capsule);
+    const near = over || cursorOverCapsule(cursor, b, capsule, NEAR_PX);
     const stale = over && ++overTicks % 12 === 0;
-    if (over === takingMouse && !stale) return;
+    if (over === takingMouse && !stale) return near;
     takingMouse = over;
     if (over) target.setIgnoreMouseEvents(false);
     else target.setIgnoreMouseEvents(true, { forward: true });
     trace({ kind: "pill_hit", over, cursor, bounds: b, capsule });
+    return near;
   };
   const margins = () => ({ top: TOP_MARGIN, bottom: ABOVE_WORK_AREA });
 
