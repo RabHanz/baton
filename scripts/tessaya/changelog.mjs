@@ -52,7 +52,7 @@ export const render = (prs, repo) => {
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const repo = process.env.GITHUB_REPOSITORY ?? "RabHanz/baton";
+  const repo = process.env.GITHUB_REPOSITORY ?? "RabHanz/tessaya";
   const i = process.argv.indexOf("--from-json");
   const json =
     i > 0

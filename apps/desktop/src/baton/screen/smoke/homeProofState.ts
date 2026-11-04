@@ -66,7 +66,7 @@ export const proofExtra: HomeExtra = {
   mouseReady: false,
   lifecycle: [],
   paths: [],
-  about: { version: "0.1.99", source: "github.com/RabHanz/baton", licence: "MIT", notices: "" },
+  about: { version: "0.1.99", source: "github.com/RabHanz/tessaya", licence: "MIT", notices: "" },
 } as unknown as HomeExtra;
 
 const extras: ReadonlyArray<HomeControl> = [

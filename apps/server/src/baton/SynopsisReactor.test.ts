@@ -74,10 +74,10 @@ describe("synopsisSignalsForEvent (v2 domain events)", () => {
 
   it("names a linked pull request by repository and number", () => {
     const pending = synopsisSignalsForEvent(
-      event("thread.pull-request-link-updated", { repository: "RabHanz/baton", number: 6 }),
+      event("thread.pull-request-link-updated", { repository: "RabHanz/tessaya", number: 6 }),
     );
     expect(pending?.signals).toEqual([
-      { kind: "pull-request-opened", at: AT, label: "RabHanz/baton#6" },
+      { kind: "pull-request-opened", at: AT, label: "RabHanz/tessaya#6" },
     ]);
   });
 
