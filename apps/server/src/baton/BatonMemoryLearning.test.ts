@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./BatonDatabase.ts";
+import { dayOf } from "./BatonMemoryEpisode.ts";
 import { BatonMemoryLearning, layer as learningLayer } from "./BatonMemoryLearning.ts";
 import { BatonMemoryService, layer as memoryLayer } from "./BatonMemoryService.ts";
 import { BatonOneShot, BatonOneShotError } from "./BatonOneShot.ts";
@@ -95,6 +96,13 @@ layer("BatonMemoryLearning", (it) => {
         held: 0,
       });
       assert.strictEqual(prompts.length, before);
+      // A secret he said is neither kept as talk nor sent to the extractor.
+      const memory = yield* BatonMemoryService;
+      const day = dayOf(0);
+      const talksBefore = yield* memory.talks(day);
+      yield* learning.learn(turn({ said: "remember my test password is Zx9-correct-horse-77" }));
+      assert.strictEqual(prompts.length, before);
+      assert.deepEqual(yield* memory.talks(day), talksBefore);
       down = true;
       assert.deepEqual(yield* learning.learn(turn()), { stored: 0, held: 0 });
       down = false;
