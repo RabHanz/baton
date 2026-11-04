@@ -16,6 +16,7 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
+import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
@@ -55,7 +56,10 @@ export const routes = HttpRouter.use((router) =>
             const fleet = yield* FleetQuery.getFleet({});
             return buildPhoneState({
               jobs: yield* JobFlow.listJobs(),
-              findings: watchFleet(fleet.entries, now),
+              findings: [
+                ...watchFleet(fleet.entries, now),
+                ...(yield* (yield* BatonSessionCatalogService).watchFindings),
+              ],
               weaves: (yield* (yield* BatonWeaveService).list(30)) as never,
               now,
               prompts: yield* inbox.pending,

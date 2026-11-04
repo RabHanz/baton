@@ -62,6 +62,7 @@ const WATCH_WEIGHT: Record<WatchFinding["kind"], number> = {
   stalled: 55,
   offline: 45,
   unseen: 45,
+  resumed: 40,
 };
 const WATCH_WHY: Record<WatchFinding["kind"], string> = {
   failed: "failed",
@@ -70,6 +71,7 @@ const WATCH_WHY: Record<WatchFinding["kind"], string> = {
   stalled: "is working but has gone silent",
   offline: "is offline",
   unseen: "finished and nobody has looked at it",
+  resumed: "died mid-turn and was resumed by itself",
 };
 
 const minutesText = (m: number): string => (m >= 120 ? `${Math.round(m / 60)} h` : `${m} min`);

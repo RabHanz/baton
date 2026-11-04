@@ -2,7 +2,7 @@ import type { BatonFleetEntry } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { describeWatch, watchFleet } from "./watch.ts";
+import { describeWatch, watchFleet, watchLiveSessions } from "./watch.ts";
 
 const NOW = Date.parse("2026-11-02T12:00:00.000Z");
 const ago = (min: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - min * 60_000));
@@ -53,5 +53,48 @@ describe("watching the fleet", () => {
     expect(describeWatch(watchFleet([entry("bad", "failed", 130)], NOW))).toBe(
       "Work bad failed (2 h) [id: bad]",
     );
+  });
+});
+
+describe("watching his terminal sessions", () => {
+  const live = (id: string, status: string, minutes: number) => ({
+    sessionId: id,
+    name: `Term ${id}`,
+    cwd: "/home/user/app",
+    status,
+    updatedAt: ago(minutes),
+  });
+  it("names one waiting on him too long, and what the watchdog did about one that died", () => {
+    const found = watchLiveSessions(
+      [live("asks", "waiting", 45), live("fresh", "waiting", 5), live("busy", "busy", 90)],
+      [
+        { sessionId: "back", title: "Back", resumed: true, at: NOW - 2 * 60_000 },
+        {
+          sessionId: "capped",
+          title: "Capped",
+          resumed: false,
+          why: "already resumed three times this hour",
+          at: NOW,
+        },
+        { sessionId: "old", title: "Old", resumed: true, at: NOW - 13 * 3_600_000 },
+      ],
+      NOW,
+    );
+    expect(found.map((f) => `${f.workSessionId}:${f.kind}`)).toEqual([
+      "capped:failed",
+      "asks:unanswered",
+      "back:resumed",
+    ]);
+    expect(found[0]?.lastDid).toContain("three times this hour");
+  });
+  it("drops a death that was not resumed once the session runs again", () => {
+    const outcome = {
+      sessionId: "s",
+      title: "S",
+      resumed: false,
+      why: "auto-resume is off here",
+      at: NOW,
+    };
+    expect(watchLiveSessions([live("s", "busy", 1)], [outcome], NOW)).toEqual([]);
   });
 });

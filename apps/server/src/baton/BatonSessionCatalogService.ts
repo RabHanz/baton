@@ -5,6 +5,7 @@ import type {
   BatonCatalogState,
   BatonReattachResult,
   BatonKeptResult,
+  WatchFinding,
 } from "@t3tools/baton-contracts";
 import {
   CommandId,
@@ -55,6 +56,11 @@ import { classifyHelperThread } from "./HelperThreads.ts";
 import * as ProviderInstanceRegistryModule from "../provider/ProviderInstanceRegistry.ts";
 import { isProviderAvailable } from "@t3tools/baton-contracts";
 import { herdrSend } from "./HerdrSend.ts";
+import {
+  OUTCOME_MEMORY_MS,
+  watchLiveSessions,
+  type WatchdogOutcome,
+} from "@t3tools/baton-shared/watch";
 import { createSessionCatalog, type CatalogPorts } from "./SessionCatalog.ts";
 import { realCatalogPorts } from "./SessionCatalogLive.ts";
 
@@ -96,6 +102,8 @@ export class BatonSessionCatalogService extends Context.Service<
       readonly detail: string | null;
       readonly threadId?: string;
     }>;
+    /** His terminal sessions left alone: waiting on him too long, or died mid-turn (resumed, or why not). */
+    readonly watchFindings: Effect.Effect<ReadonlyArray<WatchFinding>>;
     readonly watchdog: (input: {
       action: "run" | "status" | "stop" | "mark" | "on" | "off";
       sessionId?: string;
@@ -408,6 +416,26 @@ export const layer = Layer.effect(
       }
     };
     const FRESH_MS = 6 * HOUR_MS;
+    // What the watchdog did about each session that died mid-turn, for the watch; one per session, kept from its first sighting.
+    const outcomes = new Map<string, WatchdogOutcome>();
+    const noteOutcome = (
+      t: { sessionId: string; title: string },
+      resumed: boolean,
+      why?: string,
+    ) => {
+      const was = outcomes.get(t.sessionId);
+      if (was !== undefined && was.resumed === resumed && was.why === why) return;
+      for (const [id, o] of outcomes)
+        if (Date.now() - o.at > OUTCOME_MEMORY_MS) outcomes.delete(id);
+      resumeLog({ event: resumed ? "auto-resumed" : "not-resumed", sessionId: t.sessionId, why });
+      outcomes.set(t.sessionId, {
+        sessionId: t.sessionId,
+        title: t.title,
+        resumed,
+        ...(why === undefined ? {} : { why }),
+        at: Date.now(),
+      });
+    };
     const watchdogRun = async (): Promise<{
       enabled: boolean;
       resumed: string[];
@@ -425,7 +453,7 @@ export const layer = Layer.effect(
         Date.now(),
       );
       saveAutoState();
-      if (!enabled || ports.readTail === undefined) return { enabled, resumed, skipped };
+      if (ports.readTail === undefined) return { enabled, resumed, skipped };
       const live = new Set(liveNow.map((s) => s.sessionId));
       for (const t of await ports.transcripts(60)) {
         if (t.file === undefined || live.has(t.sessionId)) continue;
@@ -440,13 +468,17 @@ export const layer = Layer.effect(
           sessionId: t.sessionId,
           verdict,
           background: t.background === true,
-          enabled,
+          // Judged as if on, so a death is still reported where resuming is off.
+          enabled: true,
           running: false,
           state: autoState,
           now,
         });
-        if (!decision.resume) {
-          if (verdict === "unfinished") skipped.push({ id: t.sessionId, why: decision.why });
+        if (!decision.resume || !enabled) {
+          const why = decision.resume ? "auto-resume is off here" : decision.why;
+          if (verdict === "unfinished") skipped.push({ id: t.sessionId, why });
+          if (decision.resume || why === "already resumed three times this hour")
+            noteOutcome(t, false, why);
           continue;
         }
         autoState = recordAutoResume(autoState, t.sessionId, now);
@@ -457,6 +489,7 @@ export const layer = Layer.effect(
         });
         if (result.state !== "running") {
           skipped.push({ id: t.sessionId, why: result.detail ?? "it could not be resumed" });
+          noteOutcome(t, false, result.detail ?? "it could not be resumed");
           continue;
         }
         if (result.pane !== null) await ports.type(result.pane, RESTART_NOTICE);
@@ -469,6 +502,7 @@ export const layer = Layer.effect(
             }),
           );
         resumed.push(t.sessionId);
+        noteOutcome(t, true);
       }
       return { enabled, resumed, skipped };
     };
@@ -634,6 +668,9 @@ export const layer = Layer.effect(
       }) {
         return yield* Effect.promise(() => catalog.create(input));
       }),
+      watchFindings: Effect.promise(async () =>
+        watchLiveSessions(await ports.live().catch(() => []), [...outcomes.values()], Date.now()),
+      ),
       watchdog: Effect.fn("BatonSessionCatalogService.watchdog")(function* (input: {
         action: "run" | "status" | "stop" | "mark" | "on" | "off";
         sessionId?: string;

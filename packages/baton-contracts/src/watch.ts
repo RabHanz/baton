@@ -10,7 +10,15 @@ export const BATON_WATCH_WS_METHODS = { watchGet: "baton.watch.get" } as const;
 export const WatchFinding = Schema.Struct({
   workSessionId: WorkSessionId,
   title: TrimmedNonEmptyString,
-  kind: Schema.Literals(["failed", "limited", "offline", "stalled", "unanswered", "unseen"]),
+  kind: Schema.Literals([
+    "failed",
+    "limited",
+    "offline",
+    "stalled",
+    "unanswered",
+    "unseen",
+    "resumed",
+  ]),
   /** How long since anything happened in it. */
   minutes: Schema.Number,
   /** What it last did, from its synopsis. */
