@@ -62,6 +62,12 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["job_start"],
   },
   {
+    id: "rule-once-done",
+    source: "INT-8: 'when X finishes, have Codex review it' had no tool on the assistant's path",
+    said: "once the shop session's done, get Codex to review it and tell me",
+    first: ["rule_create"],
+  },
+  {
     id: "teach-me",
     source: "agentPrompt teach rule (teach_start was missing from the tool roll-call)",
     said: "teach me how to change the font size in Notepad",

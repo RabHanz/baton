@@ -72,12 +72,16 @@ const TRIGGER_PATTERNS: ReadonlyArray<{
   readonly trigger: OrchestrationTrigger;
 }> = [
   {
-    pattern: /^when .*\b(finish(?:es|ed)?|completes?|is done|are done)\b/,
+    pattern:
+      /^(?:when|once|after|as soon as) .*\b(finish(?:es|ed)?|completes?|(?:is|are|'s) (?:done|finished))\b/,
     trigger: { kind: "on_done" },
   },
-  { pattern: /^(?:when|if) .*\b(fails?|failed|errors?|breaks?)\b/, trigger: { kind: "on_failed" } },
   {
-    pattern: /^(?:when|if) .*\b(needs? (?:me|you)|asks?|gets? stuck|is blocked)\b/,
+    pattern: /^(?:when|if|once|as soon as) .*\b(fails?|failed|errors?|breaks?)\b/,
+    trigger: { kind: "on_failed" },
+  },
+  {
+    pattern: /^(?:when|if|once|as soon as) .*\b(needs? (?:me|you)|asks?|gets? stuck|is blocked)\b/,
     trigger: { kind: "on_needs_user" },
   },
 ];
@@ -145,7 +149,7 @@ export function parseOrchestrationSentence(
       source,
       unplaced: source,
       reason:
-        'No trigger found. Start with "When …", and say what happens: finishes, fails, or needs you.',
+        'No trigger found. Start with "When …" or "Once …", and say what happens: finishes, fails, or needs you.',
     };
   }
 
@@ -285,7 +289,10 @@ const isFiller = (clause: string): boolean => {
 
 const stripTriggerPrefix = (text: string): string =>
   text
-    .replace(/^(?:when|if)\b[^,]*?\b(?:finish(?:es|ed)?|completes?|fails?|failed|is done)\b/, "")
+    .replace(
+      /^(?:when|if|once|after|as soon as)\b[^,]*?\b(?:finish(?:es|ed)?|completes?|fails?|failed|(?:is|are|'s) (?:done|finished))\b/,
+      "",
+    )
     .trim();
 
 /**

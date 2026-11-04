@@ -8,6 +8,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   batonDesktopBridge,
   type BatonFleetEntry,
+  type BatonIntentResolution,
   type BatonJobBridgeRequest,
   type BatonCommitmentBridgeRequest,
   type BatonPhoneBridgeRequest,
@@ -80,6 +81,8 @@ export function BatonSidebarSection(props: {
   }, [usage]);
   const quiet = { reportFailure: false } as const;
   const watchGet = useAtomCommand(batonWorkSessions.watchGet, quiet);
+  const resolveIntent = useAtomCommand(batonWorkSessions.intentResolve, quiet);
+  const runIntent = useAtomCommand(batonWorkSessions.intentRun, quiet);
   const weaveSend = useAtomCommand(batonWorkSessions.weaveSend, quiet);
   const weaveList = useAtomCommand(batonWorkSessions.weaveList, quiet);
   const weaveTick = useAtomCommand(batonWorkSessions.weaveTick, quiet);
@@ -242,6 +245,22 @@ export function BatonSidebarSection(props: {
         );
         return started;
       }
+      case "rule_preview":
+      case "rule_run": {
+        // The sentence goes through the rule grammar, which checks what the assistant made of his words.
+        const input = { text: text("sentence") };
+        const { resolution } = done(await resolveIntent({ ...env, input })) as {
+          resolution: BatonIntentResolution;
+        };
+        if (resolution.outcome === "refused")
+          return { text: `Not set up: ${resolution.refusal.message}` };
+        if (resolution.command.kind !== "create_rules")
+          return { text: "That sentence is not a rule. Nothing was set up." };
+        if (op === "rule_preview")
+          return { text: `Read this back and ask him: ${resolution.description}` };
+        const ran = done(await runIntent({ ...env, input })) as { reply: string };
+        return { text: ran.reply === "" ? "Set up." : ran.reply };
+      }
       case "split":
         return done(
           await jobSplit({
@@ -375,11 +394,16 @@ export function BatonSidebarSection(props: {
   };
   const onCloud = async (request: BatonCloudBridgeRequest): Promise<unknown> => {
     if (request.op === "environments") {
-      return fleet.environmentIds.map((id) => ({ id, label: fleet.resolveEnvironmentLabel(id) ?? id }));
+      return fleet.environmentIds.map((id) => ({
+        id,
+        label: fleet.resolveEnvironmentLabel(id) ?? id,
+      }));
     }
     // Only an environment this window is actually connected to can be asked.
     const target = fleet.environmentIds.find((id) => id === request.environmentId) ?? primary;
-    const result = await (request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct)({ environmentId: target, input: request.args as never });
+    const result = await (
+      request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct
+    )({ environmentId: target, input: request.args as never });
     if (result._tag === "Success") return result.value;
     const refused = JSON.stringify(result).includes("baton:cloud-approve");
     return {
