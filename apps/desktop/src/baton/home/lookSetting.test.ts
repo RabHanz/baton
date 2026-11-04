@@ -7,7 +7,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { APP_SCRIPT } from "./appScript.ts";
 import { tabOf } from "./tabs.ts";
 
-const source = (file: string) => NodeFS.readFileSync(NodePath.join(import.meta.dirname, file), "utf8");
+const source = (file: string) =>
+  NodeFS.readFileSync(NodePath.join(import.meta.dirname, file), "utf8");
 
 describe("the Motion and Glass settings are wired end to end", () => {
   it("are saved, shown in Settings, General, found by the settings search and applied live", () => {
@@ -20,8 +21,8 @@ describe("the Motion and Glass settings are wired end to end", () => {
     expect(APP_SCRIPT).toContain("rows(['v.appearance', 'v.motion', 'v.glass', 'v.login'])");
     expect(tabOf("v.motion")).toBe("settings");
     expect(tabOf("v.glass")).toBe("settings");
-    // refresh() applies the look, so a change shows without a reload.
-    expect(source("./batonHome.ts")).toMatch(/applyTheme\(\);\s*applyLook\(\);/);
+    // Each push applies the look when it changed, so a change shows without a reload.
+    expect(source("./batonHome.ts")).toMatch(/applyTheme\(\);\s*applyLook\(false\);/);
   });
 
   it("never lets the splash delay the window past its cap, and skips it for a quiet launch", () => {
