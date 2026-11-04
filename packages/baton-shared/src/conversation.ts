@@ -4,6 +4,8 @@
  * and the router all read the same record, so "type what you just said" has something to type.
  * Retrieval is plain: the latest turns in full, then a text search over older ones. Pure.
  */
+import { STOP_WORDS } from "./memory.ts";
+
 export type ConversationRoute =
   | "answer"
   | "look"
@@ -41,17 +43,11 @@ export const EARLIER_TURNS = 3;
 const EARLIER_CHARS = 500;
 const ROUTER_CHARS = 600;
 
-const STOP = new Set(
-  "the a an and or but of to in on at for with from by is are was were be been it its this that these those i you he she we they me my your his her our their can could would should will shall do does did not no yes please just then than so as if about into out up down over under again also very what which who when where how".split(
-    " ",
-  ),
-);
-
 export const tokens = (text: string): ReadonlyArray<string> =>
   text
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 2 && !STOP.has(w));
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
 const clip = (text: string, max: number): string =>
   text.length > max ? `${text.slice(0, max - 1)}…` : text;

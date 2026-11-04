@@ -66,13 +66,13 @@ describe("the one assistant's session", () => {
       clockLine: () => "Sunday 10:00",
       beginTurn: () => undefined,
       notes: async () => "what you remember about him:\n- he likes tea",
-      recall: async (text) => `remembered for: ${text}`,
-      learn: (said, reply) => void learned.push(`${said} => ${reply}`),
+      recall: async (text, project) => `remembered for: ${text} in ${project}`,
+      learn: (said, reply, project) => void learned.push(`${said} => ${reply} (${project})`),
     });
-    await agent.say("make the tea", { window: null, session: null });
+    await agent.say("make the tea", { window: null, session: "s1", project: "kitchen" });
     expect(prompts[0]).toContain("he likes tea");
-    expect(asked[0]).toContain("remembered for: make the tea");
-    expect(learned).toEqual(["make the tea => I typed it."]);
+    expect(asked[0]).toContain("remembered for: make the tea in kitchen");
+    expect(learned).toEqual(["make the tea => I typed it. (kitchen)"]);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

@@ -1,0 +1,114 @@
+{
+  "about": "The per-sentence recall block (MEM-1): his standing preferences are already in the system prompt, so a spoken question must bring back what matches it, not the same notes again; another project's items stay out. Paraphrase cases wait for meaning-based retrieval (MEM-13).",
+  "items": [
+    {
+      "key": "spelling",
+      "kind": "preference",
+      "text": "Use British spelling in everything I send",
+      "source": "user"
+    },
+    {
+      "key": "phone-short",
+      "kind": "preference",
+      "text": "Keep answers short when I am on the phone",
+      "source": "user"
+    },
+    {
+      "key": "mornings",
+      "kind": "preference",
+      "text": "Never book anything before ten in the morning",
+      "source": "user"
+    },
+    {
+      "key": "drafts",
+      "kind": "preference",
+      "text": "Draft emails but never send one without asking",
+      "source": "user"
+    },
+    {
+      "key": "keyboard",
+      "kind": "preference",
+      "text": "Use keyboard shortcuts rather than the mouse when you drive an app",
+      "source": "user"
+    },
+    {
+      "key": "dark",
+      "kind": "preference",
+      "text": "Prefer dark mode in every app",
+      "source": "user"
+    },
+    {
+      "key": "accountant",
+      "kind": "fact",
+      "text": "The accountant is Sara Khan",
+      "source": "user"
+    },
+    {
+      "key": "staging-disk",
+      "kind": "learning",
+      "text": "Deploys to the staging box fail when its disk is over ninety percent full",
+      "source": "job"
+    },
+    {
+      "key": "acme-deploy",
+      "kind": "fact",
+      "text": "The acme site deploys from the release branch",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "acme-site"
+    },
+    {
+      "key": "harbor-deploy",
+      "kind": "fact",
+      "text": "The harbor app deploys from main after review",
+      "source": "thread",
+      "scope": "project",
+      "scopeRef": "harbor-app"
+    }
+  ],
+  "cases": [
+    {
+      "recall": true,
+      "query": "when is my accountant meeting",
+      "present": ["accountant"],
+      "count": 1
+    },
+    {
+      "recall": true,
+      "query": "why did the staging deploy fail again",
+      "top": "staging-disk",
+      "absent": ["spelling", "phone-short", "mornings", "drafts", "keyboard", "dark"]
+    },
+    {
+      "recall": true,
+      "query": "how does the site deploy",
+      "scopeRef": "acme-site",
+      "present": ["acme-deploy"],
+      "absent": ["harbor-deploy", "spelling", "dark"]
+    },
+    {
+      "recall": true,
+      "query": "",
+      "present": ["spelling", "phone-short", "mornings", "drafts", "keyboard", "dark"],
+      "absent": ["staging-disk"]
+    },
+    {
+      "recall": true,
+      "pending": "MEM-13",
+      "query": "who handles my bookkeeping",
+      "present": ["accountant"]
+    },
+    {
+      "recall": true,
+      "pending": "MEM-13",
+      "query": "is the test server running out of space",
+      "present": ["staging-disk"]
+    },
+    {
+      "recall": true,
+      "pending": "MEM-13",
+      "query": "what colour scheme do I like",
+      "present": ["dark"]
+    }
+  ]
+}

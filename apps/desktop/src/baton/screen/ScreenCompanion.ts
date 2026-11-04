@@ -285,6 +285,8 @@ export interface AssistantActions {
   readonly grammarPlaces: (said: string) => Promise<boolean>;
   /** His live sessions, one per line, with the id each is named by. */
   readonly sessionsList?: () => string;
+  /** The project of a focused session ("<id> (<evidence>)"), for memory scoping; null when unknown. */
+  readonly projectOf?: (session: string) => string | null;
   /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
   readonly presence?: () => Promise<string>;
   /** The job operations (D145), answered in a sentence for the assistant. */
@@ -2258,8 +2260,8 @@ export const startScreenCompanion = (input: {
         const standing = await memory.standing();
         return standing === "" ? notesBlock(notes.list()) : standing;
       },
-      recall: (text) => memory.forSentence(text),
-      learn: (said, reply) => memory.learn(said, reply, agentTaint.on()),
+      recall: (text, project) => memory.forSentence(text, project),
+      learn: (said, reply, project) => memory.learn(said, reply, agentTaint.on(), project),
       beginTurn: () => {
         memory.beginTurn();
         agentTaint.reset();
@@ -2293,6 +2295,7 @@ export const startScreenCompanion = (input: {
         {
           window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
           session: focusedSession,
+          project: focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null),
         },
         (delta) => {
           firstTokenAt ??= Date.now();

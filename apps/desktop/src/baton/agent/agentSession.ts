@@ -24,12 +24,15 @@ export interface AssistantAgent {
   /** Start the session now, so the first sentence does not wait for it. */
   readonly warm: () => void;
   /** What he said, with where he is; the reply streams to `onDelta` as it is written. */
-  readonly say: (
-    text: string,
-    where: { readonly window: string | null; readonly session: string | null },
-    onDelta?: (delta: string) => void,
-  ) => Promise<string>;
+  readonly say: (text: string, where: Where, onDelta?: (delta: string) => void) => Promise<string>;
   readonly dispose: () => void;
+}
+
+export interface Where {
+  readonly window: string | null;
+  readonly session: string | null;
+  /** The focused session's project, so its memories come back and another project's stay out. */
+  readonly project?: string | null;
 }
 
 export const createAssistantAgent = (input: {
@@ -41,9 +44,9 @@ export const createAssistantAgent = (input: {
   /** His notes and standing memory as a prompt block, read fresh when a session starts. */
   readonly notes?: () => string | Promise<string>;
   /** Memory that matches this sentence (D150): a block for the turn, empty when none. Bounded by the caller. */
-  readonly recall?: (text: string) => Promise<string>;
+  readonly recall?: (text: string, project: string | null) => Promise<string>;
   /** After a turn: what he said and what came back, for the learning loop. Never awaited. */
-  readonly learn?: (said: string, reply: string) => void;
+  readonly learn?: (said: string, reply: string, project: string | null) => void;
   /** Called at the start of a turn: a new sentence has not read anything yet. */
   readonly beginTurn: () => void;
   /** His state right now (awareness), empty when he has turned it all off. */
@@ -93,7 +96,7 @@ export const createAssistantAgent = (input: {
 
   const turn = async (
     text: string,
-    where: { readonly window: string | null; readonly session: string | null },
+    where: Where,
     onDelta?: (delta: string) => void,
   ): Promise<string> => {
     input.beginTurn();
@@ -104,14 +107,18 @@ export const createAssistantAgent = (input: {
       .filter((t) => t.id > seenId && !own.has(t.id));
     seenId = meanwhile.at(-1)?.id ?? seenId;
     const target = input.conversation.target();
+    const project = where.project ?? null;
+    const [presence, remembered] = await Promise.all([
+      input.presence?.().catch(() => "") ?? "",
+      input.recall?.(text, project).catch(() => "") ?? "",
+    ]);
     const header = contextLine({
       now: input.clockLine(),
       window: where.window,
       session: where.session,
       target: target?.label ?? null,
-      presence: (await input.presence?.().catch(() => "")) ?? "",
+      presence,
     });
-    const remembered = (await input.recall?.(text).catch(() => "")) ?? "";
     const missed =
       meanwhile.length === 0
         ? ""
@@ -155,7 +162,7 @@ export const createAssistantAgent = (input: {
     }
     turns += 1;
     lastAt = now();
-    input.learn?.(text, reply);
+    input.learn?.(text, reply, project);
     record(reply);
     return reply;
   };

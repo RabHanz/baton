@@ -59,7 +59,7 @@ Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
 - His own statement beats a model's proposal whatever the dates. Between two of his, the newer wins. Between two
   model proposals, the one with higher confidence wins, then the newer.
 - Two items that merely overlap are merged by the daily pass (the longer text kept, confidences combined), never silently
-  by retrieval. Once a week, items that are about the same thing but worded differently (half or more of their words shared, same kind and scope) become one: the fuller wording survives, his own words are never rewritten, a pinned item is never dropped. Each memory row has a "Why?" that says where it came from, how sure it is and what keeps or ends it. `docs/baton/evals-memory/*.json` holds 20 retrieval cases that `BatonMemoryEval.test.ts` runs on an in-memory database.
+  by retrieval. Once a week, items that are about the same thing but worded differently (half or more of their words shared, same kind and scope) become one: the fuller wording survives, his own words are never rewritten, a pinned item is never dropped. Each memory row has a "Why?" that says where it came from, how sure it is and what keeps or ends it. `docs/baton/evals-memory/*.json` holds the retrieval and per-sentence recall cases that `BatonMemoryEval.test.ts` runs on an in-memory database; a case marked `pending` names the finding it waits for and fails the run once it passes.
 
 ## 3. Privacy: what is never stored
 
@@ -105,6 +105,9 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 - The first prompt of the one assistant gets a memory block with a token budget (default 600 tokens): pinned items first,
   then by relevance to the opening context (project, target, current words) times effective confidence, highest first,
   until the budget is spent. Items are one line each and marked as his data, not instructions.
+- Each spoken sentence then gets its own small block (300 tokens) of what matches that sentence only. The standing notes
+  are already in the session, so they are not repeated, weak one-word hits are left out, and when he is focused on a
+  session, other projects' items stay out. Only these items are recorded as used by the turn.
 - On demand, `memory_search` returns ranked hits by FTS5 (bm25) on `text`, filtered by scope and kind, with each item's
   source and confidence. `memory_remember`, `memory_forget` (he is asked first, as today) and a new `memory_pin` keep their
   meaning; `memory_search` and the injected block record which ids were used in the turn.
