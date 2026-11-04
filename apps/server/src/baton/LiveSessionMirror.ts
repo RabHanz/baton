@@ -563,6 +563,17 @@ export const endedMirrorThreads = (
     .map((t) => t.id);
 };
 
+/**
+ * A thread the mirror archived that is open again was unarchived by him: it is his choice now, so a later archive
+ * of it is his too and it must not come back with its session. `open` is the snapshot of unarchived threads.
+ */
+export const forgetUnarchived = (
+  endedArchived: Set<ThreadId>,
+  open: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id">>,
+): void => {
+  for (const t of open) endedArchived.delete(t.id);
+};
+
 /** A message he sent from T3: the mirror's own copies of terminal messages carry its prefix. */
 export const sentFromT3 = (
   messages: ReadonlyArray<Pick<OrchestrationV2ConversationMessage, "id" | "role">>,
@@ -1925,12 +1936,9 @@ const make = Effect.gen(function* () {
     // A thread whose session has ended leaves the list (archived, reversible) unless he sent a
     // message from T3: then it is his conversation now.
     const liveIds = new Set(live.map((s) => s.sessionId));
-    for (const id of endedMirrorThreads(
-      yield* engine.threadShells,
-      liveIds,
-      missingSince,
-      Date.now(),
-    )) {
+    const open = yield* engine.threadShells;
+    forgetUnarchived(endedArchived, open);
+    for (const id of endedMirrorThreads(open, liveIds, missingSince, Date.now())) {
       if (continued.has(id)) continue;
       if (sentFromT3(yield* threadMessages(id))) continued.add(id);
       else if (yield* engine.archiveThread({ tag: "live", threadId: id })) {
