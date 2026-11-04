@@ -66,21 +66,6 @@ export const INTENT_MODEL_SLUG = "haiku";
  *
  * Codex's own structured one-shot is the obvious next entry here.
  */
-/**
- * Thinking off.
- *
- * Placing one sentence against a list of names does not need a scratchpad, and
- * a scratchpad is generated tokens, which is time. Measured on the Director's
- * own account, same sentence and model: **10.0s with thinking, 6.0s without**.
- * His own `settings.json` turns it on — reasonably, for writing code — and the
- * CLI loads that, so this call inherited it until it said otherwise.
- *
- * Expressed as a model-selection option because that is upstream's own
- * mechanism for it; hard-coding it in the driver would make these two
- * operations special cases inside a function that has none.
- */
-export const INTENT_MODEL_OPTIONS = [{ id: "thinking", value: false }] as const;
-
 export const INTENT_CAPABLE_DRIVERS: ReadonlySet<string> = new Set(["claudeAgent"]);
 
 export interface IntentInterpretation {

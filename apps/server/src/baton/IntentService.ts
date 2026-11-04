@@ -147,6 +147,11 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 const encodeLearnedCommand = Schema.encodeEffect(Schema.fromJsonString(BatonIntentCommandSchema));
 
+const TARGET_FREE_KINDS: ReadonlySet<BatonIntentCommand["kind"]> = new Set([
+  "status_fleet",
+  "switch_account",
+]);
+
 const firstWord = (text: string): string => text.trim().split(/\s+/)[0] ?? text;
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -371,7 +376,10 @@ export const make = Effect.gen(function* () {
       const learned = learnedRow;
       if (learned !== null) {
         const command = decodeLearnedCommand(learned.commandJson);
-        if (Option.isSome(command)) {
+        // Only a reading that names no session, firing or instance replays as it was: "tell it to stop"
+        // learned once must not stay bound to the session that was in view that day. The rest goes
+        // to the model, with the learned phrasing as an example.
+        if (Option.isSome(command) && TARGET_FREE_KINDS.has(command.value.kind)) {
           return {
             resolution: {
               outcome: "resolved",
