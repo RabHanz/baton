@@ -18,7 +18,9 @@ tree, and how to get real test data without touching a live install.
 | Tessaya work begins     | 2026-09-18                                                                           |
 | **Upstream pin now**    | `vendor-patches/t3code/PIN`, moved daily by `auto-sync.sh` (v2 port at `e762f09e26`) |
 
-The fork carried no Tessaya code at that point; it was a clean mirror of upstream `main`.
+The fork carried no Tessaya code at that point; it was a clean mirror of upstream `main`. Since
+2026-11-04 `main` no longer carries upstream's commits: its root is one import commit with that
+upstream tree (see "History" below).
 The pin is the last upstream commit before the v2 orchestrator (`de3439142`); see
 "Where upstream went" below for why the fork stops there for now.
 
@@ -276,7 +278,7 @@ cannot change a run in flight).
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Look   | fetch; if the pin is upstream's tip, publish `nothing` and stop; if the pin is more than 3 days behind, open or comment on an issue                                                                                                    |
 | Disk   | stop with `disk` if the volume is below its floor                                                                                                                                                                                      |
-| Apply  | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, a two-parent commit so upstream's history stays reachable                                                |
+| Apply  | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, one squashed `chore(upstream): import T3 Code <sha>` commit with `main` as its only parent               |
 | Gates  | `gates.sh --install --build`: patch series, typecheck, lint, tests, build                                                                                                                                                              |
 | PR     | green: the PR is opened, never merged here; its checks run and a person reviews and merges it. Older `baton/auto-sync-*` PRs are closed as superseded. Nothing tags a release or deploys by itself                                     |
 | Status | every ending writes `upstream-sync.json` (to `~/.t3/baton-autosync/last-status.json` and the `baton/status` branch): `result` is `opened`, `nothing`, `conflict`, `gates` or `disk`; for a conflict it names the patches and the files |
@@ -299,9 +301,8 @@ were the fix sessions' answers, but each was cut from a main that had since move
 merged them within a day. Every night added hundreds of upstream commits. The lines `fatal: ... not our ref` in the log come from
 `git checkout <sha> -- .` visiting the vendored `.repos` gitlinks; they are noise.
 
-**State after the catch-up (2026-11-02).** The pin is `47f2c8d29e` (upstream's tip that morning). It moved in two merge commits that keep upstream's
-history as the second parent (#284 to `fa31b66bbb`, which reused #144's resolution of the 0008 patches, and #291 to `47f2c8d29e`; #55 and #144
-are closed). Three things the catch-up taught:
+**State after the catch-up (2026-11-02).** The pin is `47f2c8d29e` (upstream's tip that morning). It moved in two syncs (#284 to `fa31b66bbb`,
+which reused #144's resolution of the 0008 patches, and #291 to `47f2c8d29e`; #55 and #144 are closed). Three things the catch-up taught:
 
 - **Lint was never gated.** `baton-ci` ran typecheck and tests only, so lint errors piled up on main (115 by the time it was looked at) and the
   fix session's "lint fails the same way before the sync" was true. #299 made lint green (file-level disables on 47 Tessaya files, formatting on 122) and added a Lint step to `baton-ci`.
@@ -320,17 +321,41 @@ bundles) instead of every package, and keep other builders' local gates off the 
 **What would remove the manual step.** Fewer lines in upstream-rewritten files: each Tessaya edit in `ChatView.tsx`, `Sidebar.tsx` and the
 usage components is a future conflict, so new Tessaya work should live in new files with a one-line hook (the patch README says the same).
 
-## Remotes and rebasing
+## History: Tessaya's own commits, upstream as imports
 
-The clone is a blobless partial clone (`--filter=blob:none`) with full commit history, which keeps
-`.git` near 100 MB instead of several hundred. Blobs are fetched on demand, so any `git log -p`,
-`git blame`, or checkout of an old tree needs network.
+`main` holds only Tessaya's commits. Upstream code enters as content, never as history:
+
+- The root of `main` is one commit, `Import T3 Code 6deac7a924 (MIT, Copyright T3 Tools Inc.)`,
+  whose tree is upstream at the fork point.
+- Each sync is one squashed commit, `chore(upstream): import T3 Code <sha>`, with `main` as its
+  only parent. No upstream commit object is an ancestor of `main`, so the repository's commit
+  count, authors and contributors are Tessaya's.
+- Which upstream commit the tree is built on is recorded in `vendor-patches/t3code/PIN`, not in the
+  graph. `git merge-base` with `upstream/main` therefore finds nothing; compare against the pin
+  instead (`git diff $(cat vendor-patches/t3code/PIN) HEAD`).
+- Until 2026-11-04 `main` merged upstream's history (about 9,000 commits). That history was split
+  off: the old `main` is kept at the tag `archive/pre-split-2026-11-04`, and release tags made
+  before that day still point into it, so old releases build exactly as they did. A range between
+  an old tag and a new one has no common ancestor.
+
+Why this and not a merge: a merge makes every upstream author a contributor to this repository and
+makes upstream's history ours to carry. Taking upstream's code only through the pin keeps the
+improvements, keeps the patch series honest, and keeps the history Tessaya's.
+
+## Remotes and syncing
+
+Clones are blobless partial clones (`--filter=blob:none`). Blobs are fetched on demand, so any
+`git log -p`, `git blame`, or checkout of an old tree needs network.
 
 ```sh
 git remote -v
-# origin    https://github.com/RabHanz/tessaya.git   (fetch/push)
-# upstream  https://github.com/pingdotgg/t3code.git (fetch/push)
+# origin    https://github.com/RabHanz/tessaya.git  (fetch/push)
+# upstream  https://github.com/pingdotgg/t3code.git (fetch only; push is disabled)
 ```
+
+The `upstream` remote is needed to sync. Without it, `patches.sh` fetches the pinned commit itself
+(blobless, from `https://github.com/pingdotgg/t3code.git`, or `TESSAYA_UPSTREAM_URL`), so CI and a
+fresh clone can verify the series with no extra setup.
 
 To take upstream changes:
 
@@ -347,9 +372,14 @@ Since 2026-10-26 (D76) the sync does not merge. Tessaya's edits to upstream are 
    then re-applies each patch with `git apply --3way`. A patch that fails leaves conflict markers
    and is named; nothing else needs a human.
 2. `pnpm-lock.yaml` is re-resolved from upstream's (`REGENERATED`), never patched.
-3. The result is committed with two parents, the fork's `main` and the upstream commit, so
-   upstream's history stays reachable and `git merge-base` keeps meaning something.
-4. `gates.sh --install --build` (D77), then push and open the PR with the report as its body.
+3. The result is one commit on `main`: `chore(upstream): import T3 Code <sha> (<n> commits)`. Its
+   body names the full upstream commit and the old and new pin.
+4. `gates.sh --install --build` (D77), then push and open the PR with the report as its body. A
+   person merges it; any merge method keeps upstream out of the graph.
+
+A sync resolved by hand ends the same way: `patches.sh rebase <sha>`, fix, `patches.sh refresh`, and
+an ordinary commit. Never `git merge upstream/...` into a Tessaya branch: it would bring upstream's
+history back into `main`.
 
 `patches.sh verify` is the invariant: every path upstream owns equals `PIN` plus the series. It
 runs first in the gates, so an upstream file edited outside a patch fails before anything else.
