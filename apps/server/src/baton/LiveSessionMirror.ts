@@ -83,6 +83,7 @@ import * as ServerConfig from "../config.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { formOverview, pendingAskQuestions } from "./FormQuestions.ts";
 import { decideBinding } from "./BindingHealth.ts";
+import { staleAskIds } from "./StaleAsks.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
@@ -1306,6 +1307,54 @@ const make = Effect.gen(function* () {
     });
 
   /**
+   * Question cards of earlier presentations (one per card and per server start) stay pending in the projection and keep
+   * the thread's Input tag on. Expire every pending mirror ask of the thread except the one on screen now.
+   */
+  const sweptAsks = new Set<string>();
+  const expireOtherAsks = (follow: Follow, keepId: string | null) =>
+    Effect.gen(function* () {
+      const pending = yield* engine.pendingRuntimeRequests(follow.threadId);
+      const stale = new Set(staleAskIds(pending, `${PREFIX}:ask:`, keepId));
+      if (stale.size === 0) return;
+      const now = yield* DateTime.now;
+      for (const request of pending.filter((r) => stale.has(r.id))) {
+        const item = yield* engine.turnItem(follow.threadId, TurnItemId.make(String(request.id)));
+        yield* engine.writeEvents({
+          events: [
+            {
+              id: EventId.make(`${request.id}:expired`),
+              type: "runtime-request.updated",
+              threadId: follow.threadId,
+              occurredAt: now,
+              payload: { ...request, status: "expired", resolvedAt: now },
+            },
+            ...(item === null
+              ? []
+              : [
+                  {
+                    id: EventId.make(`${request.id}:closed`),
+                    type: "turn-item.updated" as const,
+                    threadId: follow.threadId,
+                    occurredAt: now,
+                    payload: {
+                      ...item,
+                      status: "completed" as const,
+                      completedAt: now,
+                      updatedAt: now,
+                    },
+                  },
+                ]),
+          ],
+        });
+      }
+      mirrorLog(`expired:${follow.threadId}:${[...stale].join(",")}`, {
+        event: "asks-expired",
+        thread: String(follow.threadId),
+        requests: [...stale],
+      });
+    });
+
+  /**
    * D88: a question or approval showing in a waiting session's pane becomes a T3 question with
    * its options as buttons. T3 sends the answer back as a message ("message" response mode), and
    * the agent turns it into the keystrokes. The question closes when it leaves the screen.
@@ -1371,6 +1420,11 @@ const make = Effect.gen(function* () {
           });
         }
       }
+      // Once per thread per server start, and whenever the card on screen changes: older pending cards go.
+      if (!sweptAsks.has(String(follow.threadId))) {
+        sweptAsks.add(String(follow.threadId));
+        yield* expireOtherAsks(follow, null);
+      }
       if (found === null || found.options.length === 0) return;
       const stamp = Date.now();
       const requestId = RuntimeRequestId.make(`${PREFIX}:ask:${session.sessionId}:${stamp}`);
@@ -1410,6 +1464,7 @@ const make = Effect.gen(function* () {
         createdAt: now,
         resolvedAt: null,
       };
+      yield* expireOtherAsks(follow, String(requestId));
       follow.ask = { key: found.key, requestId, itemId, request };
       yield* engine.writeEvents({
         events: [
