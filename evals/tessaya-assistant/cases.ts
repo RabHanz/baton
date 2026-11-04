@@ -38,6 +38,12 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["weave_send"],
   },
   {
+    id: "rule-once-done",
+    source: "INT-8: 'when X finishes, have Codex review it' had no tool on the assistant's path",
+    said: "once the shop session's done, get Codex to review it and tell me",
+    first: ["rule_create"],
+  },
+  {
     id: "anything-stuck",
     source: "agentPrompt status rules",
     said: "is anything stuck?",
@@ -60,12 +66,6 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source: "INT-5 device proof sentence",
     said: "take on a job: tidy the README in the shop project",
     first: ["job_start"],
-  },
-  {
-    id: "rule-once-done",
-    source: "INT-8: 'when X finishes, have Codex review it' had no tool on the assistant's path",
-    said: "once the shop session's done, get Codex to review it and tell me",
-    first: ["rule_create"],
   },
   {
     id: "teach-me",
