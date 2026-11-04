@@ -1,25 +1,24 @@
 #!/usr/bin/env node
 /* oxlint-disable t3code/namespace-node-imports -- Baton file predating the rule (D82) */
 // The daily upstream sync's one status file: what happened and, when it stopped, exactly where.
-// node scripts/tessaya/sync-status.mjs --result merged|conflict|gates|deploy|nothing|disk [--pin sha] [--to sha] [--behind n]
+// node scripts/tessaya/sync-status.mjs --result opened|conflict|gates|nothing|disk [--pin sha] [--to sha] [--behind n]
 //   [--days n] [--patches "a.patch b.patch"] [--files "path path"] [--pr url] [--log file] > upstream-sync.json
 // Pure formatter (exported for the test); the timer publishes the output to the baton/status branch.
 import { pathToFileURL } from "node:url";
 
 const HINTS = {
-  merged: "Synced, gates green, merged. Deploy follows.",
+  opened: "Synced and gates green. The PR is open for review; merging and deploying are by hand.",
   nothing: "Baton is on upstream's tip.",
   conflict:
     "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR.",
   gates: "The series applied but a gate failed. The branch is pushed; read the gates log.",
-  deploy: "Merged, but the deploy did not hold and was rolled back.",
   disk: "Skipped: the volume is below its free-space floor.",
 };
 
 export const syncStatus = (a) => ({
   at: a.at ?? new Date().toISOString(),
   result: a.result,
-  ok: a.result === "merged" || a.result === "nothing",
+  ok: a.result === "opened" || a.result === "nothing",
   pin: a.pin ?? null,
   target: a.to ?? null,
   behindCommits: a.behind ?? null,
