@@ -13,12 +13,19 @@ import { agentSystemPrompt, contextLine } from "./agentPrompt.ts";
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
 export const RECYCLE_TURNS = 40;
 export const RECYCLE_IDLE_MS = 6 * 60 * 60_000;
+/** Every screenshot stays in the session's context; after this many the next sentence starts a fresh one. */
+export const RECYCLE_IMAGES = 12;
 
 export const shouldRecycle = (state: {
   readonly alive: boolean;
   readonly turns: number;
   readonly idleMs: number;
-}): boolean => !state.alive || state.turns >= RECYCLE_TURNS || state.idleMs >= RECYCLE_IDLE_MS;
+  readonly images?: number;
+}): boolean =>
+  !state.alive ||
+  state.turns >= RECYCLE_TURNS ||
+  state.idleMs >= RECYCLE_IDLE_MS ||
+  (state.images ?? 0) >= RECYCLE_IMAGES;
 
 export interface AssistantAgent {
   /** Start the session now, so the first sentence does not wait for it. */
@@ -51,11 +58,15 @@ export const createAssistantAgent = (input: {
   readonly beginTurn: () => void;
   /** His state right now (awareness), empty when he has turned it all off. */
   readonly presence?: () => Promise<string>;
+  /** How many images the tools have handed the assistant so far, ever. */
+  readonly images?: () => number;
 }): AssistantAgent => {
   const now = input.now ?? Date.now;
   let session: Promise<VisionSession> | null = null;
   let turns = 0;
   let lastAt = now();
+  const imagesNow = () => input.images?.() ?? 0;
+  let imagesAtStart = imagesNow();
   // The newest conversation turn this session has in view, and the turns it wrote itself.
   let seenId = 0;
   let own = new Set<number>();
@@ -69,7 +80,12 @@ export const createAssistantAgent = (input: {
       const current = await session.catch(() => null);
       if (
         current !== null &&
-        !shouldRecycle({ alive: current.alive(), turns, idleMs: now() - lastAt })
+        !shouldRecycle({
+          alive: current.alive(),
+          turns,
+          idleMs: now() - lastAt,
+          images: imagesNow() - imagesAtStart,
+        })
       ) {
         return current;
       }
@@ -77,6 +93,7 @@ export const createAssistantAgent = (input: {
       session = null;
     }
     turns = 0;
+    imagesAtStart = imagesNow();
     // A new session gets as much as the old one held: the latest turns in full, the rest clipped.
     const window = input.conversation.recent(RECYCLE_TURNS);
     seenId = window.at(-1)?.id ?? 0;

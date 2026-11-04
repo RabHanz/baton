@@ -96,6 +96,13 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["Bash", "PowerShell"],
   },
   {
+    id: "other-monitor",
+    source:
+      "CU-13 (2026-11-04 review): screen_capture now shows his window; the other monitor needs all",
+    said: "what's on my other monitor?",
+    first: ["screen_capture"],
+  },
+  {
     id: "start-dictating",
     source: "control: Help page dictation_start",
     said: "start dictating",

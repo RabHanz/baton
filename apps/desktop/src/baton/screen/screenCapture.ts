@@ -4,6 +4,60 @@
  * Nothing is captured unless the companion asks, and the companion asks only after his approval.
  */
 import { captureSize, pickSource, type ScreenShot } from "@t3tools/baton-shared/screenCompanion";
+
+type Rect = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+};
+
+/** A picture of part of the desktop at `bounds` (desktop points), as one shot the model can click in. */
+export const shotOf = (picture: Electron.NativeImage, bounds: Rect): CapturedScreen => {
+  const size = captureSize(picture.getSize().width, picture.getSize().height);
+  const image = size.width < picture.getSize().width ? picture.resize(size) : picture;
+  return {
+    shot: { screen: 1, ...image.getSize(), cursorHere: true, bounds },
+    jpeg: image.toJPEG(80),
+  };
+};
+
+/** A window's own BMP (top-down BGRA after the 54-byte header). PrintWindow leaves alpha at 0, which would read as clear. */
+export const bmpImage = (bmp: Buffer, width: number, height: number): Electron.NativeImage => {
+  const pixels = Buffer.from(bmp.subarray(54, 54 + width * height * 4));
+  for (let i = 3; i < pixels.length; i += 4) pixels[i] = 255;
+  return Electron.nativeImage.createFromBitmap(pixels, { width, height });
+};
+
+/** One area of the desktop at the display's full resolution: a closer look at small controls. */
+export const captureArea = async (rect: Rect): Promise<CapturedScreen> => {
+  const all = Electron.screen.getAllDisplays();
+  const display = Electron.screen.getDisplayMatching(rect);
+  const scale = display.scaleFactor;
+  const sources = await Electron.desktopCapturer.getSources({
+    types: ["screen"],
+    thumbnailSize: {
+      width: Math.round(display.size.width * scale),
+      height: Math.round(display.size.height * scale),
+    },
+  });
+  const source = pickSource(sources, display.id, all.indexOf(display));
+  if (source === undefined || source.thumbnail.isEmpty())
+    throw new Error("That screen could not be captured.");
+  const k = source.thumbnail.getSize().width / display.bounds.width;
+  const x = Math.max(rect.x, display.bounds.x);
+  const y = Math.max(rect.y, display.bounds.y);
+  const right = Math.min(rect.x + rect.width, display.bounds.x + display.bounds.width);
+  const bottom = Math.min(rect.y + rect.height, display.bounds.y + display.bounds.height);
+  if (right <= x || bottom <= y) throw new Error("That area is not on a screen.");
+  const crop = source.thumbnail.crop({
+    x: Math.round((x - display.bounds.x) * k),
+    y: Math.round((y - display.bounds.y) * k),
+    width: Math.max(1, Math.round((right - x) * k)),
+    height: Math.max(1, Math.round((bottom - y) * k)),
+  });
+  return shotOf(crop, { x, y, width: right - x, height: bottom - y });
+};
 import * as Electron from "electron";
 
 export interface CapturedScreen {

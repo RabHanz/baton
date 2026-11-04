@@ -125,7 +125,14 @@ import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { createPointerOverlay, type OverlayCard } from "./pointerOverlay.ts";
 import type { EscapeRank } from "./escapeKey.ts";
-import { captureScreens, screenFingerprint, type CapturedScreen } from "./screenCapture.ts";
+import {
+  bmpImage,
+  captureArea,
+  captureScreens,
+  screenFingerprint,
+  shotOf,
+  type CapturedScreen,
+} from "./screenCapture.ts";
 
 // F5 to F8 are voice and dictation, and Airdeck has F9 to F12.
 export const ASK_HOTKEY = "Control+Alt+Shift+B";
@@ -995,6 +1002,28 @@ export const startScreenCompanion = (input: {
   const capture = (): Promise<ReadonlyArray<CapturedScreen>> =>
     overlay.hiddenFor(() => captureScreens(focus?.centre ?? null));
   const fingerprint = () => overlay.hiddenFor(screenFingerprint);
+  /** Images handed to the assistant so far; its session is recycled after a hands task that piled them up. */
+  let imagesSent = 0;
+  /** The window he is using, drawn by itself at full size (no other windows, no other displays); null off Windows. */
+  const windowShot = async (): Promise<CapturedScreen | null> => {
+    const hands = actions?.hands?.() ?? null;
+    if (hands === null || focus?.window === undefined) return null;
+    const dir = NodePath.join(input.stateDir, "screen");
+    const out = NodePath.join(dir, `window-${Date.now()}.bmp`);
+    try {
+      NodeFS.mkdirSync(dir, { recursive: true });
+      const done = await hands.captureWindow({ handle: focus.window, out });
+      const { width, height, left, top } = done;
+      if (width === undefined || height === undefined || left === undefined || top === undefined)
+        return null;
+      const bounds = Electron.screen.screenToDipRect(null, { x: left, y: top, width, height });
+      return shotOf(bmpImage(NodeFS.readFileSync(out), width, height), bounds);
+    } catch {
+      return null;
+    } finally {
+      NodeFS.rmSync(out, { force: true });
+    }
+  };
 
   const content = (
     captured: ReadonlyArray<CapturedScreen>,
@@ -2032,14 +2061,39 @@ export const startScreenCompanion = (input: {
       use: (a) => vaultHost!.use(a),
       savePending: (name, category) => vaultHost!.savePending(name, category),
     },
-    capture: async () => {
+    capture: async (a) => {
       if (!(await approveCapture("what is on your screen", null))) {
         throw new Error(
           "Looking at his screen was not allowed: he said no, or did not answer the question in time. Ask him again, or ask which screen he means.",
         );
       }
+      if (a?.zoom !== undefined) {
+        const shot = shotFor(lastShots, a.screen ?? null);
+        if (shot === null) throw new Error("Take a screenshot first, then zoom into part of it.");
+        const from = toDesktop(a.zoom, shot);
+        const to = toDesktop({ x: a.zoom.x + a.zoom.width, y: a.zoom.y + a.zoom.height }, shot);
+        const area = await overlay.hiddenFor(() =>
+          captureArea({ x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y }),
+        );
+        lastShots = [area.shot];
+        imagesSent += 1;
+        return {
+          text: `a closer look at that area, image ${area.shot.width}x${area.shot.height}; points in it are its own pixels`,
+          images: [{ data: area.jpeg.toString("base64"), mimeType: "image/jpeg" }],
+        };
+      }
+      const window = a?.all === true ? null : await windowShot();
+      if (window !== null) {
+        lastShots = [window.shot];
+        imagesSent += 1;
+        return {
+          text: `the window he is using (${focus?.label ?? "the window with the keyboard"}), image ${window.shot.width}x${window.shot.height}. For his whole screen, all.`,
+          images: [{ data: window.jpeg.toString("base64"), mimeType: "image/jpeg" }],
+        };
+      }
       const captured = await capture();
       lastShots = captured.map((c) => c.shot);
+      imagesSent += captured.length;
       const missing = missingDisplaysNote(captured.length, Electron.screen.getAllDisplays().length);
       return {
         text: [
@@ -2124,7 +2178,11 @@ export const startScreenCompanion = (input: {
         : "The plan is being made and will be shown to him to approve. Say nothing more.";
     },
     click: async (a) => {
-      const to = desktopPoint(a);
+      const point = desktopPoint(a);
+      // A name read in the screenshot snaps the click onto that control when the tree finds it near the point.
+      const found =
+        a.label === undefined ? null : await actions?.locate?.(a.label, point).catch(() => null);
+      const to = found === null || found === undefined ? point : { x: found.x, y: found.y };
       await pointerAction(to, () =>
         driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
       );
@@ -2294,6 +2352,7 @@ export const startScreenCompanion = (input: {
       conversation,
       clockLine: () => clockLine(new Date()),
       presence: async () => (await actions?.presence?.()) ?? "",
+      images: () => imagesSent,
       notes: async () => {
         const standing = await memory.standing();
         // His operating-system pack frames the jobs this assistant starts and splits (D148), read fresh.
