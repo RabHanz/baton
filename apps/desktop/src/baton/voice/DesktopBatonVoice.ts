@@ -3542,6 +3542,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       chrome: on("s.chrome"),
       social: on("s.social"),
       act: on("s.act"),
+      remote: on("s.hands"),
       vault: !vaultState.vault.exists()
         ? ("none" as const)
         : vaultState.vault.isUnlocked()
@@ -4642,6 +4643,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             chrome: "s.chrome",
             social: "s.social",
             act: "s.act",
+            remote: "s.hands",
           }[act.what];
           input.extras?.applySetting(toggle, false);
         }

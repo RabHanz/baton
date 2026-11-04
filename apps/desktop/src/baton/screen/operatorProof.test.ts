@@ -169,7 +169,12 @@ describe("operator proof", () => {
 /** The one assistant's own tools (D143): the same gate, inside the tool server. */
 const assistant = async (
   answer: "yes" | "no" | "expired",
-  options: { shell?: boolean; window?: () => string; his?: (t: string) => boolean } = {},
+  options: {
+    shell?: boolean;
+    window?: () => string;
+    his?: (t: string) => boolean;
+    whileAsked?: () => void;
+  } = {},
 ) => {
   const ran: string[] = [];
   const asked: string[] = [];
@@ -190,6 +195,7 @@ const assistant = async (
     }),
     confirm: async (p) => {
       asked.push(p.title);
+      options.whileAsked?.();
       // A question that runs out is a no when it is risky; so is the answer "no".
       return spokenOutcome(answer, { yes: 0, cancel: 1, noOnExpiry: p.noOnExpiry }) === 0;
     },
@@ -327,6 +333,18 @@ describe("operator proof: the one assistant's tools", () => {
     await a.call("click_element", { label: "Other box", why: "another box" });
     await type("four");
     expect(a.asked).toHaveLength(3);
+    await a.mcp.close();
+  });
+
+  it("PROOF 12: keys are not sent when the window with the keyboard changed while he was asked", async () => {
+    let window = "Notepad";
+    const a = await assistant("yes", {
+      window: () => window,
+      whileAsked: () => (window = "Slack"),
+    });
+    await a.call("screen_capture", {});
+    expect((await a.call("type_text", { text: "hello", why: "into the box" }))?.isError).toBe(true);
+    expect(a.ran).toEqual(["screen_capture:"]);
     await a.mcp.close();
   });
 });

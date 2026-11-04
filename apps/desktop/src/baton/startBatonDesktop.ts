@@ -363,6 +363,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         onAction: (entry) => turnLog.note("action", entry),
         stopSpeech: speaker.cancel,
         holdEscape,
+        ownEscape: holdEscape.own,
         onActivity: (label, caption) => voice?.onActivity(label, caption),
         onCue: (name) => voice?.cue(name),
         onDismissed: () => voice?.onDismissed(),
