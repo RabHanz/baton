@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
  * Everything Baton adds to the server, as two layers the server mounts at one point each
@@ -10,10 +11,13 @@
  *
  * Later entries provide to earlier ones, so the order below is the dependency order.
  */
+import * as NodePath from "node:path";
+
 import { setClaudeAccountInstances } from "@t3tools/baton-contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import * as ServerConfig from "../config.ts";
 import { claudeAccountInstances } from "./ClaudeAccountInstances.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as AccountPoolService from "./AccountPoolService.ts";
@@ -31,6 +35,7 @@ import * as BatonCommitmentService from "./BatonCommitmentService.ts";
 import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
 import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
 import * as BatonMemoryService from "./BatonMemoryService.ts";
+import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
 import * as BatonPhoneInbox from "./BatonPhoneInbox.ts";
 import * as BatonTessayaRoutes from "./BatonTessayaRoutes.ts";
@@ -58,6 +63,19 @@ const readClaudeAccountInstances = Layer.effectDiscard(
   }),
 );
 
+// His private pack's text is refused by memory's door (D148); read fresh, so an edit counts at once.
+const memoryLayer = BatonMemoryService.layer.pipe(
+  Layer.provide(
+    Layer.effect(
+      BatonMemoryService.MemoryPrivateTexts,
+      Effect.map(
+        ServerConfig.ServerConfig,
+        (config) => () => packFileTexts(NodePath.dirname(config.dbPath)),
+      ),
+    ),
+  ),
+);
+
 const servicesInner = IntentService.layer.pipe(
   // The intent surface consumes the reactor, the rule service and the same narrow effects a
   // rule uses, rather than reaching the engine on its own: one sentence and one rule cause work
@@ -73,7 +91,7 @@ const servicesInner = IntentService.layer.pipe(
       // socket reaches every other client's subscription.
       WorkSessionService.layer,
       BatonJobService.layer.pipe(Layer.provide(WorkSessionService.layer)),
-      BatonMemoryService.layer,
+      memoryLayer,
       BatonCommitmentService.layer,
       BatonPhoneInbox.layer,
       BatonCloudService.layer,
@@ -86,10 +104,7 @@ const servicesInner = IntentService.layer.pipe(
       BatonWeaveService.layer.pipe(
         Layer.provide(BatonWeaveBoxes.layer.pipe(Layer.provide(HerdrAdapter.layer))),
       ),
-      BatonMemoryLearning.layer.pipe(
-        Layer.provide(BatonMemoryService.layer),
-        Layer.provide(BatonOneShot.layer),
-      ),
+      BatonMemoryLearning.layer.pipe(Layer.provide(memoryLayer), Layer.provide(BatonOneShot.layer)),
       readClaudeAccountInstances,
       AccountPoolService.layer,
       ThreadAccountMoves.layer.pipe(Layer.provide(BatonEngine.layer)),

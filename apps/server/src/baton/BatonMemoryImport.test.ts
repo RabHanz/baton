@@ -36,6 +36,30 @@ layer("importFolder", (it) => {
       const again = yield* importFolder(dir);
       assert.deepEqual(again, { files: 2, added: 0, refused: 0, unchanged: 2 });
       assert.strictEqual(NodeFS.readFileSync(NodePath.join(dir, "b.md"), "utf8"), before);
+
+      // Edits: a line changed, a line added, a file rewritten. An untouched line is not reinforced.
+      const keepBefore = (yield* memory.search({ text: "upload", scopeRef: "shop" }))[0]!.item;
+      NodeFS.writeFileSync(
+        NodePath.join(dir, "shop", "a.md"),
+        "---\nkind: learning\nproject: shop\n---\n- Retry the upload once\n- Build at night\n",
+      );
+      NodeFS.writeFileSync(NodePath.join(dir, "b.md"), "# Notes\nKeep the cache cold.\n");
+      yield* importFolder(dir);
+      const imported = (yield* memory.list({ limit: 100 })).filter((i) => i.source === "import");
+      assert.sameMembers(
+        imported.map((i) => i.text),
+        ["Retry the upload once", "Build at night", "Keep the cache cold."],
+      );
+      const keepAfter = imported.find((i) => i.text === "Retry the upload once")!;
+      assert.strictEqual(keepAfter.confidence, keepBefore.confidence);
+
+      // His private pack in the folder is never read into memory.
+      NodeFS.mkdirSync(NodePath.join(dir, "operating-system"));
+      NodeFS.writeFileSync(
+        NodePath.join(dir, "operating-system", "executive.md"),
+        "- Private rule\n",
+      );
+      assert.strictEqual((yield* importFolder(dir)).files, 2);
       NodeFS.rmSync(dir, { recursive: true, force: true });
 
       const missing = yield* Effect.flip(importFolder(dir));

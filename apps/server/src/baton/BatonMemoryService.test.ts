@@ -210,6 +210,28 @@ it.effect("two servers converge: last writer wins, a forget travels and stays fo
   }),
 );
 
+it.effect(
+  "a change relayed through a third server still arrives after the cursor passed its stamp",
+  () =>
+    Effect.gen(function* () {
+      const a = yield* server;
+      const b = yield* server;
+      const c = yield* server;
+      const x = yield* c.add({ kind: "fact", text: "The printer lives upstairs", source: "user" });
+      yield* TestClock.adjust(1_000);
+      yield* b.add({ kind: "fact", text: "Invoices go out monthly", source: "user" });
+      // A has caught up with B, so its cursor for B is past X's stamp.
+      yield* sync(b, a);
+      yield* TestClock.adjust(1_000);
+      yield* sync(c, b);
+      yield* sync(b, a);
+      assert.include(
+        (yield* a.list()).map((i) => i.id),
+        x.id,
+      );
+    }),
+);
+
 it.effect("a received item still goes through the never-store door", () =>
   Effect.gen(function* () {
     const b = yield* server;

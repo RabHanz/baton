@@ -199,8 +199,11 @@ import {
   type CiRun,
   type Trigger,
 } from "@t3tools/baton-shared/initiative";
+import type { MemoryItem } from "@t3tools/baton-shared/memory";
 import {
+  SERVER_MEMORY_NAME,
   applyRestore,
+  memoryRestore,
   planBackup,
   previewRestore,
   writeBackup,
@@ -3556,14 +3559,16 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       filters: [{ name: "Zip", extensions: ["zip"] }],
     });
     if (picked.canceled || picked.filePath === undefined) return;
-    // Server-side memory comes as the same markdown the Memory tab exports; without the window it is left out and says so.
+    // Server-side memory comes whole (ids, source, pins, history); without the window it is left out and says so.
     const windowUp = mainContents !== null && !mainContents.isDestroyed();
     const exported = windowUp
-      ? ((await requestKept({ kind: "memory", op: "export", args: {} }).catch(() => null)) as {
-          markdown?: string;
-        } | null)
+      ? ((await requestKept({
+          kind: "memory",
+          op: "list",
+          args: { includeSuperseded: true, limit: 100_000 },
+        }).catch(() => null)) as { items?: ReadonlyArray<MemoryItem> } | null)
       : null;
-    const plan = planBackup(input.stateDir, exported?.markdown ?? null);
+    const plan = planBackup(input.stateDir, exported?.items ?? null);
     const count = writeBackup(picked.filePath, plan);
     backupNote = `Saved ${count} files to ${picked.filePath}.${
       exported === null
@@ -4616,6 +4621,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .finally(pushHome);
       else if (id === "bk.apply" && backupPreview !== null) {
         const n = applyRestore(backupPreview, input.stateDir);
+        const kept = backupPreview.entries.find((e) => e.name === SERVER_MEMORY_NAME);
+        const push = kept === undefined ? null : memoryRestore(kept.data, new Date().toISOString());
+        if (push !== null) {
+          void requestKept({ kind: "memory", op: "syncPush", args: push })
+            .then((r) => {
+              backupNote = `${backupNote ?? ""} Memory: ${(r as { applied?: number } | null)?.applied ?? 0} item(s) back.`;
+            })
+            .catch(() => {
+              backupNote = `${backupNote ?? ""} Memory was not restored: open the sessions window and restore again.`;
+            })
+            .finally(pushHome);
+        }
         // Or the copies in memory are saved over what was just restored.
         settings = readSettings(settingsPath);
         dictionary = readDictionary(input.stateDir, dictionary);

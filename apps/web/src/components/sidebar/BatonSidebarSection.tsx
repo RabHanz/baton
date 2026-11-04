@@ -440,6 +440,7 @@ export function BatonSidebarSection(props: {
       learn: memoryLearn,
       import: memoryImport,
       pull: memoryPull,
+      syncPush: memorySyncPush,
     };
     type Settled =
       | { readonly _tag: "Success"; readonly value: unknown }

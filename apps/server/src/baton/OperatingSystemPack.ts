@@ -41,6 +41,20 @@ export const readPack = (userdata: string): OsPack => {
   return mergePack({ ...(executive === undefined ? {} : { executive }), roles });
 };
 
+/** The pack's own files as he wrote them (no defaults), so memory's door can refuse their text. */
+export const packFileTexts = (userdata: string): ReadonlyArray<string> => {
+  const dir = NodePath.join(userdata, PACK_DIR_NAME);
+  let roles: string[] = [];
+  try {
+    roles = NodeFS.readdirSync(NodePath.join(dir, "roles")).filter((n) => n.endsWith(".md"));
+  } catch {
+    // no roles folder
+  }
+  return [NodePath.join(dir, "executive.md"), ...roles.map((n) => NodePath.join(dir, "roles", n))]
+    .map(readText)
+    .filter((text): text is string => text !== undefined);
+};
+
 /** The planning frame for a job, read fresh so an edit counts at the next job. */
 export const planningFrame = (userdata: string): string => packPrompt(readPack(userdata));
 
