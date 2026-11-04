@@ -64,7 +64,9 @@ export const make = Effect.gen(function* () {
           "--model",
           model,
           "--settings",
-          JSON.stringify({ disableAllHooks: true }),
+          // Thinking off: a structured one-shot needs no scratchpad, and his own settings may turn it on
+          // (measured on one sentence and model: 10.0 s with thinking, 6.0 s without).
+          JSON.stringify({ disableAllHooks: true, alwaysThinkingEnabled: false }),
           "--tools",
           "",
           "--disable-slash-commands",

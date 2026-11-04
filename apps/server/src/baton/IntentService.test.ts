@@ -306,31 +306,62 @@ describe("a sentence the grammar cannot place (D50)", () => {
     ),
   );
 
-  it.effect("remembers the phrasing, and answers it next time without a model", () =>
-    run(
-      ({ modelPrompts }) =>
-        Effect.gen(function* () {
-          yield* givenWork;
-          const intents = yield* BatonIntentService;
-          yield* intents.run({
-            text: "poke the scheduler and ask where it got to",
-            focusedWorkSessionId: null,
-          });
-          const second = yield* intents.run({
-            text: "Poke the scheduler and ask where it got to.",
-            focusedWorkSessionId: null,
-          });
+  it.effect(
+    "reads a learned phrasing that names work again, with the learned one as an example",
+    () =>
+      run(
+        ({ modelPrompts }) =>
+          Effect.gen(function* () {
+            yield* givenWork;
+            const intents = yield* BatonIntentService;
+            yield* intents.run({
+              text: "poke the scheduler and ask where it got to",
+              focusedWorkSessionId: null,
+            });
+            const second = yield* intents.run({
+              text: "Poke the scheduler and ask where it got to.",
+              focusedWorkSessionId: null,
+            });
 
-          // Same meaning, different capitalisation and a full stop — one entry
-          // in the memory, because the key is the normalised sentence.
-          assert.strictEqual(second.record.source, "learned");
-          assert.strictEqual(second.record.model, null);
-          assert.strictEqual(second.record.commandKind, "message_work_session");
-          // And the model was asked exactly once, for the first one.
-          assert.strictEqual((yield* Ref.get(modelPrompts)).length, 1);
-        }),
-      pokeReply,
-    ),
+            // A learned id is never replayed: the work it named may be gone, or "it" may mean other work now.
+            assert.strictEqual(second.record.source, "model");
+            const prompts = yield* Ref.get(modelPrompts);
+            assert.strictEqual(prompts.length, 2);
+            assert.include(prompts[1] ?? "", "poke the scheduler and ask where it got to");
+          }),
+        pokeReply,
+      ),
+  );
+
+  it.effect(
+    "remembers a phrasing that names no work, and answers it next time without a model",
+    () =>
+      run(
+        ({ modelPrompts }) =>
+          Effect.gen(function* () {
+            yield* givenWork;
+            const intents = yield* BatonIntentService;
+            yield* intents.run({ text: "anything on fire over there", focusedWorkSessionId: null });
+            const second = yield* intents.run({
+              text: "Anything on fire over there?",
+              focusedWorkSessionId: null,
+            });
+
+            // Same meaning, different capitalisation and a question mark: one entry, keyed by the normalised sentence.
+            assert.strictEqual(second.record.source, "learned");
+            assert.strictEqual(second.record.model, null);
+            assert.strictEqual(second.record.commandKind, "status_fleet");
+            assert.strictEqual((yield* Ref.get(modelPrompts)).length, 1);
+          }),
+        {
+          ...pokeReply,
+          kind: "status_fleet",
+          statusQuestion: "needs_me",
+          workSessionId: null,
+          message: null,
+          description: "What needs you.",
+        },
+      ),
   );
 
   it.effect("never re-reads a high-risk sentence, whatever a model would say", () =>
