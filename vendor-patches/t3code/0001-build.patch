@@ -2,6 +2,8 @@ Subject: build: Baton's workspace packages and their build settings
 
 The apps and client-runtime depend on @t3tools/baton-contracts and @t3tools/baton-shared;
 onnxruntime-node (packages/baton-voice) is allowed to skip its install script.
+The scripts package typecheck leaves out scripts/tessaya, whose run-by-node tools import
+app sources outside that project.
 
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
 index 68321456683eb2b1757468a416e819757121002b..7603290d54d86800b6e185cb308cba330afbd1f5 100644
@@ -525,6 +527,18 @@ index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26
  ] as const;
  
  export function isDesktopRuntimeExternalDependency(id: string): boolean {
+diff --git a/scripts/tsconfig.json b/scripts/tsconfig.json
+index 61307d2992e025a13693a423d81907bc2d645487..3552cff95908c0faefda81e458c9fb803587ed91 100644
+--- a/scripts/tsconfig.json
++++ b/scripts/tsconfig.json
+@@ -5,5 +5,6 @@
+     "types": ["node"],
+     "lib": ["ESNext", "esnext.disposable"]
+   },
+-  "include": ["**/*.ts"]
++  "include": ["**/*.ts"],
++  "exclude": ["tessaya/**"]
+ }
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
 index e6d38a17e2d876bf3a91fb368cf4397428c73b3b..3250b4ff7c96e907184ae6a546def1dcef00dc28 100644
 --- a/third-party-licenses.config.json
