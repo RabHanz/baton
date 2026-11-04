@@ -10,6 +10,8 @@ import * as NodePath from "node:path";
 import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
 
+import { markPhase } from "../lifecycle/mainStall.ts";
+
 export const PARAKEET_MODEL = {
   file: "parakeet-tdt-0.6b-v3-Q8_0.gguf",
   url: "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf",
@@ -51,9 +53,15 @@ const ATTEMPTS = 3;
 const RETRY_DELAY_MS = 10_000;
 
 export const hashFile = async (path: string): Promise<string> => {
-  const hash = NodeCrypto.createHash("sha256");
-  await NodeStreamPromises.pipeline(NodeFS.createReadStream(path), hash);
-  return hash.digest("hex");
+  // Hashing a model is the one CPU-heavy step here, so it is a phase of its own in the stall log.
+  markPhase("model-hash:begin", { file: NodePath.basename(path) });
+  try {
+    const hash = NodeCrypto.createHash("sha256");
+    await NodeStreamPromises.pipeline(NodeFS.createReadStream(path), hash);
+    return hash.digest("hex");
+  } finally {
+    markPhase("model-hash:end");
+  }
 };
 
 /** Yields the body's chunks, and gives up when one takes longer than `stallMs` to arrive. */
