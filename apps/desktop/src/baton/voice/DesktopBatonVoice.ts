@@ -35,6 +35,7 @@ import {
   createEchoGuard,
   createVoiceRouter,
   encodeWav,
+  stripWake,
   type BatonVoiceCore,
   type EchoGuard,
   type SttProvider,
@@ -2451,7 +2452,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           return { type: "dismissed" };
         case "transcript":
           // A spoken cancel takes the pill down at once, the way Esc does.
-          if (!dictatingByVoice && isCancelPhrase(event.text)) {
+          if (
+            !dictatingByVoice &&
+            isCancelPhrase(
+              stripWake(
+                event.text,
+                settings.wakeWords.map((w) => w.word),
+              ),
+            )
+          ) {
             pill.on({ type: "dismissed" });
             input.onDismiss?.();
             return null;

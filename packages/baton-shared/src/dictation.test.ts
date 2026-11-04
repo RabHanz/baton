@@ -19,13 +19,13 @@ describe("classifyDictation", () => {
   });
 
   it("drops the full stop speech-to-text puts after the command", () => {
-    // whisper.cpp hears "Hey Jarvis, dictate. Thanks, …"; the "." must not be pasted.
-    const command = classifyDictation("Hey Jarvis, dictate. Thanks, I will send it.", idle);
+    // Speech-to-text hears "dictate. Thanks, …" (wake word already stripped); the "." must not be pasted.
+    const command = classifyDictation("Dictate. Thanks, I will send it.", idle);
     expect(command).toEqual({ kind: "start", text: "Thanks, I will send it." });
   });
 
   it("starts with no text when the user only asks for the mode", () => {
-    const command = classifyDictation("Jarvis, dictate", idle);
+    const command = classifyDictation("dictate", idle);
     expect(command).toEqual({ kind: "start", text: null });
   });
 
@@ -74,8 +74,14 @@ describe("classifyDictation", () => {
   });
 
   it("does not mistake a sentence about dictation for dictation", () => {
-    const command = classifyDictation("tell claude the dictation is broken", idle);
-    expect(command.kind).toBe("not_dictation");
+    for (const said of [
+      "tell claude the dictation is broken",
+      "Dictation is broken, can you look at it?",
+      "Dictation apps, which one's best?",
+      "Dictate a reply to Sam saying I'm late.",
+    ]) {
+      expect(classifyDictation(said, idle).kind, said).toBe("not_dictation");
+    }
   });
 
   it("is case-insensitive and tolerates curly apostrophes", () => {
@@ -99,7 +105,7 @@ describe("how he actually says it (voice-turns, 1 Nov)", () => {
       "dictate this",
       "go into dictation",
       "switch to dictation",
-      "Hey Baton, dictated",
+      "dictated",
       "Dictates.",
     ]) {
       expect(classifyDictation(said, idle)).toEqual({ kind: "start", text: null });
@@ -110,7 +116,7 @@ describe("how he actually says it (voice-turns, 1 Nov)", () => {
   });
 
   it("knows a bare stop, and never takes a longer phrase for one", () => {
-    for (const said of ["Stop", "stop.", "Baton, stop", "please stop", "never mind", "Be quiet."]) {
+    for (const said of ["Stop", "stop.", "please stop", "never mind", "Be quiet."]) {
       expect(isBareStop(said)).toBe(true);
     }
     for (const said of [

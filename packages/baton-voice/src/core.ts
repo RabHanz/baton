@@ -445,10 +445,12 @@ export const createVoiceCore = (input: {
       const said = turn.prefix === null ? cleaned : `${turn.prefix} ${cleaned}`;
       // In the follow-up window nobody said the name: only what reads as meant for Tessaya goes on, and
       // the rest is let go without extending the window, so a TV in the room cannot keep it open.
+      // Her own last sentence was a question: whatever he says next is the answer.
       if (
         machine.mode === "conversation" &&
         machine.pending === null &&
         stripWake(cleaned, timings.wakeWords) === cleaned &&
+        !(spokenLately.at(-1)?.trim().endsWith("?") ?? false) &&
         !isAddressedFollowUp(said)
       ) {
         return emit({ type: "dropped", text: cleaned, reason: "not addressed" });
@@ -694,7 +696,8 @@ export const createVoiceCore = (input: {
     if (speaking && !barged) {
       const flagged = headphones()
         ? input.vad.isSpeech(frame)
-        : input.echo !== undefined && ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
+        : input.echo !== undefined &&
+          ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
       bargeRun = flagged ? bargeRun + frame.length : 0;
       if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;

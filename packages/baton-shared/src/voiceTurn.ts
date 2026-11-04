@@ -252,27 +252,49 @@ export const frameLevel = (frame: Int16Array): number => {
   return Math.min(1, Math.sqrt(peak / 32768) * 1.4);
 };
 
-/** A spoken cancel: it dismisses the pill at once, before anything else is worked out. */
+/** A spoken cancel, with any wake word already stripped: it dismisses the pill at once. */
 export const isCancelPhrase = (text: string): boolean =>
-  /^(?:(?:hey |ok |okay )?(?:jarvis|baton|alfred)[,:]?\s+)?(?:cancel(?: that)?|never ?mind|scratch that|forget it)[.!]?$/i.test(
-    text.trim(),
-  );
+  /^(?:cancel(?: that)?|never ?mind|scratch that|forget it)[.!]?$/i.test(text.trim());
 
-const NEUTRAL = String.raw`okay|ok|alright|right|yeah|please|baton|jarvis|alfred|now|for now|sir`;
+const NEUTRAL = String.raw`okay|ok|alright|right|yeah|please|now|for now|sir`;
 const DISMISS_ATOM = String.raw`dismiss(?:ed)?|go away|leave it|never ?mind|forget it|scratch that|cancel(?: that)?|stop(?: it| that| listening)?|(?:be )?quiet|enough|that'?s enough|that(?:'s| is|'ll be| will be| would be) (?:all|it)|nothing|no(?:pe)?|nah|thanks?|tanks?|thank you(?: very much)?|cheers|bye(?: bye)?|goodbye|good bye|see you|see ya`;
 const DISMISS = new RegExp(String.raw`^(?:(?:${NEUTRAL}|${DISMISS_ATOM})(?: |$)){1,4}$`);
 const NEUTRAL_ONLY = new RegExp(String.raw`^(?:(?:${NEUTRAL})(?: |$))+$`);
+
+const plain = (text: string): string =>
+  text
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^a-z' ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const ANSWER_NEUTRAL = String.raw`right|please|then|now|sir|thanks|thank you|just|well|oh|mate`;
+const YES_ATOM = String.raw`yes|yeah|yea|yep|yup|aye|sure|ok|okay|alright|all right|fine|correct|that's right|confirm(?:ed)?|approve(?:d)?|go ahead|go on|go for it|do it|do that|send it|carry on|proceed|please do|sounds good|absolutely|definitely|of course|why not|let's do it`;
+const NO_ATOM = String.raw`no|nope|nah|cancel(?: it| that)?|stop|don't(?: do it)?|do not|never ?mind|abort|not now|not yet|leave it|forget it|scratch that|hold on|wait`;
+const wholly = (atoms: string) =>
+  new RegExp(String.raw`^(?:(?:${ANSWER_NEUTRAL}|${atoms})(?: |$)){1,6}$`);
+const YES = wholly(YES_ATOM);
+const NO = wholly(NO_ATOM);
+const NEUTRAL_ANSWER = wholly("(?!)");
+
+/**
+ * The answer to a yes-or-no question, by the whole utterance, as dismissal is: "yeah go on then"
+ * is a yes, "no, send it to Sam instead" is neither, and that goes to the assistant as a new ask.
+ */
+export const answerOf = (text: string): "yes" | "no" | null => {
+  const words = plain(text);
+  if (words === "" || NEUTRAL_ANSWER.test(words)) return null;
+  if (YES.test(words)) return "yes";
+  if (NO.test(words)) return "no";
+  return null;
+};
 
 /**
  * The whole utterance is only a dismissal ("stop", "nothing, dismiss", "okay that will be all
  * tanks"), read as Baton heard it. Any other word makes it an ask for the assistant, never this.
  */
 export const isDismissPhrase = (text: string): boolean => {
-  const words = text
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/[^a-z' ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const words = plain(text);
   return words.length > 0 && DISMISS.test(words) && !NEUTRAL_ONLY.test(words);
 };
