@@ -460,6 +460,12 @@ export const layer = Layer.effect(
         const now = Date.now();
         // Only what stopped recently: an old unfinished session was left that way long ago.
         if (now - Date.parse(t.lastActivityAt) > FRESH_MS) continue;
+        // With resuming off, a tail is read only to report a session that was live and is not reported yet.
+        if (
+          !enabled &&
+          (autoState.seenLive[t.sessionId] === undefined || outcomes.has(t.sessionId))
+        )
+          continue;
         const verdict = classifyTranscriptTail(await ports.readTail(t.file).catch(() => ""));
         if (resumed.length >= MAX_AT_ONCE) break;
         const decision = autoResumeAllowed({
@@ -477,8 +483,7 @@ export const layer = Layer.effect(
         if (!decision.resume || !enabled) {
           const why = decision.resume ? "auto-resume is off here" : decision.why;
           if (verdict === "unfinished") skipped.push({ id: t.sessionId, why });
-          if (decision.resume || why === "already resumed three times this hour")
-            noteOutcome(t, false, why);
+          if (decision.resume || decision.capped === true) noteOutcome(t, false, why);
           continue;
         }
         autoState = recordAutoResume(autoState, t.sessionId, now);

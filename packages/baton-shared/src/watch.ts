@@ -27,7 +27,6 @@ const SEVERITY: Record<WatchFinding["kind"], number> = {
   stalled: 3,
   unanswered: 4,
   unseen: 5,
-  resumed: 6,
 };
 
 const lastActivity = (entry: BatonFleetEntry): number => {
@@ -135,10 +134,11 @@ export const watchLiveSessions = (
           {
             workSessionId: WorkSessionId.make(o.sessionId),
             title: o.title.trim() || o.sessionId,
-            kind: o.resumed ? "resumed" : "failed",
+            // "unseen", not a new kind: an older client fails to decode the whole answer on a literal it lacks.
+            kind: o.resumed ? "unseen" : "failed",
             minutes: minutesSince(o.at),
             lastDid: o.resumed
-              ? "resumed after dying mid-turn"
+              ? "resumed by itself after dying mid-turn"
               : `died mid-turn, not resumed: ${o.why ?? "unknown"}`,
           },
         ],
@@ -155,7 +155,6 @@ const WORDS: Record<WatchFinding["kind"], string> = {
   stalled: "looks stalled",
   unanswered: "has been waiting for you",
   unseen: "finished and has not been looked at",
-  resumed: "died mid-turn and was resumed by itself",
 };
 
 export const describeWatch = (findings: ReadonlyArray<WatchFinding>): string =>

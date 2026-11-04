@@ -58,7 +58,6 @@ const VERB: Record<WatchFinding["kind"], string> = {
   stalled: "looks stalled",
   unanswered: "is waiting for you",
   unseen: "finished",
-  resumed: "died mid-turn and was resumed",
 };
 
 /**

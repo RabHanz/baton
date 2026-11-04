@@ -122,9 +122,10 @@ describe("when the watchdog may resume a session", () => {
     let state = live("s1");
     state = noteLive(state, ["other"], base.now - 600_000);
     for (let i = 0; i < 3; i += 1) state = recordAutoResume(state, "s1", base.now + i * 1000);
+    // The watch reports a capped session as failed, keyed on this flag rather than on the wording.
     expect(
-      autoResumeAllowed({ ...base, now: base.now + 5000, state, sessionId: "s1" }).resume,
-    ).toBe(false);
+      autoResumeAllowed({ ...base, now: base.now + 5000, state, sessionId: "s1" }),
+    ).toMatchObject({ resume: false, capped: true });
     expect(
       autoResumeAllowed({ ...base, now: base.now + 5000, state, sessionId: "other" }).resume,
     ).toBe(true);

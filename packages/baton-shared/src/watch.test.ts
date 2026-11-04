@@ -83,7 +83,7 @@ describe("watching his terminal sessions", () => {
     expect(found.map((f) => `${f.workSessionId}:${f.kind}`)).toEqual([
       "capped:failed",
       "asks:unanswered",
-      "back:resumed",
+      "back:unseen",
     ]);
     expect(found[0]?.lastDid).toContain("three times this hour");
   });
