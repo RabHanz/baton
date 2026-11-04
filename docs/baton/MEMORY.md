@@ -38,8 +38,9 @@ Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
 ### Provenance and confidence
 
 - Anything he said or wrote himself is `source: user`, confidence 1. The extractor never lowers it.
-- A statement the extractor marks as his, when most of its words are words he said in that turn, is stored as his
-  (`source: user`), so a correction he speaks beats his older note.
+- A statement the extractor marks as his, when most of its words are words he said in a turn that read nothing from
+  outside, is stored as his (`source: user`), so a correction he speaks beats his older note. A turn that read outside
+  content never stores anything as his and never replaces one of his notes.
 - Anything else a model proposed starts at 0.5, and rises by 0.15 each time a later turn or job
   proposes the same thing (dedupe, section 4), capped at 0.95. It never reaches 1: only he confirms to 1 (pinning).
 - Retrieval shows the source with the item, so he can see where a belief came from and correct it.
@@ -75,7 +76,7 @@ the sync), so no path skips it:
 - Text of the user's private operating-system pack (below).
 - Content from a tainted turn (one that read a web page, a file or a message from outside, as D127 defines it) is not
   stored by the extractor unless he says yes; the item waits as a proposal, `source: thread`, not shown to retrieval
-  until accepted. What he said himself in that turn (most of the proposal's words are his) is not held. The morning
+  until accepted. What he said himself in that turn (most of the proposal's words are his) is not held; it is kept as the model's. The morning
   brief says how many memories wait for his yes.
 - Dictated words as such (D31): a dictation is a stub with its length. Only what he tells the assistant to remember, or
   what a turn with the assistant decided, becomes memory.

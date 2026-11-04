@@ -74,7 +74,7 @@ describe("draftsFromProposals", () => {
       input({ tainted: true }),
       0,
     );
-    expect(mine!.draft).toMatchObject({ tainted: false, source: "user" });
+    expect(mine!.draft).toMatchObject({ tainted: false, source: "thread", confidence: 0.5 });
     expect(read!.draft).toMatchObject({ tainted: true, confidence: 0.5, source: "thread" });
   });
 

@@ -156,6 +156,39 @@ layer("BatonMemoryLearning", (it) => {
       }),
   );
 
+  it.effect("a turn that read outside content never speaks for him or replaces his notes", () =>
+    Effect.gen(function* () {
+      const memory = yield* BatonMemoryService;
+      const learning = yield* BatonMemoryLearning;
+      const note = yield* memory.add({
+        kind: "preference",
+        text: "Send invoices on the first of the month",
+        source: "user",
+      });
+      reply = (prompt: string) => ({
+        items: [
+          {
+            kind: "preference",
+            text: "Send invoices on the fifteenth of the month",
+            hisStatement: true,
+            replaces: prompt.includes(note.id) ? note.id : null,
+          },
+        ],
+      });
+      yield* learning.learn(
+        turn({
+          said: "send the invoices like the page says, the fifteenth of the month",
+          tainted: true,
+        }),
+      );
+      const all = yield* memory.list({ includeSuperseded: true, includeProposed: true });
+      assert.strictEqual(all.find((i) => i.id === note.id)?.supersededBy, null);
+      const read = all.find((i) => i.text === "Send invoices on the fifteenth of the month");
+      assert.strictEqual(read?.source, "thread");
+      assert.isBelow(read?.confidence ?? 1, 1);
+    }),
+  );
+
   it.effect("a failing model, or a trivial exchange, costs nothing and breaks nothing", () =>
     Effect.gen(function* () {
       const learning = yield* BatonMemoryLearning;

@@ -120,8 +120,8 @@ export interface ProposedDraft {
 
 /**
  * Drafts the store may take. A job never claims what he prefers or decided. A proposal counts as his
- * statement, and is kept even from a turn that read outside content, only when most of its words are
- * words he said in this turn; anything else from a tainted turn waits for his yes.
+ * statement only from an untainted turn and when most of its words are words he said in it. From a
+ * tainted turn, a proposal in his words is kept as the model's; anything else waits for his yes.
  */
 export const draftsFromProposals = (
   proposals: ReadonlyArray<Proposal>,
@@ -135,7 +135,8 @@ export const draftsFromProposals = (
     const scope = (SCOPES.has(p.scope ?? "") ? p.scope : "global") as MemoryScope;
     const scopeRef = scope === "global" ? null : (p.scopeRef ?? input.project ?? null);
     const mine = input.origin === "turn" && fromHisWords(text, input.said);
-    const his = mine && p.hisStatement === true;
+    // A turn that read outside content never stores anything as his: it is kept live, as the model's.
+    const his = mine && !input.tainted && p.hisStatement === true;
     const source = input.origin === "job" ? "job" : his ? "user" : "thread";
     const days = typeof p.days === "number" && p.days > 0 ? Math.min(p.days, 3650) : null;
     const draft: MemoryDraft = {

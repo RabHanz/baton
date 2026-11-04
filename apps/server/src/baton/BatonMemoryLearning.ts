@@ -87,8 +87,10 @@ export const make = Effect.gen(function* () {
     let stored = 0;
     let held = 0;
     for (const { draft, replaces } of drafts) {
-      // Only an id it was shown: a made-up or guessed id replaces nothing.
-      const older = known.find((item) => item.id === replaces);
+      // Only an id it was shown, and never his own note from a turn that read outside content.
+      const older = known.find(
+        (item) => item.id === replaces && !(input.tainted && item.source === "user"),
+      );
       const item = yield* memory
         .add({ ...draft, ...(older === undefined ? {} : { supersedes: older.id }) })
         .pipe(Effect.orElseSucceed(() => null));
