@@ -10,7 +10,7 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 version="${1:?usage: fetch-server-archive.sh <version> [dir]}"
 dir="${2:-.}"
-repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
+repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/tessaya}}"
 name="t3-$version-linux-x64.tar.gz"
 mkdir -p "$dir"
 gh release download "server-$version" -R "$repo" --dir "$dir" --clobber -p "$name" -p "$name.sha256"

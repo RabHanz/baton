@@ -23,7 +23,7 @@ for k in $(compgen -e); do case "$k" in TESSAYA_ENV_NOTED) ;; TESSAYA_*) export 
 # (systemd/baton-auto-sync.service), so an edit that lands mid-run cannot change it under bash.
 repo_dir="${BATON_REPO_DIR:-/mnt/HC_Volume_106652742/dev/t3code}"
 work="${BATON_AUTOSYNC_DIR:-/mnt/HC_Volume_106652742/dev/baton-autosync}"
-repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
+repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/tessaya}}"
 alarm_days="${BATON_ALARM_DAYS:-3}"
 dry=0
 for a in "$@"; do

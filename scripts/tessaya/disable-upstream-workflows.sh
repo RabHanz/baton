@@ -8,7 +8,7 @@
 set -euo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 
-repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
+repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/tessaya}}"
 keep=(
   pr-size.yml    # labels PR size, GitHub-hosted, no secrets
   issue-labels.yml
