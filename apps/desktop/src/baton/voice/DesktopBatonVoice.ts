@@ -2531,8 +2531,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
                   : null;
               render();
             },
-          });
-          markPhase("speech-model-ensure:end");
+          }).finally(() => markPhase("speech-model-ensure:end"));
           if (model === speechModel()) {
             parakeetPath = path;
             note = null;
