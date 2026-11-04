@@ -306,6 +306,13 @@ describe("pending v2 questions", () => {
     ]);
   });
 
+  it("still shows a card for a pending message-mode request whose item is not loaded", () => {
+    const windowed = { ...projection, turnItems: [] };
+    const [card] = derivePendingThreadRequests(windowed).userInputs;
+    expect(card?.requestId).toBe(requestId);
+    expect(card?.questions[0]?.question).toBe("A question is waiting in the terminal.");
+  });
+
   it("only marks asynchronous questions as dismissible", () => {
     const live = {
       ...projection,
