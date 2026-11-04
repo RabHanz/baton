@@ -529,6 +529,7 @@ export const mirrorTitle = (input: {
 };
 
 const SESSION_STEP_TIMEOUT = "30 seconds";
+const PROMPT_REREAD_MS = 10_000;
 
 /** Ended-session threads wait this long before leaving the list, so a failed read cannot empty it. */
 const ENDED_GRACE_MS = 5 * 60_000;
@@ -768,6 +769,8 @@ interface Follow {
     readonly itemId: TurnItemId;
     readonly request: OrchestrationV2RuntimeRequest;
   } | null;
+  /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
+  promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
   /** Tool calls shown as running, by Claude's tool-use id, until their result arrives. */
   readonly tools: Map<
     string,
@@ -1466,6 +1469,19 @@ const make = Effect.gen(function* () {
    */
   const relayPrompt = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
+      // Reading a pane spawns node and herdr: while the question shown is still up and the descriptor has not
+      // changed, read again only every PROMPT_REREAD_MS (a multi-part form can move on without a descriptor write).
+      const nowMs = Date.now();
+      if (
+        session.status === "waiting" &&
+        follow.ask !== null &&
+        follow.promptRead !== null &&
+        follow.promptRead.updatedAt === session.updatedAt &&
+        nowMs - follow.promptRead.at < PROMPT_REREAD_MS
+      )
+        return;
+      follow.promptRead =
+        session.status === "waiting" ? { updatedAt: session.updatedAt, at: nowMs } : null;
       const read =
         session.status === "waiting" && session.herdrPane !== null
           ? yield* readPanePrompt(session.herdrPane)
@@ -1746,6 +1762,7 @@ const make = Effect.gen(function* () {
         shown: null,
         checkedAt: 0,
         ask: null,
+        promptRead: null,
         tools: new Map(),
       };
       follows.set(session.sessionId, follow);
