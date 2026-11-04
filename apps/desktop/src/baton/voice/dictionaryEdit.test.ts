@@ -1,6 +1,19 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
-import { addEntry, editEntry, forgetLearned, removeEntry } from "./dictionaryEdit.ts";
+import { readSettings } from "./DesktopBatonVoice.ts";
+import {
+  addEntry,
+  editEntry,
+  forgetLearned,
+  removeEntry,
+  saveDictionary,
+} from "./dictionaryEdit.ts";
+import { dictionaryPath, readDictionary } from "./dictationRewriter.ts";
 
 describe("the vocabulary", () => {
   it("adds a word, keeps one entry per phrase, and ignores an empty one", () => {
@@ -41,5 +54,21 @@ describe("the vocabulary", () => {
       { phrase: "c", replacement: null },
     ];
     expect(forgetLearned(list).map((e) => e.phrase)).toEqual(["b", "c"]);
+  });
+  it("never takes a damaged file for an empty list: it keeps it aside and keeps the words it had", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "vocab-"));
+    const had = [{ phrase: "airdeck", replacement: "Airdeck" }];
+    saveDictionary(dir, had);
+    const read = readDictionary(dir, []);
+    expect(read.map((e) => e.replacement)).toEqual(["Airdeck"]);
+    // One stray comma from a hand edit.
+    NodeFS.writeFileSync(dictionaryPath(dir), '[{"phrase":"airdeck","replacement":"Airdeck"},]');
+    expect(readDictionary(dir, read)).toEqual(read);
+    expect(NodeFS.existsSync(`${dictionaryPath(dir)}.bad`)).toBe(true);
+
+    const settings = NodePath.join(dir, "fabric-voice.json");
+    NodeFS.writeFileSync(settings, '{"holdKey":"F9",');
+    readSettings(settings);
+    expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
   });
 });
