@@ -36,3 +36,57 @@ export const decideBinding = (facts: BindingFacts): BindingAction => {
     ? { kind: "rebind-native" }
     : { kind: "rebind-instance" };
 };
+
+export type ReattachAction =
+  | { readonly kind: "already-bound" }
+  | { readonly kind: "wait" }
+  /** Point the thread at `sessionId` (instance and/or native id as needed). */
+  | {
+      readonly kind: "rebind";
+      readonly sessionId: string;
+      readonly pane: string | null;
+      readonly instance: boolean;
+      readonly native: boolean;
+    }
+  /** No session has this id, but exactly one runs in the folder: only ever offered, never taken without a yes. */
+  | { readonly kind: "confirm"; readonly pane: string }
+  | { readonly kind: "none" };
+
+/**
+ * Reattach: by session id when one runs under it (the same rule as the 30 s heal); otherwise the single running
+ * session in the thread's folder, but only after the person confirmed that exact pane.
+ */
+export const decideReattach = (input: {
+  readonly facts: BindingFacts;
+  readonly folderSessions: ReadonlyArray<{
+    readonly sessionId: string;
+    readonly pane: string | null;
+  }>;
+  readonly confirmPane: string | null;
+}): ReattachAction => {
+  const { facts } = input;
+  if (facts.session !== null) {
+    const action = decideBinding(facts);
+    if (action.kind === "ok") return { kind: "already-bound" };
+    if (action.kind === "wait") return { kind: "wait" };
+    return {
+      kind: "rebind",
+      sessionId: facts.sessionId,
+      pane: facts.session.pane,
+      instance: facts.thread.instanceId !== "baton-live",
+      native: facts.thread.nativeId !== facts.sessionId,
+    };
+  }
+  const inPanes = input.folderSessions.filter((s) => s.pane !== null);
+  const only = inPanes.length === 1 ? inPanes[0]! : null;
+  if (only === null || only.pane === null) return { kind: "none" };
+  if (input.confirmPane !== only.pane) return { kind: "confirm", pane: only.pane };
+  if (facts.thread.running) return { kind: "wait" };
+  return {
+    kind: "rebind",
+    sessionId: only.sessionId,
+    pane: only.pane,
+    instance: facts.thread.instanceId !== "baton-live",
+    native: facts.thread.nativeId !== only.sessionId,
+  };
+};

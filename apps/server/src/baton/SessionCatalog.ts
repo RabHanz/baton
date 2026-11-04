@@ -122,6 +122,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
           ? AUTO_RESUMED
           : null,
     waiting: waiting.get(s.sessionId)?.length ?? 0,
+    pane: s.herdrPane,
   });
 
   const stoppedRow = (t: TranscriptInfo): BatonCatalogSession => {

@@ -50,6 +50,8 @@ export const rowsFromAnswer = (json: string): ReadonlyArray<CatalogRow> => {
       canResume: raw["canResume"] === true,
       detail: asString(raw["detail"]),
       ...(raw["local"] === true ? { local: true } : {}),
+      pane: asString(raw["pane"]),
+      answeredBy: asString(raw["answeredBy"]),
       ...(asString(raw["threadId"]) === null ? {} : { threadId: asString(raw["threadId"])! }),
     });
   }
@@ -122,6 +124,29 @@ export const createBridgeCatalogService = (input: {
         left: m.left?.length ?? 0,
         archived: m.archived?.length ?? 0,
       }));
+    },
+    reattach: async (row, confirmPane) => {
+      const answer = await input.bridge.request(
+        {
+          kind: "catalogReattach",
+          environmentId: row.environmentId,
+          sessionId: row.sessionId,
+          cwd: row.cwd || null,
+          ...(confirmPane === undefined ? {} : { confirmPane }),
+        },
+        LIST_WAIT_MS,
+      );
+      if (answer === null) throw new Error("The sessions view did not answer.");
+      const parsed = JSON.parse(answer.detail) as {
+        state?: unknown;
+        pane?: unknown;
+        detail?: unknown;
+      };
+      return {
+        state: typeof parsed.state === "string" ? parsed.state : "failed",
+        pane: asString(parsed.pane),
+        detail: asString(parsed.detail) ?? "",
+      };
     },
     resume: async (row) => {
       const answer = await input.bridge.request(

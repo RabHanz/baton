@@ -95,3 +95,30 @@ export const bindingBanner = (
   if (row !== "missing" && row.state === "resuming") return null;
   return { text: "Not connected to its session.", actions: ["resume"] };
 };
+
+/**
+ * What a live thread is really bound to, from the catalog row of its session id: its Herdr pane, a handoff session
+ * T3 hosts (another provider answers), a plain terminal, or nothing running. Reattach is offered unless it is the pane.
+ */
+export const bindingOf = (
+  row:
+    | {
+        readonly state: string;
+        readonly source: string;
+        readonly pane?: string | null | undefined;
+        readonly answeredBy?: string | null | undefined;
+      }
+    | "missing"
+    | null,
+): { readonly kind: "pane" | "terminal" | "handoff" | "stopped"; readonly text: string } | null => {
+  if (row === null) return null;
+  if (row === "missing" || row.state !== "running" || row.source !== "live")
+    return row !== "missing" && row.state === "resuming"
+      ? null
+      : { kind: "stopped", text: "Stopped" };
+  if (row.answeredBy !== undefined && row.answeredBy !== null && row.answeredBy !== LIVE_INSTANCE)
+    return { kind: "handoff", text: "T3-hosted handoff session" };
+  return row.pane
+    ? { kind: "pane", text: `Herdr pane ${row.pane}` }
+    : { kind: "terminal", text: "Plain terminal (no Herdr pane)" };
+};
