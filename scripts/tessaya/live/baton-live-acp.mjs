@@ -501,11 +501,16 @@ const BLOCKED_NOTE =
 
 // ---------------------------------------------------------------------------------------------
 // The message queue. A message that cannot be delivered now is kept, in order, in a small file per
-// session under ~/.t3/baton/live-queue, so a restart does not lose it; a drainer delivers it when the
+// session in the live-queue folder (`liveQueueDir`), so a restart does not lose it; a drainer delivers it when the
 // pane takes input. The turn never waits for it (T3 would queue every later send behind it).
 
-const QUEUE_DIR =
-  process.env.BATON_LIVE_QUEUE_DIR ?? NodePath.join(NodeOS.homedir(), ".t3", "baton", "live-queue");
+/** The server's `stateSubdir` rule (packages/baton-shared/src/stateDir.ts), so both sides use one folder. */
+export const liveQueueDir = (home) => {
+  const next = NodePath.join(home, ".t3", "tessaya", "live-queue");
+  const legacy = NodePath.join(home, ".t3", "baton", "live-queue");
+  return !NodeFS.existsSync(next) && NodeFS.existsSync(legacy) ? legacy : next;
+};
+const QUEUE_DIR = process.env.BATON_LIVE_QUEUE_DIR ?? liveQueueDir(NodeOS.homedir());
 const QUEUE_TRIES = Number(process.env.BATON_LIVE_QUEUE_TRIES ?? 6);
 const QUEUE_EVERY_MS = Number(process.env.BATON_LIVE_QUEUE_EVERY_MS ?? 3_000);
 /** A session gone this long with messages waiting is not coming back soon: they are handed back. */
@@ -584,7 +589,67 @@ export function releaseQueue(dir, sessionId) {
     );
 }
 
+/**
+ * Replaces the item `head` was with `next` (null drops it) in the queue as it is on disk now, so what
+ * was added during an await is kept. Matched by its contents: items carry no id.
+ */
+function settleHead(dir, sessionId, head, next) {
+  const key = JSON.stringify(head);
+  const items = readQueue(dir, sessionId);
+  const at = items.findIndex((item) => JSON.stringify(item) === key);
+  if (at < 0) return;
+  const kept = items.flatMap((item, i) => (i !== at ? [item] : next === null ? [] : [next]));
+  writeQueue(dir, sessionId, kept);
+}
+
+/**
+ * One drainer at a time across every live-session process (T3 runs one per thread), or two would type
+ * the same head twice. A lock left by a process that died is taken over. Returns the release, or null.
+ */
+export function takeDrainLock(dir) {
+  const lock = NodePath.join(dir, ".drain.lock");
+  const take = () => {
+    try {
+      NodeFS.mkdirSync(dir, { recursive: true });
+      NodeFS.writeFileSync(lock, String(process.pid), { flag: "wx" });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!take()) {
+    let pid = 0;
+    try {
+      pid = Number(NodeFS.readFileSync(lock, "utf8"));
+    } catch {}
+    let alive = false;
+    // 0 or a torn write would signal our own process group: only a real pid counts as a holder.
+    if (Number.isInteger(pid) && pid > 0) {
+      try {
+        process.kill(pid, 0);
+        alive = true;
+      } catch (error) {
+        alive = error?.code === "EPERM";
+      }
+    }
+    if (alive) return null;
+    NodeFS.rmSync(lock, { force: true });
+    if (!take()) return null;
+  }
+  return () => NodeFS.rmSync(lock, { force: true });
+}
+
 export async function drainSession(dir, sessionId, deps) {
+  const release = takeDrainLock(dir);
+  if (release === null) return;
+  try {
+    await drainLocked(dir, sessionId, deps);
+  } finally {
+    release();
+  }
+}
+
+async function drainLocked(dir, sessionId, deps) {
   // A note (weaving: "sent to X") is only shown in this thread; it never waits on the pane.
   const all = readQueue(dir, sessionId);
   if (all.some((item) => item.kind === "note")) {
@@ -599,7 +664,9 @@ export async function drainSession(dir, sessionId, deps) {
   if (items.length === 0) return;
   if (items[0].held) return;
   const live = deps.findLive(sessionId);
-  if (live === null || live.pane === null) {
+  // Running in a plain terminal: it is not gone, so what waits is kept until it has a pane.
+  if (live !== null && live.pane === null) return;
+  if (live === null) {
     const gone = items.map((item) => ({ ...item, gone: (item.gone ?? 0) + 1 }));
     if (gone[0].gone >= QUEUE_GONE_TRIES) {
       for (const item of items) {
@@ -611,22 +678,22 @@ export async function drainSession(dir, sessionId, deps) {
   }
   if (live.status === "waiting") return;
   while (true) {
-    const [head, ...rest] = readQueue(dir, sessionId);
+    const [head] = readQueue(dir, sessionId);
     if (head === undefined) return;
     const failure = await deps.typeInto(live.pane, head.text);
     if (failure === null) {
-      writeQueue(dir, sessionId, rest);
+      settleHead(dir, sessionId, head, null);
       deps.say(sessionId, deliveredNote(head.shown));
       continue;
     }
     if (failure === BLOCKED_NOTE) return;
     const tries = head.tries + 1;
     if (tries >= QUEUE_TRIES) {
-      writeQueue(dir, sessionId, rest);
+      settleHead(dir, sessionId, head, null);
       deps.say(sessionId, lostNote(failure, head.shown));
       continue;
     }
-    return writeQueue(dir, sessionId, [{ ...head, tries }, ...rest]);
+    return settleHead(dir, sessionId, head, { ...head, tries });
   }
 }
 
@@ -925,7 +992,11 @@ async function prompt(params) {
       sessionId = only;
     } else {
       // Kept, never dropped: written beside the queues and shown here with the words, so it can be sent again.
-      const words = promptText(params.prompt).trim();
+      // With the thread's folder known, attachments are saved to its inbox and kept as @refs, not lost.
+      const words =
+        folder === undefined
+          ? promptText(params.prompt).trim()
+          : composeForSession(params.prompt, folder);
       try {
         NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
         NodeFS.appendFileSync(
