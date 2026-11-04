@@ -1,6 +1,10 @@
 // @effect-diagnostics globalDate:off nodeBuiltinImport:off tryCatchInEffectGen:off preferSchemaOverJson:off globalDateInEffect:off
 /** The session catalog as a service, so the RPC door, agents and MCP all reach the same methods. */
-import type { BatonCatalogSession, BatonCatalogState } from "@t3tools/baton-contracts";
+import type {
+  BatonCatalogSession,
+  BatonCatalogState,
+  BatonReattachResult,
+} from "@t3tools/baton-contracts";
 import {
   CommandId,
   DEFAULT_MODEL_BY_PROVIDER,
@@ -23,7 +27,8 @@ import * as ServerConfig from "../config.ts";
 import { AgentSessionImporter } from "../project/AgentSessionImporter.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 
-import { LIVE_INSTANCE_ID } from "./LiveSessionMirror.ts";
+import { LIVE_INSTANCE_ID, liveThreadId, rebindThread } from "./LiveSessionMirror.ts";
+import { decideReattach } from "./BindingHealth.ts";
 import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
@@ -103,6 +108,11 @@ export class BatonSessionCatalogService extends Context.Service<
       caughtUp: boolean;
       twinOnly?: boolean;
     }) => Effect.Effect<RetireResult>;
+    readonly reattach: (input: {
+      sessionId: string;
+      cwd?: string;
+      confirmPane?: string;
+    }) => Effect.Effect<typeof BatonReattachResult.Type>;
     readonly cleanup: (input: { apply: boolean }) => Effect.Effect<{
       readonly found: ReadonlyArray<{ id: string; title: string; project: string; reason: string }>;
       readonly archived: ReadonlyArray<string>;
@@ -450,8 +460,120 @@ export const layer = Layer.effect(
         before?: string;
         background?: boolean;
       }) {
-        return yield* Effect.promise(() => catalog.list(input));
+        const result = yield* Effect.promise(() => catalog.list(input));
+        if (Option.isNone(engine)) return result;
+        const e = engine.value;
+        // Which provider instance answers each live session's thread: a handoff twin is not the session's own pane.
+        const sessions = yield* Effect.forEach(result.sessions, (row) =>
+          row.source !== "live"
+            ? Effect.succeed(row)
+            : e.threadShell(liveThreadId(row.id)).pipe(
+                Effect.map((shell) => ({
+                  ...row,
+                  answeredBy: shell === null ? null : String(shell.providerInstanceId),
+                })),
+              ),
+        );
+        return { ...result, sessions };
       }),
+      reattach: Effect.fn("BatonSessionCatalogService.reattach")(
+        function* (input: { sessionId: string; cwd?: string; confirmPane?: string }) {
+          if (Option.isNone(engine))
+            return { state: "not-running", pane: null, detail: "No thread engine here." } as const;
+          const e = engine.value;
+          const threadId = liveThreadId(input.sessionId);
+          const shell = yield* e.threadShell(threadId);
+          if (shell === null)
+            return {
+              state: "not-running",
+              pane: null,
+              detail: "There is no thread for that session.",
+            } as const;
+          const live = yield* Effect.promise(() => ports.live());
+          const byId = live.find((s) => s.sessionId === input.sessionId);
+          const folder =
+            input.cwd ??
+            (yield* Effect.promise(() =>
+              catalog.list({ query: input.sessionId, limit: 5 }),
+            )).sessions.find((s) => s.id === input.sessionId)?.cwd ??
+            null;
+          const active = yield* e.activeProviderThread(threadId);
+          const action = decideReattach({
+            facts: {
+              threadId: String(threadId),
+              sessionId: input.sessionId,
+              session: byId === undefined ? null : { status: byId.status, pane: byId.herdrPane },
+              thread: {
+                instanceId: String(shell.providerInstanceId),
+                nativeId: active?.nativeThreadRef?.nativeId ?? null,
+                running: shell.activeRunId !== null && shell.activeRunId !== undefined,
+              },
+            },
+            folderSessions:
+              byId !== undefined || folder === null
+                ? []
+                : live
+                    .filter((s) => s.cwd === folder)
+                    .map((s) => ({ sessionId: s.sessionId, pane: s.herdrPane })),
+            confirmPane: input.confirmPane ?? null,
+          });
+          if (action.kind === "already-bound")
+            return {
+              state: "already-bound",
+              pane: byId?.herdrPane ?? null,
+              detail: "Already bound to its session.",
+            } as const;
+          if (action.kind === "wait")
+            return {
+              state: "busy",
+              pane: null,
+              detail: "A turn is running; try again after it.",
+            } as const;
+          if (action.kind === "confirm")
+            return {
+              state: "confirm",
+              pane: action.pane,
+              detail: `Reattach to ${action.pane}?`,
+            } as const;
+          if (action.kind === "none")
+            return {
+              state: "not-running",
+              pane: null,
+              detail: "No running session to reattach to.",
+            } as const;
+          yield* rebindThread(e, {
+            threadId,
+            sessionId: action.sessionId,
+            instance: action.instance,
+            native: action.native,
+            at: Date.now(),
+          });
+          appendResumeLog(
+            NodePath.join(
+              Option.isSome(config) ? config.value.logsDir : NodeOS.tmpdir(),
+              "baton-mirror.ndjson",
+            ),
+            {
+              event: "reattached",
+              thread: String(threadId),
+              sessionId: action.sessionId,
+              pane: action.pane,
+            },
+          );
+          return {
+            state: "reattached",
+            pane: action.pane,
+            detail: "Bound to its running session.",
+          } as const;
+        },
+        Effect.catchCause(() =>
+          Effect.succeed({
+            state: "not-running" as const,
+            pane: null,
+            detail: "Could not reattach this thread.",
+          }),
+        ),
+      ),
       folders: Effect.fn("BatonSessionCatalogService.folders")(function* (input: {
         query?: string;
       }) {

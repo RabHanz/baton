@@ -261,3 +261,40 @@ describe("New session defaults to the computer the app runs on", () => {
     ).toBe(true);
   });
 });
+
+describe("a row's real binding and Reattach", () => {
+  it("names the pane, offers Reattach only on a handoff-answered thread, and asks before taking another pane", async () => {
+    const asked: Array<string | undefined> = [];
+    const base = rows.find((r) => r.state === "running")!;
+    const list = [
+      { ...base, id: "p", pane: "fab~w1:p2", answeredBy: "baton-live" },
+      { ...base, id: "h", pane: "fab~w1:p3", answeredBy: "claudeAgent" },
+    ];
+    const service: CatalogService = {
+      list: async () => list,
+      resume: async () => undefined,
+      create: async () => undefined,
+      folders: async () => [],
+      open: () => undefined,
+      reattach: async (_row, confirmPane) => {
+        asked.push(confirmPane);
+        return confirmPane === undefined
+          ? { state: "confirm", pane: "w1:p9", detail: "" }
+          : { state: "reattached", pane: confirmPane, detail: "" };
+      },
+    };
+    const catalog = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    await catalog.refresh();
+    const row = (id: string) => {
+      const c = catalog.controls().find((x) => x.id === `c:${id}`);
+      return c?.kind === "catalogRow" ? [c.binding, c.reattachLabel] : [];
+    };
+    expect(row("p")).toEqual(["Herdr pane fab~w1:p2", null]);
+    expect(row("h")).toEqual(["T3-hosted handoff session", "Reattach"]);
+    catalog.apply("c:h", "reattach");
+    await vi.waitFor(() => expect(row("h")[1]).toBe("Reattach to w1:p9?"));
+    catalog.apply("c:h", "reattach");
+    await vi.waitFor(() => expect(asked).toEqual([undefined, "w1:p9"]));
+    expect(asked).toEqual([undefined, "w1:p9"]);
+  });
+});

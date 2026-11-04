@@ -14,6 +14,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   cleanup: "baton.sessions.cleanup",
   autoResume: "baton.sessions.autoresume",
   retireHandoff: "baton.sessions.retirehandoff",
+  reattach: "baton.sessions.reattach",
 } as const;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
@@ -39,6 +40,10 @@ export const BatonCatalogSession = Schema.Struct({
   waiting: Schema.Number,
   /** On a machine with no Herdr: the thread it was brought back as, once it exists. */
   threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The Herdr pane a running session is in (`<herdr session>~<pane>`), if any. */
+  pane: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The provider instance answering this session's live thread; not `baton-live` means a handoff session. */
+  answeredBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type BatonCatalogSession = typeof BatonCatalogSession.Type;
 
@@ -161,4 +166,18 @@ export const BatonRetireHandoffResult = Schema.Struct({
   undoFile: Schema.NullOr(Schema.String),
   archived: Schema.optionalKey(Schema.Literals(["already", "done", "failed"])),
   deleted: Schema.optionalKey(Schema.Literals(["done", "refused"])),
+});
+
+/** Bind a session's live thread to its running session again (what the 30 s heal does), on request. */
+export const BatonReattachInput = Schema.Struct({
+  sessionId: Schema.String.check(Schema.isMaxLength(80)),
+  cwd: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(500))),
+  /** The pane the person confirmed, when no session has this id and one other runs in the folder. */
+  confirmPane: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+});
+export const BatonReattachResult = Schema.Struct({
+  /** confirm: ask the person "Reattach to <pane>?" and call again with `confirmPane`. */
+  state: Schema.Literals(["reattached", "already-bound", "confirm", "not-running", "busy"]),
+  pane: Schema.NullOr(Schema.String),
+  detail: Schema.String,
 });

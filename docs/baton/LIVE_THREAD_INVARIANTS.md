@@ -14,5 +14,8 @@ A live thread mirrors one running terminal session (`baton-live4:<session id>`).
 4. `baton-mirror.ndjson` names every mirror decision: the live session set, follow or skip per session, failures, and
    which question the pane shows.
 
-Not yet covered: a persistent "not connected" banner and Reattach button on the thread and the Sessions row, and
-automatic retry of kept unbound messages.
+5. The thread header and the Sessions row show the real binding (Herdr pane, T3-hosted handoff session, stopped). Reattach
+   (`baton.sessions.reattach`, service `reattach`) binds again by session id; with no id match and exactly one running
+   session in the folder it only offers "Reattach to <pane>?" and acts on that pane's confirmation.
+
+Not yet covered: automatic retry of kept unbound messages.
