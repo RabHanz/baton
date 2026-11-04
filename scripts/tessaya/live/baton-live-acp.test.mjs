@@ -36,6 +36,7 @@ import {
   deliveredNote,
   lostNote,
   queuedNote,
+  keptEntry,
 } from "./baton-live-acp.mjs";
 
 const AGENT = NodePath.join(
@@ -621,3 +622,13 @@ NodeTest.test(
     );
   },
 );
+
+NodeTest.test("a kept unbound message records its id, the thread's native session and the words", () => {
+  const a = keptEntry({ sessionId: "baton-unbound-1-2" }, "/work", "hello");
+  const b = keptEntry({ sessionId: "baton-unbound-1-2", _meta: { threadId: "t1" } }, null, "hello");
+  NodeAssert.equal(a.sessionId, "baton-unbound-1-2");
+  NodeAssert.equal(a.cwd, "/work");
+  NodeAssert.equal(a.text, "hello");
+  NodeAssert.notEqual(a.id, b.id);
+  NodeAssert.equal(b.threadId, "t1");
+});
