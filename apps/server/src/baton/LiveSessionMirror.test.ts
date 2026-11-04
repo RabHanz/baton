@@ -14,6 +14,7 @@ import {
   mediaPathsOf,
   nextReply,
   takeTouched,
+  toolShots,
   withoutRepeatedMedia,
   liveThreadId,
   liveThreadTitle,
@@ -350,6 +351,46 @@ describe("a picture a reply shows is shown once, however it got there", () => {
       shown: new Set(),
     });
     expect(shown.text.match(/!\[/g) ?? []).toHaveLength(1);
+  });
+  // Seen on a real thread: Read re-encodes the picture, so its image block and the file differ in bytes.
+  const readReply = (dir: string, file: string) => {
+    const block = Buffer.from("89504e470d0a1a0a7265656e636f646564", "hex").toString("base64");
+    const follow = {
+      touched: new Set(mediaPathsOf("Read", { file_path: file })),
+      shots: toolShots([{ mimeType: "image/png", data: block }], {
+        name: "Read",
+        input: { file_path: file },
+      }),
+    };
+    const reply = nextReply(follow, {
+      uuid: "a",
+      role: "assistant",
+      text: "I can see it.",
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    return liveMedia({
+      attachmentsDir: NodePath.join(dir, "att"),
+      threadId: "t",
+      messageId: "m",
+      message: reply.message,
+      cwd: dir,
+      touched: reply.touched,
+      shown: new Set(),
+    }).text;
+  };
+  it("a file read back with re-encoded bytes still gives exactly one picture", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "reencode-"));
+    const file = NodePath.join(dir, "chart.png");
+    NodeFS.writeFileSync(file, Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"));
+    expect(readReply(dir, file).match(/!\[/g) ?? []).toHaveLength(1);
+  });
+  it("never shows back a picture the user sent, from the read's image block or the file", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "echo-"));
+    const inbox = NodePath.join(dir, ".baton", "inbox", "2026-11-04");
+    NodeFS.mkdirSync(inbox, { recursive: true });
+    const file = NodePath.join(inbox, "image-15-55-75d2.png");
+    NodeFS.writeFileSync(file, Buffer.from("89504e470d0a1a0a0000000d49484452", "hex"));
+    expect(readReply(dir, file)).toBe("I can see it.");
   });
   it("the same picture on a later reply of the thread is not shown again", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "later-"));
