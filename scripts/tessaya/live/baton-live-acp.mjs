@@ -15,6 +15,7 @@
  * Node built-ins only: T3 spawns it with whichever Node the box has.
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -882,6 +883,16 @@ const say = (sessionId, text) =>
     },
   });
 
+/** One kept unbound message. The server stamps the thread (from `sessionId`, the thread's native id) if T3 gave none. */
+export const keptEntry = (params, folder, words) => ({
+  id: NodeCrypto.randomUUID(),
+  at: new Date().toISOString(),
+  cwd: folder ?? null,
+  sessionId: params.sessionId,
+  threadId: params._meta?.threadId ?? process.env.T3CODE_THREAD_ID ?? null,
+  text: words,
+});
+
 const turns = new Map(); // sessionId -> { cancelled: boolean, pane: string | null }
 
 async function prompt(params) {
@@ -900,7 +911,7 @@ async function prompt(params) {
         NodeFS.mkdirSync(QUEUE_DIR, { recursive: true });
         NodeFS.appendFileSync(
           NodePath.join(QUEUE_DIR, "unbound-messages.ndjson"),
-          `${JSON.stringify({ at: new Date().toISOString(), cwd: folder ?? null, text: words })}\n`,
+          `${JSON.stringify(keptEntry(params, folder, words))}\n`,
         );
       } catch {}
       say(

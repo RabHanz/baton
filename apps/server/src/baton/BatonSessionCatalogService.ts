@@ -4,6 +4,7 @@ import type {
   BatonCatalogSession,
   BatonCatalogState,
   BatonReattachResult,
+  BatonKeptResult,
 } from "@t3tools/baton-contracts";
 import {
   CommandId,
@@ -29,6 +30,8 @@ import { ProjectService } from "../project/ProjectService.ts";
 
 import { LIVE_INSTANCE_ID, liveThreadId, rebindThread } from "./LiveSessionMirror.ts";
 import { decideReattach } from "./BindingHealth.ts";
+import { liveQueueDir } from "./BatonLiveQueue.ts";
+import { pendingKept, readKept, readLedger, resendKept, stampKept } from "./UnboundMessages.ts";
 import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
@@ -113,6 +116,10 @@ export class BatonSessionCatalogService extends Context.Service<
       cwd?: string;
       confirmPane?: string;
     }) => Effect.Effect<typeof BatonReattachResult.Type>;
+    readonly kept: (input: {
+      threadId: string;
+      retryId?: string;
+    }) => Effect.Effect<typeof BatonKeptResult.Type>;
     readonly cleanup: (input: { apply: boolean }) => Effect.Effect<{
       readonly found: ReadonlyArray<{ id: string; title: string; project: string; reason: string }>;
       readonly archived: ReadonlyArray<string>;
@@ -476,6 +483,28 @@ export const layer = Layer.effect(
         );
         return { ...result, sessions };
       }),
+      kept: Effect.fn("BatonSessionCatalogService.kept")(
+        function* (input: { threadId: string; retryId?: string }) {
+          const dir = liveQueueDir();
+          if (Option.isNone(engine)) return { messages: [], retry: null } as const;
+          yield* stampKept(engine.value, dir);
+          let retry: "sent" | "busy" | "none" | null = null;
+          if (input.retryId !== undefined) {
+            const result = yield* resendKept(engine.value, {
+              dir,
+              threadId: input.threadId,
+              entryId: input.retryId,
+              bound: false,
+            });
+            retry = result.sent > 0 ? "sent" : result.failed > 0 ? "busy" : "none";
+          }
+          const messages = pendingKept(readKept(dir), readLedger(dir))
+            .filter((entry) => entry.thread === input.threadId)
+            .map(({ id, at, text }) => ({ id, at, text }));
+          return { messages, retry };
+        },
+        Effect.catchCause(() => Effect.succeed({ messages: [], retry: null } as const)),
+      ),
       reattach: Effect.fn("BatonSessionCatalogService.reattach")(
         function* (input: { sessionId: string; cwd?: string; confirmPane?: string }) {
           if (Option.isNone(engine))
