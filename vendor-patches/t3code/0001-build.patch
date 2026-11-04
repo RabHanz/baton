@@ -87,19 +87,20 @@ index 3cb58dec9cd6c337e0af1682c4ef87eba7f147b4..7ce1356a0d86b9959a5898c3228b0b76
      "@t3tools/contracts": "workspace:*",
      "@t3tools/provider-core": "workspace:*",
 diff --git a/knip.jsonc b/knip.jsonc
-index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f092589f361a08 100644
+index e7289c39147dc337714f8b081d641b6957f32c59..62d36a1985f242480a7bc0565165607dfd12049c 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
-@@ -35,6 +35,8 @@
+@@ -35,6 +35,9 @@
          "prepare-server-compile-cache.cjs",
          "smoke-desktop-app.ts",
          "verify-windows-desktop-artifact.ts",
 +        // Baton's labs, proofs and evals are run by hand from the command line.
 +        "baton/**/*.{ts,mjs}",
++        "tessaya/**/*.{ts,mjs}",
        ],
        "ignoreDependencies": ["agent-device", "esbuild"],
        // The `t3` npm package's files: copied into the package, never imported.
-@@ -48,6 +50,8 @@
+@@ -48,6 +51,8 @@
          "src/bin.ts!",
          "src/claude-history-worker.ts!",
          "scripts/cli.ts",
@@ -108,7 +109,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f09258
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -57,7 +61,12 @@
+@@ -57,7 +62,12 @@
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -122,7 +123,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f09258
        // Keep the transitive Effect runtime pinned for standalone npm installs.
        // The Vite+ web build prerequisite.
        // Native and disk-loaded provider packages stay external to the bundle; the
-@@ -70,8 +79,13 @@
+@@ -70,8 +80,13 @@
        ],
      },
      "apps/desktop": {
@@ -136,7 +137,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f09258
          "gnome-extension/extension.js!",
          "src/electron/WindowsForegroundFocusWorker.ts!",
          "src/snapShot/GlobalShiftShortcutWorker.ts!",
-@@ -89,7 +103,8 @@
+@@ -89,7 +104,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -146,7 +147,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f09258
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -98,13 +113,20 @@
+@@ -98,13 +114,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -168,7 +169,7 @@ index e7289c39147dc337714f8b081d641b6957f32c59..d51d28b49205490a6a3cdd22c3f09258
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -147,6 +169,9 @@
+@@ -147,6 +170,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
