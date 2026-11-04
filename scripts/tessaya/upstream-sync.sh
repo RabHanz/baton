@@ -14,7 +14,7 @@
 #   1. fetch; report upstream's commits and which of them touch a path the series patches
 #   2. branch, `patches.sh rebase <to>`: upstream paths become <to>'s, the series re-applies --3way
 #   3. regenerate pnpm-lock.yaml (REGENERATED: never patched, re-resolved from upstream's)
-#   4. commit with two parents, the base and <to>, so upstream's history stays reachable
+#   4. commit it as one squashed import on the base: no upstream commit becomes an ancestor of main
 #   5. `gates.sh --install --build`
 #   6. push and open the PR with the report as the body
 #
@@ -94,9 +94,9 @@ nice -n 10 pnpm install --lockfile-only --silent
 git add -A
 
 tree="$(git write-tree)"
-commit="$(git commit-tree "$tree" -p "$(git rev-parse HEAD)" -p "$target" \
-  -m "sync: upstream to $(git rev-parse --short "$target") ($ahead commits)" \
-  -m "Pin $(git rev-parse --short "$pin") -> $(git rev-parse --short "$target"); patch series re-applied by scripts/tessaya/patches.sh rebase.")"
+commit="$(git commit-tree "$tree" -p "$(git rev-parse HEAD)" \
+  -m "chore(upstream): import T3 Code $(git rev-parse --short "$target") ($ahead commits)" \
+  -m "Upstream https://github.com/pingdotgg/t3code at $target (MIT, Copyright T3 Tools Inc.). Pin $(git rev-parse --short "$pin") -> $(git rev-parse --short "$target"); patch series re-applied by scripts/tessaya/patches.sh rebase.")"
 git reset --quiet --hard "$commit"
 bash scripts/tessaya/patches.sh verify
 
@@ -116,5 +116,5 @@ git push --quiet -u origin "$branch"
 bash scripts/tessaya/disable-upstream-workflows.sh || echo "warn: could not check upstream workflows"
 if [ "$open_pr" -eq 1 ]; then
   gh pr create --base main --head "$branch" \
-    --title "sync: upstream to $(git rev-parse --short "$target") ($ahead commits)" --body-file "$report"
+    --title "chore(upstream): import T3 Code $(git rev-parse --short "$target") ($ahead commits)" --body-file "$report"
 fi
