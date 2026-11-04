@@ -374,6 +374,7 @@ import { makeOpusEncoder } from "./opusEncoder.ts";
 import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
+import { deskCall } from "./deskCall.ts";
 import { describeWatch } from "@t3tools/baton-shared/watch";
 import {
   freshFindings,
@@ -801,6 +802,10 @@ export interface DesktopBatonVoiceInput {
   readonly platform: string;
   /** The main window, created if needed — where session and intent words go. */
   readonly ensureMainWindow: () => Promise<Electron.BrowserWindow>;
+  /** Whether T3's main window exists now, without opening it. */
+  readonly mainWindowUp?: () => Promise<boolean>;
+  /** One Tessaya method on this machine's own server, for when T3's window is closed. */
+  readonly direct?: (method: string, input: unknown) => Promise<unknown>;
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** His environment, for the `claude` that cleans text up. */
@@ -1607,6 +1612,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       | BatonCloudBridgeRequest
       | BatonPhoneBridgeRequest,
   ): Promise<unknown> => {
+    // With T3's window closed, jobs, the watch and memory are answered by this machine's server instead of
+    // opening the window; other connected servers are reached only through the window.
+    const direct = input.direct;
+    if (direct !== undefined && (await input.mainWindowUp?.()) === false) {
+      const call = deskCall(body);
+      if (call !== null) return direct(call.method, call.input);
+    }
     const window = await input.ensureMainWindow();
     mainContents = window.webContents;
     const id = ++nextRequest;
@@ -3043,8 +3055,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     jobsWanted = true;
     void refreshJobs();
   };
+  // Only while T3's window is up: asking opens it, and a background poll must not bring back a window he closed.
   setInterval(() => {
-    if (jobsWanted) void refreshJobs();
+    if (jobsWanted && mainContents !== null && !mainContents.isDestroyed()) void refreshJobs();
   }, JOBS_REFRESH_MS).unref();
 
   // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
@@ -3060,7 +3073,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     save({ snoozeUntil: Date.now() < settings.snoozeUntil ? 0 : Date.now() + HIDE_FOR_MS });
   const silenced = (at: Date) => isSilenced(settings, at);
   const checkAttention = async () => {
-    if (mainContents === null || mainContents.isDestroyed()) return;
+    // With the direct door the watch is read from this machine's server, so T3's window need not be up.
+    if (input.direct === undefined && (mainContents === null || mainContents.isDestroyed())) return;
     const at = new Date();
     if (silenced(at)) return;
     const found = await watchFindings();
