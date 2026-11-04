@@ -31,6 +31,20 @@ describe("a tool call", () => {
     }
   });
 
+  it("refuses a command that drives apps itself, whatever the setting", () => {
+    for (const command of [
+      'powershell -c "Add-Type -AssemblyName UIAutomationClient"',
+      "powershell -c \"(New-Object -ComObject WScript.Shell).SendKeys('x')\"",
+      "rundll32 user32.dll,LockWorkStation",
+    ]) {
+      expect(judgeToolCall(bash(command), on).verdict).toBe("deny");
+      expect(judgeToolCall({ tool: "commandExecution", input: { command } }, on).verdict).toBe(
+        "deny",
+      );
+    }
+    expect(judgeToolCall(bash("npm run test:keys"), on).verdict).toBe("allow");
+  });
+
   it("never lets a Codex file change or a blank command through on its own", () => {
     const change = { tool: "fileChange", input: { path: "a.ts" } };
     expect(judgeToolCall(change, on).verdict).toBe("ask");
