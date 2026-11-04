@@ -21,7 +21,7 @@ import * as FleetQuery from "./FleetQuery.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
 import { handleHands } from "./BatonHandsApi.ts";
-import { handlePhone, uploadRefusal, type PhoneDeps } from "./BatonTessayaApi.ts";
+import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./BatonTessayaApi.ts";
 import { transcribeWav } from "./BatonPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
 
@@ -113,7 +113,13 @@ export const routes = HttpRouter.use((router) =>
           status: refused.status,
           headers: PAGE_HEADERS,
         });
-      const bytes = raw ? new Uint8Array(yield* request.arrayBuffer) : undefined;
+      const read = raw ? yield* readCapped(request.stream) : undefined;
+      if (read !== undefined && !(read instanceof Uint8Array))
+        return HttpServerResponse.jsonUnsafe(read.json, {
+          status: read.status,
+          headers: PAGE_HEADERS,
+        });
+      const bytes = read;
       const json =
         request.method === "POST" && !raw
           ? yield* request.json.pipe(Effect.orElseSucceed(() => ({})))
