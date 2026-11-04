@@ -86,8 +86,11 @@ export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
 export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
 export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;
 
+// Only the desktop's own session holds hands-host, so no grant can hand it to another device.
 export const AuthGrantScope = Schema.Literals(
-  AuthEnvironmentScope.literals.filter((scope) => scope !== AuthReviewWriteScope),
+  AuthEnvironmentScope.literals.filter(
+    (scope) => scope !== AuthReviewWriteScope && scope !== AuthBatonHandsHostScope,
+  ),
 );
 export type AuthGrantScope = typeof AuthGrantScope.Type;
 export const AuthGrantScopes = Schema.Array(AuthGrantScope);

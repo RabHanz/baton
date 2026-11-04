@@ -3,7 +3,12 @@
  * needs the read scope, anything that changes work needs the operate scope, and an approval is answered only if it is still
  * waiting and still says what the page showed.
  */
-import { checkWav, parseDecision, type PhoneState } from "@t3tools/baton-shared/phone";
+import {
+  checkWav,
+  parseDecision,
+  WAV_MAX_BYTES,
+  type PhoneState,
+} from "@t3tools/baton-shared/phone";
 
 import { askLine, type PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
 
@@ -47,6 +52,20 @@ export interface PhoneResponse {
 }
 
 const say = (status: number, message: string): PhoneResponse => ({ status, json: { message } });
+
+/** Checked before an upload's body is read: a phone that may not act, or a body over the cap, is refused unread. */
+export const uploadRefusal = (
+  scopes: ReadonlySet<string>,
+  contentLength: string | undefined,
+): PhoneResponse | null => {
+  if (!scopes.has(OPERATE_SCOPE))
+    return say(403, "This phone may look but not act. Pair it with operate access.");
+  if (contentLength === undefined) return say(411, "The recording came without its size.");
+  const size = Number(contentLength);
+  return Number.isInteger(size) && size >= 0 && size <= WAV_MAX_BYTES
+    ? null
+    : say(413, "That recording is too long. Keep it under three minutes.");
+};
 const TEXT_MAX = 2_000;
 
 export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<PhoneResponse> => {

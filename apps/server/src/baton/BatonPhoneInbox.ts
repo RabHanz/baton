@@ -112,6 +112,7 @@ export const make = Effect.gen(function* () {
     yield* sql`UPDATE fabric_phone_prompts SET status = 'closed' WHERE status = 'pending' AND expires_at <= ${now}`;
     // Old answered rows are only history.
     yield* sql`DELETE FROM fabric_phone_asks WHERE status IN ('answered','failed','expired') AND created_at <= ${now - 3 * ASK_TTL_MS}`;
+    yield* sql`DELETE FROM fabric_phone_prompts WHERE status IN ('answered','closed') AND expires_at <= ${now - PROMPT_TTL_MS}`;
   }).pipe(Effect.orDie);
 
   const read = (id: string) =>
@@ -327,7 +328,15 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
       ) {
         return yield* bad();
       }
-      yield* inbox.mirror({ id, title, detail, buttons, yes, cancel, ...(a["needs"] === "cloud-approve" ? { needs: "cloud-approve" as const } : {}) });
+      yield* inbox.mirror({
+        id,
+        title,
+        detail,
+        buttons,
+        yes,
+        cancel,
+        ...(a["needs"] === "cloud-approve" ? { needs: "cloud-approve" as const } : {}),
+      });
       return { value: true };
     }
     case "promptPoll":

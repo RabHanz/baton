@@ -116,18 +116,41 @@ layer("BatonPhoneInbox", (it) => {
       yield* TestClock.adjust(121_000);
       assert.lengthOf(yield* inbox.pending, 0);
       assert.isFalse(yield* inbox.answerPrompt("prompt-2", 0));
+      // An answered question is kept for its reader, then deleted: the table does not grow forever.
+      yield* inbox.mirror({
+        id: "prompt-3",
+        title: "t",
+        detail: "d",
+        buttons: ["a"],
+        yes: 0,
+        cancel: 0,
+      });
+      assert.isTrue(yield* inbox.answerPrompt("prompt-3", 0));
+      assert.strictEqual(yield* inbox.promptAnswer("prompt-3"), 0);
+      yield* TestClock.adjust(241_000);
+      yield* inbox.pending;
+      assert.isNull(yield* inbox.promptAnswer("prompt-3"));
     }),
   );
 
-  it.effect("keeps up to eight answers for the cloud card and answers the last one by its index", () =>
-    Effect.gen(function* () {
-      const inbox = yield* BatonPhoneInbox;
-      const buttons = ["A", "B", "C", "D", "E", "F", "Deny", "Decide later"];
-      yield* inbox.mirror({ id: "prompt-8", title: "Cloud task waiting", detail: "d", buttons, yes: 0, cancel: 7 });
-      const [shown] = yield* inbox.pending;
-      assert.deepStrictEqual(shown?.buttons, buttons);
-      assert.isTrue(yield* inbox.answerPrompt("prompt-8", 7));
-      assert.strictEqual(yield* inbox.promptAnswer("prompt-8"), 7);
-    }),
+  it.effect(
+    "keeps up to eight answers for the cloud card and answers the last one by its index",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        const buttons = ["A", "B", "C", "D", "E", "F", "Deny", "Decide later"];
+        yield* inbox.mirror({
+          id: "prompt-8",
+          title: "Cloud task waiting",
+          detail: "d",
+          buttons,
+          yes: 0,
+          cancel: 7,
+        });
+        const [shown] = yield* inbox.pending;
+        assert.deepStrictEqual(shown?.buttons, buttons);
+        assert.isTrue(yield* inbox.answerPrompt("prompt-8", 7));
+        assert.strictEqual(yield* inbox.promptAnswer("prompt-8"), 7);
+      }),
   );
 });

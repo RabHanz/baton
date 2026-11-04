@@ -25,6 +25,13 @@ describe("authorization grants", () => {
     expect(AuthStandardClientScopes).not.toContain("review:write");
   });
 
+  it("never grants the desktop-only hands-host scope to another device", () => {
+    const decodeAuthGrantScopes = Schema.decodeUnknownSync(AuthGrantScopes);
+
+    expect(() => decodeAuthGrantScopes(["baton:hands-host"])).toThrow();
+    expect(decodeAuthGrantScopes(["baton:hands"])).toEqual(["baton:hands"]);
+  });
+
   // Keep the pre-granular vocabulary frozen to expose compatibility regressions.
   const oldScopes = Schema.Array(
     Schema.Literals([
@@ -52,10 +59,28 @@ describe("authorization grants", () => {
 
   it("never gives the cloud approval scope to a standard client, or to a session that only holds operate", () => {
     expect(AuthStandardClientScopes).not.toContain(AuthBatonCloudApproveScope);
-    expect(sessionGrantsScope({ authenticated: true, scopes: [AuthOrchestrationOperateScope] }, AuthBatonCloudApproveScope)).toBe(false);
-    expect(sessionGrantsScope({ authenticated: true, permissions: [...AuthStandardClientScopes] }, AuthBatonCloudApproveScope)).toBe(false);
-    expect(sessionGrantsScope({ authenticated: true, permissions: [AuthBatonCloudApproveScope] }, AuthBatonCloudApproveScope)).toBe(true);
-    expect(authScopeRequiredResponse(AuthBatonCloudApproveScope)).toEqual({ requiredScope: AuthOrchestrationOperateScope, requiredPermission: AuthBatonCloudApproveScope });
+    expect(
+      sessionGrantsScope(
+        { authenticated: true, scopes: [AuthOrchestrationOperateScope] },
+        AuthBatonCloudApproveScope,
+      ),
+    ).toBe(false);
+    expect(
+      sessionGrantsScope(
+        { authenticated: true, permissions: [...AuthStandardClientScopes] },
+        AuthBatonCloudApproveScope,
+      ),
+    ).toBe(false);
+    expect(
+      sessionGrantsScope(
+        { authenticated: true, permissions: [AuthBatonCloudApproveScope] },
+        AuthBatonCloudApproveScope,
+      ),
+    ).toBe(true);
+    expect(authScopeRequiredResponse(AuthBatonCloudApproveScope)).toEqual({
+      requiredScope: AuthOrchestrationOperateScope,
+      requiredPermission: AuthBatonCloudApproveScope,
+    });
   });
 
   it("keeps old clients able to decode grants with new permissions", () => {

@@ -8,6 +8,7 @@ import {
   handlePhone,
   OPERATE_SCOPE,
   READ_SCOPE,
+  uploadRefusal,
   type PhoneDeps,
 } from "./BatonTessayaApi.ts";
 
@@ -307,6 +308,14 @@ describe("the phone API", () => {
     expect(calls).toEqual([]);
     expect((await post(new Set([...operate, "baton:cloud-approve"]))).status).toBe(200);
     expect(calls).toEqual(["prompt pr1 0"]);
+  });
+
+  it("refuses a recording before reading it: no operate scope, no size, or over the cap", () => {
+    expect(uploadRefusal(read, "1000")?.status).toBe(403);
+    expect(uploadRefusal(operate, undefined)?.status).toBe(411);
+    expect(uploadRefusal(operate, String(6 * 1024 * 1024 + 1))?.status).toBe(413);
+    expect(uploadRefusal(operate, "abc")?.status).toBe(413);
+    expect(uploadRefusal(operate, "1000")).toBeNull();
   });
 
   it("says 501 when the server cannot transcribe", async () => {
