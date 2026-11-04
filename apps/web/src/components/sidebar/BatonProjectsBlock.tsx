@@ -106,6 +106,9 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
   const sendToPane = useAtomCommand(batonWorkSessions.herdrSend, { reportFailure: false });
   const catalogList = useAtomCommand(batonWorkSessions.sessionsList, { reportFailure: false });
   const catalogResume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
+  const catalogReattach = useAtomCommand(batonWorkSessions.sessionsReattach, {
+    reportFailure: false,
+  });
   const catalogCreate = useAtomCommand(batonWorkSessions.sessionsCreate, { reportFailure: false });
   const catalogAutoResume = useAtomCommand(batonWorkSessions.sessionsAutoResume, {
     reportFailure: false,
@@ -122,6 +125,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
     commands: {
       list: catalogList,
       resume: catalogResume,
+      reattach: catalogReattach,
       create: catalogCreate,
       folders: catalogFolders,
       cleanup: catalogCleanup,
@@ -139,6 +143,7 @@ export function BatonProjectsBlock(props: BatonProjectsBlockProps): ReactNode {
       commands: {
         list: catalogList,
         resume: catalogResume,
+        reattach: catalogReattach,
         create: catalogCreate,
         folders: catalogFolders,
         cleanup: catalogCleanup,

@@ -15,6 +15,8 @@ import type {
   BatonCatalogListResult,
   BatonCatalogResumeInput,
   BatonCatalogResumeResult,
+  BatonReattachInput,
+  BatonReattachResult,
   BatonSessionRequest,
 } from "@t3tools/baton-contracts";
 
@@ -27,6 +29,7 @@ export interface CatalogCommands {
     typeof BatonCatalogResumeInput.Type,
     typeof BatonCatalogResumeResult.Type
   >;
+  readonly reattach: Command<typeof BatonReattachInput.Type, typeof BatonReattachResult.Type>;
   readonly create: Command<
     typeof BatonCatalogCreateInput.Type,
     typeof BatonCatalogCreateResult.Type
@@ -147,6 +150,19 @@ export const answerCatalogRequest = async (
     if (answer._tag !== "Success" || answer.value === undefined)
       return NO(`That session could not be resumed: ${describeFailure(answer)}`);
     return { ok: answer.value.state !== "failed", detail: JSON.stringify(answer.value) };
+  }
+  if (request.kind === "catalogReattach") {
+    const answer = await commands.reattach({
+      environmentId: env(request.environmentId),
+      input: {
+        sessionId: request.sessionId,
+        ...(request.cwd === null ? {} : { cwd: request.cwd }),
+        ...(request.confirmPane === undefined ? {} : { confirmPane: request.confirmPane }),
+      },
+    });
+    if (answer._tag !== "Success" || answer.value === undefined)
+      return NO(`That session could not be reattached: ${describeFailure(answer)}`);
+    return { ok: true, detail: JSON.stringify(answer.value) };
   }
   if (request.kind === "catalogCreate") {
     const answer = await commands.create({

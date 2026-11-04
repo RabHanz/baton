@@ -168,6 +168,10 @@ export type HomeControl =
       /** Stop, on a running session. */
       readonly stopLabel: string | null;
       readonly source: string;
+      /** What it is really bound to: "Herdr pane ...", "T3-hosted handoff session", or "". */
+      readonly binding: string;
+      /** Reattach, on a thread a handoff session answers; "Reattach to <pane>?" once it found one to offer. */
+      readonly reattachLabel: string | null;
     })
   /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
   | (HomeControlBase & {

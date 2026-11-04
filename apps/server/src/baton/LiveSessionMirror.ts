@@ -88,7 +88,7 @@ import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
-import { BatonEngine } from "./BatonEngine.ts";
+import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
 import { readAllProfileLiveSessions } from "./ClaudeLiveSessions.ts";
 import { projectRefFor } from "./ProjectRef.ts";
 import { stateFile } from "@t3tools/baton-shared/stateDir";
@@ -728,6 +728,48 @@ interface Follow {
     { readonly name: string; readonly input: unknown; readonly at: string }
   >;
 }
+
+/** Puts a live thread back on the live instance and/or points it at `sessionId`; the one place a binding is written. */
+export const rebindThread = (
+  engine: BatonEngineShape,
+  input: {
+    readonly threadId: ThreadId;
+    readonly sessionId: string;
+    readonly instance: boolean;
+    readonly native: boolean;
+    readonly at: number;
+  },
+) =>
+  Effect.gen(function* () {
+    if (input.instance) {
+      yield* engine.setThreadSelection({
+        tag: "live-heal",
+        threadId: input.threadId,
+        modelSelection: { instanceId: LIVE_INSTANCE_ID, model: MODEL },
+      });
+    }
+    const active = yield* engine.activeProviderThread(input.threadId);
+    if (input.native && active !== null) {
+      const now = yield* DateTime.now;
+      yield* engine.writeEvents({
+        events: [
+          {
+            id: EventId.make(`${PREFIX}:rebind:${input.threadId}:${input.at}`),
+            type: "provider-thread.updated",
+            threadId: input.threadId,
+            driver: DRIVER,
+            providerInstanceId: LIVE_INSTANCE_ID,
+            occurredAt: now,
+            payload: {
+              ...active,
+              nativeThreadRef: { driver: DRIVER, nativeId: input.sessionId, strength: "strong" },
+              updatedAt: now,
+            },
+          },
+        ],
+      });
+    }
+  });
 
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
@@ -1709,36 +1751,13 @@ const make = Effect.gen(function* () {
         },
       });
       if (action.kind === "ok" || action.kind === "no-session" || action.kind === "wait") return;
-      if (action.kind === "rebind-instance") {
-        yield* engine.setThreadSelection({
-          tag: "live-heal",
-          threadId: follow.threadId,
-          modelSelection: { instanceId: LIVE_INSTANCE_ID, model: MODEL },
-        });
-      } else if (active !== null) {
-        const now = yield* DateTime.now;
-        yield* engine.writeEvents({
-          events: [
-            {
-              id: EventId.make(`${PREFIX}:rebind:${follow.threadId}:${nowMs}`),
-              type: "provider-thread.updated",
-              threadId: follow.threadId,
-              driver: DRIVER,
-              providerInstanceId: LIVE_INSTANCE_ID,
-              occurredAt: now,
-              payload: {
-                ...active,
-                nativeThreadRef: {
-                  driver: DRIVER,
-                  nativeId: session.sessionId,
-                  strength: "strong",
-                },
-                updatedAt: now,
-              },
-            },
-          ],
-        });
-      }
+      yield* rebindThread(engine, {
+        threadId: follow.threadId,
+        sessionId: session.sessionId,
+        instance: action.kind === "rebind-instance",
+        native: action.kind === "rebind-native",
+        at: nowMs,
+      });
       mirrorLog(`rebound:${session.sessionId}:${nowMs}`, {
         event: "rebound",
         sessionId: session.sessionId,
