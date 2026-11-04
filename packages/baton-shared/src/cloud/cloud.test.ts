@@ -486,6 +486,41 @@ describe("transport 1: this computer's own harness", () => {
     expect(store.load()[0]!.state).toBe("running");
   });
 
+  it("puts a request left approved by a crashed start back to waiting, but not one whose start is still running", async () => {
+    const { exec, calls } = fakeExec((c) =>
+      c.args[0] === "--cloud"
+        ? { stdout: "https://claude.ai/code/session_abc\n" }
+        : { stdout: '{"loggedIn":true,"email":"me@example.org"}' },
+    );
+    const { store, brief } = memoryStores();
+    const p = localProvider(claudeHarness(exec), store, brief);
+    await p.detect();
+    await p.dispatch(input);
+    store.save(
+      store.load().map((r) => ({ ...r, state: "approved" as const, account: "me@example.org" })),
+    );
+    const listed = await p.list({});
+    expect(listed.ok && listed.value.map((r) => [r.state, r.account])).toEqual([
+      ["awaiting-director", null],
+    ]);
+    expect((await p.approve("L-1", "me@example.org", "r")).ok).toBe(true);
+    expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
+
+    let release = () => {};
+    const slow: Exec = (file, args, o) =>
+      args[0] === "--cloud"
+        ? new Promise((resolve) => (release = () => resolve({ code: 0, stdout: "", stderr: "" })))
+        : exec(file, args, o);
+    const q = localProvider(claudeHarness(slow), store, brief);
+    await q.detect();
+    await q.dispatch(input);
+    const pending = q.approve("L-2", "me@example.org", "r");
+    const during = await q.list({});
+    expect(during.ok && during.value.find((r) => r.id === "L-2")?.state).toBe("approved");
+    release();
+    expect((await pending).ok).toBe(true);
+  });
+
   it("withdraws a waiting request but not a running one, and denies without running", async () => {
     const { exec, calls } = fakeExec(() => ({}));
     const { store, brief } = memoryStores();
