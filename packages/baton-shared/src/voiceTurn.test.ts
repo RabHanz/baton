@@ -111,14 +111,8 @@ describe("the pill while a window is open", () => {
     expect(play([{ type: "thinking" }]).phase).toBe("thinking");
   });
 
-  it("recognises a spoken cancel, with or without the wake word", () => {
-    for (const said of [
-      "cancel",
-      "Never mind.",
-      "scratch that",
-      "Baton, forget it",
-      "cancel that!",
-    ]) {
+  it("recognises a spoken cancel once the wake word is stripped", () => {
+    for (const said of ["cancel", "Never mind.", "scratch that", "forget it", "cancel that!"]) {
       expect(isCancelPhrase(said)).toBe(true);
     }
     for (const said of ["cancel the build", "what's the weather", "don't cancel it"]) {
