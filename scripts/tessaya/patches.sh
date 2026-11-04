@@ -34,11 +34,29 @@ dir="${BATON_PATCH_DIR:-vendor-patches/t3code}"
 die() { echo "patches: $*" >&2; exit 1; }
 [ -f "$dir/PIN" ] || die "no $dir/PIN"
 pin="$(tr -d '[:space:]' < "$dir/PIN")"
-git cat-file -e "$pin^{commit}" 2> /dev/null || die "PIN $pin is not a commit here (git fetch upstream?)"
-
 series() { grep -vE '^\s*(#|$)' "$dir/series" || true; }
 regenerated() { [ -f "$dir/REGENERATED" ] && grep -vE '^\s*(#|$)' "$dir/REGENERATED" || true; }
 patch_paths() { sed -n 's|^diff --git a/\(.*\) b/.*$|\1|p' "$1"; }
+
+# main carries no upstream history (upstream enters as squashed imports), so a fresh clone may not
+# have the pin. Fetch it blobless from upstream through a remote that exists only for this run and,
+# being a promisor, also serves any pin blob a later step reads.
+upstream_url="${TESSAYA_UPSTREAM_URL:-https://github.com/pingdotgg/t3code.git}"
+have_pin=1
+git cat-file -e "$pin^{commit}" 2> /dev/null || have_pin=0
+n="${GIT_CONFIG_COUNT:-0}"
+export "GIT_CONFIG_KEY_$n=remote.t3code-pin.url" "GIT_CONFIG_VALUE_$n=$upstream_url" \
+  "GIT_CONFIG_KEY_$((n + 1))=remote.t3code-pin.promisor" "GIT_CONFIG_VALUE_$((n + 1))=true" \
+  "GIT_CONFIG_KEY_$((n + 2))=remote.t3code-pin.partialclonefilter" "GIT_CONFIG_VALUE_$((n + 2))=blob:none" \
+  GIT_CONFIG_COUNT=$((n + 3))
+if [ "$have_pin" -eq 0 ]; then
+  echo "patches: fetching PIN $pin from $upstream_url" >&2
+  git fetch --quiet --no-tags --filter=blob:none t3code-pin "$pin" ||
+    die "PIN $pin is not a commit here and could not be fetched from $upstream_url"
+  # The blobs the series patches, in one request rather than one lazy fetch per file.
+  git ls-tree -r "$pin" -- $(while read -r p; do patch_paths "$dir/$p"; done < <(series)) |
+    awk '$2 == "blob" { print $3 }' | git fetch --quiet --no-tags --filter=blob:none --stdin t3code-pin || true
+fi
 
 # The pin's index with the whole series applied, as a tree id. Never touches the working tree.
 series_tree() {

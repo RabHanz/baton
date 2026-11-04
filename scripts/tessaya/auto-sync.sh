@@ -6,7 +6,7 @@
 #
 # In its own worktree ($BATON_AUTOSYNC_DIR, never the clone people work in):
 #   1. fetch; if upstream has nothing new, check the alarm and stop
-#   2. upstream-sync.sh: pin -> series (--3way) -> lockfile -> two-parent commit -> gates -> PR
+#   2. upstream-sync.sh: pin -> series (--3way) -> lockfile -> one squashed import commit -> gates -> PR
 #   3. green: open the PR and stop. Its checks run; a person reviews and merges it. Nothing here
 #      merges, tags a release or deploys: unreviewed upstream code never reaches a user by itself
 #   4. red (a patch that no longer applies, or a gate): open an issue with the report and start a
