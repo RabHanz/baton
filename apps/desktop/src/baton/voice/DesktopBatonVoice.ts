@@ -2427,6 +2427,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     pill.on({ type: "window_open" });
     return target === null ? null : { type: "target", name: `to ${target}` };
   };
+  let voiceDictated = "";
   const onCoreEvent = (event: VoiceCoreEvent) => {
     const turn = ((): TurnEvent | null => {
       switch (event.type) {
@@ -2487,6 +2488,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "state":
           return stateTurn(event.state, event.target);
         case "outcome": {
+          // Words dictated by voice that nothing took are kept, as the hold key keeps them.
+          if (event.outcome.kind === "dictated" && !event.outcome.inserted && voiceDictated !== "")
+            keepText("Not pasted", voiceDictated);
+          voiceDictated = "";
           const said = "reply" in event.outcome ? event.outcome.reply : "";
           if (said.length > 0 && !dictatingByVoice) {
             lastReply = said;
@@ -2504,6 +2509,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           input.onDuck?.(event.on);
           return null;
         case "effect":
+          voiceDictated = event.effect.kind === "dictate" ? event.effect.text : "";
           return null;
       }
     })();
@@ -4028,7 +4034,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         id: "v.headphones",
         section: "Wake and listening",
         label: "I am wearing headphones",
-        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it listens through her voice (learning your room), and the wake word, a stop phrase, Esc and the pill's stop button always work.",
+        hint: "With headphones the microphone cannot hear Tessaya, so it keeps listening while she speaks and you can cut in just by talking. With speakers it does not take talking over her as a cut-in unless you turn on the setting below, and the wake word, a stop phrase, Esc and the pill's stop button always work.",
         kind: "toggle",
         on: settings.headphones,
       },

@@ -60,13 +60,18 @@ export const makeRewriter = (input: {
     session = null;
     turns = 0;
   };
+  let prompt = "";
   const get = (): VisionSession => {
+    // A word he just taught is in the next clean-up, not the next session.
+    const current = rewriteSystemPrompt(input.dictionary());
+    if (current !== prompt) drop();
+    prompt = current;
     if (idle !== null) clearTimeout(idle);
     idle = setTimeout(drop, IDLE_MS);
     session ??= (input.start ?? startVisionSession)({
       claudeBinary: input.claudeBinary,
       model: input.model,
-      systemPrompt: rewriteSystemPrompt(input.dictionary()),
+      systemPrompt: current,
       workDir: input.workDir,
       env: input.env,
       platform: input.platform,

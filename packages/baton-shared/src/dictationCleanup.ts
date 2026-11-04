@@ -307,6 +307,31 @@ const contentWords = (text: string): ReadonlyArray<string> =>
     (w) => !["that", "this", "then", "just", "with", "have", "what", "like"].includes(w),
   );
 
+/** How many words before a correction marker he may have taken back. */
+const TAKEN_BACK_WORDS = 8;
+
+/**
+ * What a correction may drop: each marker and the few words before it. The rest of the text is
+ * checked as strictly as one with no marker, so an email that opens "Sorry, …" keeps its names.
+ */
+const correctionSpans = (input: string): { readonly inside: string; readonly outside: string } => {
+  const ranges: Array<readonly [number, number]> = [];
+  for (const mark of input.matchAll(new RegExp(CORRECTION_MARK.source, "gi"))) {
+    const before = [...input.slice(0, mark.index).matchAll(/\S+/g)].slice(-TAKEN_BACK_WORDS);
+    ranges.push([before[0]?.index ?? mark.index, mark.index + mark[0].length]);
+  }
+  let outside = "";
+  let from = 0;
+  for (const [start, end] of ranges) {
+    outside += `${input.slice(from, Math.max(from, start))} `;
+    from = Math.max(from, end);
+  }
+  return {
+    inside: ranges.map(([start, end]) => input.slice(start, end)).join(" "),
+    outside: outside + input.slice(from),
+  };
+};
+
 /** A number may go only where he took it back: a correction follows it closely. */
 const correctedAway = (input: string, number: string): boolean => {
   const lower = input.toLowerCase();
@@ -341,11 +366,12 @@ export const checkRewrite = (
   if (REPLY.test(output.trim()) && !REPLY.test(input.trim()))
     return fail("replied instead of cleaning");
 
-  const corrected = CORRECTION_MARK.test(input);
+  const spans = correctionSpans(input);
+  const marks = input.match(new RegExp(CORRECTION_MARK.source, "gi"))?.length ?? 0;
   const inWords = input.split(/\s+/).length;
   const outWords = output.split(/\s+/).length;
   if (outWords > inWords * 1.3 + 4) return fail("added content");
-  if (outWords < inWords * (corrected ? 0.4 : 0.6) - 2) return fail("shortened it");
+  if (outWords < inWords * 0.6 - 2 - TAKEN_BACK_WORDS * marks) return fail("shortened it");
 
   const given = numbersIn(input);
   const kept = numbersIn(output);
@@ -369,7 +395,11 @@ export const checkRewrite = (
   const inLower = input.toLowerCase();
   // Exact case: "stripe" for "Stripe" is a lost name, even if the letters survived.
   for (const name of namesIn(input))
-    if (!output.includes(name) && !corrected && !known.includes(name.toLowerCase()))
+    if (
+      !output.includes(name) &&
+      !spans.inside.includes(name) &&
+      !known.includes(name.toLowerCase())
+    )
       return fail(`lost name ${name}`);
   for (const name of namesIn(output)) {
     const lower = name.toLowerCase();
@@ -378,10 +408,9 @@ export const checkRewrite = (
   for (const token of input.match(CODE_TOKEN) ?? [])
     if (!output.includes(token.replace(/[.,]+$/, ""))) return fail(`lost term ${token}`);
 
-  const words = contentWords(input);
+  const words = contentWords(spans.outside);
   const present = words.filter((word) => outLower.includes(word)).length;
-  if (words.length >= 6 && present / words.length < (corrected ? 0.5 : 0.7))
-    return fail("changed the wording");
+  if (words.length >= 6 && present / words.length < 0.7) return fail("changed the wording");
   return { ok: true };
 };
 
