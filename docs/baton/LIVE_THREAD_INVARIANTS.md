@@ -17,5 +17,6 @@ A live thread mirrors one running terminal session (`baton-live4:<session id>`).
 5. The thread header and the Sessions row show the real binding (Herdr pane, T3-hosted handoff session, stopped). Reattach
    (`baton.sessions.reattach`, service `reattach`) binds again by session id; with no id match and exactly one running
    session in the folder it only offers "Reattach to <pane>?" and acts on that pane's confirmation.
-
-Not yet covered: automatic retry of kept unbound messages.
+6. A kept unbound message is shown in its thread with a Retry button and is sent again through the thread once it is
+   bound to its running session. The server only appends to `unbound-ledger.ndjson` (thread stamp, claimed before the
+   resend, released if it fails), so a message is neither dropped nor sent twice.

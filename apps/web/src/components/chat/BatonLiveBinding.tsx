@@ -29,6 +29,8 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
   const resume = useAtomCommand(batonWorkSessions.sessionsResume, { reportFailure: false });
   const [found, setFound] = useState<Found>(null);
   const reattach = useAtomCommand(batonWorkSessions.sessionsReattach, { reportFailure: false });
+  const kept = useAtomCommand(batonWorkSessions.sessionsKept, { reportFailure: false });
+  const [messages, setMessages] = useState<ReadonlyArray<{ id: string; text: string }>>([]);
   const [busy, setBusy] = useState(false);
   // A folder with exactly one other running session: shown as "Reattach to <pane>?" until he taps it (never guessed).
   const [offer, setOffer] = useState<string | null>(null);
@@ -53,17 +55,60 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
               },
         );
       });
+    const checkKept = () =>
+      void kept({ environmentId, input: { threadId: threadRef.threadId } }).then((result) => {
+        if (!cancelled && result._tag === "Success") setMessages(result.value.messages);
+      });
     check();
-    const timer = setInterval(check, CHECK_MS);
+    checkKept();
+    const timer = setInterval(() => {
+      check();
+      checkKept();
+    }, CHECK_MS);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [environmentId, list, sessionId]);
+  }, [environmentId, kept, list, sessionId, threadRef.threadId]);
 
   const banner = bindingBanner(found);
   const binding = bindingOf(found);
-  if (sessionId === null || binding === null) return null;
+  if (sessionId === null) return null;
+  const keptUi = messages.map((message) => (
+    <span
+      key={message.id}
+      className="flex shrink-0 items-center gap-1"
+      data-testid="thread-kept-message"
+    >
+      <span className="max-w-48 truncate text-2xs text-muted-foreground">
+        Kept, not delivered: {message.text}
+      </span>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={busy}
+        className="shrink-0 [-webkit-app-region:no-drag]"
+        onClick={() => {
+          setBusy(true);
+          void kept({
+            environmentId,
+            input: { threadId: threadRef.threadId, retryId: message.id },
+          }).then((result) => {
+            setBusy(false);
+            if (result._tag === "Success") setMessages(result.value.messages);
+            toastManager.add(
+              result._tag === "Success" && result.value.retry === "sent"
+                ? { type: "success", title: "Sent again" }
+                : { type: "error", title: "Could not send it yet", description: "It stays kept." },
+            );
+          });
+        }}
+      >
+        Retry
+      </Button>
+    </span>
+  ));
+  if (binding === null) return <>{keptUi}</>;
   const doReattach = () => {
     setBusy(true);
     void reattach({
@@ -91,52 +136,55 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
     });
   };
   return (
-    <span className="flex shrink-0 items-center gap-1" data-testid="thread-not-connected">
-      <span
-        className={
-          binding.kind === "pane"
-            ? "text-2xs text-muted-foreground"
-            : "text-2xs text-warning-foreground"
-        }
-      >
-        {banner === null ? binding.text : `${banner.text} ${binding.text}`}
+    <>
+      <span className="flex shrink-0 items-center gap-1" data-testid="thread-not-connected">
+        <span
+          className={
+            binding.kind === "pane"
+              ? "text-2xs text-muted-foreground"
+              : "text-2xs text-warning-foreground"
+          }
+        >
+          {banner === null ? binding.text : `${banner.text} ${binding.text}`}
+        </span>
+        {binding.kind !== "pane" ? (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={busy}
+            className="shrink-0 [-webkit-app-region:no-drag]"
+            onClick={doReattach}
+          >
+            {offer === null ? "Reattach" : `Reattach to ${offer}?`}
+          </Button>
+        ) : null}
+        {banner === null ? null : (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={busy}
+            className="shrink-0 [-webkit-app-region:no-drag]"
+            onClick={() => {
+              setBusy(true);
+              void resume({ environmentId, input: { sessionId } }).then((result) => {
+                setBusy(false);
+                toastManager.add(
+                  result._tag === "Success"
+                    ? {
+                        type: "success",
+                        title: "Resuming this session",
+                        description: "The thread follows it once it runs.",
+                      }
+                    : { type: "error", title: "Could not resume this session" },
+                );
+              });
+            }}
+          >
+            Resume
+          </Button>
+        )}
       </span>
-      {binding.kind !== "pane" ? (
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={busy}
-          className="shrink-0 [-webkit-app-region:no-drag]"
-          onClick={doReattach}
-        >
-          {offer === null ? "Reattach" : `Reattach to ${offer}?`}
-        </Button>
-      ) : null}
-      {banner === null ? null : (
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={busy}
-          className="shrink-0 [-webkit-app-region:no-drag]"
-          onClick={() => {
-            setBusy(true);
-            void resume({ environmentId, input: { sessionId } }).then((result) => {
-              setBusy(false);
-              toastManager.add(
-                result._tag === "Success"
-                  ? {
-                      type: "success",
-                      title: "Resuming this session",
-                      description: "The thread follows it once it runs.",
-                    }
-                  : { type: "error", title: "Could not resume this session" },
-              );
-            });
-          }}
-        >
-          Resume
-        </Button>
-      )}
-    </span>
+      {keptUi}
+    </>
   );
 }

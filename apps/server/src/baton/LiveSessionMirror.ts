@@ -83,6 +83,15 @@ import * as ServerConfig from "../config.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { formOverview, pendingAskQuestions } from "./FormQuestions.ts";
 import { decideBinding } from "./BindingHealth.ts";
+import { liveQueueDir } from "./BatonLiveQueue.ts";
+import {
+  pendingKept,
+  readKept,
+  readLedger,
+  resendKept,
+  sessionOfThread,
+  stampKept,
+} from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
@@ -1767,8 +1776,39 @@ const make = Effect.gen(function* () {
       });
     });
 
+  /** Kept unbound messages go back through their thread once it is on its running session again. */
+  const keptDir = liveQueueDir();
+  const retryKept = (live: ReadonlyArray<ClaudeLiveSession>) =>
+    Effect.gen(function* () {
+      yield* stampKept(engine, keptDir);
+      const pending = pendingKept(readKept(keptDir), readLedger(keptDir));
+      for (const threadId of new Set(
+        pending.flatMap((e) => (e.thread === null ? [] : [e.thread])),
+      )) {
+        const sessionId = sessionOfThread(threadId);
+        const session = live.find((s) => s.sessionId === sessionId);
+        if (sessionId === null || session === undefined || session.herdrPane === null) continue;
+        const shell = yield* engine.threadShell(ThreadId.make(threadId));
+        if (shell === null) continue;
+        const native = (yield* engine.activeProviderThread(shell.id))?.nativeThreadRef?.nativeId;
+        const bound = shell.providerInstanceId === LIVE_INSTANCE_ID && native === sessionId;
+        const result = yield* resendKept(engine, { dir: keptDir, threadId, bound });
+        if (result.sent > 0)
+          mirrorLog(`kept-resent:${threadId}:${Date.now()}`, {
+            event: "kept-resent",
+            thread: threadId,
+          });
+      }
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Tessaya live threads: kept retry failed", cause),
+      ),
+    );
+
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
+    // Before any heal rewrites a thread's native id, so kept messages still find their thread.
+    yield* stampKept(engine, keptDir).pipe(Effect.ignoreCause);
     mirrorLog("live-set", {
       event: "live-sessions",
       sessions: live
@@ -1852,6 +1892,7 @@ const make = Effect.gen(function* () {
       },
       { discard: true },
     );
+    yield* retryKept(live);
   });
 
   /** Once per install (a marker in the state dir), so threads he unarchives later stay. */

@@ -15,6 +15,7 @@ export const BATON_SESSIONS_WS_METHODS = {
   autoResume: "baton.sessions.autoresume",
   retireHandoff: "baton.sessions.retirehandoff",
   reattach: "baton.sessions.reattach",
+  kept: "baton.sessions.kept",
 } as const;
 
 export const BatonCatalogState = Schema.Literals(["running", "stopped", "resuming", "failed"]);
@@ -180,4 +181,17 @@ export const BatonReattachResult = Schema.Struct({
   state: Schema.Literals(["reattached", "already-bound", "confirm", "not-running", "busy"]),
   pane: Schema.NullOr(Schema.String),
   detail: Schema.String,
+});
+
+/** The messages a thread kept because it had no session, and a Retry that sends one (or the oldest) back through it. */
+export const BatonKeptInput = Schema.Struct({
+  threadId: Schema.String.check(Schema.isMaxLength(120)),
+  retryId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(80))),
+});
+export const BatonKeptResult = Schema.Struct({
+  messages: Schema.Array(
+    Schema.Struct({ id: Schema.String, at: Schema.String, text: Schema.String }),
+  ),
+  /** With `retryId`: sent into the thread, or why not. */
+  retry: Schema.NullOr(Schema.Literals(["sent", "busy", "none"])),
 });
