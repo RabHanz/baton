@@ -239,6 +239,22 @@ export const screenDifference = (a: Uint8Array, b: Uint8Array, threshold = 24): 
  * The display that changed most. Each display is judged alone: a line typed on one is a share of
  * that display, and averaging in a quiet second screen would halve it below the threshold.
  */
+/** Polls without a desktop change event before a lesson looks anyway (a canvas stroke raises none). */
+export const TEACH_LOOK_ANYWAY = 10;
+
+/**
+ * Whether a waiting lesson should take a picture now. `count` is the sidecar's running count of desktop changes
+ * (a window, menu, focus or value), null where there is none: then every poll looks, as before.
+ */
+export const teachShouldLook = (
+  state: { readonly seen: number | null; readonly quiet: number },
+  count: number | null,
+): { readonly look: boolean; readonly seen: number | null; readonly quiet: number } => {
+  const changed = count === null || state.seen === null || count !== state.seen;
+  const look = changed || state.quiet + 1 >= TEACH_LOOK_ANYWAY;
+  return { look, seen: count, quiet: look ? 0 : state.quiet + 1 };
+};
+
 export const screensDifference = (
   a: ReadonlyArray<Uint8Array>,
   b: ReadonlyArray<Uint8Array>,

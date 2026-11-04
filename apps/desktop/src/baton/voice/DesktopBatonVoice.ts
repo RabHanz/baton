@@ -1980,6 +1980,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
       ]);
     },
+    uiChanges: async () => {
+      if (sidecar === null) return null;
+      const out = await Promise.race([
+        sidecar.uiChanges(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
+      ]).catch(() => null);
+      return typeof out?.count === "number" ? out.count : null;
+    },
     uiTree: async () => {
       if (sidecar === null) return null;
       const tree = await Promise.race([

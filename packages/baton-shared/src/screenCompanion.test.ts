@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  teachShouldLook,
+  TEACH_LOOK_ANYWAY,
   captureSize,
   missingDisplaysNote,
   pickSource,
@@ -695,5 +697,23 @@ describe("capture sources for two displays", () => {
   it("says so when a display gave no picture", () => {
     expect(missingDisplaysNote(2, 2)).toBeNull();
     expect(missingDisplaysNote(1, 2)).toContain("Only 1 of 2 displays");
+  });
+});
+
+describe("a waiting lesson looks only after the desktop changed", () => {
+  it("looks on a change, stays still while nothing changes, and looks anyway now and then", () => {
+    let state = teachShouldLook({ seen: null, quiet: 0 }, 5);
+    expect(state.look).toBe(true);
+    const looks: boolean[] = [];
+    for (let i = 0; i < TEACH_LOOK_ANYWAY; i += 1) {
+      state = teachShouldLook(state, 5);
+      looks.push(state.look);
+    }
+    expect(looks.filter(Boolean)).toHaveLength(1);
+    expect(looks.at(-1)).toBe(true);
+    expect(teachShouldLook(state, 6).look).toBe(true);
+    // No sidecar count: every poll looks, as on macOS and Linux.
+    expect(teachShouldLook({ seen: null, quiet: 0 }, null).look).toBe(true);
+    expect(teachShouldLook({ seen: null, quiet: 3 }, null).look).toBe(true);
   });
 });

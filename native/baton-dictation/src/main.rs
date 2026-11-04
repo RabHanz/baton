@@ -13,6 +13,8 @@ mod uia;
 #[cfg(windows)]
 mod capture;
 #[cfg(windows)]
+mod changes;
+#[cfg(windows)]
 mod input_windows;
 mod live;
 #[cfg(windows)]
@@ -970,6 +972,13 @@ fn serve() {
                         let invoke = value["invoke"].as_bool().unwrap_or(false);
                         let window = value["window"].as_str().map(str::to_string);
                         thread::spawn(move || emit(locate_element(id, &label, x, y, foreground, window.as_deref(), invoke)));
+                    }
+                    "ui_changes" => {
+                        #[cfg(windows)]
+                        let out = json!({"ev": "ui_changes", "id": value["id"].as_u64(), "count": changes::changes()});
+                        #[cfg(not(windows))]
+                        let out = json!({"ev": "ui_changes", "id": value["id"].as_u64(), "error": "not on this platform yet"});
+                        emit(out);
                     }
                     "ui_tree" => {
                         let id = value["id"].as_u64();
