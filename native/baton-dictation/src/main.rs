@@ -12,6 +12,8 @@ mod mouse_windows;
 mod uia;
 #[cfg(windows)]
 mod capture;
+#[cfg(windows)]
+mod input_windows;
 mod live;
 #[cfg(windows)]
 mod paste_windows;
@@ -730,6 +732,49 @@ fn capture_window_event(id: Option<u64>, _window: Option<&str>, _out: &str) -> V
     json!({"ev": "captured", "id": id, "error": "not on this platform yet"})
 }
 
+/// The hands' pointer and keys: `{"op": "at", "x", "y", "buttons": [flags], "wheel"}` (no x and y: where the pointer is)
+/// or `{"op": "keys", "vks": [codes]}`.
+#[cfg(windows)]
+fn input_event(id: Option<u64>, value: &Value) -> Value {
+    let numbers = |key: &str| -> Vec<u64> {
+        value[key].as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default()
+    };
+    let result = match value["op"].as_str() {
+        Some("at") => {
+            let point = match (value["x"].as_i64(), value["y"].as_i64()) {
+                (Some(x), Some(y)) => Some((x as i32, y as i32)),
+                _ => None,
+            };
+            let buttons: Vec<u32> = numbers("buttons").into_iter().map(|b| b as u32).collect();
+            input_windows::at(point, &buttons, value["wheel"].as_i64().unwrap_or(0) as i32)
+        }
+        Some("keys") => {
+            let vks: Vec<u16> = numbers("vks").into_iter().map(|k| k as u16).collect();
+            if vks.is_empty() { Err("no keys".to_string()) } else { input_windows::keys(&vks) }
+        }
+        _ => Err("unknown input".to_string()),
+    };
+    json!({"ev": "input", "id": id, "error": result.err()})
+}
+
+#[cfg(not(windows))]
+fn input_event(id: Option<u64>, _value: &Value) -> Value {
+    json!({"ev": "input", "id": id, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
+fn set_value_event(id: Option<u64>, window: &str, text: &str) -> Value {
+    let mut out = uia::set_value(window, text).unwrap_or_else(|e| json!({"set": false, "error": e}));
+    out["ev"] = json!("value_set");
+    out["id"] = json!(id);
+    out
+}
+
+#[cfg(not(windows))]
+fn set_value_event(id: Option<u64>, _window: &str, _text: &str) -> Value {
+    json!({"ev": "value_set", "id": id, "set": false, "error": "not on this platform yet"})
+}
+
 #[cfg(windows)]
 fn ui_tree(id: Option<u64>, window: Option<&str>) -> Value {
     let mut out = uia::tree(120, window).unwrap_or_else(|e| json!({"error": e}));
@@ -930,6 +975,18 @@ fn serve() {
                         let id = value["id"].as_u64();
                         let window = value["window"].as_str().map(str::to_string);
                         thread::spawn(move || emit(ui_tree(id, window.as_deref())));
+                    }
+                    "input" => {
+                        let id = value["id"].as_u64();
+                        // Its own thread: a chord holds for 100 ms, and the dictation keys must not wait.
+                        let value = value.clone();
+                        thread::spawn(move || emit(input_event(id, &value)));
+                    }
+                    "set_value" => {
+                        let id = value["id"].as_u64();
+                        let window = value["window"].as_str().unwrap_or("").to_string();
+                        let text = value["text"].as_str().unwrap_or("").to_string();
+                        thread::spawn(move || emit(set_value_event(id, &window, &text)));
                     }
                     "focus_window" => {
                         let id = value["id"].as_u64();

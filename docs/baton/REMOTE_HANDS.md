@@ -18,7 +18,9 @@ hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool
 - **Scope `baton:hands`** is never in the standard scopes. The Director issues it to one session's token on his own computer
   (`auth token --scopes baton:hands`); revoking that session ends it. `baton:hands-host` belongs to the desktop's own session only.
 - **No windows, no focus theft.** Picture of a named window by `PrintWindow` (works occluded and in the background); controls acted on by their UI
-  Automation patterns first; foreground input only when a control has no pattern, and then the previous window gets the keyboard back.
+  Automation patterns first; a pointer click only when a control has no pattern, and then the previous window gets the keyboard back (the
+  answer says when Windows refused that). `type_text` with a `window` adds the text to that window's box by its UI Automation value (no
+  keyboard, clipboard or focus); keys go out only when the named window already has the keyboard, and are refused otherwise.
 - **He can see it and take it back.** While a remote call runs the pill says "Remote session"; Trust lists remote hands, and "turn off
   remote hands" turns them off. While he is present, a window picture or `ui_tree` follows his screen setting (it may ask); "I'm away" is
   his standing yes (D153).

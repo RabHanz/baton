@@ -25,6 +25,10 @@ export interface RemoteHandsDeps {
       invoke?: boolean;
     }) => Promise<LocatedElement>;
     readonly uiTree: (window?: string) => Promise<UiTree>;
+    readonly setValue: (
+      window: string,
+      text: string,
+    ) => Promise<{ readonly set: boolean; readonly name?: string; readonly error?: string }>;
     readonly captureWindow: (input: {
       window?: string;
       out: string;
@@ -35,10 +39,13 @@ export interface RemoteHandsDeps {
   /** Pointer and keyboard input in the foreground, behind the mouse guard; absent means remote sessions get none. */
   readonly foreground?: {
     readonly clickAt: (to: { x: number; y: number }, double: boolean) => Promise<void>;
+    /** Into the window with the keyboard; it refuses when that window changes under it. */
     readonly type: (text: string) => Promise<void>;
     readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
-    /** The previous window gets the keyboard back after foreground input. */
-    readonly restoreFocus: <T>(run: () => Promise<T>) => Promise<T>;
+    /** Whether the window titled like this has the keyboard now. */
+    readonly keyboardIn: (window: string) => Promise<boolean>;
+    /** The window he was using gets the keyboard back after a pointer click; false when Windows would not allow it. */
+    readonly restoreFocus: (run: () => Promise<void>) => Promise<boolean>;
   };
   readonly ops: {
     readonly version: () => string;
@@ -68,6 +75,19 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
       ...(window === undefined ? { foreground: true } : { window }),
       ...(invoke ? { invoke: true } : {}),
     });
+
+  /** Keys only ever go where the keyboard is, so a named window must be the one that has it. */
+  const keyboard = async (what: string, window: string | undefined) => {
+    const fg = deps.foreground;
+    if (fg === undefined)
+      throw new Error(`${what} needs the foreground and is not allowed for remote sessions here.`);
+    if (window !== undefined && !(await fg.keyboardIn(window))) {
+      throw new Error(
+        `"${window}" has no text box that takes text without the keyboard, and another window has the keyboard, so nothing was sent. Ask him to click into "${window}".`,
+      );
+    }
+    return fg;
+  };
 
   const host: ToolHost = {
     capture: async () => {
@@ -99,8 +119,8 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
         );
       }
       const to = { x: found.x, y: found.y };
-      await fg.restoreFocus(() => fg.clickAt(to, double));
-      return `Clicked ${found.name ?? label} (pointer, focus restored).`;
+      const restored = await fg.restoreFocus(() => fg.clickAt(to, double));
+      return `Clicked ${found.name ?? label} (pointer; ${restored ? "focus given back" : "the window he was using could not be given the keyboard back"}).`;
     },
     waitFor: async (label, seconds, window) => {
       const until = Date.now() + seconds * 1000;
@@ -122,19 +142,21 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
     drag: async () => {
       throw new Error("Dragging is not a remote hands tool.");
     },
-    type: async (text) => {
-      const fg = deps.foreground;
-      if (fg === undefined)
-        throw new Error("Typing needs the foreground and is not allowed for remote sessions here.");
-      await fg.restoreFocus(() => fg.type(text));
-      return "Typed (focus restored).";
+    type: async (text, window) => {
+      if (window !== undefined) {
+        const set = await deps.sidecar.setValue(window, text);
+        if (typeof set.error === "string") throw new Error(set.error);
+        if (set.set)
+          return `Added at the end of ${set.name ? `"${set.name}"` : "the text box"} in "${window}" by its value: no keyboard, no focus change.`;
+      }
+      const fg = await keyboard("Typing", window);
+      await fg.type(text);
+      return window === undefined ? "Typed where the keyboard is." : `Typed into "${window}".`;
     },
-    press: async (keys) => {
-      const fg = deps.foreground;
-      if (fg === undefined)
-        throw new Error("Keys need the foreground and are not allowed for remote sessions here.");
-      await fg.restoreFocus(() => fg.press(keys));
-      return "Pressed (focus restored).";
+    press: async (keys, window) => {
+      const fg = await keyboard("Keys", window);
+      await fg.press(keys);
+      return window === undefined ? "Pressed where the keyboard is." : `Pressed in "${window}".`;
     },
     sessions: async () => "none",
     session: async () => "none",

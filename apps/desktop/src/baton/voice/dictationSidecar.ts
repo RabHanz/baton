@@ -65,6 +65,17 @@ export interface LocatedElement {
   readonly error?: string;
 }
 
+/** The hands' pointer and keys, sent by the sidecar: physical pixels, SendInput mouse flags and virtual-key codes. */
+export type SidecarInput =
+  | {
+      readonly op: "at";
+      readonly x?: number;
+      readonly y?: number;
+      readonly buttons: ReadonlyArray<number>;
+      readonly wheel?: number;
+    }
+  | { readonly op: "keys"; readonly vks: ReadonlyArray<number> };
+
 /** The names and kinds of what the keyboard's window offers, from the accessibility tree. */
 export interface UiTree {
   readonly window?: string;
@@ -135,6 +146,12 @@ export interface DictationSidecar {
     readonly invoke?: boolean;
   }) => Promise<LocatedElement>;
   readonly uiTree: (window?: string) => Promise<UiTree>;
+  readonly input: (input: SidecarInput) => Promise<void>;
+  /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
+  readonly setValue: (
+    window: string,
+    text: string,
+  ) => Promise<{ readonly set: boolean; readonly name?: string; readonly error?: string }>;
   /** A picture of one window (PrintWindow, so covered or in the background) written as a BMP at `out`. */
   /** Gives the keyboard back to a window by the handle `foreground` reported. */
   readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
@@ -289,6 +306,13 @@ export const startDictationSidecar = (input: {
           error === undefined ? { value: event["moved"] !== true } : { error },
         );
       }
+      if (event["ev"] === "input") {
+        const error = typeof event["error"] === "string" ? event["error"] : undefined;
+        return settle(
+          event["id"] as number,
+          error === undefined ? { value: undefined } : { error },
+        );
+      }
       if (event["ev"] === "foreground") {
         return settle(event["id"] as number, { value: focusedFrom(event) });
       }
@@ -301,7 +325,13 @@ export const startDictationSidecar = (input: {
               : null,
         });
       }
-      if (event["ev"] === "located" || event["ev"] === "tree" || event["ev"] === "captured" || event["ev"] === "focused") {
+      if (
+        event["ev"] === "located" ||
+        event["ev"] === "tree" ||
+        event["ev"] === "captured" ||
+        event["ev"] === "focused" ||
+        event["ev"] === "value_set"
+      ) {
         return settle(event["id"] as number, { value: event });
       }
       if (event["ev"] === "text" && event["dictated"] !== true) {
@@ -359,6 +389,9 @@ export const startDictationSidecar = (input: {
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
     uiTree: (window) =>
       call<UiTree>({ cmd: "ui_tree", ...(window === undefined ? {} : { window }) }),
+    input: (input) => call<void>({ cmd: "input", ...input }),
+    setValue: (window, text) =>
+      call<{ set: boolean; name?: string; error?: string }>({ cmd: "set_value", window, text }),
     focusWindow: (window) => call<{ error?: string }>({ cmd: "focus_window", window }),
     captureWindow: (input) =>
       call<{ width: number; height: number; error?: string }>({ cmd: "capture_window", ...input }),
