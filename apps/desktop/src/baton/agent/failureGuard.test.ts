@@ -28,4 +28,22 @@ describe("the stop rule of the hands loop", () => {
     await expect(guarded!.run({ label: "Y" })).resolves.toEqual({ text: "Clicked." });
     expect(calls).toBe(3);
   });
+
+  it("forgets the failures when the caller clears them for a new turn", async () => {
+    const failures = new Map<string, number>();
+    const tool: BatonTool = {
+      name: "screen_capture",
+      description: "",
+      inputSchema: {},
+      run: async () => {
+        throw new Error("No screen.");
+      },
+    };
+    const [guarded] = withFailureGuard([tool], failures);
+    await expect(guarded!.run({})).rejects.toThrow("No screen");
+    await expect(guarded!.run({})).rejects.toThrow("No screen");
+    await expect(guarded!.run({})).rejects.toThrow("Stopped");
+    failures.clear();
+    await expect(guarded!.run({})).rejects.toThrow("No screen");
+  });
 });

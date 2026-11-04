@@ -4,8 +4,10 @@
  * conversation. It starts before he speaks, is seeded from the conversation file when it starts or
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
+import { RECENT_TURNS, conversationBlock } from "@t3tools/baton-shared/conversation";
+
 import type { ConversationLog } from "../conversation/conversationLog.ts";
-import type { VisionSession } from "../screen/claudeVision.ts";
+import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
 import { agentSystemPrompt, contextLine } from "./agentPrompt.ts";
 
 /** About this many turns, and the session is replaced and re-seeded; a long one gets slow and costly. */
@@ -51,6 +53,11 @@ export const createAssistantAgent = (input: {
   let session: Promise<VisionSession> | null = null;
   let turns = 0;
   let lastAt = now();
+  // The newest conversation turn this session has in view, and the turns it wrote itself.
+  let seenId = 0;
+  let own = new Set<number>();
+  // One sentence at a time, so a second one never resets the running turn's state (taint, tools).
+  let queue: Promise<unknown> = Promise.resolve();
 
   const ensure = async (): Promise<VisionSession> => {
     if (session !== null) {
@@ -65,48 +72,100 @@ export const createAssistantAgent = (input: {
       session = null;
     }
     turns = 0;
+    // A new session gets as much as the old one held: the latest turns in full, the rest clipped.
+    const window = input.conversation.recent(RECYCLE_TURNS);
+    seenId = window.at(-1)?.id ?? 0;
+    own = new Set();
     // Assigned before any await, so a second caller finds this session instead of starting another.
     session = Promise.resolve(input.notes?.() ?? "")
       .catch(() => "")
       .then((notes) =>
-        input.start(agentSystemPrompt({ recent: input.conversation.recent(), notes })),
+        input.start(
+          agentSystemPrompt({
+            recent: window.slice(-RECENT_TURNS),
+            earlier: window.slice(0, -RECENT_TURNS),
+            notes,
+          }),
+        ),
       );
     return session;
   };
 
-  return {
-    warm: () => void ensure().catch(() => undefined),
-    say: async (text, where, onDelta) => {
-      input.beginTurn();
-      const agent = await ensure();
-      const target = input.conversation.target();
-      const header = contextLine({
-        now: input.clockLine(),
-        window: where.window,
-        session: where.session,
-        target: target?.label ?? null,
-        presence: (await input.presence?.().catch(() => "")) ?? "",
-      });
-      const remembered = (await input.recall?.(text).catch(() => "")) ?? "";
-      const reply = await agent.ask(
+  const turn = async (
+    text: string,
+    where: { readonly window: string | null; readonly session: string | null },
+    onDelta?: (delta: string) => void,
+  ): Promise<string> => {
+    input.beginTurn();
+    const agent = await ensure();
+    // Turns answered without it (a refusal, the older router) since it last looked.
+    const meanwhile = input.conversation
+      .recent(RECYCLE_TURNS)
+      .filter((t) => t.id > seenId && !own.has(t.id));
+    seenId = meanwhile.at(-1)?.id ?? seenId;
+    const target = input.conversation.target();
+    const header = contextLine({
+      now: input.clockLine(),
+      window: where.window,
+      session: where.session,
+      target: target?.label ?? null,
+      presence: (await input.presence?.().catch(() => "")) ?? "",
+    });
+    const remembered = (await input.recall?.(text).catch(() => "")) ?? "";
+    const missed =
+      meanwhile.length === 0
+        ? ""
+        : `said and answered outside this chat since your last reply:\n${conversationBlock({ recent: meanwhile, earlier: [] })}`;
+    const record = (reply: string, note?: string) =>
+      own.add(
+        input.conversation.add({
+          route: "answer",
+          said: text,
+          reply,
+          ...(note === undefined ? {} : { note }),
+          ...(where.window === null ? {} : { target: { label: where.window } }),
+        }).id,
+      );
+    let partial = "";
+    let reply: string;
+    try {
+      reply = await agent.ask(
         [
           {
             type: "text",
-            text: `${header}${remembered === "" ? "" : `\n\n${remembered}`}\n\nhe says: ${text}`,
+            text: [header, missed, remembered, `he says: ${text}`]
+              .filter((part) => part !== "")
+              .join("\n\n"),
           },
         ],
-        onDelta,
+        (delta) => {
+          partial += delta;
+          onDelta?.(delta);
+        },
       );
-      turns += 1;
-      lastAt = now();
-      input.learn?.(text, reply);
-      input.conversation.add({
-        route: "answer",
-        said: text,
-        reply,
-        ...(where.window === null ? {} : { target: { label: where.window } }),
-      });
-      return reply;
+    } catch (error) {
+      // His sentence is kept even when the answer never finished, so "what did I just say" works.
+      record(
+        partial,
+        error instanceof SessionClosed
+          ? "he stopped it before the end"
+          : "it failed before the end",
+      );
+      throw error;
+    }
+    turns += 1;
+    lastAt = now();
+    input.learn?.(text, reply);
+    record(reply);
+    return reply;
+  };
+
+  return {
+    warm: () => void ensure().catch(() => undefined),
+    say: (text, where, onDelta) => {
+      const run = queue.then(() => turn(text, where, onDelta));
+      queue = run.catch(() => undefined);
+      return run;
     },
     dispose: () => {
       void session?.then((s) => s.dispose()).catch(() => undefined);
