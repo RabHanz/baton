@@ -13,9 +13,17 @@ export const BATON_CLOUD_WS_METHODS = {
   approve: "baton.cloud.approve",
 } as const;
 
-export const BATON_CLOUD_READ_OPS = ["describe", "detect", "status", "list", "usage", "diff"] as const;
-export const BATON_CLOUD_ACT_OPS = ["dispatch", "cancel", "apply"] as const;
-export const BATON_CLOUD_APPROVE_OPS = ["approve", "deny"] as const;
+export const BATON_CLOUD_READ_OPS = [
+  "describe",
+  "detect",
+  "status",
+  "list",
+  "usage",
+  "diff",
+] as const;
+// Applying writes a change into a checkout, so it needs the same scope as approving.
+export const BATON_CLOUD_ACT_OPS = ["dispatch", "cancel"] as const;
+export const BATON_CLOUD_APPROVE_OPS = ["approve", "deny", "apply"] as const;
 
 export const BatonCloudCallInput = Schema.Struct({
   op: Schema.String.check(Schema.isMaxLength(40)),

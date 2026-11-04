@@ -108,8 +108,8 @@ the Director picks a provider and an account. Keys are file paths in settings an
   with PATHEXT, folders with spaces are fine, and a named login is passed as `CLAUDE_CONFIG_DIR` or
   `CODEX_HOME` for that one call.
 - **Approve is never a tool:** `cloud_approve` reads the card back and opens a dialog only the Director can
-  press. The hub's `approve` needs the `baton:cloud-approve` scope, which a paired client never gets by
-  default. A phone needs the same scope to answer any question the desktop mirrors to it (cloud cards,
+  press. The hub's `approve`, `deny` and `apply` need the `baton:cloud-approve` scope, which a paired client
+  never gets by default. `apply` also needs the checkout's absolute folder (`dir`) on the hub. A phone needs the same scope to answer any question the desktop mirrors to it (cloud cards,
   hands, vault and screen confirms).
 
 ## Not built yet
