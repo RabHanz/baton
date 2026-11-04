@@ -34,11 +34,18 @@ export const nodeExec: Exec = (file, args, o) =>
     let timedOut = false;
     let child: NodeChildProcess.ChildProcess;
     const plan = launchPlan(file, args, realLaunchEnv());
-    if (!plan.ok) return resolve({ code: null, stdout: "", stderr: plan.error, missing: plan.error.endsWith("is not installed on this computer.") });
+    if (!plan.ok)
+      return resolve({
+        code: null,
+        stdout: "",
+        stderr: plan.error,
+        missing: plan.error.endsWith("is not installed on this computer."),
+      });
     try {
       // Never a shell string: the argument list goes to the program (a cmd shim only when every argument is plain).
       child = NodeChildProcess.spawn(plan.file, [...plan.args], {
         env: { ...process.env, ...o.env },
+        ...(o.cwd === undefined ? {} : { cwd: o.cwd }),
         windowsHide: true,
         shell: plan.viaCmd,
       });
@@ -83,7 +90,9 @@ const writeJson = (file: string, value: unknown): void => {
 };
 
 /** Requests in `cloud-requests.json`, the briefs of waiting ones in `cloud-briefs.json`; both private to the user. */
-export const fileStores = (dir: string): { readonly store: PendingStore; readonly briefs: BriefStore } => {
+export const fileStores = (
+  dir: string,
+): { readonly store: PendingStore; readonly briefs: BriefStore } => {
   const requests = NodePath.join(dir, "cloud-requests.json");
   const briefFile = NodePath.join(dir, "cloud-briefs.json");
   const KEEP = 200;
@@ -92,13 +101,16 @@ export const fileStores = (dir: string): { readonly store: PendingStore; readonl
       load: () => readJson<ReadonlyArray<CloudRequest>>(requests, []),
       save: (list) => writeJson(requests, list.slice(-KEEP)),
       nextId: () => {
-        const ids = readJson<ReadonlyArray<CloudRequest>>(requests, []).map((r) => Number(/(\d+)$/.exec(r.id)?.[1] ?? 0));
+        const ids = readJson<ReadonlyArray<CloudRequest>>(requests, []).map((r) =>
+          Number(/(\d+)$/.exec(r.id)?.[1] ?? 0),
+        );
         return `L-${Math.max(0, ...ids) + 1}`;
       },
     },
     briefs: {
       get: (id) => readJson<Record<string, string>>(briefFile, {})[id] ?? null,
-      put: (id, brief) => writeJson(briefFile, { ...readJson<Record<string, string>>(briefFile, {}), [id]: brief }),
+      put: (id, brief) =>
+        writeJson(briefFile, { ...readJson<Record<string, string>>(briefFile, {}), [id]: brief }),
       drop: (id) => {
         const { [id]: _gone, ...rest } = readJson<Record<string, string>>(briefFile, {});
         writeJson(briefFile, rest);

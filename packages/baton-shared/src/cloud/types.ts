@@ -59,7 +59,9 @@ export interface Usage {
   readonly pointsThisWeek: number | null;
 }
 
-export type Outcome<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
+export type Outcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
 
 export type Setup =
   | { readonly state: "ready" }
@@ -79,7 +81,12 @@ export interface ExecResult {
 export type Exec = (
   file: string,
   args: ReadonlyArray<string>,
-  options: { readonly stdin?: string; readonly env?: Readonly<Record<string, string>>; readonly timeoutMs: number },
+  options: {
+    readonly stdin?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly cwd?: string;
+    readonly timeoutMs: number;
+  },
 ) => Promise<ExecResult>;
 
 export interface DispatchInput {
@@ -131,14 +138,22 @@ export interface CloudProvider {
   /** Makes a request that waits for him. Runs nothing. */
   readonly dispatch: (input: DispatchInput) => Promise<Outcome<CloudRequest>>;
   readonly status: (id: string) => Promise<Outcome<CloudRequest>>;
-  readonly list: (filter: { readonly mine?: boolean; readonly label?: string }) => Promise<Outcome<ReadonlyArray<CloudRequest>>>;
+  readonly list: (filter: {
+    readonly mine?: boolean;
+    readonly label?: string;
+  }) => Promise<Outcome<ReadonlyArray<CloudRequest>>>;
   readonly cancel: (id: string) => Promise<Outcome<CloudRequest | null>>;
   readonly usage: () => Promise<Outcome<ReadonlyArray<Usage>>>;
   /** His pick, for this request alone. Starts the work. */
-  readonly approve: (id: string, account: string, answerRef: string) => Promise<Outcome<CloudRequest>>;
+  readonly approve: (
+    id: string,
+    account: string,
+    answerRef: string,
+  ) => Promise<Outcome<CloudRequest>>;
   readonly deny: (id: string, reason: string) => Promise<Outcome<CloudRequest | null>>;
   readonly diff?: (id: string) => Promise<Outcome<string>>;
-  readonly apply?: (id: string) => Promise<Outcome<string>>;
+  /** Applies the task's change to the git checkout at `dir`, an absolute path on the computer that runs it. */
+  readonly apply?: (id: string, dir: string) => Promise<Outcome<string>>;
 }
 
 export const BRIEF_MAX = 4_000;
@@ -158,9 +173,15 @@ export const pickable = (
 ): { readonly enabled: boolean; readonly why: string | null } => {
   if (u === undefined) return { enabled: true, why: "usage unknown" };
   if (u.rejected) return { enabled: false, why: "rejected" };
-  if (u.login === "expired" || u.login === "not-logged-in") return { enabled: false, why: "sign in needed" };
+  if (u.login === "expired" || u.login === "not-logged-in")
+    return { enabled: false, why: "sign in needed" };
   if (u.available === false) return { enabled: false, why: "not available" };
-  if (u.weeklyPercent === null) return { enabled: true, why: u.login === "renew-soon" ? "usage unknown; login renews soon" : "usage unknown" };
-  if (u.weeklyPercent >= ACCOUNT_LIMIT_PERCENT) return { enabled: false, why: `${u.weeklyPercent}% used` };
+  if (u.weeklyPercent === null)
+    return {
+      enabled: true,
+      why: u.login === "renew-soon" ? "usage unknown; login renews soon" : "usage unknown",
+    };
+  if (u.weeklyPercent >= ACCOUNT_LIMIT_PERCENT)
+    return { enabled: false, why: `${u.weeklyPercent}% used` };
   return { enabled: true, why: u.login === "renew-soon" ? "login renews soon" : null };
 };

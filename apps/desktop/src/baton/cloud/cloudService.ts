@@ -4,7 +4,14 @@
  * the approval card's clicks. The rules are in `@t3tools/baton-shared/cloud`; this holds state and I/O.
  */
 import { buildLocalProviders } from "@t3tools/baton-shared/cloud/build";
-import { CARD_START, fromSpoken, offerQuestion, reduceCard, type CardEvent, type CardState } from "@t3tools/baton-shared/cloud/card";
+import {
+  CARD_START,
+  fromSpoken,
+  offerQuestion,
+  reduceCard,
+  type CardEvent,
+  type CardState,
+} from "@t3tools/baton-shared/cloud/card";
 import { sshProviders } from "@t3tools/baton-shared/cloud/sshShell";
 import { hubProvider, type CloudOp, type Described } from "@t3tools/baton-shared/cloud/hub";
 import { providerChoices, type ProviderChoice } from "@t3tools/baton-shared/cloud/registry";
@@ -59,7 +66,11 @@ export const DEFAULT_CLOUD: CloudSettings = {
   askPopup: false,
 };
 
-export type HubCall = (op: CloudOp, provider: ProviderId | "", args: Readonly<Record<string, unknown>>) => Promise<Outcome<unknown>>;
+export type HubCall = (
+  op: CloudOp,
+  provider: ProviderId | "",
+  args: Readonly<Record<string, unknown>>,
+) => Promise<Outcome<unknown>>;
 
 export interface CloudDeps {
   readonly settings: () => CloudSettings;
@@ -69,13 +80,28 @@ export interface CloudDeps {
   /** The connection to the computer that runs cloud tasks (transport 2); null when there is none. */
   readonly hub: HubCall | null;
   /** The computers this window is connected to, for the picker. */
-  readonly environments?: () => Promise<ReadonlyArray<{ readonly id: string; readonly label: string }>>;
+  readonly environments?: () => Promise<
+    ReadonlyArray<{ readonly id: string; readonly label: string }>
+  >;
   /** The Director's yes, on a dialog the assistant cannot click: the index of the button he pressed. */
-  readonly ask: (input: { title: string; detail: string; buttons: ReadonlyArray<string>; cancel: number; armMs: number; everywhere?: boolean }) => Promise<number>;
+  readonly ask: (input: {
+    title: string;
+    detail: string;
+    buttons: ReadonlyArray<string>;
+    cancel: number;
+    armMs: number;
+    everywhere?: boolean;
+  }) => Promise<number>;
   readonly changed: () => void;
   readonly now: () => number;
   /** A key from the vault for one call (Hello-gated), or null when no vault key is named. */
-  readonly vaultKey?: (name: string, why: string) => Promise<{ readonly ok: true; readonly path: string; readonly done: () => void } | { readonly ok: false; readonly error: string }>;
+  readonly vaultKey?: (
+    name: string,
+    why: string,
+  ) => Promise<
+    | { readonly ok: true; readonly path: string; readonly done: () => void }
+    | { readonly ok: false; readonly error: string }
+  >;
 }
 
 export const NOT_SET_UP = "Cloud tasks are not set up on this computer. Turn them on under Cloud.";
@@ -96,7 +122,8 @@ export interface CloudView {
   readonly tested: ReadonlyArray<{ readonly ok: boolean; readonly line: string }> | null;
 }
 
-export const requestKey = (r: Pick<CloudRequest, "provider" | "id">): string => `${r.provider}:${r.id}`;
+export const requestKey = (r: Pick<CloudRequest, "provider" | "id">): string =>
+  `${r.provider}:${r.id}`;
 
 export const createCloud = (deps: CloudDeps) => {
   let usage: ReadonlyArray<Usage> = [];
@@ -114,7 +141,17 @@ export const createCloud = (deps: CloudDeps) => {
   const providers = (): ReadonlyArray<CloudProvider> => {
     const s = deps.settings();
     if (s.transport === "hub") return hubProviders;
-    const sig = JSON.stringify([s.transport, s.hubEnv, s.codexEnv, s.sshHost, s.sshUser, s.machineKey, s.approverKey, s.machineKeyVault, s.approverKeyVault]);
+    const sig = JSON.stringify([
+      s.transport,
+      s.hubEnv,
+      s.codexEnv,
+      s.sshHost,
+      s.sshUser,
+      s.machineKey,
+      s.approverKey,
+      s.machineKeyVault,
+      s.approverKeyVault,
+    ]);
     if (built?.sig === sig) return built.list;
     const list =
       s.transport === "ssh"
@@ -124,20 +161,29 @@ export const createCloud = (deps: CloudDeps) => {
               user: s.sshUser,
               machineKey: s.machineKey,
               approverKey: s.approverKey,
-              ...(deps.vaultKey === undefined || (s.machineKeyVault === "" && s.approverKeyVault === "")
+              ...(deps.vaultKey === undefined ||
+              (s.machineKeyVault === "" && s.approverKeyVault === "")
                 ? {}
                 : {
                     keyFor: async (role: "machine" | "approver") => {
                       const name = role === "machine" ? s.machineKeyVault : s.approverKeyVault;
                       if (name === "") return null;
-                      const used = await deps.vaultKey!(name, role === "approver" ? "Approve a cloud task" : "Send a cloud task");
+                      const used = await deps.vaultKey!(
+                        name,
+                        role === "approver" ? "Approve a cloud task" : "Send a cloud task",
+                      );
                       return used.ok ? { path: used.path, done: used.done } : { error: used.error };
                     },
                   }),
             },
             deps.exec,
           )
-        : [...buildLocalProviders(deps.exec, fileStores(deps.dir), { codexEnv: s.codexEnv }).values(), ...STUBS];
+        : [
+            ...buildLocalProviders(deps.exec, fileStores(deps.dir), {
+              codexEnv: s.codexEnv,
+            }).values(),
+            ...STUBS,
+          ];
     built = { sig, list };
     return list;
   };
@@ -145,12 +191,33 @@ export const createCloud = (deps: CloudDeps) => {
   const find = (id: ProviderId): CloudProvider | undefined => providers().find((p) => p.id === id);
 
   const ready = (): ReadonlySet<ProviderId> =>
-    new Set(providers().flatMap((p) => (p.setup().state === "ready" && detections[p.id]?.installed === true && detections[p.id]?.signedIn === true ? [p.id] : [])));
+    new Set(
+      providers().flatMap((p) =>
+        p.setup().state === "ready" &&
+        detections[p.id]?.installed === true &&
+        detections[p.id]?.signedIn === true
+          ? [p.id]
+          : [],
+      ),
+    );
 
   const view = (): CloudView => {
     const s = deps.settings();
     const list = providers();
-    return { on: s.on, transport: s.transport, providers: list, choices: providerChoices(list, usage, ready()), requests, usage, detections, error, loadedAt, cards, environments, tested };
+    return {
+      on: s.on,
+      transport: s.transport,
+      providers: list,
+      choices: providerChoices(list, usage, ready()),
+      requests,
+      usage,
+      detections,
+      error,
+      loadedAt,
+      cards,
+      environments,
+      tested,
+    };
   };
 
   const refresh = async (): Promise<void> => {
@@ -185,15 +252,28 @@ export const createCloud = (deps: CloudDeps) => {
       // One transport, one list of requests, whichever assistant is asked.
       if (askedShared) {
         const u = await p.usage();
-        if (u.ok) uses.push(...u.value.filter((x) => !uses.some((y) => y.provider === x.provider && y.account === x.account)));
+        if (u.ok)
+          uses.push(
+            ...u.value.filter(
+              (x) => !uses.some((y) => y.provider === x.provider && y.account === x.account),
+            ),
+          );
         continue;
       }
       askedShared = true;
       const l = await p.list({});
-      if (l.ok) reqs.push(...l.value.filter((r) => !reqs.some((x) => x.id === r.id && x.provider === r.provider)));
+      if (l.ok)
+        reqs.push(
+          ...l.value.filter((r) => !reqs.some((x) => x.id === r.id && x.provider === r.provider)),
+        );
       else error = error ?? l.error;
       const u = await p.usage();
-      if (u.ok) uses.push(...u.value.filter((x) => !uses.some((y) => y.provider === x.provider && y.account === x.account)));
+      if (u.ok)
+        uses.push(
+          ...u.value.filter(
+            (x) => !uses.some((y) => y.provider === x.provider && y.account === x.account),
+          ),
+        );
     }
     detections = found;
     requests = reqs;
@@ -201,7 +281,9 @@ export const createCloud = (deps: CloudDeps) => {
     loadedAt = deps.now();
     offerNew();
     // A card whose request is gone or answered forgets its state.
-    for (const k of cards.keys()) if (!reqs.some((r) => requestKey(r) === k && r.state === "awaiting-director")) cards.delete(k);
+    for (const k of cards.keys())
+      if (!reqs.some((r) => requestKey(r) === k && r.state === "awaiting-director"))
+        cards.delete(k);
     deps.changed();
   };
 
@@ -254,7 +336,8 @@ export const createCloud = (deps: CloudDeps) => {
       if (pick.kind === "later") return;
       if (pick.kind === "deny") {
         const p = find(r.provider);
-        if ((await p?.deny(r.id, "denied by the Director"))?.ok === true) cardEvent(key, { type: "deny" });
+        if ((await p?.deny(r.id, "denied in Tessaya"))?.ok === true)
+          cardEvent(key, { type: "deny" });
         await refresh();
         return;
       }
@@ -296,11 +379,32 @@ export const createCloud = (deps: CloudDeps) => {
     for (const p of providers()) {
       if (detections[p.id]?.signedIn !== true) continue;
       for (const u of usage.filter((x) => x.provider === p.id)) {
-        const usageText = u.rejected ? "rejected" : u.weeklyPercent === null ? "usage unknown" : `${u.weeklyPercent}% used${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`;
-        lines.push({ ok: !u.rejected && u.login !== "expired" && u.login !== "not-logged-in", line: text("cloud.test.account", { provider: p.label, account: u.account, usage: usageText, login: u.login === undefined ? "" : text("cloud.test.login", { login: u.login }) }) });
+        const usageText = u.rejected
+          ? "rejected"
+          : u.weeklyPercent === null
+            ? "usage unknown"
+            : `${u.weeklyPercent}% used${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`;
+        lines.push({
+          ok: !u.rejected && u.login !== "expired" && u.login !== "not-logged-in",
+          line: text("cloud.test.account", {
+            provider: p.label,
+            account: u.account,
+            usage: usageText,
+            login: u.login === undefined ? "" : text("cloud.test.login", { login: u.login }),
+          }),
+        });
       }
     }
-    if (lines.length === 0) lines.push({ ok: false, line: text("cloud.test.none", { why: Object.values(detections).map((d) => d?.line).filter(Boolean).join(" ") }) });
+    if (lines.length === 0)
+      lines.push({
+        ok: false,
+        line: text("cloud.test.none", {
+          why: Object.values(detections)
+            .map((d) => d?.line)
+            .filter(Boolean)
+            .join(" "),
+        }),
+      });
     else if (lines.every((l) => l.ok)) lines.unshift({ ok: true, line: text("cloud.test.ok") });
     tested = lines;
     deps.changed();
@@ -318,16 +422,23 @@ export const createCloud = (deps: CloudDeps) => {
     click: async (cardId: string): Promise<void> => {
       const m = /^cl\.(p|a|ok|deny)\.([a-z]+):([^:]+)(?::(.+))?$/.exec(cardId);
       if (m === null) return;
-      const [, verb, provider, id, rest] = m as unknown as [string, string, ProviderId, string, string | undefined];
+      const [, verb, provider, id, rest] = m as unknown as [
+        string,
+        string,
+        ProviderId,
+        string,
+        string | undefined,
+      ];
       const key = `${provider}:${id}`;
-      if (verb === "p") cardEvent(key, { type: "provider", provider: (rest ?? provider) as ProviderId });
+      if (verb === "p")
+        cardEvent(key, { type: "provider", provider: (rest ?? provider) as ProviderId });
       else if (verb === "a") cardEvent(key, { type: "account", account: rest ?? "" });
       else if (verb === "ok") {
         if (rest === "later") cardEvent(key, { type: "back" });
         else await runApprove(key);
       } else if (verb === "deny") {
         const p = find(provider);
-        const out = p === undefined ? null : await p.deny(id, "denied by the Director");
+        const out = p === undefined ? null : await p.deny(id, "denied in Tessaya");
         if (out?.ok === true) cardEvent(key, { type: "deny" });
         await refresh();
       }
@@ -335,16 +446,32 @@ export const createCloud = (deps: CloudDeps) => {
     },
     /** Assistant tools. Each returns a sentence for the assistant to say. */
     tool: {
-      dispatch: async (a: { provider?: string; repo: string; branch: string; brief: string; label?: string; fromWeb?: boolean; expectedUsage?: number }): Promise<string> => {
+      dispatch: async (a: {
+        provider?: string;
+        repo: string;
+        branch: string;
+        brief: string;
+        label?: string;
+        fromWeb?: boolean;
+        expectedUsage?: number;
+      }): Promise<string> => {
         const no = guard();
         if (no !== null) return no;
         await refresh();
         const choices = view().choices.filter((c) => c.enabled);
         const pid = (a.provider as ProviderId | undefined) ?? choices[0]?.id;
         const p = pid === undefined ? undefined : find(pid);
-        if (p === undefined) return "No cloud provider is ready here. Turn one on and sign in under Cloud.";
+        if (p === undefined)
+          return "No cloud provider is ready here. Turn one on and sign in under Cloud.";
         if (a.brief.length > BRIEF_MAX) return `A cloud brief is at most ${BRIEF_MAX} characters.`;
-        const out = await p.dispatch({ repo: a.repo, branch: a.branch, brief: a.brief, ...(a.label === undefined ? {} : { label: a.label }), ...(a.expectedUsage === undefined ? {} : { expectedUsage: a.expectedUsage }), fromWeb: a.fromWeb === true });
+        const out = await p.dispatch({
+          repo: a.repo,
+          branch: a.branch,
+          brief: a.brief,
+          ...(a.label === undefined ? {} : { label: a.label }),
+          ...(a.expectedUsage === undefined ? {} : { expectedUsage: a.expectedUsage }),
+          fromWeb: a.fromWeb === true,
+        });
         if (!out.ok) return out.error;
         await refresh();
         return `Request ${out.value.id} is waiting for his answer on ${p.label}. Nothing runs until he picks an account on the card in Approvals.`;
@@ -352,7 +479,10 @@ export const createCloud = (deps: CloudDeps) => {
       status: async (id: string, provider?: string): Promise<string> => {
         const no = guard();
         if (no !== null) return no;
-        const p = provider === undefined ? providers().find((x) => x.setup().state === "ready") : find(provider as ProviderId);
+        const p =
+          provider === undefined
+            ? providers().find((x) => x.setup().state === "ready")
+            : find(provider as ProviderId);
         if (p === undefined) return "No cloud provider is ready here.";
         const out = await p.status(id);
         return out.ok ? describeRequest(out.value) : out.error;
@@ -371,7 +501,10 @@ export const createCloud = (deps: CloudDeps) => {
       cancel: async (id: string, provider?: string): Promise<string> => {
         const no = guard();
         if (no !== null) return no;
-        const p = provider === undefined ? providers().find((x) => x.setup().state === "ready") : find(provider as ProviderId);
+        const p =
+          provider === undefined
+            ? providers().find((x) => x.setup().state === "ready")
+            : find(provider as ProviderId);
         if (p === undefined) return "No cloud provider is ready here.";
         const out = await p.cancel(id);
         await refresh();
@@ -383,7 +516,12 @@ export const createCloud = (deps: CloudDeps) => {
         await refresh();
         return usage.length === 0
           ? "No cloud usage figures are available."
-          : usage.map((u) => `${u.provider} ${u.account}: ${u.rejected ? "rejected" : u.weeklyPercent === null ? "usage unknown" : `${u.weeklyPercent}% used this week`}${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`).join("\n");
+          : usage
+              .map(
+                (u) =>
+                  `${u.provider} ${u.account}: ${u.rejected ? "rejected" : u.weeklyPercent === null ? "usage unknown" : `${u.weeklyPercent}% used this week`}${u.resetsAt === null ? "" : `, resets ${u.resetsAt}`}`,
+              )
+              .join("\n");
       },
       /**
        * 'approve cloud request 3 on <account>': only reads the card back and asks him on a dialog the assistant
@@ -393,7 +531,12 @@ export const createCloud = (deps: CloudDeps) => {
         const no = guard();
         if (no !== null) return no;
         await refresh();
-        const request = requests.find((r) => r.id === id && (provider === undefined || r.provider === provider) && r.state === "awaiting-director");
+        const request = requests.find(
+          (r) =>
+            r.id === id &&
+            (provider === undefined || r.provider === provider) &&
+            r.state === "awaiting-director",
+        );
         if (request === undefined) return "That cloud request is not waiting for an answer.";
         const spoken = fromSpoken(view().choices, { provider: request.provider, account });
         if ("refused" in spoken) return spoken.refused;
