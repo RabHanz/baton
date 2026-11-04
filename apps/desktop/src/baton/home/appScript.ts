@@ -226,9 +226,10 @@ function catalogRow(c) {
   const r = $('div', 'row sess'); const dot = $('span', 'sdot ' + (c.state === 'running' ? 'working' : c.state === 'resuming' ? 'waiting' : 'idle')); dot.setAttribute('aria-label', c.stateLabel);
   const t = $('div', 'text'); const name = $(c.state === 'running' ? 'button' : 'div', 'sname', c.label);
   if (c.state === 'running') name.onclick = () => set(c.id, null);
-  const meta = $('div', 'hint'); meta.append(document.createTextNode([c.project, c.machine, c.stateLabel, c.when, c.source].filter(Boolean).join(' \\u00b7 ')));
+  const meta = $('div', 'hint'); meta.append(document.createTextNode([c.project, c.machine, c.stateLabel, c.binding, c.when, c.source].filter(Boolean).join(' \\u00b7 ')));
   t.append(name, meta); if (c.note) t.appendChild($('div', 'hint', c.note)); r.append(dot, t);
   if (c.stopLabel) { const sb = $('button', 'btn quiet', c.stopLabel); sb.setAttribute('aria-label', c.stopLabel + ' ' + c.label); sb.onclick = () => set(c.id, 'stop'); r.appendChild(sb); }
+  if (c.reattachLabel) { const ab = $('button', 'btn quiet', c.reattachLabel); ab.setAttribute('aria-label', c.reattachLabel + ' ' + c.label); ab.onclick = () => set(c.id, 'reattach'); r.appendChild(ab); }
   if (c.resumeLabel) { const b = $('button', 'btn', c.resumeLabel); b.setAttribute('aria-label', c.resumeLabel + ' ' + c.label); b.onclick = () => set(c.id, 'resume'); r.appendChild(b); }
   return r;
 }

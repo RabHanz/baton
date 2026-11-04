@@ -243,6 +243,13 @@ export type BatonSessionRequest =
   | { readonly kind: "catalogStop"; readonly environmentId: string; readonly sessionId: string }
   | { readonly kind: "catalogAutoResume"; readonly action: "status" | "on" | "off" }
   | {
+      readonly kind: "catalogReattach";
+      readonly environmentId: string;
+      readonly sessionId: string;
+      readonly cwd: string | null;
+      readonly confirmPane?: string;
+    }
+  | {
       readonly kind: "catalogResume";
       readonly environmentId: string;
       readonly sessionId: string;

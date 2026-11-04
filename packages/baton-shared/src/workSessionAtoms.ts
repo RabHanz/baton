@@ -154,6 +154,10 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:sessions-resume",
       tag: BATON_SESSIONS_WS_METHODS.resume,
     }),
+    sessionsReattach: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-reattach",
+      tag: BATON_SESSIONS_WS_METHODS.reattach,
+    }),
     sessionsCreate: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:sessions-create",
       tag: BATON_SESSIONS_WS_METHODS.create,

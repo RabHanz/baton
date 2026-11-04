@@ -5,6 +5,8 @@
  * Resume, and New session in a folder on a machine. The rows come from a CatalogService (the server's session
  * catalog); this file holds the shape the window needs, the pure rows, and the small state machine for a resume.
  */
+import { bindingOf } from "@t3tools/baton-shared/liveThread";
+
 import type { HomeControl, HomeOption } from "../home/batonHome.ts";
 
 export type CatalogState = "running" | "stopped" | "resuming" | "failed";
@@ -31,6 +33,10 @@ export interface CatalogRow {
   readonly local?: boolean;
   /** Where a resumed session lives, when the server has made the thread. */
   readonly threadId?: string;
+  /** The Herdr pane a running session is in. */
+  readonly pane?: string | null;
+  /** The provider instance answering its thread; not `baton-live` means a handoff session. */
+  readonly answeredBy?: string | null;
 }
 
 export interface CatalogService {
@@ -41,6 +47,11 @@ export interface CatalogService {
   readonly autoResume?: (action: "status" | "on" | "off") => Promise<boolean>;
   /** Helper threads on every machine: what there is (apply false), or archives them (true). */
   readonly cleanup?: (apply: boolean) => Promise<ReadonlyArray<CleanupMachine>>;
+  /** Binds the session's thread to its running session again; "confirm" carries the one pane it would use. */
+  readonly reattach?: (
+    row: CatalogRow,
+    confirmPane?: string,
+  ) => Promise<{ readonly state: string; readonly pane: string | null; readonly detail: string }>;
   /** Makes the thread live; resolves when it is. */
   readonly resume: (row: CatalogRow) => Promise<void>;
   readonly create: (target: {
@@ -157,6 +168,8 @@ const WORDS = {
   more: "Show more",
 } as const;
 
+const runningBinding = (r: CatalogRow) => bindingOf({ ...r, source: "live" });
+
 export const catalogControls = (input: {
   readonly rows: ReadonlyArray<CatalogRow>;
   readonly view: CatalogView;
@@ -166,8 +179,11 @@ export const catalogControls = (input: {
   readonly loaded: boolean;
   readonly tidyFound?: number;
   readonly autoResume?: boolean | null;
+  /** Rows whose Reattach found one other running pane and waits for his yes: row id -> pane. */
+  readonly reattachOffers?: ReadonlyMap<string, string>;
 }): ReadonlyArray<HomeControl> => {
   const { rows, view } = input;
+  const reattachOffers = input.reattachOffers ?? new Map<string, string>();
   const machines: HomeOption[] = [{ value: "all", label: "All machines" }];
   for (const r of rows)
     if (!machines.some((m) => m.value === r.environmentId))
@@ -248,6 +264,14 @@ export const catalogControls = (input: {
     note: (r.state === "stopped" || r.state === "failed") && r.canResume ? WORDS.resumeHint : "",
     stopLabel: r.state === "running" ? WORDS.stop : null,
     source: r.detail ?? (r.source === "history" ? "From history" : ""),
+    // A stopped row says "Stopped" already.
+    binding: r.state === "running" ? (runningBinding(r)?.text ?? "") : "",
+    reattachLabel:
+      r.state === "running" && runningBinding(r)?.kind === "handoff"
+        ? reattachOffers.has(r.id)
+          ? `Reattach to ${reattachOffers.get(r.id)}?`
+          : "Reattach"
+        : null,
   }));
   return [bar, ...list];
 };
@@ -279,6 +303,7 @@ export const createCatalog = (input: {
   let folders: ReadonlyArray<string> = [];
   let tidyFound = 0;
   let autoResume: boolean | null = null;
+  const reattachOffers = new Map<string, string>();
   const now = input.now ?? (() => Date.now());
   const set = (patch: Partial<CatalogRow> & { id: string }) => {
     rows = rows.map((r) => (r.id === patch.id ? { ...r, ...patch } : r));
@@ -342,7 +367,17 @@ export const createCatalog = (input: {
     tools,
     refresh,
     controls: () =>
-      catalogControls({ rows, view, now: now(), folders, status, loaded, tidyFound, autoResume }),
+      catalogControls({
+        rows,
+        view,
+        now: now(),
+        folders,
+        status,
+        loaded,
+        tidyFound,
+        autoResume,
+        reattachOffers,
+      }),
     /** An action from the window; true when it was the catalog's. */
     apply: (id: string, value: string | boolean | null): boolean => {
       if (!id.startsWith("c.") && !id.startsWith("c:")) return false;
@@ -469,6 +504,29 @@ export const createCatalog = (input: {
             })
             .catch(() => {
               status = "That session could not be stopped.";
+              input.onChange();
+            });
+          return true;
+        } else if (value === "reattach" && row.state === "running") {
+          void (
+            input.service.reattach?.(row, reattachOffers.get(row.id)) ??
+            Promise.reject(new Error("no reattach"))
+          )
+            .then((result) => {
+              if (result.state === "confirm" && result.pane !== null) {
+                reattachOffers.set(row.id, result.pane);
+                status = "";
+              } else {
+                reattachOffers.delete(row.id);
+                status =
+                  result.state === "reattached" || result.state === "already-bound"
+                    ? "Reattached to its session."
+                    : result.detail;
+              }
+              void refresh();
+            })
+            .catch(() => {
+              status = "That session could not be reattached.";
               input.onChange();
             });
           return true;

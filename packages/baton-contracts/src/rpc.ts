@@ -122,6 +122,8 @@ import {
   BatonCatalogAutoResumeInput,
   BatonCatalogAutoResumeResult,
   BatonRetireHandoffInput,
+  BatonReattachInput,
+  BatonReattachResult,
   BatonRetireHandoffResult,
   BatonCatalogCleanupInput,
   BatonCatalogCleanupResult,
@@ -407,6 +409,11 @@ const WsBatonSessionsAutoResumeRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.autoResu
 const WsBatonSessionsRetireHandoffRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.retireHandoff, {
   payload: BatonRetireHandoffInput,
   success: BatonRetireHandoffResult,
+  error: CatalogErrors,
+});
+const WsBatonSessionsReattachRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.reattach, {
+  payload: BatonReattachInput,
+  success: BatonReattachResult,
   error: CatalogErrors,
 });
 const WsBatonSessionsSendRpc = Rpc.make(BATON_SESSIONS_WS_METHODS.send, {
@@ -706,6 +713,7 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonSessionsCleanupRpc,
   WsBatonSessionsAutoResumeRpc,
   WsBatonSessionsRetireHandoffRpc,
+  WsBatonSessionsReattachRpc,
   WsBatonSessionsResumeRpc,
   WsBatonSessionsCreateRpc,
   WsBatonSessionsSendRpc,

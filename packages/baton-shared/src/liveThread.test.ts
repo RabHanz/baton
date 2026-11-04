@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   bindingBanner,
+  bindingOf,
   pinnedLiveSelection,
   classifierStopReason,
   describeAnswerer,
@@ -97,5 +98,21 @@ describe("the thread's connection banner", () => {
       });
     }
     expect(bindingBanner("missing")?.text).toBe("Not connected to its session.");
+  });
+});
+
+describe("what the thread is bound to", () => {
+  it("names the pane, the handoff session or stopped", () => {
+    const run = { state: "running", source: "live" };
+    expect(bindingOf({ ...run, pane: "fab~w1:p2", answeredBy: "baton-live" })?.text).toBe(
+      "Herdr pane fab~w1:p2",
+    );
+    expect(bindingOf({ ...run, pane: "fab~w1:p2", answeredBy: "claudeAgent" })?.kind).toBe(
+      "handoff",
+    );
+    expect(bindingOf({ ...run, pane: null })?.kind).toBe("terminal");
+    expect(bindingOf({ state: "stopped", source: "transcript" })?.kind).toBe("stopped");
+    expect(bindingOf("missing")?.kind).toBe("stopped");
+    expect(bindingOf(null)).toBeNull();
   });
 });
