@@ -51,7 +51,7 @@ export const parseTrustLogs = (files: {
     out.push({
       at: s(o["at"]),
       kind: tool === "weave_send" ? "weave" : "action",
-      text: `${tool.replace(/^mcp__/, "")}${s(o["action"]) === "" ? "" : `: ${s(o["action"])}`}`,
+      text: `${o["by"] === "remote-hands" ? "remote: " : ""}${tool.replace(/^mcp__/, "")}${s(o["action"]) === "" ? "" : `: ${s(o["action"])}`}`,
       outcome: s(o["outcome"]) || "ran",
     });
   }
@@ -78,7 +78,7 @@ export const parseTrustLogs = (files: {
   return out.toSorted((a, b) => Date.parse(b.at) - Date.parse(a.at));
 };
 
-export type Permission = "screen" | "chrome" | "social" | "vault" | "act";
+export type Permission = "screen" | "chrome" | "social" | "vault" | "act" | "remote";
 
 /** The newest time each permission was exercised, from the same logs. */
 export const lastUsed = (
@@ -93,6 +93,7 @@ export const lastUsed = (
     if (e.kind === "social") note("social", e.at);
     else if (e.kind === "vault") note("vault", e.at);
     else if (e.kind === "weave") note("weave", e.at);
+    else if (e.text.startsWith("remote: ")) note("remote", e.at);
     else if (/screen_capture/.test(e.text)) note("screen", e.at);
     else if (/chrome/i.test(e.text)) note("chrome", e.at);
   }
@@ -104,6 +105,7 @@ export interface TrustData {
   readonly chrome: boolean;
   readonly social: boolean;
   readonly act: boolean;
+  readonly remote: boolean;
   readonly vault: "none" | "locked" | "unlocked";
   readonly grants: ReadonlyArray<{
     readonly jobId: string;
@@ -219,6 +221,14 @@ export const trustControls = (data: TrustData, now: number): ReadonlyArray<HomeC
       "Off: it asks before each step that changes something.",
       "Ask every time",
     ),
+    row(
+      "remote",
+      "Let a remote session drive this computer",
+      data.remote,
+      "A session you gave remote hands may read windows and use their controls; anything risky still asks",
+      "Off: no remote session can act here.",
+      "Turn off",
+    ),
     data.vault === "unlocked"
       ? {
           id: "trust.revoke:vault",
@@ -327,7 +337,7 @@ export const trustAction = (id: string, value: unknown): TrustAction | null => {
   }
   const pb = /^trust\.playbook:([a-z_]+)$/.exec(id);
   if (pb !== null) return { kind: "playbook", id: pb[1]!, on: value === true };
-  const m = /^trust\.revoke:(screen|chrome|social|vault|act)$/.exec(id);
+  const m = /^trust\.revoke:(screen|chrome|social|vault|act|remote)$/.exec(id);
   if (m !== null) return { kind: "revoke", what: m[1] as Permission };
   const g = /^trust\.revoke:grant:(.+):([a-z_]+)$/.exec(id);
   return g === null ? null : { kind: "grant", jobId: g[1]!, channel: g[2]! };
@@ -343,6 +353,7 @@ export const describeTrust = (data: TrustData, now: number): string => {
     line(data.chrome, "Your Chrome", "chrome"),
     line(data.social, "Social accounts in Chrome", "social"),
     line(data.act, "Routine steps without asking", "act"),
+    line(data.remote, "Remote hands", "remote"),
     `Vault: ${data.vault === "unlocked" ? "open" : data.vault === "locked" ? "locked" : "none"}.`,
     data.weaveHosts.length === 0
       ? "Messages go to this computer's sessions only."
@@ -387,6 +398,7 @@ export const PERMISSION_WORDS: Readonly<Record<string, Permission>> = {
   vault: "vault",
   act: "act",
   "act without asking": "act",
+  remote: "remote",
 };
 
 /** 'turn off Chrome' -> the permission, or null when the words match none. */

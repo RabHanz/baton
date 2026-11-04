@@ -29,6 +29,7 @@ const EMPTY_TRUST: TrustData = {
   chrome: false,
   social: false,
   act: false,
+  remote: false,
   vault: "none",
   grants: [],
   weaveHosts: [],

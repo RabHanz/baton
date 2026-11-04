@@ -46,7 +46,6 @@ import {
   toDesktop,
   verifyQuestion,
   type CaptureApproval,
-  type DrivePlan,
   type ScreenMode,
   type ScreenShot,
   pasteTooLong,
@@ -117,7 +116,7 @@ import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
-import { createPointerOverlay, type OverlayCard, type OverlayMarker } from "./pointerOverlay.ts";
+import { createPointerOverlay, type OverlayCard } from "./pointerOverlay.ts";
 import type { EscapeRank } from "./escapeKey.ts";
 import { captureScreens, screenFingerprint, type CapturedScreen } from "./screenCapture.ts";
 
@@ -202,6 +201,7 @@ const ROUTER_MAX_TURNS = 6;
 /** He said stop or the box must open: neither waits for a sidecar that is restarting. */
 const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
+const REMOTE_QUIET_MS = 4_000;
 /** It arrives unasked while he may be typing, so a stray key cannot answer it. */
 const PAUSE_ARM_MS = 900;
 const TEACH_MAX_STEPS = 30;
@@ -249,7 +249,11 @@ export interface AssistantActions {
     readonly height?: number;
   } | null>;
   /** The sidecar's window-targeted hands, for remote sessions; null while the sidecar is not running. */
-  readonly hands?: () => (RemoteHandsDeps["sidecar"] & { readonly focusWindow: (window: number) => Promise<{ readonly error?: string }> }) | null;
+  readonly hands?: () =>
+    | (RemoteHandsDeps["sidecar"] & {
+        readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
+      })
+    | null;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
   readonly uiTree?: () => Promise<{
     readonly window: string;
@@ -472,6 +476,8 @@ export const startScreenCompanion = (input: {
   /** Stop speech at once: he has moved on. */
   readonly stopSpeech?: () => void;
   readonly holdEscape: (onPress: () => void, rank?: EscapeRank) => () => void;
+  /** Sends an Esc of Tessaya's own past the held key, so it reaches the app instead of stopping the work. */
+  readonly ownEscape?: <T>(send: () => Promise<T>) => Promise<T>;
   /** Tells the pill what is going on; null when it stops. */
   readonly onActivity?: (label: string | null, caption?: string) => void;
   /** A short sound for a lesson or drive: start, a step done, waiting, error, finished. */
@@ -851,7 +857,8 @@ export const startScreenCompanion = (input: {
     noOnExpiry = false,
   ): Promise<number> => {
     const aloud = voiceTurn ? (actions?.confirm?.(spoken) ?? null) : null;
-    const boxed = windows.ask(box);
+    // The companion asks mid-task: taking focus would move his keys and the window being worked on (CU-2).
+    const boxed = windows.ask({ inactive: true, ...box });
     if (aloud === null) return boxed;
     const first = await Promise.race([
       boxed.then((index) => ({ index })),
@@ -959,7 +966,6 @@ export const startScreenCompanion = (input: {
   const pointAt = async (
     point: ReturnType<typeof parseReply>["point"],
     shots: ReadonlyArray<ScreenShot>,
-    badge?: number,
   ): Promise<void> => {
     if (!pointable(point)) return;
     const shot = shotFor(shots, point.screen);
@@ -968,13 +974,7 @@ export const startScreenCompanion = (input: {
     // The accessibility tree has the real rectangle; the model's pixels only say where to look.
     const found = point.label === null ? null : await actions?.locate?.(point.label, guess);
     input.onTrace?.({ pointedAt: found ?? guess, snapped: found != null });
-    // The ring is sized to the real control; with only the model's guess it is a plain circle.
-    const here = await overlay.point(found ?? guess, found?.name ?? point.label, {
-      ...(found?.width !== undefined && found.height !== undefined
-        ? { size: { width: found.width, height: found.height } }
-        : {}),
-      ...(badge === undefined ? {} : { badge }),
-    });
+    const here = await overlay.point(found ?? guess, found?.name ?? point.label);
     if (!here) input.onActivity?.("Pointing", "on your other screen");
   };
 
@@ -1279,7 +1279,7 @@ export const startScreenCompanion = (input: {
       }
       say(line);
       const found = pointable(reply.point);
-      await pointAt(reply.point, shots, lesson.step);
+      await pointAt(reply.point, shots);
       await show(
         `Step ${lesson.step} · waiting for you`,
         line,
@@ -1288,7 +1288,6 @@ export const startScreenCompanion = (input: {
           : "I couldn't point at it on your screen. Look again, or do it your way and I'll notice.",
         { state: found ? "waiting" : "error", actions: found ? STEP_ACTIONS : LOOK_ACTIONS },
       );
-      void overlay.waiting();
       input.onCue?.("waiting");
       watch(lesson, baseline, line);
     } finally {
@@ -1384,7 +1383,6 @@ export const startScreenCompanion = (input: {
     };
     input.onChange?.();
     input.onActivity?.("Planning");
-    void show("Planning", goal);
     const captured = await capture();
     const shots = captured.map((c) => c.shot);
     const before = await fingerprint();
@@ -1437,20 +1435,16 @@ export const startScreenCompanion = (input: {
       return finish();
     }
     current.lastSpoken = stepLine(reply.spoken, 20) || reply.spoken;
-    const marks = planMarkers(plan, shots);
-    await overlay.markers(marks);
     const askFirst =
       subject !== null || !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
     input.onActivity?.(askFirst ? "Waiting for you" : "Starting", plan.title);
     say(current.lastSpoken);
-    // The plan box says it all: the "Planning" card under it would be a second card in the same place.
-    if (askFirst) await overlay.card(null);
     const response = !askFirst
       ? 0
       : await askHandsFree(
           {
             title: `Want me to ${plan.title.charAt(0).toLowerCase()}${plan.title.slice(1).replace(/[.?!]$/, "")}?`,
-            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nYou watch. Esc takes it back (so does saying stop, or the Stop button). The numbered dots are where it will click; if a window moves under a click, it asks first.`,
+            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nYou watch. Esc takes it back (so does saying stop, or clicking the pill). If a window moves under a click, it asks first.`,
             buttons: ["Go ahead", "Not now"],
             cancel: 1,
             scoped: true,
@@ -1514,13 +1508,7 @@ export const startScreenCompanion = (input: {
       windows.closePrompt();
     };
     current.release = input.holdEscape(stopDrive, "drive");
-    const hideStop = windows.showStop(stopDrive);
-    driver ??= createInputDriver({
-      platform: input.platform,
-      toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
-      clipboard: Electron.clipboard,
-    });
-    const d = driver;
+    const d = driverFor();
     const result = await runDrivePlan(plan, shots, {
       clickAt: d.clickAt,
       pressAt: d.pressAt,
@@ -1552,11 +1540,6 @@ export const startScreenCompanion = (input: {
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       cancelled: () => current.cancelled || run !== current,
       progress: (i, action) => {
-        void overlay.markers(
-          marks.map((m): OverlayMarker =>
-            m.n - 1 < i ? { ...m, state: "done" } : m.n - 1 === i ? { ...m, state: "now" } : m,
-          ),
-        );
         if (i > 0) input.onCue?.("stepDone");
         // While it drives he watches the screen, not a card: the pill says which step and how to take it back.
         input.onActivity?.(
@@ -1575,7 +1558,6 @@ export const startScreenCompanion = (input: {
       step: -1,
       reason: (error as Error).message,
     }));
-    hideStop();
     current.release?.();
     current.release = null;
     if (run !== current) return;
@@ -1587,7 +1569,6 @@ export const startScreenCompanion = (input: {
       outcome: result.kind,
       ...(result.kind === "finished" ? {} : { reason: message }),
     });
-    await overlay.markers([]);
     input.onActivity?.(null);
     say(message);
     if (result.kind === "finished") {
@@ -1614,13 +1595,6 @@ export const startScreenCompanion = (input: {
     }
     finish();
   };
-
-  const planMarkers = (plan: DrivePlan, shots: ReadonlyArray<ScreenShot>) =>
-    plan.actions.flatMap((action, i) => {
-      if (!("x" in action)) return [];
-      const shot = shotFor(shots, action.screen ?? null);
-      return shot === null ? [] : [{ ...toDesktop(action, shot), n: i + 1 }];
-    });
 
   const runningMode = (): string | null => (run !== null && run.mode !== "look" ? run.mode : null);
 
@@ -1708,6 +1682,18 @@ export const startScreenCompanion = (input: {
       sleep(FOCUS_WAIT_MS).then(() => null),
     ]);
 
+  /** The window with the keyboard, for the gate. One that cannot be told apart from a command line is treated as one. */
+  const gateWindow = async () => {
+    const seen = await focusSoon();
+    return seen === null
+      ? { label: "unknown", shell: true }
+      : {
+          label: seen.label,
+          shell: isShellWindow(seen.label),
+          ...(seen.window === undefined ? {} : { window: seen.window }),
+        };
+  };
+
   /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
   let agentMcp: BatonMcp | null = null;
   let lastShots: ReadonlyArray<ScreenShot> = [];
@@ -1734,13 +1720,7 @@ export const startScreenCompanion = (input: {
     },
     taint: agentTaint,
     textIsHis: (text) => textIsFromConversation(text, conversation.recent(12)),
-    focusedWindow: async () => {
-      const seen = await focusSoon();
-      // A window that cannot be told apart from a command line is treated as one.
-      return seen === null
-        ? { label: "unknown", shell: true }
-        : { label: seen.label, shell: isShellWindow(seen.label) };
-    },
+    focusedWindow: gateWindow,
     confirm: async (p) =>
       (await askHandsFree(
         {
@@ -1758,6 +1738,8 @@ export const startScreenCompanion = (input: {
       if (typeof entry["tool"] === "string") {
         agentTools.push(entry["tool"]);
         agentDecisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+        // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
+        input.onActivity?.("Working");
       }
       input.onAction?.({ by: "assistant", ...entry });
     },
@@ -1773,23 +1755,32 @@ export const startScreenCompanion = (input: {
     actWithoutAsking: () => false,
     taint: remoteTaint,
     textIsHis: () => false,
-    focusedWindow: async () => {
-      const seen = await focusSoon();
-      return seen === null
-        ? { label: "unknown", shell: true }
-        : { label: seen.label, shell: isShellWindow(seen.label) };
-    },
+    focusedWindow: gateWindow,
     confirm: async (p) =>
       settings.remoteHandsAway
         ? false
         : (await askHandsFree(
-            { title: `Remote: ${p.title}`, detail: p.detail, buttons: ["Go ahead", "Not now"], cancel: 1, scoped: true },
+            {
+              title: `Remote: ${p.title}`,
+              detail: p.detail,
+              buttons: ["Go ahead", "Not now"],
+              cancel: 1,
+              scoped: true,
+            },
             p.spoken,
             0,
             p.noOnExpiry,
           )) === 0,
     record: (entry) => input.onAction?.({ by: "remote-hands", ...entry }),
   });
+  /** A remote session at work shows as one line in the pill, gone a moment after its last call. */
+  let remoteQuiet: ReturnType<typeof setTimeout> | null = null;
+  const remoteActivity = (tool: string | null) => {
+    if (remoteQuiet !== null) clearTimeout(remoteQuiet);
+    remoteQuiet = null;
+    if (tool !== null) input.onActivity?.("Remote session", tool);
+    else remoteQuiet = setTimeout(() => input.onActivity?.(null), REMOTE_QUIET_MS);
+  };
   let remoteTools: ReadonlyMap<string, BatonToolType> | null = null;
   const remoteToolsOf = (): ReadonlyMap<string, BatonToolType> => {
     if (remoteTools !== null) return remoteTools;
@@ -1816,7 +1807,8 @@ export const startScreenCompanion = (input: {
               try {
                 return await run();
               } finally {
-                if (before?.window !== undefined) await side.focusWindow(before.window).catch(() => undefined);
+                if (before?.window !== undefined)
+                  await side.focusWindow(before.window).catch(() => undefined);
               }
             },
           },
@@ -1827,11 +1819,23 @@ export const startScreenCompanion = (input: {
   };
 
   const driverFor = () => {
-    driver ??= createInputDriver({
+    if (driver !== null) return driver;
+    const made = createInputDriver({
       platform: input.platform,
       toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
       clipboard: Electron.clipboard,
     });
+    const own = input.ownEscape;
+    driver =
+      own === undefined
+        ? made
+        : {
+            ...made,
+            press: (keys) =>
+              keys.some((k) => k.toLowerCase() === "escape")
+                ? own(() => made.press(keys))
+                : made.press(keys),
+          };
     return driver;
   };
   const desktopPoint = (a: {
@@ -2213,15 +2217,13 @@ export const startScreenCompanion = (input: {
   /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
   const agentTurn = async (text: string, started: number, direct: boolean) => {
     answering += 1;
-    // Escape ends the turn at once, before anything else is asked of the model.
-    const releaseEscape = input.holdEscape(dismiss, "drive");
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
       input.onNote?.("agent_turn_start", { said: text });
+      // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
-      void show("Thinking", text);
       const reply = await agentOf().say(
         direct ? `(to the focused session) ${text}` : text,
         {
@@ -2285,7 +2287,6 @@ export const startScreenCompanion = (input: {
         fail(inner);
       }
     } finally {
-      releaseEscape();
       answering -= 1;
       input.onTurnEnd?.();
     }
@@ -2484,14 +2485,26 @@ export const startScreenCompanion = (input: {
     remoteHands: {
       enabled: () => settings.remoteHands,
       run: async (call) => {
-        if (!settings.remoteHands) return { ok: false, error: "Remote hands are off on this computer." };
+        if (!settings.remoteHands)
+          return { ok: false, error: "Remote hands are off on this computer." };
         remoteTaint.reset();
+        remoteActivity(call.tool);
         try {
           const tool = remoteToolsOf().get(call.tool);
-          if (tool === undefined) return { ok: false, error: `${call.tool} is not a remote hands tool.` };
-          const verdict = await remoteGate({ tool: `${BATON_TOOL_PREFIX}${call.tool}`, input: call.args }).catch(
-            () => ({ allow: false as const, reason: "Tessaya could not check that." }),
-          );
+          if (tool === undefined)
+            return { ok: false, error: `${call.tool} is not a remote hands tool.` };
+          // A picture or the controls of a window follow his screen setting while he is here; "I'm away" is his yes.
+          if (
+            (call.tool === "window_capture" || call.tool === "ui_tree") &&
+            !settings.remoteHandsAway &&
+            !(await approveCapture(`a remote session wants to see a window (${call.tool})`, null))
+          ) {
+            return { ok: false, error: "Refused: he did not allow looking at his screen." };
+          }
+          const verdict = await remoteGate({
+            tool: `${BATON_TOOL_PREFIX}${call.tool}`,
+            input: call.args,
+          }).catch(() => ({ allow: false as const, reason: "Tessaya could not check that." }));
           if (!verdict.allow) return { ok: false, error: `Refused: ${verdict.reason}` };
           const out = await tool.run(call.args);
           return {
@@ -2501,13 +2514,16 @@ export const startScreenCompanion = (input: {
           };
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        } finally {
+          remoteActivity(null);
         }
       },
     },
     voice: () => settings.voice,
     volume: () => settings.volume,
     ask: windows.ask,
-    askMirrored: (box, needs) => askHandsFree(box, box.title, 0, false, needs),
+    askMirrored: (box, needs) =>
+      askHandsFree({ inactive: false, ...box }, box.title, 0, false, needs),
     stop,
     dismissQuietly,
     menuItems: () => [

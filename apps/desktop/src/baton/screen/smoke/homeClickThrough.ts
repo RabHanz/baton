@@ -206,7 +206,7 @@ void Electron.app.whenReady().then(async () => {
   // After the assistant has looked at the screen (its layer shown, every window excluded for the grab and put back) the layer
   // must still let a real click through to the window under it: a full-display layer that stops being click-through eats everything.
   const overlay = createPointerOverlay("win32");
-  await overlay.point({ x: 520, y: 320 }, "look", undefined).catch(() => false);
+  await overlay.point({ x: 520, y: 320 }, "look").catch(() => false);
   await sleep(1500);
   for (let look = 0; look < 3; look += 1) {
     await overlay.hiddenFor(() => sleep(150));
