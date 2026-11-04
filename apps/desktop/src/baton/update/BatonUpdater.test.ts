@@ -1,0 +1,70 @@
+import type { DesktopUpdateState } from "@t3tools/contracts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { createBatonUpdater } from "./BatonUpdater.ts";
+import { COUNTDOWN_MS } from "./updatePlan.ts";
+
+const state = (downloadedVersion: string | null): DesktopUpdateState => ({
+  enabled: true,
+  status: downloadedVersion === null ? "up-to-date" : "downloaded",
+  channel: "latest",
+  currentVersion: "0.1.4",
+  hostArch: "x64",
+  appArch: "x64",
+  runningUnderArm64Translation: false,
+  availableVersion: downloadedVersion,
+  downloadedVersion,
+  releaseNotes: [],
+  omittedReleaseCount: 0,
+  downloadPercent: null,
+  checkedAt: null,
+  message: null,
+  errorContext: null,
+  canRetry: false,
+});
+
+const make = (initial: DesktopUpdateState) => {
+  const headsUp = vi.fn();
+  const install = vi.fn(async () => undefined);
+  const updater = createBatonUpdater({
+    initial,
+    check: async () => undefined,
+    download: async () => undefined,
+    install,
+    busy: () => ({ voiceBusy: false, assistantBusy: false }),
+    headsUp,
+    backAfter: null,
+    onChange: () => undefined,
+  });
+  return { updater, headsUp, install };
+};
+
+describe("the update restart", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("does not remember Restart now when nothing is downloaded, so a later download still warns first", () => {
+    const { updater, headsUp, install } = make(state(null));
+    updater.install();
+    updater.onState(state("0.1.5"));
+    expect(install).not.toHaveBeenCalled();
+    expect(headsUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits as for Later after an install that leaves it running, instead of counting down again", async () => {
+    const { updater, headsUp, install } = make(state(null));
+    updater.onState(state("0.1.5"));
+    await vi.advanceTimersByTimeAsync(COUNTDOWN_MS + 1_000);
+    expect(install).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5 * COUNTDOWN_MS);
+    expect(headsUp).toHaveBeenCalledTimes(1);
+    expect(install).toHaveBeenCalledTimes(1);
+    // A remote update lifts the wait and goes through the countdown again.
+    updater.soon();
+    expect(headsUp).toHaveBeenCalledTimes(2);
+  });
+});
