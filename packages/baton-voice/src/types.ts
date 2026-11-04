@@ -66,6 +66,8 @@ export interface SttProvider {
 export interface TtsProvider {
   readonly name: string;
   readonly speak: (text: string) => Promise<void>;
+  /** Cut off whatever it is saying now. */
+  readonly cancel?: () => void;
 }
 
 export type VoiceActivation = "wake" | "toggle_direct_session" | "toggle_mute" | "dismiss";
