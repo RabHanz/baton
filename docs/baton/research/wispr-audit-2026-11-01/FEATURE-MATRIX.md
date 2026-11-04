@@ -2,7 +2,7 @@
 
 Extends `README.md` in this folder. Sources: all 149 help-centre articles (titles in `help-articles/articles.tsv`; the text was captured and the feature and dictation articles read in depth, the Notetaker, billing, enterprise-admin and support articles read by title and first lines only), the release notes on releases.sh (5 Aug to 19 Oct 2026; older releases are not on that page), the third-party frames in `frames/`, and Wispr's site. **Not covered:** first-hand frames of the live Windows app and Wispr's own videos (waiting for the Director's yes and for YouTube access from his laptop), so pill states and toasts below come from the documentation, not from a frame.
 
-Verdicts: **Have** (Baton does it, as far as tests and renders show), **Part** (some of it), **Lack** (nothing yet), **Beat** (Baton does it better or Wispr cannot), **Skip** (outside Baton's job, with a reason). Every Lack and Part carries an item on RabHanz/baton issue #78 (marked `#78`).
+Verdicts: **Have** (Baton does it, as far as tests and renders show), **Part** (some of it), **Lack** (nothing yet), **Beat** (Baton does it better or Wispr cannot), **Skip** (outside Baton's job, with a reason). Every Lack and Part carries an item on RabHanz/tessaya issue #78 (marked `#78`).
 
 ## Shell and home
 

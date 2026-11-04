@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security problem
-    url: https://github.com/RabHanz/baton/security/advisories/new
+    url: https://github.com/RabHanz/tessaya/security/advisories/new
     about: Report a vulnerability privately. Do not open a public issue.

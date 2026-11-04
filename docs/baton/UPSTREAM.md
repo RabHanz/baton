@@ -8,7 +8,7 @@ tree, and how to get real test data without touching a live install.
 
 |                         |                                                                                      |
 | ----------------------- | ------------------------------------------------------------------------------------ |
-| Fork                    | `github.com/RabHanz/baton`                                                           |
+| Fork                    | `github.com/RabHanz/tessaya`                                                         |
 | Upstream                | `github.com/pingdotgg/t3code`                                                        |
 | Upstream commit at fork | `6deac7a924e6d90eef400cd218703cd3ad00a383`                                           |
 | Commit subject          | `fix(mobile): show Agent behavior icon on Android (#12316)`                          |
@@ -328,7 +328,7 @@ The clone is a blobless partial clone (`--filter=blob:none`) with full commit hi
 
 ```sh
 git remote -v
-# origin    https://github.com/RabHanz/baton.git   (fetch/push)
+# origin    https://github.com/RabHanz/tessaya.git   (fetch/push)
 # upstream  https://github.com/pingdotgg/t3code.git (fetch/push)
 ```
 
