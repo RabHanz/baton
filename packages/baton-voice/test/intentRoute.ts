@@ -3,6 +3,8 @@ import { decide } from "@t3tools/baton-shared/brain";
 import { resolveBatonIntent } from "@t3tools/baton-shared/intentParser";
 import { isCancelPhrase, isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 
+import { stripWake } from "../src/modeMachine.ts";
+
 import { fleet } from "./grammarClient.ts";
 
 /**
@@ -10,7 +12,9 @@ import { fleet } from "./grammarClient.ts";
  * placed the sentence; "model" means no rule did, so a model has to decide.
  */
 export const ruleRoute = async (said: string): Promise<string> => {
-  if (isCancelPhrase(said)) return "cancel";
+  // The voice core strips the wake word before either check, so the rows can say one.
+  const words = stripWake(said, ["baton", "jarvis", "alfred", "freya", "tessaya"]);
+  if (isCancelPhrase(words)) return "cancel";
   if (isDismissPhrase(said)) return "dismiss";
   const decision = await decide(
     said,

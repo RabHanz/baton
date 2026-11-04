@@ -114,6 +114,22 @@ describe("one sentence with a breath in it", () => {
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "not addressed")).toBe(true);
   });
 
+  it("takes any reply when her last sentence asked him something", async () => {
+    const r = rig(["Start a session.", "The Margin."]);
+    r.core.activate("wake");
+    await r.core.idle();
+    for (const _ of [0, 1]) {
+      r.push(1, true);
+      r.push(1.2, false);
+      await r.settle();
+      r.push(1, false);
+      await r.settle();
+      await r.core.idle();
+      r.core.noteSpoken("Which project do you mean?");
+    }
+    expect(r.routed).toEqual(["Start a session.", "The Margin."]);
+  });
+
   it("ends the window on a dismissal with no router call", async () => {
     const r = rig(["Nothing, dismiss."]);
     r.core.activate("wake");

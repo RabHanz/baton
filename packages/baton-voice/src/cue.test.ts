@@ -38,7 +38,7 @@ describe("a cue is not heard", () => {
 
   it("neither wakes the wake word nor reaches a dictation capture while its window is gated", async () => {
     const { core, events } = makeCore();
-    await core.hear("Baton");
+    await core.hear("Jarvis");
     await core.hear("dictate");
     expect(core.snapshot().state).toBe("dictation");
     events.length = 0;

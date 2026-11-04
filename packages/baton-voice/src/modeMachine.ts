@@ -23,7 +23,7 @@
  * @module baton-voice/modeMachine
  */
 import { classifyDictation, isBareStop } from "@t3tools/baton-shared/dictation";
-import { isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
+import { answerOf, isCancelPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 export type VoiceMode =
   | "sleeping"
@@ -119,15 +119,16 @@ export const initialVoiceState = (directSession = false): VoiceMachineState => (
   pending: null,
 });
 
-/** "baton" always works: a button-opened window's transcript may start with it. */
 const wakePrefix = (words: ReadonlyArray<string>): RegExp => {
-  const names = ["baton", ...words].map((word) => word.replace(/[^\p{L}\p{N} ]/gu, "")).join("|");
-  return new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b[\\s,.:!?-]*`, "iu");
+  const names = words
+    .map((word) => word.replace(/[^\p{L}\p{N} ]/gu, ""))
+    .filter((word) => word !== "")
+    .join("|");
+  return names === ""
+    ? /(?!)/
+    : new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b[\\s,.:!?-]*`, "iu");
 };
-const AFFIRM =
-  /^(?:confirm(?:ed)?|yes(?:,? (?:do it|confirm|go ahead))?|go ahead|do it|approve(?:d)?)[.!]?$/i;
-export const isAffirmative = (text: string): boolean => AFFIRM.test(text);
-const DECLINE = /^(?:no|cancel|stop|don't|do not|never mind|nevermind|abort)\b/i;
+export const isAffirmative = (text: string): boolean => answerOf(text) === "yes";
 const SLEEP =
   /^(?:that's all|thats all|that is all|go to sleep|stop listening|thanks,? that's it|thanks|thank you|cheers|goodbye)[.!]?$/i;
 
@@ -288,15 +289,15 @@ const utterance = (
   if (s.mode === "dictation") {
     const d = classifyDictation(words, { dictating: true });
     // Back in the conversation, not asleep: he carries on with no wake word.
-    // A segment that is only "stop" is a command, not a word he is dictating.
-    if (d.kind === "stop" || isBareStop(words))
+    // A bare "stop" is a command only with the wake word; on its own it may be a word he dictates.
+    if (d.kind === "stop" || (words !== raw && isBareStop(words)))
       return step({ ...s, mode: "conversation", deadline: at + timings.conversationMs }, [
         ...carry,
         ...(d.kind === "stop" && d.text ? [{ kind: "dictate", text: d.text } as const] : []),
         { kind: "speak", text: "Stopped dictating." },
       ]);
     if (d.kind === "text" && words.length > 0)
-      return step(s, [...carry, { kind: "dictate", text: raw }]);
+      return step(s, [...carry, { kind: "dictate", text: words }]);
     return step(s, carry);
   }
 
@@ -343,13 +344,14 @@ const utterance = (
   }
 
   if (s.pending !== null) {
-    if (AFFIRM.test(words)) {
+    const answer = answerOf(words);
+    if (answer === "yes") {
       return step(
         { ...s, pending: null, mode: "conversation", deadline: at + timings.conversationMs },
         [...carry, { kind: "confirmed", token: s.pending.token }],
       );
     }
-    if (DECLINE.test(words)) {
+    if (answer === "no") {
       return step(
         { ...s, pending: null, mode: "conversation", deadline: at + timings.conversationMs },
         [
@@ -359,7 +361,7 @@ const utterance = (
         ],
       );
     }
-    // Anything else is a new instruction; the old question lapses.
+    // Anything else goes to the assistant as a new sentence, to be read by its meaning; the question lapses.
     carry = [...carry, { kind: "cancelled", token: s.pending.token, reason: "superseded" }];
     s = { ...s, pending: null };
   }
