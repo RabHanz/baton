@@ -134,6 +134,8 @@ export const BatonMemoryLearnInput = Schema.Struct({
   tainted: Schema.Boolean,
   project: Schema.optionalKey(Schema.NullOr(Schema.String)),
   turnRef: Schema.optionalKey(Schema.String),
+  /** The exchange before, so "yes, do that from now on" has a referent. */
+  previous: Schema.optionalKey(Schema.String),
 });
 export const BatonMemoryLearnResult = Schema.Struct({
   stored: Schema.Number,

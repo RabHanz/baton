@@ -500,6 +500,7 @@ export const make = Effect.gen(function* () {
             sourceRef: input.turnRef ?? null,
             tainted: input.tainted,
             project: input.project ?? null,
+            previous: input.previous ?? null,
           }),
         ),
       ),

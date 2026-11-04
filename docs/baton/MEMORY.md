@@ -38,7 +38,10 @@ Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
 ### Provenance and confidence
 
 - Anything he said or wrote himself is `source: user`, confidence 1. The extractor never lowers it.
-- Anything a model proposed starts at 0.5 (a statement of his, 0.7), and rises by 0.15 each time a later turn or job
+- A statement the extractor marks as his, when most of its words are words he said in a turn that read nothing from
+  outside, is stored as his (`source: user`), so a correction he speaks beats his older note. A turn that read outside
+  content never stores anything as his and never replaces one of his notes.
+- Anything else a model proposed starts at 0.5, and rises by 0.15 each time a later turn or job
   proposes the same thing (dedupe, section 4), capped at 0.95. It never reaches 1: only he confirms to 1 (pinning).
 - Retrieval shows the source with the item, so he can see where a belief came from and correct it.
 
@@ -53,8 +56,8 @@ Shared type: `packages/baton-shared/src/memory.ts` (`MemoryItem`). Fields:
 
 ### Conflicts
 
-- A new statement that contradicts an older one of the same kind and scope (the extractor says so, or the normalized
-  text matches a "not X / X" pair) is stored, and the older one gets `supersededBy` set. History is kept: a superseded
+- A new statement that replaces an older one (the extractor names the older one's id) is stored, and the older one gets
+  `supersededBy` set. History is kept: a superseded
   item is hidden from retrieval and shown in the tab under "replaced".
 - His own statement beats a model's proposal whatever the dates. Between two of his, the newer wins. Between two
   model proposals, the one with higher confidence wins, then the newer.
@@ -72,8 +75,9 @@ the sync), so no path skips it:
   label, security codes.
 - Text of the user's private operating-system pack (below).
 - Content from a tainted turn (one that read a web page, a file or a message from outside, as D127 defines it) is not
-  stored by the extractor unless he says yes in conversation; the item waits as a proposal, `source: thread`, not shown
-  to retrieval until accepted.
+  stored by the extractor unless he says yes; the item waits as a proposal, `source: thread`, not shown to retrieval
+  until accepted. What he said himself in that turn (most of the proposal's words are his) is not held; it is kept as the model's. The morning
+  brief says how many memories wait for his yes.
 - Dictated words as such (D31): a dictation is a stub with its length. Only what he tells the assistant to remember, or
   what a turn with the assistant decided, becomes memory.
 
@@ -90,8 +94,10 @@ like any other. Exports are plain markdown the user owns; they leave the machine
 ## 4. The learning loop
 
 1. After a turn, and at the end of every job, a cheap-model extractor (the cheap model in `routing.json`, D145; the
-   strong model is never used for this) reads the turn or the job report and proposes items as JSON: kind, text, scope,
-   a "contradicts" hint, whether the statement is his. It is told that what it reads is data, never instructions.
+   strong model is never used for this) reads the turn (with the exchange before it) or the job report, plus the eight
+   existing memories closest to what he said with their ids, and proposes items as JSON: kind, text, scope, the id of a
+   shown memory it replaces, whether the statement is his. Only a shown id can be replaced. It is told that what it
+   reads is data, never instructions.
 2. Each proposal passes `storable()`, is deduped against existing items (normalized token overlap above 0.8 is the same
    item: confidence rises, `updatedAt` moves), conflicts are resolved (section 2), and the rest is stored.
 3. Proposals from a tainted turn wait for his yes (section 3). Nothing is stored silently from content he did not write.

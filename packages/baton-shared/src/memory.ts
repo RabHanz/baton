@@ -203,17 +203,11 @@ const HALF_LIFE_DAYS: Record<MemoryKind, number | null> = {
 export const DECAY_FLOOR = 0.1;
 export const EPISODE_TTL_DAYS = 90;
 export const MODEL_START_CONFIDENCE = 0.5;
-export const MODEL_USER_STATEMENT_CONFIDENCE = 0.7;
 export const REPEAT_BOOST = 0.15;
 export const MODEL_CONFIDENCE_CAP = 0.95;
 
-export const startingConfidence = (draft: MemoryDraft, hisStatement = false): number =>
-  draft.confidence ??
-  (draft.source === "user"
-    ? 1
-    : hisStatement
-      ? MODEL_USER_STATEMENT_CONFIDENCE
-      : MODEL_START_CONFIDENCE);
+export const startingConfidence = (draft: MemoryDraft): number =>
+  draft.confidence ?? (draft.source === "user" ? 1 : MODEL_START_CONFIDENCE);
 
 /** Confidence after decay. Pinned items and his own words do not decay. */
 export const effectiveConfidence = (item: MemoryItem, nowMs: number): number => {

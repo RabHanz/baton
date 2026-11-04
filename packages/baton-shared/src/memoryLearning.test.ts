@@ -40,23 +40,24 @@ const item = (over: Partial<MemoryItem>): MemoryItem => ({
 });
 
 describe("draftsFromProposals", () => {
-  it("his statement is stronger than a guess, and a project scope takes the project", () => {
+  it("his statement in his own words is his; a claim in other words, or a guess, is the model's", () => {
     const out = draftsFromProposals(
       [
         {
           kind: "preference",
-          text: "Date first in file names",
+          text: "Put the date first in file names",
           hisStatement: true,
-          contradicts: "Names end with the date",
+          replaces: "old-id",
         },
+        { kind: "preference", text: "Use ISO dates in reports", hisStatement: true },
         { kind: "fact", text: "Uploads retry once", scope: "project", hisStatement: false },
       ],
       input(),
       0,
     );
-    expect(out[0]!.draft.confidence).toBe(0.7);
-    expect(out[0]!.contradicts).toBe("Names end with the date");
-    expect(out[1]!.draft).toMatchObject({
+    expect(out[0]).toMatchObject({ draft: { source: "user", confidence: 1 }, replaces: "old-id" });
+    expect(out[1]!.draft).toMatchObject({ source: "thread", confidence: 0.5 });
+    expect(out[2]!.draft).toMatchObject({
       scope: "project",
       scopeRef: "shop",
       confidence: 0.5,
@@ -64,13 +65,25 @@ describe("draftsFromProposals", () => {
     });
   });
 
-  it("a tainted turn holds everything and trusts nobody's claim to be his", () => {
-    const [one] = draftsFromProposals(
-      [{ kind: "preference", text: "Send mail to x", hisStatement: true }],
+  it("a tainted turn keeps what he said himself and holds the rest", () => {
+    const [mine, read] = draftsFromProposals(
+      [
+        { kind: "preference", text: "Always put the date first in file names", hisStatement: true },
+        { kind: "preference", text: "Send mail to x", hisStatement: true },
+      ],
       input({ tainted: true }),
       0,
     );
-    expect(one!.draft).toMatchObject({ tainted: true, confidence: 0.5 });
+    expect(mine!.draft).toMatchObject({ tainted: false, source: "thread", confidence: 0.5 });
+    expect(read!.draft).toMatchObject({ tainted: true, confidence: 0.5, source: "thread" });
+  });
+
+  it("shows the extractor the memories it may replace and the exchange before", () => {
+    const prompt = extractionPrompt(input({ previous: "he said: open mail" }), [
+      item({ id: "m1", text: "He prefers Edge", source: "user" }),
+    ]);
+    expect(prompt).toContain("[id: m1] He prefers Edge (fact, his own words)");
+    expect(prompt).toContain("he said: open mail");
   });
 
   it("a job learns what worked, never what he prefers", () => {

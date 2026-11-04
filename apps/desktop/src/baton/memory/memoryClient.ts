@@ -135,12 +135,19 @@ export const createDesktopMemory = (input: {
         : out.items.map((i) => `- ${i.text} (${i.kind})`).join("\n");
     },
     /** After a turn: fire and forget, never read aloud and never in the way. */
-    learn: (said: string, reply: string, tainted: boolean, project: string | null = null): void => {
+    learn: (
+      said: string,
+      reply: string,
+      tainted: boolean,
+      project: string | null = null,
+      previous = "",
+    ): void => {
       void ask("learn", {
         said,
         reply,
         tainted,
         ...(project === null ? {} : { project }),
+        ...(previous === "" ? {} : { previous }),
         ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),
       });
     },

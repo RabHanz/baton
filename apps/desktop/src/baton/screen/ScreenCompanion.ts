@@ -2285,7 +2285,17 @@ export const startScreenCompanion = (input: {
         return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
       },
       recall: (text, project) => memory.forSentence(text, project),
-      learn: (said, reply, project) => memory.learn(said, reply, agentTaint.on(), project),
+      learn: (said, reply, project) => {
+        // Called before this turn is written, so the newest turn in the file is the one before.
+        const before = conversation.recent(1)[0];
+        memory.learn(
+          said,
+          reply,
+          agentTaint.on(),
+          project,
+          before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
+        );
+      },
       beginTurn: () => {
         memory.beginTurn();
         agentTaint.reset();
