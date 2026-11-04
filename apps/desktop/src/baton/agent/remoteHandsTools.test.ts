@@ -24,6 +24,7 @@ const make = (
       }),
       uiTree: async () => ({ window: "Notepad", controls: ["button: Save"] }),
       captureWindow: async () => ({}),
+      setValue: async () => ({ set: false }),
       ...over,
     },
     scratchDir: dir,
@@ -63,7 +64,7 @@ describe("remote hands tools", () => {
     );
   });
 
-  it("falls back to a pointer click only through the foreground deps, with focus restored", async () => {
+  it("falls back to a pointer click only through the foreground deps, and says when focus could not be given back", async () => {
     const log: string[] = [];
     const { tools } = make(
       { locate: async (i) => ({ found: true, name: i.label, x: 5, y: 6 }) },
@@ -71,14 +72,48 @@ describe("remote hands tools", () => {
         clickAt: async (to) => void log.push(`click ${to.x},${to.y}`),
         type: async () => {},
         press: async () => {},
-        restoreFocus: async (run) => (
-          log.push("save focus"),
-          await run().finally(() => log.push("restore focus"))
-        ),
+        keyboardIn: async () => true,
+        restoreFocus: async (run) => {
+          log.push("save focus");
+          await run().finally(() => log.push("restore focus"));
+          return false;
+        },
       },
     );
-    await tools.get("click_element")!.run({ label: "Save", why: "w" });
+    const said = await tools.get("click_element")!.run({ label: "Save", why: "w" });
     expect(log).toEqual(["save focus", "click 5,6", "restore focus"]);
+    expect(said.text).toContain("could not be given the keyboard back");
+  });
+
+  it("types into a named window by its value, and never into another window that has the keyboard", async () => {
+    const typed: string[] = [];
+    const foreground = (holds: boolean): RemoteHandsDeps["foreground"] => ({
+      clickAt: async () => {},
+      type: async (text) => void typed.push(text),
+      press: async () => {},
+      keyboardIn: async () => holds,
+      restoreFocus: async (run) => (await run(), true),
+    });
+    const byValue = make(
+      {
+        setValue: async (window, text) => (
+          typed.push(`${window}<-${text}`),
+          { set: true, name: "Text editor" }
+        ),
+      },
+      foreground(false),
+    );
+    expect(
+      (await byValue.tools.get("type_text")!.run({ text: "x", window: "Notepad", why: "w" })).text,
+    ).toContain("no keyboard, no focus change");
+    const noValue = make({}, foreground(false));
+    await expect(
+      noValue.tools.get("type_text")!.run({ text: "y", window: "Notepad", why: "w" }),
+    ).rejects.toThrow("another window has the keyboard");
+    await expect(
+      noValue.tools.get("press_keys")!.run({ keys: ["ctrl", "s"], window: "Notepad", why: "w" }),
+    ).rejects.toThrow("another window has the keyboard");
+    expect(typed).toEqual(["Notepad<-x"]);
   });
 
   it("stops only a process id process_list returned, and reads only named logs", async () => {

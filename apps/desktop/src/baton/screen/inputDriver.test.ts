@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { createPaster, isCopyChord } from "./inputDriver.ts";
+import type { SidecarInput } from "../voice/dictationSidecar.ts";
+import { createInputDriver, createPaster, isCopyChord } from "./inputDriver.ts";
 
 const fakeTimers = () => {
   vi.useFakeTimers();
@@ -60,5 +61,36 @@ describe("typing by the clipboard", () => {
     paste.cancelRestore();
     await vi.advanceTimersByTimeAsync(200);
     expect(clip).toBe("hello");
+  });
+});
+
+describe("the Windows hands through the sidecar", () => {
+  it("clicks, scrolls and presses through the sidecar in physical pixels, and types through its paste, never the clipboard", async () => {
+    const sent: SidecarInput[] = [];
+    const pasted: string[] = [];
+    const driver = createInputDriver({
+      platform: "win32",
+      toPhysical: (p) => ({ x: p.x * 1.5, y: p.y * 1.5 }),
+      clipboard: {
+        readText: () => {
+          throw new Error("the clipboard was touched");
+        },
+        writeText: () => undefined,
+      },
+      sidecar: () => ({
+        input: async (command) => void sent.push(command),
+        paste: async (text) => void pasted.push(text),
+      }),
+    });
+    await driver.clickAt({ x: 10, y: 20 }, "left", 2);
+    await driver.scrollAt(null, -1);
+    await driver.press(["ctrl", "a"]);
+    await driver.type("secret");
+    expect(sent).toEqual([
+      { op: "at", x: 15, y: 30, buttons: [2, 4, 2, 4] },
+      { op: "at", buttons: [0x800], wheel: -120 },
+      { op: "keys", vks: [0x11, 0x41] },
+    ]);
+    expect(pasted).toEqual(["secret"]);
   });
 });
