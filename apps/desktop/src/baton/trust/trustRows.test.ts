@@ -26,6 +26,13 @@ const turns = [
     tool: "mcp__claude-in-chrome__navigate",
     outcome: "refused",
   },
+  {
+    at: "2026-11-03T09:30:00Z",
+    kind: "action",
+    by: "remote-hands",
+    tool: "ui_tree",
+    outcome: "allowed",
+  },
 ]
   .map((l) => JSON.stringify(l))
   .join("\n");
@@ -55,6 +62,7 @@ const data = (over: Partial<TrustData> = {}): TrustData => ({
   chrome: false,
   social: true,
   act: false,
+  remote: true,
   vault: "unlocked",
   grants: [{ jobId: "j1", title: "Site", channel: "retry", since: "2026-11-01T00:00:00Z" }],
   weaveHosts: ["office"],
@@ -67,7 +75,14 @@ const data = (over: Partial<TrustData> = {}): TrustData => ({
 describe("trust page", () => {
   it("merges the logs newest first and keeps only action lines from the turn log", () => {
     const entries = parseTrustLogs({ turns, social, vault });
-    expect(entries.map((e) => e.kind)).toEqual(["weave", "action", "action", "social", "vault"]);
+    expect(entries.map((e) => e.kind)).toEqual([
+      "weave",
+      "action",
+      "action",
+      "action",
+      "social",
+      "vault",
+    ]);
     expect(JSON.stringify(entries)).not.toContain("never shown");
   });
 
@@ -77,6 +92,7 @@ describe("trust page", () => {
     expect(used.chrome).toBeUndefined();
     expect(used.weave).toBe("2026-11-03T11:30:00Z");
     expect(used.vault).toBe("2026-11-03T08:00:00Z");
+    expect(used.remote).toBe("2026-11-03T09:30:00Z");
   });
 
   it("offers a revoke only for what is on, and one per standing grant", () => {
@@ -84,6 +100,7 @@ describe("trust page", () => {
     expect(ids).toContain("action:trust.revoke:screen");
     expect(ids).toContain("action:trust.revoke:social");
     expect(ids).toContain("action:trust.revoke:vault");
+    expect(ids).toContain("action:trust.revoke:remote");
     expect(ids).toContain("action:trust.revoke:grant:j1:retry");
     expect(ids).toContain("check:trust.off:chrome");
     expect(ids).not.toContain("action:trust.revoke:chrome");
@@ -102,7 +119,7 @@ describe("trust page", () => {
   it("filters the log", () => {
     const logRows = (filter: TrustData["filter"]) =>
       trustControls(data({ filter }), NOW).filter((c) => c.id.startsWith("trust.log:"));
-    expect(logRows("all")).toHaveLength(6);
+    expect(logRows("all")).toHaveLength(7);
     expect(logRows("playbook")).toHaveLength(1);
     expect(logRows("vault")).toHaveLength(1);
     expect(logRows("weave")).toHaveLength(1);
@@ -110,6 +127,7 @@ describe("trust page", () => {
 
   it("reads clicks", () => {
     expect(trustAction("trust.revoke:chrome", true)).toEqual({ kind: "revoke", what: "chrome" });
+    expect(trustAction("trust.revoke:remote", null)).toEqual({ kind: "revoke", what: "remote" });
     expect(trustAction("trust.revoke:grant:job-1:pr_comment", null)).toEqual({
       kind: "grant",
       jobId: "job-1",
@@ -130,6 +148,8 @@ describe("trust by voice", () => {
     expect(describeToday([], new Date(NOW))).toContain("Nothing yet today");
     expect(describeToday(data().entries, new Date("2026-11-03T12:00:00Z"))).toContain("Today:");
     expect(permissionFromWords("turn off Chrome")).toBe("chrome");
+    expect(permissionFromWords("turn off remote hands")).toBe("remote");
+    expect(said).toContain("Remote hands: on");
     expect(permissionFromWords("the weather")).toBeNull();
   });
 });

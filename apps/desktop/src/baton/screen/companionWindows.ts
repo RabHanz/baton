@@ -77,11 +77,12 @@ export interface PromptInput {
   readonly armMs?: number;
   /** Belongs to the lesson or drive: it goes when that ends. */
   readonly scoped?: boolean;
+  /** Asked mid-task: it never takes the keyboard, so keys and the window being worked on stay put. Mouse, voice or phone answer it. */
+  readonly inactive?: boolean;
 }
 
 /** A prompt nobody answers must not block the next one, and an old yes must not stand ready. */
 const PROMPT_EXPIRY_MS = 60_000;
-const STOP_WIDTH = 96;
 
 const companionWindow = (bounds: Electron.Rectangle, focusable = true): Electron.BrowserWindow => {
   const win = new Electron.BrowserWindow({
@@ -104,12 +105,6 @@ const companionWindow = (bounds: Electron.Rectangle, focusable = true): Electron
   protectFromCapture(win);
   return win;
 };
-
-const STOP_DOCUMENT = `<!doctype html><html><head><meta charset="utf-8"><style>${COMPANION_CSS}
-html,body{overflow:hidden;margin:0}
-button{all:unset;display:block;width:100%;height:36px;line-height:36px;text-align:center;border-radius:999px;font-size:13.5px;font-weight:600;color:#fff;background:#c0322b;cursor:pointer}
-button:hover{background:#d4453d}
-</style></head><body><button id="s">Stop</button><script>const {ipcRenderer}=require('electron');document.getElementById('s').addEventListener('click',()=>ipcRenderer.send('baton-screen:stop'));</script></body></html>`;
 
 const cursorArea = () =>
   Electron.screen.getDisplayNearestPoint(Electron.screen.getCursorScreenPoint()).workArea;
@@ -150,36 +145,6 @@ export const createCompanionWindows = (input: {
   Electron.ipcMain.on("baton-screen:ask", onAskIpc);
   Electron.ipcMain.on("baton-screen:output", onOutputIpc);
   Electron.ipcMain.on("baton-screen:prompt", onPromptIpc);
-  let stopBox: { win: Electron.BrowserWindow; onStop: () => void } | null = null;
-  const onStopIpc = (event: Electron.IpcMainEvent) => {
-    if (stopBox !== null && event.sender === stopBox.win.webContents) stopBox.onStop();
-  };
-  Electron.ipcMain.on("baton-screen:stop", onStopIpc);
-  /** A button his mouse can reach during a drive. It takes no focus, so the drive keeps the keys. */
-  const showStop = (onStop: () => void): (() => void) => {
-    const area = cursorArea();
-    const win = companionWindow(
-      {
-        x: Math.round(area.x + (area.width - STOP_WIDTH) / 2),
-        y: area.y + area.height - 150,
-        width: STOP_WIDTH,
-        height: 36,
-      },
-      false,
-    );
-    stopBox = { win, onStop };
-    void win
-      .loadURL(`data:text/html,${encodeURIComponent(STOP_DOCUMENT)}`)
-      .then(() => {
-        if (!win.isDestroyed()) win.showInactive();
-      })
-      .catch(() => undefined);
-    return () => {
-      if (stopBox?.win === win) stopBox = null;
-      if (!win.isDestroyed()) win.destroy();
-    };
-  };
-
   const openAsk = () => {
     if (askBox !== null && !askBox.isDestroyed()) return askBox.focus();
     const area = cursorArea();
@@ -209,12 +174,15 @@ export const createCompanionWindows = (input: {
       () =>
         new Promise<number>((resolve) => {
           const area = cursorArea();
-          const win = companionWindow({
-            x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
-            y: area.y,
-            width: PROMPT_WIDTH,
-            height: 200,
-          });
+          const win = companionWindow(
+            {
+              x: Math.round(area.x + (area.width - PROMPT_WIDTH) / 2),
+              y: area.y,
+              width: PROMPT_WIDTH,
+              height: 200,
+            },
+            options.inactive !== true,
+          );
           const expiry = setTimeout(
             () => done(options.cancel),
             options.expiresMs ?? PROMPT_EXPIRY_MS,
@@ -243,6 +211,7 @@ export const createCompanionWindows = (input: {
                 width: PROMPT_WIDTH,
                 height: tall,
               });
+              if (options.inactive === true) return win.showInactive();
               win.show();
               win.focus();
               win.webContents.focus();
@@ -257,8 +226,6 @@ export const createCompanionWindows = (input: {
   return {
     openAsk,
     ask,
-    /** The thing it was asking about has ended. */
-    showStop,
     /** Scoped prompts come down with their lesson or drive; `force` also takes down one the phone just answered. */
     closePrompt: (force = false) => {
       if (promptBox !== null && (force || promptBox.scoped)) promptBox.done(promptBox.cancel);
@@ -269,7 +236,6 @@ export const createCompanionWindows = (input: {
       Electron.ipcMain.removeListener("baton-screen:ask", onAskIpc);
       Electron.ipcMain.removeListener("baton-screen:output", onOutputIpc);
       Electron.ipcMain.removeListener("baton-screen:prompt", onPromptIpc);
-      Electron.ipcMain.removeListener("baton-screen:stop", onStopIpc);
     },
   };
 };

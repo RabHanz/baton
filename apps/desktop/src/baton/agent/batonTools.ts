@@ -776,7 +776,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "permission_off",
       description:
-        "Take a permission back when he asks ('turn off Chrome'): screen, chrome, social, act (without asking) or vault (locks it). Only ever turns things off; turning one on is for him in the Trust page.",
+        "Take a permission back when he asks ('turn off Chrome'): screen, chrome, social, act (without asking), remote (remote hands) or vault (locks it). Only ever turns things off; turning one on is for him in the Trust page.",
       inputSchema: object({ what: { type: "string", maxLength: 60 } }, ["what"]),
       run: async (a) => ({ text: await host.jobs("permission_off", { what: str(a, "what", 60) }) }),
     },

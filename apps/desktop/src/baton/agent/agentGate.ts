@@ -86,7 +86,12 @@ export const createAgentGate = (input: {
   /** The text is his own words or Baton's own earlier reply, from the conversation. */
   readonly textIsHis: (text: string) => boolean;
   /** The window with the keyboard: its name, and whether it is a command line or cannot be told apart from one. */
-  readonly focusedWindow: () => Promise<{ readonly label: string; readonly shell: boolean }>;
+  readonly focusedWindow: () => Promise<{
+    readonly label: string;
+    readonly shell: boolean;
+    /** The window's handle, when the platform has one: a title can change under typing. */
+    readonly window?: number;
+  }>;
   readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>;
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
   /** His own Chrome (D3): whether social accounts are on, the clock, and a line sink for what is done on them. */
@@ -216,6 +221,22 @@ export const createAgentGate = (input: {
     });
     logSocial(yes ? "he said yes" : "he said no");
     if (!yes) return { allow: false, reason: `${judged.why} He said no. Stop and tell him.` };
+    // The yes was for the window judged before he was asked; keys must not follow focus elsewhere.
+    if (focus !== null) {
+      const now = await input.focusedWindow();
+      const same =
+        focus.window !== undefined && now.window !== undefined
+          ? focus.window === now.window
+          : focus.label === now.label;
+      if (!same || now.shell !== focus.shell) {
+        input.record({ tool: call.tool, action, outcome: "refused", why: "keyboard moved" });
+        return {
+          allow: false,
+          reason:
+            "The window with the keyboard changed while he was asked, so nothing was sent. Tell him, and ask him to click back into the window he wants.",
+        };
+      }
+    }
     if (social) socialAt.push(now);
     noteNavigation();
     after();
