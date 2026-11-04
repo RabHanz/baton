@@ -1,29 +1,15 @@
 {
-  "at": "2026-11-03T22:50:31.338Z",
-  "result": "conflict",
+  "at": "2026-11-04T22:40:14.933Z",
+  "result": "disk",
   "ok": false,
   "pin": "47f2c8d29e981c7723467efe137ee19e91df924e",
-  "target": "7c22e24e3fa1a3bb3a95f27aea000067f198fe7f",
-  "behindCommits": 186,
-  "oldestUnsyncedDays": 1,
-  "conflictingPatches": [
-    "0002-server-hooks.patch",
-    "0011-baton-cloud-approve-scope.patch"
-  ],
-  "conflictingFiles": [
-    "apps/server/src/auth/PairingGrantStore.test.ts",
-    "apps/server/src/project/AgentSessionScanner.ts"
-  ],
-  "touching": {
-    "apps/server/src/auth/PairingGrantStore.test.ts": [
-      "57cd05904d chore(deps): upgrade Effect to 4.1.2 and alchemy to beta.85 (#26833)"
-    ],
-    "apps/server/src/project/AgentSessionScanner.ts": [
-      "3e1e776af3 fix(server): import valid conversations within each transcript record limit (#23192)",
-      "71a7bf9516 fix(server): agent session scans no longer hang the server on an unreadable .git/config (#23690)"
-    ]
-  },
+  "target": "a21d788752695764028e6d26ba924f3963e05806",
+  "behindCommits": 342,
+  "oldestUnsyncedDays": 2,
+  "conflictingPatches": [],
+  "conflictingFiles": [],
+  "touching": {},
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261103T224030Z.log",
-  "hint": "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR."
+  "log": "/home/dev/.t3/baton-autosync/20261104T223956Z.log",
+  "hint": "Skipped: the volume is below its free-space floor."
 }
