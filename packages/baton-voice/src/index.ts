@@ -4,6 +4,5 @@ export * from "./doubleTap.ts";
 export * from "./echoGuard.ts";
 export * from "./router.ts";
 export * from "./core.ts";
-export * from "./service.ts";
 export * from "./providers/speech.ts";
 export * from "./providers/onnx.ts";

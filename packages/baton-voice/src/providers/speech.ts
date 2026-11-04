@@ -135,36 +135,6 @@ export const createWhisperCppStt = (input: {
   },
 });
 
-/** Optional cloud STT: any OpenAI-compatible transcription endpoint. */
-export const createCloudStt = (input: {
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly model: string;
-  readonly fetch?: typeof fetch;
-}): SttProvider => ({
-  name: `cloud:${input.model}`,
-  transcribe: async (pcm) => {
-    const form = new FormData();
-    form.append("model", input.model);
-    form.append(
-      "file",
-      new Blob([new Uint8Array(encodeWav(pcm))], { type: "audio/wav" }),
-      "utterance.wav",
-    );
-    const response = await (input.fetch ?? fetch)(
-      `${input.baseUrl.replace(/\/$/, "")}/audio/transcriptions`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${input.apiKey}` },
-        body: form,
-      },
-    );
-    if (!response.ok) throw new Error(`cloud STT ${response.status}`);
-    const body = (await response.json()) as { text?: unknown };
-    return typeof body.text === "string" ? body.text.trim() : "";
-  },
-});
-
 /** OS TTS: SAPI on Windows, `say` on macOS, espeak-ng on Linux. Text goes on stdin, never the command line. */
 /** `platform` is the host's (`process.platform` in the desktop main process). */
 export const createOsTts = (platform: NodeJS.Platform): TtsProvider => {

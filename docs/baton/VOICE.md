@@ -13,9 +13,8 @@ package is the core it plugs in through `makeCore`.
 | `modeMachine.ts`      | §12.3 as a pure reducer: sleeping → command window → conversation → base; direct-session; dictation; spoken confirmations                              |
 | `router.ts`           | Effects → `fabric.intent.resolve` / `fabric.intent.run` with high-risk checks before and after, §14 destinations, dictation kept local                 |
 | `core.ts`             | Frames → wake/VAD segmentation → STT → machine → router → TTS; implements `VoiceCore` plus snapshot and an event stream                                |
-| `service.ts`          | The local API below                                                                                                                                    |
 | `providers/onnx.ts`   | openWakeWord (any number of words at once) and Silero VAD on onnxruntime-node                                                                          |
-| `providers/speech.ts` | whisper.cpp (`whisper-cli`), optional cloud STT (OpenAI-compatible `/audio/transcriptions`), OS TTS, WAV encode/decode                                 |
+| `providers/speech.ts` | whisper.cpp (`whisper-cli`), OS TTS, WAV encode/decode                                                                                                 |
 
 Versions, licences and hashes: `docs/baton/research/voice-stack-2026-10-26.md`.
 
@@ -48,13 +47,12 @@ is heard with no wake word (D122). Nothing else said over its voice is acted on.
   wake word can never be the yes. The command is re-resolved at run time, and each
   token works once.
 
-## Local API (in-process; the desktop forwards it over its ipcMain channel)
+## Building a core (in-process)
 
 ```ts
 import {
   createVoiceCore,
   createVoiceRouter,
-  createVoiceService,
   createOpenWakeWordProvider,
   createSileroVad,
   createWhisperCppStt,
@@ -76,17 +74,10 @@ const core = createVoiceCore({
   tts: createOsTts(process.platform),
   router: createVoiceRouter(intentClient), // omit to route utterances yourself
 });
-const voice = createVoiceService({ audio, core });
 ```
 
-| Call                                         | Does                                                                              |
-| -------------------------------------------- | --------------------------------------------------------------------------------- |
-| `start({ deviceId? })` / `stop()`            | Start or stop capture through the `AudioInputProvider`                            |
-| `listDevices()` / `selectDevice(id \| null)` | Enumerate and pin; an unknown id falls back to the OS default; switches live      |
-| `setDirectSession(bool)`, `wake()`           | Tray toggles / hotkey                                                             |
-| `snapshot()`                                 | `{ running, deviceId, state, lastTranscript, currentTarget, machine }`            |
-| `subscribe(fn)`                              | Events: `state` (with target), `wake`, `transcript`, `effect`, `outcome`, `error` |
-| `core.setContext(bus)`                       | Push the context bus state (§14 ladder, dictation target)                         |
+The desktop builds its core in `apps/desktop/src/baton/voice/desktopVoiceCore.ts` and feeds it audio
+itself; `core.setContext(bus)` pushes the context bus state (§14 ladder, dictation target).
 
 `intentClient` (`VoiceIntentClient`) is four calls the desktop already has: `resolve`
 and `run` (the `fabric.intent.*` RPCs, so grammar → learned → model reading and the
