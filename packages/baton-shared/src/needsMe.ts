@@ -209,39 +209,3 @@ export const describeNeeds = (
   if (unreadable.length > 0) lines.push(`I could not read: ${unreadable.join(", ")}.`);
   return lines.join("\n");
 };
-
-const ORDINAL = ["First", "Second", "Third"] as const;
-const brief = (text: string, max = 90): string => {
-  const first = text.split(/\. Last: /)[0] ?? text;
-  return first.length <= max ? first : `${first.slice(0, max).replace(/\s+\S*$/, "")}...`;
-};
-
-/** The top three, in a sentence each, for the ear. The card carries the rest. */
-export const spokenNeeds = (
-  ranked: ReadonlyArray<NeedItem>,
-  unreadable: ReadonlyArray<string> = [],
-): string => {
-  const tail = unreadable.length > 0 ? ` I could not read ${unreadable.join(" or ")}.` : "";
-  if (ranked.length === 0) return `Nothing needs you in what I can read.${tail}`;
-  const top = ranked.slice(0, 3).map((n, i) => `${ORDINAL[i]}, ${n.title}: ${brief(n.why)}.`);
-  const more = ranked.length - top.length;
-  return `${ranked.length === 1 ? "One thing needs you." : `${ranked.length} things need you.`} ${top.join(" ")}${more > 0 ? ` And ${more} more on the card.` : ""}${tail}`;
-};
-
-/** "What needs me", "what should I do next", "what's waiting for me": answered from state, with no model. */
-export const isNeedsMeAsk = (said: string): boolean => {
-  const t = said
-    .toLowerCase()
-    .replace(/[^a-z' ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return (
-    /^(?:(?:so|ok|okay|right|now|hey)\s+)*(?:what|who|anything|does anything|is there anything)(?: [a-z']+){0,4} needs? (?:me|my attention|my input|my decision|my approval)(?: [a-z']+){0,3}$/.test(
-      t,
-    ) ||
-    /^(?:(?:so|ok|okay|right|now)\s+)*what should i (?:do|work on|look at|deal with) (?:next|first|now|today)$/.test(
-      t,
-    ) ||
-    /^(?:(?:so|ok|okay|right|now)\s+)*what(?:'s| is) waiting for me(?: [a-z']+){0,2}$/.test(t)
-  );
-};

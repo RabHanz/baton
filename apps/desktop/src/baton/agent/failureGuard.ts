@@ -1,15 +1,18 @@
 /**
  * The hands loop's stop rule, in code (D144). The prompt asks the model not to repeat a failed action more
  * than twice; this makes it true: a call that has failed twice in a row with the same arguments is
- * refused the third time, with the instruction to tell him instead. Any success of that call resets it.
+ * refused the third time, with the instruction to tell him instead. Any success of that call resets it,
+ * and so does the caller clearing `failures` at the start of each turn.
  */
 import type { BatonTool } from "./batonMcp.ts";
 
 export const MAX_SAME_FAILURES = 2;
 
-export const withFailureGuard = (tools: ReadonlyArray<BatonTool>): ReadonlyArray<BatonTool> => {
-  const failures = new Map<string, number>();
-  return tools.map((tool) => ({
+export const withFailureGuard = (
+  tools: ReadonlyArray<BatonTool>,
+  failures = new Map<string, number>(),
+): ReadonlyArray<BatonTool> =>
+  tools.map((tool) => ({
     ...tool,
     run: async (args) => {
       const key = `${tool.name}:${JSON.stringify(args)}`;
@@ -28,4 +31,3 @@ export const withFailureGuard = (tools: ReadonlyArray<BatonTool>): ReadonlyArray
       }
     },
   }));
-};

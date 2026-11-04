@@ -3,7 +3,6 @@ import type { BatonJob, BatonSessionSummary, WatchFinding } from "@t3tools/baton
 import { buildApprovals } from "@t3tools/baton-shared/approvals";
 import {
   describeNeeds,
-  spokenNeeds,
   needsFromApprovals,
   needsFromFindings,
   needsFromJobs,
@@ -55,12 +54,4 @@ export const collectNeeds = async (
 export const answerNeeds = async (input: NeedsInput): Promise<string> => {
   const { ranked, unreadable } = await collectNeeds(input);
   return describeNeeds(ranked, unreadable);
-};
-
-/** The spoken short form (top 3) and the full card, from one read. */
-export const answerNeedsSpoken = async (
-  input: NeedsInput,
-): Promise<{ spoken: string; card: string }> => {
-  const { ranked, unreadable } = await collectNeeds(input);
-  return { spoken: spokenNeeds(ranked, unreadable), card: describeNeeds(ranked, unreadable) };
 };
