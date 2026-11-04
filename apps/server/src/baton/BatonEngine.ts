@@ -123,6 +123,10 @@ export interface BatonEngineShape {
     threadId: ThreadId,
     requestId: RuntimeRequestId,
   ) => Effect.Effect<OrchestrationV2RuntimeRequest["status"] | null>;
+  /** The thread's runtime requests that are still pending. Empty on an engine error. */
+  readonly pendingRuntimeRequests: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<OrchestrationV2RuntimeRequest>>;
   /** One turn item, or null. */
   readonly turnItem: (
     threadId: ThreadId,
@@ -465,6 +469,14 @@ export const make = Effect.gen(function* () {
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
+  const pendingRuntimeRequests: BatonEngineShape["pendingRuntimeRequests"] = (threadId) =>
+    orchestrator.getThreadRecords(threadId, ["runtimeRequests"]).pipe(
+      Effect.map((records) =>
+        records.runtimeRequests.filter((request) => request.status === "pending"),
+      ),
+      Effect.catchCause(() => Effect.succeed([])),
+    );
+
   const turnItem: BatonEngineShape["turnItem"] = (threadId, itemId) =>
     orchestrator
       .getTurnItem({ threadId, itemId })
@@ -565,6 +577,7 @@ export const make = Effect.gen(function* () {
     threadMessages,
     threadRuns,
     runtimeRequestStatus,
+    pendingRuntimeRequests,
     turnItem,
     activeProviderThread,
     renameThread,
@@ -635,6 +648,7 @@ export const layerStatic = (input: {
     threadMessages: () => Effect.succeed([]),
     threadRuns: (threadId) => Effect.succeed((input.runs?.get(threadId) ?? []) as never),
     runtimeRequestStatus: () => Effect.succeed(null),
+    pendingRuntimeRequests: () => Effect.succeed([]),
     turnItem: () => Effect.succeed(null),
     activeProviderThread: () => Effect.succeed(null),
     renameThread: () => Effect.succeed(true),
