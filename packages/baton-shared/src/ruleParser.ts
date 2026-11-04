@@ -73,7 +73,7 @@ const TRIGGER_PATTERNS: ReadonlyArray<{
 }> = [
   {
     pattern:
-      /^(?:when|once|after|as soon as) .*\b(finish(?:es|ed)?|completes?|(?:is|are|'s) (?:done|finished))\b/,
+      /^(?:when|once|as soon as) .*\b(finish(?:es|ed)?|completes?|(?:is|are|'s) (?:done|finished))\b/,
     trigger: { kind: "on_done" },
   },
   {
@@ -290,7 +290,7 @@ const isFiller = (clause: string): boolean => {
 const stripTriggerPrefix = (text: string): string =>
   text
     .replace(
-      /^(?:when|if|once|after|as soon as)\b[^,]*?\b(?:finish(?:es|ed)?|completes?|fails?|failed|(?:is|are|'s) (?:done|finished))\b/,
+      /^(?:when|if|once|as soon as)\b[^,]*?\b(?:finish(?:es|ed)?|completes?|fails?|failed|(?:is|are|'s) (?:done|finished))\b/,
       "",
     )
     .trim();

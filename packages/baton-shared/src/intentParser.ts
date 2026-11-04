@@ -649,7 +649,7 @@ export function resolveBatonIntent(
   const gate = resolveGateAnswer(text, source, vocabulary);
   if (gate !== null) return gate;
 
-  if (/^(?:when|whenever|if|once|after|as soon as)\b/.test(text)) {
+  if (/^(?:when|whenever|if|once|as soon as)\b/.test(text)) {
     return resolveRuleSentence(source, vocabulary);
   }
 

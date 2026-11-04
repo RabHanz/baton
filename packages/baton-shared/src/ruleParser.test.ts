@@ -54,11 +54,10 @@ describe("parseOrchestrationSentence", () => {
     expect(needs.ok && needs.rules[0]?.trigger).toEqual({ kind: "on_needs_user" });
   });
 
-  it("reads 'once', 'after' and 'as soon as' as the same triggers", () => {
+  it("reads 'once' and 'as soon as' as the same triggers", () => {
     for (const sentence of [
       "Once Claude's done, have Codex review it.",
       "As soon as Claude is finished, have Codex review it.",
-      "After Claude finishes, have Codex review it.",
     ]) {
       const result = parse(sentence);
       expect(result.ok && result.rules[0]?.trigger).toEqual({ kind: "on_done" });
