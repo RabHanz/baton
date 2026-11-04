@@ -74,6 +74,27 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["dictation_start"],
   },
   {
+    id: "look-discourse",
+    source: "INT-9: a spoken 'Look, …' is a discourse marker, not a screen request",
+    said: "look, what needs me today?",
+    first: ["needs_me"],
+    not: ["screen_capture"],
+  },
+  {
+    id: "dictation-apps",
+    source: "INT-10: 'dictation' at the start of a question is not a request to dictate",
+    said: "dictation apps, which one's best?",
+    first: ["none", "WebSearch"],
+    not: ["dictation_start"],
+  },
+  {
+    id: "tell-it-to-stop",
+    source: "INT-7: 'it' with no current target must be found or asked, never guessed",
+    said: "tell it to stop",
+    first: ["none", "sessions_list", "fleet_status"],
+    not: ["session_send", "weave_send"],
+  },
+  {
     id: "capital-of-peru",
     source: "control: a plain question needs no tool",
     said: "what's the capital of Peru?",

@@ -54,6 +54,8 @@ export interface VisionSessionOptions {
   readonly mcp?: { readonly url: string; readonly token: string };
   /** Pass `--chrome` so the session can use his Claude in Chrome extension (D3). */
   readonly chrome?: boolean;
+  /** `--effort`; medium when absent, and none for the fast router model. */
+  readonly effort?: string;
 }
 
 /** Files, shell and the web. Nothing that outlives the turn, such as schedules or triggers. */
@@ -81,6 +83,7 @@ export const visionArgs = (
   mcpConfigFile?: string,
   /** Claude in Chrome: the session can drive his own browser (D3). Off unless he turned it on. */
   chrome = false,
+  effort = "medium",
 ): ReadonlyArray<string> => [
   "-p",
   // Since CLI 2.1.318 safe mode also drops --mcp-config servers. With our own server, the setting,
@@ -94,8 +97,8 @@ export const visionArgs = (
   "--include-partial-messages",
   "--model",
   model,
-  // Medium is the default effort for the models Tessaya starts; the fast router model takes none.
-  ...(/haiku/i.test(model) ? [] : ["--effort", "medium"]),
+  // The fast router model takes no effort setting.
+  ...(/haiku/i.test(model) ? [] : ["--effort", effort]),
   "--tools",
   operator ? OPERATOR_TOOLS : "",
   ...(operator ? OPERATOR_FLAGS : []),
@@ -287,6 +290,7 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
       options.gate !== undefined,
       mcpFile,
       options.chrome === true,
+      options.effort,
     ).map((a) => (viaShell ? `"${a}"` : a)),
     {
       cwd: options.cwd ?? options.workDir,

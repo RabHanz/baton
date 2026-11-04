@@ -7,6 +7,9 @@
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { createTextEdit } from "../writing/textEdit.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
+import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
+import { PACK_FOLDER } from "../pack/packRows.ts";
+import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -129,8 +132,10 @@ interface ScreenSettings {
   readonly captureApproval: CaptureApproval;
   /** His `claude` binary; on PATH by default. */
   readonly claudeBinary: string;
-  /** A family alias, so it follows the newest model he has. Answers, teaching and driving. */
+  /** Answers, teaching and driving. Chosen by evals/tessaya-assistant; a default, not his choice, until he edits it. */
   readonly model: string;
+  /** The one assistant's `--effort`: low passed every case of evals/tessaya-assistant that medium did, on fewer thinking tokens. */
+  readonly effort: string;
   /** The alias that routes: every sentence, so the fast one. */
   readonly routerModel: string;
   /** Written only shows everything and plays nothing. */
@@ -168,6 +173,7 @@ const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
   model: "claude-opus-5-5",
+  effort: "low",
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
@@ -185,11 +191,15 @@ const DEFAULTS: ScreenSettings = {
   assistantAccount: null,
 };
 
+/** Defaults that older releases wrote into every settings file; he never chose them, so they give way. */
+const FROZEN_MODELS = new Set(["opus", "claude-opus-5-5"]);
+
 const settingsFrom = (saved: Partial<ScreenSettings> & { speak?: boolean }): ScreenSettings => ({
   ...DEFAULTS,
   // The old checkbox, for a settings file written before Written only.
   ...(saved.speak === false ? { output: "written" as const } : {}),
   ...saved,
+  ...(saved.model !== undefined && FROZEN_MODELS.has(saved.model) ? { model: DEFAULTS.model } : {}),
 });
 
 const LOOK_MEMORY_MS = 15 * 60_000;
@@ -508,7 +518,7 @@ export const startScreenCompanion = (input: {
   let settings = read();
   const save = (next: Partial<ScreenSettings>) => {
     settings = { ...settings, ...next };
-    NodeFS.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    writeJsonFile(settingsPath, changedFrom(settings, DEFAULTS));
     input.onChange?.();
   };
 
@@ -1931,9 +1941,17 @@ export const startScreenCompanion = (input: {
     replaceSelection: (text) => driverFor().type(text),
     press: (keys) => driverFor().press(keys),
     setClipboard: (text) => Electron.clipboard.writeText(text),
+    // A rewrite of text he selected is routine work: the cheap model in his routing table (D148).
     ask: createModelAsk({
       claudeBinary: () => settings.claudeBinary,
-      model: () => settings.model,
+      model: () => {
+        try {
+          const file = NodePath.join(input.stateDir, PACK_FOLDER, "routing.json");
+          return parseRouting(NodeFS.readFileSync(file, "utf8")).cheap;
+        } catch {
+          return DEFAULT_ROUTING.cheap;
+        }
+      },
       workDir: NodePath.join(input.stateDir, "edit"),
       env: claudeEnv,
       platform: input.platform,
@@ -2236,6 +2254,7 @@ export const startScreenCompanion = (input: {
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
       model: settings.model,
+      effort: settings.effort,
       systemPrompt,
       workDir: NodePath.join(input.stateDir, "screen"),
       cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,

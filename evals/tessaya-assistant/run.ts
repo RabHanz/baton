@@ -22,6 +22,7 @@ const { values } = NodeUtil.parseArgs({
   options: {
     out: { type: "string" },
     model: { type: "string", default: "claude-opus-5-5" },
+    effort: { type: "string", default: "medium" },
     case: { type: "string", multiple: true },
     samples: { type: "string", default: "2" },
     claude: { type: "string", default: "claude" },
@@ -53,6 +54,7 @@ const sample = async (c: AssistantCase): Promise<ReadonlyArray<string>> => {
       startVisionSession({
         claudeBinary: values.claude!,
         model: values.model!,
+        effort: values.effort!,
         systemPrompt,
         workDir: dir,
         env: process.env,
@@ -78,24 +80,37 @@ const sample = async (c: AssistantCase): Promise<ReadonlyArray<string>> => {
 };
 
 NodeFS.mkdirSync(out, { recursive: true });
-const rows: Array<{ id: string; said: string; firsts: string[]; pass: boolean }> = [];
+const rows: Array<{ id: string; said: string; firsts: string[]; pass: boolean; ms: number[] }> = [];
 for (const c of cases) {
   const runs: Array<ReadonlyArray<string>> = [];
-  for (let i = 0; i < samples; i += 1) runs.push(await sample(c).catch(() => ["error"]));
-  const row = { id: c.id, said: c.said, firsts: runs.map(firstTool), pass: casePasses(c, runs) };
+  const ms: number[] = [];
+  for (let i = 0; i < samples; i += 1) {
+    const started = Date.now();
+    runs.push(await sample(c).catch(() => ["error"]));
+    ms.push(Date.now() - started);
+  }
+  const row = {
+    id: c.id,
+    said: c.said,
+    firsts: runs.map(firstTool),
+    pass: casePasses(c, runs),
+    ms,
+  };
   rows.push(row);
   console.log(`${row.pass ? "pass" : "FAIL"}  ${c.id}: ${row.firsts.join(", ")}`);
 }
 NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(rows, null, 2));
 const passed = rows.filter((r) => r.pass).length;
+const times = rows.flatMap((r) => r.ms).toSorted((a, b) => a - b);
+const median = times[Math.floor(times.length / 2)] ?? 0;
 NodeFS.writeFileSync(
   NodePath.join(out, "summary.md"),
   [
-    `model ${values.model}, ${samples} samples a case: ${passed} of ${rows.length} pass`,
+    `model ${values.model} (effort ${values.effort}), ${samples} samples a case: ${passed} of ${rows.length} pass, median sample ${(median / 1000).toFixed(1)} s`,
     "",
     ...rows.map(
       (r) => `- ${r.pass ? "pass" : "FAIL"} ${r.id} ("${r.said}"): ${r.firsts.join(", ")}`,
     ),
   ].join("\n"),
 );
-console.log(`${passed} of ${rows.length} pass`);
+console.log(`${passed} of ${rows.length} pass, median sample ${(median / 1000).toFixed(1)} s`);
