@@ -32,3 +32,9 @@ export const writeJsonFile = (file: string, value: unknown): void => {
   NodeFS.writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2));
   NodeFS.renameSync(`${file}.tmp`, file);
 };
+
+/** Only what differs from the defaults, so a default changed in a later release still reaches him. */
+export const changedFrom = <T extends object>(value: T, defaults: T): Partial<T> =>
+  Object.fromEntries(
+    Object.entries(value).filter(([key, v]) => v !== defaults[key as keyof T]),
+  ) as Partial<T>;
