@@ -1,7 +1,14 @@
 import type { BatonSessionSummary } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { maskAccount, orderSessions, requestFor, sessionControls } from "./sessionRows.ts";
+import {
+  describeSession,
+  findSession,
+  maskAccount,
+  orderSessions,
+  requestFor,
+  sessionControls,
+} from "./sessionRows.ts";
 
 const row = (key: string, over: Partial<BatonSessionSummary> = {}): BatonSessionSummary => ({
   key,
@@ -63,5 +70,23 @@ describe("the sessions list", () => {
     expect(requestFor(rows, "n:t", "hi")).toBeNull();
     expect(requestFor(rows, "n:p", "   ")).toBeNull();
     expect(requestFor(rows, "n:p", null)).toBeNull();
+  });
+});
+
+describe("the assistant's session tools", () => {
+  it("finds a session by its id or its name, whatever words the message holds", () => {
+    const rows = [row("k1", { session: "build: tests" }), row("k2")];
+    expect(findSession(rows, "k1")?.key).toBe("k1");
+    expect(findSession(rows, "Build: Tests")?.key).toBe("k1");
+    expect(findSession(rows, "nope")).toBeNull();
+  });
+  it("says what a session is doing from its row", () => {
+    const now = Date.parse("2026-11-01T10:00:00Z");
+    expect(
+      describeSession(row("k", { state: "working", updatedAt: "2026-11-01T09:55:00Z" }), now),
+    ).toBe("k (VentureOS, on onnyx) is working, last active 5 min ago.");
+    expect(describeSession(row("k", { state: "waiting", urgent: true }), now)).toContain(
+      "a question or an approval",
+    );
   });
 });

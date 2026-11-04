@@ -110,11 +110,14 @@ export const createSessionsBridge = (input: {
       if (request === null)
         return text === null ? "That session has no thread to open." : "Nothing to send.";
       if (request.kind === "open") input.openMainWindow();
-      for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+      // A send is typed by the time it could time out: only opening is retried, or a slow answer types it twice.
+      for (let attempt = 0; attempt < (request.kind === "open" ? ATTEMPTS : 1); attempt += 1) {
         const answer = await ask(request);
         if (answer !== null) return answer.detail || (answer.ok ? "Done." : "That did not work.");
       }
-      return "T3 did not answer. Open sessions, then try again.";
+      return request.kind === "open"
+        ? "T3 did not answer. Open sessions, then try again."
+        : "T3 did not answer in time, so whether it was sent is not known. Look at the session before sending again.";
     },
   };
 };

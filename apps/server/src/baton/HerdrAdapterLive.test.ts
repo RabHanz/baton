@@ -367,6 +367,26 @@ describe("typing into a pane", () => {
     }),
   );
 
+  it.effect("sends to an agent through its prompt, and nothing while it waits on a question", () =>
+    Effect.gen(function* () {
+      const agent = { ...session, agentKind: "claude" };
+      const calls: Array<ReadonlyArray<string>> = [];
+      const sent = yield* runAdapter(scriptedCli([["agent prompt", ok("{}")]], calls), (adapter) =>
+        adapter.sendInput({ session: agent, text: "1 more thing", submit: true }),
+      );
+      expect(sent.delivered).toBe(true);
+      expect(calls).toEqual([["agent", "prompt", "w1:p1", "1 more thing"]]);
+      const blocked = yield* runAdapter(
+        scriptedCli([
+          ["agent prompt", failed('{"error":{"code":"agent_blocked","message":"blocked"}}')],
+        ]),
+        (adapter) => adapter.sendInput({ session: agent, text: "1 more thing", submit: true }),
+      );
+      expect(blocked.delivered).toBe(false);
+      expect(blocked.detail).toContain("waiting on a question");
+    }),
+  );
+
   it.effect("says which half happened when the text lands and return does not", () =>
     Effect.gen(function* () {
       const result = yield* runAdapter(
