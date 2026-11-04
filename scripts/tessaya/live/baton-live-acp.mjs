@@ -288,7 +288,29 @@ export function parsePanePrompt(screen) {
   // The question is the nearest text above the options; what it asks about runs up to a rule.
   let q = first - 1;
   while (q >= 0 && clean(lines[q]).length === 0) q -= 1;
-  if (q < 0 || RULE.test(lines[q])) return null;
+  if (q < 0 || SOLID.test(lines[q])) return null;
+  if (RULE.test(lines[q])) {
+    // A dashed box above the options (artifact access): its lines up to the "?" are the question.
+    let boxTop = q - 1;
+    while (boxTop >= 0 && q - boxTop < 30 && !RULE.test(lines[boxTop])) boxTop -= 1;
+    const box = lines
+      .slice(boxTop + 1, q)
+      .map(clean)
+      .filter((l) => l.length > 0);
+    const asks = box.findIndex((l) => l.includes("?"));
+    if (boxTop < 0 || asks < 0) return null;
+    const question = box.slice(0, asks + 1).join(" ");
+    // A link wrapped at the box edge continues on a line with no spaces.
+    const about = box
+      .slice(asks + 1)
+      .reduce(
+        (text, l) => (/https?:\/\/\S+$/.test(text) && !/\s/.test(l) ? text + l : `${text} ${l}`),
+        "",
+      )
+      .trim();
+    lines.splice(boxTop, q - boxTop + 1, about, "", question, "");
+    return parsePanePrompt(lines.join("\n"));
+  }
   // A long question wraps over several lines with no blank between them: they are one question.
   let qTop = q;
   while (

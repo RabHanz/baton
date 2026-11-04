@@ -1,0 +1,16 @@
+
+────────────────────────────────────────────────
+ Artifact · from the general-purpose agent
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ "Campaign notes" was made by someone
+ │ else. Let Claude read it?
+ │ This artifact was created outside your
+ │ organization.
+ │ https://claude.ai/artifact/AAAAAAAAAAA
+ │ BBBBBBBBBBB
+ │ (shared with anyone with the link)
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ ❯ 1. Yes
+   2. No
+
+ Esc to cancel · Tab to amend · ctrl+x ctrl+k …
