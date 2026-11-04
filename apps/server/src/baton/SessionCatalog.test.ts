@@ -247,6 +247,9 @@ describe("browsing", () => {
     ]);
     expect(sessions[2]!.detail).toContain("not on this machine");
     expect(sessions[1]!.title).toBe("Fix the checkout");
+    // A live thread checks its own session by id; the history index may not have it.
+    const byId = (await catalog.list({ query: "run-1" })).sessions;
+    expect(byId.map((s) => [s.id, s.state])).toEqual([["run-1", "running"]]);
   });
 
   it("finds older sessions through the history index when words are given, and marks them read-only when the transcript is gone", async () => {

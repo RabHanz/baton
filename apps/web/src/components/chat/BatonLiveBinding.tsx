@@ -137,12 +137,12 @@ export function BatonLiveBinding({ threadRef }: { readonly threadRef: ScopedThre
   };
   return (
     <>
-      <span className="flex shrink-0 items-center gap-1" data-testid="thread-not-connected">
+      <span className="flex min-w-0 shrink items-center gap-1" data-testid="thread-not-connected">
         <span
           className={
             binding.kind === "pane"
-              ? "text-2xs text-muted-foreground"
-              : "text-2xs text-warning-foreground"
+              ? "min-w-0 truncate text-2xs text-muted-foreground"
+              : "min-w-0 truncate text-2xs text-warning-foreground"
           }
         >
           {banner === null ? binding.text : `${banner.text} ${binding.text}`}
