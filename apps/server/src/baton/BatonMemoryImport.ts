@@ -83,14 +83,16 @@ export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function
     // An edited file: lines he removed are forgotten, unchanged lines are left alone (not reinforced).
     const drafts = parseLearningFile(text);
     const fresh = new Set(drafts.map((d) => same(d.text)));
+    // The file's full path: another folder's file of the same name is a different source.
+    const ref = NodePath.join(folder, rel);
     const before = (yield* memory.list({ includeProposed: true, limit: 100_000 })).filter(
-      (i) => i.source === "import" && i.sourceRef === rel,
+      (i) => i.source === "import" && i.sourceRef === ref,
     );
     const kept = new Set(before.map((i) => same(i.text)));
     for (const old of before) if (!fresh.has(same(old.text))) yield* memory.forget(old.id);
     for (const draft of drafts.filter((d) => !kept.has(same(d.text)))) {
       const item = yield* memory
-        .add({ ...draft, source: "import", sourceRef: rel })
+        .add({ ...draft, source: "import", sourceRef: ref })
         .pipe(Effect.orElseSucceed(() => null));
       if (item === null) refused++;
       else added++;

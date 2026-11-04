@@ -232,6 +232,41 @@ it.effect(
     }),
 );
 
+it.effect("a held item restored from a backup stays held", () =>
+  Effect.gen(function* () {
+    const b = yield* server;
+    yield* b.applyChanges(
+      "backup",
+      [
+        {
+          item: {
+            id: "held-1",
+            kind: "fact",
+            text: "The supplier moved to a new portal",
+            source: "thread",
+            sourceRef: null,
+            scope: "global",
+            scopeRef: null,
+            confidence: 0.5,
+            pinned: false,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            lastUsedAt: null,
+            expiresAt: null,
+            supersededBy: null,
+            proposed: true,
+          },
+          tombstone: null,
+          writer: "backup",
+        },
+      ],
+      "2026-01-02T00:00:00.000Z",
+    );
+    assert.lengthOf(yield* b.list(), 0);
+    assert.isTrue((yield* b.list({ includeProposed: true }))[0]?.proposed);
+  }),
+);
+
 it.effect("a received item still goes through the never-store door", () =>
   Effect.gen(function* () {
     const b = yield* server;

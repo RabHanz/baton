@@ -31,7 +31,7 @@ layer("importFolder", (it) => {
       assert.deepEqual(first, { files: 2, added: 2, refused: 1, unchanged: 0 });
       const found = yield* memory.search({ text: "upload", scopeRef: "shop" });
       assert.strictEqual(found[0]?.item.source, "import");
-      assert.strictEqual(found[0]?.item.sourceRef, "shop/a.md");
+      assert.strictEqual(found[0]?.item.sourceRef, NodePath.join(dir, "shop", "a.md"));
 
       const again = yield* importFolder(dir);
       assert.deepEqual(again, { files: 2, added: 0, refused: 0, unchanged: 2 });
@@ -52,6 +52,15 @@ layer("importFolder", (it) => {
       );
       const keepAfter = imported.find((i) => i.text === "Retry the upload once")!;
       assert.strictEqual(keepAfter.confidence, keepBefore.confidence);
+
+      // Another folder with a file of the same name leaves this folder's items alone.
+      const other = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-import-"));
+      NodeFS.mkdirSync(NodePath.join(other, "shop"));
+      NodeFS.writeFileSync(NodePath.join(other, "shop", "a.md"), "- Pack the van on Thursdays\n");
+      yield* importFolder(other);
+      const both = (yield* memory.list({ limit: 100 })).map((i) => i.text);
+      assert.includeMembers(both, ["Retry the upload once", "Pack the van on Thursdays"]);
+      NodeFS.rmSync(other, { recursive: true, force: true });
 
       // His private pack in the folder is never read into memory.
       NodeFS.mkdirSync(NodePath.join(dir, "operating-system"));

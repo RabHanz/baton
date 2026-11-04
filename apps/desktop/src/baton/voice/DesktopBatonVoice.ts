@@ -3565,7 +3565,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ? ((await requestKept({
           kind: "memory",
           op: "list",
-          args: { includeSuperseded: true, limit: 100_000 },
+          args: { includeSuperseded: true, includeProposed: true, limit: 100_000 },
         }).catch(() => null)) as { items?: ReadonlyArray<MemoryItem> } | null)
       : null;
     const plan = planBackup(input.stateDir, exported?.items ?? null);

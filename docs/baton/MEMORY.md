@@ -151,7 +151,7 @@ default, switched in the Memory tab).
   item keeps its original `source` (his own words stay his own).
 - Every received item passes `storable()` again. A sync carries memory items only, never conversation text.
 - A failure leaves the cursor where it was; the next round resends. Tombstones are kept (they are small).
-- A backup carries the server's items (not held proposals) as `memory-server.json`; a restore pushes them back as
+- A backup carries the server's items, held proposals still held, as `memory-server.json`; a restore pushes them back as
   changes from a `backup` peer, so ids, his source, pins and history return and the door checks each again. A tombstone
   on the restoring server still wins over an older backed-up item.
 

@@ -582,7 +582,7 @@ export const make = Effect.gen(function* () {
             created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at
           ) VALUES (
             ${i.id}, ${i.kind}, ${i.text}, ${i.source}, ${i.sourceRef}, ${i.scope}, ${i.scopeRef},
-            ${i.confidence}, ${i.pinned ? 1 : 0}, 0, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
+            ${i.confidence}, ${i.pinned ? 1 : 0}, ${i.proposed ? 1 : 0}, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
             ${i.expiresAt}, ${i.supersededBy}, ${change.writer}, ${at}
           )
         `.pipe(Effect.orDie);
