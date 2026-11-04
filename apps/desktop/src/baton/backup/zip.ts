@@ -98,7 +98,11 @@ export const readZip = (zip: Buffer): ReadonlyArray<ZipEntry> | Error => {
       const packed = zip.subarray(start, start + zip.readUInt32LE(local + 18));
       if (method !== 0 && method !== 8)
         return new Error("That zip uses a method this cannot read.");
-      const data = method === 0 ? Buffer.from(packed) : NodeZlib.inflateRawSync(packed);
+      // A crafted entry can declare a small size and inflate to gigabytes: stop at what it declares.
+      const data =
+        method === 0
+          ? Buffer.from(packed)
+          : NodeZlib.inflateRawSync(packed, { maxOutputLength: Math.max(1, size) });
       if (data.length !== size || crc32(data) !== crc)
         return new Error(`${name} is damaged in the zip.`);
       if (!name.endsWith("/")) out.push({ name, data });
