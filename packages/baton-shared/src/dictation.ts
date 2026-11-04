@@ -41,19 +41,18 @@ const normalise = (text: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** "hey jarvis, " and friends, stripped before anything is decided. */
-const WAKE = /^(?:hey |ok |okay )?(?:jarvis|baton)[,:]?\s+/;
-
+// Words in the same breath only after a colon or a full stop ("dictate: thanks, see you"). "Dictation
+// apps, which is best?" is a question for the assistant, which has dictation_start.
 const START =
-  /^(?:(?:i want to|i'd like to|i would like to|i need to|let me|let's|can i|start)\s+)?dictat(?:e|ing|ion)\b\s*[:,.;-]?\s*(.*)$/;
+  /^(?:(?:i want to|i'd like to|i would like to|i need to|let me|let's|can i|start)\s+)?dictat(?:e|ing|ion)\s*(?:[:.;—]|\s-)\s*(.*)$/;
 // The whole utterance or its very end, and never a bare "stop" or "done": those are words he may
 // be dictating. Anything before the phrase is still text.
 const STOP =
   /^(.*?)[\s,;:-]*\b(?:i'm |i am )?(?:stop|end|finish|finished|quit|done)\s+(?:with\s+)?dictat(?:e|ing|ion)(?:\s+(?:please|now|thanks))?[\s.!?]*$/;
 
-/** A bare stop and nothing else: "stop", "cancel", "never mind", "be quiet", with a wake word or please. */
+/** A bare stop and nothing else: "stop", "cancel", "never mind", "be quiet", with please. Wake word stripped. */
 export const isBareStop = (utterance: string): boolean =>
-  /^(?:(?:hey |ok |okay )?(?:jarvis|baton|alfred|freya)[,:]?\s+)?(?:please\s+)?(?:stop|cancel|never ?mind|be quiet|quiet|that'?s enough)(?:\s+please)?[\s.!?]*$/i.test(
+  /^(?:please\s+)?(?:stop|cancel|never ?mind|be quiet|quiet|that'?s enough)(?:\s+please)?[\s.!?]*$/i.test(
     utterance.trim(),
   );
 
@@ -119,7 +118,7 @@ export const classifyDictation = (
   input: { readonly dictating: boolean },
 ): DictationCommand => {
   const raw = utterance.trim();
-  const text = normalise(raw).replace(WAKE, "").trim();
+  const text = normalise(raw);
   if (text.length === 0) {
     return input.dictating ? { kind: "text", text: raw } : { kind: "not_dictation" };
   }

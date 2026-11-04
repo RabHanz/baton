@@ -238,10 +238,32 @@ describe("voice mode machine (§12.3)", () => {
     ]);
     expect(superseded.effects.map((e) => e.kind)).toEqual(["speak", "cancelled", "command"]);
   });
+
+  it("hears a yes or a no by the whole sentence, and gives anything mixed to the assistant", () => {
+    const answer = (text: string) =>
+      play([
+        { type: "wake", at: 0 },
+        { type: "request_confirmation", token: "t1", prompt: "Type it?", at: 0 },
+        { type: "utterance", text, at: 10 },
+      ]).effects.slice(1);
+    for (const yes of ["yeah go on then", "Yes please.", "yep", "sure, go for it", "OK, do it"]) {
+      expect(answer(yes), yes).toEqual([{ kind: "confirmed", token: "t1" }]);
+    }
+    for (const no of ["nah", "No, not now.", "don't"]) {
+      expect(answer(no)[0], no).toEqual({ kind: "cancelled", token: "t1", reason: "declined" });
+    }
+    for (const other of ["no, send it to Sam instead", "don't forget to cc me, yes"]) {
+      expect(answer(other), other).toEqual([
+        { kind: "cancelled", token: "t1", reason: "superseded" },
+        expect.objectContaining({ kind: "command", text: other }),
+      ]);
+    }
+  });
 });
 
 describe("stop while dictating", () => {
-  it("is a command, not text, and 'stop the tests' stays text", () => {
+  it("is the wake word and stop, or 'stop dictating'; a bare 'Stop.' is a word he dictates", () => {
+    const timings = { ...DEFAULT_TIMINGS, wakeWords: ["Freya"] };
     const start = play([
       { type: "wake", at: 0 },
       { type: "utterance", text: "dictator", at: 10 },
@@ -249,9 +271,23 @@ describe("stop while dictating", () => {
     expect(start.state.mode).toBe("dictation");
     const typed = play([{ type: "utterance", text: "stop the tests", at: 20 }], start.state);
     expect(typed.effects).toContainEqual({ kind: "dictate", text: "stop the tests" });
-    const stopped = play([{ type: "utterance", text: "Stop.", at: 30 }], start.state);
+    const word = reduceVoice(start.state, { type: "utterance", text: "Stop.", at: 30 }, timings);
+    expect(word.state.mode).toBe("dictation");
+    expect(word.effects).toContainEqual({ kind: "dictate", text: "Stop." });
+    const stopped = reduceVoice(
+      start.state,
+      { type: "utterance", text: "Freya, stop.", at: 30 },
+      timings,
+    );
     expect(stopped.state.mode).toBe("conversation");
     expect(stopped.effects.some((e) => e.kind === "dictate")).toBe(false);
+    // The wake word said mid-dictation is never typed.
+    const named = reduceVoice(
+      start.state,
+      { type: "utterance", text: "Freya, see you Friday", at: 40 },
+      timings,
+    );
+    expect(named.effects).toContainEqual({ kind: "dictate", text: "see you Friday" });
   });
 });
 

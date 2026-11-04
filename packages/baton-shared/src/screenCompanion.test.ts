@@ -341,6 +341,7 @@ describe("parseScreenIntent", () => {
     "tell it: run the tests",
     "start a session on VentureOS",
     "next",
+    "Look, can you tell the build session to rerun the tests?",
   ])("leaves %s to Baton's grammar", (text) => {
     expect(parseScreenIntent(text, false)).toBeNull();
   });

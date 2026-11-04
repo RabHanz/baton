@@ -858,7 +858,8 @@ const TEACH_RE =
   /^\s*(?:(?:please|hey|ok(?:ay)?)[\s,]+)?(?:(?:can|could|would) you\s+)?(?:teach me|show me how|walk me through|guide me|tutor me|help me learn|how do i\b.*\b(?:here|in this|on this|step by step)\b|.*\bstep by step\b)/i;
 const LOOK_RE =
   /\b(?:look at (?:this|that|my screen|the screen|it)|(?:what'?s|what is) (?:this|that|on (?:my |the )?screen)|what am i looking at|on (?:my|the) screen|(?:this|that) (?:error|screen|window|page|button|message|dialog|warning|chart|code|menu|setting)|where(?:'s| is| are) the .+\b(?:button|menu|icon|field|setting|option|tab|link|toggle)\b|point (?:at|to)\b|explain (?:this|what'?s on))/i;
-const PREFIX_RE = /^\s*(look|screen|teach|guide|drive)\s*[:,]\s*(.+)$/i;
+// A colon only: speech writes "Look, can you…" with a comma, and that is a sentence, not a mode.
+const PREFIX_RE = /^\s*(look|screen|teach|guide|drive)\s*:\s*(.+)$/i;
 
 /** The sentences with one possible meaning: lesson controls, and his own "drive:" prefixes. */
 export const screenControl = (text: string, active: boolean): ScreenIntent | null => {
