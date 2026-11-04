@@ -63,3 +63,10 @@ export const packPrompt = (pack: OsPack): string => {
     PACK_PROMPT_CHARS,
   );
 };
+
+/** The one assistant's frame is in every turn, so it is kept shorter than a planning turn's. */
+export const ASSISTANT_FRAME_CHARS = 3_000;
+
+/** The executive frame and the specialists' names, for the one assistant that decides and splits jobs. */
+export const assistantFrame = (pack: OsPack): string =>
+  `How he wants a job framed (his operating-system pack; use it when he hands you long work, asks for a plan or splits one):\n${pack.executive.slice(0, ASSISTANT_FRAME_CHARS)}\n\nSpecialists a job's parts can go to (job_split role): ${Object.keys(pack.roles).join(", ")}.`;

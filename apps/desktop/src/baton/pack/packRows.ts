@@ -9,7 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
-import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_OS_PACK, mergePack, type OsPack } from "@t3tools/baton-shared/osPack";
 
 import type { HomeControl } from "../home/batonHome.ts";
 
@@ -40,6 +40,24 @@ const roleNames = (dir: string): ReadonlyArray<string> => {
     // no roles folder yet
   }
   return [...new Set([...Object.keys(DEFAULT_OS_PACK.roles), ...mine.filter((n) => NAME.test(n))])];
+};
+
+/** His pack as the server reads it: his files over the neutral default, read fresh each call. */
+export const readPack = (dir: string): OsPack => {
+  const text = (file: string): string | undefined => {
+    try {
+      return NodeFS.readFileSync(file, "utf8");
+    } catch {
+      return undefined;
+    }
+  };
+  const roles: Record<string, string> = {};
+  for (const name of roleNames(dir)) {
+    const brief = text(NodePath.join(dir, "roles", `${name}.md`));
+    if (brief !== undefined) roles[name] = brief;
+  }
+  const executive = text(NodePath.join(dir, "executive.md"));
+  return mergePack({ ...(executive === undefined ? {} : { executive }), roles });
 };
 
 export const packControls = (dir: string): ReadonlyArray<HomeControl> => {
