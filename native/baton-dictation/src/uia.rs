@@ -3,15 +3,18 @@
 use serde_json::{json, Value};
 use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationElementArray, IUIAutomationExpandCollapsePattern,
-    IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern, TreeScope_Descendants,
-    UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_ExpandCollapsePatternId,
-    UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsOffscreenPropertyId, UIA_ListItemControlTypeId,
-    UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId,
-    UIA_TextControlTypeId, UIA_TogglePatternId, UIA_TreeItemControlTypeId,
+    CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
+    IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
+    IUIAutomationTogglePattern, IUIAutomationValuePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
+    UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId,
+    UIA_EditControlTypeId, UIA_ExpandCollapsePatternId, UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId,
+    UIA_IsOffscreenPropertyId, UIA_ListItemControlTypeId, UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId,
+    UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId, UIA_TogglePatternId,
+    UIA_TreeItemControlTypeId, UIA_ValuePatternId,
 };
-use windows::core::BOOL;
+use windows::core::{BOOL, BSTR};
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetAncestor, GetForegroundWindow, GetWindowTextW, IsWindowVisible, WindowFromPoint, GA_ROOT,
@@ -82,9 +85,25 @@ fn cache_on() -> bool {
 }
 
 unsafe fn descendants(automation: &IUIAutomation, root: &IUIAutomationElement, cached: bool) -> windows::core::Result<IUIAutomationElementArray> {
-    let condition = automation.ControlViewCondition()?;
+    search(automation, root, cached, &automation.ControlViewCondition()?)
+}
+
+/// Only the controls whose whole name is the label, filtered inside the provider: one small answer instead of every
+/// element of a big window. A miss falls back to the scored search over everything.
+unsafe fn named(automation: &IUIAutomation, root: &IUIAutomationElement, label: &str, cached: bool) -> windows::core::Result<IUIAutomationElementArray> {
+    let name = automation.CreatePropertyConditionEx(UIA_NamePropertyId, &VARIANT::from(label), PropertyConditionFlags_IgnoreCase)?;
+    let condition = automation.CreateAndCondition(&automation.ControlViewCondition()?, &name)?;
+    search(automation, root, cached, &condition)
+}
+
+unsafe fn search(
+    automation: &IUIAutomation,
+    root: &IUIAutomationElement,
+    cached: bool,
+    condition: &IUIAutomationCondition,
+) -> windows::core::Result<IUIAutomationElementArray> {
     if !cached {
-        return root.FindAll(TreeScope_Descendants, &condition);
+        return root.FindAll(TreeScope_Descendants, condition);
     }
     let request = automation.CreateCacheRequest()?;
     for property in [
@@ -97,7 +116,34 @@ unsafe fn descendants(automation: &IUIAutomation, root: &IUIAutomationElement, c
     ] {
         request.AddProperty(property)?;
     }
-    root.FindAllBuildCache(TreeScope_Descendants, &condition, &request)
+    root.FindAllBuildCache(TreeScope_Descendants, condition, &request)
+}
+
+/// The best-named element of `all` for the label, nearest the point among equals, and how many were read.
+unsafe fn best_of(all: &IUIAutomationElementArray, label: &str, x: i32, y: i32, cached: bool) -> windows::core::Result<(Option<Found>, i32)> {
+    let count = all.Length()?.min(MAX_ELEMENTS);
+    let mut best: Option<(f32, Found)> = None;
+    for i in 0..count {
+        let Ok(element) = all.GetElement(i) else { continue };
+        let s = snap(&element, cached);
+        let score = name_score(label, &s.name);
+        if score == 0.0 || s.offscreen {
+            continue;
+        }
+        // A window's own 1 px title element has the right name and is nothing to point at.
+        if s.rect.right - s.rect.left < MIN_SIDE || s.rect.bottom - s.rect.top < MIN_SIDE {
+            continue;
+        }
+        let (cx, cy) = centre(&s.rect);
+        let distance = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2)).sqrt();
+        // Name first; among equals the one nearest the model's point.
+        // A display that shows "1" is not the button "1": static text ranks below any control of the same name.
+        let rank = score * 10_000.0 - distance - if s.control == UIA_TextControlTypeId.0 { 5_000.0 } else { 0.0 };
+        if best.as_ref().map(|(r, _)| rank > *r).unwrap_or(true) {
+            best = Some((rank, Found { name: s.name, rect: s.rect, element }));
+        }
+    }
+    Ok((best.map(|(_, f)| f), count))
 }
 
 struct Found {
@@ -225,35 +271,14 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
         };
         // 0x80040201 can come from the window or any one provider in it, and fails the whole
         // search, so ask for the element at the point instead.
-        let searched = automation
-            .ElementFromHandle(top)
-            .and_then(|root| descendants(&automation, &root, cached));
-        let (found, count) = match searched {
-            Ok(all) => {
-                let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
-                let mut best: Option<(f32, Found)> = None;
-                for i in 0..count {
-                    let Ok(element) = all.GetElement(i) else { continue };
-                    let s = snap(&element, cached);
-                    let score = name_score(label, &s.name);
-                    if score == 0.0 || s.offscreen {
-                        continue;
-                    }
-                    // A window's own 1 px title element has the right name and is nothing to point at.
-                    if s.rect.right - s.rect.left < MIN_SIDE || s.rect.bottom - s.rect.top < MIN_SIDE {
-                        continue;
-                    }
-                    let (cx, cy) = centre(&s.rect);
-                    let distance = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2)).sqrt();
-                    // Name first; among equals the one nearest the model's point.
-                    // A display that shows "1" is not the button "1": static text ranks below any control of the same name.
-                    let rank = score * 10_000.0 - distance - if s.control == UIA_TextControlTypeId.0 { 5_000.0 } else { 0.0 };
-                    if best.as_ref().map(|(r, _)| rank > *r).unwrap_or(true) {
-                        best = Some((rank, Found { name: s.name, rect: s.rect, element }));
-                    }
-                }
-                (best.map(|(_, f)| f), count)
+        let searched = automation.ElementFromHandle(top).and_then(|root| {
+            if let Ok((Some(found), count)) = named(&automation, &root, label, cached).and_then(|all| best_of(&all, label, x, y, cached)) {
+                return Ok((Some(found), count));
             }
+            descendants(&automation, &root, cached).and_then(|all| best_of(&all, label, x, y, cached))
+        });
+        let (found, count) = match searched {
+            Ok(done) => done,
             Err(whole) => (
                 at_point(&automation, label, x, y)
                     .map_err(|inner| format!("{whole}; at the point: {inner}"))?,
@@ -281,6 +306,45 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
             }
             None => json!({"found": false, "elements": count}),
         })
+    }
+}
+
+/// Text added to a box in a window by its UI Automation value, with no keyboard, clipboard or focus change: the box
+/// with the keyboard in that window, else its first editable text box. It is added at the end of what the box holds.
+pub fn set_value(window: &str, text: &str) -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let top = find_window(window).ok_or_else(|| format!("No window is titled like \"{window}\"."))?;
+        let root = automation.ElementFromHandle(top).map_err(err)?;
+        let all = descendants(&automation, &root, false).map_err(err)?;
+        let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
+        let mut pick: Option<(IUIAutomationValuePattern, String)> = None;
+        for i in 0..count {
+            let Ok(element) = all.GetElement(i) else { continue };
+            let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+            if kind != UIA_EditControlTypeId.0 && kind != UIA_DocumentControlTypeId.0 {
+                continue;
+            }
+            let Ok(value) = element.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId) else { continue };
+            if value.CurrentIsReadOnly().map(|r| r.as_bool()).unwrap_or(true) {
+                continue;
+            }
+            let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+            let focused = element.CurrentHasKeyboardFocus().map(|f| f.as_bool()).unwrap_or(false);
+            if focused || pick.is_none() {
+                pick = Some((value, name));
+            }
+            if focused {
+                break;
+            }
+        }
+        let Some((value, name)) = pick else { return Ok(json!({"set": false})) };
+        let before = value.CurrentValue().map(|v| v.to_string()).unwrap_or_default();
+        value.SetValue(&BSTR::from(format!("{before}{text}"))).map_err(err)?;
+        Ok(json!({"set": true, "name": name}))
     }
 }
 

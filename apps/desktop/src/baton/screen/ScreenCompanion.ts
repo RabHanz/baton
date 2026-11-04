@@ -114,6 +114,7 @@ import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
+import type { SidecarInput } from "../voice/dictationSidecar.ts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
 import { createPointerOverlay, type OverlayCard } from "./pointerOverlay.ts";
@@ -238,10 +239,14 @@ export interface AssistantActions {
     near: { readonly x: number; readonly y: number },
     /** The whole window with the keyboard, not only what is near the point (the assistant's click by name). */
     anywhere?: boolean,
+    /** Also act on it through its UI Automation pattern, so neither his pointer nor the focus moves. */
+    invoke?: boolean,
   ) => Promise<{
     readonly x: number;
     readonly y: number;
     readonly name: string;
+    /** How it was acted on with no pointer; "pending" while a dialog it opened is up. */
+    readonly invoked?: string;
     /** What is on top of it, when a click would land there instead. */
     readonly coveredBy?: string;
     /** The control's size in desktop points, when the tree gave it. */
@@ -252,6 +257,9 @@ export interface AssistantActions {
   readonly hands?: () =>
     | (RemoteHandsDeps["sidecar"] & {
         readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
+        readonly input: (input: SidecarInput) => Promise<void>;
+        /** False when that window no longer has the keyboard, and nothing was pasted. */
+        readonly pasteInto: (text: string, target: number) => Promise<boolean>;
       })
     | null;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
@@ -1801,15 +1809,15 @@ export const startScreenCompanion = (input: {
             },
             type: (text) => driverFor().type(text),
             press: (keys) => driverFor().press(keys),
-            // Foreground input goes where the keyboard is; the window that had it gets it back afterwards.
+            keyboardIn: async (window) =>
+              (await focusSoon())?.label.toLowerCase().includes(window.toLowerCase()) === true,
+            // A pointer click brings its window forward; the window he was using gets the keyboard back afterwards.
             restoreFocus: async (run) => {
               const before = await focusSoon();
-              try {
-                return await run();
-              } finally {
-                if (before?.window !== undefined)
-                  await side.focusWindow(before.window).catch(() => undefined);
-              }
+              await run();
+              if (before?.window === undefined) return false;
+              const back = await side.focusWindow(before.window).catch(() => ({ error: "failed" }));
+              return back.error === undefined;
             },
           },
         }),
@@ -1824,6 +1832,25 @@ export const startScreenCompanion = (input: {
       platform: input.platform,
       toPhysical: (p) => (input.platform === "win32" ? Electron.screen.dipToScreenPoint(p) : p),
       clipboard: Electron.clipboard,
+      sidecar: () => {
+        const side = actions?.hands?.() ?? null;
+        if (side === null) return null;
+        return {
+          input: side.input,
+          // Only into the window that has the keyboard now; the sidecar's paste keeps it out of clipboard history.
+          paste: async (text) => {
+            const seen = await focusSoon();
+            if (seen?.window === undefined) {
+              throw new Error(
+                "The window with the keyboard can't be told apart, so nothing was typed.",
+              );
+            }
+            if (!(await side.pasteInto(text, seen.window))) {
+              throw new Error("The window with the keyboard changed, so nothing was typed.");
+            }
+          },
+        };
+      },
     });
     const own = input.ownEscape;
     driver =
@@ -2056,11 +2083,20 @@ export const startScreenCompanion = (input: {
       return String(seen.window);
     },
     clickElement: async (label, double) => {
-      const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
+      // Its own pattern first: his pointer and the focus stay where they are (CU-6).
+      const found = await actions?.locate?.(
+        label,
+        Electron.screen.getCursorScreenPoint(),
+        true,
+        !double,
+      );
       if (found === null || found === undefined) {
         throw new Error(
           `No control is named "${label}" in the window with the keyboard. Take a screenshot and click by position.`,
         );
+      }
+      if (found.invoked !== undefined) {
+        return `Pressed ${found.name} (${found.invoked}, no pointer, no focus change).`;
       }
       if (found.coveredBy !== undefined) {
         throw new Error(
@@ -2068,17 +2104,27 @@ export const startScreenCompanion = (input: {
         );
       }
       const to = { x: found.x, y: found.y };
+      input.onNote?.("hands_pointer", {
+        label: found.name,
+        why: double ? "double click" : "no pattern",
+      });
       await pointerAction(to, () => driverFor().clickAt(to, "left", double ? 2 : 1));
-      return `Clicked ${found.name}.`;
+      return `Clicked ${found.name} (pointer: it has no pattern to act on).`;
     },
     waitFor: async (label, seconds) => {
       const until = Date.now() + seconds * 1000;
+      let slow: Error | null = null;
       do {
-        const found = await actions?.locate?.(label, Electron.screen.getCursorScreenPoint(), true);
+        const found = await actions
+          ?.locate?.(label, Electron.screen.getCursorScreenPoint(), true)
+          .catch((error: Error) => ((slow = error), null));
         if (found !== null && found !== undefined) return `${found.name} is there.`;
         await sleep(400);
       } while (Date.now() < until);
-      return `No control named "${label}" appeared in ${seconds} seconds.`;
+      // Not "not there" when the tree could not be read in time: that would send the model to pixels for nothing.
+      return slow === null
+        ? `No control named "${label}" appeared in ${seconds} seconds.`
+        : `${(slow as Error).message} Whether "${label}" appeared is not known.`;
     },
     scroll: async (amount) => {
       await driverFor().scrollAt(null, amount);
@@ -2086,14 +2132,20 @@ export const startScreenCompanion = (input: {
     },
     drag: async (a) => {
       const d = driverFor();
-      await d.pressAt(desktopPoint(a));
-      await d.releaseAt(
-        desktopPoint({
-          x: a.toX,
-          y: a.toY,
-          ...(a.screen === undefined ? {} : { screen: a.screen }),
-        }),
-      );
+      const from = desktopPoint(a);
+      const to = desktopPoint({
+        x: a.toX,
+        y: a.toY,
+        ...(a.screen === undefined ? {} : { screen: a.screen }),
+      });
+      // Explorer and most lists start a drag only after the pointer moves past a few pixels with the button down.
+      await pointerAction(to, async () => {
+        await d.pressAt(from);
+        for (const t of [0.2, 0.4, 0.6, 0.8]) {
+          await d.moveAt({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+        }
+        await d.releaseAt(to);
+      });
       return "Dragged.";
     },
     type: async (text) => {
