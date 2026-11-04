@@ -11,11 +11,12 @@ jobs:
   intent:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    # The token is given only to the steps that need it, never to installs whose scripts run code.
     steps:
       - name: Is there a login to use?
         id: login
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
             echo "No CLAUDE_CODE_OAUTH_TOKEN secret: skipping." | tee -a "$GITHUB_STEP_SUMMARY"
@@ -29,7 +30,9 @@ jobs:
         if: steps.login.outputs.have == 'true'
       - name: Install Claude Code
         if: steps.login.outputs.have == 'true'
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.318
       - name: Run the sentences
         if: steps.login.outputs.have == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: node scripts/tessaya/intent-nightly.ts --claude claude

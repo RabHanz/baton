@@ -66,6 +66,8 @@ systemctl --user restart t3code.service
 echo "rolled back to $previous"
 EOF
 chmod +x "$backup/rollback.sh"
+# Each backup is a full copy of userdata and the volume has filled before: keep the newest five.
+ls -1dt "$root"/before-* 2> /dev/null | tail -n +6 | while read -r old; do rm -rf -- "$old"; done
 echo "backup $(du -sh "$backup" | cut -f1) in $backup; rollback: $backup/rollback.sh"
 
 dest="$t3home/runtime/versions/$version"
