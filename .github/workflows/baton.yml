@@ -31,3 +31,4 @@ jobs:
           git config --global user.email ci@baton.invalid
           git config --global user.name ci
           bash scripts/tessaya/patches.test.sh
+          bash scripts/tessaya/tessaya-resume.test.sh
