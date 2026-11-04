@@ -22,8 +22,8 @@ import {
   tokens,
   winner,
   type MemoryChange,
-  type MemoryDraft,
   type MemoryHit,
+  type MemoryDraft,
   type MemoryItem,
   type MemoryKind,
   type MemoryQuery,
@@ -76,6 +76,8 @@ const refuse = (reason: string) => new BatonMemoryRefusedError({ reason });
 const DAY_MS = 86_400_000;
 const DEFAULT_LIMIT = 50;
 const CANDIDATES = 200;
+/** A sentence's recall leaves out hits weaker than this: one shared word in a long sentence. */
+const RECALL_FLOOR = 0.25;
 
 /** The loaded private pack files, so their text is never copied into memory (D148). Default: none. */
 export const MemoryPrivateTexts = Context.Reference<() => ReadonlyArray<string>>(
@@ -389,23 +391,27 @@ export const make = Effect.gen(function* () {
     readonly turnRef?: string | undefined;
   }) {
     const now = yield* nowMs;
-    const hits = yield* search({
-      ...(context.text === undefined ? {} : { text: context.text }),
-      ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
-      limit: 40,
-    });
-    const searched = context.text === undefined || tokens(context.text).length === 0 ? [] : hits;
-    // Without words to match, what he has said about how to work with him still goes in.
-    const standing = (yield* list({ kinds: ["note", "preference", "correction", "decision"] }))
-      .filter((item) => item.pinned || item.source === "user" || item.confidence >= 0.6)
-      .slice(0, 40)
-      .map((item) => ({ item, score: 0.3 * effectiveConfidence(item, now) }));
-    const best = new Map<string, MemoryHit>();
-    for (const hit of [...standing, ...searched]) {
-      const seen = best.get(hit.item.id);
-      if (seen === undefined || hit.score > seen.score) best.set(hit.item.id, hit);
-    }
-    const ranked = [...best.values()]
+    const words = context.text === undefined ? [] : tokens(context.text);
+    // A sentence gets what matches it: the standing set is already in the session's system prompt.
+    const hits =
+      words.length > 0
+        ? (yield* search({
+            text: context.text!,
+            ...(context.scopeRef === undefined ? {} : { scopeRef: context.scopeRef }),
+            limit: 40,
+          })).filter((hit) => hit.score >= RECALL_FLOOR)
+        : (yield* list({ kinds: ["note", "preference", "correction", "decision"] }))
+            .filter((item) => item.pinned || item.source === "user" || item.confidence >= 0.6)
+            .slice(0, 40)
+            .map((item) => ({ item, score: effectiveConfidence(item, now) }));
+    const ranked = hits
+      // Another project's items stay out of a turn that names its project.
+      .filter(
+        ({ item }) =>
+          typeof context.scopeRef !== "string" ||
+          item.scope !== "project" ||
+          item.scopeRef === context.scopeRef,
+      )
       .filter((hit) => effectiveConfidence(hit.item, now) >= 0.1 || hit.item.pinned)
       .toSorted((a, b) => b.score - a.score)
       .map((hit) => hit.item);

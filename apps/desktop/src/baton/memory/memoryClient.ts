@@ -55,10 +55,11 @@ export const createDesktopMemory = (input: {
       return out?.block ?? "";
     },
     /** What matches this sentence, for the turn; empty when the server is slow or has nothing. */
-    forSentence: async (text: string): Promise<string> => {
+    forSentence: async (text: string, project: string | null = null): Promise<string> => {
       const call = ask<{ block: string }>("recall", {
         text,
         budgetTokens: 300,
+        ...(project === null ? {} : { scopeRef: project }),
         ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),
       });
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -121,11 +122,12 @@ export const createDesktopMemory = (input: {
         : out.items.map((i) => `- ${i.text} (${i.kind})`).join("\n");
     },
     /** After a turn: fire and forget, never read aloud and never in the way. */
-    learn: (said: string, reply: string, tainted: boolean): void => {
+    learn: (said: string, reply: string, tainted: boolean, project: string | null = null): void => {
       void ask("learn", {
         said,
         reply,
         tainted,
+        ...(project === null ? {} : { project }),
         ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),
       });
     },

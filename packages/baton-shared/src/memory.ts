@@ -236,28 +236,18 @@ export const reinforced = (item: MemoryItem): number =>
     ? item.confidence
     : Math.min(MODEL_CONFIDENCE_CAP, item.confidence + REPEAT_BOOST);
 
-const STOP = new Set([
-  "the",
-  "a",
-  "an",
-  "to",
-  "of",
-  "and",
-  "is",
-  "are",
-  "in",
-  "on",
-  "for",
-  "i",
-  "he",
-  "it",
-]);
+/** Question and filler words: a spoken "what do my notes say" must not match every item with "my". */
+export const STOP_WORDS: ReadonlySet<string> = new Set(
+  "the a an and or but of to in on at for with from by is are was were be been it its this that these those i you he she we they me my your his her our their can could would should will shall do does did not no yes please just then than so as if about into out up down over under again also very what which who when where how".split(
+    " ",
+  ),
+);
 export const tokens = (text: string): ReadonlyArray<string> =>
   text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]+/gu, " ")
     .split(/\s+/)
-    .filter((w) => w !== "" && !STOP.has(w));
+    .filter((w) => w !== "" && !STOP_WORDS.has(w));
 
 /** Jaccard overlap of the words, 0 to 1. */
 export const similarity = (a: string, b: string): number => {

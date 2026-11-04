@@ -109,30 +109,35 @@ layer("BatonMemoryService", (it) => {
     }),
   );
 
-  it.effect("recall fits the budget, puts pinned first and records what the turn used", () =>
-    Effect.gen(function* () {
-      const memory = yield* BatonMemoryService;
-      yield* memory.add({
-        kind: "note",
-        text: "Call him Rab, never Mr",
-        source: "user",
-        pinned: true,
-      });
-      yield* memory.add({ kind: "fact", text: "Staging lives on the second box", source: "job" });
-      const out = yield* memory.recall({ text: "staging box", turnRef: "turn-1" });
-      assert.include(out.block, "Call him Rab");
-      assert.include(out.block, "Staging lives");
-      assert.isTrue(out.block.indexOf("Call him Rab") < out.block.indexOf("Staging lives"));
-      const used = yield* memory.used("turn-1");
-      assert.deepEqual(
-        (yield* memory.used()).map((i) => i.id),
-        used.map((i) => i.id),
-      );
-      assert.strictEqual(used.length, out.ids.length);
-      assert.isNotNull(used[0]?.lastUsedAt);
-      const tiny = yield* memory.recall({ text: "staging box", budgetTokens: 5 });
-      assert.strictEqual(tiny.block, "");
-    }),
+  it.effect(
+    "recall fits the budget, keeps standing notes for the session and records what the turn used",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        yield* memory.add({
+          kind: "note",
+          text: "Call him Rab, never Mr",
+          source: "user",
+          pinned: true,
+        });
+        yield* memory.add({ kind: "fact", text: "Staging lives on the second box", source: "job" });
+        const standing = yield* memory.recall({});
+        assert.include(standing.block, "Call him Rab");
+        assert.notInclude(standing.block, "Staging lives");
+        // The sentence's block carries what matches it; the standing note is already in the session.
+        const out = yield* memory.recall({ text: "staging box", turnRef: "turn-1" });
+        assert.notInclude(out.block, "Call him Rab");
+        assert.include(out.block, "Staging lives");
+        const used = yield* memory.used("turn-1");
+        assert.deepEqual(
+          (yield* memory.used()).map((i) => i.id),
+          used.map((i) => i.id),
+        );
+        assert.strictEqual(used.length, out.ids.length);
+        assert.isNotNull(used[0]?.lastUsedAt);
+        const tiny = yield* memory.recall({ text: "staging box", budgetTokens: 5 });
+        assert.strictEqual(tiny.block, "");
+      }),
   );
 
   it.effect("sweep removes episodes that expired and keeps pinned ones", () =>

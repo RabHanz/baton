@@ -1818,6 +1818,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
     presence: () => awareness.describe(),
+    projectOf: (session) =>
+      input.sessions?.rows().find((r) => r.key === session.split(" ")[0])?.project || null,
     sessionsList: () => {
       const rows = input.sessions?.rows() ?? [];
       return rows.length === 0
