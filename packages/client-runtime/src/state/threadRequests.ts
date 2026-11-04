@@ -225,6 +225,19 @@ export function pendingRuntimeRequestIds(
   );
 }
 
+const WAITING_QUESTION: ThreadUserInputQuestion = {
+  id: "answer",
+  header: "Question waiting",
+  question: "A question is waiting in the terminal.",
+  multiSelect: false,
+  options: [
+    {
+      label: "I'll answer it in the terminal",
+      description: "Open the pane in Herdr and answer it there.",
+    },
+  ],
+};
+
 export function derivePendingThreadRequests(
   projection: Pick<ThreadStructure, "runtimeRequests" | "turnItems">,
 ): PendingThreadRequests {
@@ -239,7 +252,19 @@ export function derivePendingThreadRequests(
         (candidate) =>
           candidate.type === "user_input_request" && candidate.requestId === request.id,
       );
-      if (item === undefined || item.type !== "user_input_request") continue;
+      if (item === undefined || item.type !== "user_input_request") {
+        // A pending message-mode request whose card is not loaded still shows: a question must never be invisible.
+        if (responseCapability === "message")
+          userInputs.push({
+            requestId: request.id,
+            createdAt: DateTime.formatIso(request.createdAt),
+            questions: [WAITING_QUESTION],
+            responseCapability,
+            dismissible: true,
+            responseMode: "message",
+          });
+        continue;
+      }
       userInputs.push({
         requestId: request.id,
         createdAt: DateTime.formatIso(request.createdAt),

@@ -8,6 +8,7 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  askRunId,
   endedMirrorThreads,
   liveMedia,
   mediaPathsOf,
@@ -32,6 +33,15 @@ const project = (id: string, workspaceRoot: string, canonicalKey?: string) => ({
       : ({ canonicalKey } as unknown as NonNullable<
           Parameters<typeof projectForDirectory>[1][number]["repositoryIdentity"]
         >),
+});
+
+describe("a question card's run", () => {
+  it("uses the open turn, else the thread's latest run, so the card sorts with the conversation", () => {
+    const runs = [{ id: "r1" as never }, { id: "r2" as never }];
+    expect(askRunId("open" as never, runs)).toBe("open");
+    expect(askRunId(null, runs)).toBe("r2");
+    expect(askRunId(null, [])).toBeNull();
+  });
 });
 
 describe("which T3 project a live session belongs to", () => {
@@ -379,7 +389,9 @@ describe("a picture a reply shows is shown once, however it got there", () => {
         cwd: dir,
         shown: shownSet,
       }).text;
-    expect(reply("m1", [bad, good])).toMatch(/s1s\.png: image unavailable[\s\S]*!\[ok\.png\]|!\[ok\.png\][\s\S]*s1s\.png: image unavailable/);
+    expect(reply("m1", [bad, good])).toMatch(
+      /s1s\.png: image unavailable[\s\S]*!\[ok\.png\]|!\[ok\.png\][\s\S]*s1s\.png: image unavailable/,
+    );
     expect(reply("m2", [bad, good])).toBe("x");
     expect(reply("m3", [], "see s1s.png")).toBe("see s1s.png");
   });
