@@ -251,6 +251,10 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:memory-import",
       tag: BATON_MEMORY_WS_METHODS.import,
     }),
+    memoryPull: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:memory-pull",
+      tag: BATON_MEMORY_WS_METHODS.pull,
+    }),
     memorySyncHello: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:memory-syncHello",
       tag: BATON_MEMORY_WS_METHODS.syncHello,

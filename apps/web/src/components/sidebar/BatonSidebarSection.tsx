@@ -33,6 +33,7 @@ import {
   isProviderInstancePickerReady,
 } from "../../providerInstances";
 import { useProjects } from "../../state/entities";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
@@ -63,6 +64,10 @@ export function BatonSidebarSection(props: {
   const projects = useProjects();
   const serverConfigs = useAtomValue(environmentServerConfigsAtom);
   const primary = fleet.environmentIds[0];
+  // His memory lives on this app's own server, not on whichever connection registered first.
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const memoryHome =
+    fleet.environmentIds.find((id) => id === primaryEnvironmentId) ?? fleet.environmentIds[0];
   // Where each job was started, so a later stop or agree asks the server that holds it.
   const jobHomes = useRef(new Map<string, string>());
   const usage = JSON.stringify(
@@ -102,6 +107,7 @@ export function BatonSidebarSection(props: {
   const memoryExport = useAtomCommand(batonWorkSessions.memoryExport, quiet);
   const memoryLearn = useAtomCommand(batonWorkSessions.memoryLearn, quiet);
   const memoryImport = useAtomCommand(batonWorkSessions.memoryImport, quiet);
+  const memoryPull = useAtomCommand(batonWorkSessions.memoryPull, quiet);
   const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
   const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
@@ -375,11 +381,16 @@ export function BatonSidebarSection(props: {
   };
   const onCloud = async (request: BatonCloudBridgeRequest): Promise<unknown> => {
     if (request.op === "environments") {
-      return fleet.environmentIds.map((id) => ({ id, label: fleet.resolveEnvironmentLabel(id) ?? id }));
+      return fleet.environmentIds.map((id) => ({
+        id,
+        label: fleet.resolveEnvironmentLabel(id) ?? id,
+      }));
     }
     // Only an environment this window is actually connected to can be asked.
     const target = fleet.environmentIds.find((id) => id === request.environmentId) ?? primary;
-    const result = await (request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct)({ environmentId: target, input: request.args as never });
+    const result = await (
+      request.op === "read" ? cloudRead : request.op === "approve" ? cloudApprove : cloudAct
+    )({ environmentId: target, input: request.args as never });
     if (result._tag === "Success") return result.value;
     const refused = JSON.stringify(result).includes("baton:cloud-approve");
     return {
@@ -428,6 +439,7 @@ export function BatonSidebarSection(props: {
       export: memoryExport,
       learn: memoryLearn,
       import: memoryImport,
+      pull: memoryPull,
     };
     type Settled =
       | { readonly _tag: "Success"; readonly value: unknown }
@@ -436,7 +448,7 @@ export function BatonSidebarSection(props: {
       readonly environmentId: typeof primary;
       readonly input: never;
     }) => Promise<Settled>;
-    const result = await run({ environmentId: primary, input: request.args as never });
+    const result = await run({ environmentId: memoryHome, input: request.args as never });
     if (result._tag === "Success") return result.value;
     const reason = (squashAtomCommandFailure(result) as { reason?: unknown } | null)?.reason;
     throw new Error(

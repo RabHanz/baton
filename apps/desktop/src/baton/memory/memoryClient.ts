@@ -32,10 +32,23 @@ export const createDesktopMemory = (input: {
 }) => {
   let turn = 0;
   let lastTurnRef: string | null = null;
+  let notesMoved = false;
+  // Notes kept while the server was away join memory once it answers, so they are not out of view.
+  const moveNotes = async (call: MemoryCall): Promise<void> => {
+    notesMoved = true;
+    for (const note of input.notes.list()) {
+      const out = await call("add", { kind: "note", text: note.text, source: "user", pinned: true })
+        .then(() => true)
+        .catch(() => false);
+      if (out) input.notes.remove(note.id);
+    }
+  };
   const ask = async <T>(op: string, args: Record<string, unknown>): Promise<T | null> => {
     if (input.call === undefined) return null;
     try {
-      return (await input.call(op, args)) as T;
+      const out = (await input.call(op, args)) as T;
+      if (!notesMoved) await moveNotes(input.call);
+      return out;
     } catch (error) {
       if (op === "add" || op === "edit") throw error;
       return null;

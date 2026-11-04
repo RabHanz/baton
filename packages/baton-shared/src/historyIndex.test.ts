@@ -54,7 +54,7 @@ describe("parseLearnings", () => {
       "2026-09-29T00:23  tool_result -home-user-shopfront  29e8e17a-6302-457b-812d-467dd26646cc agent a362ef05accb7d07b",
       '    [tool_result] components/voice/settings.tsx:45: ? "Cloud voice has no monthly limit on this plan." components/voice/settings.tsx:84:…',
       "",
-      "2026-11-01T11:54  director    -mnt-HC-Volume-106652742-dev-t3code  5ab4ae0c-3cf4-4d50-aae3-94117d982204",
+      "2026-11-01T11:54  director    -mnt-Data-Volume-42-dev-t3code  5ab4ae0c-3cf4-4d50-aae3-94117d982204",
       "    Director on voice storage, for the History page. Today no dictation audio is kept. Wanted: 1) Text, raw and cleaned…",
       "",
       "2026-11-01T11:54  director    prompts  5ab4ae0c-3cf4-4d50-aae3-94117d982204",

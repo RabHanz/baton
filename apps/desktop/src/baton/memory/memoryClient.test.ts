@@ -22,6 +22,45 @@ describe("desktop memory", () => {
     expect(await memory.remember("my password is x")).toContain("password");
   });
 
+  it("moves notes kept while the server was away into memory once it answers", async () => {
+    const kept = [
+      { id: "n1", text: "the boiler code is in the blue folder", file: "/x/n1.md" },
+      { id: "n2", text: "my password is hunter2-x", file: "/x/n2.md" },
+    ];
+    const folder = {
+      ...notes(),
+      list: () => kept,
+      remove: (id: string) =>
+        kept.splice(
+          kept.findIndex((n) => n.id === id),
+          1,
+        ).length === 1,
+    } as unknown as NotesStore;
+    let up = false;
+    const added: unknown[] = [];
+    const call = vi.fn(async (op: string, args: Record<string, unknown>) => {
+      if (!up) throw new Error("not reachable");
+      if (op === "add") {
+        if (String(args["text"]).includes("password")) throw new Error("refused");
+        added.push(args);
+        return { item: { id: "m1" } };
+      }
+      return { hits: [] };
+    });
+    const memory = createDesktopMemory({ call, notes: folder });
+    await memory.search("boiler");
+    expect(added).toEqual([]);
+    up = true;
+    await memory.search("boiler");
+    expect(added).toEqual([
+      { kind: "note", text: "the boiler code is in the blue folder", source: "user", pinned: true },
+    ]);
+    // A refused note stays where he can see it; it is not tried again on every call.
+    expect(kept.map((n) => n.id)).toEqual(["n2"]);
+    await memory.search("boiler");
+    expect(added).toHaveLength(1);
+  });
+
   it("falls back to the notes folder when the server does not answer", async () => {
     const memory = createDesktopMemory({ notes: notes() });
     expect(await memory.remember("likes tea")).toBe("Kept as a note [id: n1].");
