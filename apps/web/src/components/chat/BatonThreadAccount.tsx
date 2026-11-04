@@ -1,4 +1,3 @@
-/* oxlint-disable shadcn/no-unknown-classes -- Baton file predating the rule (D82) */
 /**
  * The account a thread runs as, and one click to change it for this thread alone (D95). Each
  * account is a provider instance and their homes share transcripts, so the thread keeps its
@@ -237,7 +236,7 @@ function LiveAnswerer({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   return (
     <>
       <span
-        className="shrink-0 truncate text-2xs text-muted-foreground"
+        className="min-w-0 shrink truncate text-2xs text-muted-foreground"
         data-testid="thread-answerer"
       >
         {answerer.line}

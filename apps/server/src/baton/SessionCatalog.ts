@@ -205,7 +205,9 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     let rows = [...byId.values()].filter(
       (r) =>
         q === "" ||
-        `${r.title} ${r.project} ${r.cwd ?? ""} ${r.account ?? ""}`.toLowerCase().includes(q) ||
+        `${r.id} ${r.title} ${r.project} ${r.cwd ?? ""} ${r.account ?? ""}`
+          .toLowerCase()
+          .includes(q) ||
         hits.has(r.id),
     );
     rows.sort(
