@@ -15,6 +15,8 @@ export type ExitReason = "update" | "quit" | "system" | "crash";
 export interface LifecycleLog {
   /** Say why the next exit is happening, before it does. */
   readonly willExitFor: (reason: ExitReason, detail?: string) => void;
+  /** The exit said by `willExitFor` did not happen. */
+  readonly cancelExit: () => void;
   readonly note: (event: string, detail?: Record<string, unknown>) => void;
   /** Who was running before this one ended badly, or null. */
   readonly previousRunEndedBadly: () => boolean;
@@ -107,6 +109,7 @@ export const createLifecycleLog = (input: {
     return {
       willExitFor: (reason, detail) =>
         write("exiting", { reason, ...(detail === undefined ? {} : { detail }) }),
+      cancelExit: () => undefined,
       note: write,
       previousRunEndedBadly: () => false,
       anotherInstance: true,
@@ -189,6 +192,9 @@ export const createLifecycleLog = (input: {
     willExitFor: (reason, detail) => {
       intended = detail === undefined ? { reason } : { reason, detail };
       write("exiting", { reason, ...(detail === undefined ? {} : { detail }) });
+    },
+    cancelExit: () => {
+      intended = null;
     },
     note: write,
     previousRunEndedBadly: () => leftover.kind === "ended-badly",
