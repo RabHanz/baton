@@ -422,7 +422,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "fleet_status",
       description:
-        "What everything is doing and what needs him, answered from state. Use this before asking any session.",
+        "What every session is doing, answered from state. Use this before asking any session. For 'what needs me', use needs_me.",
       inputSchema: object({}),
       run: async () => ({ text: await host.fleet() }),
     },
