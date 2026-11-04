@@ -6,7 +6,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createConversationLog } from "../conversation/conversationLog.ts";
-import type { VisionSession } from "../screen/claudeVision.ts";
+import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
 import { createAssistantAgent, shouldRecycle } from "./agentSession.ts";
 
 const fakeSession = (log: string[]): VisionSession => {
@@ -99,6 +99,96 @@ describe("the one assistant's session", () => {
     sessions[0]!.dispose();
     await agent.say("again", { window: null, session: null });
     expect(sessions).toHaveLength(2);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("hears about turns answered without it, once, and keeps a sentence it was stopped on", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const asked: string[] = [];
+    let stop = false;
+    const session: VisionSession = {
+      ask: async (content, onDelta) => {
+        asked.push(content.map((c) => (c.type === "text" ? c.text : "")).join("\n"));
+        if (!stop) return "Done.";
+        onDelta?.("Here is the long");
+        throw new SessionClosed("Claude session closed.");
+      },
+      alive: () => true,
+      dispose: () => undefined,
+    };
+    const agent = createAssistantAgent({
+      start: async () => session,
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    await agent.say("hello", { window: null, session: null });
+    conversation.add({ route: "refusal", said: "delete it all", reply: "I won't delete that." });
+    await agent.say("why not", { window: null, session: null });
+    await agent.say("ok", { window: null, session: null });
+    expect(asked[1]).toContain("I won't delete that.");
+    expect(asked[1]).not.toContain("he said: hello");
+    expect(asked[2]).not.toContain("I won't delete that.");
+
+    stop = true;
+    await expect(
+      agent.say("tell me the long story", { window: null, session: null }),
+    ).rejects.toThrow();
+    expect(conversation.recent(1)[0]).toMatchObject({
+      said: "tell me the long story",
+      reply: "Here is the long",
+      note: "he stopped it before the end",
+    });
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("seeds a recycled session with every turn the old one held, not only the last six", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    conversation.add({ route: "answer", said: "the wifi box is the white one", reply: "Noted." });
+    for (let i = 0; i < 20; i += 1)
+      conversation.add({ route: "answer", said: `t${i}`, reply: "ok" });
+    const prompts: string[] = [];
+    const agent = createAssistantAgent({
+      start: async (prompt) => (prompts.push(prompt), fakeSession([])),
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    await agent.say("which box was it", { window: null, session: null });
+    expect(prompts[0]).toContain("the wifi box is the white one");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("starts a second sentence only after the first has finished", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const events: string[] = [];
+    let release = () => undefined as void;
+    const first = new Promise<void>((resolve) => (release = resolve));
+    let n = 0;
+    const agent = createAssistantAgent({
+      start: async () => ({
+        ask: async () => {
+          n += 1;
+          if (n === 1) await first;
+          events.push(`answered ${n}`);
+          return "ok";
+        },
+        alive: () => true,
+        dispose: () => undefined,
+      }),
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => void events.push("begin"),
+    });
+    const a = agent.say("read the page", { window: null, session: null });
+    const b = agent.say("type it", { window: null, session: null });
+    await Promise.resolve();
+    release();
+    await Promise.all([a, b]);
+    expect(events).toEqual(["begin", "answered 1", "begin", "answered 2"]);
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

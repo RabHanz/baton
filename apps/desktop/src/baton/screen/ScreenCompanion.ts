@@ -10,7 +10,6 @@ import { createTransformStore } from "../writing/transformStore.ts";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
-import { isNeedsMeAsk } from "@t3tools/baton-shared/needsMe";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -288,8 +287,6 @@ export interface AssistantActions {
   readonly sessionsList?: () => string;
   /** The awareness state as a line for the assistant (D149); empty when every switch is off. */
   readonly presence?: () => Promise<string>;
-  /** "What needs me?" from state, with no model: the top three to say and the full card. */
-  readonly needsMe?: () => Promise<{ readonly spoken: string; readonly card: string }>;
   /** The job operations (D145), answered in a sentence for the assistant. */
   readonly jobs?: (
     op:
@@ -361,7 +358,12 @@ export interface ScreenCompanion {
   /** Decide what was said and carry it out. "act" comes back for the caller's own guards. */
   readonly said: (
     text: string,
-    input: { readonly direct: boolean; readonly typed?: boolean },
+    input: {
+      readonly direct: boolean;
+      readonly typed?: boolean;
+      /** The work session he has focused, as the voice side resolved it. */
+      readonly session?: string | null;
+    },
   ) => Promise<
     | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
     | { readonly kind: "handled" }
@@ -1710,6 +1712,8 @@ export const startScreenCompanion = (input: {
   const agentTaint = createTaint();
   type BatonToolType = ReturnType<typeof buildBatonTools>[number];
   const agentTools: string[] = [];
+  // Cleared each turn: a tool that failed twice in one turn may work in the next.
+  const toolFailures = new Map<string, number>();
   const agentResults: Array<{
     readonly tool: string;
     readonly ok: boolean;
@@ -2224,7 +2228,7 @@ export const startScreenCompanion = (input: {
   const agentStart = async (systemPrompt: string): Promise<VisionSession> => {
     await agentMcp?.close();
     agentMcp = await startBatonMcp({
-      tools: withFailureGuard(buildBatonTools(toolHost)),
+      tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
       gate: agentGate,
       scrub: (text) => vaultHost?.scrub(text) ?? text,
       onResult: (r) => agentResults.push(r),
@@ -2260,6 +2264,7 @@ export const startScreenCompanion = (input: {
         memory.beginTurn();
         agentTaint.reset();
         agentTools.length = 0;
+        toolFailures.clear();
         agentResults.length = 0;
         agentDecisions.length = 0;
         agentRoutes.length = 0;
@@ -2269,7 +2274,12 @@ export const startScreenCompanion = (input: {
     return agent;
   };
   /** A sentence of his, to the one assistant. Streams its first sentence as soon as it is written. */
-  const agentTurn = async (text: string, started: number, direct: boolean) => {
+  const agentTurn = async (
+    text: string,
+    started: number,
+    direct: boolean,
+    focusedSession: string | null,
+  ) => {
     answering += 1;
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
@@ -2282,7 +2292,7 @@ export const startScreenCompanion = (input: {
         direct ? `(to the focused session) ${text}` : text,
         {
           window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
-          session: null,
+          session: focusedSession,
         },
         (delta) => {
           firstTokenAt ??= Date.now();
@@ -2318,8 +2328,16 @@ export const startScreenCompanion = (input: {
         routes: [...agentRoutes],
         route: "agent",
       });
-      // Nothing said yet and not stopped by him: hand the sentence to the older router and say so.
-      if (error instanceof SessionClosed || firstTokenAt !== null) return fail(error);
+      // Nothing said or done yet and not stopped by him: hand the sentence to the older router and say so.
+      // A turn that already used a tool is never run again, since that tool may have clicked or sent.
+      if (
+        error instanceof SessionClosed ||
+        firstTokenAt !== null ||
+        agentTools.length > 0 ||
+        agentResults.length > 0
+      ) {
+        return fail(error);
+      }
       input.onNote?.("agent_fallback", {
         message: error instanceof Error ? error.message : String(error),
       });
@@ -2346,26 +2364,7 @@ export const startScreenCompanion = (input: {
     }
   };
 
-  const needsTurn = async (text: string, started: number): Promise<void> => {
-    answering += 1;
-    try {
-      input.onActivity?.("Looking");
-      const found = await actions!.needsMe!();
-      linger("Tessaya", found.card);
-      say(found.spoken);
-      conversation.add({ route: "answer", said: text, reply: found.spoken });
-      input.onNote?.("needs_turn", { said: text, totalMs: Date.now() - started });
-    } catch {
-      // The state read failed: the assistant answers instead, with its tools.
-      await agentTurn(text, started, false);
-    } finally {
-      input.onActivity?.(null);
-      answering -= 1;
-      input.onTurnEnd?.();
-    }
-  };
-
-  const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
+  const said: ScreenCompanion["said"] = async (text, { direct, typed = false, session = null }) => {
     const started = Date.now();
     voiceTurn = !typed;
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
@@ -2384,15 +2383,10 @@ export const startScreenCompanion = (input: {
       focus = askFocus ?? (await focusSoon());
     }
     askFocus = null;
-    // "What needs me?" is answered from state in a second or two, not by a model turn.
-    if (isNeedsMeAsk(text) && actions?.needsMe !== undefined && !busy) {
-      void needsTurn(text, started);
-      return { kind: "handled" };
-    }
     // Stop and its kin never wait on a model; everything else goes to the one assistant when it is on.
     // His own "teach:", "drive:" and "look:" prefixes name the mode: they are not for the assistant's judgement.
     if (entryRoute(text, busy, settings.oneAssistant) === "assistant") {
-      void agentTurn(text, started, direct);
+      void agentTurn(text, started, direct, session);
       return { kind: "handled" };
     }
     return routed(text, started, direct);

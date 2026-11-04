@@ -8,7 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { createConversationLog } from "./conversationLog.ts";
 
 describe("the conversation file", () => {
-  it("survives a restart, in full, and finds older turns for a new request", () => {
+  it("survives a restart, in full, and finds older turns by their words", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-conv-"));
     const file = NodePath.join(dir, "c.ndjson");
     const first = createConversationLog({ file });
@@ -22,11 +22,8 @@ describe("the conversation file", () => {
     first.add({ route: "answer", said: "read me the whole plan", reply: long });
     const second = createConversationLog({ file });
     expect(second.recent(2).map((t) => t.said)).toEqual(["chatter 6", "read me the whole plan"]);
-    expect(second.blockFor("type what you just said")).toContain("And that is the end.");
-    const block = second.blockFor("what did you say about the Focusrite gain");
-    expect(block).toContain("earlier, possibly relevant");
-    expect(block).toContain("And that is the end.");
-    expect(block).not.toContain("dictated 40");
+    expect(second.recent(1)[0]?.reply).toContain("And that is the end.");
+    expect(second.recent(20).map((t) => t.route)).not.toContain("dictation");
     expect(second.search("the Focusrite gain")[0]?.said).toBe("explain the Focusrite gain");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });

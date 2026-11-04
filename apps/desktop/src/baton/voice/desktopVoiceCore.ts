@@ -32,6 +32,7 @@ import {
 import {
   applyContextSnapshot,
   emptyContextBus,
+  resolveContextWorkSession,
   type ContextBusState,
 } from "@t3tools/baton-shared/contextBus";
 import type { TextInjectionAdapter } from "@t3tools/baton-shared/injection";
@@ -184,7 +185,11 @@ export interface BrainVoiceHook {
    */
   readonly said: (
     text: string,
-    input: { readonly direct: boolean; readonly typed?: boolean },
+    input: {
+      readonly direct: boolean;
+      readonly typed?: boolean;
+      readonly session?: string | null;
+    },
   ) => Promise<
     | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
     | { readonly kind: "handled" }
@@ -204,7 +209,13 @@ export const withBrainRoutes = (inner: VoiceRouter, brain: BrainVoiceHook): Voic
       return inner.route(effect, context);
     }
     const direct = effect.kind === "session_message";
-    const decision = await brain.said(effect.text, { direct });
+    // Only a session he is looking at, never "the one that moved last": that is a guess.
+    const focused = resolveContextWorkSession(context.bus, { now: context.now });
+    const decision = await brain.said(effect.text, {
+      direct,
+      session:
+        focused.workSessionId === null ? null : `${focused.workSessionId} (${focused.evidence})`,
+    });
     if (decision.kind === "handled") {
       return { kind: "ran", reply: "", workSessionId: null, source: "screen" };
     }

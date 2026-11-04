@@ -69,7 +69,7 @@ import { DAILY_MINUTES, jobAction, jobControls } from "../sessions/jobRows.ts";
 import { approvalAction, approvalControls } from "../sessions/approvalRows.ts";
 import { buildApprovals, describeApprovals } from "@t3tools/baton-shared/approvals";
 import { releasesUrl, repoSlug } from "@t3tools/baton-shared/repo";
-import { answerNeeds, answerNeedsSpoken } from "../presence/needsAnswer.ts";
+import { answerNeeds } from "../presence/needsAnswer.ts";
 import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
 import { parseWeaveHosts } from "@t3tools/baton-shared/weaveBoxes";
 import {
@@ -1789,20 +1789,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // A typed ask has no spoken "confirm", so the read-back becomes a box he answers himself.
   input.extras?.setActions({
     presence: () => awareness.describe(),
-    needsMe: async () =>
-      answerNeedsSpoken({
-        jobs: jobsCache ?? [],
-        sessions: input.sessions?.rows() ?? [],
-        findings: await watchFindings(),
-        extra: [
-          ...needsFromCommitments(commitments.list(), Date.now()),
-          ...syncNeeds(syncNow, Date.now()),
-          ...cloudLoginsNeeds(cloudNow(), Date.now()),
-        ],
-        config: needsConfig(),
-        external: externalNeeds,
-        now: Date.now(),
-      }),
     sessionsList: () => {
       const rows = input.sessions?.rows() ?? [];
       return rows.length === 0

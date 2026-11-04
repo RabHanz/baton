@@ -9,9 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import {
-  EARLIER_TURNS,
   RECENT_TURNS,
-  conversationBlock,
   parseTurn,
   searchTurns,
   currentTarget,
@@ -37,8 +35,6 @@ export interface ConversationLog {
   /** What "it" means now, if the conversation has been about something. */
   readonly target: () => ConversationTarget | null;
   readonly recent: (count?: number) => ReadonlyArray<ConversationTurn>;
-  /** The block to put before a request: the latest turns, and older ones that share its words. */
-  readonly blockFor: (request: string) => string;
 }
 
 const readTurns = (file: string): ReadonlyArray<ConversationTurn> => {
@@ -87,13 +83,5 @@ export const createConversationLog = (input: {
     search: (query, limit = 5) => searchTurns(turns, query, { exclude: new Set(), limit }),
     target: () => currentTarget(turns),
     recent: (count = RECENT_TURNS) => turns.filter((t) => t.route !== "dictation").slice(-count),
-    blockFor: (request) => {
-      const recent = turns.filter((t) => t.route !== "dictation").slice(-RECENT_TURNS);
-      const earlier = searchTurns(turns, request, {
-        exclude: new Set(recent.map((t) => t.id)),
-        limit: EARLIER_TURNS,
-      });
-      return conversationBlock({ recent, earlier });
-    },
   };
 };
