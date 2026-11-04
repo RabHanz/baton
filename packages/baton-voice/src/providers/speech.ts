@@ -70,12 +70,19 @@ export const decodeWav = (bytes: Buffer): Int16Array => {
   throw new Error("WAV has no data chunk");
 };
 
-const run = (command: string, args: ReadonlyArray<string>, stdin?: string): Promise<string> =>
+const run = (
+  command: string,
+  args: ReadonlyArray<string>,
+  stdin?: string,
+  live?: Set<NodeChildProcess.ChildProcess>,
+): Promise<string> =>
   new Promise((resolve, reject) => {
     const child = NodeChildProcess.spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    live?.add(child);
+    child.on("exit", () => live?.delete(child));
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk: Buffer) => (out += chunk.toString("utf8")));
@@ -160,25 +167,33 @@ export const createCloudStt = (input: {
 
 /** OS TTS: SAPI on Windows, `say` on macOS, espeak-ng on Linux. Text goes on stdin, never the command line. */
 /** `platform` is the host's (`process.platform` in the desktop main process). */
-export const createOsTts = (platform: NodeJS.Platform): TtsProvider => ({
-  name: `os:${platform}`,
-  speak: async (text) => {
-    if (text.trim().length === 0) return;
-    if (platform === "win32") {
-      await run(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak([Console]::In.ReadToEnd())",
-        ],
-        text,
-      );
-    } else if (platform === "darwin") {
-      await run("say", ["-f", "-"], text);
-    } else {
-      await run("espeak-ng", ["--stdin"], text);
-    }
-  },
-});
+export const createOsTts = (platform: NodeJS.Platform): TtsProvider => {
+  const live = new Set<NodeChildProcess.ChildProcess>();
+  return {
+    name: `os:${platform}`,
+    speak: async (text) => {
+      if (text.trim().length === 0) return;
+      if (platform === "win32") {
+        await run(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak([Console]::In.ReadToEnd())",
+          ],
+          text,
+          live,
+        );
+      } else if (platform === "darwin") {
+        await run("say", ["-f", "-"], text, live);
+      } else {
+        await run("espeak-ng", ["--stdin"], text, live);
+      }
+    },
+    cancel: () => {
+      for (const child of live) child.kill();
+      live.clear();
+    },
+  };
+};

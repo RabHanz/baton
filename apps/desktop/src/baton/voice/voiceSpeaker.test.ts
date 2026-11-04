@@ -43,10 +43,15 @@ describe("createSpeaker on the OS voice", () => {
     expect(active).toEqual([true, false]);
   });
 
-  it("drops what is queued on cancel", async () => {
+  it("drops what is queued on cancel, and cuts off the System voice mid-sentence", async () => {
     const said: string[] = [];
+    let cut = 0;
     const speaker = createSpeaker({
-      os: { name: "os", speak: async (text) => void said.push(text) },
+      os: {
+        name: "os",
+        speak: async (text) => void said.push(text),
+        cancel: () => void (cut += 1),
+      },
       voice: () => SYSTEM,
       player,
     });
@@ -54,6 +59,7 @@ describe("createSpeaker on the OS voice", () => {
     speaker.cancel();
     await run;
     expect(said).toEqual([]);
+    expect(cut).toBe(1);
   });
 
   it("generates one sentence at a time, ahead of playback", async () => {

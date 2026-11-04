@@ -198,6 +198,7 @@ export const createSpeaker = (input: {
     for (const stop of running) stop();
     running.clear();
     input.player.stop();
+    input.os.cancel?.();
   };
 
   return {

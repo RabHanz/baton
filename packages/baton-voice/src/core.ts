@@ -543,9 +543,14 @@ export const createVoiceCore = (input: {
     void input.stt
       .transcribe(joined(parts))
       .then((text) => {
-        const said = stripWake(text.trim(), timings.wakeWords);
-        if (!isStopPhrase(said)) return;
-        if (echoesSpeech(said, spokenLately)) {
+        // Over speakers the window starts inside her sentence, so his stop is at the end of it.
+        const words = text.trim().split(/\s+/);
+        const said = [1, 2, 3, 4]
+          .map((n) => stripWake(words.slice(-n).join(" "), timings.wakeWords))
+          .find(isStopPhrase);
+        if (said === undefined) return;
+        // Only the sentence she is saying (or just said) can have put the word there.
+        if (echoesSpeech(said, spokenLately.slice(-2))) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
         emit({ type: "stop_heard", text: said, at: now() });
@@ -694,7 +699,8 @@ export const createVoiceCore = (input: {
     if (speaking && !barged) {
       const flagged = headphones()
         ? input.vad.isSpeech(frame)
-        : input.echo !== undefined && ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
+        : input.echo !== undefined &&
+          ((v) => v.ready && v.nearEnd)(input.echo.process(frame, Date.now()));
       bargeRun = flagged ? bargeRun + frame.length : 0;
       if (bargeRun >= msToSamples(BARGE_MS)) {
         const onset = bargeRun;
