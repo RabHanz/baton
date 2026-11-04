@@ -126,6 +126,15 @@ describe("checkRewrite", () => {
     );
   });
 
+  it("relaxes the checks only around the correction, not across the whole text", () => {
+    const email =
+      "Thanks for today, I mean it. Can you ask Priya to send the Stripe contract to Marcus before Friday, and copy in the finance team on the thread as well please?";
+    expect(checkRewrite(email, email.replace(" to Marcus", "")).ok).toBe(false);
+    expect(
+      checkRewrite("Send it to Priya, no wait, sorry, send it to Marcus.", "Send it to Marcus.").ok,
+    ).toBe(true);
+  });
+
   it("lets a number go only where he took it back", () => {
     expect(checkRewrite("Use 6, no wait, 7 agents.", "Use 7 agents.").ok).toBe(true);
     expect(checkRewrite("Use 6 agents and 7 boxes.", "Use 7 boxes and agents.").ok).toBe(false);

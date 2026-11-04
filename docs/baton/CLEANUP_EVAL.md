@@ -5,6 +5,8 @@ capitals or punctuation, fillers, a false start, a "scratch that" self-correctio
 Tessaya's local pass and with local-then-Claude (haiku), and scores 0..1 per criterion against the
 original. The corpus is his own messages from the history index and is **not** in the repo; pass its
 path. Run: `node scripts/tessaya/cleanup-eval.mjs <corpus.json> --claude --limit 30 --out results.json`.
+Parakeet punctuates, so add `--punctuated` to keep the message's punctuation and capitals: that is
+the input the local gate (`needsModel`) sees in use. The table below was measured without it.
 
 Criteria: wording (words kept, in order), filler (none left that he did not say), selfcorrect (the
 taken-back phrase and the marker are gone), punct (capital start, a closing mark, "I" capitalised),

@@ -53,11 +53,14 @@ export const brainRows = (status: BrainStatus): ReadonlyArray<BrainRow> => {
       : claude.state === "signed-out"
         ? "Not signed in. Run claude auth login in a terminal, then choose Check again."
         : "Not installed. Install Claude Code, then choose Check again.";
+  // The one assistant runs only on Claude Code (INT-12): say so instead of degrading silently.
+  const assistantNote =
+    claude.state === "ready"
+      ? ""
+      : " The assistant you talk to needs a Claude login; without one it follows simple word rules.";
   const codexNote =
     codex.state === "ready"
-      ? codex.apiKey === true
-        ? "Signed in with an API key, so each use is billed to that key."
-        : "Uses your ChatGPT plan."
+      ? `${codex.apiKey === true ? "Signed in with an API key, so each use is billed to that key." : "Uses your ChatGPT plan."}${assistantNote}`
       : codex.state === "signed-out"
         ? "Not signed in. Run codex login in a terminal, then choose Check again."
         : "Not installed. Install Codex, then choose Check again.";

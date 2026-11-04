@@ -4,7 +4,7 @@
 // the repo: pass its path. Each message is degraded the way a recogniser's raw output reads
 // (no punctuation or capitals, fillers, a false start, a "scratch that" self-correction), cleaned
 // by Baton's local pass and by local-then-Claude, and scored 0..1 per criterion against the message.
-//   node scripts/tessaya/cleanup-eval.mjs <corpus.json> [--claude] [--out results.json] [--limit N]
+//   node scripts/tessaya/cleanup-eval.mjs <corpus.json> [--claude] [--punctuated] [--out results.json] [--limit N]
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,8 @@ const flag = (name) => args.indexOf(name);
 const useClaude = flag("--claude") >= 0;
 const limit = flag("--limit") >= 0 ? Number(args[flag("--limit") + 1]) : corpus.length;
 const out = flag("--out") >= 0 ? args[flag("--out") + 1] : null;
+// Parakeet punctuates and capitalises: --punctuated keeps that, so the local gate sees what it sees in use.
+const punctuated = flag("--punctuated") >= 0;
 
 const words = (text) =>
   text
@@ -31,7 +33,7 @@ const FILLERS = ["um", "uh", "you know", "er"];
 
 /** What a recogniser would hand over: deterministic, so runs compare. */
 export const degrade = (text, index) => {
-  const w = words(text);
+  const w = punctuated ? text.split(/\s+/).filter(Boolean) : words(text);
   const out = [];
   w.forEach((word, i) => {
     if (i > 0 && i % 11 === 0) out.push(FILLERS[(i + index) % FILLERS.length]);
