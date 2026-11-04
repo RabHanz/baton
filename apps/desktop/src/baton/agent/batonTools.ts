@@ -40,8 +40,8 @@ export interface ToolHost {
     toY: number;
     screen?: number;
   }) => Promise<string>;
-  readonly type: (text: string) => Promise<string>;
-  readonly press: (keys: ReadonlyArray<string>) => Promise<string>;
+  readonly type: (text: string, window?: string) => Promise<string>;
+  readonly press: (keys: ReadonlyArray<string>, window?: string) => Promise<string>;
   readonly sessions: () => Promise<string>;
   /** Every session on every machine, stopped ones too: find, bring back, start. */
   readonly catalog?: {
@@ -327,15 +327,22 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       name: "type_text",
       description:
         "Type plain text where the keyboard is, one line. Click the box first. Plain text into a box he named needs no question; a command line or secrets do.",
-      inputSchema: object({ text: { type: "string", maxLength: 4000 }, why: WHY }, ["text", "why"]),
-      run: async (a) => ({ text: await host.type(str(a, "text", 4_000)) }),
+      inputSchema: object({ text: { type: "string", maxLength: 4000 }, ...win, why: WHY }, [
+        "text",
+        "why",
+      ]),
+      run: async (a) => ({ text: await host.type(str(a, "text", 4_000), optStr(a, "window")) }),
     },
     {
       name: "press_keys",
       description:
         'Press a key or a chord, such as ["ctrl","a"]. Enter, which may send, asks him first.',
       inputSchema: object(
-        { keys: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 }, why: WHY },
+        {
+          keys: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },
+          ...win,
+          why: WHY,
+        },
         ["keys", "why"],
       ),
       run: async (a) => {
@@ -348,7 +355,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         ) {
           throw new Error("keys must be one to four strings.");
         }
-        return { text: await host.press(keys as string[]) };
+        return { text: await host.press(keys as string[], optStr(a, "window")) };
       },
     },
     {

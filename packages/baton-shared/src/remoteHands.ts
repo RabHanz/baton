@@ -134,16 +134,19 @@ export const createHandsBroker = (input: {
       );
     }
     const id = input.newId();
+    const item: HandsCall = { id, tool, args, session };
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         waiting.delete(id);
+        // Told "timeout", the caller may retry: a late run would type into whatever has focus then.
+        const queued = queue.indexOf(item);
+        if (queued >= 0) queue.splice(queued, 1);
         resolve(finish("timeout", { ok: false, error: "The desktop did not answer in time." }));
       }, timeoutMs);
       waiting.set(id, (r) => {
         clearTimeout(timer);
         resolve(finish(r.ok ? "done" : "failed", r));
       });
-      const item: HandsCall = { id, tool, args, session };
       if (taker !== null) taker(item);
       else queue.push(item);
     });

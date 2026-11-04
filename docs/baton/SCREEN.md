@@ -29,7 +29,9 @@ take it all down, voice included. Esc is left to your apps. A lesson's step stay
 **While Tessaya acts** (the assistant's hands, Drive, a remote session) nothing is drawn over the app it works in: no box,
 ring, dots, Stop window or thinking card. The pill says it is working and a click on it stops the work; one card gives the
 result at the end. Its questions come up without taking the keyboard, so answer them with the mouse, by voice or on the phone.
-Pointing (Look, Teach) shows the pointer and a word, never a box round the control. Rules: D153.
+Pointing (Look, Teach) shows the pointer and a word, never a box round the control. The assistant presses a
+named control through its own UI Automation pattern, so your mouse pointer stays put; it moves the real
+pointer only for a control with no pattern, or a click by position. Rules: D153.
 
 **Spoken and written, or Written only.** From the tray (Answers) or the ask box, remembered. In Written
 only nothing plays, and every answer, action, plan and step is on screen in full.

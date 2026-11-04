@@ -1,11 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
- * Drive's mouse and keyboard without a native module (D84): a long-lived PowerShell calling
- * user32 on Windows, xdotool on Linux X11; macOS refuses by name. Windows text is pasted, so
- * every keyboard layout types the right characters.
+ * Drive's and the hands' mouse and keyboard. On Windows the running sidecar sends them (SendInput,
+ * per-monitor DPI aware) and types through its own paste, which keeps text out of clipboard history;
+ * a PowerShell calling user32 stands in only while the sidecar is not running. xdotool on Linux X11;
+ * macOS refuses by name. Windows text is pasted, so every keyboard layout types the right characters.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeReadline from "node:readline";
+
+import type { SidecarInput } from "../voice/dictationSidecar.ts";
 
 type Point = { readonly x: number; readonly y: number };
 
@@ -232,46 +235,75 @@ export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
   return Object.assign(paste, { cancelRestore });
 };
 
+/** The running sidecar's input; null while it is not running. */
+export interface SidecarHands {
+  readonly input: (input: SidecarInput) => Promise<void>;
+  /** Pastes into the window with the keyboard only, with clipboard history and cloud sync kept out. */
+  readonly paste: (text: string) => Promise<void>;
+}
+
+const LEFT = [0x2, 0x4];
+const RIGHT = [0x8, 0x10];
+const WHEEL = 0x800;
+
 export const createInputDriver = (input: {
   readonly platform: string;
   /** Electron's `screen.dipToScreenPoint` on Windows; identity elsewhere. */
   readonly toPhysical: (p: { x: number; y: number }) => { x: number; y: number };
   readonly clipboard: Clipboard;
+  readonly sidecar?: () => SidecarHands | null;
 }): InputDriver => {
   const paste = createPaster(input.clipboard);
 
   if (input.platform === "win32") {
-    const ps = lineProcess("powershell.exe", [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      WINDOWS_INPUT_SCRIPT,
-    ]);
-    const keys = (list: ReadonlyArray<string>) => ps.send(`keys ${virtualKeys(list).join(",")}`);
-    const physical = (p: Point) => {
-      const at = input.toPhysical(p);
-      return `${Math.round(at.x)} ${Math.round(at.y)}`;
+    let ps: ReturnType<typeof lineProcess> | null = null;
+    const shell = () =>
+      (ps ??= lineProcess("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        WINDOWS_INPUT_SCRIPT,
+      ]));
+    const send = (command: SidecarInput): Promise<void> => {
+      const side = input.sidecar?.() ?? null;
+      if (side !== null) return side.input(command);
+      if (command.op === "keys") return shell().send(`keys ${command.vks.join(",")}`);
+      if (command.x === undefined || command.y === undefined)
+        return shell().send(`wheel ${command.wheel ?? 0}`);
+      return shell().send(
+        command.wheel === undefined
+          ? `at ${command.x} ${command.y} ${command.buttons.join(",") || "0"}`
+          : `wheelat ${command.x} ${command.y} ${command.wheel}`,
+      );
     };
+    const at = (p: Point | null, buttons: ReadonlyArray<number>, wheel?: number) => {
+      const to = p === null ? null : input.toPhysical(p);
+      return send({
+        op: "at",
+        ...(to === null ? {} : { x: Math.round(to.x), y: Math.round(to.y) }),
+        buttons,
+        ...(wheel === undefined ? {} : { wheel }),
+      });
+    };
+    const keys = (list: ReadonlyArray<string>) => send({ op: "keys", vks: virtualKeys(list) });
     return {
       clickAt: (p, button, count) => {
-        const once = button === "right" ? "8,16" : "2,4";
-        return ps.send(`at ${physical(p)} ${count === 2 ? `${once},${once}` : once}`);
+        const once = button === "right" ? RIGHT : LEFT;
+        return at(p, count === 2 ? [...once, ...once] : once);
       },
-      pressAt: (p) => ps.send(`at ${physical(p)} 2`),
-      moveAt: (p) => ps.send(`at ${physical(p)} 0`),
-      releaseAt: (p) => ps.send(`at ${physical(p)} 4`),
-      scrollAt: (p, amount) =>
-        ps.send(
-          p === null
-            ? `wheel ${Math.round(amount * 120)}`
-            : `wheelat ${physical(p)} ${Math.round(amount * 120)}`,
-        ),
+      pressAt: (p) => at(p, [LEFT[0]!]),
+      moveAt: (p) => at(p, []),
+      releaseAt: (p) => at(p, [LEFT[1]!]),
+      scrollAt: (p, amount) => at(p, [WHEEL], Math.round(amount * 120)),
       press: (list) => {
         if (isCopyChord(list)) paste.cancelRestore();
         return keys(list);
       },
-      type: (text) => paste(text, () => keys(["ctrl", "v"])),
-      dispose: ps.dispose,
+      type: (text) => {
+        const side = input.sidecar?.() ?? null;
+        return side !== null ? side.paste(text) : paste(text, () => keys(["ctrl", "v"]));
+      },
+      dispose: () => ps?.dispose(),
     };
   }
 

@@ -2006,19 +2006,38 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             uiTree: sidecar.uiTree,
             captureWindow: sidecar.captureWindow,
             focusWindow: sidecar.focusWindow,
+            input: sidecar.input,
+            pasteInto: sidecar.pasteInto,
+            setValue: sidecar.setValue,
           },
-    locate: async (label, near, anywhere) => {
+    locate: async (label, near, anywhere, invoke) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);
+      // The sidecar answers an invoke within 2 s ("pending" when a dialog it opened is up), so it waits past that.
       const found = await Promise.race([
         sidecar.locate({
           label,
           x: physical.x,
           y: physical.y,
           ...(anywhere === true ? { foreground: true } : {}),
+          ...(invoke === true ? { invoke: true } : {}),
         }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS)),
+        new Promise<"slow">((resolve) =>
+          setTimeout(() => resolve("slow"), LOCATE_TIMEOUT_MS * (invoke === true ? 2 : 1)),
+        ),
       ]).catch(() => null);
+      // The pointer does not wait on a slow tree; a click by name must not hear "not there" when it simply was not read.
+      if (found === "slow") {
+        if (anywhere !== true) return null;
+        throw new Error(
+          invoke === true
+            ? `The window's controls took too long to read; "${label}" may still have been pressed. Look before trying again.`
+            : "The window's controls took too long to read.",
+        );
+      }
+      if (found?.found === true && found.invoked !== undefined) {
+        return { ...near, name: found.name ?? label, invoked: found.invoked };
+      }
       if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
       const real = Electron.screen.screenToDipPoint({ x: found.x, y: found.y });
       // Same name far from where the model saw it is a different thing.
