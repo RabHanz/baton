@@ -53,13 +53,29 @@ export interface LocalHarness {
 
 const fail = <T>(error: string): Outcome<T> => ({ ok: false, error });
 
+/**
+ * Starts in flight in this process. A request is `approved` only while its start runs; after a crash or quit none
+ * is in flight, so one left `approved` goes back to waiting and can be approved, withdrawn or denied again.
+ */
+const starting = new Set<string>();
+
 export const localProvider = (
   h: LocalHarness,
   store: PendingStore,
   briefs: BriefStore,
 ): CloudProvider => {
-  const find = (id: string) => store.load().find((r) => r.id === id);
-  const replace = (r: CloudRequest) => store.save(store.load().map((x) => (x.id === r.id ? r : x)));
+  const load = (): ReadonlyArray<CloudRequest> => {
+    const list = store.load();
+    const stuck = (r: CloudRequest) => r.state === "approved" && !starting.has(`${h.id}:${r.id}`);
+    if (!list.some(stuck)) return list;
+    const healed = list.map((r) =>
+      stuck(r) ? { ...r, state: "awaiting-director" as const, account: null } : r,
+    );
+    store.save(healed);
+    return healed;
+  };
+  const find = (id: string) => load().find((r) => r.id === id);
+  const replace = (r: CloudRequest) => store.save(load().map((x) => (x.id === r.id ? r : x)));
   return {
     id: h.id,
     transport: "local",
@@ -102,7 +118,7 @@ export const localProvider = (
         overCap: false,
       };
       briefs.put(request.id, brief);
-      store.save([...store.load(), request]);
+      store.save([...load(), request]);
       return { ok: true, value: request };
     },
     status: async (id) => {
@@ -119,9 +135,7 @@ export const localProvider = (
     },
     list: async (f) => ({
       ok: true,
-      value: store
-        .load()
-        .filter((r) => f.label === undefined || f.mine !== true || r.label === f.label),
+      value: load().filter((r) => f.label === undefined || f.mine !== true || r.label === f.label),
     }),
     cancel: async (id) => {
       const r = find(id);
@@ -148,8 +162,10 @@ export const localProvider = (
       const brief = briefs.get(id);
       if (brief === null) return fail("The brief for that request is gone. Ask again.");
       // Claimed before the start, which can take minutes: a second approval meanwhile finds it no longer waiting.
+      const key = `${h.id}:${id}`;
+      starting.add(key);
       replace({ ...r, state: "approved", account });
-      const started = await h.start(r, brief, account);
+      const started = await h.start(r, brief, account).finally(() => starting.delete(key));
       if (!started.ok) {
         replace(r);
         return started;
