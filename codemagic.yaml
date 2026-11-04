@@ -22,7 +22,7 @@
 ##     only when a person asks for one. Mac minutes are the scarce resource.
 ##
 ## What the Director must do in the Codemagic UI, once:
-##   1. Applications → Add application → connect `RabHanz/baton` (GitHub App
+##   1. Applications → Add application → connect `RabHanz/tessaya` (GitHub App
 ##      or personal token; the repo is private, so read access is required).
 ##      Codemagic finds this file at the repository root on its own.
 ##   2. Nothing else. No environment-variable group, no code-signing identity,

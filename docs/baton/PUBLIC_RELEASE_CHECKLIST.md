@@ -64,8 +64,8 @@ Live state of each, with who must act.
    developer identity and notarisation. Neither has been bought or applied for. Needs the Director's choice of vendor and
    a legal publisher name.
 5. **Trademark search for Tessaya (Director).** The 2026-11-01 screen is not clearance; a proper search is his to commission.
-6. **Release home.** Updates and the server archive still point at `github.com/RabHanz/baton`. Move to an organisation
-   repository together (`BatonUpdater`, `fetch-server-archive.sh`, `apply-release-branding.sh`, `codemagic.yaml`).
+6. **Release home.** Updates and the server archive point at `github.com/RabHanz/tessaya`, a personal account. Move to
+   an organisation repository together (`BatonUpdater`, `fetch-server-archive.sh`, `apply-release-branding.sh`, `codemagic.yaml`).
 7. **The maintainer's account table.** `ClaudeAccountInstances.ts` is still the guard's one allow-list entry; set
    `BATON_CLAUDE_ACCOUNT_INSTANCES` on both boxes, then delete the table.
 8. **Privacy and support pages.** Not written: a plain statement of what leaves the machine, and a way to report a problem.

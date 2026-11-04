@@ -2,7 +2,7 @@
 
 Decision (Director, 2026-11-01): Tessaya's wake word is trained in British English with varied voices on data whose licences allow an MIT release. The current Sebastian, Alfred, Freya and Onyx models were trained on sets with unclear or non-commercial terms (`LAUNCH.md` section 2) and block that.
 
-Run it: `gh workflow run baton-wake-train.yml -R RabHanz/baton --ref main -f word=tessaya -f clean=true`. Free GitHub runners, about 5 hours; the model comes back as the `wake-tessaya` artifact. `clean=false` keeps the old data path for the existing words.
+Run it: `gh workflow run baton-wake-train.yml -R RabHanz/tessaya --ref main -f word=tessaya -f clean=true`. Free GitHub runners, about 5 hours; the model comes back as the `wake-tessaya` artifact. `clean=false` keeps the old data path for the existing words.
 
 ## What changes with CLEAN=1
 

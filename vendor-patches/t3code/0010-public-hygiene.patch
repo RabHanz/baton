@@ -1,5 +1,5 @@
 diff --git a/.github/ISSUE_TEMPLATE/config.yml b/.github/ISSUE_TEMPLATE/config.yml
-index 4f4940ba6655dc008db1986fb879d2c7180e9c9f..471c5ac4418c68a86e1f53eca232ba18ca6a02ac 100644
+index 4f4940ba6655dc008db1986fb879d2c7180e9c9f..df4eb663c93a92ee349a33e3d8adeb3898ac29cc 100644
 --- a/.github/ISSUE_TEMPLATE/config.yml
 +++ b/.github/ISSUE_TEMPLATE/config.yml
 @@ -1,5 +1,5 @@
@@ -9,7 +9,7 @@ index 4f4940ba6655dc008db1986fb879d2c7180e9c9f..471c5ac4418c68a86e1f53eca232ba18
 -    url: https://github.com/pingdotgg/t3code/discussions/categories/ideas
 -    about: Suggest an improvement or new capability in Discussions.
 +  - name: Security problem
-+    url: https://github.com/RabHanz/baton/security/advisories/new
++    url: https://github.com/RabHanz/tessaya/security/advisories/new
 +    about: Report a vulnerability privately. Do not open a public issue.
 diff --git a/.github/SECURITY.md b/.github/SECURITY.md
 index 69dc53dc4393fe4f2b319c12a82c3218e7f27bb4..1381120856e94014ac5788ca7c0c7e3d35ae4bce 100644
