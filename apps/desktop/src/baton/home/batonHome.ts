@@ -7,7 +7,7 @@
  * by data (`HomeControl`), so the tray, the voice side and the companion each own their settings and
  * this file owns only how they look.
  */
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 import * as Electron from "electron";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -372,6 +372,7 @@ const GET = "baton-home:get";
 const SET = "baton-home:set";
 const SESSIONS = "baton-home:sessions";
 const PUSH = "baton-home:state";
+const PUSH_MS = 100;
 const THEME = "baton-home:theme";
 const LEVEL = "baton-home:level";
 
@@ -459,6 +460,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   // What each window was last given, so a burst of refreshes does not repeat synchronous window-manager calls.
   const applied = new WeakMap<object, string>();
   const bars = new WeakMap<object, string>();
+  const looked = new WeakMap<object, string>();
   /** The page and the window's own colour, set live: no reload, no flicker. */
   const applyTheme = () => {
     const open = live();
@@ -481,15 +483,16 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   };
   Electron.nativeTheme.on("updated", applyTheme);
   /** The classes on the page's root, and the window's material: live, no reload. */
-  const applyLook = () => {
+  /** `force` after a page load, whose root starts with no classes; a refresh sends the script only when it changed. */
+  const applyLook = (force = true) => {
     const open = live();
     if (open === null) return;
     const now = look();
-    void open.webContents
-      .executeJavaScript(
-        `${applyLookScript(lookClasses(now.motion, now.glass))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`,
-      )
-      .catch(() => undefined);
+    const script = `${applyLookScript(lookClasses(now.motion, now.glass))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`;
+    if (force || looked.get(open) !== script) {
+      looked.set(open, script);
+      void open.webContents.executeJavaScript(script).catch(() => undefined);
+    }
     if (process.platform === "win32") {
       // Each of these is a synchronous call into the window manager: only when the value changed, never per refresh.
       const key = `${material().backgroundMaterial ?? "none"}|${theme()}`;
@@ -513,12 +516,24 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     }
   };
   let opened = false;
+  // Download progress, sidebar snapshots and catalog refreshes each ask for a refresh: one push per PUSH_MS at most,
+  // and the trailing one builds the state when it is sent, so the window always ends on the latest.
+  let pushedAt = 0;
+  let pushTimer: ReturnType<typeof setTimeout> | null = null;
+  const push = () => {
+    pushTimer = null;
+    pushedAt = Date.now();
+    live()?.webContents.send(PUSH, withTabs(input.state()));
+    applyTheme();
+    applyLook(false);
+  };
   return {
-    applyLook,
+    applyLook: () => applyLook(),
     refresh: () => {
-      live()?.webContents.send(PUSH, withTabs(input.state()));
-      applyTheme();
-      applyLook();
+      if (pushTimer !== null) return;
+      const wait = pushedAt + PUSH_MS - Date.now();
+      if (wait > 0) pushTimer = setTimeout(push, wait);
+      else push();
     },
     open: () => {
       const existing = live();
@@ -587,7 +602,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
             theme(),
           )
         : null;
-      created.webContents.on("did-finish-load", applyLook);
+      created.webContents.on("did-finish-load", () => applyLook());
       created.once("ready-to-show", () => {
         if (splash === null) return created.show();
         splash.whenToShow(() => {

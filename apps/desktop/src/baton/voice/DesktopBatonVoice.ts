@@ -1056,11 +1056,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setNoteHotkey(scratch.hotkeyOn());
   /** Worked out from History at most every half minute; Home redraws far more often. */
   let deepAt = 0;
+  let deepKey = "";
   let deepValue: ReturnType<typeof computeDeepInsights> | null = null;
   let profileValue: ReturnType<typeof computeVoiceProfile> = null;
+  /** Changes when History is written or his day turns over: nothing else changes what the counts say. */
+  const historyKey = () => `${historyRev}|${new Date().toDateString()}`;
   const deepInsights = () => {
     if (history === null) return null;
-    if (Date.now() - deepAt > 30_000) {
+    if (deepKey !== historyKey() && Date.now() - deepAt > 30_000) {
+      deepKey = historyKey();
       const turns = history.list({ query: "", limit: 20_000 });
       deepValue = turns.some((t) => t.kind === "dictation")
         ? computeDeepInsights(turns, Date.now())
@@ -1146,13 +1150,37 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     return fitted;
   };
   // Everything he says and what it became, kept forever on this machine (the History tab).
+  let historyRev = 0;
   const history = (() => {
     try {
-      return openHistory(NodePath.join(input.stateDir, "voice", "history.sqlite"));
+      const opened = openHistory(NodePath.join(input.stateDir, "voice", "history.sqlite"));
+      const bump =
+        <A extends ReadonlyArray<unknown>, R>(write: (...args: A) => R) =>
+        (...args: A): R => {
+          historyRev += 1;
+          return write(...args);
+        };
+      return {
+        ...opened,
+        add: bump(opened.add),
+        update: bump(opened.update),
+        remove: bump(opened.remove),
+      };
     } catch {
       return null;
     }
   })();
+  let insightsKey = "";
+  let insightsValue = computeInsights([], new Date());
+  /** Home redraws many times a second while busy; the 20,000-row read runs only when History changed. */
+  const insights = () => {
+    if (insightsKey !== historyKey()) {
+      insightsKey = historyKey();
+      insightsValue = computeInsights(history?.list({ limit: 20_000 }) ?? [], new Date());
+    }
+    return insightsValue;
+  };
+  let toolNames: ReadonlyArray<string> | null = null;
   const audioDir = NodePath.join(input.stateDir, "voice", "recordings");
   // A proof run's recorded files are not his words: they leave nothing in History or in the recordings.
   const testRun = (process.env["BATON_TEST_WAV"] ?? "") !== "";
@@ -3292,7 +3320,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         sessions: sessionRows.length,
         needYou: sessionRows.filter((r) => r.urgent).length,
       },
-      insights: computeInsights(history?.list({ limit: 20_000 }) ?? [], new Date()),
+      insights: insights(),
       vocabulary: (dictionary as ReadonlyArray<VocabEntry>).map((d) => ({
         phrase: d.phrase,
         replacement: d.replacement,
@@ -3606,7 +3634,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ...cloudPageControls(cloud.view(), cloudSettings()),
       ...approvalCardControls(cloud.view()),
       ...helpControls({
-        tools: buildBatonTools({} as ToolHost).map((t) => t.name),
+        tools: (toolNames ??= buildBatonTools({} as ToolHost).map((t) => t.name)),
         bindings: currentBindings().map((r) => ({
           label: r.def.label,
           keys: r.inputs.map((x) => (x.type === "key" ? x.accelerator : x.button)).join(", "),
