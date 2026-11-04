@@ -1,6 +1,12 @@
 import { ProjectId, ThreadId, WorkSessionId } from "@t3tools/baton-contracts";
-import { ProviderInstanceId, type OrchestrationV2ThreadShell } from "@t3tools/contracts";
+import {
+  DEFAULT_MODEL_BY_PROVIDER,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type OrchestrationV2ThreadShell,
+} from "@t3tools/contracts";
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
@@ -211,8 +217,8 @@ layer("BatonJobFlow", (it) => {
             modelSelection: { instanceId: "claude", model: "sonnet" },
           }) as unknown as OrchestrationV2ThreadShell;
         shells.push(shell(threadId));
-        // The plan is written on the strong model of the routing table, whatever the client picked.
-        assert.strictEqual(launched.at(-1)?.modelSelection.model, "opus");
+        // A model he chose is kept for the whole job.
+        assert.strictEqual(launched.at(-1)?.modelSelection.model, "sonnet");
         assert.lengthOf(yield* splitJob({ id: parent, parts: [{ title: "A", goal: "do a" }] }), 0);
         yield* agreeJob(parent);
         const before = launched.length;
@@ -341,6 +347,31 @@ layer("BatonJobFlow", (it) => {
         assert.include(text, "- Report: not started.");
         assert.include(text, "2 of 3 failed or did not start");
       }),
+  );
+
+  it.effect("runs a job he picked no model for on the routing table's strong model", () =>
+    Effect.gen(function* () {
+      const dir = NodePath.join(NodeOS.tmpdir(), "baton-flow-test", "operating-system");
+      NodeFS.mkdirSync(dir, { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(dir, "routing.json"), '{"strong":"strong-model"}');
+      try {
+        yield* startJob({
+          id: WorkSessionId.make("job-flow-default"),
+          projectId: ProjectId.make("project-site"),
+          title: "Default",
+          goal: "do it",
+          permissions: { folders: [], projects: [], tools: ["read" as const] },
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claude"),
+            model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")]!,
+          },
+          runtimeMode: "approval-required",
+        });
+        assert.strictEqual(launched.at(-1)?.modelSelection.model, "strong-model");
+      } finally {
+        NodeFS.rmSync(dir, { recursive: true, force: true });
+      }
+    }),
   );
 
   it.effect("keeps a Codex job and its routine parts on Codex's own model", () =>

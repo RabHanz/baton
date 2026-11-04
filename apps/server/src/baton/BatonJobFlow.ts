@@ -34,7 +34,9 @@ import {
 } from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import {
+  DEFAULT_MODEL_BY_PROVIDER,
   type ProviderInstanceId,
+  ProviderDriverKind,
   type ThreadId,
   ThreadId as ThreadIdSchema,
 } from "@t3tools/contracts";
@@ -105,9 +107,13 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   });
   const id = input.id ?? WorkSessionId.make(`job-${yield* uuid}`);
   const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
-  // A whole job is planned on the strong model of his routing table (D148); a part brings its own.
+  // A whole job he did not pick a model for runs on the strong model of his routing table (D148);
+  // a model he chose, and a part, keep their own. The clients send Claude's default when he picked none.
   const modelSelection =
-    options.parentId === undefined && (yield* routesByTable(input.modelSelection.instanceId))
+    options.parentId === undefined &&
+    input.modelSelection.model ===
+      DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")] &&
+    (yield* routesByTable(input.modelSelection.instanceId))
       ? { ...input.modelSelection, model: modelFor("planning", readRouting(userdata)) }
       : input.modelSelection;
   const terms = yield* jobs.create({
