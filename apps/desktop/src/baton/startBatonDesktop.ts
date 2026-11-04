@@ -228,7 +228,17 @@ export const startBatonDesktop = Effect.gen(function* () {
         } catch {
           // Without the marker the window just does not say it is back.
         }
-        return run(updates.install);
+        return run(updates.installPrepared(version)).then((result) => {
+          if (result.accepted && !result.failed) return;
+          // Still running: this exit is not an update, and the next start must not say it was.
+          lifecycle.cancelExit();
+          lifecycle.note("update-install-failed", { to: version });
+          try {
+            NodeFS.rmSync(pendingPath, { force: true });
+          } catch {
+            // The next start then says the update did not take, which is true.
+          }
+        });
       },
       busy: () => ({
         voiceBusy: voice?.busy() ?? false,
@@ -331,8 +341,9 @@ export const startBatonDesktop = Effect.gen(function* () {
         if (state.availableVersion !== version && state.downloadedVersion !== version) {
           return `The update feed offers ${state.availableVersion ?? "nothing"}, not ${version}. Nothing was changed.`;
         }
-        void run(updates.download).then(() => batonUpdates.install());
-        return `Downloading ${version}; the app restarts itself at the first quiet moment.`;
+        // Through the countdown: he is warned before the app restarts under him.
+        void run(updates.download).then(() => batonUpdates.soon());
+        return `Downloading ${version}; the app warns for 30 seconds, then restarts at the first quiet moment.`;
       },
       pages: ["home"],
       openPage: async (page: string) => {
