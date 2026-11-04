@@ -36,3 +36,66 @@ index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..49490d5542856898889747cebc6a3b34
  type RpcClientFactory = typeof makeWsRpcProtocolClient;
  export type WsRpcProtocolClient =
    RpcClientFactory extends Effect.Effect<infer Client, any, any> ? Client : never;
+diff --git a/packages/client-runtime/src/state/threadRequests.test.ts b/packages/client-runtime/src/state/threadRequests.test.ts
+index d9aaf9fdca71a2c2ef275772741c28afbcddd390..ae8b0cc32c1ab2a21f885ecf4ed6b82792527261 100644
+--- a/packages/client-runtime/src/state/threadRequests.test.ts
++++ b/packages/client-runtime/src/state/threadRequests.test.ts
+@@ -306,6 +306,13 @@ describe("pending v2 questions", () => {
+     ]);
+   });
+ 
++  it("still shows a card for a pending message-mode request whose item is not loaded", () => {
++    const windowed = { ...projection, turnItems: [] };
++    const [card] = derivePendingThreadRequests(windowed).userInputs;
++    expect(card?.requestId).toBe(requestId);
++    expect(card?.questions[0]?.question).toBe("A question is waiting in the terminal.");
++  });
++
+   it("only marks asynchronous questions as dismissible", () => {
+     const live = {
+       ...projection,
+diff --git a/packages/client-runtime/src/state/threadRequests.ts b/packages/client-runtime/src/state/threadRequests.ts
+index a010018c5051d13b3c6953acb55297c6b2fc014e..72f60181f9b809aef44f3f1cf803d2a88f2b5c6f 100644
+--- a/packages/client-runtime/src/state/threadRequests.ts
++++ b/packages/client-runtime/src/state/threadRequests.ts
+@@ -225,6 +225,19 @@ export function pendingRuntimeRequestIds(
+   );
+ }
+ 
++const WAITING_QUESTION: ThreadUserInputQuestion = {
++  id: "answer",
++  header: "Question waiting",
++  question: "A question is waiting in the terminal.",
++  multiSelect: false,
++  options: [
++    {
++      label: "I'll answer it in the terminal",
++      description: "Open the pane in Herdr and answer it there.",
++    },
++  ],
++};
++
+ export function derivePendingThreadRequests(
+   projection: Pick<ThreadStructure, "runtimeRequests" | "turnItems">,
+ ): PendingThreadRequests {
+@@ -239,7 +252,19 @@ export function derivePendingThreadRequests(
+         (candidate) =>
+           candidate.type === "user_input_request" && candidate.requestId === request.id,
+       );
+-      if (item === undefined || item.type !== "user_input_request") continue;
++      if (item === undefined || item.type !== "user_input_request") {
++        // A pending message-mode request whose card is not loaded still shows: a question must never be invisible.
++        if (responseCapability === "message")
++          userInputs.push({
++            requestId: request.id,
++            createdAt: DateTime.formatIso(request.createdAt),
++            questions: [WAITING_QUESTION],
++            responseCapability,
++            dismissible: true,
++            responseMode: "message",
++          });
++        continue;
++      }
+       userInputs.push({
+         requestId: request.id,
+         createdAt: DateTime.formatIso(request.createdAt),

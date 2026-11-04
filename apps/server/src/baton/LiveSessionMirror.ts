@@ -780,6 +780,15 @@ export const rebindThread = (
     }
   });
 
+/**
+ * A question card belongs to a run: items without one are numbered below every run's, fall outside the window clients
+ * load, and the card never shows although its request is pending.
+ */
+export const askRunId = (
+  target: RunId | null,
+  runs: ReadonlyArray<{ readonly id: RunId }>,
+): RunId | null => target ?? runs.at(-1)?.id ?? null;
+
 const make = Effect.gen(function* () {
   const engine = yield* BatonEngine;
   const settings = yield* ServerSettingsService;
@@ -1517,6 +1526,7 @@ const make = Effect.gen(function* () {
       };
       yield* expireOtherAsks(follow, String(requestId));
       follow.ask = { key: found.key, requestId, itemId, request };
+      const askRun = askRunId(follow.target, yield* engine.threadRuns(follow.threadId));
       yield* engine.writeEvents({
         events: [
           {
@@ -1527,7 +1537,7 @@ const make = Effect.gen(function* () {
             payload: {
               id: itemId,
               threadId: follow.threadId,
-              runId: follow.target,
+              runId: askRun,
               nodeId,
               providerThreadId: null,
               providerTurnId: null,

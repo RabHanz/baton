@@ -26,7 +26,13 @@ esac
 `,
     { mode: 0o755 },
   );
-  return { bin, keys: () => (NodeFS.existsSync(NodePath.join(dir, "keys")) ? NodeFS.readFileSync(NodePath.join(dir, "keys"), "utf8").trim().split("\n") : []) };
+  return {
+    bin,
+    keys: () =>
+      NodeFS.existsSync(NodePath.join(dir, "keys"))
+        ? NodeFS.readFileSync(NodePath.join(dir, "keys"), "utf8").trim().split("\n")
+        : [],
+  };
 };
 
 const answerWith = async (screens, answer) => {
@@ -40,23 +46,44 @@ const answerWith = async (screens, answer) => {
 
 const WORKING = "\n  ✻ Working…\n\n  ❯ \n";
 
-NodeTest.test("the last answer of a form also submits the review screen, then says so", async () => {
-  const { told, keys } = await answerWith(
-    [fixture("pane-question.txt"), fixture("pane-review.txt"), WORKING],
-    "Which colour do you prefer?\nRed",
-  );
-  NodeAssert.equal(keys.length, 2, `keys sent: ${JSON.stringify(keys)}`);
-  NodeAssert.equal(keys.at(-1), "enter", "Submit answers is highlighted, so one Enter confirms it");
-  NodeAssert.match(told, /Answered in the terminal: Red/);
-  NodeAssert.match(told, /submitted/i);
-  NodeAssert.doesNotMatch(told, /asking again/);
-});
+NodeTest.test(
+  "the last answer of a form also submits the review screen, then says so",
+  async () => {
+    const { told, keys } = await answerWith(
+      [fixture("pane-question.txt"), fixture("pane-review.txt"), WORKING],
+      "Which colour do you prefer?\nRed",
+    );
+    NodeAssert.equal(keys.length, 2, `keys sent: ${JSON.stringify(keys)}`);
+    NodeAssert.equal(
+      keys.at(-1),
+      "enter",
+      "Submit answers is highlighted, so one Enter confirms it",
+    );
+    NodeAssert.match(told, /Answered in the terminal: Red/);
+    NodeAssert.match(told, /submitted/i);
+    NodeAssert.doesNotMatch(told, /asking again/);
+  },
+);
 
-NodeTest.test("a new question after an answer is not submitted and is reported as a new question", async () => {
-  const { told, keys } = await answerWith(
-    [fixture("pane-question.txt"), fixture("pane-form-tabs.txt")],
-    "Which colour do you prefer?\nRed",
+NodeTest.test(
+  "a new question after an answer is not submitted and is reported as a new question",
+  async () => {
+    const { told, keys } = await answerWith(
+      [fixture("pane-question.txt"), fixture("pane-form-tabs.txt")],
+      "Which colour do you prefer?\nRed",
+    );
+    NodeAssert.equal(keys.length, 1);
+    NodeAssert.match(told, /asking again|next question/i);
+  },
+);
+
+NodeTest.test("a plain message is never taken as the answer to a pending form", async () => {
+  const { told, keys } = await answerWith([fixture("pane-question.txt")], "Status?");
+  NodeAssert.equal(told, null);
+  NodeAssert.deepEqual(keys, [], "no key was pressed");
+  const mod = await import(`./baton-live-acp.mjs?${Math.random()}`);
+  NodeAssert.match(
+    mod.questionWaitingNote("Which colour do you prefer?", 1),
+    /A question is waiting \(Which colour/,
   );
-  NodeAssert.equal(keys.length, 1);
-  NodeAssert.match(told, /asking again|next question/i);
 });
