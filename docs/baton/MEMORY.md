@@ -96,7 +96,8 @@ like any other. Exports are plain markdown the user owns; they leave the machine
    item: confidence rises, `updatedAt` moves), conflicts are resolved (section 2), and the rest is stored.
 3. Proposals from a tainted turn wait for his yes (section 3). Nothing is stored silently from content he did not write.
 4. A daily consolidation pass merges near-duplicates, applies decay, deletes expired items and writes one `episode`
-   summarizing the day's jobs. It makes no model call unless more than a handful of items need merging by meaning.
+   for the previous day (once per day, whatever the restarts): what he talked about, the jobs that moved, and each work
+   session's latest summary. It makes no model call unless more than a handful of items need merging by meaning.
 5. Job learnings: when a job ends, the extractor is asked specifically "what worked, what failed, what should the next
    attempt do differently", and writes `learning` items scoped to that project.
 
