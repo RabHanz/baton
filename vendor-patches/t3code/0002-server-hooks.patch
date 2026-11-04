@@ -129,6 +129,48 @@ index 62a9e8b88e96d1057c2afbd7cb11577dda84931b..2a12d36abfb29a5d26ac4af885a1e884
            (legacyInputRunIds.size > 0 &&
              sameNativeThread &&
              !acceptedAttempts.some((source) => source.nativeThreadId !== undefined)),
+diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
+index c1727567f9e3d478a47035d435d5084902c41624..6258d64957ea5beaf5d3f5d0d880bfe3ceb60815 100644
+--- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
++++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
+@@ -61,6 +61,7 @@ import * as Orchestrator from "./Orchestrator.ts";
+ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+ import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
+ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
++import { withStoppedSessions } from "./StoppedSessions.ts";
+ import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+ import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimit.ts";
+ import { projectTurnItemForDetail } from "./WireProjection.ts";
+@@ -665,9 +666,21 @@ const make = Effect.gen(function* () {
+       Effect.andThen(orchestrator.getCheckpointContext(threadId)),
+     );
+ 
++  const showStopped = Effect.fn("ThreadManagementService.showStopped")(function* <
++    T extends { readonly projection: OrchestrationV2ThreadProjection },
++  >(snapshot: T) {
++    const projection = yield* withStoppedSessions(
++      snapshot.projection,
++      sessions,
++      yield* Clock.currentTimeMillis,
++    );
++    return projection === snapshot.projection ? snapshot : { ...snapshot, projection };
++  });
++
+   const getThreadSnapshot: ThreadManagementServiceShape["getThreadSnapshot"] = (threadId) =>
+     ensureProjectionTranscript(threadId).pipe(
+       Effect.andThen(orchestrator.getThreadSnapshot(threadId)),
++      Effect.flatMap(showStopped),
+     );
+   const getThreadTranscript = Effect.fn("orchestrationV2.threadManagement.getThreadTranscript")(
+     function* (threadId: ThreadId) {
+@@ -701,6 +714,7 @@ const make = Effect.gen(function* () {
+   ) =>
+     ensureProjectionTranscript(threadId).pipe(
+       Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
++      Effect.flatMap(showStopped),
+     );
+ 
+   const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
 diff --git a/apps/server/src/project/AgentSessionImporter.ts b/apps/server/src/project/AgentSessionImporter.ts
 index 211ad06fc267a4c4730c159db166d25651be3e77..e22f3d6edf48d6e1fad98d7bd5f8e71c5f141aef 100644
 --- a/apps/server/src/project/AgentSessionImporter.ts

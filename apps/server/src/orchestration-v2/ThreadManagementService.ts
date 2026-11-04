@@ -61,6 +61,7 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
+import { withStoppedSessions } from "./StoppedSessions.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimit.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
@@ -665,9 +666,21 @@ const make = Effect.gen(function* () {
       Effect.andThen(orchestrator.getCheckpointContext(threadId)),
     );
 
+  const showStopped = Effect.fn("ThreadManagementService.showStopped")(function* <
+    T extends { readonly projection: OrchestrationV2ThreadProjection },
+  >(snapshot: T) {
+    const projection = yield* withStoppedSessions(
+      snapshot.projection,
+      sessions,
+      yield* Clock.currentTimeMillis,
+    );
+    return projection === snapshot.projection ? snapshot : { ...snapshot, projection };
+  });
+
   const getThreadSnapshot: ThreadManagementServiceShape["getThreadSnapshot"] = (threadId) =>
     ensureProjectionTranscript(threadId).pipe(
       Effect.andThen(orchestrator.getThreadSnapshot(threadId)),
+      Effect.flatMap(showStopped),
     );
   const getThreadTranscript = Effect.fn("orchestrationV2.threadManagement.getThreadTranscript")(
     function* (threadId: ThreadId) {
@@ -701,6 +714,7 @@ const make = Effect.gen(function* () {
   ) =>
     ensureProjectionTranscript(threadId).pipe(
       Effect.andThen(orchestrator.getThreadSnapshotWindow(threadId, options)),
+      Effect.flatMap(showStopped),
     );
 
   const assertDispatchTargetEnabled = (command: OrchestrationV2ServerCommand) => {
