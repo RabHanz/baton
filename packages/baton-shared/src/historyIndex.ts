@@ -70,11 +70,12 @@ const HEADER =
 // Tool output and thinking are file dumps, not lessons.
 const NOISE_ROLES = new Set(["tool_result", "tool_use", "thinking", "system", "meta"]);
 
-/** `-home-user-shop` is the project the session ran in; the tail after the box's path prefix is the venture. */
+/** `-home-user-shop` is the project the session ran in; the tail after the machine's path prefix is the venture. */
 const ventureOf = (project: string): string | null => {
   const name = project
     .replace(/^-home-[^-]+-/, "")
-    .replace(/^-mnt-HC-Volume-\d+-dev-/, "")
+    // A mounted volume's path, up to its code folder (`-mnt-<volume>-dev-<project>`).
+    .replace(/^-mnt-.*?-(?:dev|src|code|projects|work)-/, "")
     .replace(/^-+/, "")
     .toLowerCase();
   return /^[a-z0-9][a-z0-9_-]{1,39}$/.test(name) && name !== "prompts" ? name : null;
