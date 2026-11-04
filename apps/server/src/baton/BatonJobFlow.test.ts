@@ -28,6 +28,7 @@ import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts"
 import { layerStatic, type BatonThreadLaunch } from "./BatonEngine.ts";
 import { BatonJobService, layer as jobLayer } from "./BatonJobService.ts";
 import { layer as workSessionLayer } from "./WorkSessionService.ts";
+import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 
 const launched: BatonThreadLaunch[] = [];
 const sent: Array<{ threadId: ThreadId; text: string }> = [];
@@ -62,11 +63,17 @@ const scheduledTasks = Layer.succeed(ScheduledTaskService, {
   delete: ({ id }: { id: unknown }) => Effect.sync(() => (deleted.push(id), { id })),
 } as never);
 
+const providerInstances = Layer.succeed(ProviderInstanceRegistry, {
+  getInstance: (id: string) =>
+    Effect.succeed({ driverKind: id === "codex" ? "codex" : "claudeAgent" }),
+} as never);
+
 const layer = it.layer(
   Layer.mergeAll(
     jobLayer,
     scheduledTasks,
     serverConfig,
+    providerInstances,
     layerStatic({
       launch: (launch) => (launched.push(launch), launch.threadId ?? null),
       sent,
@@ -204,6 +211,8 @@ layer("BatonJobFlow", (it) => {
             modelSelection: { instanceId: "claude", model: "sonnet" },
           }) as unknown as OrchestrationV2ThreadShell;
         shells.push(shell(threadId));
+        // The plan is written on the strong model of the routing table, whatever the client picked.
+        assert.strictEqual(launched.at(-1)?.modelSelection.model, "opus");
         assert.lengthOf(yield* splitJob({ id: parent, parts: [{ title: "A", goal: "do a" }] }), 0);
         yield* agreeJob(parent);
         const before = launched.length;
@@ -332,6 +341,30 @@ layer("BatonJobFlow", (it) => {
         assert.include(text, "- Report: not started.");
         assert.include(text, "2 of 3 failed or did not start");
       }),
+  );
+
+  it.effect("keeps a Codex job and its routine parts on Codex's own model", () =>
+    Effect.gen(function* () {
+      const parent = WorkSessionId.make("job-flow-codex");
+      const { threadId } = yield* startJob({
+        id: parent,
+        projectId: ProjectId.make("project-site"),
+        title: "Codex job",
+        goal: "do it on codex",
+        permissions: { folders: [], projects: [], tools: ["read" as const] },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+        runtimeMode: "approval-required",
+      });
+      assert.strictEqual(launched.at(-1)?.modelSelection.model, "gpt-5");
+      shells.push({
+        id: threadId,
+        status: "completed",
+        modelSelection: { instanceId: "codex", model: "gpt-5" },
+      } as unknown as OrchestrationV2ThreadShell);
+      yield* agreeJob(parent);
+      yield* splitJob({ id: parent, parts: [{ title: "Tidy", goal: "tidy", routine: true }] });
+      assert.strictEqual(launched.at(-1)?.modelSelection.model, "gpt-5");
+    }),
   );
 
   it.effect("stops an agreed job whose worker has used its turns, once, and says why", () =>

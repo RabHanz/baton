@@ -981,7 +981,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "job_split",
       description:
-        "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (engineering, marketing, research, operations) and routine: true for mechanical, repeatable work, which runs on the cheaper model. after lists the earlier parts (numbered from 1) that must be done first; a part whose earlier part fails is never started. Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
+        "Hand an agreed job's parts to separate workers (up to eight). Each part has a title, a goal in his words, and optionally a role (a specialist named in your frame) and routine: true for mechanical, repeatable work, which runs on the cheaper model. after lists the earlier parts (numbered from 1) that must be done first; a part whose earlier part fails is never started. Only for a job whose plan he has agreed; each worker has no more permission than the job. When all parts are in, one summary goes to the job's thread.",
       inputSchema: object(
         {
           id: { type: "string" },

@@ -115,6 +115,8 @@ import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { plainError, stepLine } from "@t3tools/baton-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
+import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
+import { assistantFrame } from "@t3tools/baton-shared/osPack";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -2277,7 +2279,9 @@ export const startScreenCompanion = (input: {
       presence: async () => (await actions?.presence?.()) ?? "",
       notes: async () => {
         const standing = await memory.standing();
-        return standing === "" ? notesBlock(notes.list()) : standing;
+        // His operating-system pack frames the jobs this assistant starts and splits (D148), read fresh.
+        const frame = assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER)));
+        return `${frame}\n\n${standing === "" ? notesBlock(notes.list()) : standing}`;
       },
       recall: (text, project) => memory.forSentence(text, project),
       learn: (said, reply, project) => memory.learn(said, reply, agentTaint.on(), project),

@@ -33,7 +33,11 @@ import {
   workerFirstMessage,
 } from "@t3tools/baton-shared/jobs";
 import { watchFleet } from "@t3tools/baton-shared/watch";
-import { type ThreadId, ThreadId as ThreadIdSchema } from "@t3tools/contracts";
+import {
+  type ProviderInstanceId,
+  type ThreadId,
+  ThreadId as ThreadIdSchema,
+} from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -42,8 +46,10 @@ import * as Random from "effect/Random";
 import type { ScheduledTaskId } from "@t3tools/contracts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import * as NodePath from "node:path";
+import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
+import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import { BatonEngine } from "./BatonEngine.ts";
 import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
@@ -57,6 +63,16 @@ const threadOf = Effect.fn("BatonJobFlow.threadOf")(function* (id: WorkSessionId
   return (
     workSession.providerSessions.find((session) => session.detachedAt === null)?.threadId ?? null
   );
+});
+
+/** The routing table's aliases are Claude's: another provider keeps the model it was given. */
+const routesByTable = Effect.fn("BatonJobFlow.routesByTable")(function* (
+  instanceId: ProviderInstanceId,
+) {
+  const registry = yield* Effect.serviceOption(ProviderInstanceRegistry);
+  if (Option.isNone(registry)) return true;
+  const instance = yield* registry.value.getInstance(instanceId);
+  return instance === undefined || instance.driverKind === "claudeAgent";
 });
 
 /** The planning frame, with the brief of the specialist a part is given to. */
@@ -88,6 +104,12 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     return `${ms.toString(36)}-${noise.toString(36)}`;
   });
   const id = input.id ?? WorkSessionId.make(`job-${yield* uuid}`);
+  const userdata = NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath);
+  // A whole job is planned on the strong model of his routing table (D148); a part brings its own.
+  const modelSelection =
+    options.parentId === undefined && (yield* routesByTable(input.modelSelection.instanceId))
+      ? { ...input.modelSelection, model: modelFor("planning", readRouting(userdata)) }
+      : input.modelSelection;
   const terms = yield* jobs.create({
     id,
     projectId: input.projectId,
@@ -100,7 +122,7 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
   });
   // A retried start finds the thread it already made.
   const existing = yield* threadOf(id);
-  if (existing !== null) return { terms, threadId: existing, model: input.modelSelection.model };
+  if (existing !== null) return { terms, threadId: existing, model: modelSelection.model };
   const workSession = yield* workSessions.get(id);
   const threadId = ThreadIdSchema.make(`job-thread-${yield* uuid}`);
   const launched = yield* engine.launchThread({
@@ -108,14 +130,14 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     threadId,
     projectId: input.projectId,
     title: input.title,
-    modelSelection: input.modelSelection,
+    modelSelection,
     runtimeMode: input.runtimeMode,
     interactionMode: options.agreed === true ? "default" : "plan",
     worktreePath: workSession.primaryWorktreePath,
     branch: workSession.baseBranch,
     text: workerFirstMessage({
       verbatim: input.goal,
-      frame: frame(NodePath.dirname((yield* ServerConfig.ServerConfig).dbPath), options.role),
+      frame: frame(userdata, options.role),
       ...(options.agreed === true ? { agreed: true } : {}),
       permissionsSummary: permissionsSummary(terms.permissions, terms.limits, terms.grants),
     }),
@@ -135,10 +157,10 @@ export const startJob = Effect.fn("BatonJobFlow.start")(function* (
     return {
       terms: (yield* jobs.agree(id)) ?? terms,
       threadId: launched,
-      model: input.modelSelection.model,
+      model: modelSelection.model,
     };
   }
-  return { terms, threadId: launched, model: input.modelSelection.model };
+  return { terms, threadId: launched, model: modelSelection.model };
 });
 
 /** The plan stands and the work begins: out of plan mode, and told to go. */
@@ -460,7 +482,7 @@ const launchPart = Effect.fn("BatonJobFlow.launchPart")(function* (input: {
       permissions: parent.permissions,
       // Routine work on the cheap model of his routing table; the rest stays on the parent's.
       modelSelection:
-        input.routine === true
+        input.routine === true && (yield* routesByTable(shell.modelSelection.instanceId))
           ? {
               ...shell.modelSelection,
               model: modelFor("routine", readRouting(NodePath.dirname(dbPath))),

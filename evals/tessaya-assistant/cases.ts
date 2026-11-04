@@ -62,6 +62,12 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["job_start"],
   },
   {
+    id: "split-by-specialist",
+    source: "INT-5 control: an explicit split by specialist reaches the job tools",
+    said: "the shop README job is agreed: give the copy to marketing and the code to engineering",
+    first: ["job_split", "jobs_list"],
+  },
+  {
     id: "teach-me",
     source: "agentPrompt teach rule (teach_start was missing from the tool roll-call)",
     said: "teach me how to change the font size in Notepad",
