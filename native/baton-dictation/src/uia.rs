@@ -5,19 +5,23 @@ use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
+    CUIAutomation, IUIAutomation, IUIAutomationCacheRequest, IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
     IUIAutomationTogglePattern, IUIAutomationValuePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
+    ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded, ToggleState_Off, ToggleState_On,
     UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId,
-    UIA_EditControlTypeId, UIA_ExpandCollapsePatternId, UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId,
-    UIA_IsOffscreenPropertyId, UIA_ListItemControlTypeId, UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId,
-    UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId, UIA_TogglePatternId,
-    UIA_TreeItemControlTypeId, UIA_ValuePatternId,
+    UIA_EditControlTypeId, UIA_ExpandCollapseExpandCollapseStatePropertyId, UIA_ExpandCollapsePatternId,
+    UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsEnabledPropertyId, UIA_IsOffscreenPropertyId,
+    UIA_IsPasswordPropertyId, UIA_ListItemControlTypeId, UIA_LocalizedControlTypePropertyId, UIA_NamePropertyId,
+    UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
+    UIA_ToggleToggleStatePropertyId, UIA_TogglePatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId,
+    UIA_ValueValuePropertyId,
 };
 use windows::core::{BOOL, BSTR};
 use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetAncestor, GetForegroundWindow, GetWindowTextW, IsWindowVisible, WindowFromPoint, GA_ROOT,
+    EnumWindows, GetAncestor, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindow, IsWindowVisible, WindowFromPoint, GA_ROOT, GW_OWNER,
 };
 
 const MAX_ELEMENTS: i32 = 4000;
@@ -85,7 +89,7 @@ fn cache_on() -> bool {
 }
 
 unsafe fn descendants(automation: &IUIAutomation, root: &IUIAutomationElement, cached: bool) -> windows::core::Result<IUIAutomationElementArray> {
-    search(automation, root, cached, &automation.ControlViewCondition()?)
+    search(automation, root, cached, false, &automation.ControlViewCondition()?)
 }
 
 /// Only the controls whose whole name is the label, filtered inside the provider: one small answer instead of every
@@ -93,18 +97,11 @@ unsafe fn descendants(automation: &IUIAutomation, root: &IUIAutomationElement, c
 unsafe fn named(automation: &IUIAutomation, root: &IUIAutomationElement, label: &str, cached: bool) -> windows::core::Result<IUIAutomationElementArray> {
     let name = automation.CreatePropertyConditionEx(UIA_NamePropertyId, &VARIANT::from(label), PropertyConditionFlags_IgnoreCase)?;
     let condition = automation.CreateAndCondition(&automation.ControlViewCondition()?, &name)?;
-    search(automation, root, cached, &condition)
+    search(automation, root, cached, false, &condition)
 }
 
-unsafe fn search(
-    automation: &IUIAutomation,
-    root: &IUIAutomationElement,
-    cached: bool,
-    condition: &IUIAutomationCondition,
-) -> windows::core::Result<IUIAutomationElementArray> {
-    if !cached {
-        return root.FindAll(TreeScope_Descendants, condition);
-    }
+/// `rich` also caches what `detail` reads (values and states), which only the tree shows.
+unsafe fn cache_request(automation: &IUIAutomation, rich: bool) -> windows::core::Result<IUIAutomationCacheRequest> {
     let request = automation.CreateCacheRequest()?;
     for property in [
         UIA_NamePropertyId,
@@ -116,7 +113,100 @@ unsafe fn search(
     ] {
         request.AddProperty(property)?;
     }
-    root.FindAllBuildCache(TreeScope_Descendants, condition, &request)
+    if rich {
+        for property in [
+            UIA_IsEnabledPropertyId,
+            UIA_IsPasswordPropertyId,
+            UIA_ValueValuePropertyId,
+            UIA_ToggleToggleStatePropertyId,
+            UIA_ExpandCollapseExpandCollapseStatePropertyId,
+            UIA_SelectionItemIsSelectedPropertyId,
+        ] {
+            request.AddProperty(property)?;
+        }
+        for pattern in [UIA_ValuePatternId, UIA_TogglePatternId, UIA_ExpandCollapsePatternId, UIA_SelectionItemPatternId] {
+            request.AddPattern(pattern)?;
+        }
+    }
+    Ok(request)
+}
+
+unsafe fn search(
+    automation: &IUIAutomation,
+    root: &IUIAutomationElement,
+    cached: bool,
+    rich: bool,
+    condition: &IUIAutomationCondition,
+) -> windows::core::Result<IUIAutomationElementArray> {
+    if !cached {
+        return root.FindAll(TreeScope_Descendants, condition);
+    }
+    root.FindAllBuildCache(TreeScope_Descendants, condition, &cache_request(automation, rich)?)
+}
+
+/// A value as one short line: control characters become spaces, and a long one keeps its start and its end (where
+/// typing usually lands).
+pub fn clip(value: &str) -> String {
+    let flat: Vec<char> = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    if flat.len() <= 80 {
+        return flat.into_iter().collect();
+    }
+    let head: String = flat[..40].iter().collect();
+    let tail: String = flat[flat.len() - 40..].iter().collect();
+    format!("{head} … {tail}")
+}
+
+/// What a control holds and how it stands: ` = "value"` (never a password box's), then its states.
+unsafe fn detail(element: &IUIAutomationElement, cached: bool) -> String {
+    let mut out = String::new();
+    let password = if cached { element.CachedIsPassword() } else { element.CurrentIsPassword() };
+    if !password.map(|p| p.as_bool()).unwrap_or(true) {
+        let value = if cached {
+            element.GetCachedPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId).and_then(|p| p.CachedValue())
+        } else {
+            element.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId).and_then(|p| p.CurrentValue())
+        };
+        if let Ok(value) = value {
+            let value = value.to_string();
+            if !value.trim().is_empty() {
+                out.push_str(&format!(" = \"{}\"", clip(&value)));
+            }
+        }
+    }
+    let toggle = if cached {
+        element.GetCachedPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId).and_then(|p| p.CachedToggleState())
+    } else {
+        element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId).and_then(|p| p.CurrentToggleState())
+    };
+    match toggle {
+        Ok(t) if t == ToggleState_On => out.push_str(" [checked]"),
+        Ok(t) if t == ToggleState_Off => out.push_str(" [unchecked]"),
+        Ok(_) => out.push_str(" [mixed]"),
+        Err(_) => {}
+    }
+    let expand = if cached {
+        element.GetCachedPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId).and_then(|p| p.CachedExpandCollapseState())
+    } else {
+        element.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId).and_then(|p| p.CurrentExpandCollapseState())
+    };
+    match expand {
+        Ok(e) if e == ExpandCollapseState_Expanded => out.push_str(" [expanded]"),
+        Ok(e) if e == ExpandCollapseState_Collapsed => out.push_str(" [collapsed]"),
+        _ => {}
+    }
+    let selected = if cached {
+        element.GetCachedPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId).and_then(|p| p.CachedIsSelected())
+    } else {
+        element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId).and_then(|p| p.CurrentIsSelected())
+    };
+    if selected.map(|s| s.as_bool()).unwrap_or(false) {
+        out.push_str(" [selected]");
+    }
+    let enabled = if cached { element.CachedIsEnabled() } else { element.CurrentIsEnabled() };
+    if !enabled.map(|e| e.as_bool()).unwrap_or(true) {
+        out.push_str(" [disabled]");
+    }
+    out
 }
 
 /// The best-named element of `all` for the label, nearest the point among equals, and how many were read.
@@ -238,16 +328,17 @@ unsafe fn act(element: &IUIAutomationElement) -> Option<&'static str> {
 }
 
 /// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
-/// searches the window with the keyboard, wherever the pointer is; otherwise the window under (x, y).
-pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool) -> Result<Value, String> {
+/// searches the window with the keyboard, wherever the pointer is; otherwise the window under (x, y). `reference` is a
+/// line number of the last tree instead of a label: found only while that control still has its name and place.
+pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<usize>) -> Result<Value, String> {
     if !invoke {
-        return locate_here(label, x, y, foreground, window, false);
+        return locate_here(label, x, y, foreground, window, false, reference);
     }
     // Invoke can block while a modal dialog it opens is up, so it runs apart and is reported pending after two seconds.
     let (tx, rx) = std::sync::mpsc::channel();
     let (label_owned, window_owned) = (label.to_string(), window.map(str::to_string));
     std::thread::spawn(move || {
-        let _ = tx.send(locate_here(&label_owned, x, y, foreground, window_owned.as_deref(), true));
+        let _ = tx.send(locate_here(&label_owned, x, y, foreground, window_owned.as_deref(), true, reference));
     });
     match rx.recv_timeout(std::time::Duration::from_millis(2000)) {
         Ok(done) => done,
@@ -255,14 +346,43 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str
     }
 }
 
-fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool) -> Result<Value, String> {
+/// The listed control behind a tree line number, or None when there is no such line.
+fn listed(reference: usize) -> Option<(String, RECT, isize)> {
+    let kept = LISTED.lock().ok()?;
+    kept.get(reference.checked_sub(1)?).map(|l| (l.name.clone(), l.rect, l.window))
+}
+
+/// The control found for a line number must still be where the line said, or it is another control of the same name.
+fn same_place(listed: &RECT, found: &RECT) -> bool {
+    let (x, y) = centre(found);
+    x >= listed.left as f32 - 4.0 && x <= listed.right as f32 + 4.0 && y >= listed.top as f32 - 4.0 && y <= listed.bottom as f32 + 4.0
+}
+
+fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<usize>) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     let cached = cache_on();
+    let line = match reference {
+        Some(n) => match listed(n) {
+            Some(line) => Some(line),
+            None => return Ok(json!({"found": false, "stale": true})),
+        },
+        None => None,
+    };
+    let (label, x, y) = match &line {
+        Some((name, rect, _)) => (name.as_str(), centre(rect).0 as i32, centre(rect).1 as i32),
+        None => (label, x, y),
+    };
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
-        let top = if let Some(title) = window {
+        let top = if let Some((_, _, listed_in)) = &line {
+            let hwnd = HWND(*listed_in as *mut _);
+            if !IsWindow(Some(hwnd)).as_bool() {
+                return Ok(json!({"found": false, "stale": true}));
+            }
+            hwnd
+        } else if let Some(title) = window {
             find_window(title).ok_or_else(|| format!("No window is titled like \"{title}\"."))?
         } else if foreground {
             GetForegroundWindow()
@@ -285,6 +405,11 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
                 1,
             ),
         };
+        if let Some((_, rect, _)) = &line {
+            if !found.as_ref().is_some_and(|f| same_place(rect, &f.rect)) {
+                return Ok(json!({"found": false, "stale": true, "elements": count}));
+            }
+        }
         Ok(match found {
             Some(f) => {
                 let mut out = json!({
@@ -348,11 +473,52 @@ pub fn set_value(window: &str, text: &str) -> Result<Value, String> {
     }
 }
 
-/// What the keyboard's window offers, by name and kind: the agent reads this before it takes a
-/// screenshot, and clicks a line of it with `locate`. Names only, so no coordinates leave here.
-pub fn tree(max: usize, window: Option<&str>) -> Result<Value, String> {
+/// A line of the last tree, so the model can name a control by its number: what it was called, where it was and in
+/// which window. Plain data, so any command thread can read it.
+struct Listed {
+    name: String,
+    rect: RECT,
+    window: isize,
+}
+
+static LISTED: std::sync::Mutex<Vec<Listed>> = std::sync::Mutex::new(Vec::new());
+
+/// The visible popups a window has open (menus, flyouts, owned dialogs): their own top-level windows on its thread.
+fn popups_of(top: HWND) -> Vec<HWND> {
+    struct Search {
+        top: HWND,
+        thread: u32,
+        found: Vec<HWND>,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &mut *(lparam.0 as *mut Search);
+        if hwnd == search.top || !IsWindowVisible(hwnd).as_bool() || GetWindowThreadProcessId(hwnd, None) != search.thread {
+            return BOOL(1);
+        }
+        let mut class = [0u16; 16];
+        let n = GetClassNameW(hwnd, &mut class).max(0) as usize;
+        let menu = String::from_utf16_lossy(&class[..n]) == "#32768";
+        if menu || GetWindow(hwnd, GW_OWNER).map(|owner| owner == search.top).unwrap_or(false) {
+            search.found.push(hwnd);
+        }
+        BOOL(1)
+    }
+    unsafe {
+        let mut search = Search { top, thread: GetWindowThreadProcessId(top, None), found: Vec::new() };
+        if search.thread != 0 {
+            let _ = EnumWindows(Some(each), LPARAM(&mut search as *mut Search as isize));
+        }
+        search.found
+    }
+}
+
+/// What the keyboard's window and its open popups offer, one numbered line per named control with its value and
+/// states: the agent reads this before it takes a screenshot, and clicks a line by its number with `locate`. No
+/// coordinates leave here; the numbers stay in the sidecar until the next tree. `find` keeps only names that contain it.
+pub fn tree(max: usize, window: Option<&str>, find: Option<&str>) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     let cached = cache_on();
+    let want = find.map(|f| f.trim().to_lowercase()).filter(|f| !f.is_empty());
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let automation: IUIAutomation =
@@ -363,34 +529,95 @@ pub fn tree(max: usize, window: Option<&str>) -> Result<Value, String> {
         };
         let root = automation.ElementFromHandle(top).map_err(err)?;
         let title = root.CurrentName().map(|n| n.to_string()).unwrap_or_default();
-        let all = descendants(&automation, &root, cached).map_err(err)?;
-        let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
-        let mut lines: Vec<String> = Vec::new();
-        for i in 0..count {
-            if lines.len() >= max {
-                break;
-            }
-            let Ok(element) = all.GetElement(i) else { continue };
-            let s = snap(&element, cached);
-            let name = s.name.trim();
-            if name.is_empty() || s.offscreen {
-                continue;
-            }
-            if s.rect.right - s.rect.left < MIN_SIDE || s.rect.bottom - s.rect.top < MIN_SIDE {
-                continue;
-            }
-            let line = format!("{}: {}{}", s.kind, name.chars().take(80).collect::<String>(), if s.focused { " (focused)" } else { "" });
-            if lines.last() != Some(&line) {
-                lines.push(line);
+        let (mut lines, mut listed, mut shown, mut read) = (Vec::new(), Vec::new(), 0usize, 0);
+        let mut last = String::new();
+        for hwnd in std::iter::once(top).chain(popups_of(top)) {
+            let all = match automation.ElementFromHandle(hwnd).and_then(|r| search(&automation, &r, cached, true, &automation.ControlViewCondition()?)) {
+                Ok(all) => all,
+                Err(e) if hwnd == top => return Err(err(e)),
+                Err(_) => continue,
+            };
+            let count = all.Length().map_err(err)?.min(MAX_ELEMENTS);
+            read += count;
+            for i in 0..count {
+                let Ok(element) = all.GetElement(i) else { continue };
+                let s = snap(&element, cached);
+                let name = s.name.trim();
+                if name.is_empty() || s.offscreen {
+                    continue;
+                }
+                if s.rect.right - s.rect.left < MIN_SIDE || s.rect.bottom - s.rect.top < MIN_SIDE {
+                    continue;
+                }
+                if want.as_ref().is_some_and(|w| !name.to_lowercase().contains(w)) {
+                    continue;
+                }
+                let body = format!(
+                    "{}: {}{}{}",
+                    s.kind,
+                    name.chars().take(80).collect::<String>(),
+                    detail(&element, cached),
+                    if s.focused { " (focused)" } else { "" }
+                );
+                if body == last {
+                    continue;
+                }
+                shown += 1;
+                if lines.len() < max {
+                    lines.push(format!("[{}] {body}", lines.len() + 1));
+                    listed.push(Listed { name: s.name.clone(), rect: s.rect, window: hwnd.0 as isize });
+                }
+                last = body;
             }
         }
-        Ok(json!({"window": title, "controls": lines, "total": count}))
+        if let Ok(mut kept) = LISTED.lock() {
+            *kept = listed;
+        }
+        Ok(json!({"window": title, "controls": lines, "total": read, "shown": shown}))
+    }
+}
+
+/// Where the keyboard is now, as one cheap read after an action: the window's title and the focused control's line.
+/// With `window`, that window and the control inside it that has the keyboard.
+pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
+    let err = |e: windows::core::Error| e.to_string();
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+        let top = match window {
+            Some(title) => find_window(title).ok_or_else(|| format!("No window is titled like \"{title}\"."))?,
+            None => GetForegroundWindow(),
+        };
+        let mut buf = [0u16; 256];
+        let n = GetWindowTextW(top, &mut buf).max(0) as usize;
+        let title = String::from_utf16_lossy(&buf[..n]);
+        let request = cache_request(&automation, true).map_err(err)?;
+        let focused = match window {
+            None => automation.GetFocusedElementBuildCache(&request),
+            Some(_) => automation.ElementFromHandle(top).and_then(|root| {
+                let has = automation.CreatePropertyCondition(UIA_HasKeyboardFocusPropertyId, &VARIANT::from(true))?;
+                root.FindFirstBuildCache(TreeScope_Descendants, &has, &request)
+            }),
+        };
+        let focus = focused.ok().map(|element| {
+            let s = snap(&element, true);
+            format!("{}: {}{}", s.kind, s.name.trim().chars().take(80).collect::<String>(), detail(&element, true))
+        });
+        Ok(json!({"window": title, "handle": top.0 as isize, "focus": focus}))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::name_score;
+    use super::{clip, name_score};
+
+    #[test]
+    fn a_long_value_keeps_its_start_and_end_on_one_line() {
+        assert_eq!(clip("a\r\nb"), "a  b");
+        let long = format!("{}{}", "x".repeat(60), "y".repeat(60));
+        assert_eq!(clip(&long), format!("{} … {}", "x".repeat(40), "y".repeat(40)));
+    }
 
     #[test]
     fn matches_whole_words_and_prefers_the_tighter_name() {

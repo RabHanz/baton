@@ -454,7 +454,7 @@ await task(
     t.check(first === null, "the wrong name was refused rather than clicked");
     const tree = await t.tool("ui_tree");
     const menu =
-      tree.split("\n").find((l) => /^menu item: edit\b/i.test(l)) ??
+      tree.split("\n").find((l) => /^\[\d+\] menu item: edit\b/i.test(l)) ??
       tree.split("\n").find((l) => /\bedit\b/i.test(l) && /menu/i.test(l));
     t.replan(`read the tree; the menu is called ${menu ?? "(not found)"}`);
     await t.tool("click_element", { label: "Edit", why: "the real menu" });
@@ -559,9 +559,15 @@ await task(
   async (t) => {
     await t.launch("notepad.exe", [], "Notepad");
     await t.waitTree(/notepad/i);
+    const typed = await t.tool("type_text", { text: "hello", why: "the readback" });
+    t.check(
+      /^Now: .*hello/m.test(typed),
+      `the typing said what changed: ${typed.split("\n").at(-1)}`,
+    );
     const tree = await t.tool("ui_tree");
     const focused = tree.split("\n").find((l) => /\(focused\)/.test(l)) ?? "";
     t.check(focused !== "", `focused line: ${focused || "(none)"}`);
+    t.check(/= ".*hello/.test(focused), "the focused box shows what was typed");
   },
 );
 
@@ -594,8 +600,19 @@ await task(
     await t.activate("many");
     await t.waitTree(/many/i, 15);
     let lines = 0;
-    for (let i = 0; i < 3; i += 1) lines = (await t.tool("ui_tree")).split("\n").length;
+    let tree = "";
+    for (let i = 0; i < 3; i += 1) lines = (tree = await t.tool("ui_tree")).split("\n").length;
     t.check(lines > 20, `the tree listed ${lines} lines`);
+    t.check(
+      /showing 120 of \d+ controls/.test(tree),
+      `the cut is said: ${tree.split("\n").at(-1)}`,
+    );
+    const found = await t.tool("ui_tree", { find: "file-350" });
+    const line = found.split("\n").find((l) => /file-350/.test(l)) ?? "";
+    t.check(line !== "", `find gets the file: ${line || "(no line)"}`);
+    const id = Number(/^\[(\d+)\]/.exec(line)?.[1] ?? 0);
+    const picked = await t.tool("click_element", { id, why: "the found file" });
+    t.check(/file-350/.test(picked), `clicked by its number: ${picked.split("\n")[0]}`);
   },
 );
 

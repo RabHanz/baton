@@ -9,10 +9,12 @@ import * as NodeReadline from "node:readline";
 
 import {
   buildBatonTools,
+  treeText,
   type ToolHost,
 } from "../../../apps/desktop/src/baton/agent/batonTools.ts";
 import { withFailureGuard } from "../../../apps/desktop/src/baton/agent/failureGuard.ts";
 import { createInputDriver } from "../../../apps/desktop/src/baton/screen/inputDriver.ts";
+import { startSidecar } from "./sidecarClient.ts";
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -88,23 +90,10 @@ const clipboard = {
 };
 
 const sidecarExe = process.env["SIDECAR"] ?? "baton-dictation.exe";
-const side = (args: ReadonlyArray<string>): Promise<Record<string, unknown>> =>
-  new Promise((resolve, reject) => {
-    NodeChildProcess.execFile(
-      sidecarExe,
-      [...args],
-      { windowsHide: true, timeout: 20_000 },
-      (error, stdout) => {
-        if (error) return reject(error);
-        const last = stdout.trim().split("\n").at(-1) ?? "";
-        try {
-          resolve(JSON.parse(last) as Record<string, unknown>);
-        } catch {
-          reject(new Error(`The sidecar answered: ${last.slice(0, 200)}`));
-        }
-      },
-    );
-  });
+// One long-lived sidecar, as the app runs it: tree line numbers live in it from one ui_tree to the next click.
+let served: ReturnType<typeof startSidecar> | null = null;
+const side = (message: Record<string, unknown>): Promise<Record<string, unknown>> =>
+  (served ??= startSidecar(sidecarExe)).call<Record<string, unknown>>(message);
 
 const driver = createInputDriver({ platform: "win32", toPhysical: (p) => p, clipboard });
 
@@ -151,22 +140,23 @@ export const makeHost = (outDir: string): Host => {
   NodeFS.mkdirSync(outDir, { recursive: true });
   let shots = 0;
   const here = { x: 512, y: 384 };
-  const located = async (label: string) => {
-    const found = await side([
-      "locate",
-      "--label",
-      label,
-      "--x",
-      String(here.x),
-      "--y",
-      String(here.y),
-      "--foreground",
-    ]);
+  const located = async (target: string | number) => {
+    const found = await side({
+      cmd: "locate",
+      label: typeof target === "number" ? "" : target,
+      ...here,
+      foreground: true,
+      ...(typeof target === "number" ? { ref: target } : {}),
+    });
+    if (found["stale"] === true)
+      throw new Error(
+        `The window changed since ui_tree, so line ${target} may be another control now. Read ui_tree again.`,
+      );
     return found["found"] === true
       ? {
           x: Number(found["x"]),
           y: Number(found["y"]),
-          name: String(found["name"] ?? label),
+          name: String(found["name"] ?? target),
           coveredBy: typeof found["covered_by"] === "string" ? found["covered_by"] : null,
         }
       : null;
@@ -177,7 +167,7 @@ export const makeHost = (outDir: string): Host => {
     return file;
   };
   const host: ToolHost = {
-    windowKey: async () => String((await side(["foreground"]))["window"]),
+    windowKey: async () => String((await side({ cmd: "foreground" }))["window"]),
     capture: async () => {
       const file = await shot("capture");
       return {
@@ -185,13 +175,22 @@ export const makeHost = (outDir: string): Host => {
         images: [{ data: NodeFS.readFileSync(file).toString("base64"), mimeType: "image/png" }],
       };
     },
-    uiTree: async () => {
-      const tree = await side(["ui_tree"]);
+    uiTree: async (_window, find) => {
+      const tree = await side({ cmd: "ui_tree", ...(find === undefined ? {} : { find }) });
       if (typeof tree["error"] === "string")
         throw new Error(`The window's controls can't be read: ${tree["error"]}`);
-      const text = `${String(tree["window"] ?? "")}\n${((tree["controls"] as string[]) ?? []).join("\n")}`;
+      const text = treeText(tree as Parameters<typeof treeText>[0]);
       stats.treeBytes += text.length;
       return text;
+    },
+    focusState: async () => {
+      const state = await side({ cmd: "focus_state" });
+      return typeof state["error"] === "string"
+        ? null
+        : {
+            window: String(state["window"] ?? ""),
+            focus: typeof state["focus"] === "string" ? state["focus"] : null,
+          };
     },
     clickElement: async (label, double) => {
       const found = await located(label);
@@ -252,6 +251,6 @@ export const makeHost = (outDir: string): Host => {
       const out = await tool.run(args);
       return out.text ?? "";
     },
-    dispose: () => (driver.dispose(), clipProc.kill()),
+    dispose: () => (driver.dispose(), clipProc.kill(), served?.kill()),
   };
 };

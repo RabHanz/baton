@@ -2069,14 +2069,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ]).catch(() => null);
       return typeof out?.count === "number" ? out.count : null;
     },
-    uiTree: async () => {
+    uiTree: async (find) => {
       if (sidecar === null) return null;
       const tree = await Promise.race([
-        sidecar.uiTree(),
+        sidecar.uiTree(undefined, find),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS * 2)),
       ]).catch(() => null);
       if (tree === null || tree.controls === undefined) return null;
-      return { window: tree.window ?? "", controls: tree.controls };
+      return {
+        window: tree.window ?? "",
+        controls: tree.controls,
+        ...(tree.shown === undefined ? {} : { shown: tree.shown }),
+      };
+    },
+    focusState: async () => {
+      if (sidecar === null) return null;
+      const state = await Promise.race([
+        sidecar.focusState(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
+      ]).catch(() => null);
+      if (state === null || typeof state.error === "string") return null;
+      return { window: state.window ?? "", focus: state.focus ?? null };
     },
     hands: () =>
       sidecar === null
@@ -2084,13 +2097,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         : {
             locate: sidecar.locate,
             uiTree: sidecar.uiTree,
+            focusState: sidecar.focusState,
             captureWindow: sidecar.captureWindow,
             focusWindow: sidecar.focusWindow,
             input: sidecar.input,
             pasteInto: sidecar.pasteInto,
             setValue: sidecar.setValue,
           },
-    locate: async (label, near, anywhere, invoke) => {
+    locate: async (label, near, anywhere, invoke, ref) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);
       // The sidecar answers an invoke within 2 s ("pending" when a dialog it opened is up), so it waits past that.
@@ -2101,6 +2115,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           y: physical.y,
           ...(anywhere === true ? { foreground: true } : {}),
           ...(invoke === true ? { invoke: true } : {}),
+          ...(ref === undefined ? {} : { ref }),
         }),
         new Promise<"slow">((resolve) =>
           setTimeout(() => resolve("slow"), LOCATE_TIMEOUT_MS * (invoke === true ? 2 : 1)),
@@ -2113,6 +2128,11 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           invoke === true
             ? `The window's controls took too long to read; "${label}" may still have been pressed. Look before trying again.`
             : "The window's controls took too long to read.",
+        );
+      }
+      if (found?.stale === true) {
+        throw new Error(
+          `The window changed since ui_tree, so ${label} may be another control now. Read ui_tree again.`,
         );
       }
       if (found?.found === true && found.invoked !== undefined) {

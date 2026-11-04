@@ -95,7 +95,7 @@ import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
-import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
+import { buildBatonTools, treeText, type FocusState, type ToolHost } from "../agent/batonTools.ts";
 import { withFailureGuard } from "../agent/failureGuard.ts";
 import { createAssistantAgent, type AssistantAgent } from "../agent/agentSession.ts";
 import { createConversationLog, type ConversationLog } from "../conversation/conversationLog.ts";
@@ -254,6 +254,8 @@ export interface AssistantActions {
     anywhere?: boolean,
     /** Also act on it through its UI Automation pattern, so neither his pointer nor the focus moves. */
     invoke?: boolean,
+    /** A line number of the last tree in place of the label; throws when the window changed since. */
+    ref?: number,
   ) => Promise<{
     readonly x: number;
     readonly y: number;
@@ -278,10 +280,13 @@ export interface AssistantActions {
   /** The sidecar's running count of desktop changes; null where there is none. */
   readonly uiChanges?: () => Promise<number | null>;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
-  readonly uiTree?: () => Promise<{
+  readonly uiTree?: (find?: string) => Promise<{
     readonly window: string;
     readonly controls: ReadonlyArray<string>;
+    readonly shown?: number;
   } | null>;
+  /** Where the keyboard is, read cheaply after an action; null when it cannot be read. */
+  readonly focusState?: () => Promise<FocusState | null>;
   /** The top-level window under a desktop point, for a drive's click. */
   readonly windowAt?: (point: { readonly x: number; readonly y: number }) => Promise<{
     readonly window: number;
@@ -2045,16 +2050,18 @@ export const startScreenCompanion = (input: {
         images: captured.map((c) => ({ data: c.jpeg.toString("base64"), mimeType: "image/jpeg" })),
       };
     },
-    uiTree: async () => {
+    uiTree: async (_window, find) => {
       if (!(await approveCapture("what is on your screen", null))) {
         throw new Error("He did not allow looking at his screen.");
       }
-      const tree = await actions?.uiTree?.();
+      const tree = await actions?.uiTree?.(find);
       if (tree === null || tree === undefined) {
         throw new Error("The window's controls can't be read here. Take a screenshot instead.");
       }
-      return `${tree.window}\n${tree.controls.join("\n")}`;
+      return treeText(tree);
     },
+    // Quiet: an action's readback never asks, so it is left out while looking needs his yes.
+    focusState: async () => (titlesAllowed() ? ((await actions?.focusState?.()) ?? null) : null),
     browserRoute: async (ask) => {
       const check = await refreshChrome();
       const tree = await actions?.uiTree?.().catch(() => null);
@@ -2126,13 +2133,15 @@ export const startScreenCompanion = (input: {
         throw new Error("The window with the keyboard can't be told apart, so a batch cannot run.");
       return String(seen.window);
     },
-    clickElement: async (label, double) => {
+    clickElement: async (target, double) => {
+      const label = typeof target === "number" ? `line ${target}` : target;
       // Its own pattern first: his pointer and the focus stay where they are (CU-6).
       const found = await actions?.locate?.(
         label,
         Electron.screen.getCursorScreenPoint(),
         true,
         !double,
+        typeof target === "number" ? target : undefined,
       );
       if (found === null || found === undefined) {
         throw new Error(

@@ -64,6 +64,25 @@ describe("remote hands tools", () => {
     );
   });
 
+  it("clicks a tree line by number, and refuses when the window changed since the tree", async () => {
+    const asked: unknown[] = [];
+    const { tools } = make({
+      locate: async (i) => (
+        asked.push(i.ref),
+        i.ref === 2
+          ? { found: false, stale: true }
+          : { found: true, name: "Save", invoked: "invoke" }
+      ),
+    });
+    expect((await tools.get("click_element")!.run({ id: 1, why: "w" })).text).toContain(
+      "Pressed Save",
+    );
+    await expect(tools.get("click_element")!.run({ id: 2, why: "w" })).rejects.toThrow(
+      "Read ui_tree again",
+    );
+    expect(asked).toEqual([1, 2]);
+  });
+
   it("falls back to a pointer click only through the foreground deps, and says when focus could not be given back", async () => {
     const log: string[] = [];
     const { tools } = make(
