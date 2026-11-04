@@ -73,6 +73,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 
 import {
   chatAttachmentStableKey,
@@ -527,23 +528,40 @@ export const mirrorTitle = (input: {
   return wanted === input.current ? null : wanted;
 };
 
+const SESSION_STEP_TIMEOUT = "30 seconds";
+const PROMPT_REREAD_MS = 10_000;
+
 /** Ended-session threads wait this long before leaving the list, so a failed read cannot empty it. */
 const ENDED_GRACE_MS = 5 * 60_000;
+/** And their session must be missing from every read for this long: one bad read or a restart gap is not an end. */
+const MISSING_GRACE_MS = 3 * 60_000;
 
-/** Mirrored threads whose session has ended; whether he continued one is a separate check. */
+/**
+ * Mirrored threads whose session has ended; whether he continued one is a separate check. `missingSince` is the
+ * caller's memory across ticks of when each thread's session was first seen missing; this updates it.
+ */
 export const endedMirrorThreads = (
   shells: ReadonlyArray<Pick<OrchestrationV2ThreadShell, "id" | "updatedAt">>,
   liveSessionIds: ReadonlySet<string>,
+  missingSince: Map<ThreadId, number>,
   nowMs: number,
-): ReadonlyArray<ThreadId> =>
-  shells
+): ReadonlyArray<ThreadId> => {
+  const missing = shells.filter(
+    (t) =>
+      String(t.id).startsWith(`${PREFIX}:`) &&
+      !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)),
+  );
+  const ids = new Set(missing.map((t) => t.id));
+  for (const id of missingSince.keys()) if (!ids.has(id)) missingSince.delete(id);
+  for (const id of ids) if (!missingSince.has(id)) missingSince.set(id, nowMs);
+  return missing
     .filter(
       (t) =>
-        String(t.id).startsWith(`${PREFIX}:`) &&
-        !liveSessionIds.has(String(t.id).slice(PREFIX.length + 1)) &&
+        nowMs - (missingSince.get(t.id) ?? nowMs) >= MISSING_GRACE_MS &&
         nowMs - DateTime.toEpochMillis(t.updatedAt) > ENDED_GRACE_MS,
     )
     .map((t) => t.id);
+};
 
 /** A message he sent from T3: the mirror's own copies of terminal messages carry its prefix. */
 export const sentFromT3 = (
@@ -751,6 +769,8 @@ interface Follow {
     readonly itemId: TurnItemId;
     readonly request: OrchestrationV2RuntimeRequest;
   } | null;
+  /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
+  promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
   /** Tool calls shown as running, by Claude's tool-use id, until their result arrives. */
   readonly tools: Map<
     string,
@@ -815,10 +835,13 @@ const make = Effect.gen(function* () {
   const { attachmentsDir, stateDir, logsDir } = yield* ServerConfig.ServerConfig;
   // Every mirror decision lands in a file a person can read; the Effect log has no file on a desktop install.
   const seenDecision = new Map<string, string>();
-  const mirrorLog = (key: string, record: Record<string, unknown>) => {
+  /** `key` dedupes a record that repeats every tick; a one-off event passes null so the map does not grow. */
+  const mirrorLog = (key: string | null, record: Record<string, unknown>) => {
     const text = JSON.stringify(record);
-    if (seenDecision.get(key) === text) return;
-    seenDecision.set(key, text);
+    if (key !== null) {
+      if (seenDecision.get(key) === text) return;
+      seenDecision.set(key, text);
+    }
     appendResumeLog(NodePath.join(logsDir, "baton-mirror.ndjson"), record);
   };
 
@@ -827,6 +850,11 @@ const make = Effect.gen(function* () {
   const owned = new Set<string>();
   /** Ended sessions' threads he has sent a message in: they stay, and are not looked at again. */
   const continued = new Set<ThreadId>();
+  const missingSince = new Map<ThreadId, number>();
+  // New sessions start one at a time: two in one new folder must not each create its project.
+  const starting = yield* Semaphore.make(1);
+  /** Threads this run archived because their session ended; one that comes back is unarchived (a thread he archived stays). */
+  const endedArchived = new Set<ThreadId>();
 
   const ensureProviderInstance = Effect.gen(function* () {
     const script = agentScript();
@@ -1441,6 +1469,19 @@ const make = Effect.gen(function* () {
    */
   const relayPrompt = (follow: Follow, session: ClaudeLiveSession) =>
     Effect.gen(function* () {
+      // Reading a pane spawns node and herdr: while the question shown is still up and the descriptor has not
+      // changed, read again only every PROMPT_REREAD_MS (a multi-part form can move on without a descriptor write).
+      const nowMs = Date.now();
+      if (
+        session.status === "waiting" &&
+        follow.ask !== null &&
+        follow.promptRead !== null &&
+        follow.promptRead.updatedAt === session.updatedAt &&
+        nowMs - follow.promptRead.at < PROMPT_REREAD_MS
+      )
+        return;
+      follow.promptRead =
+        session.status === "waiting" ? { updatedAt: session.updatedAt, at: nowMs } : null;
       const read =
         session.status === "waiting" && session.herdrPane !== null
           ? yield* readPanePrompt(session.herdrPane)
@@ -1638,6 +1679,10 @@ const make = Effect.gen(function* () {
       }
       history = history.slice(-FIRST_MESSAGES);
       const shell = yield* engine.threadShell(threadId);
+      if (shell !== null && shell.archivedAt !== null && endedArchived.delete(threadId)) {
+        yield* engine.unarchiveThread({ tag: "live", threadId });
+        mirrorLog(`unarchived:${threadId}`, { event: "unarchived-back", thread: String(threadId) });
+      }
       if (shell === null) {
         const firstUser = history.find((m) => m.role === "user")?.text.split("\n")[0];
         yield* createThread(
@@ -1717,6 +1762,7 @@ const make = Effect.gen(function* () {
         shown: null,
         checkedAt: 0,
         ask: null,
+        promptRead: null,
         tools: new Map(),
       };
       follows.set(session.sessionId, follow);
@@ -1797,7 +1843,7 @@ const make = Effect.gen(function* () {
         native: action.kind === "rebind-native",
         at: nowMs,
       });
-      mirrorLog(`rebound:${session.sessionId}:${nowMs}`, {
+      mirrorLog(null, {
         event: "rebound",
         sessionId: session.sessionId,
         thread: String(follow.threadId),
@@ -1810,8 +1856,8 @@ const make = Effect.gen(function* () {
   const retryKept = (live: ReadonlyArray<ClaudeLiveSession>) =>
     Effect.gen(function* () {
       // Read each pass: the folder can move to ~/.t3/tessaya while the server runs.
+      // Stamped once at the top of the tick, before any heal.
       const keptDir = liveQueueDir();
-      yield* stampKept(engine, keptDir);
       const pending = pendingKept(readKept(keptDir), readLedger(keptDir));
       for (const threadId of new Set(
         pending.flatMap((e) => (e.thread === null ? [] : [e.thread])),
@@ -1825,7 +1871,7 @@ const make = Effect.gen(function* () {
         const bound = shell.providerInstanceId === LIVE_INSTANCE_ID && native === sessionId;
         const result = yield* resendKept(engine, { dir: keptDir, threadId, bound });
         if (result.sent > 0)
-          mirrorLog(`kept-resent:${threadId}:${Date.now()}`, {
+          mirrorLog(null, {
             event: "kept-resent",
             thread: threadId,
           });
@@ -1879,10 +1925,18 @@ const make = Effect.gen(function* () {
     // A thread whose session has ended leaves the list (archived, reversible) unless he sent a
     // message from T3: then it is his conversation now.
     const liveIds = new Set(live.map((s) => s.sessionId));
-    for (const id of endedMirrorThreads(yield* engine.threadShells, liveIds, Date.now())) {
+    for (const id of endedMirrorThreads(
+      yield* engine.threadShells,
+      liveIds,
+      missingSince,
+      Date.now(),
+    )) {
       if (continued.has(id)) continue;
       if (sentFromT3(yield* threadMessages(id))) continued.add(id);
-      else yield* engine.archiveThread({ tag: "live", threadId: id });
+      else if (yield* engine.archiveThread({ tag: "live", threadId: id })) {
+        endedArchived.add(id);
+        mirrorLog(`archived:${id}`, { event: "archived-ended", thread: String(id) });
+      }
     }
     for (const [sessionId, follow] of follows) {
       if (!liveIds.has(sessionId) && !continued.has(follow.threadId)) follows.delete(sessionId);
@@ -1893,7 +1947,7 @@ const make = Effect.gen(function* () {
         const follow = follows.get(session.sessionId);
         return (
           follow === undefined
-            ? startFollowing(session)
+            ? starting.withPermits(1)(startFollowing(session))
             : step(session, follow).pipe(
                 Effect.andThen(working(follow, session)),
                 Effect.andThen(relayPrompt(follow, session)),
@@ -1901,6 +1955,8 @@ const make = Effect.gen(function* () {
                 Effect.andThen(retitle(follow, session)),
               )
         ).pipe(
+          // One hung pane read must not hold up every other session's mirror.
+          Effect.timeout(SESSION_STEP_TIMEOUT),
           Effect.catchCause((cause) =>
             Effect.logWarning("Tessaya live threads: a session could not be mirrored", {
               sessionId: session.sessionId,
@@ -1921,7 +1977,7 @@ const make = Effect.gen(function* () {
           ),
         );
       },
-      { discard: true },
+      { discard: true, concurrency: 4 },
     );
     yield* retryKept(live);
   });

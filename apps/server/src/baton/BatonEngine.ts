@@ -172,6 +172,10 @@ export interface BatonEngineShape {
     readonly tag: string;
     readonly threadId: ThreadId;
   }) => Effect.Effect<boolean>;
+  readonly unarchiveThread: (input: {
+    readonly tag: string;
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<boolean>;
   /** Upstream's `queue.resume`: start a message queued behind a run that just ended. */
   readonly resumeQueue: (input: {
     readonly tag: string;
@@ -546,6 +550,16 @@ export const make = Effect.gen(function* () {
       return true;
     }).pipe(Effect.catchCause(() => Effect.succeed(false)));
 
+  const unarchiveThread: BatonEngineShape["unarchiveThread"] = (input) =>
+    Effect.gen(function* () {
+      yield* orchestrator.dispatch({
+        type: "thread.unarchive",
+        commandId: yield* commandId(`${input.tag}:unarchive`),
+        threadId: input.threadId,
+      });
+      return true;
+    }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+
   const resumeQueue: BatonEngineShape["resumeQueue"] = (input) =>
     Effect.gen(function* () {
       yield* orchestrator.dispatch({
@@ -584,6 +598,7 @@ export const make = Effect.gen(function* () {
     resumeQueue,
     keepActive,
     archiveThread,
+    unarchiveThread,
     deleteThread,
     createProject,
     projects,
@@ -655,6 +670,7 @@ export const layerStatic = (input: {
     resumeQueue: () => Effect.void,
     keepActive: () => Effect.succeed(true),
     archiveThread: () => Effect.succeed(true),
+    unarchiveThread: () => Effect.succeed(true),
     deleteThread: () => Effect.succeed(true),
     createProject: () => Effect.succeed(null),
   });

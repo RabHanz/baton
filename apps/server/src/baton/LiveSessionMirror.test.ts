@@ -128,8 +128,26 @@ describe("the thread list stays clean", () => {
       t("import:x:old", "p", "2026-11-01T10:00:00Z"),
     ];
     const now = Date.parse("2026-11-01T10:10:00Z");
-    expect(endedMirrorThreads(shells, new Set(["live"]), now)).toEqual([liveThreadId("ended")]);
-    expect(endedMirrorThreads(shells, new Set(), Date.parse("2026-11-01T10:01:00Z"))).toEqual([]);
+    const missing = new Map<ThreadId, number>();
+    // Idle long enough, but only just missing: one read that missed a session is not an end.
+    expect(endedMirrorThreads(shells, new Set(["live"]), missing, now)).toEqual([]);
+    expect(endedMirrorThreads(shells, new Set(["live"]), missing, now + 3 * 60_000)).toEqual([
+      liveThreadId("ended"),
+    ]);
+    const fresh = new Map<ThreadId, number>([[liveThreadId("ended"), 0]]);
+    expect(
+      endedMirrorThreads(shells, new Set(), fresh, Date.parse("2026-11-01T10:01:00Z")),
+    ).toEqual([]);
+  });
+
+  it("starts the missing clock over when the session comes back between reads", () => {
+    const shells = [t(String(liveThreadId("s")), "p", "2026-11-01T10:00:00Z")];
+    const now = Date.parse("2026-11-01T10:10:00Z");
+    const missing = new Map<ThreadId, number>();
+    endedMirrorThreads(shells, new Set(), missing, now);
+    endedMirrorThreads(shells, new Set(["s"]), missing, now + 60_000);
+    expect(endedMirrorThreads(shells, new Set(), missing, now + 3 * 60_000)).toEqual([]);
+    expect(missing.size).toBe(1);
   });
 
   it("keeps a thread he sent a message in", () => {
