@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  bindingBanner,
   pinnedLiveSelection,
   classifierStopReason,
   describeAnswerer,
@@ -75,5 +76,26 @@ describe("a live thread's own selection", () => {
     expect(
       pinnedLiveSelection("import:claudeAgent:abc", sel("baton-live", "m"), current).model,
     ).toBe("m");
+  });
+});
+
+describe("the thread's connection banner", () => {
+  const row = (state: string, source: string) => ({ state, source });
+  it("shows nothing while the session runs, or before its state is known", () => {
+    expect(bindingBanner(null)).toBeNull();
+    expect(bindingBanner(row("running", "live"))).toBeNull();
+  });
+  it("says the thread is not connected when the session is stopped or missing, and offers Resume", () => {
+    for (const found of [
+      row("stopped", "transcript"),
+      row("failed", "transcript"),
+      row("stopped", "history"),
+    ]) {
+      expect(bindingBanner(found)).toEqual({
+        text: "Not connected to its session.",
+        actions: ["resume"],
+      });
+    }
+    expect(bindingBanner("missing")?.text).toBe("Not connected to its session.");
   });
 });
