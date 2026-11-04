@@ -43,6 +43,7 @@ import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { toastManager } from "../ui/toast";
 import { limitsAge } from "./BatonLimitsAge";
+import { BatonLiveBinding } from "./BatonLiveBinding";
 
 const HEADER_CONTROL = "shrink-0 [-webkit-app-region:no-drag]";
 
@@ -273,6 +274,7 @@ export function BatonThreadAccount({ threadRef }: { readonly threadRef: ScopedTh
   return (
     <>
       <LiveAnswerer threadRef={threadRef} />
+      <BatonLiveBinding threadRef={threadRef} />
       <AccountMenu threadRef={threadRef} />
     </>
   );
