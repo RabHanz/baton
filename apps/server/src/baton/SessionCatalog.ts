@@ -48,6 +48,8 @@ export interface CatalogPorts {
     sessionId: string,
     cwd: string,
   ) => Promise<{ readonly threadId: string } | { readonly detail: string }>;
+  /** Machines with no Herdr: sends a message into the thread a resume brought back; false if it was not taken. */
+  readonly threadSend?: (threadId: string, text: string) => Promise<boolean>;
   /** Machines with no Herdr: starts a new session in a folder as a T3 thread, with a model, an effort and a first message. */
   readonly launch?: (input: {
     readonly cwd: string;
@@ -328,7 +330,20 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
         waiting.delete(input.sessionId);
         for (const text of queued) await ports.type(r.pane, text);
       }
-      if (r.state === "running" && r.pane === null) waiting.delete(input.sessionId);
+      // No Herdr: the session came back as a thread, so what waited goes there. Anything not taken stays kept.
+      if (r.state === "running" && r.pane === null) {
+        const queued = waiting.get(input.sessionId) ?? [];
+        const left: string[] = [];
+        for (const text of queued) {
+          const sent =
+            r.threadId !== undefined &&
+            ports.threadSend !== undefined &&
+            (await ports.threadSend(r.threadId, text).catch(() => false));
+          if (!sent) left.push(text);
+        }
+        if (left.length === 0) waiting.delete(input.sessionId);
+        else waiting.set(input.sessionId, left);
+      }
       return r;
     });
     resuming.set(input.sessionId, job);
@@ -367,10 +382,13 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
       ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     });
     if (result.state === "running" && result.pane === null) {
+      const kept = waiting.has(input.sessionId);
       return {
         state: "running" as const,
-        delivered: false,
-        detail: "It is open as a thread here. Send your message in that thread.",
+        delivered: !kept,
+        detail: kept
+          ? "It is open as a thread here, but your message did not go in. It is kept; send it in that thread."
+          : "Sent in its thread here.",
       };
     }
     if (result.state === "running")

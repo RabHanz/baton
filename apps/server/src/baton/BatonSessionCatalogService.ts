@@ -370,6 +370,18 @@ export const layer = Layer.effect(
       ...real,
       ...(thread === undefined ? {} : { thread }),
       ...(launch === undefined ? {} : { launch }),
+      ...(thread === undefined || Option.isNone(engine)
+        ? {}
+        : {
+            threadSend: (threadId: string, text: string) =>
+              Effect.runPromiseWith(services)(
+                engine.value.sendMessage({
+                  tag: "catalog-send",
+                  threadId: ThreadId.make(threadId),
+                  text,
+                }),
+              ),
+          }),
       autoResumed: (id) => autoResumedWithin(autoState, id, Date.now(), 2 * HOUR_MS),
     };
     const catalog = createSessionCatalog(ports);

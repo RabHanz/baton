@@ -37,6 +37,8 @@ import {
   lostNote,
   queuedNote,
   keptEntry,
+  liveQueueDir,
+  takeDrainLock,
 } from "./baton-live-acp.mjs";
 
 const AGENT = NodePath.join(
@@ -183,6 +185,7 @@ NodeTest.test(
         BATON_TEST_HERDR_PANE: "fab-x~p1",
         BATON_LIVE_ATTACHMENT_ENTER_MS: "10",
         BATON_LIVE_POLL_MS: "50",
+        BATON_LIVE_QUEUE_DIR: NodePath.join(dir, "queue"),
       },
       stdio: ["pipe", "pipe", "inherit"],
     });
@@ -239,6 +242,25 @@ NodeTest.test(
 
       const unbound = await call(5, "session/prompt", { sessionId: "baton-unbound-1", prompt: [] });
       NodeAssert.equal(unbound.result.stopReason, "end_turn");
+      // An image-only message to an unbound thread is kept with its picture, not as empty text.
+      const other = NodePath.join(dir, "other");
+      NodeFS.mkdirSync(other);
+      const lone = (await call(7, "session/new", { cwd: other, mcpServers: [] })).result.sessionId;
+      await call(8, "session/prompt", {
+        sessionId: lone,
+        prompt: [
+          { type: "image", mimeType: "image/png", data: Buffer.from("png").toString("base64") },
+        ],
+      });
+      const kept = NodeFS.readFileSync(
+        NodePath.join(dir, "queue", "unbound-messages.ndjson"),
+        "utf8",
+      )
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry.sessionId === lone);
+      NodeAssert.match(kept.text, /^He attached image image-.*\n@.*\/other\/\.baton\/inbox\//);
     } finally {
       child.kill();
       NodeFS.rmSync(dir, { recursive: true, force: true });
@@ -257,6 +279,7 @@ const harness = (state) => {
     deps: {
       findLive: () => state.live,
       typeInto: async (_pane, text) => {
+        await state.during?.();
         if (state.failure !== null) return state.failure;
         typed.push(text);
         return null;
@@ -286,6 +309,52 @@ NodeTest.test(
     NodeAssert.deepEqual(typed, ["first thing", "second thing"]);
     NodeAssert.deepEqual(said, [deliveredNote("first thing"), deliveredNote("second thing")]);
     NodeAssert.equal(readQueue(dir, "s1").length, 0);
+  },
+);
+
+NodeTest.test(
+  "a message added while one is being typed is kept, and a second drainer never types the same one",
+  async () => {
+    const dir = queueDir();
+    const state = { live: { pane: "p", status: "idle" }, failure: null };
+    const { deps, typed } = harness(state);
+    enqueue(dir, "s10", msg("first"));
+    let second = Promise.resolve();
+    state.during = async () => {
+      state.during = undefined;
+      enqueue(dir, "s10", msg("added meanwhile"));
+      // Another live-session process drains the same folder at the same moment.
+      second = drainSession(dir, "s10", deps);
+    };
+    await drainSession(dir, "s10", deps);
+    await second;
+    NodeAssert.deepEqual(typed, ["first", "added meanwhile"]);
+    NodeAssert.equal(readQueue(dir, "s10").length, 0);
+    NodeAssert.notEqual(takeDrainLock(dir), null, "the lock is released after a pass");
+  },
+);
+
+NodeTest.test("a session in a plain terminal keeps its queue until it has a pane", async () => {
+  const dir = queueDir();
+  const { deps, said, typed } = harness({ live: { pane: null, status: "idle" }, failure: null });
+  enqueue(dir, "s11", msg("wait for me"));
+  for (let i = 0; i < 30; i += 1) await drainSession(dir, "s11", deps);
+  NodeAssert.deepEqual(said, []);
+  NodeAssert.deepEqual(typed, []);
+  NodeAssert.equal(readQueue(dir, "s11").length, 1);
+});
+
+NodeTest.test(
+  "the queue folder follows the server's rule: the new one unless only the old one exists",
+  () => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-home-"));
+    const next = NodePath.join(home, ".t3", "tessaya", "live-queue");
+    const legacy = NodePath.join(home, ".t3", "baton", "live-queue");
+    NodeAssert.equal(liveQueueDir(home), next);
+    NodeFS.mkdirSync(legacy, { recursive: true });
+    NodeAssert.equal(liveQueueDir(home), legacy);
+    NodeFS.mkdirSync(next, { recursive: true });
+    NodeAssert.equal(liveQueueDir(home), next);
   },
 );
 
@@ -623,12 +692,19 @@ NodeTest.test(
   },
 );
 
-NodeTest.test("a kept unbound message records its id, the thread's native session and the words", () => {
-  const a = keptEntry({ sessionId: "baton-unbound-1-2" }, "/work", "hello");
-  const b = keptEntry({ sessionId: "baton-unbound-1-2", _meta: { threadId: "t1" } }, null, "hello");
-  NodeAssert.equal(a.sessionId, "baton-unbound-1-2");
-  NodeAssert.equal(a.cwd, "/work");
-  NodeAssert.equal(a.text, "hello");
-  NodeAssert.notEqual(a.id, b.id);
-  NodeAssert.equal(b.threadId, "t1");
-});
+NodeTest.test(
+  "a kept unbound message records its id, the thread's native session and the words",
+  () => {
+    const a = keptEntry({ sessionId: "baton-unbound-1-2" }, "/work", "hello");
+    const b = keptEntry(
+      { sessionId: "baton-unbound-1-2", _meta: { threadId: "t1" } },
+      null,
+      "hello",
+    );
+    NodeAssert.equal(a.sessionId, "baton-unbound-1-2");
+    NodeAssert.equal(a.cwd, "/work");
+    NodeAssert.equal(a.text, "hello");
+    NodeAssert.notEqual(a.id, b.id);
+    NodeAssert.equal(b.threadId, "t1");
+  },
+);

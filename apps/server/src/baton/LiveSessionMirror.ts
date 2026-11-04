@@ -1787,9 +1787,10 @@ const make = Effect.gen(function* () {
     });
 
   /** Kept unbound messages go back through their thread once it is on its running session again. */
-  const keptDir = liveQueueDir();
   const retryKept = (live: ReadonlyArray<ClaudeLiveSession>) =>
     Effect.gen(function* () {
+      // Read each pass: the folder can move to ~/.t3/tessaya while the server runs.
+      const keptDir = liveQueueDir();
       yield* stampKept(engine, keptDir);
       const pending = pendingKept(readKept(keptDir), readLedger(keptDir));
       for (const threadId of new Set(
@@ -1818,7 +1819,7 @@ const make = Effect.gen(function* () {
   const tick = Effect.gen(function* () {
     const live = yield* readAllProfileLiveSessions();
     // Before any heal rewrites a thread's native id, so kept messages still find their thread.
-    yield* stampKept(engine, keptDir).pipe(Effect.ignoreCause);
+    yield* stampKept(engine, liveQueueDir()).pipe(Effect.ignoreCause);
     mirrorLog("live-set", {
       event: "live-sessions",
       sessions: live
