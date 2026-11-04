@@ -83,7 +83,9 @@ export const visionArgs = (
   chrome = false,
 ): ReadonlyArray<string> => [
   "-p",
-  "--safe-mode",
+  // Since CLI 2.1.318 safe mode also drops --mcp-config servers. With our own server, the setting,
+  // strict-MCP and tool flags shut out his customisations instead, and CLAUDE.md is off by env.
+  ...(mcpConfigFile === undefined ? ["--safe-mode"] : []),
   "--input-format",
   "stream-json",
   "--output-format",
@@ -288,7 +290,10 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
     ).map((a) => (viaShell ? `"${a}"` : a)),
     {
       cwd: options.cwd ?? options.workDir,
-      env: subscriptionEnv(options.env),
+      env: {
+        ...subscriptionEnv(options.env),
+        ...(mcpFile === undefined ? {} : { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" }),
+      },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       shell: viaShell,
