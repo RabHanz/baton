@@ -87,6 +87,25 @@ NodeTest.test("an AskUserQuestion is read with its header, descriptions and free
   NodeAssert.equal(answerFrom("Blue", prompt), "Blue");
 });
 
+NodeTest.test("a dialog whose question sits in a dashed box is read with its options", () => {
+  const prompt = parsePanePrompt(fixture("pane-boxed.txt"));
+  NodeAssert.equal(
+    prompt.question,
+    '"Campaign notes" was made by someone else. Let Claude read it?',
+  );
+  NodeAssert.match(prompt.context, /created outside your organization/);
+  NodeAssert.match(
+    prompt.context,
+    /artifact\/AAAAAAAAAAABBBBBBBBBBB /,
+    "the wrapped link is whole",
+  );
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => o.label),
+    ["Yes", "No"],
+  );
+  NodeAssert.deepEqual(answerKeys(prompt, "No"), { keys: ["down", "enter"], text: null });
+});
+
 NodeTest.test("unnumbered options are read too, and a plain screen has no prompt", () => {
   const trust = parsePanePrompt(fixture("pane-trust.txt"));
   NodeAssert.deepEqual(
