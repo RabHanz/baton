@@ -228,6 +228,11 @@ describe("the operator's Claude session", () => {
     expect(operator[operator.indexOf("--permission-mode") + 1]).toBe("default");
     expect(operator[operator.indexOf("--permission-prompt-tool") + 1]).toBe("stdio");
     expect(operator).toContain("--safe-mode");
+    // Safe mode drops every MCP server, Tessaya's own too, so the assistant's session goes without it.
+    const assistant = visionArgs("p.txt", "sonnet", true, "mcp.json");
+    expect(assistant).not.toContain("--safe-mode");
+    expect(assistant).toContain("--strict-mcp-config");
+    expect(assistant[assistant.indexOf("--setting-sources") + 1]).toBe("");
   });
 
   it("reads a permission request, and nothing else, as one", () => {
