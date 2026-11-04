@@ -173,6 +173,7 @@ import {
   styleAction,
   styleControls,
 } from "../writing/styleRows.ts";
+import { createJsonStore, writeJsonFile } from "../writing/jsonStore.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
@@ -315,8 +316,8 @@ import {
 import {
   importWisprDictionary,
   makeRewriter,
+  dictionaryPath,
   readDictionary,
-  writeDictionary,
 } from "./dictationRewriter.ts";
 import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
@@ -588,9 +589,14 @@ const MIC_POLL_MS = 5_000;
 const LOCATE_TIMEOUT_MS = 1_500;
 const LOCATE_MAX_DIP = 160;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export const readSettings = (path: string): VoiceSettings => {
   try {
-    const saved: Record<string, unknown> = JSON.parse(NodeFS.readFileSync(path, "utf8"));
+    // A damaged file goes aside as .bad, so the defaults saved next never land on his settings.
+    const saved = createJsonStore<Record<string, unknown> | null>(path, null, isRecord).read();
+    if (saved === null) return DEFAULT_SETTINGS;
     const wakeWords = wakeWordsFor(saved);
     // A saved word whose model is not shipped is switched off in the file too, not only in memory.
     if (
@@ -598,7 +604,7 @@ export const readSettings = (path: string): VoiceSettings => {
       Array.isArray(saved["wakeWords"])
     ) {
       try {
-        NodeFS.writeFileSync(path, JSON.stringify({ ...saved, wakeWords }, null, 2));
+        writeJsonFile(path, { ...saved, wakeWords });
       } catch {
         // The file is the user's; if it cannot be written the memory copy is still right.
       }
@@ -881,7 +887,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   const save = (next: Partial<VoiceSettings>) => {
     settings = { ...settings, ...next };
-    NodeFS.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    writeJsonFile(settingsPath, settings);
     pushHome();
   };
 
@@ -919,7 +925,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let seenWords: SeenWords = {};
   const seenPath = NodePath.join(input.stateDir, "voice", "vocabulary-seen.json");
   try {
-    seenWords = JSON.parse(NodeFS.readFileSync(seenPath, "utf8")) as SeenWords;
+    seenWords = createJsonStore(seenPath, {}, isRecord).read() as SeenWords;
   } catch {}
   const changeVocabulary = async (
     change: (
@@ -927,27 +933,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       now: string,
     ) => ReadonlyArray<VocabularyEntry>,
   ) => {
-    dictionary = await writeDictionary(input.stateDir, (entries) =>
-      change(entries, new Date().toISOString()),
-    );
+    // Re-read for his hand edits, synchronously so no other write lands in between.
+    dictionary = change(readDictionary(input.stateDir, dictionary), new Date().toISOString());
+    saveDictionary(input.stateDir, dictionary);
   };
   const saveSeen = () => {
     try {
-      NodeFS.mkdirSync(NodePath.dirname(seenPath), { recursive: true });
-      NodeFS.writeFileSync(seenPath, JSON.stringify(seenWords));
+      writeJsonFile(seenPath, seenWords);
     } catch {}
   };
   // Words he deleted or discarded never come back by themselves.
   const neverPath = NodePath.join(input.stateDir, "voice", "vocabulary-never.json");
   let never: NeverList = [];
   try {
-    never = parseNever(JSON.parse(NodeFS.readFileSync(neverPath, "utf8")));
+    never = parseNever(createJsonStore<unknown>(neverPath, [], Array.isArray).read());
   } catch {}
   const rememberNever = (words: ReadonlyArray<string>) => {
     never = words.reduce(addNever, never);
     try {
-      NodeFS.mkdirSync(NodePath.dirname(neverPath), { recursive: true });
-      NodeFS.writeFileSync(neverPath, JSON.stringify(never));
+      writeJsonFile(neverPath, never);
     } catch {}
   };
   const toast = createVocabToast({
@@ -2316,9 +2320,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     markPhase("dictation-sidecar-spawn:begin");
     sidecar = startDictationSidecar({ binary, onEvent: onDictation });
     markPhase("dictation-sidecar-spawn:end");
-    dictionary =
-      (await readDictionary(input.stateDir)) ??
-      (await importWisprDictionary({ stateDir: input.stateDir, appData: input.env["APPDATA"] }));
+    dictionary = NodeFS.existsSync(dictionaryPath(input.stateDir))
+      ? readDictionary(input.stateDir, [])
+      : await importWisprDictionary({ stateDir: input.stateDir, appData: input.env["APPDATA"] });
     markPhase("dictation-devices:begin");
     devices = await listSidecarDevices();
     markPhase("dictation-devices:end");
@@ -4562,6 +4566,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           .finally(pushHome);
       else if (id === "bk.apply" && backupPreview !== null) {
         const n = applyRestore(backupPreview, input.stateDir);
+        // Or the copies in memory are saved over what was just restored.
+        settings = readSettings(settingsPath);
+        dictionary = readDictionary(input.stateDir, dictionary);
         backupNote = `Restored ${n} file(s). Restart Tessaya to use all of them; yours were kept as .bak.`;
         backupPreview = null;
         forgetFiles();

@@ -85,15 +85,18 @@ export const writeBackup = (file: string, plan: BackupPlan): number => {
 
 /** Only a name this module could have written: relative, no climbing, on the allow list. */
 export const allowedName = (name: string): boolean =>
-  name === SERVER_MEMORY_NAME ||
-  FILES.includes(name) ||
-  DIRS.some(
-    ({ dir, ext }) =>
-      name.startsWith(`${dir}/`) &&
-      !name.slice(dir.length + 1).includes("/") &&
-      ext.test(name) &&
-      !NEVER.test(NodePath.basename(name)),
-  );
+  // Windows reads `\` as a separator and `c:` as a drive, so `memory/..\..\x.md` would climb out.
+  !/[\\:\0]/.test(name) &&
+  !name.split("/").includes("..") &&
+  (name === SERVER_MEMORY_NAME ||
+    FILES.includes(name) ||
+    DIRS.some(
+      ({ dir, ext }) =>
+        name.startsWith(`${dir}/`) &&
+        !name.slice(dir.length + 1).includes("/") &&
+        ext.test(name) &&
+        !NEVER.test(NodePath.basename(name)),
+    ));
 
 export interface RestoreRow {
   readonly name: string;
@@ -127,6 +130,7 @@ export const applyRestore = (preview: RestorePreview, stateDir: string): number 
     if (row.action === "refused" || row.action === "same") continue;
     const data = preview.entries.find((e) => e.name === row.name)!.data;
     const target = NodePath.join(stateDir, ...row.name.split("/"));
+    if (!NodePath.resolve(target).startsWith(NodePath.resolve(stateDir) + NodePath.sep)) continue;
     NodeFS.mkdirSync(NodePath.dirname(target), { recursive: true });
     if (row.action === "replaces") NodeFS.copyFileSync(target, `${target}.bak`);
     NodeFS.writeFileSync(target, data);

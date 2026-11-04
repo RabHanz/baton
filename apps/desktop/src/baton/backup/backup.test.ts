@@ -96,12 +96,21 @@ describe("backup and restore", () => {
     const zip = makeZip([
       { name: "../evil.json", data: Buffer.from("x") },
       { name: "vault.json", data: Buffer.from("x") },
+      // Separators and drives only Windows reads: they climb out there.
+      { name: "memory/x\\..\\..\\..\\settings.md", data: Buffer.from("x") },
+      { name: "memory/c:evil.md", data: Buffer.from("x") },
       { name: "snippets.json", data: Buffer.from("[]") },
     ]);
     const to = tmp();
     const preview = previewRestore(zip, to);
     if (preview instanceof Error) throw preview;
-    expect(preview.rows.map((r) => r.action)).toEqual(["refused", "refused", "new"]);
+    expect(preview.rows.map((r) => r.action)).toEqual([
+      "refused",
+      "refused",
+      "refused",
+      "refused",
+      "new",
+    ]);
     expect(applyRestore(preview, to)).toBe(1);
     expect(NodeFS.readdirSync(to)).toEqual(["snippets.json"]);
   });
