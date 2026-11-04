@@ -47,11 +47,13 @@ jobs:
         run: |
           choco install ffmpeg --no-progress -y > /dev/null || echo "ffmpeg did not install: no clips this run"
           ffmpeg -version | head -1 || true
-      # The tool table imports @t3tools/baton-shared; its sources are plain TypeScript with no runtime dependencies,
-      # so a copy where node looks is enough, and the run needs no install.
+      # The tool table imports @t3tools/baton-shared, plain TypeScript with no runtime dependencies. A junction (node
+      # strips types only outside node_modules, and resolves the link to packages/) is enough; the run needs no install.
       - name: Make the shared package resolvable
-        shell: bash
-        run: mkdir -p node_modules/@t3tools && cp -r packages/baton-shared node_modules/@t3tools/baton-shared
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force node_modules/@t3tools | Out-Null
+          New-Item -ItemType Junction -Path node_modules/@t3tools/baton-shared -Target "$PWD/packages/baton-shared" | Out-Null
       - name: Run the task set
         shell: bash
         env:
