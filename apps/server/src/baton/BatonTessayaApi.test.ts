@@ -1,4 +1,7 @@
 import type { PhoneState } from "@t3tools/baton-shared/phone";
+import { it as effectIt } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
@@ -8,6 +11,8 @@ import {
   handlePhone,
   OPERATE_SCOPE,
   READ_SCOPE,
+  readCapped,
+  uploadRefusal,
   type PhoneDeps,
 } from "./BatonTessayaApi.ts";
 
@@ -308,6 +313,30 @@ describe("the phone API", () => {
     expect((await post(new Set([...operate, "baton:cloud-approve"]))).status).toBe(200);
     expect(calls).toEqual(["prompt pr1 0"]);
   });
+
+  it("refuses a recording before reading it: no operate scope, or a stated size over the cap", () => {
+    expect(uploadRefusal(read, "1000")?.status).toBe(403);
+    expect(uploadRefusal(read, undefined)?.status).toBe(403);
+    expect(uploadRefusal(operate, undefined)).toBeNull();
+    expect(uploadRefusal(operate, String(6 * 1024 * 1024 + 1))?.status).toBe(413);
+    expect(uploadRefusal(operate, "abc")?.status).toBe(413);
+    expect(uploadRefusal(operate, "1000")).toBeNull();
+  });
+
+  effectIt.effect(
+    "reads a chunked recording whole under the cap and stops reading at once past it",
+    () =>
+      Effect.gen(function* () {
+        const chunk = new Uint8Array([1, 2, 3, 4]);
+        const whole = yield* readCapped(Stream.make(chunk, chunk), 8);
+        expect(whole).toEqual(new Uint8Array([1, 2, 3, 4, 1, 2, 3, 4]));
+        let pulled = 0;
+        const endless = Stream.fromEffectRepeat(Effect.sync(() => ((pulled += 1), chunk)));
+        const over = yield* readCapped(endless, 8);
+        expect(over).toMatchObject({ status: 413 });
+        expect(pulled).toBe(3);
+      }),
+  );
 
   it("says 501 when the server cannot transcribe", async () => {
     const { deps } = make();

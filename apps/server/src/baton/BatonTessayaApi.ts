@@ -3,7 +3,14 @@
  * needs the read scope, anything that changes work needs the operate scope, and an approval is answered only if it is still
  * waiting and still says what the page showed.
  */
-import { checkWav, parseDecision, type PhoneState } from "@t3tools/baton-shared/phone";
+import {
+  checkWav,
+  parseDecision,
+  WAV_MAX_BYTES,
+  type PhoneState,
+} from "@t3tools/baton-shared/phone";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { askLine, type PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
 
@@ -47,6 +54,47 @@ export interface PhoneResponse {
 }
 
 const say = (status: number, message: string): PhoneResponse => ({ status, json: { message } });
+
+const TOO_LONG = "That recording is too long. Keep it under three minutes.";
+
+/**
+ * Checked before an upload's body is read: a phone that may not act, or a stated size over the cap, is refused
+ * unread. A chunked body states no size; `readCapped` holds it to the same cap as it arrives.
+ */
+export const uploadRefusal = (
+  scopes: ReadonlySet<string>,
+  contentLength: string | undefined,
+): PhoneResponse | null => {
+  if (!scopes.has(OPERATE_SCOPE))
+    return say(403, "This phone may look but not act. Pair it with operate access.");
+  if (contentLength === undefined) return null;
+  const size = Number(contentLength);
+  return Number.isInteger(size) && size >= 0 && size <= WAV_MAX_BYTES ? null : say(413, TOO_LONG);
+};
+
+/** The body, or a 413 the moment it passes `max` bytes; the rest is never read. */
+export const readCapped = Effect.fn("BatonTessayaApi.readCapped")(function* <E>(
+  body: Stream.Stream<Uint8Array, E>,
+  max: number = WAV_MAX_BYTES,
+) {
+  const parts: Array<Uint8Array> = [];
+  let size = 0;
+  yield* body.pipe(
+    Stream.takeWhile((chunk) => {
+      size += chunk.byteLength;
+      return size <= max;
+    }),
+    Stream.runForEach((chunk) => Effect.sync(() => void parts.push(chunk))),
+  );
+  if (size > max) return say(413, TOO_LONG);
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.byteLength;
+  }
+  return out;
+});
 const TEXT_MAX = 2_000;
 
 export const handlePhone = async (deps: PhoneDeps, req: PhoneRequest): Promise<PhoneResponse> => {

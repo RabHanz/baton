@@ -21,7 +21,7 @@ import * as FleetQuery from "./FleetQuery.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
 import { handleHands } from "./BatonHandsApi.ts";
-import { handlePhone, type PhoneDeps } from "./BatonTessayaApi.ts";
+import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./BatonTessayaApi.ts";
 import { transcribeWav } from "./BatonPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
 
@@ -32,6 +32,7 @@ const PAGE_HEADERS = {
     "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; media-src blob:; manifest-src 'self'; frame-ancestors 'none'",
 } as const;
 
+const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
 const page = (body: string, contentType: string) =>
   HttpServerResponse.text(body, { contentType, headers: PAGE_HEADERS });
 
@@ -43,6 +44,8 @@ export const routes = HttpRouter.use((router) =>
 
     if (context === null) return;
     const run = Effect.runPromiseWith(context);
+    // One transcription at a time: each one runs the speech model on this computer.
+    let hearing = false;
     const deps: PhoneDeps = {
       state: () =>
         run(
@@ -73,8 +76,20 @@ export const routes = HttpRouter.use((router) =>
         ),
       answerPrompt: (id, index) =>
         run(Effect.flatMap(BatonPhoneInbox, (inbox) => inbox.answerPrompt(id, index))),
-      transcribe: (wav) =>
-        transcribeWav({ wav, env: process.env, userdataDir: NodePath.dirname(config.dbPath) }),
+      transcribe: async (wav) => {
+        if (hearing)
+          return { ok: false, why: "Still working on the last recording. Try again in a moment." };
+        hearing = true;
+        try {
+          return await transcribeWav({
+            wav,
+            env: process.env,
+            userdataDir: NodePath.dirname(config.dbPath),
+          });
+        } finally {
+          hearing = false;
+        }
+      },
     };
 
     const api = Effect.gen(function* () {
@@ -90,7 +105,21 @@ export const routes = HttpRouter.use((router) =>
       const path = url.pathname.replace(/^\/tessaya\/api\//, "");
       const type = request.headers["content-type"] ?? "";
       const raw = request.method === "POST" && type.startsWith("audio/");
-      const bytes = raw ? new Uint8Array(yield* request.arrayBuffer) : undefined;
+      const refused = raw
+        ? uploadRefusal(new Set(session.value.scopes), request.headers["content-length"])
+        : null;
+      if (refused !== null)
+        return HttpServerResponse.jsonUnsafe(refused.json, {
+          status: refused.status,
+          headers: PAGE_HEADERS,
+        });
+      const read = raw ? yield* readCapped(request.stream) : undefined;
+      if (read !== undefined && !(read instanceof Uint8Array))
+        return HttpServerResponse.jsonUnsafe(read.json, {
+          status: read.status,
+          headers: PAGE_HEADERS,
+        });
+      const bytes = read;
       const json =
         request.method === "POST" && !raw
           ? yield* request.json.pipe(Effect.orElseSucceed(() => ({})))
@@ -141,16 +170,24 @@ export const routes = HttpRouter.use((router) =>
       Effect.sync(() => page(MANIFEST, "application/manifest+json")),
     );
     // Remote hands: a remote session asks, the desktop takes and answers (docs/baton/REMOTE_HANDS.md).
+    let audited: Promise<void> = Promise.resolve();
     const hands = createHandsBroker({
       now: () => Date.now(),
       newId: () => globalThis.crypto.randomUUID(),
+      // In order, and rolled to one `.1` file past AUDIT_MAX_BYTES, so the record never grows without end.
       onAudit: (entry) =>
-        void NodeFS.promises
-          .appendFile(
-            NodePath.join(NodePath.dirname(config.dbPath), "baton-hands-audit.ndjson"),
-            `${JSON.stringify(entry)}\n`,
-          )
-          .catch(() => undefined),
+        void (audited = audited.then(async () => {
+          const file = NodePath.join(NodePath.dirname(config.dbPath), "baton-hands-audit.ndjson");
+          try {
+            if ((await NodeFS.promises.stat(file)).size > AUDIT_MAX_BYTES)
+              await NodeFS.promises.rename(file, `${file}.1`);
+          } catch {
+            // No file yet.
+          }
+          await NodeFS.promises
+            .appendFile(file, `${JSON.stringify(entry)}\n`)
+            .catch(() => undefined);
+        })),
     });
     const handsApi = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
