@@ -7,6 +7,7 @@ import {
   maskAccount,
   orderSessions,
   requestFor,
+  sendRefusal,
   sessionControls,
 } from "./sessionRows.ts";
 
@@ -79,6 +80,10 @@ describe("the assistant's session tools", () => {
     expect(findSession(rows, "k1")?.key).toBe("k1");
     expect(findSession(rows, "Build: Tests")?.key).toBe("k1");
     expect(findSession(rows, "nope")).toBeNull();
+  });
+  it("types nothing into a session that waits on him, whatever its pane runs", () => {
+    expect(sendRefusal(row("k", { state: "waiting", urgent: true }))).toContain("nothing was sent");
+    expect(sendRefusal(row("k", { state: "waiting" }))).toBeNull();
   });
   it("says what a session is doing from its row", () => {
     const now = Date.parse("2026-11-01T10:00:00Z");

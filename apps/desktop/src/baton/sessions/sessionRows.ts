@@ -100,3 +100,12 @@ export const describeSession = (row: BatonSessionSummary, now: number): string =
           : `, last active ${Math.round(minutes / 60)} h ago`;
   return `${row.session} (${row.project}, on ${row.box}) ${doing}${since}.`;
 };
+
+/**
+ * Why a message must not be typed into this row's pane now, or null. A session waiting on him shows a question or
+ * an approval, and keys typed there answer it; Herdr's own refusal only covers panes it knows run an agent.
+ */
+export const sendRefusal = (row: BatonSessionSummary): string | null =>
+  row.urgent
+    ? `${row.session} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
+    : null;

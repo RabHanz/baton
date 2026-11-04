@@ -18,7 +18,7 @@ import {
   BATON_SESSIONS_SNAPSHOT_CHANNEL,
   BATON_USAGE_CHANNEL,
 } from "../channels.ts";
-import { requestFor } from "./sessionRows.ts";
+import { requestFor, sendRefusal } from "./sessionRows.ts";
 
 const ANSWER_MS = 4_000;
 /** The window may still be loading when the first request goes out; the sidebar claims it late. */
@@ -106,6 +106,9 @@ export const createSessionsBridge = (input: {
     usage: () => usage,
     request: (request, waitMs) => ask(request, waitMs),
     act: async (id, text) => {
+      const row = rows.find((s) => id === `n:${s.key}`);
+      const refused = text === null || row === undefined ? null : sendRefusal(row);
+      if (refused !== null) return refused;
       const request = requestFor(rows, id, text);
       if (request === null)
         return text === null ? "That session has no thread to open." : "Nothing to send.";
