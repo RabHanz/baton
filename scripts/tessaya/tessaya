@@ -44,6 +44,31 @@ fi
 name="fab-$(basename "$dir" | tr -c 'A-Za-z0-9_\n-' '-')"
 running() { herdr session list 2>/dev/null | awk -v n="$name" '$1 == n && $2 == "running" { found = 1 } END { exit !found }'; }
 
+# A live Claude process already holds this conversation (any account's sessions folder).
+holder() {
+  local f
+  for f in "$HOME"/.claude/sessions/*.json "$HOME"/.claude-*/sessions/*.json \
+    "$HOME"/.local/share/claude-swap/sessions/*/sessions/*.json; do
+    [[ -f "$f" ]] && grep -q "\"sessionId\":\"$1\"" "$f" && kill -0 "$(basename "$f" .json)" 2> /dev/null && return 0
+  done
+  return 1
+}
+herdr_dir="$HOME/.config/herdr/sessions/$name"
+
+# A resume never makes a twin: not while the conversation runs, not twice at once, and not when
+# starting the space's server restores a pane that already resumes it.
+restored=0
+if ((${#agent[@]} > 0)) && [[ "${agent[1]:-}" == "--resume" ]]; then
+  exec 9> "${XDG_RUNTIME_DIR:-/tmp}/tessaya-resume-${agent[2]}.lock"
+  flock -w 60 9 || { echo "tessaya: another resume of ${agent[2]} is still starting" >&2; exit 1; }
+  if holder "${agent[2]}"; then
+    echo "tessaya: ${agent[2]} is already running; not starting a second copy"
+    agent=()
+  elif ! running && grep -q "\"value\": *\"${agent[2]}\"" "$herdr_dir/session.json" 2> /dev/null; then
+    restored=1
+  fi
+fi
+
 # The session's server runs headless and outlives this shell, so a plain attach (VS Code's
 # terminal) never hosts it: closing the terminal leaves every agent in the space running.
 if ! running; then
@@ -51,7 +76,11 @@ if ! running; then
   for _ in $(seq 1 50); do running && break; sleep 0.2; done
 fi
 
-if ((${#agent[@]} > 0)); then
+if ((restored)); then
+  # Herdr's restore brings the pane back; hold the lock until it is running so a second caller sees it.
+  for _ in $(seq 1 60); do holder "${agent[2]}" && break; sleep 0.5; done
+  echo "tessaya: ${agent[2]} restored by $name"
+elif ((${#agent[@]} > 0)); then
   cmd="$(printf '%q ' "${agent[@]}")"
   if herdr --session "$name" workspace list 2>/dev/null | grep -q '"workspace_id"'; then
     herdr --session "$name" tab create --cwd "$dir" --label "${agent[0]}" --focus >/dev/null
@@ -62,6 +91,7 @@ if ((${#agent[@]} > 0)); then
   pane="$(herdr --session "$name" pane list | grep -o '"pane_id":"[^"]*"' | tail -1 | cut -d'"' -f4)"
   herdr --session "$name" pane run "$pane" "$cmd" >/dev/null
   echo "tessaya: ${agent[0]} running in $name pane $pane"
+  [[ "${agent[1]:-}" == "--resume" ]] && for _ in $(seq 1 60); do holder "${agent[2]}" && break; sleep 0.5; done
 fi
 
 if [[ -t 1 ]]; then
