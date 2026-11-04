@@ -106,6 +106,8 @@ import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts
 import { createDesktopMemory } from "../memory/memoryClient.ts";
 import { askHistory } from "@t3tools/baton-shared/historyIndex";
 import { windowsHello } from "../vault/hello.ts";
+import { pendingSecret } from "../vault/pendingSecret.ts";
+import { redactForHistory } from "../vault/redact.ts";
 import { createVaultHost, type VaultHost } from "../vault/vaultHost.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
@@ -2366,6 +2368,16 @@ export const startScreenCompanion = (input: {
   const said: ScreenCompanion["said"] = async (text, { direct, typed = false }) => {
     const started = Date.now();
     voiceTurn = !typed;
+    // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
+    const secret = redactForHistory(text, null).secret;
+    if (secret !== null) {
+      pendingSecret.set(text, started);
+      const offer = `That looked like ${secret}, so I kept it out of our conversation. Say "put that in the vault" to keep it safely.`;
+      say(offer);
+      linger("Tessaya", offer);
+      input.onNote?.("secret_held", { kind: secret });
+      return { kind: "handled" };
+    }
     // A stop never waits on the sidecar, and needs no window.
     const busy = runningMode() !== null || answering > 0 || speech.busy();
     if (instantDecision(text, busy)?.route !== "control") {

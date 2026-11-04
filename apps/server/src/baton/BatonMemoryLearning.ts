@@ -5,7 +5,7 @@
  * decides which are kept. A failure here never reaches the user: learning is a bonus, never a gate.
  */
 import { modelFor } from "@t3tools/baton-shared/costRouting";
-import { similarity } from "@t3tools/baton-shared/memory";
+import { detectSecret, similarity } from "@t3tools/baton-shared/memory";
 import {
   draftsFromProposals,
   extractionPrompt,
@@ -67,6 +67,8 @@ export const make = Effect.gen(function* () {
 
   const learn = Effect.fn("BatonMemoryLearning.learn")(function* (input: LearnInput) {
     const none: LearnResult = { stored: 0, held: 0 };
+    // VAULT.md section 1: a secret is neither kept as talk nor put in the extractor's prompt.
+    if (detectSecret(`${input.said}\n${input.reply}`) !== null) return none;
     if (input.origin === "turn" && input.said.trim() !== "") {
       yield* memory.noteTalk(dayOf(yield* Clock.currentTimeMillis), input.said);
     }
