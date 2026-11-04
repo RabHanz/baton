@@ -16,6 +16,8 @@
 export interface LiveTranscriptImage {
   readonly mimeType: string;
   readonly data: string;
+  /** For a tool's image block: the file the call read, when it read one. */
+  readonly source?: string;
 }
 
 export interface LiveTranscriptMessage {

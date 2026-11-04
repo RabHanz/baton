@@ -37,9 +37,7 @@ describe("a file sent to a live session (D73)", () => {
       expect(result.saved).toBe(true);
       expect(result.path?.startsWith(NodePath.join(repo, ".baton", "inbox"))).toBe(true);
       expect(NodeFS.readFileSync(result.path!, "utf8")).toBe("hello");
-      expect(NodeFS.readFileSync(NodePath.join(repo, ".git", "info", "exclude"), "utf8")).toContain(
-        ".baton/",
-      );
+      expect(NodeFS.readFileSync(NodePath.join(repo, ".baton", ".gitignore"), "utf8")).toBe("*\n");
     }),
   );
 
