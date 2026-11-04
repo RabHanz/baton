@@ -58,6 +58,12 @@ describe("withMentionedMedia", () => {
     expect(run("done", w, { touched: [shot] })).toMatch(/!\[shot\.png\]/);
     // A secret is never shown, touched or not.
     expect(run(`see ${key}`, w, { touched: [key] })).toBe(`see ${key}`);
+    // What the user sent (Baton's inbox copy) is never echoed back, named or read.
+    const inbox = NodePath.join(w.cwd, ".baton", "inbox", "2026-11-04");
+    NodeFS.mkdirSync(inbox, { recursive: true });
+    const sent = NodePath.join(inbox, "image-15-55-75d2.png");
+    NodeFS.writeFileSync(sent, png);
+    expect(run(`see ${sent}`, w, { touched: [sent] })).toBe(`see ${sent}`);
     // A symlink out of the cwd cannot smuggle a secret in.
     NodeFS.symlinkSync(key, NodePath.join(w.cwd, "innocent.png"));
     expect(run("see innocent.png", w)).toBe("see innocent.png");

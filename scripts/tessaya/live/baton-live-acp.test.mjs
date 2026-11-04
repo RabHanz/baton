@@ -239,6 +239,11 @@ NodeTest.test(
         NodeFS.readFileSync(NodePath.join(cwd, ".baton", "inbox", day, inbox[0]), "utf8"),
         "png-bytes",
       );
+      // The inbox never shows as a changed file in the project.
+      NodeAssert.equal(
+        NodeFS.readFileSync(NodePath.join(cwd, ".baton", ".gitignore"), "utf8"),
+        "*\n",
+      );
 
       const unbound = await call(5, "session/prompt", { sessionId: "baton-unbound-1", prompt: [] });
       NodeAssert.equal(unbound.result.stopReason, "end_turn");

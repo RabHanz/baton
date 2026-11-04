@@ -94,7 +94,12 @@ import {
 } from "./UnboundMessages.ts";
 import { staleAskIds } from "./StaleAsks.ts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
-import { attachMarkdown, looksLikePicture, resolveMedia } from "../mentionedMedia.ts";
+import {
+  attachMarkdown,
+  isUserSentMedia,
+  looksLikePicture,
+  resolveMedia,
+} from "../mentionedMedia.ts";
 import { inferImageExtension } from "../imageMime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BatonEngine, type BatonEngineShape } from "./BatonEngine.ts";
@@ -303,7 +308,13 @@ export const liveMedia = (input: {
   const attachments: Array<ChatAttachment> = [];
   const notes: Array<string> = [];
   const links: Array<string> = [];
+  const shotSources = new Set<string>();
   (message.images ?? []).forEach((image, index) => {
+    if (image.source !== undefined) {
+      if (isUserSentMedia(image.source)) return;
+      // The block is the file re-encoded, so the file itself is not shown again.
+      for (const real of realpathOrNothing(image.source)) shotSources.add(real);
+    }
     const bytes = Buffer.from(image.data, "base64");
     const extension = inferImageExtension({ mimeType: image.mimeType });
     const id = createDeterministicAttachmentId(
@@ -408,7 +419,7 @@ export const liveMedia = (input: {
           cwd: input.cwd,
           touched: input.touched ?? [],
           exclude: [attachmentsDir],
-        }).filter((m) => !sentReal.has(m.file)),
+        }).filter((m) => !sentReal.has(m.file) && !shotSources.has(m.file)),
       }),
     );
   }
@@ -676,6 +687,15 @@ export const mediaPathsOf = (tool: string, input: unknown): ReadonlyArray<string
   if (typeof path !== "string") return [];
   const kind = mediaKindFromPath(path);
   return kind === "image" || kind === "video" ? [path] : [];
+};
+
+/** A tool result's images, tagged with the file its call read, so a reply can tell them apart from what the user sent. */
+export const toolShots = (
+  images: ReadonlyArray<LiveTranscriptImage>,
+  call: { readonly name: string; readonly input: unknown } | undefined,
+): Array<LiveTranscriptImage> => {
+  const source = call === undefined ? undefined : mediaPathsOf(call.name, call.input)[0];
+  return images.map((image) => (source === undefined ? image : { ...image, source }));
 };
 
 /** What a transcript message shows: a reply takes the screenshots and touched files gathered since the last reply, once. */
@@ -1174,7 +1194,7 @@ const make = Effect.gen(function* () {
             for (const path of mediaPathsOf(message.name, message.input)) follow.touched.add(path);
           }
           if (message.kind === "result" && message.images !== undefined) {
-            follow.shots.push(...message.images);
+            follow.shots.push(...toolShots(message.images, follow.tools.get(message.id)));
             follow.shots.splice(0, Math.max(0, follow.shots.length - MAX_TOOL_SHOTS));
           }
           ownerAt(message.createdAt);
