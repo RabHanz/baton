@@ -16,8 +16,10 @@ export interface BatonUpdates {
   readonly apply: (id: string) => void;
   /** An update is downloaded and waiting, for the dot on the tray. */
   readonly ready: () => boolean;
-  /** The tray's entry: restart now, at the first quiet moment. */
+  /** The tray's entry: restart now, at the first quiet moment. Nothing when no update is downloaded. */
   readonly install: () => void;
+  /** Lifts a Later, so a downloaded update gets its countdown at the next quiet moment. */
+  readonly soon: () => void;
 }
 
 const TICK_MS = 1_000;
@@ -67,9 +69,9 @@ export const createBatonUpdater = (input: {
       if (timer !== null) clearInterval(timer);
       timer = null;
       void input.install(state.downloadedVersion ?? "").finally(() => {
-        // A failed install leaves Baton running: start over rather than stay stuck.
+        // Still running means it failed: wait as for Later, or the countdown loops every 31 s.
         installing = false;
-        phase = { kind: "idle" };
+        phase = { kind: "snoozed", until: Date.now() + SNOOZE_MS };
         restartNow = false;
         ensureTimer();
         input.onChange();
@@ -107,7 +109,14 @@ export const createBatonUpdater = (input: {
       ),
     ready: () => isReady(state),
     install: () => {
+      // Remembered with nothing ready, a later download would install with no countdown.
+      if (!isReady(state)) return;
       restartNow = true;
+      tick();
+      input.onChange();
+    },
+    soon: () => {
+      if (phase.kind === "snoozed") phase = { kind: "idle" };
       tick();
       input.onChange();
     },
