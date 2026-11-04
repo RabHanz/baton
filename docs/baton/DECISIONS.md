@@ -1407,12 +1407,12 @@ product.
 A model reading took ~10 s live. Measured on his own account, with the real transport, the
 decomposition is:
 
-| Part                                           | Measured                                                                      | Whose                          |
-| ---------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------ |
-| CLI spawn + initialisation                     | 0.7–1.0 s                                                                     | ours to pre-pay, not to remove |
-| Claude Code's own system prompt                | ~26,000 tokens, cache-read every call                                         | **not ours**                   |
-| Model generation **with thinking**             | ~9 s                                                                          | ours to turn off               |
-| Model generation **without thinking**          | ~5 s                                                                          | the floor for this transport   |
+| Part                                             | Measured                                                                      | Whose                          |
+| ------------------------------------------------ | ----------------------------------------------------------------------------- | ------------------------------ |
+| CLI spawn + initialisation                       | 0.7–1.0 s                                                                     | ours to pre-pay, not to remove |
+| Claude Code's own system prompt                  | ~26,000 tokens, cache-read every call                                         | **not ours**                   |
+| Model generation **with thinking**               | ~9 s                                                                          | ours to turn off               |
+| Model generation **without thinking**            | ~5 s                                                                          | the floor for this transport   |
 | Tessaya's own work (fleet read, grammar, memory) | milliseconds — a gate sentence that never reaches a model answers in **6 ms** | ours, and already negligible   |
 
 **The finding: his own `settings.json` turns thinking on**, reasonably, because he writes code with
@@ -1734,7 +1734,7 @@ recognised coding agent — an infrastructure terminal, a test watcher, a
 agent state to give. So it falls through to another fact Herdr reports rather
 than to a guess — whether the pane has a foreground process:
 
-| Herdr says                              | Tessaya calls it        |
+| Herdr says                              | Tessaya calls it      |
 | --------------------------------------- | --------------------- |
 | `blocked` / `working` / `done` / `idle` | §9's table, unchanged |
 | `unknown`, something running            | `monitoring`          |
@@ -3782,3 +3782,7 @@ The memory door's refusal of secrets becomes an offer. Secrets live in one AES-2
 ## D152 — Notifications, offline, mobile and update safety (2026-11-02)
 
 No push, ever: in-window cards, the Now page and spoken lines only (`NOTIFICATIONS.md`). "What works right now" is a plain table on the Now page from four probes (internet, his Claude, the speech model, the server); an unchecked thing is shown as unknown, never working. The phone is T3's app reaching the T3 server; Tessaya has no mobile surface (`MOBILE.md`). A version that fails to start twice in a row (after a crash or kill, before 45 s of health) is remembered, skipped by the updater, and he is told which version last worked; it cannot reinstall the old one by itself. Diagnostics are a local file with no words, tokens, emails or user names, never uploaded.
+
+## D153 — Acting is quiet: nothing drawn at the target, the pill is the one sign (2026-11-04)
+
+The Director did not like the inspector-style marks shown while Tessaya drove Notepad. While the assistant, Drive or a remote session acts, nothing is drawn over the app: no dashed box, ring or step badge, no numbered dots, no separate Stop window and no "Thinking" card. The pill carries one line and Stop (a click on it stops the work), and one card gives the result. Teach and Look keep only the flying pointer and its label. Questions asked mid-task never take the keyboard (mouse, voice and phone answer them), and a typing call whose window changed while he was asked is refused. Esc that Tessaya sends itself reaches the app instead of stopping the turn. A remote window picture or `ui_tree` follows his screen setting while he is present; with "I'm away" on, that toggle is his yes.

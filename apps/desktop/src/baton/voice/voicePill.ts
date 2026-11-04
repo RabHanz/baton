@@ -101,7 +101,9 @@ body{display:flex;align-items:center;justify-content:center}
 #p[data-phase=speaking] #w{gap:3px}
 #p[data-phase=speaking] #w i{width:3px;border-radius:2px}
 #st{display:none;color:var(--soft);font-weight:500;padding-left:2px;border-left:1px solid var(--line);padding-left:7px}
-#p[data-phase=speaking] #st{display:block}
+#p[data-phase=speaking] #st,#p[data-phase=working] #st{display:block}
+/* While Tessaya works the pill is its only sign on screen, and a click on it stops the work. */
+#p[data-phase=working] #st{order:1}
 #t{white-space:nowrap}
 #t:empty,#c:empty{display:none}
 #c{color:var(--soft);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -430,7 +432,8 @@ export const createVoicePill = (input: {
     void ready.then(() => {
       if (target !== null && !target.isDestroyed()) {
         const now = input.look?.();
-        const prefix = now === undefined ? "" : `${applyLookScript(lookClasses(now.motion, now.glass))};`;
+        const prefix =
+          now === undefined ? "" : `${applyLookScript(lookClasses(now.motion, now.glass))};`;
         void target.webContents
           .executeJavaScript(`${prefix}${code}`)
           .then((result: unknown) => done?.(result))
