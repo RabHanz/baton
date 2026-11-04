@@ -9,6 +9,7 @@
  */
 import {
   AuthBatonCloudApproveScope,
+  AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   BATON_ACCOUNT_WS_METHODS,
@@ -105,8 +106,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_MEMORY_WS_METHODS.search]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.used]: AuthOrchestrationReadScope,
   [BATON_MEMORY_WS_METHODS.export]: AuthOrchestrationReadScope,
-  // Reads files from a folder on this machine and writes memory: an operate act.
-  [BATON_MEMORY_WS_METHODS.import]: AuthOrchestrationOperateScope,
+  // Reads files from any folder on this machine and writes memory: both permissions, or a narrowed
+  // pairing reads what upstream's filesystem:read keeps from it.
+  [BATON_MEMORY_WS_METHODS.import]: [AuthOrchestrationOperateScope, AuthFilesystemReadScope],
   // Runs the history script on this machine and writes held proposals.
   [BATON_MEMORY_WS_METHODS.pull]: AuthOrchestrationOperateScope,
   [BATON_MEMORY_WS_METHODS.syncHello]: AuthOrchestrationReadScope,
@@ -151,13 +153,29 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   // terminal, because it changes nothing. Whether there is anything to read is
   // decided by the capability check on the session itself.
   [BATON_ADOPTED_WS_METHODS.adoptedReadOutput]: AuthOrchestrationReadScope,
-} as const satisfies Readonly<Record<BatonRpcMethod, AuthEnvironmentScope>>;
+} as const satisfies Readonly<
+  Record<BatonRpcMethod, AuthEnvironmentScope | ReadonlyArray<AuthEnvironmentScope>>
+>;
+
+/** The scope a caller lacks for this method, or null when it may call it. */
+export const missingBatonScope = (
+  tag: string,
+  scopes: ReadonlyArray<AuthEnvironmentScope>,
+): AuthEnvironmentScope | null => {
+  const required = (
+    BATON_RPC_REQUIRED_SCOPES as Record<
+      string,
+      AuthEnvironmentScope | ReadonlyArray<AuthEnvironmentScope> | undefined
+    >
+  )[tag];
+  if (required === undefined) return AuthOrchestrationOperateScope;
+  const all: ReadonlyArray<AuthEnvironmentScope> =
+    typeof required === "string" ? [required] : required;
+  return all.find((scope) => !scopes.includes(scope)) ?? null;
+};
 
 export const layer = (scopes: ReadonlyArray<AuthEnvironmentScope>) =>
   Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc }) => {
-    const required = (BATON_RPC_REQUIRED_SCOPES as Record<string, AuthEnvironmentScope>)[rpc._tag];
-    if (required === undefined || !scopes.includes(required)) {
-      return Effect.fail(rpcAuthorizationError(required ?? AuthOrchestrationOperateScope));
-    }
-    return effect;
+    const missing = missingBatonScope(rpc._tag, scopes);
+    return missing === null ? effect : Effect.fail(rpcAuthorizationError(missing));
   });

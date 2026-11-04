@@ -3,7 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { PhoneAsk } from "@t3tools/baton-shared/phoneRelay";
 
-import { handlePhone, OPERATE_SCOPE, READ_SCOPE, type PhoneDeps } from "./BatonTessayaApi.ts";
+import {
+  CLOUD_APPROVE_SCOPE,
+  handlePhone,
+  OPERATE_SCOPE,
+  READ_SCOPE,
+  type PhoneDeps,
+} from "./BatonTessayaApi.ts";
 
 const state: PhoneState = {
   badge: 1,
@@ -89,6 +95,7 @@ const make = (connected = true) => {
 };
 const read = new Set([READ_SCOPE]);
 const operate = new Set([READ_SCOPE, OPERATE_SCOPE]);
+const approver = new Set([...operate, CLOUD_APPROVE_SCOPE]);
 const wav = () => {
   const b = new Uint8Array(100);
   const v = new DataView(b.buffer);
@@ -213,13 +220,15 @@ describe("the phone API", () => {
 
   it("carries a question the desktop is asking to the phone and back: the exact text, the right button, once", async () => {
     const { deps, calls } = make();
-    const post = (decision: string, action = "Click Save in Notes") =>
+    const post = (decision: string, action = "Click Save in Notes", scopes = approver) =>
       handlePhone(deps, {
         method: "POST",
         path: "approvals/d:pr1",
-        scopes: operate,
+        scopes,
         json: { decision, action },
       });
+    // The desktop's own gate (hands, vault, screen) is not answerable with operate alone.
+    expect((await post("approve", "Click Save in Notes", operate)).status).toBe(403);
     expect((await post("approve")).status).toBe(200);
     expect((await post("deny")).status).toBe(200);
     expect((await post("approve", "Delete everything")).status).toBe(409);
@@ -232,10 +241,27 @@ describe("the phone API", () => {
       ...deps,
       state: async () => {
         const s = await deps.state();
-        return { ...s, approvals: [{ id: "d:pr1", kind: "prompt", title: "Cloud task waiting", action: "Fix the flaky test", permission: "x", ref: "pr1", answerable: true, yes: 0, cancel: 3, buttons: ["Claude - a", "Codex - b", "Deny", "Decide later"] }] };
+        return {
+          ...s,
+          approvals: [
+            {
+              id: "d:pr1",
+              kind: "prompt",
+              title: "Cloud task waiting",
+              action: "Fix the flaky test",
+              permission: "x",
+              ref: "pr1",
+              answerable: true,
+              yes: 0,
+              cancel: 3,
+              buttons: ["Claude - a", "Codex - b", "Deny", "Decide later"],
+            },
+          ],
+        };
       },
     };
-    const post = (json: Record<string, unknown>) => handlePhone(withButtons, { method: "POST", path: "approvals/d:pr1", scopes: operate, json });
+    const post = (json: Record<string, unknown>) =>
+      handlePhone(withButtons, { method: "POST", path: "approvals/d:pr1", scopes: approver, json });
     expect((await post({ choice: 1, action: "Fix the flaky test" })).status).toBe(200);
     expect((await post({ choice: 4, action: "Fix the flaky test" })).status).toBe(400);
     expect((await post({ choice: -1, action: "Fix the flaky test" })).status).toBe(400);
@@ -249,10 +275,33 @@ describe("the phone API", () => {
       ...deps,
       state: async () => {
         const s = await deps.state();
-        return { ...s, approvals: [{ id: "d:pr1", kind: "prompt", title: "Cloud task waiting", action: "Fix it", permission: "x", ref: "pr1", answerable: true, yes: 0, cancel: 3, needs: "cloud-approve", buttons: ["Claude - a", "Codex - b", "Deny", "Decide later"] }] };
+        return {
+          ...s,
+          approvals: [
+            {
+              id: "d:pr1",
+              kind: "prompt",
+              title: "Cloud task waiting",
+              action: "Fix it",
+              permission: "x",
+              ref: "pr1",
+              answerable: true,
+              yes: 0,
+              cancel: 3,
+              needs: "cloud-approve",
+              buttons: ["Claude - a", "Codex - b", "Deny", "Decide later"],
+            },
+          ],
+        };
       },
     };
-    const post = (scopes: ReadonlySet<string>) => handlePhone(cloudQuestion, { method: "POST", path: "approvals/d:pr1", scopes, json: { choice: 0, action: "Fix it" } });
+    const post = (scopes: ReadonlySet<string>) =>
+      handlePhone(cloudQuestion, {
+        method: "POST",
+        path: "approvals/d:pr1",
+        scopes,
+        json: { choice: 0, action: "Fix it" },
+      });
     const refused = await post(operate);
     expect(refused.status).toBe(403);
     expect(calls).toEqual([]);
