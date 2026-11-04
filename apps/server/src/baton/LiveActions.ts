@@ -42,37 +42,10 @@ export const safeInboxName = (fileName: string, stamp: string): string => {
   return `${stamp}-${base.length === 0 ? "file" : base.slice(0, 120)}`;
 };
 
-/** Keep `.baton/` out of git without touching the tracked `.gitignore`. */
-const excludeFromGit = (cwd: string): void => {
-  let dir = cwd;
-  for (let i = 0; i < 20; i += 1) {
-    const dotGit = NodePath.join(dir, ".git");
-    if (NodeFS.existsSync(dotGit)) {
-      let gitDir = dotGit;
-      if (NodeFS.statSync(dotGit).isFile()) {
-        const pointer = /^gitdir:\s*(.+)$/m.exec(NodeFS.readFileSync(dotGit, "utf8"));
-        if (pointer === null) return;
-        gitDir = NodePath.resolve(dir, pointer[1]!.trim());
-        const common = NodePath.join(gitDir, "commondir");
-        if (NodeFS.existsSync(common)) {
-          gitDir = NodePath.resolve(gitDir, NodeFS.readFileSync(common, "utf8").trim());
-        }
-      }
-      const exclude = NodePath.join(gitDir, "info", "exclude");
-      const current = NodeFS.existsSync(exclude) ? NodeFS.readFileSync(exclude, "utf8") : "";
-      if (!current.split("\n").includes(".baton/")) {
-        NodeFS.mkdirSync(NodePath.dirname(exclude), { recursive: true });
-        NodeFS.appendFileSync(
-          exclude,
-          `${current.endsWith("\n") || current === "" ? "" : "\n"}.baton/\n`,
-        );
-      }
-      return;
-    }
-    const parent = NodePath.dirname(dir);
-    if (parent === dir) return;
-    dir = parent;
-  }
+/** Keeps `.baton/` out of git (and the diff panel) without touching the project's own ignore files. */
+const ignoreBatonDir = (cwd: string): void => {
+  const ignore = NodePath.join(cwd, ".baton", ".gitignore");
+  if (!NodeFS.existsSync(ignore)) NodeFS.writeFileSync(ignore, "*\n");
 };
 
 export const liveAttach = (
@@ -98,7 +71,7 @@ export const liveAttach = (
     return yield* Effect.sync(() => {
       const inbox = NodePath.join(dir, ".baton", "inbox");
       NodeFS.mkdirSync(inbox, { recursive: true });
-      excludeFromGit(dir);
+      ignoreBatonDir(dir);
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const path = NodePath.join(inbox, safeInboxName(input.fileName, stamp));
       NodeFS.writeFileSync(path, bytes, { mode: 0o600 });

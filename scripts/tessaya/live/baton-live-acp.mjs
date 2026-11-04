@@ -922,6 +922,9 @@ function saveToInbox(cwd, name, bytes) {
   const now = new Date();
   const day = NodePath.join(cwd, ".baton", "inbox", now.toISOString().slice(0, 10));
   NodeFS.mkdirSync(day, { recursive: true });
+  // Keeps the inbox out of git and the diff panel (same rule as LiveActions).
+  const ignore = NodePath.join(cwd, ".baton", ".gitignore");
+  if (!NodeFS.existsSync(ignore)) NodeFS.writeFileSync(ignore, "*\n");
   const suffix = Math.random().toString(16).slice(2, 6);
   const path = NodePath.join(day, readableInboxName(name, now, suffix));
   NodeFS.writeFileSync(path, bytes, { mode: 0o600 });

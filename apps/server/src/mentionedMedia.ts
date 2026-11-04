@@ -35,8 +35,14 @@ const SIGNATURES: Record<string, ReadonlyArray<string>> = {
 /** A file named like a picture but holding something else (an error page, a half-written file) loads as "Loading image..." forever, so it is never attached. */
 export const looksLikePicture = (name: string, bytes: Uint8Array): boolean => {
   const wanted = SIGNATURES[NodePath.extname(name).toLowerCase()];
-  return wanted === undefined || wanted.some((sig) => Buffer.from(bytes.subarray(0, sig.length / 2)).toString("hex") === sig);
+  return (
+    wanted === undefined ||
+    wanted.some((sig) => Buffer.from(bytes.subarray(0, sig.length / 2)).toString("hex") === sig)
+  );
 };
+
+/** Baton's inbox holds what the user sent; a reply never shows it back. */
+export const isUserSentMedia = (path: string): boolean => /[\\/]\.baton[\\/]inbox[\\/]/.test(path);
 
 const real = (path: string): string | null => {
   try {
@@ -85,7 +91,8 @@ export const resolveMedia = (input: {
     const file = real(resolve(candidate));
     if (file === null || seen.has(file)) continue;
     seen.add(file);
-    if (excluded.some((dir) => file.startsWith(`${dir}${NodePath.sep}`))) continue;
+    if (isUserSentMedia(file) || excluded.some((dir) => file.startsWith(`${dir}${NodePath.sep}`)))
+      continue;
     try {
       const stat = NodeFS.statSync(file);
       if (!stat.isFile()) continue;
