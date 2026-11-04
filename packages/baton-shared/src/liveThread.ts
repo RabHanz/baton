@@ -82,3 +82,16 @@ export const pinnedLiveSelection = <S extends { readonly instanceId: string }>(
   current.instanceId === LIVE_INSTANCE
     ? current
     : requested;
+
+/**
+ * The banner for a live thread whose session is not running: `null` while it runs or its state is unknown, "missing"
+ * when the catalog does not list it at all. Resume brings the same session id back; the thread follows it.
+ */
+export const bindingBanner = (
+  row: { readonly state: string; readonly source: string } | "missing" | null,
+): { readonly text: string; readonly actions: ReadonlyArray<"resume"> } | null => {
+  if (row === null) return null;
+  if (row !== "missing" && row.state === "running" && row.source === "live") return null;
+  if (row !== "missing" && row.state === "resuming") return null;
+  return { text: "Not connected to its session.", actions: ["resume"] };
+};
