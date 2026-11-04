@@ -253,6 +253,14 @@ describe("silence after a wake word", () => {
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
     });
 
+    it("hears his stop at the end of a window that caught her voice first", async () => {
+      const r = await talking(
+        "the build passed and three tests stop",
+        "The build passed and three tests ran.",
+      );
+      expect(r.events.find((e) => e.type === "stop_heard")).toMatchObject({ text: "stop" });
+    });
+
     it("acts on nothing else said while it talks", async () => {
       const r = await talking("Delete the reports.", "The folder holds three reports.");
       expect(r.events.some((e) => e.type === "stop_heard")).toBe(false);
@@ -421,7 +429,10 @@ describe("speech that starts while he is cutting in", () => {
 });
 
 describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
-  const rigWith = (extra: { echo?: { process: () => { ready: boolean; nearEnd: boolean; erleDb: number } }; headphones?: boolean }) => {
+  const rigWith = (extra: {
+    echo?: { process: () => { ready: boolean; nearEnd: boolean; erleDb: number } };
+    headphones?: boolean;
+  }) => {
     const events: VoiceCoreEvent[] = [];
     const spoken = { value: false };
     const core = createVoiceCore({
@@ -429,7 +440,16 @@ describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
       wake: { name: "fake", reset: () => {}, process: () => null },
       vad: { name: "fake", reset: () => {}, isSpeech: () => spoken.value },
       stt: { name: "fake", transcribe: async () => "something he said" },
-      ...(extra.echo === undefined ? {} : { echo: { reference: () => {}, reset: () => {}, state: () => ({ delayMs: 0, erleDb: 0, converged: true }), ...extra.echo } }),
+      ...(extra.echo === undefined
+        ? {}
+        : {
+            echo: {
+              reference: () => {},
+              reset: () => {},
+              state: () => ({ delayMs: 0, erleDb: 0, converged: true }),
+              ...extra.echo,
+            },
+          }),
       ...(extra.headphones ? { speakerMode: () => "headphones" as const } : {}),
     });
     core.subscribe((event) => events.push(event));
@@ -439,7 +459,13 @@ describe("cutting in by voice (docs/baton/BARGE_IN.md)", () => {
     return { core, push, events, spoken };
   };
   const kinds = (events: VoiceCoreEvent[]) =>
-    events.flatMap((e) => (e.type === "barge_duck" ? [`duck:${e.on}`] : e.type === "barge_in" || e.type === "wake" ? [e.type] : []));
+    events.flatMap((e) =>
+      e.type === "barge_duck"
+        ? [`duck:${e.on}`]
+        : e.type === "barge_in" || e.type === "wake"
+          ? [e.type]
+          : [],
+    );
 
   it("over speakers, ducks the voice at once and cuts in after 120 ms when the echo guard hears him", () => {
     let him = false;
