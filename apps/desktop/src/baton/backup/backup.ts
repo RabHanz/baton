@@ -8,7 +8,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { detectSecret } from "@t3tools/baton-shared/memory";
+import { detectSecret, type MemoryChange, type MemoryItem } from "@t3tools/baton-shared/memory";
 
 import { makeZip, readZip, type ZipEntry } from "./zip.ts";
 
@@ -22,14 +22,17 @@ const FILES = [
   "commitments.json",
   "initiative.json",
   "playbooks.json",
+  "baton-conversation.ndjson",
 ];
 const DIRS: ReadonlyArray<{ readonly dir: string; readonly ext: RegExp }> = [
   { dir: "memory", ext: /\.md$/ },
   { dir: "operating-system", ext: /\.(md|json)$/ },
   { dir: "operating-system/roles", ext: /\.md$/ },
 ];
-/** Written into the zip alongside the files; restore puts it back as a plain file to import from Memory. */
-export const SERVER_MEMORY_NAME = "memory-server.md";
+/** The server's memory items as JSON, written into the zip alongside the files; restore hands them back to the server. */
+export const SERVER_MEMORY_NAME = "memory-server.json";
+/** Older backups carried a lossy markdown export; it still restores as a plain file. */
+const LEGACY_SERVER_MEMORY_NAME = "memory-server.md";
 const NEVER = /^(vault|\.|.*token|.*secret|.*auth)/i;
 
 export interface BackupPlan {
@@ -45,7 +48,10 @@ const read = (file: string): Buffer | null => {
   }
 };
 
-export const planBackup = (stateDir: string, serverMemoryMarkdown: string | null): BackupPlan => {
+export const planBackup = (
+  stateDir: string,
+  serverMemory: ReadonlyArray<MemoryItem> | null,
+): BackupPlan => {
   const names = [
     ...FILES,
     ...DIRS.flatMap(({ dir, ext }) => {
@@ -67,10 +73,11 @@ export const planBackup = (stateDir: string, serverMemoryMarkdown: string | null
     if (secret !== null) skipped.push({ name, why: `it looks like it holds ${secret}` });
     else entries.push({ name, data });
   }
-  if (serverMemoryMarkdown !== null && serverMemoryMarkdown.trim() !== "") {
-    const secret = detectSecret(serverMemoryMarkdown);
+  if (serverMemory !== null && serverMemory.length > 0) {
+    const text = JSON.stringify(serverMemory);
+    const secret = detectSecret(text);
     if (secret === null) {
-      entries.push({ name: SERVER_MEMORY_NAME, data: Buffer.from(serverMemoryMarkdown, "utf8") });
+      entries.push({ name: SERVER_MEMORY_NAME, data: Buffer.from(text, "utf8") });
     } else skipped.push({ name: SERVER_MEMORY_NAME, why: `it looks like it holds ${secret}` });
   }
   return { entries, skipped };
@@ -89,6 +96,7 @@ export const allowedName = (name: string): boolean =>
   !/[\\:\0]/.test(name) &&
   !name.split("/").includes("..") &&
   (name === SERVER_MEMORY_NAME ||
+    name === LEGACY_SERVER_MEMORY_NAME ||
     FILES.includes(name) ||
     DIRS.some(
       ({ dir, ext }) =>
@@ -137,4 +145,32 @@ export const applyRestore = (preview: RestorePreview, stateDir: string): number 
     written += 1;
   }
   return written;
+};
+
+/**
+ * The backup's memory items as a sync push from a "backup" peer, so ids, his source, pins and
+ * history come back as they were, and every item passes the server's door again. Null when the file
+ * is not a list of items.
+ */
+export const memoryRestore = (
+  data: Buffer,
+  nowIso: string,
+): {
+  readonly from: string;
+  readonly changes: ReadonlyArray<MemoryChange>;
+  readonly upTo: string;
+} | null => {
+  try {
+    const items = JSON.parse(data.toString("utf8")) as unknown;
+    if (!Array.isArray(items)) return null;
+    const changes = items
+      .filter(
+        (i): i is MemoryItem =>
+          typeof i === "object" && i !== null && typeof (i as MemoryItem).id === "string",
+      )
+      .map((item) => ({ item, tombstone: null, writer: "backup" }));
+    return { from: "backup", changes, upTo: nowIso };
+  } catch {
+    return null;
+  }
 };

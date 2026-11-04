@@ -263,7 +263,7 @@ export const make = Effect.gen(function* () {
           confidence = ${hers ? 1 : reinforced(same)},
           source = ${hers ? "user" : same.source},
           pinned = ${draft.pinned === true || same.pinned ? 1 : 0},
-          updated_at = ${at}, origin = ${origin}
+          updated_at = ${at}, received_at = ${at}, origin = ${origin}
         WHERE id = ${same.id}
       `.pipe(Effect.orDie);
       return yield* requireItem(same.id);
@@ -279,11 +279,11 @@ export const make = Effect.gen(function* () {
     yield* sql`
       INSERT INTO fabric_memory_items (
         id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
-        created_at, updated_at, last_used_at, expires_at, superseded_by, origin
+        created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at
       ) VALUES (
         ${id}, ${draft.kind}, ${text}, ${draft.source}, ${draft.sourceRef ?? null}, ${scope},
         ${scopeRef}, ${startingConfidence(draft)}, ${draft.pinned === true ? 1 : 0},
-        ${proposed ? 1 : 0}, ${at}, ${at}, NULL, ${expiresAt}, NULL, ${origin}
+        ${proposed ? 1 : 0}, ${at}, ${at}, NULL, ${expiresAt}, NULL, ${origin}, ${at}
       )
     `.pipe(Effect.orDie);
     const created = yield* requireItem(id);
@@ -296,7 +296,7 @@ export const make = Effect.gen(function* () {
         const loser = winner(created, old).id === old.id ? created : old;
         const keeper = loser.id === old.id ? created : old;
         yield* sql`
-          UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}, origin = ${origin}
+          UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
           WHERE id = ${loser.id}
         `.pipe(Effect.orDie);
       }
@@ -305,7 +305,7 @@ export const make = Effect.gen(function* () {
   });
 
   const touch = (id: string, at: string) =>
-    sql`UPDATE fabric_memory_items SET updated_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(
+    sql`UPDATE fabric_memory_items SET updated_at = ${at}, received_at = ${at}, origin = ${origin} WHERE id = ${id}`.pipe(
       Effect.orDie,
     );
 
@@ -321,7 +321,7 @@ export const make = Effect.gen(function* () {
     yield* sql`
       UPDATE fabric_memory_items SET
         text = ${text}, kind = ${patch.kind ?? current.kind}, source = 'user', confidence = 1,
-        proposed = 0, updated_at = ${at}, origin = ${origin}
+        proposed = 0, updated_at = ${at}, received_at = ${at}, origin = ${origin}
       WHERE id = ${id}
     `.pipe(Effect.orDie);
     return yield* requireItem(id);
@@ -332,8 +332,9 @@ export const make = Effect.gen(function* () {
     const text = wording.trim().replace(/\s+/g, " ");
     const reason = refuseToStore(text, privateTexts());
     if (reason !== null) return yield* refuse(reason);
+    const at = yield* nowIso;
     yield* sql`
-      UPDATE fabric_memory_items SET text = ${text}, updated_at = ${yield* nowIso}, origin = ${origin}
+      UPDATE fabric_memory_items SET text = ${text}, updated_at = ${at}, received_at = ${at}, origin = ${origin}
       WHERE id = ${id}
     `.pipe(Effect.orDie);
     return yield* requireItem(id);
@@ -351,7 +352,7 @@ export const make = Effect.gen(function* () {
   const remove = (id: string, at: string) =>
     sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(
       Effect.andThen(
-        sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin) VALUES (${id}, ${at}, ${origin})`,
+        sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin, received_at) VALUES (${id}, ${at}, ${origin}, ${at})`,
       ),
       Effect.andThen(sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`),
       Effect.orDie,
@@ -502,14 +503,22 @@ export const make = Effect.gen(function* () {
     since: string | null,
   ) {
     const from = since ?? "";
-    const rows = yield* sql<ItemRow>`
-      SELECT * FROM fabric_memory_items
-      WHERE updated_at >= ${from} AND proposed = 0
-      ORDER BY updated_at LIMIT ${BATCH}
+    // Paged by when this server got the change, not when its writer made it: a change relayed
+    // from a third server can carry an older stamp than a cursor that has already passed.
+    const rows = yield* sql<ItemRow & { readonly arrived: string }>`
+      SELECT *, COALESCE(received_at, updated_at) AS arrived FROM fabric_memory_items
+      WHERE COALESCE(received_at, updated_at) >= ${from} AND proposed = 0
+      ORDER BY arrived LIMIT ${BATCH}
     `.pipe(Effect.orDie);
-    const stones = yield* sql<{ id: string; deleted_at: string; origin: string }>`
-      SELECT * FROM fabric_memory_tombstones WHERE deleted_at >= ${from}
-      ORDER BY deleted_at LIMIT ${BATCH}
+    const stones = yield* sql<{
+      id: string;
+      deleted_at: string;
+      origin: string;
+      arrived: string;
+    }>`
+      SELECT *, COALESCE(received_at, deleted_at) AS arrived FROM fabric_memory_tombstones
+      WHERE COALESCE(received_at, deleted_at) >= ${from}
+      ORDER BY arrived LIMIT ${BATCH}
     `.pipe(Effect.orDie);
     const changes: MemoryChange[] = [
       ...rows.map((row) => ({ item: fromRow(row), tombstone: null, writer: row.origin })),
@@ -521,7 +530,7 @@ export const make = Effect.gen(function* () {
     ];
     // A full batch means there is more: the peer resumes from the last stamp it was given.
     const full = rows.length === BATCH || stones.length === BATCH;
-    const last = [rows.at(-1)?.updated_at ?? "", stones.at(-1)?.deleted_at ?? ""].reduce(
+    const last = [rows.at(-1)?.arrived ?? "", stones.at(-1)?.arrived ?? ""].reduce(
       (a, b) => (a > b ? a : b),
       "",
     );
@@ -534,6 +543,7 @@ export const make = Effect.gen(function* () {
     upTo: string,
   ) {
     let applied = 0;
+    const at = yield* nowIso;
     for (const change of changes) {
       const id = change.item?.id ?? change.tombstone?.id;
       if (id === undefined || peer === origin) continue;
@@ -560,7 +570,7 @@ export const make = Effect.gen(function* () {
       if (decision === "ignore") continue;
       yield* sql`DELETE FROM fabric_memory_items WHERE id = ${id}`.pipe(Effect.orDie);
       if (change.tombstone !== null) {
-        yield* sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin) VALUES (${id}, ${change.tombstone.deletedAt}, ${change.tombstone.origin})`.pipe(
+        yield* sql`INSERT OR REPLACE INTO fabric_memory_tombstones (id, deleted_at, origin, received_at) VALUES (${id}, ${change.tombstone.deletedAt}, ${change.tombstone.origin}, ${at})`.pipe(
           Effect.orDie,
         );
         yield* sql`DELETE FROM fabric_memory_uses WHERE item_id = ${id}`.pipe(Effect.orDie);
@@ -570,11 +580,11 @@ export const make = Effect.gen(function* () {
         yield* sql`
           INSERT INTO fabric_memory_items (
             id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
-            created_at, updated_at, last_used_at, expires_at, superseded_by, origin
+            created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at
           ) VALUES (
             ${i.id}, ${i.kind}, ${i.text}, ${i.source}, ${i.sourceRef}, ${i.scope}, ${i.scopeRef},
-            ${i.confidence}, ${i.pinned ? 1 : 0}, 0, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
-            ${i.expiresAt}, ${i.supersededBy}, ${change.writer}
+            ${i.confidence}, ${i.pinned ? 1 : 0}, ${i.proposed ? 1 : 0}, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
+            ${i.expiresAt}, ${i.supersededBy}, ${change.writer}, ${at}
           )
         `.pipe(Effect.orDie);
       }

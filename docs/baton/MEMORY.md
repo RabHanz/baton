@@ -147,7 +147,8 @@ default, switched in the Memory tab).
 - Each server has an `origin` id (made once). Every local change sets `updatedAt` (wall clock) and `origin` on the
   item, the writer of that version. Two boxes on NTP agree to well under a second, which is far finer than the edits
   of one person; if clock skew ever matters, the cost is that the older of two near-simultaneous edits wins.
-- Pull returns items and tombstones stamped at or after the cursor (held proposals never leave their server), at most
+- Pull returns items and tombstones this server received at or after the cursor (`received_at`, not the writer's
+  `updatedAt`, so a change relayed from a third server is not skipped; held proposals never leave their server), at most
   1,000 of each; a full batch returns the last stamp as `upTo`, so the next round resumes there. Otherwise `upTo` is the
   sender's now. Push applies and moves that peer's cursor forward only.
 - Apply rule per id: the higher `(updatedAt, writer)` wins; a tombstone wins over an item whose `updatedAt` is not
@@ -156,14 +157,18 @@ default, switched in the Memory tab).
   item keeps its original `source` (his own words stay his own).
 - Every received item passes `storable()` again. A sync carries memory items only, never conversation text.
 - A failure leaves the cursor where it was; the next round resends. Tombstones are kept (they are small).
+- A backup carries the server's items, held proposals still held, as `memory-server.json`; a restore pushes them back as
+  changes from a `backup` peer, so ids, his source, pins and history return and the door checks each again. A tombstone
+  on the restoring server still wins over an older backed-up item.
 
 ## 7. Importing learnings
 
 An importer reads a folder of `.md` files (read-only on the source, nothing written there). Each file is one item or one
 item per top-level list entry; front matter keys `kind`, `scope`, `project`, `confidence`, `tags`, `updated` are honored,
 and defaults are `learning`, `global`, 0.6. The VentureOS memory feed format is mapped by the same keys once its manager
-confirms them. `sourceRef` is the file path and a content hash, so re-running updates and never duplicates. Everything
-passes `storable()`.
+confirms them. `sourceRef` is the file's path in the folder, and a file whose hash has not changed is skipped. When a
+file changed, lines no longer in it are forgotten and only new lines are added, so an unchanged line is not reinforced.
+An `operating-system` folder (his private pack) is never read. Everything passes `storable()`.
 
 ## 8. Order of work
 

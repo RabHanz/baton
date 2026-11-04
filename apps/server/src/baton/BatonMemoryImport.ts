@@ -15,6 +15,7 @@ import * as Effect from "effect/Effect";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 
 const MAX_FILES = 500;
+const same = (text: string): string => text.trim().replace(/\s+/g, " ");
 const MAX_BYTES = 64 * 1024;
 const MAX_DEPTH = 3;
 
@@ -27,7 +28,9 @@ const markdownFiles = (root: string): ReadonlyArray<string> => {
       // A link could lead out of the folder he chose, so none is followed.
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
-        if (depth < MAX_DEPTH && !entry.name.startsWith(".")) walk(path, depth + 1);
+        // His private pack (D148) can sit in a state folder he points at; it never becomes memory.
+        if (depth < MAX_DEPTH && !entry.name.startsWith(".") && entry.name !== "operating-system")
+          walk(path, depth + 1);
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
         found.push(path);
       }
@@ -77,9 +80,19 @@ export const importFolder = Effect.fn("BatonMemoryImport.importFolder")(function
       unchanged++;
       continue;
     }
-    for (const draft of parseLearningFile(text)) {
+    // An edited file: lines he removed are forgotten, unchanged lines are left alone (not reinforced).
+    const drafts = parseLearningFile(text);
+    const fresh = new Set(drafts.map((d) => same(d.text)));
+    // The file's full path: another folder's file of the same name is a different source.
+    const ref = NodePath.join(folder, rel);
+    const before = (yield* memory.list({ includeProposed: true, limit: 100_000 })).filter(
+      (i) => i.source === "import" && i.sourceRef === ref,
+    );
+    const kept = new Set(before.map((i) => same(i.text)));
+    for (const old of before) if (!fresh.has(same(old.text))) yield* memory.forget(old.id);
+    for (const draft of drafts.filter((d) => !kept.has(same(d.text)))) {
       const item = yield* memory
-        .add({ ...draft, source: "import", sourceRef: rel })
+        .add({ ...draft, source: "import", sourceRef: ref })
         .pipe(Effect.orElseSucceed(() => null));
       if (item === null) refused++;
       else added++;

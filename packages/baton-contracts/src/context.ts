@@ -364,6 +364,7 @@ export interface BatonMemoryBridgeRequest {
     | "learn"
     | "import"
     | "pull"
+    | "syncPush"
     | "sync";
   readonly args: Readonly<Record<string, unknown>>;
 }

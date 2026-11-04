@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyRestore, planBackup, previewRestore, writeBackup } from "./backup.ts";
+import { applyRestore, memoryRestore, planBackup, previewRestore, writeBackup } from "./backup.ts";
 import { makeZip, readZip } from "./zip.ts";
 
 const tmp = () => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "backup-"));
@@ -48,7 +48,25 @@ describe("backup and restore", () => {
       "scratchpad.json",
       '{"notes":["key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"]}',
     );
-    const plan = planBackup(from, "# memory\n- tea");
+    put(from, "baton-conversation.ndjson", '{"id":1}');
+    const tea = {
+      id: "m1",
+      kind: "preference",
+      text: "He likes tea",
+      source: "user",
+      sourceRef: null,
+      scope: "global",
+      scopeRef: null,
+      confidence: 1,
+      pinned: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      lastUsedAt: null,
+      expiresAt: null,
+      supersededBy: null,
+      proposed: false,
+    } as const;
+    const plan = planBackup(from, [tea]);
     const names = plan.entries.map((e) => e.name);
     expect(names).toEqual(
       expect.arrayContaining([
@@ -57,9 +75,18 @@ describe("backup and restore", () => {
         "memory/likes-tea.md",
         "operating-system/executive.md",
         "operating-system/roles/legal.md",
-        "memory-server.md",
+        "baton-conversation.ndjson",
+        "memory-server.json",
       ]),
     );
+    // The memory comes back whole: his source, the pin and the id, as a push the server checks again.
+    const kept = plan.entries.find((e) => e.name === "memory-server.json")!;
+    expect(memoryRestore(kept.data, "2026-02-01T00:00:00.000Z")).toEqual({
+      from: "backup",
+      changes: [{ item: tea, tombstone: null, writer: "backup" }],
+      upTo: "2026-02-01T00:00:00.000Z",
+    });
+    expect(memoryRestore(Buffer.from("not json"), "x")).toBeNull();
     expect(names.join()).not.toMatch(/vault/);
     expect(plan.skipped.map((s) => s.name)).toEqual(["scratchpad.json"]);
   });
