@@ -3,6 +3,12 @@
 #   upgrade-proof.ps1 -Old <Baton installer.exe> -New <Tessaya installer.exe>
 param([Parameter(Mandatory)][string]$Old, [Parameter(Mandatory)][string]$New)
 $ErrorActionPreference = 'Stop'
+# It writes fixtures over live settings, force-kills Tessaya and installs an old release: a CI runner or a clean Windows user only.
+if (-not $env:CI) {
+  foreach ($p in @((Join-Path $HOME '.t3'), (Join-Path $env:APPDATA 'baton'), (Join-Path $env:APPDATA 'Tessaya'))) {
+    if (Test-Path $p) { throw "not a clean machine: $p exists. Run this on a CI runner or a fresh Windows user, never on a machine in use." }
+  }
+}
 $uninstall = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $programs = Join-Path $env:LOCALAPPDATA 'Programs'
