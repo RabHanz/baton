@@ -5,7 +5,10 @@
  */
 import type { HandsCall, HandsResult } from "@t3tools/baton-shared/remoteHands";
 
-export type HubPost = (path: "take" | "reply", body: unknown) => Promise<{ readonly status: number; readonly json: unknown }>;
+export type HubPost = (
+  path: "take" | "reply",
+  body: unknown,
+) => Promise<{ readonly status: number; readonly json: unknown }>;
 
 const OFF_WAIT_MS = 5_000;
 const AWAY_WAIT_MS = 3_000;
@@ -33,7 +36,10 @@ export const createRemoteHandsLoop = (input: {
     if (call === null) return "idle";
     const result = await input
       .run({ tool: call.tool, args: call.args })
-      .catch((e: unknown): HandsResult => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+      .catch((e: unknown): HandsResult => ({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      }));
     await input.post("reply", { id: call.id, result }).catch(() => undefined);
     return "ran";
   };
