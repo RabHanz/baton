@@ -17,7 +17,7 @@ const oneShot = Layer.succeed(BatonOneShot, {
     prompts.push(input.prompt);
     return down
       ? Effect.fail(new BatonOneShotError({ detail: "offline" }))
-      : Effect.succeed(reply as never);
+      : Effect.succeed((typeof reply === "function" ? reply(input.prompt) : reply) as never);
   }) as BatonOneShot["Service"]["run"],
 });
 const config = Layer.succeed(ServerConfig.ServerConfig, {
@@ -57,21 +57,21 @@ layer("BatonMemoryLearning", (it) => {
         items: [
           {
             kind: "preference",
-            text: "File names start with the date",
+            text: "Put the date first in every file name",
             hisStatement: true,
-            contradicts: "File names end with the date",
+            replaces: old.id,
           },
           { kind: "fact", text: "my password is hunter22x" },
         ],
       };
       const result = yield* learning.learn(turn());
       assert.deepEqual(result, { stored: 1, held: 0 });
-      const live = yield* memory.search({ text: "file names date" });
+      const live = yield* memory.search({ text: "file date" });
       assert.deepEqual(
         live.map((h) => h.item.text),
-        ["File names start with the date"],
+        ["Put the date first in every file name"],
       );
-      assert.strictEqual(live[0]?.item.confidence, 0.7);
+      assert.strictEqual(live[0]?.item.source, "user");
       const all = yield* memory.list({ includeSuperseded: true });
       assert.isNotNull(all.find((i) => i.id === old.id)?.supersededBy);
     }),
@@ -85,6 +85,75 @@ layer("BatonMemoryLearning", (it) => {
       assert.deepEqual(yield* learning.learn(turn({ tainted: true })), { stored: 0, held: 1 });
       assert.lengthOf(yield* memory.search({ text: "invoice portal" }), 0);
     }),
+  );
+
+  it.effect(
+    "a correction he says replaces his older note, picked by id from what it was shown",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const learning = yield* BatonMemoryLearning;
+        const edge = yield* memory.add({
+          kind: "preference",
+          text: "I prefer Edge for browsing",
+          source: "user",
+        });
+        // Shares words with the correction but is not what it replaces.
+        const other = yield* memory.add({
+          kind: "fact",
+          text: "Edge browsing history is cleared on Fridays",
+          source: "thread",
+        });
+        const before = prompts.length;
+        reply = (prompt: string) => ({
+          items: [
+            {
+              kind: "preference",
+              text: "Always use Chrome for browsing",
+              hisStatement: true,
+              replaces: prompt.includes(edge.id) ? edge.id : null,
+            },
+          ],
+        });
+        yield* learning.learn(
+          turn({
+            said: "no, always use Chrome for browsing from now on",
+            reply: "Chrome from now on.",
+            previous: "he said: open my mail\nyou replied: Opened it in Edge.",
+          }),
+        );
+        assert.include(prompts[before], "Opened it in Edge");
+        const all = yield* memory.list({ includeSuperseded: true });
+        const chrome = all.find((i) => i.text === "Always use Chrome for browsing");
+        assert.strictEqual(chrome?.supersededBy, null);
+        assert.strictEqual(chrome?.source, "user");
+        assert.strictEqual(all.find((i) => i.id === edge.id)?.supersededBy, chrome?.id);
+        assert.strictEqual(all.find((i) => i.id === other.id)?.supersededBy, null);
+      }),
+  );
+
+  it.effect(
+    "in a turn that read outside content, what he said himself is kept; the rest is held",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* BatonMemoryService;
+        const learning = yield* BatonMemoryLearning;
+        reply = {
+          items: [
+            { kind: "preference", text: "Always use Consolas in Notepad", hisStatement: true },
+            { kind: "fact", text: "The release notes page lists twelve fixes" },
+          ],
+        };
+        const result = yield* learning.learn(
+          turn({
+            said: "open Notepad, and from now on always use Consolas there",
+            tainted: true,
+          }),
+        );
+        assert.deepEqual(result, { stored: 1, held: 1 });
+        assert.lengthOf(yield* memory.search({ text: "Consolas Notepad" }), 1);
+        assert.lengthOf(yield* memory.search({ text: "release notes twelve fixes" }), 0);
+      }),
   );
 
   it.effect("a failing model, or a trivial exchange, costs nothing and breaks nothing", () =>

@@ -5,7 +5,7 @@
  * decides which are kept. A failure here never reaches the user: learning is a bonus, never a gate.
  */
 import { modelFor } from "@t3tools/baton-shared/costRouting";
-import { detectSecret, similarity } from "@t3tools/baton-shared/memory";
+import { detectSecret } from "@t3tools/baton-shared/memory";
 import {
   draftsFromProposals,
   extractionPrompt,
@@ -35,14 +35,14 @@ const Proposals = Schema.Struct({
       scope: Schema.optionalKey(Schema.String),
       scopeRef: Schema.optionalKey(Schema.NullOr(Schema.String)),
       hisStatement: Schema.optionalKey(Schema.Boolean),
-      contradicts: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      replaces: Schema.optionalKey(Schema.NullOr(Schema.String)),
       days: Schema.optionalKey(Schema.NullOr(Schema.Number)),
     }),
   ),
 });
 
-/** A hit this close to the "contradicts" words is the belief being replaced. */
-const REPLACES_OVERLAP = 0.4;
+/** The existing memories closest to the exchange, shown to the extractor so it can name what it replaces. */
+const KNOWN_SHOWN = 8;
 
 export interface LearnResult {
   readonly stored: number;
@@ -73,9 +73,12 @@ export const make = Effect.gen(function* () {
       yield* memory.noteTalk(dayOf(yield* Clock.currentTimeMillis), input.said);
     }
     if (!worthLearningFrom(input)) return none;
+    const known = (yield* memory.search({ text: input.said, limit: KNOWN_SHOWN })).map(
+      (hit) => hit.item,
+    );
     const proposals = yield* oneShot
       .run({
-        prompt: extractionPrompt(input),
+        prompt: extractionPrompt(input, known),
         outputSchema: Proposals,
         model: modelFor("routine", readRouting(NodePath.dirname(config.dbPath))),
       })
@@ -83,15 +86,11 @@ export const make = Effect.gen(function* () {
     const drafts = draftsFromProposals(proposals.items, input, yield* Clock.currentTimeMillis);
     let stored = 0;
     let held = 0;
-    for (const { draft, contradicts } of drafts) {
-      const older =
-        contradicts === null
-          ? undefined
-          : (yield* memory.search({ text: contradicts, limit: 3 })).find(
-              (hit) => similarity(hit.item.text, contradicts) >= REPLACES_OVERLAP,
-            );
+    for (const { draft, replaces } of drafts) {
+      // Only an id it was shown: a made-up or guessed id replaces nothing.
+      const older = known.find((item) => item.id === replaces);
       const item = yield* memory
-        .add({ ...draft, ...(older === undefined ? {} : { supersedes: older.item.id }) })
+        .add({ ...draft, ...(older === undefined ? {} : { supersedes: older.id }) })
         .pipe(Effect.orElseSucceed(() => null));
       if (item === null) continue;
       if (item.proposed) held++;

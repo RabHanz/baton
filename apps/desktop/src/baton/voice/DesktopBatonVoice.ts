@@ -1931,11 +1931,24 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
           jobs?: ReadonlyArray<BatonJob>;
         } | null;
+        const memory = (await requestKept({
+          kind: "memory",
+          op: "list",
+          args: { includeProposed: true, limit: 500 },
+        }).catch(() => null)) as { items?: ReadonlyArray<{ proposed: boolean }> } | null;
+        const held = memory?.items?.filter((i) => i.proposed).length ?? 0;
         return morningBrief({
           jobs: jobs?.jobs ?? [],
           findings: await watchFindings(),
           now: Date.now(),
-          extra: briefExtra(),
+          extra: [
+            ...briefExtra(),
+            ...(held === 0
+              ? []
+              : [
+                  `${held} ${held === 1 ? "memory waits" : "memories wait"} for his yes in the Memory tab (held filter).`,
+                ]),
+          ],
         });
       }
       // Rewrites of the selection are answered by the companion, which holds the keyboard.

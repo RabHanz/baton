@@ -292,7 +292,8 @@ export const make = Effect.gen(function* () {
       const old = yield* read(draft.supersedes);
       if (old !== null) {
         // His words beat a model's; otherwise the newer one, then the more certain (MEMORY.md).
-        const loser = winner(old, created).id === old.id ? created : old;
+        // The new one first: on a tie in time it is still the later statement.
+        const loser = winner(created, old).id === old.id ? created : old;
         const keeper = loser.id === old.id ? created : old;
         yield* sql`
           UPDATE fabric_memory_items SET superseded_by = ${keeper.id}, updated_at = ${at}, origin = ${origin}
