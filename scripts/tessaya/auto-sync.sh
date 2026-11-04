@@ -2,20 +2,19 @@
 #
 # The daily upstream sync (Phase D of the v2 port). Run by baton-auto-sync.timer on signzart.
 #
-#   scripts/tessaya/auto-sync.sh [--no-deploy] [--dry-run]
+#   scripts/tessaya/auto-sync.sh [--dry-run]
 #
 # In its own worktree ($BATON_AUTOSYNC_DIR, never the clone people work in):
 #   1. fetch; if upstream has nothing new, check the alarm and stop
 #   2. upstream-sync.sh: pin -> series (--3way) -> lockfile -> two-parent commit -> gates -> PR
-#   3. green: merge the PR, build `<upstream version>-baton.<N+1>`, rehearse it on a snapshot of
-#      live userdata, deploy beside on signzart then onnyx; a box that does not come up is rolled
-#      back with the rollback.sh its deploy wrote, and the run stops there
+#   3. green: open the PR and stop. Its checks run; a person reviews and merges it. Nothing here
+#      merges, tags a release or deploys: unreviewed upstream code never reaches a user by itself
 #   4. red (a patch that no longer applies, or a gate): open an issue with the report and start a
 #      Claude fix session in Herdr, so it is in Baton's sidebar on every device
 #   5. alarm: when the pin is more than 3 days behind upstream main, open (or comment on) an issue
 #
-# Exit codes: 0 synced or nothing to do, 2 a patch needs a human, 3 gates failed, 4 deploy failed,
-# 5 the volume is below its free-space floor.
+# Exit codes: 0 PR opened or nothing to do, 2 a patch needs a human, 3 gates failed, 5 the volume is
+# below its free-space floor.
 set -euo pipefail
 # Runs from a copy in ~/.t3, so the shared lib/tessaya-env.sh is not beside it: same rule inlined.
 for k in $(compgen -e); do case "$k" in TESSAYA_ENV_NOTED) ;; TESSAYA_*) export "BATON_${k#TESSAYA_}=${!k}" ;; esac; done
@@ -25,12 +24,10 @@ for k in $(compgen -e); do case "$k" in TESSAYA_ENV_NOTED) ;; TESSAYA_*) export 
 repo_dir="${BATON_REPO_DIR:-/mnt/HC_Volume_106652742/dev/t3code}"
 work="${BATON_AUTOSYNC_DIR:-/mnt/HC_Volume_106652742/dev/baton-autosync}"
 repo="${TESSAYA_REPO:-${BATON_REPO:-RabHanz/baton}}"
-onnyx="${BATON_SECOND_BOX:-onnyx@onnyx}"
 alarm_days="${BATON_ALARM_DAYS:-3}"
-deploy=1 dry=0
+dry=0
 for a in "$@"; do
   case "$a" in
-    --no-deploy) deploy=0 ;;
     --dry-run) dry=1 ;;
     *) echo "auto-sync: unknown argument $a" >&2; exit 1 ;;
   esac
@@ -53,7 +50,6 @@ git fetch --quiet origin main
 git fetch --quiet upstream main
 git checkout --quiet --detach origin/main
 git reset --quiet --hard origin/main
-pre_sync_sha="$(git rev-parse HEAD)"
 
 pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
 behind="$(git rev-list --count "$pin..upstream/main")"
@@ -169,70 +165,12 @@ fi
 
 git push --quiet -u origin "$branch"
 bash scripts/tessaya/disable-upstream-workflows.sh > /dev/null || true
+# Opened, never merged here: its checks (guard-private, check-notices, CI) run and a person merges.
 url="$(gh pr create -R "$repo" --base main --head "$branch" --title "sync: upstream to $(git rev-parse --short upstream/main) (daily)" --body-file "$report")"
-gh pr merge "$url" -R "$repo" --merge --admin
-echo "merged $url"
+echo "opened $url"
 supersede "$url"
-publish_status merged --pr "$url"
-
-# apps/desktop changed in this sync: cut a desktop release tag so
-# .github/workflows/baton-desktop-release.yml builds and publishes it.
-git fetch --quiet origin main
-if git diff --quiet "$pre_sync_sha" origin/main -- apps/desktop; then :; else
-  desktop_version="$(node -p 'require("./apps/desktop/package.json").version')"
-  if git ls-remote --exit-code --tags origin "baton-v$desktop_version" > /dev/null 2>&1; then
-    echo "apps/desktop changed; baton-v$desktop_version already tagged, skipping"
-  else
-    git tag "baton-v$desktop_version" origin/main
-    git push --quiet origin "baton-v$desktop_version"
-    echo "tagged baton-v$desktop_version (apps/desktop changed)"
-  fi
-fi
-
-[ "$deploy" -eq 1 ] || exit 0
-
-# The next version label: upstream's version, Baton's counter one past the highest installed.
-upstream_version="$(node -p 'require("./apps/server/package.json").version')"
-n="$(ls "$HOME/.t3/runtime/versions" | sed -n 's/.*-baton\.\([0-9]*\)$/\1/p' | sort -n | tail -1)"
-version="$upstream_version-baton.$(( ${n:-0} + 1 ))"
-disk_ok || { echo "disk below its floor; merged but not built or deployed"; exit 5; }
-NODE_ENV=production bash scripts/tessaya/release-build.sh "$version"
-archive="release-cli/t3-$version-linux-x64.tar.gz"
-
-snap="$TMPDIR/baton-autosync-snapshot"
-rm -rf "$snap"
-bash scripts/tessaya/snapshot-userdata.sh "$snap" > /dev/null
-rehearsal="$(bash scripts/tessaya/rehearse.sh "$archive" "$snap" 3792)"
-echo "$rehearsal"
-rehearsal_pid="$(echo "$rehearsal" | sed -n 's/^pid \([0-9]*\) .*/\1/p')"
-[ -n "$rehearsal_pid" ] && kill "$rehearsal_pid" 2> /dev/null || true
-echo "$rehearsal" | grep -q "http 200" || { echo "rehearsal did not come up; not deploying $version"; exit 4; }
-
-healthy() { # healthy [ssh-target]: the service stays active and answers for a minute
-  local check='for i in 1 2 3 4 5 6; do sleep 10; [ "$(systemctl --user is-active t3code.service)" = active ] || exit 1; done; [ "$(curl -s -o /dev/null -w %{http_code} http://127.0.0.1:3773/)" = 200 ]'
-  if [ -z "${1:-}" ]; then bash -c "$check"
-  else ssh -i "$HOME/.config/venture-ssh/onnyx_ed25519" -o IdentitiesOnly=yes -o BatchMode=yes "$1" "$check"; fi
-}
-
-for box in local "$onnyx"; do
-  if [ "$box" = local ]; then
-    bash scripts/tessaya/deploy-beside.sh "$archive" "$version" && healthy && continue
-    latest="$(ls -d "${BATON_BACKUP_ROOT:-/mnt/HC_Volume_106652742/dev/backups/baton}"/before-"$version"-* | tail -1)"
-    bash "$latest/rollback.sh"
-  else
-    bash scripts/tessaya/deploy-beside.sh "$archive" "$version" --host "$box" && healthy "$box" && continue
-    ssh -i "$HOME/.config/venture-ssh/onnyx_ed25519" -o IdentitiesOnly=yes -o BatchMode=yes "$box" \
-      "bash \$(ls -d ~/backups/baton/before-$version-* | tail -1)/rollback.sh"
-  fi
-  body="$(mktemp)"
-  printf '%s did not stay up on %s and was rolled back.\n\nLog: `%s`\n' "$version" "$box" "$log" > "$body"
-  issue "Deploy rolled back: $version" "$body"
-  publish_status deploy
-  exit 4
-done
+publish_status opened --pr "$url"
 # Nothing of a green run stays on the volume: the worktree (about 5 GB with its build) is rebuilt
 # from origin/main next time. A red run keeps it for the fix session.
-rm -rf "$snap" "$TMPDIR/rehearsal/run-baton-autosync-snapshot"
 cd "$repo_dir"
 rm -rf "$work" && git worktree prune
-echo "deployed $version to both boxes"

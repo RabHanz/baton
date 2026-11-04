@@ -24,7 +24,9 @@ pane="$(h pane list | grep -o '"pane_id":"[^"]*"' | tail -1 | cut -d'"' -f4)"
 
 # Any prompt glyph at the end of the screen means the shell is ready for input.
 h pane wait-output "$pane" --regex '[$#%>❯] *$' --timeout 30000 > /dev/null 2>&1 || true
-h pane send-text "$pane" "$claude_bin --permission-mode bypassPermissions \"\$(cat $(printf '%q' "$prompt_file"))\"" > /dev/null
+# Edits only: it works in an unreviewed upstream tree with this box's keys, so each command waits
+# for a person's yes in Tessaya's sidebar.
+h pane send-text "$pane" "$claude_bin --permission-mode acceptEdits \"\$(cat $(printf '%q' "$prompt_file"))\"" > /dev/null
 h pane send-keys "$pane" Enter > /dev/null
 
 if h pane wait-output "$pane" --match "Enter to confirm" --timeout 30000 > /dev/null 2>&1; then

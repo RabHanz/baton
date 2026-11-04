@@ -3,8 +3,9 @@
 **Since the v2 port this page is scripts.** `scripts/tessaya/release-build.sh <version>` builds the
 archive (§1); `scripts/tessaya/deploy-beside.sh <archive> <version> [--host onnyx@onnyx]` does §0,
 §2, §3 and §5's first check, backing up every `*.sqlite` and writing `rollback.sh` before it
-switches; `rehearse.sh` boots an archive on a `snapshot-userdata.sh` copy first; `auto-sync.sh`
-chains them daily. `live-proof.mjs` and `revoke-proof-sessions.sh` prove the sidebar, Send and a
+switches, and keeps the newest five backups; `rehearse.sh` boots an archive on a
+`snapshot-userdata.sh` copy first. They are run by hand after a merge: the daily `auto-sync.sh` only
+opens the sync PR. `live-proof.mjs` and `revoke-proof-sessions.sh` prove the sidebar, Send and a
 Herdr terminal on a deployed box and clean up after. The prose below is why each step exists.
 
 Written from the first real deploy (signzart-prod, 2026-09-18, `0.0.43-fabric.1`

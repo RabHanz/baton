@@ -15,7 +15,7 @@ tree, and how to get real test data without touching a live install.
 | Commit date             | 2026-09-17 14:03:01 -0700                                                            |
 | Upstream license        | MIT, © 2026 T3 Tools Inc. (`LICENSE`)                                                |
 | Fork created            | 2026-09-17 ~21:50Z                                                                   |
-| Tessaya work begins       | 2026-09-18                                                                           |
+| Tessaya work begins     | 2026-09-18                                                                           |
 | **Upstream pin now**    | `vendor-patches/t3code/PIN`, moved daily by `auto-sync.sh` (v2 port at `e762f09e26`) |
 
 The fork carried no Tessaya code at that point; it was a clean mirror of upstream `main`.
@@ -41,14 +41,14 @@ extends.
 | Client RPC tags        | `packages/client-runtime/src/rpc/client.ts`                                                 | one member added to `EnvironmentSubscriptionRpcTag`                                                                                                                                                                                     | 2     |
 | Client-runtime exports | `packages/client-runtime/package.json`                                                      | one subpath export                                                                                                                                                                                                                      | 2     |
 | Sidebar                | `apps/web/src/components/Sidebar.tsx`                                                       | two memos, one callback, one status-label map, one flagged block above the thread list. The thread list itself is untouched — `DECISIONS.md` D12                                                                                        | 2     |
-| Migrations             | `apps/server/src/persistence/Layers/Sqlite.ts`                                              | two calls in the startup layer. Tessaya's migrations have their own manifest and their own tracking table, so upstream's `Migrations.ts` — the file they touch on every schema change — is byte-identical to theirs. `DECISIONS.md` D48   | 2     |
-| Shared exports         | `packages/shared/package.json`                                                              | one export entry per shared Tessaya module — the fleet view, the grammars, the policies                                                                                                                                                   | 4–10  |
+| Migrations             | `apps/server/src/persistence/Layers/Sqlite.ts`                                              | two calls in the startup layer. Tessaya's migrations have their own manifest and their own tracking table, so upstream's `Migrations.ts` — the file they touch on every schema change — is byte-identical to theirs. `DECISIONS.md` D48 | 2     |
+| Shared exports         | `packages/shared/package.json`                                                              | one export entry per shared Tessaya module — the fleet view, the grammars, the policies                                                                                                                                                 | 4–10  |
 | Desktop IPC            | `apps/desktop/src/ipc/channels.ts`, `DesktopIpcHandlers.ts`, `preload.ts`                   | one channel, one registration, one preload binding: what this machine can type into (§18). The renderer cannot see the display server                                                                                                   | 6     |
 | Desktop bridge type    | `packages/contracts/src/ipc.ts`                                                             | one optional method on `DesktopBridge`, so a build predating it still typechecks                                                                                                                                                        | 6     |
 | Mobile navigation      | `apps/mobile/src/Stack.tsx`, `features/home/HomeHeader.tsx`, `HomeRouteScreen.tsx`          | one route, one header button, one prop. A screen nothing links to is a screen nobody has                                                                                                                                                | 7     |
 | Upstream reactor       | `apps/server/src/orchestration/Layers/OrchestrationReactor.ts` and its test                 | the synopsis and rule reactors subscribe to the same domain events; the change is the subscription, not the reactor's own behaviour                                                                                                     | 4, 9  |
 | Integration harness    | `apps/server/integration/OrchestrationEngineHarness.integration.ts`                         | the harness builds the engine by hand and gained the same dependency the routes did                                                                                                                                                     | 9     |
-| Claude usage probe     | `apps/server/src/provider/Layers/ClaudeProvider.ts` and `ClaudeCapabilitiesProbe.test.ts`   | one constant and one call: the usage control request gets its own 15s deadline and asks to skip the local transcript scan. A defect found on the Director's own machine, not a Tessaya feature — offer it upstream                        | —     |
+| Claude usage probe     | `apps/server/src/provider/Layers/ClaudeProvider.ts` and `ClaudeCapabilitiesProbe.test.ts`   | one constant and one call: the usage control request gets its own 15s deadline and asks to skip the local transcript scan. A defect found on the Director's own machine, not a Tessaya feature — offer it upstream                      | —     |
 
 | Route test wiring | `apps/server/src/server.test.ts` | the routes gained a dependency, so the test that builds them by hand provides it | 2 |
 
@@ -123,7 +123,8 @@ Merged `52e4b44293..024d49520e`, 430 upstream commits, as `0.0.45-baton.20` (PR 
 
 The upstream workflows that deploy or publish with upstream's secrets are disabled through the
 GitHub API, not by editing the files. That is `scripts/tessaya/disable-upstream-workflows.sh`, and
-`upstream-sync.sh` re-runs it after every merge. CI is kept.
+`upstream-sync.sh` and `auto-sync.sh` re-run it after every sync. Every `baton*.yml` workflow is
+kept, and switched back on if it was found off.
 
 ### Where upstream went (2026-10-02 onward)
 
@@ -151,14 +152,14 @@ going past `024d49520e` is a **port**, not a conflict resolution.
 `vendor-patches/t3code/series` is the list and `scripts/tessaya/patches.sh files` prints the paths:
 six patches over 13 upstream files, about 300 lines.
 
-| Patch                      | Upstream files                                                       |
-| -------------------------- | -------------------------------------------------------------------- |
-| `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Tessaya package deps)  |
-| `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts` (+1 line, D83)  |
-| `0003-herdr-terminal`      | `apps/server/src/terminal/Manager.ts` (D81)                          |
-| `0004-claude-account-home` | `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (D52) |
-| `0005-client-rpc`          | `packages/client-runtime/src/rpc/protocol.ts`, `rpc/client.ts`       |
-| `0006-web-sidebar`         | `apps/web/src/components/Sidebar.tsx`                                |
+| Patch                      | Upstream files                                                        |
+| -------------------------- | --------------------------------------------------------------------- |
+| `0001-build`               | `pnpm-workspace.yaml`; five `package.json` (the Tessaya package deps) |
+| `0002-server-hooks`        | `apps/server/src/server.ts`, `apps/server/src/ws.ts` (+1 line, D83)   |
+| `0003-herdr-terminal`      | `apps/server/src/terminal/Manager.ts` (D81)                           |
+| `0004-claude-account-home` | `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` (D52)  |
+| `0005-client-rpc`          | `packages/client-runtime/src/rpc/protocol.ts`, `rpc/client.ts`        |
+| `0006-web-sidebar`         | `apps/web/src/components/Sidebar.tsx`                                 |
 
 Not yet back on v2: the desktop voice IPC (built on the laptop, never deployed to the boxes) and
 the mobile Tessaya route's entry point. Each returns as its own patch.
@@ -206,16 +207,16 @@ that stops applying is the one signal a human needs.
 **Adopt T3's, delete ours.** These are features the v2 engine or upstream already ships. Each
 is confirmed in the port by reading upstream's module, not by its name.
 
-| Tessaya feature                                                            | Upstream now                                                               | Action                                                                                                               |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| "Continue with…" handoff (D62): capsule + new thread on another provider | `ContextHandoffService`, `ContextHandoffDelivery`, `ProviderSwitchService` | Use theirs. Keep only the button and the work-session link                                                           |
-| Work-session settle / needs-me                                           | `ThreadSettlementService` (settle, snooze, PR-aware)                       | Read settlement from v2. Drop our settle state                                                                       |
+| Tessaya feature                                                          | Upstream now                                                               | Action                                                                                                                 |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| "Continue with…" handoff (D62): capsule + new thread on another provider | `ContextHandoffService`, `ContextHandoffDelivery`, `ProviderSwitchService` | Use theirs. Keep only the button and the work-session link                                                             |
+| Work-session settle / needs-me                                           | `ThreadSettlementService` (settle, snooze, PR-aware)                       | Read settlement from v2. Drop our settle state                                                                         |
 | Resume after restart                                                     | `RestartContinuation`, `ProviderRuntimeRecoveryService`                    | Drop any Tessaya restart logic for T3 threads. Keep D69 (Claude CLI in Herdr) only                                     |
 | Wait for a limit to reset                                                | `UsageLimitRecoveryWorker` (auto-resume at reset)                          | Use theirs for the same account. **Rotation to another account (D63) stays Tessaya's**, triggered by their limit class |
-| Large-transcript import (D54 tail reader)                                | `AgentSessionScanner` now caps the scan at 1 MB and imports up to 4 GB     | Take upstream's scanner and importer. Delete our rewrite once a 420 MB transcript imports                            |
-| Cross-environment project identity (D72 key)                             | logical projects keyed by `RepositoryIdentity`                             | Already theirs. Our grouping stays a client-side view on top                                                         |
-| Scheduled/triggered runs (part of orchestration rules)                   | `scheduledTasks/` (interval, schedule, webhook)                            | Rules that are time or webhook triggered become scheduled tasks. Keep only "when thread X settles, do Y"             |
-| Claude usage probe deadline                                              | check upstream's `ClaudeProvider`                                          | Drop ours if upstream bounded it, otherwise offer it upstream                                                        |
+| Large-transcript import (D54 tail reader)                                | `AgentSessionScanner` now caps the scan at 1 MB and imports up to 4 GB     | Take upstream's scanner and importer. Delete our rewrite once a 420 MB transcript imports                              |
+| Cross-environment project identity (D72 key)                             | logical projects keyed by `RepositoryIdentity`                             | Already theirs. Our grouping stays a client-side view on top                                                           |
+| Scheduled/triggered runs (part of orchestration rules)                   | `scheduledTasks/` (interval, schedule, webhook)                            | Rules that are time or webhook triggered become scheduled tasks. Keep only "when thread X settles, do Y"               |
+| Claude usage probe deadline                                              | check upstream's `ClaudeProvider`                                          | Drop ours if upstream bounded it, otherwise offer it upstream                                                          |
 
 **Port work that remains Tessaya's.**
 
@@ -254,15 +255,15 @@ too small), `nice -n 10`, one build at a time.
 
 **Sequence and estimate.**
 
-| Step                                                                                                 | Estimate                                          |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Step                                                                                                   | Estimate                                          |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
 | 1. Toolchain, plus the restructure (vendor subtree, patch series, Tessaya packages) at the current pin | 1 day                                             |
-| 2. Move the pin to upstream main and apply the series against v2                                     | 0.5 day                                           |
-| 3. Port the server half (items 1–4 above) and adopt-and-delete                                       | 2 days                                            |
-| 4. Own database and its migration, rehearsed on both boxes' copies                                   | 0.5 day                                           |
-| 5. Web and mobile slots, gates, the real run, deploy beside `baton.20`                               | 1 day                                             |
-| 6. The automatic sync job (pin, re-apply, gate, build, PR), then daily on a timer                    | 0.5 day                                           |
-| **Total**                                                                                            | **about 5 lane-days, in 2 lanes (1–2, then 3–6)** |
+| 2. Move the pin to upstream main and apply the series against v2                                       | 0.5 day                                           |
+| 3. Port the server half (items 1–4 above) and adopt-and-delete                                         | 2 days                                            |
+| 4. Own database and its migration, rehearsed on both boxes' copies                                     | 0.5 day                                           |
+| 5. Web and mobile slots, gates, the real run, deploy beside `baton.20`                                 | 1 day                                             |
+| 6. The automatic sync job (pin, re-apply, gate, build, PR), then daily on a timer                      | 0.5 day                                           |
+| **Total**                                                                                              | **about 5 lane-days, in 2 lanes (1–2, then 3–6)** |
 
 ## The daily sync: what is automatic and what is manual (2026-11-02)
 
@@ -271,27 +272,26 @@ cannot change a run in flight).
 
 **Automatic**
 
-| Step   | What happens                                                                                                                                                                                                                                                          |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Look   | fetch; if the pin is upstream's tip, publish `nothing` and stop; if the pin is more than 3 days behind, open or comment on an issue                                                                                                                                   |
-| Disk   | stop with `disk` if the volume is below its floor                                                                                                                                                                                                                     |
-| Apply  | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, a two-parent commit so upstream's history stays reachable                                                                               |
-| Gates  | `gates.sh --install --build`: patch series, typecheck, lint, tests, build                                                                                                                                                                                             |
-| Merge  | green: PR opened and merged; older `baton/auto-sync-*` PRs are closed with a comment saying they are superseded                                                                                                                                                       |
-| Tag    | `apps/desktop` changed: the `baton-v<version>` tag, which builds the release                                                                                                                                                                                          |
-| Deploy | build `<upstream version>-baton.<N+1>`, rehearse it on a snapshot of live userdata, deploy beside on signzart then onnyx; a box that does not stay healthy for a minute is rolled back with the `rollback.sh` the deploy wrote, an issue is opened, and the run stops |
-| Status | every ending writes `upstream-sync.json` (to `~/.t3/baton-autosync/last-status.json` and the `baton/status` branch): `result` is `merged`, `nothing`, `conflict`, `gates`, `deploy` or `disk`; for a conflict it names the patches and the files                      |
+| Step   | What happens                                                                                                                                                                                                                           |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Look   | fetch; if the pin is upstream's tip, publish `nothing` and stop; if the pin is more than 3 days behind, open or comment on an issue                                                                                                    |
+| Disk   | stop with `disk` if the volume is below its floor                                                                                                                                                                                      |
+| Apply  | new branch from `origin/main`, `patches.sh rebase upstream/main` (the series re-applies with `--3way`), lockfile re-resolved, a two-parent commit so upstream's history stays reachable                                                |
+| Gates  | `gates.sh --install --build`: patch series, typecheck, lint, tests, build                                                                                                                                                              |
+| PR     | green: the PR is opened, never merged here; its checks run and a person reviews and merges it. Older `baton/auto-sync-*` PRs are closed as superseded. Nothing tags a release or deploys by itself                                     |
+| Status | every ending writes `upstream-sync.json` (to `~/.t3/baton-autosync/last-status.json` and the `baton/status` branch): `result` is `opened`, `nothing`, `conflict`, `gates` or `disk`; for a conflict it names the patches and the files |
 
 **Manual (today)**
 
 - **A patch that no longer applies** (`result: conflict`, exit 2). Nothing mechanical decides how Tessaya's lines sit in a rewritten upstream
-  file. A fix session is started in Herdr, an issue is opened with the report, and the status file lists the files. The person (or
+  file. A fix session is started in Herdr (edits allowed, each command waits for a yes), an issue is opened with the report, and the status file lists the files. The person (or
   session) resolves them on a branch from `main`: `patches.sh rebase <upstream sha>`, fix the markers, `patches.sh refresh`,
   `patches.sh verify`, regenerate the lockfile, open the PR. If an earlier sync PR already resolved the same files and the
   patches have not changed since, take its versions of those files (this is how #284 reused #144).
 - **Gates failing on the new upstream** (`result: gates`, exit 3). The branch is pushed and a draft PR opened; fix on that branch.
 - **Anything that needs a decision**: dropping a Tessaya patch upstream now covers, a path both sides added.
-- **Closing stale PRs** after a manual resolution: the nightly only closes the ones it created when it merges.
+- **Merging the sync PR**, then the desktop release tag and the deploy (`docs/baton/DEPLOY.md`), once its checks are green.
+- **Closing stale PRs** after a manual resolution: the nightly only closes the ones it created when it opens a new one.
 
 **Why it stalled (2026-10-30 to 2026-11-02).** Three nights running `0008-claude-account-limits` and `0008-web-panes` conflicted in
 `ChatView.tsx` and `ThreadDetailsUsage.tsx`, and `scripts/build-desktop-artifact.test.ts` conflicted once main moved. #55 and #144
@@ -304,8 +304,7 @@ history as the second parent (#284 to `fa31b66bbb`, which reused #144's resoluti
 are closed). Three things the catch-up taught:
 
 - **Lint was never gated.** `baton-ci` ran typecheck and tests only, so lint errors piled up on main (115 by the time it was looked at) and the
-  fix session's "lint fails the same way before the sync" was true. #299 made lint green (file-level disables on 47 Tessaya files, formatting on
-  122) and added a Lint step to `baton-ci`.
+  fix session's "lint fails the same way before the sync" was true. #299 made lint green (file-level disables on 47 Tessaya files, formatting on 122) and added a Lint step to `baton-ci`.
 - **The sync gates do not build the Windows installer.** Upstream's new check that the packaged payload has at most 80 files failed the installer
   build at 81 (Tessaya's voice files). Only the voice-proof job, which builds the installer, caught it (#300 raised the limit in patch 0001). A
   future sync should be followed by that job before a release tag is cut.
@@ -368,17 +367,17 @@ After a sync, update this page's fork-point table. The patch list is `vendor-pat
 Workspace globs come from `pnpm-workspace.yaml`: `apps/*`, `infra/*`, `packages/*`,
 `oxlint-plugin-t3code`, `scripts`.
 
-| Path                               | Package name                    | Owns                                                                                                                                                               | Tessaya relevance                                                                            |
+| Path                               | Package name                    | Owns                                                                                                                                                               | Tessaya relevance                                                                          |
 | ---------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `apps/server`                      | `t3`                            | WebSocket server, orchestration (command → decider → event → projector → reactor), providers, checkpointing, persistence, MCP toolkits, terminals, preview browser | WorkSession persistence, RPC handlers, and every Tessaya reactor live here                   |
+| `apps/server`                      | `t3`                            | WebSocket server, orchestration (command → decider → event → projector → reactor), providers, checkpointing, persistence, MCP toolkits, terminals, preview browser | WorkSession persistence, RPC handlers, and every Tessaya reactor live here                 |
 | `apps/web`                         | `@t3tools/web`                  | React/Vite client; the sidebar, thread view, settings                                                                                                              | WorkSession sidebar grouping, timeline, synopsis card                                      |
 | `apps/desktop`                     | `@t3tools/desktop`              | Electron shell wrapping `apps/web`, bundles a server runner, hosts the Chromium `<webview>` preview browser                                                        | desktop voice service, context bus, tray/HUD (Phase 5–6)                                   |
 | `apps/mobile`                      | `@t3tools/mobile`               | React Native (iOS + Android), separate navigation                                                                                                                  | WorkSession list, mic button, App Intents (Phase 7)                                        |
-| `apps/marketing`                   | `@t3tools/marketing`            | the public site                                                                                                                                                    | not touched by Tessaya                                                                       |
+| `apps/marketing`                   | `@t3tools/marketing`            | the public site                                                                                                                                                    | not touched by Tessaya                                                                     |
 | `packages/contracts`               | `@t3tools/contracts`            | Effect/Schema wire contracts; `rpc.ts` is the client↔server boundary, `orchestration.ts` the domain commands/events, `environment.ts` the capability descriptor    | the `WorkSession` schema, `fabric.*` RPC methods and events, and the Baton capability flag |
 | `packages/shared`                  | `@t3tools/shared`               | shared runtime utilities, subpath exports, no barrel                                                                                                               | normalization helpers shared by server and clients                                         |
 | `packages/client-runtime`          | `@t3tools/client-runtime`       | connection supervisor, RPC session, shared state services used by web **and** mobile                                                                               | WorkSession state service, so web and mobile do not diverge                                |
-| `packages/ssh`                     | `@t3tools/ssh`                  | SSH tunnels and desktop-managed remote environments                                                                                                                | multi-host topology; unchanged by Tessaya                                                    |
+| `packages/ssh`                     | `@t3tools/ssh`                  | SSH tunnels and desktop-managed remote environments                                                                                                                | multi-host topology; unchanged by Tessaya                                                  |
 | `packages/tailscale`               | `@t3tools/tailscale`            | tailnet serve/status integration                                                                                                                                   | the private-network default (spec §25)                                                     |
 | `packages/effect-acp`              | `effect-acp`                    | Agent Client Protocol binding                                                                                                                                      | provider adapters                                                                          |
 | `packages/effect-codex-app-server` | `effect-codex-app-server`       | Codex app-server protocol binding                                                                                                                                  | Codex provider                                                                             |
