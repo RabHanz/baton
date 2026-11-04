@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   auditWhat,
@@ -42,6 +42,21 @@ describe("remote hands broker", () => {
     expect(call.tool).toBe("wait_for");
     broker.reply(call.id, { ok: false, error: "no" });
     expect((await queued).ok).toBe(false);
+  });
+
+  it("never hands out a queued call after it timed out", async () => {
+    vi.useFakeTimers();
+    using _timers = { [Symbol.dispose]: () => vi.useRealTimers() };
+    const { broker, log } = make();
+    void broker.take(1);
+    await vi.advanceTimersByTimeAsync(1);
+    const late = broker.call("s", "type_text", { text: "x" });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await late).error).toContain("did not answer");
+    const taking = broker.take(10);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await taking).toBeNull();
+    expect(log).toEqual(["type_text:timeout"]);
   });
 
   it("refuses a tool that is not a remote hands tool, an oversized call, and a reply to nothing", async () => {
