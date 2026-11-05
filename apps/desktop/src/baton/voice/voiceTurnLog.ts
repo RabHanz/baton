@@ -56,7 +56,8 @@ export const makeVoiceTurnLog = (
         case "barge_in":
           return note("barge_in", {});
         case "nothing":
-          return note("nothing_heard", { wake });
+          note("nothing_heard", { wake });
+          return clear();
         case "error":
           return note("error", { message: event.message });
         case "effect":

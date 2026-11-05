@@ -206,6 +206,8 @@ export const createVoiceCore = (input: {
   /** The last few seconds, by where each frame ends, for the audio a wake check looks back over. */
   const recent: Array<{ readonly frame: Int16Array; readonly end: number }> = [];
   let verifying = false;
+  /** While a wake is being checked, `recent` keeps everything since it fired: a slow first check must not lose the command. */
+  let verifyFrom = 0;
   let segment: Int16Array[] | null = null;
   let speechSamples = 0;
   let silenceSamples = 0;
@@ -665,6 +667,7 @@ export const createVoiceCore = (input: {
         if (!verifying) {
           verifying = true;
           const firedAt = samples;
+          verifyFrom = firedAt - msToSamples(Math.max(seg.preRollMs, WAKE_LOOKBACK_MS));
           const word = input.wake.lastWord?.() ?? null;
           const heard = joined(
             recent
@@ -752,7 +755,13 @@ export const createVoiceCore = (input: {
     }
 
     recent.push({ frame, end: samples });
-    while (recent.length > 0 && recent[0]!.end < samples - msToSamples(3_000)) recent.shift();
+    const keepFrom = verifying
+      ? Math.max(
+          Math.min(verifyFrom, samples - msToSamples(3_000)),
+          samples - msToSamples(seg.maxUtteranceMs),
+        )
+      : samples - msToSamples(3_000);
+    while (recent.length > 0 && recent[0]!.end < keepFrom) recent.shift();
     preRoll.push(frame);
     preRollSamples += frame.length;
     while (preRollSamples - (preRoll[0]?.length ?? 0) >= msToSamples(seg.preRollMs)) {
