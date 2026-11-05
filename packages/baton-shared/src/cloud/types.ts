@@ -42,6 +42,8 @@ export interface CloudRequest {
   readonly error: string | null;
   /** The provider flagged the run as over its per-run cap. */
   readonly overCap: boolean;
+  /** While `approved`: which process is starting it, and since when. The desktop and the server share the list. */
+  readonly startedBy?: { readonly pid: number; readonly at: number };
 }
 
 /** One account's live figure. Null means the provider reports none, which is never the same as zero. */
