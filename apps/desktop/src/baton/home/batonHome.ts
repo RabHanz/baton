@@ -26,6 +26,7 @@ import {
   type Glass,
   type Motion,
 } from "./look.ts";
+import type { Palette } from "./palette.ts";
 import { shouldSplash } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
@@ -331,7 +332,11 @@ export interface BatonHomeInput {
   /** System, Light or Dark, as he chose it in Settings. */
   readonly appearance: () => Appearance;
   /** The motion and glass he chose; the system's own asks are read here. */
-  readonly look?: () => { readonly motion: Motion; readonly glass: Glass };
+  readonly look?: () => {
+    readonly motion: Motion;
+    readonly glass: Glass;
+    readonly palette?: Palette;
+  };
   /** Whether this run was started quietly (at sign-in, or hidden): no splash then. */
   readonly quietLaunch?: () => boolean;
   /** The microphone's level now, 0 to 1, for the guide's meter. */
@@ -432,6 +437,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     return {
       motion: effectiveMotion(chosen.motion, systemAsks()),
       glass: effectiveGlass(chosen.glass, systemAsks()),
+      palette: chosen.palette ?? "woad",
     };
   };
   const material = () => materialFor(process.platform, NodeOS.release(), look().glass);
@@ -488,7 +494,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
     const open = live();
     if (open === null) return;
     const now = look();
-    const script = `${applyLookScript(lookClasses(now.motion, now.glass))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`;
+    const script = `${applyLookScript(lookClasses(now.motion, now.glass, now.palette))};document.documentElement.classList.toggle("mica",${material().backgroundMaterial === "mica"})`;
     if (force || looked.get(open) !== script) {
       looked.set(open, script);
       void open.webContents.executeJavaScript(script).catch(() => undefined);

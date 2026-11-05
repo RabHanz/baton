@@ -401,7 +401,8 @@ function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numer
 // The wake sting plays once when the window opens and when About opens, on every mark that is up, then each rests on its still.
 let stingUntil = 0;
 function startSting() {
-  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)/.test(document.documentElement.className)) return;
+  // The sting is drawn in Woad only, so another palette rests on its still mark.
+  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)|palette-/.test(document.documentElement.className)) return;
   stingUntil = Date.now() + 3000; render(); setTimeout(render, 3050);
 }
 function markHtml() {
@@ -770,7 +771,7 @@ addEventListener('mousedown', e => {
 function modalPage(b) {
   const x = S.extra || {};
   const rows = ids => S.controls.filter(c => ids.includes(c.id));
-  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.motion', 'v.glass', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
+  if (modal === 'general') { b.appendChild($('h1', null, 'General')); const g = $('div', 'group'); const items = rows(['v.appearance', 'v.palette', 'v.motion', 'v.glass', 'v.login']); for (const c of items) g.appendChild(row(c)); const q = $('div', 'row'); const t = $('div', 'text'); t.append($('div', 'label', 'Quit Tessaya'), $('div', 'hint', 'Closing the window keeps Tessaya in the tray. Quit ends it.')); const qb = $('button', 'btn', 'Quit'); qb.onclick = () => set('q.quit', null); q.append(t, qb); g.appendChild(q); b.appendChild(g); }
   else if (modal === 'system') { b.appendChild($('h1', null, 'System')); const g = $('div', 'group'); for (const c of rows(['v.file'])) g.appendChild(row(c)); for (const p of (x.paths || [])) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', p.label), $('div', 'hint', p.path)); const ob = $('button', 'btn', 'Open'); ob.onclick = () => set('q.open:' + p.id, null); r.append(t, ob); g.appendChild(r); } b.appendChild(g); }
   else if (modal === 'keys') bindingsPage(b);
   else if (modal === 'cloud') { b.appendChild($('h1', null, L('modal.cloud'))); b.appendChild($('p', 'hint', L('cloudmodal.text'))).style.marginBottom = '14px'; const o1 = $('button', 'btn', L('cloudmodal.open')); o1.onclick = () => { modal = null; go('cloud'); }; const o2 = $('button', 'btn', L('cloudmodal.setup')); o2.style.marginLeft = '8px'; o2.onclick = () => { const sp = (S.extra || {}).setup; setupStep = sp ? Math.max(0, sp.steps.findIndex(s => s.id === 'cloud')) : 0; modal = 'setup'; render(); }; b.append(o1, o2); }

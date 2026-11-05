@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { APP_CSS, DARK_TOKENS } from "./appStyle.ts";
+import { paletteTokens } from "./palette.ts";
 
 const read = (css: string) =>
   Object.fromEntries([...css.matchAll(/--([a-z-]+):(#[0-9a-f]{6})/gi)].map((m) => [m[1]!, m[2]!]));
@@ -60,6 +61,24 @@ describe.each([
     }
     expect(ratio(tokens["focus"]!, tokens["panel"]!)).toBeGreaterThanOrEqual(3);
     expect(ratio(tokens["accent"]!, tokens["panel"]!)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe.each(["damson", "madder"] as const)("the %s palette's accent", (palette) => {
+  it.each([
+    ["dark", darkTokens],
+    ["light", lightTokens],
+  ] as const)("keeps its accent pairs at AA in %s", (half, base) => {
+    const tokens = { ...base, ...paletteTokens(palette, half === "dark") };
+    for (const [fg, bg] of [
+      ["accent-text", "accent-wash"],
+      ["accent-text", "panel"],
+      ["accent-ink", "accent"],
+      ["on-deep", "accent-deep"],
+      ["on-deep-soft", "accent-deep"],
+    ] as const)
+      expect(ratio(tokens[fg]!, tokens[bg]!), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(tokens["focus"]!, tokens["panel"]!)).toBeGreaterThanOrEqual(3);
   });
 });
 

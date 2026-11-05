@@ -51,6 +51,7 @@ import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
 import { createSpeaker, type VoiceChoice } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
+import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 
 /** The one line a voice speaks when he plays or picks it. */
@@ -109,6 +110,11 @@ export const startBatonDesktop = Effect.gen(function* () {
       : beginStart(readGuard(guardPath), environment.appVersion, lifecycle.previousRunEndedBadly());
     let guard = started.file;
     if (!lifecycle.anotherInstance) {
+      try {
+        publishPaletteThemes(environment.stateDir);
+      } catch {
+        // The palettes are a nicety in the app window's theme list; a full disk never stops the start.
+      }
       writeGuard(guardPath, guard);
       setTimeout(() => {
         guard = markHealthy(guard);

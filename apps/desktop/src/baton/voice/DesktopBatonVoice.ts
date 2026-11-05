@@ -282,6 +282,7 @@ import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { setHideFromCapture } from "../captureProtection.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseGlass, parseMotion, type Glass, type Motion } from "../home/look.ts";
+import { parsePalette, type Palette } from "../home/palette.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
 import { keepRunningForTray } from "../lastAppWindow.ts";
@@ -427,6 +428,8 @@ interface VoiceSettings {
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   /** Baton's window: System follows Windows. */
   readonly appearance: Appearance;
+  /** The kit palette the window wears (Settings, General): Woad unless he picks another. */
+  readonly palette: Palette;
   /** Motion and glass (Settings, General); the system can ask for less on top of this. */
   readonly motion: Motion;
   readonly glass: Glass;
@@ -535,6 +538,7 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
   appearance: "system",
+  palette: "woad",
   motion: "full",
   glass: "on",
   hideFromCapture: false,
@@ -636,6 +640,7 @@ export const readSettings = (path: string): VoiceSettings => {
       voiceBargeIn: saved["voiceBargeIn"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
+      palette: parsePalette(saved["palette"]),
       motion: parseMotion(saved["motion"]),
       glass: parseGlass(saved["glass"]),
       hideFromCapture: saved["hideFromCapture"] === true,
@@ -4104,6 +4109,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        id: "v.palette",
+        section: "Appearance",
+        label: "Palette",
+        hint: "The logo's colours for this window, in light and dark. Woad is the default. The same palettes are themes in the app window's own Appearance settings.",
+        kind: "choice",
+        value: settings.palette,
+        options: [
+          { value: "woad", label: "Woad" },
+          { value: "damson", label: "Damson" },
+          { value: "madder", label: "Madder" },
+        ],
+      },
+      {
         id: "v.motion",
         section: "Appearance",
         label: "Motion",
@@ -5017,6 +5035,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
+    else if (id === "v.palette") save({ palette: parsePalette(value) });
     else if (id === "v.motion") save({ motion: parseMotion(value) });
     else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.hideFromCapture") {
@@ -5110,7 +5129,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
     },
     appearance: () => settings.appearance,
-    look: () => ({ motion: settings.motion, glass: settings.glass }),
+    look: () => ({ motion: settings.motion, glass: settings.glass, palette: settings.palette }),
     quietLaunch: () => Electron.app.getLoginItemSettings().wasOpenedAtLogin === true,
     level: () => micNow,
   });
