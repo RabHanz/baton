@@ -1034,18 +1034,20 @@ Two rules inside it, both from §26's spirit rather than its letter:
 
 ---
 
-## D44 — The audit trail is a view, never a fourth table
+## D44 — The audit trail is a view; the Record holds only what no other table does
 
-**Decided** 2026-09-18, during Phase 10.
+**Decided** 2026-09-18, during Phase 10. **Revised** 2026-11-05 for the one-spine strategy (step 2).
 
-"What happened to this work, and who asked?" is answered from three records that
-already exist — intents, firings, provider sessions — merged in time order by a
-pure function.
+"What happened to this work, and who asked?" is answered from the records that
+exist — intents, firings, provider sessions — merged in time order by a pure
+function (`packages/baton-shared/src/audit.ts`).
 
-Writing a fourth table alongside them would drift from them, and the drift would
-be discovered by somebody trying to work out what went wrong. A view cannot
-drift: if it is wrong, the records it reads are wrong, which is the thing you
-wanted to know anyway.
+A table that copied those would drift from them. The Record (`fabric_record`,
+`BatonRecordService`) is the fourth source and holds only events that had no
+durable home: a session that died and whether the watchdog brought it back, a
+job's phase and standing changes, a weave's delivery, an assistant turn. It is
+capped (30 days, 10,000 rows). Its texts come from people, models and sessions,
+so each is stored as one capped line and shown to a model only quoted, as data.
 
 **Consequence:** a person's sentence sorts above the rule it set off at the same
 instant, so cause reads above effect rather than in whatever order the tables
