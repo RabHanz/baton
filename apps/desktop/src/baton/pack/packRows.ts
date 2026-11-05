@@ -9,9 +9,16 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { DEFAULT_ROUTING } from "@t3tools/baton-shared/costRouting";
-import { DEFAULT_OS_PACK, mergePack, type OsPack } from "@t3tools/baton-shared/osPack";
+import {
+  DEFAULT_PACK_FILES,
+  FRONT_MATTER,
+  mergePack,
+  splitFront,
+  type OsPack,
+} from "@t3tools/baton-shared/osPack";
 
 import type { HomeControl } from "../home/batonHome.ts";
+import { POCKET_VOICES } from "../voice/pocketVoice.ts";
 
 export const PACK_FOLDER = "operating-system";
 const NAME = /^[a-z0-9][a-z0-9-]{0,40}$/;
@@ -25,10 +32,10 @@ const fileFor = (dir: string, id: string): string | null => {
 
 const defaultText = (id: string): string =>
   id === "executive"
-    ? DEFAULT_OS_PACK.executive
+    ? DEFAULT_PACK_FILES.executive
     : id === "routing"
       ? JSON.stringify(DEFAULT_ROUTING, null, 2)
-      : (DEFAULT_OS_PACK.roles[id.replace(/^role:/, "")] ?? "");
+      : (DEFAULT_PACK_FILES.roles[id.replace(/^role:/, "")] ?? "");
 
 const roleNames = (dir: string): ReadonlyArray<string> => {
   let mine: string[] = [];
@@ -39,7 +46,9 @@ const roleNames = (dir: string): ReadonlyArray<string> => {
   } catch {
     // no roles folder yet
   }
-  return [...new Set([...Object.keys(DEFAULT_OS_PACK.roles), ...mine.filter((n) => NAME.test(n))])];
+  return [
+    ...new Set([...Object.keys(DEFAULT_PACK_FILES.roles), ...mine.filter((n) => NAME.test(n))]),
+  ];
 };
 
 /** His pack as the server reads it: his files over the neutral default, read fresh each call. */
@@ -159,4 +168,54 @@ export const savePackText = (dir: string, id: string, text: string): string | nu
   if (NodeFS.existsSync(file)) NodeFS.copyFileSync(file, `${file}.bak`);
   NodeFS.writeFileSync(file, text.endsWith("\n") ? text : `${text}\n`);
   return null;
+};
+
+const fileIdOf = (personaId: string) =>
+  personaId === "executive" ? personaId : `role:${personaId}`;
+const capital = (word: string) => `${word[0]!.toUpperCase()}${word.slice(1)}`;
+
+/** The roster on the Voice tab: each face, its wake word, and its voice to change or put back. */
+export const rosterControls = (dir: string): ReadonlyArray<HomeControl> =>
+  readPack(dir).personas.map((persona) => {
+    const id = fileIdOf(persona.id);
+    const fallback = splitFront(defaultText(id)).fields["voice"] ?? "anna";
+    let own: string | undefined;
+    try {
+      own = splitFront(NodeFS.readFileSync(fileFor(dir, id)!, "utf8")).fields["voice"];
+    } catch {
+      // no file of his: the default voice
+    }
+    return {
+      id: `v.persona:${persona.id}`,
+      section: "Personas",
+      label: persona.lead ? `${persona.name} (lead)` : persona.name,
+      hint: `${persona.wake === null ? "No wake word yet: say or type the name." : `Wake word: ${persona.wake}.`} ${persona.role}`.trim(),
+      kind: "choice",
+      value: own === undefined || own === "" ? "default" : own.toLowerCase(),
+      options: [
+        { value: "default", label: `Default (${capital(fallback)})` },
+        ...POCKET_VOICES.map((v) => ({ value: v, label: capital(v) })),
+      ],
+    };
+  });
+
+/** A persona's voice in its own file (made from the default when he has none); null takes the line out. */
+export const setPersonaVoice = (dir: string, personaId: string, voice: string | null): boolean => {
+  const file = fileFor(dir, fileIdOf(personaId));
+  if (
+    file === null ||
+    (voice !== null && !(POCKET_VOICES as ReadonlyArray<string>).includes(voice))
+  )
+    return false;
+  if (!NodeFS.existsSync(file)) {
+    if (voice === null) return true;
+    fileToEdit(dir, fileIdOf(personaId));
+  }
+  const text = NodeFS.readFileSync(file, "utf8");
+  const m = FRONT_MATTER.exec(text);
+  const lines = (m?.[1]?.split(/\r?\n/) ?? []).filter((line) => !/^\s*voice\s*:/i.test(line));
+  if (voice !== null) lines.push(`voice: ${voice}`);
+  const body = m === null ? text : text.slice(m[0].length);
+  NodeFS.writeFileSync(file, lines.length === 0 ? body : `---\n${lines.join("\n")}\n---\n${body}`);
+  return true;
 };

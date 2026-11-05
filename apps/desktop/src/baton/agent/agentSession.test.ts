@@ -51,6 +51,16 @@ describe("the one assistant's session", () => {
       said: "type exactly what you just said into the T3 chat input",
       reply: "I typed it.",
     });
+    // A wake word changes the face, not the session: same conversation, a name and a line for the turn.
+    await agent.say("what time is it", {
+      window: null,
+      session: null,
+      persona: { name: "Freya", role: "his day; warm.", introduce: true },
+    });
+    expect(prompts).toHaveLength(1);
+    expect(asked[1]).toContain(
+      "you answer this turn as Freya: his day; warm. start your reply by saying you are Freya.",
+    );
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 

@@ -9,6 +9,10 @@ export interface AssistantCase {
   readonly said: string;
   readonly first: ReadonlyArray<string>;
   readonly not?: ReadonlyArray<string>;
+  /** The wake word he said; its persona from the default roster answers. */
+  readonly wake?: string;
+  /** Words the reply must contain, such as the persona's name. */
+  readonly says?: string;
 }
 
 export const assistantCases: ReadonlyArray<AssistantCase> = [
@@ -127,5 +131,28 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source: "control: a plain question needs no tool",
     said: "what's the capital of Peru?",
     first: ["none", "WebSearch"],
+  },
+  {
+    id: "freya-says-her-name",
+    source: "Roster v0: a wake word picks the persona, which answers under its own name",
+    said: "what time is it?",
+    wake: "Freya",
+    first: ["none"],
+    says: "Freya",
+  },
+  {
+    id: "alfred-says-his-name",
+    source: "Roster v0 device proof sentence",
+    said: "what time is it?",
+    wake: "Alfred",
+    first: ["none"],
+    says: "Alfred",
+  },
+  {
+    id: "persona-keeps-its-tools",
+    source: "Roster v0 control: a persona changes the name, not the tool",
+    said: "what needs me?",
+    wake: "Freya",
+    first: ["needs_me"],
   },
 ];

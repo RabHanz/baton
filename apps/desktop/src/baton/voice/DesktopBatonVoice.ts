@@ -247,7 +247,9 @@ import {
   packAction,
   packControls,
   packEdit,
+  rosterControls,
   savePackText,
+  setPersonaVoice,
   useDefault,
 } from "../pack/packRows.ts";
 import { createNotesStore } from "../memory/memoryNotes.ts";
@@ -3074,9 +3076,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     refresh: () => home.refresh(),
     reveal: (file) => Electron.shell.showItemInFolder(file),
   });
-  const cachedPack = cachedFor(3_000, () =>
-    packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
-  );
+  const cachedPack = cachedFor(3_000, () => [
+    ...packControls(NodePath.join(input.stateDir, PACK_FOLDER)),
+    ...rosterControls(NodePath.join(input.stateDir, PACK_FOLDER)),
+  ]);
   /** Files he edits by hand or through a row here: forget what was read, so the next draw is true. */
   const forgetFiles = () => {
     harnessItems.reset();
@@ -4533,6 +4536,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       if (result === "refused")
         note = "Could not change that plugin; its settings file was left alone.";
       home.refresh();
+    } else if (id.startsWith("v.persona:") && typeof value === "string") {
+      const picked = value === "default" ? null : value;
+      setPersonaVoice(NodePath.join(input.stateDir, PACK_FOLDER), id.slice(10), picked);
+      cachedPack.reset();
+      home.refresh();
+      if (picked !== null) input.audition?.(picked);
     } else if (id === "p.folder") {
       NodeFS.mkdirSync(NodePath.join(input.stateDir, PACK_FOLDER), { recursive: true });
       void Electron.shell.openPath(NodePath.join(input.stateDir, PACK_FOLDER));

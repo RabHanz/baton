@@ -17,15 +17,22 @@ describe("the assistant eval's grader", () => {
     expect(firstTool([])).toBe("none");
   });
 
+  const s = (...calls: string[]) => ({ calls, reply: "" });
   it("passes an accepted first tool and fails a wrong one", () => {
-    expect(passes(c, ["mcp__baton__sessions_list"])).toBe(true);
-    expect(passes(c, ["mcp__baton__weave_send"])).toBe(false);
-    expect(passes(c, [])).toBe(false);
+    expect(passes(c, s("mcp__baton__sessions_list"))).toBe(true);
+    expect(passes(c, s("mcp__baton__weave_send"))).toBe(false);
+    expect(passes(c, s())).toBe(false);
+  });
+
+  it("fails a reply that leaves out the words the case needs", () => {
+    const named = { ...c, first: ["none"], says: "Freya" };
+    expect(passes(named, { calls: [], reply: "Freya here. It's ten." })).toBe(true);
+    expect(passes(named, { calls: [], reply: "It's ten." })).toBe(false);
   });
 
   it("fails a case when half or more of its samples fail", () => {
-    expect(casePasses(c, [["mcp__baton__session_send"], []])).toBe(false);
-    expect(casePasses(c, [["mcp__baton__session_send"], ["mcp__baton__session_send"], []])).toBe(
+    expect(casePasses(c, [s("mcp__baton__session_send"), s()])).toBe(false);
+    expect(casePasses(c, [s("mcp__baton__session_send"), s("mcp__baton__session_send"), s()])).toBe(
       true,
     );
   });

@@ -14,8 +14,8 @@ pnpm tessaya-assistant --out runs/assistant-haiku --model haiku --case needs-me 
 - Flags: `--model` (default `claude-opus-5-5`), `--effort` (default `medium`; Haiku takes none), `--case <id>` (repeatable), `--samples <n>` (default 2).
 - A case passes when more than half its samples reach first for a tool in `first` and not one in `not`.
 - A run writes `results.json` and `summary.md`, with the median time a sample took (a cold `claude` start included, so compare runs made one at a time).
-- Cost: about 25k input tokens a sample, mostly cached; a full run is 28 samples.
+- Cost: about 25k input tokens a sample, mostly cached; a full run is 40 samples.
 
 ## Add a case
 
-Add an entry to `cases.ts` with an `id`, its `source`, the sentence `said`, and the acceptable `first` tools (`none` for a plain answer). Add `not` for a wrong first move the case guards against.
+Add an entry to `cases.ts` with an `id`, its `source`, the sentence `said`, and the acceptable `first` tools (`none` for a plain answer). Add `not` for a wrong first move the case guards against. A case with `wake` runs as that persona from the default roster; `says` lists words the reply must contain.
