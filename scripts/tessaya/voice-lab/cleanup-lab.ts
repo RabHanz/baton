@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off globalTimers:off
 /* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
@@ -23,9 +24,11 @@ import {
 import { ADVERSARIAL_CASES, DEFAULT_CASES, MODE_CASES, type CleanupCase } from "./cleanup-cases.ts";
 
 const state = NodePath.join(NodeOS.tmpdir(), "baton-cleanup-lab");
+const saved = readDictionary(state, []);
 const dictionary: ReadonlyArray<DictionaryEntry> =
-  (await readDictionary(state)) ??
-  (await importWisprDictionary({ stateDir: state, appData: process.env["APPDATA"] }));
+  saved.length > 0
+    ? saved
+    : await importWisprDictionary({ stateDir: state, appData: process.env["APPDATA"] });
 const rewriter = (always: boolean, limitMs?: number) =>
   makeRewriter({
     claudeBinary: "claude",

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalConsole:off globalDate:off
 // The hands loop on real apps (issue #52). Runs on a Windows desktop (CI: windows-2022) with the same
 // tools the assistant has. The PLANNER IS SCRIPTED: no model login exists on a runner, so each task's
 // steps are written here, and what is being measured is the tool path (see, act, check, wait, re-plan

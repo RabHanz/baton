@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off globalDate:off globalTimers:off nodeBuiltinImport:off
 /* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 /**
  * The whole voice path on real parts, from a WAV instead of the mic: openWakeWord, Silero, Parakeet
@@ -63,6 +64,8 @@ const main = async () => {
     channel: null,
     paste: "ctrl_v",
     language: null,
+    // No desktop here to clean up and paste, so the sidecar pastes itself.
+    cleanup: false,
   });
   const workDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-pipe-"));
   const router = startVisionSession({

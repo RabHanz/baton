@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "typeRoots": ["../../node_modules/@types"],
+    "lib": ["ESNext", "esnext.disposable"],
+    "paths": {
+      "onnxruntime-node": [
+        "../../packages/baton-voice/node_modules/onnxruntime-node/dist/index.d.ts"
+      ]
+    }
+  },
+  "include": ["**/*.ts"]
+}

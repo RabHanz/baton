@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off
 // Folds the bake-off's results.json files (one directory per variant and repetition) into one table.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

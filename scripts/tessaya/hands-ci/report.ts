@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off
 // Turns results.json into the table in docs/baton/research/hands-loop-tasks.md.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
