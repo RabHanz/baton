@@ -79,7 +79,11 @@ describe("the Windows hands through the sidecar", () => {
       },
       sidecar: () => ({
         input: async (command) => void sent.push(command),
-        paste: async (text) => void pasted.push(text),
+        target: async () => 7,
+        pasteInto: async (text, target) => (pasted.push(`${target}:${text}`), true),
+        paste: async () => {
+          throw new Error("pasted without a target");
+        },
       }),
     });
     await driver.clickAt({ x: 10, y: 20 }, "left", 2);
@@ -91,6 +95,41 @@ describe("the Windows hands through the sidecar", () => {
       { op: "at", buttons: [0x800], wheel: -120 },
       { op: "keys", vks: [0x11, 0x41] },
     ]);
-    expect(pasted).toEqual(["secret"]);
+    expect(pasted).toEqual(["7:secret"]);
+  });
+
+  it("when the window cannot be told apart, pastes plain text through the sidecar and refuses a secret, never using the clipboard", async () => {
+    const pasted: string[] = [];
+    const clipboard = {
+      readText: () => {
+        throw new Error("the clipboard was touched");
+      },
+      writeText: () => undefined,
+    };
+    const hands = {
+      input: async () => undefined,
+      target: async () => null,
+      pasteInto: async () => true,
+      paste: async (text: string) => void pasted.push(text),
+    };
+    const driver = createInputDriver({
+      platform: "win32",
+      toPhysical: (p) => p,
+      clipboard,
+      sidecar: () => hands,
+    });
+    await driver.type("hello");
+    expect(pasted).toEqual(["hello"]);
+    await expect(driver.type("vault value", true)).rejects.toThrow("secret was not typed");
+    const noHelper = createInputDriver({
+      platform: "win32",
+      toPhysical: (p) => p,
+      clipboard,
+      sidecar: () => null,
+    });
+    await expect(noHelper.type("vault value", true)).rejects.toThrow(
+      "never goes through the clipboard",
+    );
+    expect(pasted).toEqual(["hello"]);
   });
 });
