@@ -21,7 +21,8 @@ export interface InputDriver {
   readonly releaseAt: (point: Point) => Promise<void>;
   readonly scrollAt: (point: Point | null, amount: number) => Promise<void>;
   readonly press: (keys: ReadonlyArray<string>) => Promise<void>;
-  readonly type: (text: string) => Promise<void>;
+  /** `secret` (a vault item) never goes through the clipboard, nor into a window that cannot be told apart. */
+  readonly type: (text: string, secret?: boolean) => Promise<void>;
   readonly dispose: () => void;
 }
 
@@ -238,11 +239,12 @@ export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
 /** The running sidecar's input; null while it is not running. */
 export interface SidecarHands {
   readonly input: (input: SidecarInput) => Promise<void>;
-  /**
-   * Pastes into the window with the keyboard only, with clipboard history and cloud sync kept out. False when that
-   * window cannot be told apart in time: the clipboard paste stands in. Throws when the keyboard moved elsewhere.
-   */
-  readonly paste: (text: string) => Promise<boolean>;
+  /** The window with the keyboard now; null when it cannot be told apart in time. */
+  readonly target: () => Promise<number | null>;
+  /** Pastes into that window only, kept out of clipboard history and cloud sync; false when the keyboard moved. */
+  readonly pasteInto: (text: string, target: number) => Promise<boolean>;
+  /** Pastes into whatever window has the keyboard, kept out of clipboard history and cloud sync like pasteInto. */
+  readonly paste: (text: string) => Promise<void>;
 }
 
 const LEFT = [0x2, 0x4];
@@ -302,10 +304,25 @@ export const createInputDriver = (input: {
         if (isCopyChord(list)) paste.cancelRestore();
         return keys(list);
       },
-      type: async (text) => {
+      type: async (text, secret = false) => {
         const side = input.sidecar?.() ?? null;
-        if (side !== null && (await side.paste(text))) return;
-        await paste(text, () => keys(["ctrl", "v"]));
+        if (side === null) {
+          if (secret)
+            throw new Error(
+              "Tessaya's helper is not running, and a secret never goes through the clipboard, so nothing was typed.",
+            );
+          return paste(text, () => keys(["ctrl", "v"]));
+        }
+        const target = await side.target();
+        if (target === null) {
+          if (secret)
+            throw new Error(
+              "The window with the keyboard can't be told apart, so the secret was not typed.",
+            );
+          return side.paste(text);
+        }
+        if (!(await side.pasteInto(text, target)))
+          throw new Error("The window with the keyboard changed, so nothing was typed.");
       },
       dispose: () => ps?.dispose(),
     };

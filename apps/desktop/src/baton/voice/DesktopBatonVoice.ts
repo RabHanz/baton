@@ -2088,6 +2088,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             focusWindow: sidecar.focusWindow,
             input: sidecar.input,
             pasteInto: sidecar.pasteInto,
+            paste: sidecar.paste,
             setValue: sidecar.setValue,
           },
     locate: async (label, near, anywhere, invoke) => {

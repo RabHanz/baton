@@ -273,6 +273,8 @@ export interface AssistantActions {
         readonly input: (input: SidecarInput) => Promise<void>;
         /** False when that window no longer has the keyboard, and nothing was pasted. */
         readonly pasteInto: (text: string, target: number) => Promise<boolean>;
+        /** Into whatever window has the keyboard, kept out of clipboard history. */
+        readonly paste: (text: string) => Promise<void>;
       })
     | null;
   /** The sidecar's running count of desktop changes; null where there is none. */
@@ -1873,16 +1875,10 @@ export const startScreenCompanion = (input: {
         if (side === null) return null;
         return {
           input: side.input,
-          // Only into the window that has the keyboard now; the sidecar's paste keeps it out of clipboard history.
-          paste: async (text) => {
-            // A busy sidecar can miss the short focus read; a longer one follows before giving up on it.
-            const seen = (await focusSoon()) ?? (await keyboardWindow());
-            if (seen?.window === undefined) return false;
-            if (!(await side.pasteInto(text, seen.window))) {
-              throw new Error("The window with the keyboard changed, so nothing was typed.");
-            }
-            return true;
-          },
+          // A busy sidecar can miss the short focus read; a longer one follows before giving up on it.
+          target: async () => ((await focusSoon()) ?? (await keyboardWindow()))?.window ?? null,
+          pasteInto: side.pasteInto,
+          paste: side.paste,
         };
       },
     });
@@ -1929,7 +1925,7 @@ export const startScreenCompanion = (input: {
         true,
       )) === 0,
     type: async (text) => {
-      await driverFor().type(text);
+      await driverFor().type(text, true);
     },
     clipboard: {
       read: () => Electron.clipboard.readText(),
