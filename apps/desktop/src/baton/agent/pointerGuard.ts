@@ -17,3 +17,23 @@ export const pointerMoved = (
   tolerance = POINTER_TOLERANCE,
 ): boolean =>
   left !== null && (Math.abs(left.x - now.x) > tolerance || Math.abs(left.y - now.y) > tolerance);
+
+/**
+ * His mouse moves only as a last resort, and only after he says yes (CU-6): once a turn, since one task can need a few
+ * clicks. A no throws, so the model hears it and finds another way.
+ */
+export const createMouseConsent = (ask: () => Promise<boolean>) => {
+  let yes = false;
+  return {
+    need: async (): Promise<void> => {
+      if (yes) return;
+      yes = await ask();
+      if (!yes) {
+        throw new Error(
+          "He said no to his mouse being used. Find another way (ui_tree and click_element, or keys), or tell him what to click.",
+        );
+      }
+    },
+    reset: () => void (yes = false),
+  };
+};
