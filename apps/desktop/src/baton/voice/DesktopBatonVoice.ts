@@ -2138,8 +2138,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         );
       }
       if (found?.found === true && found.invoked !== undefined) {
+        // Where the control is, so her cursor can show it; the press itself needed no point.
+        const at =
+          found.x === undefined || found.y === undefined
+            ? near
+            : Electron.screen.screenToDipPoint({ x: found.x, y: found.y });
         return {
-          ...near,
+          ...at,
           name: found.name ?? label,
           invoked: found.invoked,
           ...(found.state === undefined ? {} : { state: found.state }),
