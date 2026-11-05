@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { DEFAULT_OS_PACK } from "@t3tools/baton-shared/osPack";
+import { DEFAULT_PACK_FILES } from "@t3tools/baton-shared/osPack";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -11,7 +11,10 @@ import {
   packAction,
   packControls,
   packEdit,
+  readPack,
+  rosterControls,
   savePackText,
+  setPersonaVoice,
   useDefault,
 } from "./packRows.ts";
 
@@ -31,11 +34,11 @@ describe("the pack in the window", () => {
     expect(first[0]).toMatchObject({
       kind: "editor",
       mine: false,
-      text: DEFAULT_OS_PACK.executive,
+      text: DEFAULT_PACK_FILES.executive,
     });
 
     const file = fileToEdit(dir, "executive")!;
-    expect(NodeFS.readFileSync(file, "utf8").trim()).toBe(DEFAULT_OS_PACK.executive);
+    expect(NodeFS.readFileSync(file, "utf8").trim()).toBe(DEFAULT_PACK_FILES.executive);
     NodeFS.writeFileSync(file, "Mine.\n");
     expect(fileToEdit(dir, "executive")).toBe(file);
     expect(NodeFS.readFileSync(file, "utf8")).toBe("Mine.\n");
@@ -76,5 +79,27 @@ describe("editing the pack in the window", () => {
     expect(savePackText(dir, "routing", "[1]")).toContain("JSON object");
     expect(savePackText(dir, "routing", '{"planning":"strong"}')).toBeNull();
     expect(savePackText(dir, "role:../x", "text")).toContain("not a part");
+  });
+});
+
+describe("the roster in the window", () => {
+  it("shows each persona's wake word and voice, changes a voice in its file, and puts the default back", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-roster-"));
+    const rows = () => rosterControls(dir).map((c) => [c.id, c.kind === "choice" ? c.value : ""]);
+    expect(rows()).toEqual([
+      ["v.persona:executive", "default"],
+      ["v.persona:engineering", "default"],
+      ["v.persona:research", "default"],
+      ["v.persona:operations", "default"],
+    ]);
+    expect(rosterControls(dir)[3]).toMatchObject({ label: "Freya" });
+    expect(setPersonaVoice(dir, "operations", "nobody")).toBe(false);
+    expect(setPersonaVoice(dir, "operations", "anna")).toBe(true);
+    expect(rows()[3]).toEqual(["v.persona:operations", "anna"]);
+    expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("anna");
+    expect(setPersonaVoice(dir, "operations", null)).toBe(true);
+    expect(rows()[3]).toEqual(["v.persona:operations", "default"]);
+    expect(readPack(dir).personas.find((p) => p.name === "Freya")?.voice).toBe("vera");
+    NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });

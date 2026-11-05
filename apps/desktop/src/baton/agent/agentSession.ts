@@ -40,6 +40,8 @@ export interface Where {
   readonly session: string | null;
   /** The focused session's project, so its memories come back and another project's stay out. */
   readonly project?: string | null;
+  /** The persona he woke: its name and line, and whether this turn is the first under that name. */
+  readonly persona?: { readonly name: string; readonly role: string; readonly introduce: boolean };
 }
 
 export const createAssistantAgent = (input: {
@@ -137,6 +139,7 @@ export const createAssistantAgent = (input: {
       session: where.session,
       target: target?.label ?? null,
       presence,
+      ...(where.persona === undefined ? {} : { persona: where.persona }),
     });
     const missed =
       meanwhile.length === 0

@@ -8,10 +8,40 @@ export interface OsPack {
   readonly executive: string;
   /** Role name (a file stem) to its brief. */
   readonly roles: Readonly<Record<string, string>>;
+  /** The faces he talks to (the roster), the lead first. */
+  readonly personas: ReadonlyArray<Persona>;
 }
 
-export const DEFAULT_OS_PACK: OsPack = {
-  executive: `Frame every job before any work starts.
+/**
+ * A persona is the short front-matter above a pack file's brief: `executive.md` is the lead, and a
+ * role file with a `name` is a face of its own. His file wins field by field over the default's.
+ */
+export interface Persona {
+  /** "executive" for the lead, otherwise the role's file stem. */
+  readonly id: string;
+  readonly name: string;
+  /** Null when no wake word reaches it; it still answers to its name. */
+  readonly wake: string | null;
+  readonly voice: string;
+  /** One line of who it is and how it sounds, for its turns. */
+  readonly role: string;
+  readonly lead: boolean;
+}
+
+/** The pack's files as they ship: front-matter for the face, then the brief. */
+export interface PackFiles {
+  readonly executive: string;
+  readonly roles: Readonly<Record<string, string>>;
+}
+
+export const DEFAULT_PACK_FILES: PackFiles = {
+  executive: `---
+name: Tessaya
+wake: Tessaya
+voice: anna
+role: the lead, who sees everything and hands out the work; calm, direct and brief.
+---
+Frame every job before any work starts.
 1. Start from the outcome. Say what he wants to be true afterwards, in words that name no solution, and why it matters to him.
 2. List the outcomes as a direction, a measure, an object and the circumstance (for example: lower, the time to ship a release, for a small team, in a busy week).
 3. Lay the work out as steps: define, locate, prepare, confirm, execute, monitor, modify, conclude.
@@ -23,32 +53,96 @@ Show the result as a job brief before work begins: the job, the outcomes, the le
 Workers report outcomes, not activity: what changed against each outcome, the evidence, what is next, what blocks it.`,
   roles: {
     engineering:
-      "Persona: a careful engineer who reads before writing. Tools: read, edit, shell inside the written folders. Remember: the project's conventions and what broke before. Limits: no change outside the written folders, no deploy without his yes. Report: what changed, the test that proves it, what is left.",
+      "---\nname: Alfred\nwake: Alfred\nvoice: charles\nrole: sessions, builds and releases; precise and unflappable, says what broke and what is next.\n---\nPersona: a careful engineer who reads before writing. Tools: read, edit, shell inside the written folders. Remember: the project's conventions and what broke before. Limits: no change outside the written folders, no deploy without his yes. Report: what changed, the test that proves it, what is left.",
     marketing:
       "Persona: a plain-spoken marketer who starts from the reader. Tools: read, web. Remember: his voice and what he has said no to. Limits: drafts only; nothing is published or sent without his yes. Report: the draft, who it is for, the one thing it should make them do.",
     research:
-      "Persona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
+      "---\nname: Sebastian\nvoice: paul\nrole: research and analysis; sceptical and thorough, says what is known and what is only claimed.\n---\nPersona: a sceptical researcher who separates what is known from what is claimed. Tools: read, web. Remember: the question and the sources already checked. Limits: cite where each fact came from; say what is uncertain. Report: the answer first, then the evidence, then what would change it.",
     operations:
-      "Persona: an operator who keeps things running and notices what is left alone. Tools: read, sessions. Remember: what is scheduled and what failed before. Limits: change nothing live without his yes. Report: what is healthy, what is stuck, what needs him.",
+      "---\nname: Freya\nwake: Freya\nvoice: vera\nrole: his day, his messages and his reminders; warm, quick and practical.\n---\nPersona: an operator who keeps things running and notices what is left alone. Tools: read, sessions. Remember: what is scheduled and what failed before. Limits: change nothing live without his yes. Report: what is healthy, what is stuck, what needs him.",
   },
 };
 
 const ROLE_NAME = /^[a-z0-9][a-z0-9-]{0,40}$/;
+export const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+/** A file's front-matter fields (lower-case keys) and the brief below them. */
+export const splitFront = (
+  text: string,
+): { readonly fields: Readonly<Record<string, string>>; readonly body: string } => {
+  const m = FRONT_MATTER.exec(text);
+  if (m === null) return { fields: {}, body: text.trim() };
+  const fields: Record<string, string> = {};
+  for (const line of m[1]!.split(/\r?\n/)) {
+    const kv = /^\s*([a-z ]+?)\s*:\s*(.*?)\s*$/i.exec(line);
+    if (kv !== null) fields[kv[1]!.toLowerCase()] = kv[2]!;
+  }
+  return { fields, body: text.slice(m[0].length).trim() };
+};
+
+const face = (
+  id: string,
+  fields: Readonly<Record<string, string>>,
+  lead: boolean,
+): Persona | null => {
+  const name = fields["name"] ?? "";
+  if (name === "" && !lead) return null;
+  const wake = fields["wake"] ?? "";
+  return {
+    id,
+    name: name === "" ? "Tessaya" : name,
+    wake: wake === "" ? null : wake,
+    voice: (fields["voice"] ?? "").toLowerCase(),
+    role: fields["role"] ?? "",
+    lead,
+  };
+};
+
+/** One file: his front-matter fields over the default's, and his brief unless he left it empty. */
+const mergeFile = (mine: string | undefined, base: string | undefined) => {
+  const b = splitFront(base ?? "");
+  const m = splitFront(mine ?? "");
+  return { fields: { ...b.fields, ...m.fields }, body: m.body === "" ? b.body : m.body };
+};
 
 /** A user's files win by name; a name that is not a plain file stem is ignored. */
 export const mergePack = (
   user: { readonly executive?: string; readonly roles?: Readonly<Record<string, string>> },
-  base: OsPack = DEFAULT_OS_PACK,
+  base: PackFiles = DEFAULT_PACK_FILES,
 ): OsPack => {
-  const roles: Record<string, string> = { ...base.roles };
+  const files: Record<string, string | undefined> = {};
   for (const [name, text] of Object.entries(user.roles ?? {})) {
-    if (ROLE_NAME.test(name) && text.trim() !== "") roles[name] = text.trim();
+    if (ROLE_NAME.test(name) && text.trim() !== "") files[name] = text;
   }
-  const executive = user.executive?.trim();
-  return {
-    executive: executive === undefined || executive === "" ? base.executive : executive,
-    roles,
-  };
+  const executive = mergeFile(user.executive, base.executive);
+  const lead = face("executive", executive.fields, true)!;
+  const roles: Record<string, string> = {};
+  const personas: Persona[] = [lead];
+  for (const name of new Set([...Object.keys(base.roles), ...Object.keys(files)])) {
+    const role = mergeFile(files[name], base.roles[name]);
+    roles[name] = role.body;
+    const persona = face(name, role.fields, false);
+    if (persona !== null) personas.push(persona);
+  }
+  return { executive: executive.body, roles, personas };
+};
+
+export const DEFAULT_OS_PACK: OsPack = mergePack({});
+
+/**
+ * Who answers: the persona whose wake word woke him, else the one he named first in the sentence,
+ * else the lead. Lower-case compares, since wake models report their words in either case.
+ */
+export const personaFor = (
+  personas: ReadonlyArray<Persona>,
+  said: { readonly wake: string | null; readonly text: string },
+): Persona => {
+  const lead = personas.find((p) => p.lead) ?? personas[0]!;
+  const wake = said.wake?.toLowerCase();
+  const woken = personas.find((p) => wake !== undefined && p.wake?.toLowerCase() === wake);
+  if (woken !== undefined) return woken;
+  const first = /^\s*(?:hey\s+)?([a-z]+)/i.exec(said.text)?.[1]?.toLowerCase();
+  return personas.find((p) => p.name.toLowerCase() === first) ?? lead;
 };
 
 /** The planning turn's frame, capped so a large personal pack cannot swamp the job. */

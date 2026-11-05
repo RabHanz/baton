@@ -100,7 +100,7 @@ const EXACT: Readonly<Record<string, TabId>> = {
 export const tabOf = (id: string): TabId => {
   const exact = EXACT[id];
   if (exact !== undefined) return exact;
-  if (id.startsWith("v.wake:")) return "voice";
+  if (id.startsWith("v.wake:") || id.startsWith("v.persona:")) return "voice";
   if (id.startsWith("v.result:")) return "checks";
   if (id.startsWith("n:") || id.startsWith("c:") || id.startsWith("c.")) return "sessions";
   if (/^now[:.]/.test(id)) return "now";

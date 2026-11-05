@@ -116,7 +116,7 @@ import { vaultFor } from "../vault/vaultInstance.ts";
 import { createMemorySync } from "../memory/memorySync.ts";
 import { plainError, stepLine } from "@t3tools/baton-shared/stepLine";
 import { createNotesStore, notesBlock } from "../memory/memoryNotes.ts";
-import { assistantFrame } from "@t3tools/baton-shared/osPack";
+import { assistantFrame, personaFor, type Persona } from "@t3tools/baton-shared/osPack";
 import { accountLabel, maskEmail, pickEnv } from "./assistantAccount.ts";
 import { createAssistantAccounts } from "./assistantAccounts.ts";
 import { createInputDriver } from "./inputDriver.ts";
@@ -405,6 +405,8 @@ export interface ScreenCompanion {
       readonly typed?: boolean;
       /** The work session he has focused, as the voice side resolved it. */
       readonly session?: string | null;
+      /** The wake word that opened this turn; it picks who answers. */
+      readonly wake?: string | null;
     },
   ) => Promise<
     | { readonly kind: "act"; readonly text: string; readonly restated?: boolean }
@@ -899,6 +901,21 @@ export const startScreenCompanion = (input: {
 
   /** This turn came by voice, so its questions can be answered by voice too. */
   let voiceTurn = false;
+  /** Who is answering: picked from the roster at each sentence, and the voice follows it. */
+  let face: Persona = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
+    wake: null,
+    text: "",
+  });
+  /** Whose name the last answer carried, so a change of persona says its name. */
+  let lastFace = face.name;
+  let woke: string | null = null;
+  /** Quick and System are his choice for the whole machine; otherwise each persona speaks in its own voice. */
+  const voiceNow = (): PocketVoice | "system" =>
+    settings.voice === "quick" || settings.voice === "system"
+      ? settings.voice
+      : (POCKET_VOICES as ReadonlyArray<string>).includes(face.voice)
+        ? (face.voice as PocketVoice)
+        : settings.voice;
   /**
    * The box, and on a voice turn the same question aloud, so no step needs his hands. Whichever he
    * answers first counts; a question that runs out leaves the box up.
@@ -2427,7 +2444,10 @@ export const startScreenCompanion = (input: {
     let firstAudioAt: number | null = null;
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
-      input.onNote?.("agent_turn_start", { said: text });
+      const who = { wake: woke, persona: face.name, voice: voiceNow() };
+      input.onNote?.("agent_turn_start", { said: text, ...who });
+      const introduce = face.name !== lastFace;
+      lastFace = face.name;
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
       const reply = await agentOf().say(
@@ -2436,6 +2456,7 @@ export const startScreenCompanion = (input: {
           window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
           session: focusedSession,
           project: focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null),
+          persona: { name: face.name, role: face.role, introduce },
         },
         (delta) => {
           firstTokenAt ??= Date.now();
@@ -2444,9 +2465,10 @@ export const startScreenCompanion = (input: {
       );
       voice.finish(reply);
       input.onActivity?.(null);
-      if (runningMode() === null) linger("Tessaya", reply);
+      if (runningMode() === null) linger(who.persona, reply);
       input.onNote?.("agent_turn", {
         ok: true,
+        ...who,
         said: text,
         reply,
         decisions: [...agentDecisions],
@@ -2462,6 +2484,9 @@ export const startScreenCompanion = (input: {
       // Every turn leaves its line, a failed one too, with what the tools did before it stopped.
       input.onNote?.("agent_turn", {
         ok: false,
+        wake: woke,
+        persona: face.name,
+        voice: voiceNow(),
         said: text,
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
@@ -2507,9 +2532,17 @@ export const startScreenCompanion = (input: {
     }
   };
 
-  const said: ScreenCompanion["said"] = async (text, { direct, typed = false, session = null }) => {
+  const said: ScreenCompanion["said"] = async (
+    text,
+    { direct, typed = false, session = null, wake = null },
+  ) => {
     const started = Date.now();
     voiceTurn = !typed;
+    woke = wake;
+    face = personaFor(readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas, {
+      wake,
+      text,
+    });
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
     const secret = redactForHistory(text, null).secret;
     if (secret !== null) {
@@ -2720,7 +2753,7 @@ export const startScreenCompanion = (input: {
         }
       },
     },
-    voice: () => settings.voice,
+    voice: voiceNow,
     volume: () => settings.volume,
     ask: windows.ask,
     askMirrored: (box, needs) =>
@@ -2768,11 +2801,15 @@ export const startScreenCompanion = (input: {
         id: "s.voice",
         section: "Answers and voice",
         label: "Voice",
-        hint: "Quick is smaller and less accurate. System uses your computer's voice.",
+        hint: "Each persona speaks in its own voice; change one under Personas. Quick is smaller and less accurate, and one voice for all. System uses your computer's voice.",
         kind: "choice",
         value: settings.voice,
         options: [
-          ...POCKET_VOICES.map((v) => ({ value: v, label: `${v[0]!.toUpperCase()}${v.slice(1)}` })),
+          {
+            value:
+              settings.voice === "quick" || settings.voice === "system" ? "anna" : settings.voice,
+            label: "Each persona's own",
+          },
           { value: "quick", label: "Quick" },
           { value: "system", label: "System voice" },
         ],

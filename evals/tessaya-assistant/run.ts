@@ -15,8 +15,9 @@ import { startBatonMcp } from "../../apps/desktop/src/baton/agent/batonMcp.ts";
 import { buildBatonTools, type ToolHost } from "../../apps/desktop/src/baton/agent/batonTools.ts";
 import { createConversationLog } from "../../apps/desktop/src/baton/conversation/conversationLog.ts";
 import { startVisionSession } from "../../apps/desktop/src/baton/screen/claudeVision.ts";
+import { DEFAULT_OS_PACK, personaFor } from "../../packages/baton-shared/src/osPack.ts";
 import { assistantCases, type AssistantCase } from "./cases.ts";
-import { casePasses, firstTool } from "./grade.ts";
+import { casePasses, firstTool, type Sample } from "./grade.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -44,7 +45,7 @@ const host = new Proxy(
   },
 ) as ToolHost;
 
-const sample = async (c: AssistantCase): Promise<ReadonlyArray<string>> => {
+const sample = async (c: AssistantCase): Promise<Sample> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-eval-"));
   const calls: string[] = [];
   const refuse = async () => ({ allow: false as const, reason: REFUSED });
@@ -70,8 +71,18 @@ const sample = async (c: AssistantCase): Promise<ReadonlyArray<string>> => {
     beginTurn: () => undefined,
   });
   try {
-    await agent.say(c.said, { window: "Notepad", session: null });
-    return calls;
+    const face =
+      c.wake === undefined
+        ? undefined
+        : personaFor(DEFAULT_OS_PACK.personas, { wake: c.wake, text: c.said });
+    const reply = await agent.say(c.said, {
+      window: "Notepad",
+      session: null,
+      ...(face === undefined
+        ? {}
+        : { persona: { name: face.name, role: face.role, introduce: !face.lead } }),
+    });
+    return { calls, reply };
   } finally {
     agent.dispose();
     await mcp.close();
@@ -80,19 +91,27 @@ const sample = async (c: AssistantCase): Promise<ReadonlyArray<string>> => {
 };
 
 NodeFS.mkdirSync(out, { recursive: true });
-const rows: Array<{ id: string; said: string; firsts: string[]; pass: boolean; ms: number[] }> = [];
+const rows: Array<{
+  id: string;
+  said: string;
+  firsts: string[];
+  replies: string[];
+  pass: boolean;
+  ms: number[];
+}> = [];
 for (const c of cases) {
-  const runs: Array<ReadonlyArray<string>> = [];
+  const runs: Sample[] = [];
   const ms: number[] = [];
   for (let i = 0; i < samples; i += 1) {
     const started = Date.now();
-    runs.push(await sample(c).catch(() => ["error"]));
+    runs.push(await sample(c).catch(() => ({ calls: ["error"], reply: "" })));
     ms.push(Date.now() - started);
   }
   const row = {
     id: c.id,
     said: c.said,
-    firsts: runs.map(firstTool),
+    firsts: runs.map((r) => firstTool(r.calls)),
+    replies: runs.map((r) => r.reply),
     pass: casePasses(c, runs),
     ms,
   };
