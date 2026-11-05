@@ -107,6 +107,13 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["screen_capture"],
   },
   {
+    id: "do-it-for-me",
+    source: "CU-9 (2026-11-04 review): do it for me is the hands loop behind one plan card",
+    said: "turn on word wrap in notepad for me",
+    first: ["ui_tree", "plan_show"],
+    not: ["Bash", "PowerShell"],
+  },
+  {
     id: "start-dictating",
     source: "control: Help page dictation_start",
     said: "start dictating",

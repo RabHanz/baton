@@ -1,5 +1,5 @@
 // A stand-in for `claude` on a CI runner (no model login exists there): it speaks the same stream-json lines the
-// companion reads and answers teach and drive turns from a script (scenarios.json, picked by PROOF_SCENARIO; with
+// companion reads and answers teach turns from a script (scenarios.json, picked by PROOF_SCENARIO; with
 // none, the single Notepad font-size script below). Controls are found by name through the real UI Automation
 // sidecar (SIDECAR) at answer time, so the pointer lands on the real control.
 import * as NodeChildProcess from "node:child_process";
@@ -85,9 +85,6 @@ if (process.argv[2] === "--locate") {
   process.exit(0);
 }
 
-const flag = (name) => process.argv[process.argv.indexOf(name) + 1];
-const system = NodeFS.readFileSync(flag("--system-prompt-file"), "utf8");
-const mode = /drive mode/i.test(system) ? "drive" : "teach";
 const scenario =
   (process.env["PROOF_SCENARIO"] ?? "") === ""
     ? null
@@ -95,11 +92,6 @@ const scenario =
         (x) => x.id === process.env["PROOF_SCENARIO"],
       );
 const SIZE = process.env["PROOF_TEACH_SIZE"] ?? "16";
-const DRIVE_SIZE = process.env["PROOF_DRIVE_SIZE"] ?? "20";
-const expand = (text) =>
-  text
-    .replaceAll("{TEMPURL}", (process.env["TEMP"] ?? "").replaceAll("\\", "/"))
-    .replaceAll("{TEMP}", process.env["TEMP"] ?? "");
 
 const toShot = (spot, text) => {
   const dims = /image dimensions:\s*(\d+)x(\d+)/i.exec(text);
@@ -113,44 +105,19 @@ const point = (name, label, text) => {
 
 let turn = 0;
 const answerScenario = (text) => {
-  if (mode === "teach") {
-    const step = scenario.steps[turn - 1];
-    if (step === undefined) return `${scenario.done} [DONE]`;
-    return `${step.say} ${point(step.point, step.point ?? "here", text)}`;
-  }
-  if (/just ran/i.test(text)) return "[OK]";
-  const actions = scenario.plan.actions.map((a) => {
-    if (a.t === undefined) return a.text === undefined ? a : { ...a, text: expand(a.text) };
-    const at = toShot(locate(a.t), text) ?? { x: 100, y: 60 };
-    return { ...a, t: undefined, ...at };
-  });
-  return `${scenario.plan.spoken}\n\n\`\`\`baton-drive\n${JSON.stringify({ title: scenario.plan.title, actions })}\n\`\`\``;
+  const step = scenario.steps[turn - 1];
+  if (step === undefined) return `${scenario.done} [DONE]`;
+  return `${step.say} ${point(step.point, step.point ?? "here", text)}`;
 };
 
 const answer = (text) => {
   turn += 1;
   if (scenario !== null) return answerScenario(text);
-  if (mode === "teach") {
-    if (turn === 1) return `Open the Format menu. ${point("Format", "Format", text)}`;
-    if (turn === 2) return `Choose Font. ${point("Font...", "Font", text)}`;
-    if (turn === 3)
-      return `Set the size to ${SIZE}, then press Enter. ${point("Size:", "Size", text)}`;
-    return `All done, the text is now ${SIZE} point. [DONE]`;
-  }
-  if (/just ran/i.test(text)) return "[OK]";
-  const format = toShot(locate("Format"), text) ?? { x: 100, y: 60 };
-  const plan = {
-    title: `Set the font size to ${DRIVE_SIZE}`,
-    actions: [
-      { kind: "click", ...format, why: "Format menu", expect: "The Format menu is open" },
-      { kind: "press", keys: ["f"], why: "Font", expect: "The Font dialog is open" },
-      { kind: "wait", seconds: 1 },
-      { kind: "press", keys: ["alt", "s"], why: "Size box" },
-      { kind: "type", text: DRIVE_SIZE, why: `Size ${DRIVE_SIZE}` },
-      { kind: "press", keys: ["enter"], why: "OK", expect: "The Font dialog is closed" },
-    ],
-  };
-  return `I can see Notepad's Format menu. I'll set the font size to ${DRIVE_SIZE}.\n\n\`\`\`baton-drive\n${JSON.stringify(plan)}\n\`\`\``;
+  if (turn === 1) return `Open the Format menu. ${point("Format", "Format", text)}`;
+  if (turn === 2) return `Choose Font. ${point("Font...", "Font", text)}`;
+  if (turn === 3)
+    return `Set the size to ${SIZE}, then press Enter. ${point("Size:", "Size", text)}`;
+  return `All done, the text is now ${SIZE} point. [DONE]`;
 };
 
 NodeReadline.createInterface({ input: process.stdin }).on("line", (line) => {

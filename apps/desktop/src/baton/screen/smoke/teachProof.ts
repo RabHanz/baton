@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off globalRandom:off globalTimers:off nodeBuiltinImport:off globalConsole:off
 /**
- * The CI proof of teach and drive (design: docs/baton/research/teach-mode-2026-11-02.md): the real companion and the
+ * The CI proof of teach (design: docs/baton/research/teach-mode-2026-11-02.md): the real companion and the
  * real overlay on a Windows desktop, a scripted `claude` (scripts/tessaya/teach-proof/fake-claude.mjs), and Notepad's
  * font size as the task. The harness is the "user": it clicks and types through the real input driver when the card
  * says it is waiting, and presses Go ahead on the real approval card. The desktop is recorded with ffmpeg.
@@ -214,7 +214,7 @@ void Electron.app.whenReady().then(async () => {
     },
   });
 
-  // The real UI Automation sidecar (built in the workflow) gives the ring its control and the drive its window checks.
+  // The real UI Automation sidecar (built in the workflow) gives the ring its control.
   const sidecarBinary = process.env["SIDECAR"] ?? "";
   const sidecar =
     sidecarBinary === ""
@@ -264,32 +264,12 @@ void Electron.app.whenReady().then(async () => {
     });
   }
 
-  // Every question a drive asks is answered with its first button, the way he would, after a pause to read it.
-  let pressed = 0;
-  const answer = async (): Promise<boolean> => {
-    for (const win of Electron.BrowserWindow.getAllWindows()) {
-      if (win.isDestroyed() || !win.isVisible()) continue;
-      const rect = (await evalIn(
-        win,
-        "(()=>{const b=document.querySelector('#n button');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,t:b.textContent}})()",
-      )) as { x: number; y: number; t: string } | null;
-      if (rect === null) continue;
-      note("approval", { button: rect.t });
-      await sleep(3000);
-      const bounds = win.getBounds();
-      await driver.clickAt({ x: bounds.x + rect.x, y: bounds.y + rect.y }, "left", 1);
-      pressed += 1;
-      return true;
-    }
-    return false;
-  };
-
   // The quality set: every scenario of one app (PROOF_APP) from scenarios.json, each recorded and checked outside the UI.
   if ((process.env["PROOF_APP"] ?? "") !== "") {
     interface Scenario {
       readonly id: string;
       readonly app: string;
-      readonly mode: "teach" | "drive";
+      readonly mode: "teach";
       readonly goal: string;
       readonly launch: string;
       readonly steps?: ReadonlyArray<{
@@ -466,15 +446,6 @@ $n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 100
             }
           }
           ended = await until((x) => /Finished|Stopped/.test(x), 60_000);
-        } else {
-          for (
-            const stop = Date.now() + 150_000;
-            Date.now() < stop && !/Finished|Stopped/.test(ended);
-          ) {
-            phase = `${sc.id}: drive loop`;
-            if (!(await answer())) await sleep(250);
-            ended = await cardKicker();
-          }
         }
         await sleep(3000);
         // Notepad writes its settings when it closes, so a registry check comes after the close.
@@ -583,34 +554,6 @@ $n=[Diff]::Count('${before}','${after}');Write-Output "changed=$n";if($n -gt 100
     results["teach"] = { steps, end, pointedAt };
     companion.stop();
     await sleep(1500);
-    await stopClip((Date.now() - began) / 1000);
-  }
-
-  // 2. Drive: the approval card is pressed the way he would, then it works on its own.
-  {
-    const stopClip = startClip("drive");
-    const began = Date.now();
-    await sleep(2500);
-    note("scenario", { name: "drive" });
-    void companion.said("drive: set the Notepad font size to 20", { direct: false });
-    // Every question the drive asks is answered with its first button, the way he would, after a pause to read it.
-    // Every question the drive asks is answered with its first button, the way he would, after a pause to read it.
-    let ended = "";
-    for (let i = 0; i < 480 && !/Finished|Stopped/.test(ended); i += 1) {
-      if (!(await answer())) await sleep(250);
-      ended = await cardKicker();
-    }
-    const end = ended;
-    note("drive.end", { kicker: end });
-    await sleep(6000);
-    // Notepad writes its font when it closes: the proof reads the setting, not the card.
-    await ps(
-      "Get-Process notepad -EA 0 | ForEach-Object { $null = $_.CloseMainWindow() }; Start-Sleep 3",
-    );
-    const points = await ps(
-      "(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Notepad' -EA 0).iPointSize",
-    );
-    results["drive"] = { approvalsPressed: pressed, end, fontPoints: Number(points) };
     await stopClip((Date.now() - began) / 1000);
   }
 

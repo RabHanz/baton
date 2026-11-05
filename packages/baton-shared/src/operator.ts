@@ -120,10 +120,10 @@ const BATON_QUIET = new Set([
   "dictation_stop",
   "screen_capture",
   "ui_tree",
-  // Drawing on the screen and the two guided modes: each asks for its own consent where it runs (capture, Go ahead).
+  // Drawing on the screen, a lesson, and a plan's card: each asks for its own consent where it runs (capture, Go ahead).
   "point_at",
   "teach_start",
-  "drive_start",
+  "plan_show",
   "jobs_list",
   "watch_report",
   "morning_brief",

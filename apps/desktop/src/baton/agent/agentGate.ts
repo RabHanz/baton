@@ -74,6 +74,18 @@ export const fieldOf = (input: Readonly<Record<string, unknown>>): string =>
       ? `element:#${input["id"]}`
       : `point:${Math.round(Number(input["x"]) / 60)},${Math.round(Number(input["y"]) / 60)}`;
 
+/** The hands steps a plan he approved can cover. */
+const PLAN_ACTS: ReadonlySet<string> = new Set([
+  "click",
+  "click_element",
+  "type_text",
+  "press_keys",
+  "act_batch",
+  "scroll",
+  "drag",
+]);
+const SENSITIVE_WHY = /deletes, sends, pays or publishes/;
+
 export interface ConfirmPrompt {
   readonly title: string;
   readonly detail: string;
@@ -96,6 +108,14 @@ export const createAgentGate = (input: {
   }>;
   readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>;
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
+  /** He approved a plan for this turn (plan_show): its hands steps need no box each, except what stays risky. */
+  readonly inPlan?: () => boolean;
+  /** Keys were allowed for this window (a command line only when `shell` and he agreed); checked again when sent. */
+  readonly keysAllowed?: (at: {
+    readonly window?: number;
+    readonly label: string;
+    readonly shell: boolean;
+  }) => void;
   /** His own Chrome (D3): whether social accounts are on, the clock, and a line sink for what is done on them. */
   readonly chrome?: {
     readonly socialOn: () => boolean;
@@ -203,12 +223,33 @@ export const createAgentGate = (input: {
       logSocial("refused");
       return { allow: false, reason: `${judged.why} Tell him why and stop.` };
     }
-    if (judged.verdict === "allow") {
+    const allowKeys = () => {
+      if (focus !== null)
+        input.keysAllowed?.({
+          ...(focus.window === undefined ? {} : { window: focus.window }),
+          label: focus.label,
+          shell: focus.shell,
+        });
+    };
+    // His yes to the plan covers its steps; what deletes, sends, pays or publishes, and a command line, still ask.
+    const planCovers =
+      judged.verdict === "ask" &&
+      judged.risky !== true &&
+      focus?.shell !== true &&
+      PLAN_ACTS.has(name) &&
+      !SENSITIVE_WHY.test(judged.why) &&
+      input.inPlan?.() === true;
+    if (judged.verdict === "allow" || planCovers) {
       noteNavigation();
+      allowKeys();
       if (chromeReads(call.tool, call.input)) input.taint.mark();
       logSocial("allowed");
       after();
-      input.record({ tool: call.tool, action, outcome: "allowed" });
+      input.record({
+        tool: call.tool,
+        action,
+        outcome: planCovers ? "in his approved plan" : "allowed",
+      });
       if (READS_OUTSIDE.has(name) || READS_OUTSIDE.has(call.tool)) input.taint.mark();
       return { allow: true };
     }
@@ -241,6 +282,7 @@ export const createAgentGate = (input: {
     }
     if (social) socialAt.push(now);
     noteNavigation();
+    allowKeys();
     after();
     if (scope !== null && judged.risky !== true) input.taint.allowTyping(scope);
     if (READS_OUTSIDE.has(name) || READS_OUTSIDE.has(call.tool)) input.taint.mark();

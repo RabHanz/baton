@@ -92,103 +92,6 @@
     "close": "Get-Process notepad -EA 0|Stop-Process -Force"
   },
   {
-    "id": "notepad-font-drive",
-    "app": "notepad",
-    "mode": "drive",
-    "goal": "set the Notepad font size to 20",
-    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
-    "plan": {
-      "title": "Set the font size to 20",
-      "spoken": "I can see Notepad's Format menu. I'll set the font size to 20.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "Format",
-          "why": "Format menu",
-          "expect": "The Format menu is open"
-        },
-        {
-          "kind": "press",
-          "keys": ["f"],
-          "why": "Font",
-          "expect": "The Font dialog is open"
-        },
-        {
-          "kind": "wait",
-          "seconds": 1
-        },
-        {
-          "kind": "press",
-          "keys": ["alt", "s"],
-          "why": "Size box"
-        },
-        {
-          "kind": "type",
-          "text": "20",
-          "why": "Size 20"
-        },
-        {
-          "kind": "press",
-          "keys": ["enter"],
-          "why": "OK",
-          "expect": "The Font dialog is closed"
-        }
-      ]
-    },
-    "check": {
-      "type": "ps",
-      "script": "$v=(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Notepad' -EA 0).iPointSize; Write-Output \"iPointSize=$v\"; if($v -eq 200){exit 0} else {exit 1}"
-    },
-    "close": "Get-Process notepad -EA 0 | % { $null=$_.CloseMainWindow() }; Start-Sleep 3"
-  },
-  {
-    "id": "notepad-save-drive",
-    "app": "notepad",
-    "mode": "drive",
-    "goal": "type a sentence in Notepad and save it as fox2.txt",
-    "launch": "Remove-Item \"$env:TEMP\\proof\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof\" | Out-Null; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
-    "plan": {
-      "title": "Type and save",
-      "spoken": "I can see Notepad's text area. I'll type the sentence and save it.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "Text Editor",
-          "why": "text area"
-        },
-        {
-          "kind": "type",
-          "text": "The quick brown fox.",
-          "why": "the sentence"
-        },
-        {
-          "kind": "press",
-          "keys": ["ctrl", "s"],
-          "why": "save"
-        },
-        {
-          "kind": "wait",
-          "seconds": 2
-        },
-        {
-          "kind": "type",
-          "text": "{TEMP}\\proof\\fox2.txt",
-          "why": "file name"
-        },
-        {
-          "kind": "press",
-          "keys": ["enter"],
-          "why": "confirm"
-        }
-      ]
-    },
-    "check": {
-      "type": "ps",
-      "script": "$f=\"$env:TEMP\\proof\\fox2.txt\"; $t=if(Test-Path $f){[IO.File]::ReadAllText($f)}else{'<missing>'}; Write-Output \"bytes=$t\"; if($t -ceq 'The quick brown fox.'){exit 0} else {exit 1}"
-    },
-    "close": "Get-Process notepad -EA 0|Stop-Process -Force"
-  },
-  {
     "id": "calc-mul-teach",
     "app": "calculator",
     "mode": "teach",
@@ -207,8 +110,8 @@
       },
       {
         "say": "Click multiply.",
-        "point": "Multiply by|Multiply|\u00d7|*",
-        "act": [["click", "Multiply by|Multiply|\u00d7|*"]]
+        "point": "Multiply by|Multiply|×|*",
+        "act": [["click", "Multiply by|Multiply|×|*"]]
       },
       {
         "say": "Click 3.",
@@ -233,90 +136,6 @@
     }
   },
   {
-    "id": "calc-mul-drive",
-    "app": "calculator",
-    "mode": "drive",
-    "goal": "work out 12 times 34 in Calculator",
-    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5; Start-Sleep 1; Focus 'Calculator'",
-    "plan": {
-      "title": "Work out 12 times 34",
-      "spoken": "I can see Calculator. I'll press the keys for 12 times 34.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "1|One",
-          "why": "One"
-        },
-        {
-          "kind": "click",
-          "t": "2|Two",
-          "why": "Two"
-        },
-        {
-          "kind": "click",
-          "t": "Multiply by|Multiply|\u00d7|*",
-          "why": "Multiply by"
-        },
-        {
-          "kind": "click",
-          "t": "3|Three",
-          "why": "Three"
-        },
-        {
-          "kind": "click",
-          "t": "4|Four",
-          "why": "Four"
-        },
-        {
-          "kind": "click",
-          "t": "Equals|=|Equal",
-          "why": "Equals"
-        }
-      ]
-    },
-    "check": {
-      "type": "tree",
-      "contains": "408"
-    }
-  },
-  {
-    "id": "calc-add-drive",
-    "app": "calculator",
-    "mode": "drive",
-    "goal": "add 7 and 8 in Calculator",
-    "launch": "Get-Process CalculatorApp,calc,win32calc -EA 0 | Stop-Process -Force; Start-Process calc.exe; Start-Sleep 5; Start-Sleep 1; Focus 'Calculator'",
-    "plan": {
-      "title": "Add 7 and 8",
-      "spoken": "I can see Calculator. I'll press 7 plus 8.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "7|Seven",
-          "why": "7"
-        },
-        {
-          "kind": "click",
-          "t": "Plus|+|Add",
-          "why": "plus"
-        },
-        {
-          "kind": "click",
-          "t": "8|Eight",
-          "why": "8"
-        },
-        {
-          "kind": "click",
-          "t": "Equals|=|Equal",
-          "why": "equals"
-        }
-      ]
-    },
-    "check": {
-      "type": "tree",
-      "contains": "15"
-    }
-  },
-  {
     "id": "paint-line-teach",
     "app": "paint",
     "mode": "teach",
@@ -330,31 +149,6 @@
       }
     ],
     "done": "There is your line.",
-    "check": {
-      "type": "pixels"
-    },
-    "close": "Get-Process mspaint -EA 0|Stop-Process -Force"
-  },
-  {
-    "id": "paint-line-drive",
-    "app": "paint",
-    "mode": "drive",
-    "goal": "draw a line in Paint",
-    "launch": "Get-Process mspaint -EA 0 | Stop-Process -Force; Start-Process mspaint.exe; Start-Sleep 4; Place 'mspaint'; Start-Sleep 1; Focus 'Paint'",
-    "plan": {
-      "title": "Draw a line",
-      "spoken": "I can see Paint's canvas. I'll draw a line.",
-      "actions": [
-        {
-          "kind": "drag",
-          "x": 300,
-          "y": 300,
-          "to_x": 520,
-          "to_y": 360,
-          "why": "a line"
-        }
-      ]
-    },
     "check": {
       "type": "pixels"
     },
@@ -388,79 +182,6 @@
     }
   },
   {
-    "id": "explorer-folder-drive",
-    "app": "explorer",
-    "mode": "drive",
-    "goal": "make a new folder called archive in File Explorer",
-    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4; Start-Sleep 1; Focus 'proof-exp'",
-    "plan": {
-      "title": "Make a folder",
-      "spoken": "I can see the folder window. I'll make a new folder.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "Items View",
-          "why": "the folder"
-        },
-        {
-          "kind": "press",
-          "keys": ["ctrl", "shift", "n"],
-          "why": "new folder"
-        },
-        {
-          "kind": "wait",
-          "seconds": 1
-        },
-        {
-          "kind": "type",
-          "text": "archive",
-          "why": "the name"
-        },
-        {
-          "kind": "press",
-          "keys": ["enter"],
-          "why": "confirm"
-        }
-      ]
-    },
-    "check": {
-      "type": "ps",
-      "script": "if(Test-Path \"$env:TEMP\\proof-exp\\archive\"){Write-Output 'archive exists';exit 0}else{Write-Output (Get-ChildItem \"$env:TEMP\\proof-exp\" -Name);exit 1}"
-    }
-  },
-  {
-    "id": "explorer-goto-drive",
-    "app": "explorer",
-    "mode": "drive",
-    "goal": "open the Windows folder in File Explorer",
-    "launch": "Get-Process explorer -EA 0 | ? {$_.MainWindowTitle} | % { $null=$_.CloseMainWindow() }; Remove-Item \"$env:TEMP\\proof-exp\" -Recurse -Force -EA 0; New-Item -ItemType Directory \"$env:TEMP\\proof-exp\" | Out-Null; Start-Process explorer.exe \"$env:TEMP\\proof-exp\"; Start-Sleep 4; Start-Sleep 1; Focus 'proof-exp'",
-    "plan": {
-      "title": "Open the Windows folder",
-      "spoken": "I can see the address bar. I'll type the folder in.",
-      "actions": [
-        {
-          "kind": "press",
-          "keys": ["ctrl", "l"],
-          "why": "address bar"
-        },
-        {
-          "kind": "type",
-          "text": "C:\\Windows",
-          "why": "the folder"
-        },
-        {
-          "kind": "press",
-          "keys": ["enter"],
-          "why": "go"
-        }
-      ]
-    },
-    "check": {
-      "type": "windows",
-      "contains": "Windows"
-    }
-  },
-  {
     "id": "settings-display-teach",
     "app": "settings",
     "mode": "teach",
@@ -479,37 +200,6 @@
       }
     ],
     "done": "Night light is on the Display page.",
-    "check": {
-      "type": "tree",
-      "contains": "Night light"
-    }
-  },
-  {
-    "id": "settings-display-drive",
-    "app": "settings",
-    "mode": "drive",
-    "goal": "open the Display page in Settings",
-    "launch": "Start-Process 'ms-settings:'; Start-Sleep 6; Start-Sleep 1; Focus 'Settings'",
-    "plan": {
-      "title": "Open Display",
-      "spoken": "I can see Settings. I'll open System, then Display.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "System",
-          "why": "System"
-        },
-        {
-          "kind": "wait",
-          "seconds": 2
-        },
-        {
-          "kind": "click",
-          "t": "Display",
-          "why": "Display"
-        }
-      ]
-    },
     "check": {
       "type": "tree",
       "contains": "Night light"
@@ -537,39 +227,6 @@
       }
     ],
     "done": "The page is open.",
-    "check": {
-      "type": "windows",
-      "contains": "page.html|Tessaya Test Page"
-    },
-    "close": "Get-Process msedge -EA 0|Stop-Process -Force"
-  },
-  {
-    "id": "edge-open-drive",
-    "app": "edge",
-    "mode": "drive",
-    "goal": "open the test page in Edge",
-    "launch": "Get-Process msedge -EA 0 | Stop-Process -Force; Start-Sleep 1; Start-Process msedge '--no-first-run','--new-window','about:blank'; Start-Sleep 5; Place 'msedge'New-Item -ItemType Directory \"$env:TEMP\\proof\" -Force | Out-Null; Set-Content \"$env:TEMP\\proof\\page.html\" '<title>Tessaya Test Page</title><h1>Hello</h1>'; Start-Sleep 1; Focus 'Edge'",
-    "plan": {
-      "title": "Open the test page",
-      "spoken": "I can see Edge's address bar. I'll type the address.",
-      "actions": [
-        {
-          "kind": "press",
-          "keys": ["ctrl", "l"],
-          "why": "address bar"
-        },
-        {
-          "kind": "type",
-          "text": "file:///{TEMPURL}/proof/page.html",
-          "why": "the address"
-        },
-        {
-          "kind": "press",
-          "keys": ["enter"],
-          "why": "go"
-        }
-      ]
-    },
     "check": {
       "type": "windows",
       "contains": "page.html|Tessaya Test Page"
@@ -636,34 +293,5 @@
       "type": "tree",
       "contains": "15"
     }
-  },
-  {
-    "id": "notepad-wrap-drive",
-    "app": "notepad",
-    "mode": "drive",
-    "goal": "turn on word wrap in Notepad",
-    "launch": "Remove-Item 'HKCU:\\Software\\Microsoft\\Notepad' -Recurse -EA 0; Get-Process notepad -EA 0|Stop-Process -Force;Start-Process \"$env:windir\\notepad.exe\";Start-Sleep 2;Place 'notepad'; Start-Sleep 1; Focus 'Notepad'",
-    "plan": {
-      "title": "Turn on word wrap",
-      "spoken": "I can see Notepad's Format menu. I'll turn on word wrap.",
-      "actions": [
-        {
-          "kind": "click",
-          "t": "Format",
-          "why": "Format menu",
-          "expect": "The Format menu is open"
-        },
-        {
-          "kind": "press",
-          "keys": ["w"],
-          "why": "Word Wrap"
-        }
-      ]
-    },
-    "check": {
-      "type": "ps",
-      "script": "$v=(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Notepad' -EA 0).fWrap; Write-Output \"fWrap=$v\"; if($v -eq 1){exit 0} else {exit 1}"
-    },
-    "close": "Get-Process notepad -EA 0 | % { $null=$_.CloseMainWindow() }; Start-Sleep 3"
   }
 ]

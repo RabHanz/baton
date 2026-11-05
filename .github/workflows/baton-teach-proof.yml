@@ -1,8 +1,8 @@
-name: Tessaya teach and drive proof
+name: Tessaya teach proof
 
 # The real companion and the real overlay on a Windows desktop (design: docs/baton/research/teach-mode-2026-11-02.md).
-# A scripted `claude` answers (a runner has no model login); the task is Notepad's font size, once taught (the harness
-# is the user) and once driven (the harness presses Go ahead). Each is recorded as an mp4 with a six-frame contact sheet.
+# A scripted `claude` answers (a runner has no model login); the task is Notepad's font size, taught (the harness is
+# the user). It is recorded as an mp4 with a six-frame contact sheet.
 on:
   workflow_dispatch:
   push:
@@ -51,7 +51,7 @@ jobs:
           "$esbuild" src/baton/screen/smoke/teachProof.ts --bundle --platform=node --format=cjs \
             --external:electron --external:onnxruntime-node --log-level=warning \
             --outfile=node_modules/.cache/baton-smoke/teachProof.cjs
-      - name: Run teach and drive, recorded
+      - name: Run teach, recorded
         shell: bash
         working-directory: apps/desktop
         env:
@@ -64,7 +64,7 @@ jobs:
           timeout 600 "$(node -p 'require("electron")')" node_modules/.cache/baton-smoke/teachProof.cjs 2>&1 | tee "$PROOF_OUT/run.log" || true
           cat "$PROOF_OUT/results.json" || echo "no results"
           echo "PROOF_OUT=$PROOF_OUT" >> "$GITHUB_ENV"
-      # The run is red when the proof is: every teach step found its control, the drive finished, and the font changed.
+      # The run is red when the proof is: every teach step found its control and the lesson finished.
       - name: Assert the proof
         shell: bash
         run: |
@@ -73,8 +73,6 @@ jobs:
             const bad = [];
             if (!/^Finished/.test(r.teach?.end ?? "")) bad.push("teach did not finish: " + r.teach?.end);
             if ((r.teach?.pointedAt ?? 0) < 3) bad.push("teach found only " + r.teach?.pointedAt + " of 3 controls");
-            if (!/^Finished/.test(r.drive?.end ?? "")) bad.push("drive did not finish: " + r.drive?.end);
-            if (r.drive?.fontPoints !== 200) bad.push("the font is " + r.drive?.fontPoints + ", not 200");
             if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
             console.log("proof holds");
           '

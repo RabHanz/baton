@@ -45,8 +45,13 @@ export interface ToolHost {
     screen?: number;
     label?: string;
   }) => Promise<string>;
-  /** Starts a lesson (teach) or a plan he approves (drive): the same machines as the older router's. */
-  readonly guided?: (mode: "teach" | "drive", goal: string) => Promise<string>;
+  /** Starts a lesson: the same machine as the older router's. */
+  readonly guided?: (mode: "teach", goal: string) => Promise<string>;
+  /** Shows him the steps of "do it for me" on one card; his yes covers them for this turn. Says what he answered. */
+  readonly planShow?: (plan: {
+    readonly title: string;
+    readonly steps: ReadonlyArray<string>;
+  }) => Promise<string>;
   readonly scroll: (amount: number) => Promise<string>;
   readonly drag: (a: {
     x: number;
@@ -338,13 +343,35 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       },
     },
     {
-      name: "drive_start",
+      name: "plan_show",
       description:
-        "He wants you to DO something on his screen by pointing and clicking for him, shown as a plan he approves first ('do it for me'). Pass his goal in his words. After this, say nothing more: the plan and its approval are shown to him.",
-      inputSchema: object({ goal: { type: "string" } }, ["goal"]),
+        "He wants you to DO something on his screen for him ('do it for me'). First show him the plan: a short title and each step in plain words, as he would say them. He can say go ahead, change a step, or no. After go ahead, do the steps with the hands tools in this same turn; his yes covers them, except what deletes, sends, pays, publishes or reaches a command line, which still asks.",
+      inputSchema: object(
+        {
+          title: { type: "string", description: "What you will do, a few words." },
+          steps: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            maxItems: 12,
+            description: "Each step in his words, such as 'open the Format menu'.",
+          },
+        },
+        ["title", "steps"],
+      ),
       run: async (a) => {
-        if (host.guided === undefined) throw new Error("Driving is not available here.");
-        return { text: await host.guided("drive", str(a, "goal", 500)) };
+        if (host.planShow === undefined) throw new Error("Plans are not available here.");
+        const steps = a["steps"];
+        if (
+          !Array.isArray(steps) ||
+          steps.length === 0 ||
+          steps.length > 12 ||
+          steps.some((x) => typeof x !== "string" || x.length === 0 || x.length > 200)
+        )
+          throw new Error("steps must be one to twelve short sentences.");
+        return {
+          text: await host.planShow({ title: str(a, "title", 120), steps: steps as string[] }),
+        };
       },
     },
     {
