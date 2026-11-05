@@ -1,0 +1,24 @@
+  "crossSessionInbound" to "accept".
+
+────────────────────────────────────────────────
+ Held message from another session
+
+ Another Claude session sent a message: from
+ uds:/run/user/1000/cc-socks/269507.sock
+ [verified pid 269507] (peer claims name:
+ t3code-a0)
+
+ The sending session's permission mode class
+ doesn't match this session's, so it wasn't
+ delivered automatically.
+
+ Message body (this is what will be delivered):
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ A note relayed from the manager session
+ │ about memory limits on this box.
+ │ …[1 line, 1534 chars total — full body will
+ │ be delivered on approve]
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ ❯ Deny — drop it and tell the sender it was
+   declined
+   Deliver this message to Claude

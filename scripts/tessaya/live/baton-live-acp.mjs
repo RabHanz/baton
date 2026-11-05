@@ -224,7 +224,15 @@ export function parsePanePrompt(screen) {
       footer = i;
       break;
     }
-  if (footer < 0) return null;
+  if (footer < 0) {
+    // No footer (the held cross-session message): a highlighted option block ending the screen.
+    let end = lines.length - 1;
+    while (end >= 0 && lines[end].trim() === "") end -= 1;
+    const tail = lines.slice(Math.max(0, end - 8), end + 1);
+    const marked = tail.findLastIndex((l) => /^\s*❯\s/.test(l));
+    if (marked < 0 || tail.slice(marked).some((l) => RULE.test(l))) return null;
+    footer = end + 1;
+  }
   const options = [];
   let first = -1;
   // Numbered options (permission dialogs, AskUserQuestion), read upward to option 1.
@@ -264,13 +272,21 @@ export function parsePanePrompt(screen) {
       /^\s+$/.test(lines[bottom + 1].slice(0, indent + 2))
     )
       bottom += 1;
-    for (let i = top; i <= bottom; i += 1)
-      options.push({
-        number: i - top + 1,
-        label: clean(lines[i].replace("❯", "")),
-        selected: i === at,
-        line: i,
-      });
+    // A label wrapped at the pane edge continues on the next line: its first word would not have fit.
+    const width = Math.max(0, ...lines.filter((l) => RULE.test(l)).map((l) => l.trimEnd().length));
+    const wrapped = (i) =>
+      width > 0 &&
+      i !== at &&
+      lines[i - 1].trimEnd().length + 1 + (lines[i].trim().split(/\s+/)[0]?.length ?? 0) > width;
+    for (let i = top; i <= bottom; i += 1) {
+      const label = clean(lines[i].replace("❯", ""));
+      if (i > top && wrapped(i)) {
+        options.at(-1).label = `${options.at(-1).label} ${label}`;
+        options.at(-1).selected ||= i === at;
+        continue;
+      }
+      options.push({ number: options.length + 1, label, selected: i === at, line: i });
+    }
     first = top;
   }
   if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
@@ -298,7 +314,20 @@ export function parsePanePrompt(screen) {
       .map(clean)
       .filter((l) => l.length > 0);
     const asks = box.findIndex((l) => l.includes("?"));
-    if (boxTop < 0 || asks < 0) return null;
+    if (boxTop < 0) return null;
+    if (asks < 0) {
+      // No question in the box (a held message's body): the dialog's title asks, the rest is context.
+      let solid = boxTop - 1;
+      while (solid >= 0 && boxTop - solid < 30 && !SOLID.test(lines[solid])) solid -= 1;
+      const above = lines
+        .slice(solid + 1, boxTop)
+        .map(clean)
+        .filter((l) => l.length > 0);
+      if (above.length === 0) return null;
+      const about = [...above.slice(1), ...box].join(" ").replace(/\s+/g, " ");
+      lines.splice(solid + 1, q - solid, about, "", above[0], "");
+      return parsePanePrompt(lines.join("\n"));
+    }
     const question = box.slice(0, asks + 1).join(" ");
     // A link wrapped at the box edge continues on a line with no spaces.
     const about = box
