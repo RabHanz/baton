@@ -81,7 +81,7 @@ import {
   type ConversationRoute,
 } from "@t3tools/baton-shared/conversation";
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
-import { pointerMoved } from "../agent/pointerGuard.ts";
+import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
@@ -1775,6 +1775,20 @@ export const startScreenCompanion = (input: {
     actLast = { x: to.x, y: to.y };
     await sleep(await overlay.glide(actLast, actLabel(act)).catch(() => 0));
   };
+  const mouse = createMouseConsent(
+    async () =>
+      (await askHandsFree(
+        {
+          title: "Use your mouse?",
+          detail:
+            "I need to use your mouse for this: the pointer moves and clicks. Say no and I'll find another way.",
+          buttons: ["Go ahead", "Not now"],
+          cancel: 1,
+          scoped: true,
+        },
+        "I need to use your mouse for this. Is that all right?",
+      )) === 0,
+  );
   /** Where Baton last left the pointer this turn; null before its first move. */
   let leftPointer: { x: number; y: number } | null = null;
   const pointerAction = async (to: { x: number; y: number }, act: () => Promise<void>) => {
@@ -2055,6 +2069,20 @@ export const startScreenCompanion = (input: {
           );
         }
       }
+      // His mouse stays his (CU-6): the control at the point is pressed by its own pattern when it has one.
+      if (a.button !== "right" && a.double !== true) {
+        const pressed = await actions?.locate?.("", to, false, true).catch(() => null);
+        if (pressed?.invoked !== undefined) {
+          void showAct({ kind: "click", name: pressed.name || a.label }, pressed);
+          await followOwnClick();
+          const how =
+            pressed.invoked === "focus"
+              ? "focus, no pointer"
+              : `${pressed.invoked}, no pointer, no focus change`;
+          return `Pressed ${pressed.name || "it"} (${how})${pressed.state ? `; it now reads ${pressed.state}` : ""}.`;
+        }
+      }
+      await mouse.need();
       await showAct({ kind: "click", name: found?.name ?? a.label, double: a.double === true }, to);
       await pointerAction(to, () =>
         driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
@@ -2095,6 +2123,7 @@ export const startScreenCompanion = (input: {
         );
       }
       const to = { x: found.x, y: found.y };
+      await mouse.need();
       await showAct({ kind: "click", name: found.name, double }, to);
       input.onNote?.("hands_pointer", {
         label: found.name,
@@ -2265,6 +2294,7 @@ export const startScreenCompanion = (input: {
         agentDecisions.length = 0;
         agentRoutes.length = 0;
         leftPointer = null;
+        mouse.reset();
       },
     });
     return agent;

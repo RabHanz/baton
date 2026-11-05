@@ -9,6 +9,7 @@ use windows::Win32::UI::Accessibility::{
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern,
     IUIAutomationTogglePattern, IUIAutomationValuePattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
     ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded, ToggleState_Off, ToggleState_On,
+    UIA_PaneControlTypeId, UIA_WindowControlTypeId,
     UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId,
     UIA_EditControlTypeId, UIA_ExpandCollapseExpandCollapseStatePropertyId, UIA_ExpandCollapsePatternId,
     UIA_HasKeyboardFocusPropertyId, UIA_InvokePatternId, UIA_IsEnabledPropertyId, UIA_IsOffscreenPropertyId,
@@ -330,7 +331,36 @@ unsafe fn act(element: &IUIAutomationElement) -> Option<&'static str> {
     if let Ok(p) = element.GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(UIA_ExpandCollapsePatternId) {
         return p.Expand().ok().map(|_| "expand");
     }
+    // A text box is clicked to put the keyboard in it: its own focus does that without the pointer.
+    if kind == UIA_EditControlTypeId.0 || kind == UIA_DocumentControlTypeId.0 {
+        return element.SetFocus().ok().map(|_| "focus");
+    }
     None
+}
+
+/// A click by position without the pointer: the control at the point, or the nearest of two ancestors that is not a
+/// whole pane or window, acted on by its own pattern. found: false means only a real click can do it.
+unsafe fn press_at(automation: &IUIAutomation, x: i32, y: i32) -> windows::core::Result<Value> {
+    let walker = automation.ControlViewWalker()?;
+    let mut element = automation.ElementFromPoint(POINT { x, y })?;
+    for _ in 0..3 {
+        let kind = element.CurrentControlType().map(|k| k.0).unwrap_or(0);
+        if kind == UIA_PaneControlTypeId.0 || kind == UIA_WindowControlTypeId.0 {
+            break;
+        }
+        if let Some(how) = act(&element) {
+            let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+            let rect = element.CurrentBoundingRectangle().unwrap_or_default();
+            return Ok(json!({
+                "found": true, "name": name, "invoked": how,
+                "x": (rect.left + rect.right) / 2, "y": (rect.top + rect.bottom) / 2,
+                "state": detail(&element, false, &name).trim(),
+            }));
+        }
+        let Ok(parent) = walker.GetParentElement(&element) else { break };
+        element = parent;
+    }
+    Ok(json!({"found": false}))
 }
 
 /// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
@@ -378,6 +408,15 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
         },
         None => None,
     };
+    // No name and no line: the model clicked a point it saw, so the control there is pressed in place.
+    if invoke && line.is_none() && label.trim().is_empty() {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let automation: IUIAutomation =
+                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).map_err(err)?;
+            return press_at(&automation, x, y).map_err(err);
+        }
+    }
     let (label, x, y) = match &line {
         Some((name, rect, _)) => (name.as_str(), centre(rect).0 as i32, centre(rect).1 as i32),
         None => (label, x, y),
