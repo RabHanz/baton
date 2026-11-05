@@ -284,6 +284,9 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "press_keys":
+      // A command line runs what reaches it: he is asked here, not refused later as the keys are sent.
+      if (context.focusedShell === true)
+        return { verdict: "ask", why: "It would press keys in a command line." };
       if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
         return { verdict: "ask", why: "That may send what is typed." };
       }

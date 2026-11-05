@@ -84,17 +84,28 @@ const PLAN_SKIPS: Readonly<Record<string, ReadonlySet<string>>> = {
   drag: new Set(["It wants to drag something."]),
 };
 
-/** Whether a hands step is one he approved: the text it types is in a step, and a drag is a step of its own. */
+/**
+ * Whether a hands step is one he approved: the text it types is a step's quoted text, or a whole phrase of a step at
+ * least three characters long (a letter at a time, or a word inside another, would smuggle text past the plan); a drag
+ * only where a step says drag.
+ */
 export const inApprovedSteps = (
   steps: ReadonlyArray<string>,
   tool: string,
   args: Readonly<Record<string, unknown>>,
 ): boolean => {
   const words = steps.join("\n").toLowerCase();
-  if (tool === "type_text")
-    return typeof args["text"] === "string" && words.includes(args["text"].trim().toLowerCase());
-  if (tool === "drag") return /\b(drag|move)\b/.test(words);
-  return false;
+  if (tool === "drag") return /\bdrag\b/.test(words);
+  if (tool !== "type_text" || typeof args["text"] !== "string") return false;
+  const text = args["text"].trim().toLowerCase();
+  if (text === "") return false;
+  const quoted = [...words.matchAll(/["“”]([^"“”]+)["“”]/g)].some((m) => m[1]!.trim() === text);
+  if (quoted) return true;
+  const phrase = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (
+    text.length >= 3 &&
+    new RegExp(`(^|[^\\p{L}\\p{N}])${phrase}($|[^\\p{L}\\p{N}])`, "u").test(words)
+  );
 };
 
 export interface ConfirmPrompt {

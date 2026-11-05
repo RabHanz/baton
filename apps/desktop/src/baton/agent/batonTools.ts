@@ -494,7 +494,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "press_keys",
       description:
-        'Press a key or a chord, such as ["ctrl","a"]. Enter (it may send) asks him first, even inside a plan he approved; so do Win, Alt and other chords after you read something.',
+        'Press a key or a chord, such as ["ctrl","a"]. Enter (it may send) and any keys into a command line ask him first, even inside a plan he approved; so do Win, Alt and other chords after you read something.',
       inputSchema: object(
         {
           keys: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },

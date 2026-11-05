@@ -93,8 +93,10 @@ describe("a plan he approved", () => {
     const shell = rig(null, true);
     await shell.gate(call("press_keys", { keys: ["up"], why: "history" }));
     await shell.gate(call("type_text", { text: "dir", why: "w" }));
+    // Even an arrow key into a command line asks now, and his yes is what makes it agreed.
+    expect(shell.asked).toHaveLength(2);
     expect(shell.allowedKeys).toEqual([
-      { window: 7, label: "powershell.exe: PS", shell: false },
+      { window: 7, label: "powershell.exe: PS", shell: true },
       { window: 7, label: "powershell.exe: PS", shell: true },
     ]);
   });
@@ -103,5 +105,15 @@ describe("a plan he approved", () => {
     expect(inApprovedSteps(STEPS, "type_text", { text: " Hello World " })).toBe(true);
     expect(inApprovedSteps(STEPS, "type_text", { text: "goodbye" })).toBe(false);
     expect(inApprovedSteps(['click "Save"'], "drag", {})).toBe(false);
+    // One character at a time, or a word inside another word, smuggles text past the plan.
+    expect(inApprovedSteps(STEPS, "type_text", { text: "" })).toBe(false);
+    expect(inApprovedSteps(STEPS, "type_text", { text: "r" })).toBe(false);
+    expect(inApprovedSteps(["open the Format menu"], "type_text", { text: "rm" })).toBe(false);
+    expect(inApprovedSteps(["open the Format menu"], "type_text", { text: "orm" })).toBe(false);
+    expect(inApprovedSteps(['type "hi" into the box'], "type_text", { text: "hi" })).toBe(true);
+    expect(inApprovedSteps(["type the word world"], "type_text", { text: "world" })).toBe(true);
+    // A step that only moves to a menu does not cover a drag.
+    expect(inApprovedSteps(["move to the Format menu"], "drag", {})).toBe(false);
+    expect(inApprovedSteps(["drag report.txt into Archive"], "drag", {})).toBe(true);
   });
 });

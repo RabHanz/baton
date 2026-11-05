@@ -124,6 +124,13 @@ describe("Baton's own tools (D143)", () => {
       risky: true,
     });
     expect(judgeToolCall(typed("hello"), { ...on, focusedShell: true }).verdict).toBe("ask");
+    // Keys into a command line ask too, so he gets a box rather than a refusal as they are sent.
+    const keys = { tool: "mcp__baton__press_keys", input: { keys: ["up"], why: "w" } };
+    expect(judgeToolCall(keys, { ...on, focusedShell: true })).toMatchObject({
+      verdict: "ask",
+      why: "It would press keys in a command line.",
+    });
+    expect(judgeToolCall(keys, on).verdict).toBe("allow");
   });
   it("asks when the text follows something it read, unless the text is his own", () => {
     const read = { ...on, tainted: true };
