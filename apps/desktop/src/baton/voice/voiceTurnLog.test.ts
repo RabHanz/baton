@@ -22,14 +22,14 @@ const timings = {
 describe("the voice log", () => {
   it("writes one line for a turn: wake, words, route and times", () => {
     const { lines, log } = rig();
-    log.event({ type: "wake", word: "Alfred", score: 0.97, at: 1 });
+    log.event({ type: "wake", word: "Alfred", score: 0.97, at: 1, lateMs: 900, checkMs: 700 });
     log.event({ type: "transcript", text: "what time is it", at: 2 });
     log.timings(timings);
     expect(lines).toEqual([
       {
         at: "2026-11-01T00:00:00.000Z",
         kind: "turn",
-        wake: { word: "Alfred", score: 0.97 },
+        wake: { word: "Alfred", score: 0.97, lateMs: 900, checkMs: 700 },
         transcript: "what time is it",
         ...timings,
       },

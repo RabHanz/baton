@@ -27,7 +27,12 @@ export const makeVoiceTurnLog = (
   write: (line: string) => void,
   clock: () => Date = () => new Date(),
 ): VoiceTurnLog => {
-  let wake: { readonly word: string | null; readonly score: number } | null = null;
+  let wake: {
+    readonly word: string | null;
+    readonly score: number;
+    readonly lateMs?: number;
+    readonly checkMs?: number;
+  } | null = null;
   let transcript: string | null = null;
   const note: VoiceTurnLog["note"] = (kind, fields) =>
     write(`${JSON.stringify({ at: clock().toISOString(), kind, ...fields })}\n`);
@@ -41,7 +46,12 @@ export const makeVoiceTurnLog = (
       switch (event.type) {
         case "wake":
           if (wake !== null && transcript === null) note("wake_only", { wake });
-          wake = { word: event.word, score: event.score };
+          wake = {
+            word: event.word,
+            score: event.score,
+            ...(event.lateMs === undefined ? {} : { lateMs: event.lateMs }),
+            ...(event.checkMs === undefined ? {} : { checkMs: event.checkMs }),
+          };
           return;
         case "transcript":
           transcript = event.text;

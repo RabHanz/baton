@@ -48,6 +48,10 @@ export interface WakeProvider {
   readonly reset: () => void;
   /** The word behind the last fire, where the provider listens for several. */
   readonly lastWord?: () => string | null;
+  /** Samples fed since the audio behind the last fire: a scorer behind the microphone reports a fire late. */
+  readonly firedAgo?: () => number;
+  /** Resolves once every frame fed so far has been scored. */
+  readonly drain?: () => Promise<void>;
 }
 
 /** Streaming: is this frame speech? */
@@ -55,6 +59,7 @@ export interface VadProvider {
   readonly name: string;
   readonly isSpeech: (frame: Int16Array) => boolean;
   readonly reset: () => void;
+  readonly drain?: () => Promise<void>;
 }
 
 export interface SttProvider {
