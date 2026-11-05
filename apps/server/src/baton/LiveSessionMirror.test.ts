@@ -10,6 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   askRunId,
   endedMirrorThreads,
+  forgetUnarchived,
   liveMedia,
   mediaPathsOf,
   nextReply,
@@ -148,6 +149,13 @@ describe("the thread list stays clean", () => {
     endedMirrorThreads(shells, new Set(["s"]), missing, now + 60_000);
     expect(endedMirrorThreads(shells, new Set(), missing, now + 3 * 60_000)).toEqual([]);
     expect(missing.size).toBe(1);
+  });
+
+  it("does not bring back a thread he unarchived and archived again himself", () => {
+    const mine = liveThreadId("s");
+    const archived = new Set([mine, liveThreadId("still")]);
+    forgetUnarchived(archived, [{ id: mine }]);
+    expect([...archived]).toEqual([liveThreadId("still")]);
   });
 
   it("keeps a thread he sent a message in", () => {
