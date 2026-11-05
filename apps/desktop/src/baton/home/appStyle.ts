@@ -84,6 +84,7 @@ html.glass-off #app::before{display:none}
 .brand .plan{margin:0;border:0;background:none;padding:0;font-weight:500;color:var(--faint);font-variant-numeric:tabular-nums}
 .plan{margin-left:auto;font:600 11px var(--sans);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px;color:var(--soft);background:var(--panel)}
 .mk .on-dark{display:none}
+.mk .dye{fill:var(--accent)}
 [data-theme=dark] .mk .on-light{display:none}
 [data-theme=dark] .mk .on-dark{display:inline}
 .aboutmark{width:96px;height:96px;margin:0 0 14px;color:var(--ink)}
