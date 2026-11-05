@@ -2069,14 +2069,28 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ]).catch(() => null);
       return typeof out?.count === "number" ? out.count : null;
     },
-    uiTree: async () => {
+    uiTree: async (find, numbered) => {
       if (sidecar === null) return null;
       const tree = await Promise.race([
-        sidecar.uiTree(),
+        sidecar.uiTree(undefined, find, numbered),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS * 2)),
       ]).catch(() => null);
       if (tree === null || tree.controls === undefined) return null;
-      return { window: tree.window ?? "", controls: tree.controls };
+      return {
+        window: tree.window ?? "",
+        controls: tree.controls,
+        ...(tree.shown === undefined ? {} : { shown: tree.shown }),
+        ...(tree.tree === undefined ? {} : { tree: tree.tree }),
+      };
+    },
+    focusState: async () => {
+      if (sidecar === null) return null;
+      const state = await Promise.race([
+        sidecar.focusState(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), APP_CHECK_MS)),
+      ]).catch(() => null);
+      if (state === null || typeof state.error === "string") return null;
+      return { window: state.window ?? "", focus: state.focus ?? null };
     },
     hands: () =>
       sidecar === null
@@ -2084,6 +2098,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         : {
             locate: sidecar.locate,
             uiTree: sidecar.uiTree,
+            focusState: sidecar.focusState,
             captureWindow: sidecar.captureWindow,
             focusWindow: sidecar.focusWindow,
             input: sidecar.input,
@@ -2091,7 +2106,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             paste: sidecar.paste,
             setValue: sidecar.setValue,
           },
-    locate: async (label, near, anywhere, invoke) => {
+    locate: async (label, near, anywhere, invoke, ref) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(near);
       // The sidecar answers an invoke within 2 s ("pending" when a dialog it opened is up), so it waits past that.
@@ -2102,6 +2117,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           y: physical.y,
           ...(anywhere === true ? { foreground: true } : {}),
           ...(invoke === true ? { invoke: true } : {}),
+          ...(ref === undefined ? {} : { ref: ref.line, tree: ref.tree }),
         }),
         new Promise<"slow">((resolve) =>
           setTimeout(() => resolve("slow"), LOCATE_TIMEOUT_MS * (invoke === true ? 2 : 1)),
@@ -2116,8 +2132,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             : "The window's controls took too long to read.",
         );
       }
+      if (found?.stale === true) {
+        throw new Error(
+          `The window changed since ui_tree, so ${label} may be another control now. Read ui_tree again.`,
+        );
+      }
       if (found?.found === true && found.invoked !== undefined) {
-        return { ...near, name: found.name ?? label, invoked: found.invoked };
+        return {
+          ...near,
+          name: found.name ?? label,
+          invoked: found.invoked,
+          ...(found.state === undefined ? {} : { state: found.state }),
+        };
       }
       if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
       const real = Electron.screen.screenToDipPoint({ x: found.x, y: found.y });

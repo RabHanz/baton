@@ -9,10 +9,10 @@ import * as NodePath from "node:path";
 
 import { REMOTE_HANDS_TOOLS, createHandleRegistry } from "@t3tools/baton-shared/remoteHands";
 
-import type { LocatedElement, UiTree } from "../voice/dictationSidecar.ts";
+import type { FocusState, LocatedElement, UiTree } from "../voice/dictationSidecar.ts";
 import type { BatonTool } from "./batonMcp.ts";
 import { bmpToPng } from "./bmpToPng.ts";
-import { buildBatonTools, type ToolHost } from "./batonTools.ts";
+import { buildBatonTools, treeText, type ToolHost } from "./batonTools.ts";
 
 export interface RemoteHandsDeps {
   readonly sidecar: {
@@ -23,8 +23,11 @@ export interface RemoteHandsDeps {
       foreground?: boolean;
       window?: string;
       invoke?: boolean;
+      ref?: number;
+      tree?: number;
     }) => Promise<LocatedElement>;
-    readonly uiTree: (window?: string) => Promise<UiTree>;
+    readonly uiTree: (window?: string, find?: string, number?: boolean) => Promise<UiTree>;
+    readonly focusState?: (window?: string) => Promise<FocusState>;
     readonly setValue: (
       window: string,
       text: string,
@@ -67,13 +70,16 @@ const POLL_MS = 150;
 const LOG_TAIL_BYTES = 256_000;
 
 export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<BatonTool> => {
-  const located = (label: string, window: string | undefined, invoke: boolean) =>
+  // This session's last numbered tree: its numbers are the only ones its clicks may use.
+  let lastTree: number | undefined;
+  const located = (label: string | number, window: string | undefined, invoke: boolean) =>
     deps.sidecar.locate({
-      label,
+      label: typeof label === "number" ? "" : label,
       x: 0,
       y: 0,
       ...(window === undefined ? { foreground: true } : { window }),
       ...(invoke ? { invoke: true } : {}),
+      ...(typeof label === "number" ? { ref: label, tree: lastTree ?? 0 } : {}),
     });
 
   /** Keys only ever go where the keyboard is, so a named window must be the one that has it. */
@@ -93,20 +99,36 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
     capture: async () => {
       throw new Error("Use window_capture.");
     },
-    uiTree: async (window) => {
-      const tree = await deps.sidecar.uiTree(window);
+    uiTree: async (window, find) => {
+      const tree = await deps.sidecar.uiTree(window, find, true);
       if (typeof tree.error === "string")
         throw new Error(`The window's controls can't be read: ${tree.error}`);
-      return `${tree.window ?? ""}\n${(tree.controls ?? []).join("\n")}`;
+      lastTree = tree.tree;
+      return treeText(tree);
     },
-    clickElement: async (label, double, window) => {
-      const found = await located(label, window, !double);
+    ...(deps.sidecar.focusState === undefined
+      ? {}
+      : {
+          focusState: async (window?: string) => {
+            const state = await deps.sidecar.focusState!(window);
+            return typeof state.error === "string"
+              ? null
+              : { window: state.window ?? "", focus: state.focus ?? null };
+          },
+        }),
+    clickElement: async (target, double, window) => {
+      const found = await located(target, window, !double);
+      const label = typeof target === "number" ? `line ${target}` : target;
+      if (found.stale === true)
+        throw new Error(
+          `The window changed since ui_tree, so ${label} may be another control now. Read ui_tree again.`,
+        );
       if (!found.found)
         throw new Error(
           `No control is named "${label}" in ${window === undefined ? "the window with the keyboard" : `the window "${window}"`}.`,
         );
       if (found.invoked !== undefined)
-        return `Pressed ${found.name ?? label} (${found.invoked}, no pointer, no focus change).`;
+        return `Pressed ${found.name ?? label} (${found.invoked}, no pointer, no focus change)${found.state ? `; it now reads ${found.state}` : ""}.`;
       if (found.covered_by !== undefined) {
         throw new Error(
           `"${found.name ?? label}" is covered by "${found.covered_by}", so a click would land there.`,

@@ -69,11 +69,16 @@ vendor's own words; none of it was installed or measured.
 `baton-screen.json` in Tessaya's state directory (next to `fabric-voice.json`):
 
 ```json
-{ "captureApproval": "ask", "claudeBinary": "claude", "model": "sonnet", "output": "spoken" }
+{
+  "captureApproval": "ask",
+  "claudeBinary": "claude",
+  "model": "claude-opus-5-5",
+  "output": "spoken"
+}
 ```
 
 - `claudeBinary`: the path to `claude` if it is not on PATH (e.g. `C:\\Users\\you\\.local\\bin\\claude.exe`).
-- `model`: a family alias (`sonnet`, `opus`), so it follows the newest model.
+- `model`: the assistant's model; the default is `claude-opus-5-5`. A family alias (`sonnet`, `opus`) follows the newest model.
 - `output`: `spoken` or `written`; Tray, Answers. An old `speak: false` reads as `written`.
 
 ## What the Windows laptop showed (2026-10-31)

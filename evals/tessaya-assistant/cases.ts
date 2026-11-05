@@ -88,6 +88,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["Bash", "PowerShell"],
   },
   {
+    id: "work-notepad",
+    source:
+      "CU-7/CU-12 (2026-11-04 review): an app is worked through the tree, never a shell script",
+    said: "type hello world into notepad and save it",
+    first: ["ui_tree"],
+    not: ["Bash", "PowerShell"],
+  },
+  {
     id: "start-dictating",
     source: "control: Help page dictation_start",
     said: "start dictating",

@@ -28,9 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
       - uses: actions/cache@v4
         with:
           path: native/baton-dictation/target
@@ -47,6 +44,15 @@ jobs:
         run: |
           choco install ffmpeg --no-progress -y > /dev/null || echo "ffmpeg did not install: no clips this run"
           ffmpeg -version | head -1 || true
+      # The tool table imports workspace packages (baton-shared, baton-contracts, effect), so the run needs an install.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+      - name: Install
+        run: vp install
       - name: Run the task set
         shell: bash
         env:

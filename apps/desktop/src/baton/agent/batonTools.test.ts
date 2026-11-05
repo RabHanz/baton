@@ -1,7 +1,7 @@
 import { BATON_TOOLS, REMOTE_ONLY_TOOLS } from "@t3tools/baton-shared/operator";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { buildBatonTools, type ToolHost } from "./batonTools.ts";
+import { buildBatonTools, treeText, type FocusState, type ToolHost } from "./batonTools.ts";
 
 const host = (log: string[], windows: string[] = ["w1"]): ToolHost => ({
   windowKey: async () => windows.shift() ?? "w1",
@@ -57,6 +57,66 @@ describe("the assistant's tool table", () => {
     await tools.get("scroll")!.run({ amount: 99, why: "w" });
     await tools.get("click")!.run({ x: 3, y: 4, double: true, why: "w" });
     expect(log).toEqual(["wait_for Save 10", "scroll 10", "click 3,4 double"]);
+  });
+
+  it("clicks a tree line by its number and says when the tree was cut", async () => {
+    const log: string[] = [];
+    const tools = new Map(buildBatonTools(host(log)).map((t) => [t.name, t]));
+    await tools.get("click_element")!.run({ id: 3, why: "w" });
+    await expect(tools.get("click_element")!.run({ id: 0, why: "w" })).rejects.toThrow(
+      "line number",
+    );
+    expect(log).toEqual(["element 3"]);
+    expect(treeText({ window: "Files", controls: ["[1] list item: a"], shown: 400 })).toContain(
+      "showing 1 of 400 controls; pass find",
+    );
+    expect(treeText({ window: "Files", controls: ["[1] list item: a"], shown: 1 })).toBe(
+      "Files\n[1] list item: a",
+    );
+  });
+
+  it("an action says what it changed, or that nothing changed; a batch step does not read back", async () => {
+    vi.useFakeTimers();
+    using _real = { [Symbol.dispose]: () => void vi.useRealTimers() };
+    const states: FocusState[] = [];
+    const read = async () => states.shift() ?? null;
+    const tools = buildBatonTools({ ...host([]), focusState: read });
+    const run = async (name: string, args: Record<string, unknown>) => {
+      const out = tools.find((t) => t.name === name)!.run(args);
+      await vi.runAllTimersAsync();
+      return (await out).text;
+    };
+    const notepad = (focus: string): FocusState => ({ window: "Notepad", focus });
+    states.push(notepad('document: Text = ""'), notepad('document: Text = "hi"'));
+    expect(await run("type_text", { text: "hi", why: "w" })).toBe(
+      'typed\nNow: same window; the keyboard is in document: Text = "hi".',
+    );
+    states.push(notepad("document: Text"), { window: "Save as", focus: "edit: File name" });
+    expect(await run("press_keys", { keys: ["ctrl", "s"], why: "w" })).toContain(
+      'the window is "Save as" (was "Notepad")',
+    );
+    states.push(...[1, 2, 3].map(() => notepad("button: Save")));
+    expect(await run("click_element", { label: "Save", why: "w" })).toContain("No change seen");
+    expect(states).toEqual([]);
+    states.push(notepad("a"), notepad("b"));
+    const batch = await run("act_batch", { steps: [{ tool: "type_text", args: { text: "x" } }] });
+    expect(batch).not.toContain("Now:");
+    expect(states).toHaveLength(2);
+    states.length = 0;
+    // A checkbox pressed by its pattern: the keyboard stays put, which is not "nothing happened".
+    const pressing = buildBatonTools({
+      ...host([]),
+      focusState: read,
+      clickElement: async () =>
+        "Pressed Word wrap (toggle, no pointer, no focus change); it now reads [checked].",
+    });
+    states.push(...[1, 2, 3].map(() => notepad("document: Text")));
+    const pressed = pressing.find((t) => t.name === "click_element")!.run({ id: 4, why: "w" });
+    await vi.runAllTimersAsync();
+    const said = (await pressed).text;
+    expect(said).toContain("[checked]");
+    expect(said).toContain("a press does not move the keyboard");
+    expect(said).not.toContain("No change seen");
   });
 
   describe("act_batch", () => {

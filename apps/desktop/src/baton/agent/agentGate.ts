@@ -70,7 +70,9 @@ export const createTaint = (): TurnTaint => {
 export const fieldOf = (input: Readonly<Record<string, unknown>>): string =>
   typeof input["label"] === "string"
     ? `element:${input["label"].toLowerCase()}`
-    : `point:${Math.round(Number(input["x"]) / 60)},${Math.round(Number(input["y"]) / 60)}`;
+    : typeof input["id"] === "number"
+      ? `element:#${input["id"]}`
+      : `point:${Math.round(Number(input["x"]) / 60)},${Math.round(Number(input["y"]) / 60)}`;
 
 export interface ConfirmPrompt {
   readonly title: string;

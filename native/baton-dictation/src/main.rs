@@ -696,15 +696,15 @@ fn window_at(_x: i32, _y: i32) -> isize {
 }
 
 #[cfg(windows)]
-fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool) -> Value {
-    let mut out = uia::locate(label, x, y, foreground, window, invoke).unwrap_or_else(|e| json!({"found": false, "error": e}));
+fn locate_element(id: Option<u64>, label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<(u64, usize)>) -> Value {
+    let mut out = uia::locate(label, x, y, foreground, window, invoke, reference).unwrap_or_else(|e| json!({"found": false, "error": e}));
     out["ev"] = json!("located");
     out["id"] = json!(id);
     out
 }
 
 #[cfg(not(windows))]
-fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: bool, _window: Option<&str>, _invoke: bool) -> Value {
+fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: bool, _window: Option<&str>, _invoke: bool, _reference: Option<(u64, usize)>) -> Value {
     json!({"ev": "located", "id": id, "found": false, "error": "not on this platform yet"})
 }
 
@@ -778,16 +778,29 @@ fn set_value_event(id: Option<u64>, _window: &str, _text: &str) -> Value {
 }
 
 #[cfg(windows)]
-fn ui_tree(id: Option<u64>, window: Option<&str>) -> Value {
-    let mut out = uia::tree(120, window).unwrap_or_else(|e| json!({"error": e}));
+fn ui_tree(id: Option<u64>, window: Option<&str>, find: Option<&str>, numbered: bool) -> Value {
+    let mut out = uia::tree(120, window, find, numbered).unwrap_or_else(|e| json!({"error": e}));
     out["ev"] = json!("tree");
     out["id"] = json!(id);
     out
 }
 
 #[cfg(not(windows))]
-fn ui_tree(id: Option<u64>, _window: Option<&str>) -> Value {
+fn ui_tree(id: Option<u64>, _window: Option<&str>, _find: Option<&str>, _numbered: bool) -> Value {
     json!({"ev": "tree", "id": id, "error": "not on this platform yet"})
+}
+
+#[cfg(windows)]
+fn focus_state_event(id: Option<u64>, window: Option<&str>) -> Value {
+    let mut out = uia::focus_state(window).unwrap_or_else(|e| json!({"error": e}));
+    out["ev"] = json!("focus_state");
+    out["id"] = json!(id);
+    out
+}
+
+#[cfg(not(windows))]
+fn focus_state_event(id: Option<u64>, _window: Option<&str>) -> Value {
+    json!({"ev": "focus_state", "id": id, "error": "not on this platform yet"})
 }
 
 /// Text goes only into the window it was spoken for. Windows reports 0 mid-switch, which is not it.
@@ -971,7 +984,8 @@ fn serve() {
                         let foreground = value["foreground"].as_bool().unwrap_or(false);
                         let invoke = value["invoke"].as_bool().unwrap_or(false);
                         let window = value["window"].as_str().map(str::to_string);
-                        thread::spawn(move || emit(locate_element(id, &label, x, y, foreground, window.as_deref(), invoke)));
+                        let reference = value["ref"].as_u64().map(|n| (value["tree"].as_u64().unwrap_or(0), n as usize));
+                        thread::spawn(move || emit(locate_element(id, &label, x, y, foreground, window.as_deref(), invoke, reference)));
                     }
                     "ui_changes" => {
                         #[cfg(windows)]
@@ -983,7 +997,14 @@ fn serve() {
                     "ui_tree" => {
                         let id = value["id"].as_u64();
                         let window = value["window"].as_str().map(str::to_string);
-                        thread::spawn(move || emit(ui_tree(id, window.as_deref())));
+                        let find = value["find"].as_str().map(str::to_string);
+                        let numbered = value["number"].as_bool().unwrap_or(false);
+                        thread::spawn(move || emit(ui_tree(id, window.as_deref(), find.as_deref(), numbered)));
+                    }
+                    "focus_state" => {
+                        let id = value["id"].as_u64();
+                        let window = value["window"].as_str().map(str::to_string);
+                        thread::spawn(move || emit(focus_state_event(id, window.as_deref())));
                     }
                     "input" => {
                         let id = value["id"].as_u64();
@@ -1259,11 +1280,11 @@ fn main() {
         Some("locate") => {
             let number = |name: &str| flag(&args, name).and_then(|v| v.parse().ok()).unwrap_or(0);
             let label = flag(&args, "--label").unwrap_or_default();
-            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground"), flag(&args, "--window").as_deref(), args.iter().any(|a| a == "--invoke")));
+            println!("{}", locate_element(None, &label, number("--x"), number("--y"), args.iter().any(|a| a == "--foreground"), flag(&args, "--window").as_deref(), args.iter().any(|a| a == "--invoke"), flag(&args, "--ref").and_then(|v| v.parse().ok()).map(|n| (flag(&args, "--tree").and_then(|v| v.parse().ok()).unwrap_or(0), n))));
             Ok(())
         }
         Some("ui_tree") => {
-            println!("{}", ui_tree(None, flag(&args, "--window").as_deref()));
+            println!("{}", ui_tree(None, flag(&args, "--window").as_deref(), flag(&args, "--find").as_deref(), args.iter().any(|a| a == "--number")));
             Ok(())
         }
         Some("transcribe") => cli_transcribe(&args[1..]),
