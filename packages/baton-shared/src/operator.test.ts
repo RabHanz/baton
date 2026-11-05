@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { decide, guardDecision, parseBrainReply } from "./brain.ts";
 import { describeToolCall, judgeToolCall, keyIsNavigation, type ToolCall } from "./operator.ts";
-import { planSensitive } from "./screenCompanion.ts";
 
 const on = { actWithoutAsking: true, tainted: false };
 const off = { actWithoutAsking: false, tainted: false };
@@ -110,25 +109,6 @@ describe("the operate route", () => {
   });
 });
 
-describe("a drive plan with Act without asking on", () => {
-  const plan = (text: string) => ({ title: "Plan", actions: [{ kind: "type", text }] }) as never;
-
-  it("runs if it is plain navigation or typing", () => {
-    expect(planSensitive(plan("hello there"))).toBe(false);
-  });
-
-  it("still gets a yes if it sends, pays or deletes", () => {
-    for (const text of ["send this", "buy now", "delete the file"]) {
-      expect(planSensitive(plan(text))).toBe(true);
-    }
-  });
-
-  it("reads a pasted clipboard too", () => {
-    const paste = { title: "Plan", actions: [{ kind: "press", keys: ["ctrl", "v"] }] } as never;
-    expect(planSensitive(paste, "please publish this")).toBe(true);
-  });
-});
-
 describe("Baton's own tools (D143)", () => {
   const typed = (text: string, why = "type his reply into the chat box"): ToolCall => ({
     tool: "mcp__baton__type_text",
@@ -144,6 +124,13 @@ describe("Baton's own tools (D143)", () => {
       risky: true,
     });
     expect(judgeToolCall(typed("hello"), { ...on, focusedShell: true }).verdict).toBe("ask");
+    // Keys into a command line ask too, so he gets a box rather than a refusal as they are sent.
+    const keys = { tool: "mcp__baton__press_keys", input: { keys: ["up"], why: "w" } };
+    expect(judgeToolCall(keys, { ...on, focusedShell: true })).toMatchObject({
+      verdict: "ask",
+      why: "It would press keys in a command line.",
+    });
+    expect(judgeToolCall(keys, on).verdict).toBe("allow");
   });
   it("asks when the text follows something it read, unless the text is his own", () => {
     const read = { ...on, tainted: true };

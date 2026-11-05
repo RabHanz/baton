@@ -6,18 +6,11 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  runDrivePlan,
-  type DriveHost,
-  type DrivePlan,
-} from "@t3tools/baton-shared/screenCompanion";
-
-import {
   focusedFrom,
   resolveDictationBinary,
   restartDelayMs,
   startDictationSidecar,
   type DictationEvent,
-  type FocusedApp,
 } from "./dictationSidecar.ts";
 
 describe("restartDelayMs", () => {
@@ -53,72 +46,6 @@ describe("the keyboard's window, through the real parser", () => {
   it("keeps the window and drops a zero", () => {
     expect(reading(7).window).toBe(7);
     expect(reading(0).window).toBeUndefined();
-  });
-
-  const shot = {
-    screen: 1,
-    width: 100,
-    height: 100,
-    cursorHere: true,
-    bounds: { x: 0, y: 0, width: 100, height: 100 },
-  };
-  const plan = {
-    title: "t",
-    actions: [
-      { kind: "type", text: "a" },
-      { kind: "type", text: "b" },
-    ],
-  } as DrivePlan;
-  const host = (next: () => FocusedApp | null, typed: string[]): DriveHost => ({
-    clickAt: async () => undefined,
-    pressAt: async () => undefined,
-    releaseAt: async () => undefined,
-    scrollAt: async () => undefined,
-    type: async (t) => void typed.push(t),
-    press: async () => undefined,
-    sleep: async () => undefined,
-    cancelled: () => false,
-    verify: async () => ({ ok: true }),
-    foreground: async () => {
-      const app = next();
-      return app?.window === undefined
-        ? null
-        : { window: app.window, label: `${app.exe}: ${app.title}` };
-    },
-  });
-
-  it("stops the type after he switches during the one before", async () => {
-    const seen = [1, 1, 2];
-    const typed: string[] = [];
-    const result = await runDrivePlan(
-      plan,
-      [shot],
-      host(() => reading(seen.shift() ?? 2), typed),
-    );
-    expect(result).toMatchObject({ kind: "stopped", step: 1 });
-    expect(typed).toEqual(["a"]);
-  });
-
-  it("treats no reading as a stop, not a pass", async () => {
-    const typed: string[] = [];
-    const result = await runDrivePlan(
-      plan,
-      [shot],
-      host(() => null, typed),
-    );
-    expect(result).toMatchObject({ kind: "stopped", step: 0 });
-    expect(typed).toEqual([]);
-  });
-
-  it("stops on reaching a command line nobody agreed to", async () => {
-    const typed: string[] = [];
-    const shell = focusedFrom({ app: "powershell.exe", title: "PS", window: 3 });
-    const result = await runDrivePlan(
-      plan,
-      [shot],
-      host(() => shell, typed),
-    );
-    expect(result).toMatchObject({ kind: "stopped", step: 0 });
   });
 });
 

@@ -28,33 +28,24 @@ import {
   type BrainDecision,
 } from "@t3tools/baton-shared/brain";
 import {
-  DRIVE_PROMPT,
   LOOK_PROMPT,
   TEACH_PROMPT,
-  describeAction,
-  describeDrivePlan,
   needsCaptureApproval,
   parseReply,
   pointable,
-  parseVerify,
-  planFromReply,
-  runDrivePlan,
   screensDifference,
   teachShouldLook,
+  isPasteKeys,
   isShellWindow,
+  keysRefusal,
   missingDisplaysNote,
   screenLabel,
   shotFor,
   teachTurn,
   toDesktop,
-  verifyQuestion,
   type CaptureApproval,
   type ScreenMode,
   type ScreenShot,
-  pasteTooLong,
-  planHighRisk,
-  planSensitive,
-  shellCheck,
 } from "@t3tools/baton-shared/screenCompanion";
 import {
   describeToolCall,
@@ -227,8 +218,6 @@ const ROUTER_MAX_TURNS = 6;
 const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
 const REMOTE_QUIET_MS = 4_000;
-/** It arrives unasked while he may be typing, so a stray key cannot answer it. */
-const PAUSE_ARM_MS = 900;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
 /**
@@ -240,8 +229,6 @@ const CHANGED = 0.00025;
 const SETTLED = 0.0001;
 /** Grey-level change that counts at thumbnail scale, where a line of text is a faint smudge. */
 const PIXEL = 8;
-/** A drive plan made from a screen that has since changed this much is refused. */
-const STALE = 0.06;
 
 /** What Baton can do beyond talking, supplied by the voice side. */
 /** The window he is using. */
@@ -477,13 +464,6 @@ type Run =
       watcher: ReturnType<typeof setInterval> | null;
       idle: ReturnType<typeof setTimeout> | null;
       busy: boolean;
-    }
-  | {
-      readonly mode: "drive";
-      readonly vision: VisionSession;
-      cancelled: boolean;
-      lastSpoken: string;
-      release: (() => void) | null;
     };
 
 const LOOK_REPLY = "[LOOK]";
@@ -747,12 +727,7 @@ export const startScreenCompanion = (input: {
     startVisionSession({
       claudeBinary: settings.claudeBinary,
       model: settings.model,
-      systemPrompt:
-        mode === "look"
-          ? `${ASSISTANT_PROMPT_INTRO}\n\n${LOOK_PROMPT}`
-          : mode === "teach"
-            ? TEACH_PROMPT
-            : DRIVE_PROMPT,
+      systemPrompt: mode === "look" ? `${ASSISTANT_PROMPT_INTRO}\n\n${LOOK_PROMPT}` : TEACH_PROMPT,
       workDir: NodePath.join(input.stateDir, "screen"),
       env: claudeEnv(),
       platform: input.platform,
@@ -813,8 +788,6 @@ export const startScreenCompanion = (input: {
     { id: "stop", label: "Stop" },
   ] as const;
   const LOOK_AGAIN = "he asked you to look again: the pointer found nothing.";
-  /** Set when a drive typed something: Undo presses Ctrl+Z once for each typed step. */
-  let undoable: { typed: number } | null = null;
   /** A button on a step card: the same as saying it. */
   const cardAction = (id: string) => {
     // A click on the card itself stops the talking and takes it down: a way out that needs no voice.
@@ -832,17 +805,8 @@ export const startScreenCompanion = (input: {
       windows.openAsk();
       return;
     }
-    if (id === "undo" && undoable !== null) {
-      const { typed } = undoable;
-      undoable = null;
-      void (async () => {
-        for (let i = 0; i < typed; i += 1) await driverFor().press(["ctrl", "z"]);
-        await finishedCard("Undone", "I set it back.", null);
-      })().catch(fail);
-      return;
-    }
     if (id === "again") {
-      if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
+      if (run?.mode === "teach") say(run.lastSpoken);
     } else if (id === "skip") {
       if (run?.mode === "teach") void teachStep("he skipped this step.").catch(fail);
     } else if (id === "stop") stop();
@@ -1114,10 +1078,6 @@ export const startScreenCompanion = (input: {
     if (current.mode === "teach") {
       if (current.watcher !== null) clearInterval(current.watcher);
       if (current.idle !== null) clearTimeout(current.idle);
-    }
-    if (current.mode === "drive") {
-      current.cancelled = true;
-      current.release?.();
     }
     current.vision.dispose();
     input.onChange?.();
@@ -1481,251 +1441,6 @@ export const startScreenCompanion = (input: {
     await teachStep();
   };
 
-  const drive = async (goal: string) => {
-    if (!(await approveCapture(goal, "drive"))) {
-      return refuse(
-        "capture_declined",
-        "All right, I won't look at your screen, so I can't do that for you.",
-        goal,
-      );
-    }
-    end();
-    const current: Extract<Run, { mode: "drive" }> = {
-      mode: "drive",
-      vision: visionFor("drive"),
-      cancelled: false,
-      lastSpoken: "",
-      release: null,
-    };
-    run = current;
-    // Never ends a newer run that replaced this one while it waited.
-    const finish = () => {
-      if (run === current) end();
-    };
-    input.onChange?.();
-    input.onActivity?.("Planning");
-    const captured = await capture();
-    const shots = captured.map((c) => c.shot);
-    const before = await fingerprint();
-    let reply = parseReply(await current.vision.ask(content(captured, goal)));
-    if (run !== current) return;
-    let parsed = planFromReply(reply, shots);
-    // A plan the rules refused gets one more try, told why. The rules still read the new one.
-    if ("error" in parsed && reply.planText !== null) {
-      reply = parseReply(
-        await current.vision.ask([
-          {
-            type: "text",
-            text: `that plan was refused: ${parsed.error} propose one that avoids it.`,
-          },
-        ]),
-      );
-      if (run !== current) return;
-      parsed = planFromReply(reply, shots);
-    }
-    input.onTrace?.({
-      driveReply: reply.spoken,
-      plan: "plan" in parsed ? parsed.plan : parsed.error,
-    });
-    converse("drive", goal, reply.spoken, {
-      note: "plan" in parsed ? `plan: ${parsed.plan.title}` : "no plan",
-    });
-    input.onNote?.("drive_plan", {
-      goal,
-      ...("plan" in parsed
-        ? { title: parsed.plan.title, steps: parsed.plan.actions.length }
-        : { error: parsed.error }),
-    });
-    if ("error" in parsed) {
-      refuse("no_plan", parsed.error, goal);
-      return finish();
-    }
-    const plan = parsed.plan;
-    // Held to the list a sentence is held to, whatever routed here. Run it is not enough.
-    const clipboard = await Electron.clipboard.readText();
-    const tooLong = pasteTooLong(plan, clipboard);
-    const subject = tooLong ? null : planHighRisk(plan, clipboard);
-    const shell = shellCheck(plan, focus?.label ?? null);
-    input.onAction?.({ by: "drive", plan: plan.title, steps: plan.actions.length });
-    if (tooLong || shell.refused) {
-      const message = tooLong
-        ? "That would paste more than I can show you first, so I won't."
-        : "That would paste into a command line, where nobody reads it first. I won't do that.";
-      refuse(tooLong ? "paste_too_long" : "shell_paste", message, goal);
-      input.onAction?.({ by: "drive", plan: plan.title, outcome: "refused" });
-      return finish();
-    }
-    current.lastSpoken = stepLine(reply.spoken, 20) || reply.spoken;
-    const askFirst =
-      subject !== null || !settings.actWithoutAsking || shell.ask || planSensitive(plan, clipboard);
-    input.onActivity?.(askFirst ? "Waiting for you" : "Starting", plan.title);
-    say(current.lastSpoken);
-    const response = !askFirst
-      ? 0
-      : await askHandsFree(
-          {
-            title: `Want me to ${plan.title.charAt(0).toLowerCase()}${plan.title.slice(1).replace(/[.?!]$/, "")}?`,
-            detail: `${reply.spoken}\n\n${describeDrivePlan(plan, clipboard)}\n\nYou watch. Esc takes it back (so does saying stop, or clicking the pill). If a window moves under a click, it asks first.`,
-            buttons: ["Go ahead", "Not now"],
-            cancel: 1,
-            scoped: true,
-          },
-          subject === null
-            ? "Shall I run that? Yes or no."
-            : `This plan involves ${subject}. Do you want me to run it? Say yes or no.`,
-          0,
-          subject !== null,
-        );
-    const shellYes =
-      response !== 0 || run !== current || !shell.ask
-        ? 0
-        : await askHandsFree(
-            {
-              title: shell.shell
-                ? "This plan reaches a command line"
-                : "I can't tell where these keys will go",
-              detail: `A command line runs what it is given. ${
-                shell.typed.length === 0
-                  ? "This plan types nothing itself."
-                  : `Tessaya would type:\n\n${shell.typed.join("\n")}`
-              }`,
-              buttons: ["Go ahead", "Not now"],
-              cancel: 1,
-              scoped: true,
-            },
-            "This goes to a command line. Shall I type it? Yes or no.",
-          );
-    input.onAction?.({
-      by: "drive",
-      plan: plan.title,
-      outcome: !askFirst ? "ran by setting" : response === 0 ? "he said yes" : "he said no",
-    });
-    if (response !== 0 || shellYes !== 0 || run !== current) {
-      input.onActivity?.(null);
-      await wipe();
-      if (run === current) input.onNote?.("drive_outcome", { goal, outcome: "he said no" });
-      return finish();
-    }
-    input.onCue?.("start");
-    await sleep(350); // the prompt leaves the screen first
-    const afterPrompt = await fingerprint();
-    input.onTrace?.({
-      staleCheck: screensDifference(before, afterPrompt),
-    });
-    if (screensDifference(before, afterPrompt) > STALE) {
-      refuse(
-        "screen_changed",
-        "The screen changed since I made the plan, so I didn't run it. Ask again.",
-        goal,
-        "Drive",
-      );
-      return finish();
-    }
-    // Stopped while it was on its way here: end() has been and gone, so nothing would let go.
-    if (run !== current) return;
-    // A pause box waiting for an answer goes too.
-    const stopDrive = () => {
-      current.cancelled = true;
-      windows.closePrompt();
-    };
-    current.release = input.holdEscape(stopDrive, "drive");
-    const d = driverFor();
-    const result = await runDrivePlan(plan, shots, {
-      clickAt: async (p, button, count) => {
-        await showAct({ kind: "click", double: count === 2 }, p);
-        await d.clickAt(p, button, count);
-      },
-      pressAt: d.pressAt,
-      releaseAt: d.releaseAt,
-      scrollAt: d.scrollAt,
-      type: async (text) => {
-        await showAct({ kind: "type" });
-        await d.type(text);
-      },
-      press: async (keys) => {
-        await showAct({ kind: "press", keys });
-        await d.press(keys);
-      },
-      ...(input.platform === "win32" && actions?.focus !== undefined
-        ? { foreground: keyboardWindow }
-        : {}),
-      ...(input.platform === "win32" && actions?.windowAt !== undefined
-        ? { windowAt: actions.windowAt }
-        : {}),
-      pause: async (reason) =>
-        (await askHandsFree(
-          {
-            title: "Carry on?",
-            detail: `${reason} I haven't clicked. Make sure the right window is up, then carry on.`,
-            buttons: ["Carry on", "Stop"],
-            cancel: 1,
-            scoped: true,
-            armMs: PAUSE_ARM_MS,
-          },
-          `${reason} Carry on? Yes or no.`,
-        )) === 0,
-      shellAllowed: shell.ask,
-      pasteText: clipboard,
-      clipboard: () => Electron.clipboard.readText(),
-      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-      cancelled: () => current.cancelled || run !== current,
-      progress: (i, action) => {
-        if (i > 0) input.onCue?.("stepDone");
-        // While it drives he watches the screen, not a card: the pill says which step and how to take it back.
-        input.onActivity?.(
-          "Driving",
-          `Step ${i + 1} of ${plan.actions.length} · ${describeAction(action).slice(0, 48)} · Esc takes it back`,
-        );
-      },
-      verify: async (action, i) => {
-        const now = await capture();
-        return parseVerify(
-          await current.vision.ask(content(now, verifyQuestion(action, i, plan.actions.length))),
-        );
-      },
-    }).catch((error: unknown) => ({
-      kind: "stopped" as const,
-      step: -1,
-      reason: (error as Error).message,
-    }));
-    current.release?.();
-    current.release = null;
-    if (run !== current) return;
-    const message = result.kind === "finished" ? "Done. Have a look." : result.reason;
-    input.onTrace?.({ driveResult: result });
-    input.onAction?.({ by: "drive", plan: plan.title, result: result.kind });
-    input.onNote?.("drive_outcome", {
-      goal,
-      outcome: result.kind,
-      ...(result.kind === "finished" ? {} : { reason: message }),
-    });
-    input.onActivity?.(null);
-    say(message);
-    if (result.kind === "finished") {
-      const typed = plan.actions.filter((a) => a.kind === "type").length;
-      undoable = typed > 0 ? { typed } : null;
-      await finishedCard(
-        `Finished · ${plan.actions.length} of ${plan.actions.length}`,
-        plan.title,
-        null,
-        typed > 0 ? [{ id: "undo", label: "Undo typing" }] : [],
-      );
-    } else {
-      // Plain words, never a raw error; the way out is on the card.
-      const mine = ++showing;
-      input.onCue?.("error");
-      await overlay.card({
-        kicker: "Stopped",
-        text: message,
-        hint: "Nothing else was changed.",
-        state: "error",
-        actions: [{ id: "close", label: "Close", primary: true }],
-      });
-      setTimeout(() => mine === showing && void wipe(), FINISHED_CARD_MS).unref();
-    }
-    finish();
-  };
-
   const runningMode = (): string | null => (run !== null && run.mode !== "look" ? run.mode : null);
 
   const decideSaid = (text: string, direct: boolean): Promise<BrainDecision> =>
@@ -1764,8 +1479,9 @@ export const startScreenCompanion = (input: {
           return answer(decision.text, true, () => (firstAt ??= Date.now()));
         case "teach":
           return teach(decision.text);
+        // "Do it for me": the operator works it with its own tools and gate, as the one assistant does with its hands.
         case "drive":
-          return drive(decision.text);
+          return operate(decision.text, () => (firstAt ??= Date.now()));
         case "operate":
           return operate(decision.text, () => (firstAt ??= Date.now()));
         case "clarify":
@@ -1779,7 +1495,7 @@ export const startScreenCompanion = (input: {
             return run?.mode === "teach" ? teachStep("he says he did it.") : Promise.resolve();
           }
           if (decision.control === "repeat") {
-            if (run?.mode === "teach" || run?.mode === "drive") say(run.lastSpoken);
+            if (run?.mode === "teach") say(run.lastSpoken);
             return Promise.resolve();
           }
           // Nothing running: a silent no-op, so a stray "stop" costs nothing.
@@ -1828,6 +1544,51 @@ export const startScreenCompanion = (input: {
   let agentMcp: BatonMcp | null = null;
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
+  /** The plan he approved this turn (plan_show): its steps run without a box each, and pastes keep its clipboard. */
+  let planGrant: {
+    readonly title: string;
+    readonly steps: ReadonlyArray<string>;
+    readonly clipboard: string;
+  } | null = null;
+  type KeysAllowed = {
+    window?: number;
+    label: string;
+    readonly shell: boolean;
+    readonly clipboard?: string;
+  };
+  /** Where keys were last allowed (the gate's window, moved along by her own clicks); checked again as they are sent. */
+  let keysAllowed: KeysAllowed | null = null;
+  /** The same for a remote session's last call, judged by its own gate. */
+  let remoteKeysAllowed: KeysAllowed | null = null;
+  /** Her own click may rightly move the keyboard (a dialog it opened): the next keys follow it, the agreement does not. */
+  const followOwnClick = async () => {
+    if (keysAllowed === null) return;
+    const seen = await focusSoon();
+    if (seen !== null)
+      keysAllowed = {
+        ...keysAllowed,
+        label: seen.label,
+        ...(seen.window === undefined ? {} : { window: seen.window }),
+      };
+  };
+  /** Drive's checks, at the moment keys are sent (keysRefusal): same window, no command line nobody agreed to, the clipboard he saw. */
+  const checkKeys = async (
+    keys: ReadonlyArray<string> | null,
+    allowed: KeysAllowed | null = keysAllowed,
+  ) => {
+    // Where the keyboard is cannot be read here: that is a refusal, not a pass.
+    const seen = actions?.focus === undefined ? null : await keyboardWindow();
+    const refusal = keysRefusal({
+      allowed,
+      now: seen,
+      paste: keys !== null && isPasteKeys(keys),
+      clipboard: await Electron.clipboard.readText(),
+    });
+    if (refusal !== null) {
+      input.onNote?.("keys_refused", { why: refusal });
+      throw new Error(refusal);
+    }
+  };
   type BatonToolType = ReturnType<typeof buildBatonTools>[number];
   const agentTools: string[] = [];
   // Cleared each turn: a tool that failed twice in one turn may work in the next.
@@ -1866,6 +1627,12 @@ export const startScreenCompanion = (input: {
         0,
         p.noOnExpiry,
       )) === 0,
+    inPlan: () => planGrant?.steps ?? null,
+    keysAllowed: (at) => {
+      const plan = planGrant;
+      // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
+      keysAllowed = { ...at, ...(plan === null ? {} : { clipboard: plan.clipboard }) };
+    },
     record: (entry) => {
       if (typeof entry["tool"] === "string") {
         agentTools.push(entry["tool"]);
@@ -1904,6 +1671,7 @@ export const startScreenCompanion = (input: {
             p.noOnExpiry,
           )) === 0,
     record: (entry) => input.onAction?.({ by: "remote-hands", ...entry }),
+    keysAllowed: (at) => void (remoteKeysAllowed = at),
   });
   /** A remote session at work shows as one line in the pill, gone a moment after its last call. */
   let remoteQuiet: ReturnType<typeof setTimeout> | null = null;
@@ -1931,8 +1699,14 @@ export const startScreenCompanion = (input: {
               const dip = Electron.screen.screenToDipPoint(to);
               await pointerAction(dip, () => driverFor().clickAt(dip, "left", double ? 2 : 1));
             },
-            type: (text) => driverFor().type(text),
-            press: (keys) => driverFor().press(keys),
+            type: async (text) => {
+              await checkKeys(null, remoteKeysAllowed);
+              await driverFor().type(text);
+            },
+            press: async (keys) => {
+              await checkKeys(keys, remoteKeysAllowed);
+              await driverFor().press(keys);
+            },
             keyboardIn: async (window) =>
               (await focusSoon())?.label.toLowerCase().includes(window.toLowerCase()) === true,
             // A pointer click brings its window forward; the window he was using gets the keyboard back afterwards.
@@ -2227,12 +2001,38 @@ export const startScreenCompanion = (input: {
       );
       return "Pointing.";
     },
-    guided: async (mode, goal) => {
-      // The lesson or the plan runs on its own after this turn ends; its card must not be replaced by the turn's closing line.
-      void (mode === "teach" ? teach(goal) : drive(goal)).catch(fail);
-      return mode === "teach"
-        ? "The lesson has started and its first step is on his screen. Say nothing more."
-        : "The plan is being made and will be shown to him to approve. Say nothing more.";
+    guided: async (_mode, goal) => {
+      // The lesson runs on its own after this turn ends; its card must not be replaced by the turn's closing line.
+      void teach(goal).catch(fail);
+      return "The lesson has started and its first step is on his screen. Say nothing more.";
+    },
+    planShow: async (plan) => {
+      // A new plan replaces any earlier yes, whatever he answers to this one.
+      planGrant = null;
+      const title = plan.title.replace(/[.?!]$/, "");
+      const response = await askHandsFree(
+        {
+          title: `Want me to ${title.charAt(0).toLowerCase()}${title.slice(1)}?`,
+          detail: `${plan.steps.map((step, i) => `${i + 1}. ${step}`).join("\n")}\n\nYou watch; your mouse stays yours. Esc or "stop" stops me. Anything that deletes, sends, pays or publishes still asks.`,
+          buttons: ["Go ahead", "Change a step", "Not now"],
+          cancel: 2,
+          scoped: true,
+        },
+        "Shall I do that? Yes or no. Or tell me what to change.",
+      );
+      const answer = response === 0 ? "approved" : response === 1 ? "change" : "declined";
+      input.onNote?.("plan", { title: plan.title, steps: plan.steps, answer });
+      if (response === 0) {
+        planGrant = {
+          title: plan.title,
+          steps: plan.steps,
+          clipboard: await Electron.clipboard.readText(),
+        };
+        return "He said go ahead. Do these steps now with the hands tools; what still asks will ask him.";
+      }
+      return response === 1
+        ? "He wants to change a step. Ask him which and how in one short question, then plan_show the new plan."
+        : "He said no. Do nothing; say so in a few words.";
     },
     click: async (a) => {
       const point = desktopPoint(a);
@@ -2258,6 +2058,7 @@ export const startScreenCompanion = (input: {
       await pointerAction(to, () =>
         driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
       );
+      await followOwnClick();
       return "Clicked.";
     },
     windowKey: async () => {
@@ -2284,6 +2085,7 @@ export const startScreenCompanion = (input: {
       if (found.invoked !== undefined) {
         // A press by pattern has already happened: her cursor follows it rather than lead it.
         void showAct({ kind: "click", name: found.name }, found);
+        await followOwnClick();
         return `Pressed ${found.name} (${found.invoked}, no pointer, no focus change)${found.state ? `; it now reads ${found.state}` : ""}.`;
       }
       if (found.coveredBy !== undefined) {
@@ -2298,6 +2100,7 @@ export const startScreenCompanion = (input: {
         why: double ? "double click" : "no pattern",
       });
       await pointerAction(to, () => driverFor().clickAt(to, "left", double ? 2 : 1));
+      await followOwnClick();
       return `Clicked ${found.name} (pointer: it has no pattern to act on).`;
     },
     waitFor: async (label, seconds) => {
@@ -2338,11 +2141,13 @@ export const startScreenCompanion = (input: {
       return "Dragged.";
     },
     type: async (text) => {
+      await checkKeys(null);
       await showAct({ kind: "type" });
       await driverFor().type(text);
       return "Typed.";
     },
     press: async (keys) => {
+      await checkKeys(keys);
       await showAct({ kind: "press", keys });
       await driverFor().press(keys);
       return "Pressed.";
@@ -2451,6 +2256,8 @@ export const startScreenCompanion = (input: {
       beginTurn: () => {
         memory.beginTurn();
         agentTaint.reset();
+        planGrant = null;
+        keysAllowed = null;
         agentTools.length = 0;
         toolFailures.clear();
         agentResults.length = 0;

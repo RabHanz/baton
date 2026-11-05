@@ -1,8 +1,8 @@
-name: Tessaya teach and drive quality set
+name: Tessaya teach quality set
 
 # The real companion and the real overlay on a Windows desktop (design: docs/baton/research/teach-mode-2026-11-02.md).
-# A scripted `claude` answers (a runner has no model login); the task is Notepad's font size, once taught (the harness
-# is the user) and once driven (the harness presses Go ahead). Each is recorded as an mp4 with a six-frame contact sheet.
+# A scripted `claude` answers (a runner has no model login); each scenario is taught (the harness is the user) and
+# recorded as an mp4 with a six-frame contact sheet.
 on:
   workflow_dispatch:
   push:
@@ -56,7 +56,7 @@ jobs:
           "$esbuild" src/baton/screen/smoke/teachProof.ts --bundle --platform=node --format=cjs \
             --external:electron --external:onnxruntime-node --log-level=warning \
             --outfile=node_modules/.cache/baton-smoke/teachProof.cjs
-      - name: Run teach and drive, recorded
+      - name: Run teach, recorded
         timeout-minutes: 35
         shell: bash
         working-directory: apps/desktop

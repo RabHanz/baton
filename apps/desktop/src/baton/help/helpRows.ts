@@ -10,16 +10,29 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   screen_capture: ["Look at my screen", "Takes a screenshot (asks first unless you allowed it)."],
   point_at: ["Show me where the save button is", "Draws a pointer on your screen."],
   teach_start: ["Teach me how to export a PDF", "A step-by-step lesson with a pointer."],
-  drive_start: [
-    "Do this for me: rename these files",
-    "Shows a plan, then drives once you approve.",
+  rule_create: [
+    "When the shop session finishes, have Codex review it and tell me",
+    "Sets a standing rule; it reads the rule back for your yes first.",
+  ],
+  plan_show: [
+    "Do this for me: turn on word wrap in Notepad",
+    "Shows the steps first; once you say go ahead it does them while you watch.",
   ],
   click_element: ["Click the Send button", "Clicks a named control."],
   type_text: ["Type hello into this box", "Types for you."],
   sessions_list: ["What sessions do I have?", "Lists your coding sessions on every machine."],
-  sessions_find: ["Find my 3D printer session", "Searches every machine's sessions, stopped ones too."],
-  session_resume: ["Resume that session", "Brings a stopped session back in its folder, on its machine."],
-  session_new: ["Start a new session in the shop folder", "Starts Claude in a folder (asks first)."],
+  sessions_find: [
+    "Find my 3D printer session",
+    "Searches every machine's sessions, stopped ones too.",
+  ],
+  session_resume: [
+    "Resume that session",
+    "Brings a stopped session back in its folder, on its machine.",
+  ],
+  session_new: [
+    "Start a new session in the shop folder",
+    "Starts Claude in a folder (asks first).",
+  ],
   session_show: ["How is the build session going?", "Shows what a session did and is doing."],
   session_send: ["Tell the build session to rerun the tests", "Sends a message to a session."],
   fleet_status: ["What is everyone working on?", "A summary across machines."],
@@ -68,7 +81,10 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "What came back from the research session?",
     "Messages between sessions and their replies.",
   ],
-  cloud_dispatch: ["Run this in the cloud on the margin branch", "Makes a request; you pick the assistant and account on a card."],
+  cloud_dispatch: [
+    "Run this in the cloud on the margin branch",
+    "Makes a request; you pick the assistant and account on a card.",
+  ],
   cloud_status: ["How is cloud request 3 getting on?", "Shows its state, link and result."],
   cloud_list: ["What cloud tasks have I asked for?", "Your cloud requests."],
   cloud_cancel: ["Withdraw cloud request 3", "Only while it is still waiting."],

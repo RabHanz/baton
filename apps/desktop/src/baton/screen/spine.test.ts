@@ -51,7 +51,7 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
     );
   });
   it("seeing, pointing and the two guided modes are allowed here because each asks where it runs", () => {
-    for (const name of ["screen_capture", "ui_tree", "point_at", "teach_start", "drive_start"])
+    for (const name of ["screen_capture", "ui_tree", "point_at", "teach_start", "plan_show"])
       expect(call(name, { goal: "x" }).verdict).toBe("allow");
   });
   it("acting is judged: a drag asks, and typing into a command line asks", () => {
@@ -64,7 +64,7 @@ describe("tools: what sees, points, teaches or acts goes through the one gate", 
     ).toBe("ask");
   });
   it("the guided modes are tools of the one assistant, not a second table", () => {
-    for (const name of ["point_at", "teach_start", "drive_start"]) expect(tools).toContain(name);
+    for (const name of ["point_at", "teach_start", "plan_show"]) expect(tools).toContain(name);
   });
 });
 

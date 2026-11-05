@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off globalConsole:off
 /**
- * A real run of the screen companion (D84) against a real window: look, teach and drive, with
+ * A real run of the screen companion (D84) against a real window: look and teach, with
  * his `claude` answering. Approval boxes are answered "yes" and logged, the "user" in teach mode
  * is xdotool, and full-screen frames are saved. How to run it: docs/baton/SCREEN.md.
  */
@@ -16,7 +16,7 @@ import { startScreenCompanion } from "../ScreenCompanion.ts";
 
 const out = process.env["BATON_SMOKE_OUT"] ?? NodePath.join(process.cwd(), "screen-smoke");
 const stateDir = NodePath.join(out, "state");
-const only = process.env["BATON_SMOKE_ONLY"]?.split(",") ?? ["look", "teach", "drive"];
+const only = process.env["BATON_SMOKE_ONLY"]?.split(",") ?? ["look", "teach"];
 const log = (...parts: unknown[]) =>
   console.log(`[smoke ${new Date().toISOString().slice(11, 19)}]`, ...parts);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -63,7 +63,6 @@ const main = async () => {
   ) => {
     dialogs.push(`${options.message}\n${options.detail ?? ""}\n[${options.buttons?.join(" | ")}]`);
     log("approval box:", options.message, "→", options.buttons?.[0]);
-    if (options.title === "Tessaya Drive") await frame("05-drive-plan-awaiting-approval");
     return { response: 0, checkboxChecked: false };
   };
 
@@ -151,16 +150,6 @@ const main = async () => {
       `name typed: ${await nameValue()}; page says: ${await doneText()}; companion still teaching: ${companion.active()}`;
     companion.stop();
     await sleep(1000);
-  }
-
-  if (only.includes("drive")) {
-    await reset();
-    void companion.said("drive: fill in the name field with Tessaya Test and submit the form", {
-      direct: false,
-    });
-    await sleep(40_000);
-    await frame("06-drive-finished");
-    results["drive"] = `page says: ${await doneText()}`;
   }
 
   NodeFS.writeFileSync(NodePath.join(out, "dialogs.txt"), dialogs.join("\n\n---\n\n"));

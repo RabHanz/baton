@@ -13,11 +13,11 @@ Three ways in, all the same feature:
 
 What you say picks the mode:
 
-| Say or type                                                                                            | Mode      | What happens                                                                                                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "what's this error?", "look at my screen…", "where is the export button?", "look: …"                   | **Look**  | One screenshot of every display goes to Claude with your question. The answer is spoken and shown on a card, and the blue pointer flies to what it means. Follow-ups in the next five minutes remember the conversation.                    |
-| "teach me how to …", "show me how to …", "walk me through …", "guide me", "… step by step", "teach: …" | **Teach** | One step at a time, each pointed at, with a word on why. Do the step and Tessaya notices (the screen changes and settles), checks it worked, and gives the next. Say "next" to move on yourself, "repeat" to hear it again, "stop" to end.  |
-| "drive: …", "take over …", "do it for me", "open the downloads folder for me"                          | **Drive** | Claude proposes a plan and a box lists every step. Nothing happens until you press **Run it**. It then performs the plan, checks the screen after steps that should change something, and stops on **Esc**, "stop", or a click on the pill. |
+| Say or type                                                                                            | Mode             | What happens                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "what's this error?", "look at my screen…", "where is the export button?", "look: …"                   | **Look**         | One screenshot of every display goes to Claude with your question. The answer is spoken and shown on a card, and the blue pointer flies to what it means. Follow-ups in the next five minutes remember the conversation.                                                                                                |
+| "teach me how to …", "show me how to …", "walk me through …", "guide me", "… step by step", "teach: …" | **Teach**        | One step at a time, each pointed at, with a word on why. Do the step and Tessaya notices (the screen changes and settles), checks it worked, and gives the next. Say "next" to move on yourself, "repeat" to hear it again, "stop" to end.                                                                              |
+| "drive: …", "take over …", "do it for me", "open the downloads folder for me"                          | **Do it for me** | One box lists the steps in plain words: **Go ahead**, **Change a step**, or **Not now**. After Go ahead she does them while you watch her own small cursor (your mouse stays yours), checking each result; anything that deletes, sends, pays, publishes or reaches a command line still asks. Esc or "stop" stops her. |
 
 The table is what people say. One brain decides, on voice and in the ask box alike (D100); `INTENT_TABLE.md` has 48 real sentences through it.
 
@@ -36,10 +36,10 @@ pointer only for a control with no pattern, or a click by position. Rules: D153.
 **Spoken and written, or Written only.** From the tray (Answers) or the ask box, remembered. In Written
 only nothing plays, and every answer, action, plan and step is on screen in full.
 
-**Approval.** Every screenshot asks first: Allow (this question), Allow for this lesson or drive,
+**Approval.** Every screenshot asks first: Allow (this question), Allow for this lesson,
 Allow for an hour, or Always allow. Turn "Always allow screen capture" on or off from the tray. A
-drive plan always needs its own Run it, whatever that setting says. Screenshots go to Claude with
-the request and are not saved.
+"do it for me" plan always shows its steps for your Go ahead, whatever that setting says. Screenshots
+go to Claude with the request and are not saved.
 
 **Your subscription, not the API.** Answers come from your own Claude Code (`claude`) signed in
 to your plan. Tessaya strips `ANTHROPIC_API_KEY` from what it starts, so it can never bill the API.
@@ -58,7 +58,7 @@ vendor's own words; none of it was installed or measured.
 | Drawing arrows, circles, explanation cards, 3D models                                                                                                    | Partly: caption card and the pointer's label; no free drawing or 3D                                                               |
 | "Spatial context": you paint on screen to show what you mean                                                                                             | Not built                                                                                                                         |
 | Agents in your own Chrome, routines by voice                                                                                                             | Not here: Tessaya's sessions and rules (Phases 4, 9) do this through Claude Code instead                                          |
-| Memory files (profile, recent screens hours back)                                                                                                        | Partly: a look conversation lasts five minutes, a lesson or drive its whole run; nothing kept across them                         |
+| Memory files (profile, recent screens hours back)                                                                                                        | Partly: a look conversation lasts five minutes, a lesson its whole run; nothing kept across them                                  |
 | Skill files per program                                                                                                                                  | Not built                                                                                                                         |
 | Dictation, screen-aware                                                                                                                                  | **Partly.** Mode comes from the focused app (D105); the screen is not read                                                        |
 | Mac and Windows                                                                                                                                          | Windows and Linux; macOS capture and pointing should work, Drive refuses there                                                    |
@@ -105,8 +105,7 @@ overlay is excluded from capture, so set `LAB_VISIBLE=1` to see it in screenshot
 
 ```bash
 # xdotool and xcompmgr can be user-local: apt-get download + dpkg -x, then
-BATON_SMOKE_XBIN=<extracted>/usr/bin scripts/tessaya/screen-smoke.sh /tmp/screen-smoke look,teach,drive
+BATON_SMOKE_XBIN=<extracted>/usr/bin scripts/tessaya/screen-smoke.sh /tmp/screen-smoke look,teach
 ```
 
-It opens a small form, asks a Look question, runs a lesson with xdotool as the user, and drives
-the form, writing full-screen frames, the approval texts and `results.json` to the folder.
+It opens a small form, asks a Look question and runs a lesson with xdotool as the user, writing full-screen frames, the approval texts and `results.json` to the folder.

@@ -120,10 +120,10 @@ const BATON_QUIET = new Set([
   "dictation_stop",
   "screen_capture",
   "ui_tree",
-  // Drawing on the screen and the two guided modes: each asks for its own consent where it runs (capture, Go ahead).
+  // Drawing on the screen, a lesson, and a plan's card: each asks for its own consent where it runs (capture, Go ahead).
   "point_at",
   "teach_start",
-  "drive_start",
+  "plan_show",
   "jobs_list",
   "watch_report",
   "morning_brief",
@@ -284,6 +284,9 @@ const judgeBatonTool = (name: string, call: ToolCall, context: JudgeContext): To
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
     case "press_keys":
+      // A command line runs what reaches it: he is asked here, not refused later as the keys are sent.
+      if (context.focusedShell === true)
+        return { verdict: "ask", why: "It would press keys in a command line." };
       if (SENDS.test(Array.isArray(call.input["keys"]) ? call.input["keys"].join(" ") : "")) {
         return { verdict: "ask", why: "That may send what is typed." };
       }
