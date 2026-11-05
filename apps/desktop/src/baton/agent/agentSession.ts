@@ -61,6 +61,8 @@ export const createAssistantAgent = (input: {
   let own = new Set<number>();
   // One sentence at a time, so a second one never resets the running turn's state (taint, tools).
   let queue: Promise<unknown> = Promise.resolve();
+  // Bumped by a stop: sentences queued before it are dropped, not run on a fresh session.
+  let generation = 0;
 
   const ensure = async (): Promise<VisionSession> => {
     if (session !== null) {
@@ -170,11 +172,16 @@ export const createAssistantAgent = (input: {
   return {
     warm: () => void ensure().catch(() => undefined),
     say: (text, where, onDelta) => {
-      const run = queue.then(() => turn(text, where, onDelta));
+      const asked = generation;
+      const run = queue.then(() => {
+        if (asked !== generation) throw new SessionClosed("Stopped before it began.");
+        return turn(text, where, onDelta);
+      });
       queue = run.catch(() => undefined);
       return run;
     },
     dispose: () => {
+      generation += 1;
       void session?.then((s) => s.dispose()).catch(() => undefined);
       session = null;
     },
