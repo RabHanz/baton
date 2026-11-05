@@ -92,6 +92,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   cloud_approve: ["Approve cloud request 3 on work", "Reads the card back; you press Approve."],
   trust_show: ["Show me what you can access", "Your permissions in plain words."],
   activity_today: ["What did you do today?", "What it did on your behalf."],
+  what_happened: ["What happened overnight?", "Crashes, jobs and messages, newest first."],
   permission_off: ["Turn off Chrome", "Takes a permission back."],
 };
 

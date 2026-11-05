@@ -342,6 +342,7 @@ export interface AssistantActions {
       | "cloud_approve"
       | "trust_show"
       | "activity_today"
+      | "record"
       | "permission_off"
       | "weave_send"
       | "weave_list"
@@ -2281,6 +2282,8 @@ export const startScreenCompanion = (input: {
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
       const who = { wake: woke, persona: face.name, voice: voiceNow() };
+      const project =
+        focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null);
       input.onNote?.("agent_turn_start", { said: text, ...who });
       const introduce = face.name !== lastFace;
       lastFace = face.name;
@@ -2291,7 +2294,7 @@ export const startScreenCompanion = (input: {
         {
           window: titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null,
           session: focusedSession,
-          project: focusedSession === null ? null : (actions?.projectOf?.(focusedSession) ?? null),
+          project,
           persona: { name: face.name, role: face.role, introduce },
         },
         (delta) => {
@@ -2305,6 +2308,7 @@ export const startScreenCompanion = (input: {
       input.onNote?.("agent_turn", {
         ok: true,
         ...who,
+        project,
         said: text,
         reply,
         decisions: [...agentDecisions],

@@ -7,6 +7,7 @@
 import {
   WorkSessionId,
   type BatonFleetEntry,
+  type BatonRecordEntry,
   type ClaudeLiveSession,
   type WatchFinding,
 } from "@t3tools/baton-contracts";
@@ -89,6 +90,37 @@ export interface WatchdogOutcome {
 
 /** Outcomes are reported for this long, so "did anything fail overnight" still sees them in the morning. */
 export const OUTCOME_MEMORY_MS = 12 * 3_600_000;
+
+const RESUMED = "died mid-turn, resumed";
+const NOT_RESUMED = "died mid-turn, not resumed";
+
+/** An outcome as a Record row, so the watch still has it after the server restarts. */
+export const outcomeRecord = (o: Omit<WatchdogOutcome, "at">) => ({
+  kind: "session",
+  subject: o.title,
+  outcome: o.resumed ? RESUMED : NOT_RESUMED,
+  detail: o.why ?? "",
+});
+
+/** The outcomes the Record holds; any other row is ignored. */
+export const outcomesFromRecord = (
+  rows: ReadonlyArray<BatonRecordEntry>,
+): ReadonlyArray<WatchdogOutcome> =>
+  rows.flatMap((r): ReadonlyArray<WatchdogOutcome> => {
+    const at = Date.parse(r.at);
+    if (r.kind !== "session" || r.ref === null || Number.isNaN(at)) return [];
+    if (r.outcome !== RESUMED && r.outcome !== NOT_RESUMED) return [];
+    const resumed = r.outcome === RESUMED;
+    return [
+      {
+        sessionId: r.ref,
+        title: r.subject,
+        resumed,
+        ...(resumed || r.detail === "" ? {} : { why: r.detail }),
+        at,
+      },
+    ];
+  });
 
 /**
  * His terminal sessions, which are not work sessions: one waiting on him too long, and what the watchdog did

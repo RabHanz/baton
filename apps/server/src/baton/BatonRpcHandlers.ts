@@ -22,6 +22,7 @@ import {
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
+  BATON_RECORD_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcGroup,
@@ -63,6 +64,7 @@ import { BatonCloudService } from "./BatonCloudService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
 import { BatonPhoneInbox, phoneCall } from "./BatonPhoneInbox.ts";
 import { BatonCommitmentService } from "./BatonCommitmentService.ts";
+import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonMemoryService } from "./BatonMemoryService.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
@@ -92,6 +94,7 @@ export type BatonServices =
   | BatonJobService
   | BatonMemoryService
   | BatonCommitmentService
+  | BatonRecordService
   | BatonPhoneInbox
   | BatonWeaveService
   | BatonCloudService
@@ -433,6 +436,14 @@ export const makeHandlers = Effect.gen(function* () {
     [BATON_CLOUD_WS_METHODS.approve]: (input) =>
       run(Effect.flatMap(BatonCloudService, (cloud) => cloud.call(input, "approve"))),
     [BATON_PHONE_WS_METHODS.call]: (input) => run(phoneCall(input)),
+    [BATON_RECORD_WS_METHODS.list]: (input) =>
+      run(
+        Effect.flatMap(BatonRecordService, (record) =>
+          Effect.map(record.query(input), (entries) => ({ entries })),
+        ),
+      ),
+    [BATON_RECORD_WS_METHODS.append]: (input) =>
+      run(Effect.flatMap(BatonRecordService, (record) => Effect.as(record.append(input), {}))),
     [BATON_COMMITMENT_WS_METHODS.list]: () =>
       run(
         Effect.flatMap(BatonCommitmentService, (commitments) =>

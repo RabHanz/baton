@@ -126,6 +126,7 @@ const BATON_QUIET = new Set([
   "plan_show",
   "jobs_list",
   "watch_report",
+  "what_happened",
   "morning_brief",
   "needs_me",
   "commit_list",

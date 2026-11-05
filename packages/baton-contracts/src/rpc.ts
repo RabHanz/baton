@@ -90,6 +90,13 @@ import {
   BatonHerdrSendInput,
   BatonHerdrSendResult,
 } from "./liveSessions.ts";
+import {
+  BATON_RECORD_WS_METHODS,
+  BatonRecordAppendInput,
+  BatonRecordAppendResult,
+  BatonRecordListInput,
+  BatonRecordListResult,
+} from "./record.ts";
 import { BATON_WATCH_WS_METHODS, WatchResult } from "./watch.ts";
 import {
   BATON_JOB_WS_METHODS,
@@ -534,6 +541,18 @@ const WsBatonWatchGetRpc = Rpc.make(BATON_WATCH_WS_METHODS.watchGet, {
   error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
 });
 
+const WsBatonRecordListRpc = Rpc.make(BATON_RECORD_WS_METHODS.list, {
+  payload: BatonRecordListInput,
+  success: BatonRecordListResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsBatonRecordAppendRpc = Rpc.make(BATON_RECORD_WS_METHODS.append, {
+  payload: BatonRecordAppendInput,
+  success: BatonRecordAppendResult,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsBatonWorkSessionSettleRpc = Rpc.make(BATON_WS_METHODS.workSessionSettle, {
   payload: WorkSessionRefInput,
   success: WorkSessionResult,
@@ -709,6 +728,8 @@ export const BatonRpcGroup = RpcGroup.make(
   WsBatonJobScheduleRpc,
   WsBatonJobSplitRpc,
   WsBatonWatchGetRpc,
+  WsBatonRecordListRpc,
+  WsBatonRecordAppendRpc,
   WsBatonWeaveSendRpc,
   WsBatonWeaveListRpc,
   WsBatonWeaveTickRpc,

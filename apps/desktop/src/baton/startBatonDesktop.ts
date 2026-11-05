@@ -353,6 +353,44 @@ export const startBatonDesktop = Effect.gen(function* () {
         return `Opened ${page}.`;
       },
     };
+    // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
+    const direct = async (method: string, body: unknown): Promise<unknown> => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      const response = await fetch(new URL(`/tessaya/desk/${method}`, config.value.httpBaseUrl), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        value?: unknown;
+        message?: string;
+      };
+      if (!response.ok) throw new Error(json.message ?? "That could not be done. Nothing changed.");
+      return json.value;
+    };
+    // Each assistant turn goes to the Record on this machine's server, so "what happened?" has what she was asked and did.
+    const noteTurn = (kind: string, fields: Readonly<Record<string, unknown>>) => {
+      turnLog.note(kind, fields);
+      if (kind !== "agent_turn") return;
+      const text = (key: string) => (typeof fields[key] === "string" ? fields[key] : "");
+      const tools = Array.isArray(fields["tools"]) ? fields["tools"].map(String) : [];
+      const ok = fields["ok"] === true;
+      void direct("baton.record.append", {
+        kind: "assistant_turn",
+        actor: (text("persona") || "Tessaya").slice(0, 60),
+        ...(text("project") === "" ? {} : { project: text("project").slice(0, 200) }),
+        subject: text("said").slice(0, 300),
+        outcome: ok ? "answered" : "failed",
+        detail:
+          `${ok ? text("reply") : text("error")}${tools.length === 0 ? "" : ` (tools: ${[...new Set(tools)].join(", ")})`}`.slice(
+            0,
+            1000,
+          ),
+      }).catch(() => undefined);
+    };
     markPhase("screen-companion:begin");
     try {
       screen = startScreenCompanion({
@@ -360,7 +398,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         catalog: () => catalogStore?.tools,
         stateDir: environment.stateDir,
         conversation,
-        onNote: turnLog.note,
+        onNote: noteTurn,
         platform: environment.platform,
         env: hostEnvironment,
         speak: (text) => {
@@ -443,24 +481,6 @@ export const startBatonDesktop = Effect.gen(function* () {
       void t3Up().then((up) => {
         if (up) void catalog.refresh();
       });
-    // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
-    const direct = async (method: string, body: unknown): Promise<unknown> => {
-      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
-      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
-      if (config._tag === "None") throw new Error("The local server is not ready.");
-      const response = await fetch(new URL(`/tessaya/desk/${method}`, config.value.httpBaseUrl), {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
-      });
-      const json = (await response.json().catch(() => ({}))) as {
-        value?: unknown;
-        message?: string;
-      };
-      if (!response.ok) throw new Error(json.message ?? "That could not be done. Nothing changed.");
-      return json.value;
-    };
     setTimeout(refreshIfT3Up, 8_000).unref();
     setInterval(refreshIfT3Up, 45_000).unref();
     markPhase("voice-start:begin");

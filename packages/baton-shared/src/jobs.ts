@@ -4,6 +4,7 @@
  */
 import {
   DEFAULT_JOB_LIMITS,
+  type BatonJob,
   type BatonJobGrant,
   type BatonJobGroup,
   type BatonJobLimits,
@@ -219,6 +220,40 @@ export const phaseLabel = (phase: BatonJobPhase): string | null =>
     : phase === "awaiting_agreement"
       ? "Waiting for your OK"
       : null;
+
+const GROUP_WORDS: Readonly<Record<BatonJobGroup, string>> = {
+  running: "running",
+  needs_you: "needs him",
+  done: "done",
+  failed: "failed",
+};
+
+/** Where a job stands, in the words the Record keeps. */
+const jobOutcome = (j: Pick<BatonJob, "phase" | "group" | "limitReached">): string =>
+  j.phase === "drafting_plan"
+    ? "writing its plan"
+    : j.phase === "awaiting_agreement"
+      ? "plan waits for his OK"
+      : j.limitReached !== null
+        ? `stopped at its ${j.limitReached} limit`
+        : GROUP_WORDS[j.group];
+
+/**
+ * The jobs whose standing changed since `seen`, which is updated in place. A job seen for the first
+ * time is only remembered: a restart must not announce every job again.
+ */
+export const jobChanges = <
+  J extends Pick<BatonJob, "workSessionId" | "phase" | "group" | "limitReached">,
+>(
+  jobs: ReadonlyArray<J>,
+  seen: Map<string, string>,
+): ReadonlyArray<{ readonly job: J; readonly outcome: string }> =>
+  jobs.flatMap((job) => {
+    const outcome = jobOutcome(job);
+    const was = seen.get(job.workSessionId);
+    seen.set(job.workSessionId, outcome);
+    return was === undefined || was === outcome ? [] : [{ job, outcome }];
+  });
 
 /**
  * The first message to a worker thread created in plan mode: his words exactly, then the written

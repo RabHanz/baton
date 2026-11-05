@@ -26,6 +26,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { BatonRecordService } from "./BatonRecordService.ts";
 import { BatonWeaveBoxes, type WeaveBox } from "./BatonWeaveBoxes.ts";
 
 interface Row {
@@ -90,7 +91,10 @@ export const make = Effect.gen(function* () {
       Effect.orDie,
     );
 
-  const setState = (
+  const record = yield* Effect.serviceOption(BatonRecordService);
+
+  // Untraced: it runs inside each delivery's own span.
+  const setState = Effect.fnUntraced(function* (
     id: string,
     patch: {
       status: WeaveRecord["status"];
@@ -100,14 +104,27 @@ export const make = Effect.gen(function* () {
       repliedAt?: number | null;
       reply?: string | null;
     },
-  ) =>
-    sql`
+  ) {
+    yield* sql`
       UPDATE fabric_weaves SET status = ${patch.status}, reason = ${patch.reason}, tries = ${patch.tries},
         delivered_at = COALESCE(${patch.deliveredAt ?? null}, delivered_at),
         replied_at = COALESCE(${patch.repliedAt ?? null}, replied_at),
         reply = COALESCE(${patch.reply ?? null}, reply)
       WHERE id = ${id}
     `.pipe(Effect.orDie);
+    // A retry that stays queued is not news; delivered, replied and lost are.
+    if (patch.status === "queued" || record._tag === "None") return;
+    const weave = yield* get(id);
+    if (weave === null) return;
+    yield* record.value.append({
+      kind: "weave",
+      actor: weave.from,
+      ref: weave.id,
+      subject: `to ${weave.toLabel}: ${weave.text}`,
+      outcome: weave.status,
+      detail: weave.reply ?? weave.reason ?? "",
+    });
+  });
 
   /** The pane key stored in a record: which machine, and the pane there. */
   const paneKey = (box: string, pane: string) => `${box}|${pane}`;

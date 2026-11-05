@@ -2,8 +2,9 @@
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off globalConsole:off
 /**
  * The one assistant as it ships: its real prompt, its real tool list on its real MCP server, and the
- * real `claude -p` session, on your own Claude login. Every tool call is recorded and refused, so
- * nothing runs on this machine; the score is which tool it reached for first.
+ * real `claude -p` session, on your own Claude login. Every tool call is recorded and refused (a
+ * case's canned answers aside), so nothing runs on this machine; the score is which tool it reached
+ * for first.
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -48,8 +49,16 @@ const host = new Proxy(
 const sample = async (c: AssistantCase): Promise<Sample> => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-eval-"));
   const calls: string[] = [];
-  const refuse = async () => ({ allow: false as const, reason: REFUSED });
-  const mcp = await startBatonMcp({ tools: buildBatonTools(host), gate: refuse });
+  const answers = c.answers ?? {};
+  const refuse = async (call: { readonly tool: string }) =>
+    answers[firstTool([call.tool])] === undefined
+      ? { allow: false as const, reason: REFUSED }
+      : { allow: true as const };
+  const tools = buildBatonTools(host).map((t) => {
+    const text = answers[t.name];
+    return text === undefined ? t : { ...t, run: async () => ({ text }) };
+  });
+  const mcp = await startBatonMcp({ tools, gate: refuse });
   const agent = createAssistantAgent({
     start: async (systemPrompt) =>
       startVisionSession({

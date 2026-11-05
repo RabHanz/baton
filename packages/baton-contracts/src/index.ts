@@ -13,6 +13,7 @@ export * from "./synopsis.ts";
 export * from "./jobs.ts";
 export * from "./commitments.ts";
 export * from "./phone.ts";
+export * from "./record.ts";
 export * from "./memory.ts";
 export * from "./weave.ts";
 export * from "./cloud.ts";

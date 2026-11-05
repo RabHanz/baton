@@ -25,6 +25,7 @@ import {
   BATON_WEAVE_WS_METHODS,
   BATON_MEMORY_WS_METHODS,
   BATON_ORCHESTRATION_WS_METHODS,
+  BATON_RECORD_WS_METHODS,
   BATON_WATCH_WS_METHODS,
   BATON_WS_METHODS,
   BatonRpcScopeAuthorization,
@@ -66,6 +67,8 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [BATON_WS_METHODS.workSessionUnarchive]: AuthOrchestrationOperateScope,
   [BATON_WS_METHODS.fleetGet]: AuthOrchestrationReadScope,
   [BATON_WATCH_WS_METHODS.watchGet]: AuthOrchestrationReadScope,
+  [BATON_RECORD_WS_METHODS.list]: AuthOrchestrationReadScope,
+  [BATON_RECORD_WS_METHODS.append]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobList]: AuthOrchestrationReadScope,
   [BATON_JOB_WS_METHODS.jobStart]: AuthOrchestrationOperateScope,
   [BATON_JOB_WS_METHODS.jobAgree]: AuthOrchestrationOperateScope,
@@ -157,8 +160,7 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   Record<BatonRpcMethod, AuthEnvironmentScope | ReadonlyArray<AuthEnvironmentScope>>
 >;
 
-/** The scope a caller lacks for this method, or null when it may call it. */
-/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, and memory. */
+/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, and memory. */
 export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_JOB_WS_METHODS.jobList,
   BATON_JOB_WS_METHODS.jobAgree,
@@ -169,6 +171,8 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   BATON_JOB_WS_METHODS.jobRevoke,
   BATON_JOB_WS_METHODS.jobSplit,
   BATON_WATCH_WS_METHODS.watchGet,
+  BATON_RECORD_WS_METHODS.list,
+  BATON_RECORD_WS_METHODS.append,
   ...(
     [
       "list",
@@ -186,6 +190,7 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   ).map((op) => BATON_MEMORY_WS_METHODS[op]),
 ]);
 
+/** The scope a caller lacks for this method, or null when it may call it. */
 export const missingBatonScope = (
   tag: string,
   scopes: ReadonlyArray<AuthEnvironmentScope>,
