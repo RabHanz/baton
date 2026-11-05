@@ -31,15 +31,15 @@ describe("a tool call", () => {
     }
   });
 
-  it("refuses a command that drives apps itself, whatever the setting", () => {
+  it("asks before a command that drives apps itself, whatever the setting", () => {
     for (const command of [
       'powershell -c "Add-Type -AssemblyName UIAutomationClient"',
       "powershell -c \"(New-Object -ComObject WScript.Shell).SendKeys('x')\"",
       "rundll32 user32.dll,LockWorkStation",
     ]) {
-      expect(judgeToolCall(bash(command), on).verdict).toBe("deny");
+      expect(judgeToolCall(bash(command), on).verdict).toBe("ask");
       expect(judgeToolCall({ tool: "commandExecution", input: { command } }, on).verdict).toBe(
-        "deny",
+        "ask",
       );
     }
     expect(judgeToolCall(bash("npm run test:keys"), on).verdict).toBe("allow");

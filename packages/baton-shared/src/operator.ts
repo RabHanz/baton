@@ -436,9 +436,12 @@ const judgeBatch = (call: ToolCall, context: JudgeContext): ToolVerdict => {
   return worst;
 };
 
-/** A command that drives a window itself; the hands tools do that without a helper process or a prompt each. */
+/**
+ * A command that looks like it drives a window itself. It asks rather than refuses: the same words appear in ordinary
+ * commands (a grep, a lock screen), and the hands tools are the way the prompt teaches.
+ */
 const DRIVES_APPS =
-  /\b(uiautomation\w*|sendkeys|user32(\.dll)?|sendinput|keybd_event|mouse_event|setcursorpos|wscript\.shell|xdotool)\b/i;
+  /\b(uiautomation\w*|sendkeys|user32(\.dll)?|sendinput|keybd_event|mouse_event|setcursorpos|xdotool)\b/i;
 
 export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdict => {
   const baton = batonToolName(call.tool);
@@ -447,8 +450,8 @@ export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdic
     DRIVES_APPS.test(String(call.input["command"] ?? ""))
   )
     return {
-      verdict: "deny",
-      why: "Apps are worked with the hands tools (ui_tree, click_element, type_text, press_keys), never through a command.",
+      verdict: "ask",
+      why: "It would drive an app through a command; the hands tools (ui_tree, click_element, type_text, press_keys) do that without one.",
     };
   if (baton === "act_batch" && call.tool.startsWith(BATON_TOOL_PREFIX))
     return judgeBatch(call, context);
