@@ -3,17 +3,29 @@
 import * as Electron from "electron";
 
 import { protectFromCapture } from "../captureProtection.ts";
-import { SPLASH_FADE_MS, splashHtml, splashStep, splashWindowOptions, type SplashEvent, type SplashState } from "./splash.ts";
+import {
+  SPLASH_FADE_MS,
+  splashHtml,
+  splashStep,
+  splashWindowOptions,
+  type SplashEvent,
+  type SplashState,
+} from "./splash.ts";
 import type { Theme } from "./theme.ts";
 import { WINDOW_STING_DARK, WINDOW_STING_LIGHT } from "./windowMotionArt.ts";
 
 const TICK_MS = 50;
 
-const fade = (apply: (opacity: number) => void, from: number, to: number, then?: () => void): void => {
+const fade = (
+  apply: (opacity: number) => void,
+  from: number,
+  to: number,
+  then?: () => void,
+): void => {
   const started = Date.now();
   const timer = setInterval(() => {
     const t = Math.min(1, (Date.now() - started) / SPLASH_FADE_MS);
-    apply(from + (to - from) * t);
+    apply(from + (to - from) * t * t * (3 - 2 * t));
     if (t >= 1) {
       clearInterval(timer);
       then?.();
@@ -24,7 +36,7 @@ const fade = (apply: (opacity: number) => void, from: number, to: number, then?:
 
 /**
  * Shows the splash centred on `centre`. `windowReady(show)` says the app window can be shown: `show` runs when the
- * splash has played enough (or at the 2.5 s cap), and the app window should fade in with `fadeIn`.
+ * splash has played enough (or at the cap), and the app window should fade in with `fadeIn`.
  */
 export const startSplash = (centre: { readonly x: number; readonly y: number }, theme: Theme) => {
   let state: SplashState = { phase: "idle" };
@@ -57,7 +69,9 @@ export const startSplash = (centre: { readonly x: number; readonly y: number }, 
     protectFromCapture(win);
     win.setIgnoreMouseEvents(true);
     win.once("ready-to-show", () => win?.showInactive());
-    void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml(theme === "dark" ? WINDOW_STING_DARK : WINDOW_STING_LIGHT))}`);
+    void win.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(splashHtml(theme === "dark" ? WINDOW_STING_DARK : WINDOW_STING_LIGHT))}`,
+    );
     feed({ type: "start", at: Date.now() });
     timer = setInterval(() => feed({ type: "tick", at: Date.now() }), TICK_MS);
     timer.unref();

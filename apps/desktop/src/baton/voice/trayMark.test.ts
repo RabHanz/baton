@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MARK_MASTER_PATH, MARK_REVERSED_PATH, TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
+import { MARK_MASTER_PATH, TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { brandMarkSvg, markSvg, withTrayState } from "./trayMark.ts";
 
 const px = (buf: Buffer, size: number, x: number, y: number) => [
@@ -17,11 +17,19 @@ describe("the tray mark's art", () => {
       }
     }
   });
-  it("draws the window's mark from the master and its reversed cut, in the page's ink", () => {
+  it("draws the window's mark from the master and its reversed cut, with the kit's two dye strips marked", () => {
     expect(MARK_MASTER_PATH).toMatch(/^M[\d.]+[ ,][\d.]+L/);
-    expect(brandMarkSvg()).toContain(MARK_MASTER_PATH);
-    expect(brandMarkSvg()).toContain(MARK_REVERSED_PATH);
-    expect(brandMarkSvg()).toContain("currentColor");
+    const svg = brandMarkSvg();
+    const dye = [...svg.matchAll(/class="on-light dye"[^>]* d="([^"]+)"/g)].map((m) => m[1]);
+    // The kit's colour mark (colour/woad/tessaya-mark-on-paper.svg) dyes exactly these two strips.
+    expect(dye).toEqual([
+      "M82.04 111.74L144.26 173.96L128.71 189.52L66.48 127.29ZM83.45 66.48L99.01 82.04L35.37 145.68L19.81 130.12Z",
+    ]);
+    expect(svg).toContain('class="on-dark dye"');
+    const light = [...svg.matchAll(/class="on-light[^"]*"[^>]* d="([^"]+)"/g)].map(
+      (m) => m[1]!.split(/(?=M)/).length,
+    );
+    expect(light).toEqual([7, 2]);
   });
 });
 

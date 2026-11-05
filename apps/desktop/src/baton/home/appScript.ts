@@ -361,8 +361,8 @@ function clock(iso) { return new Date(iso).toLocaleTimeString([], { hour: 'numer
 // The wake sting plays once when the window opens and when About opens, on every mark that is up, then each rests on its still.
 let stingUntil = 0;
 function startSting() {
-  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
-  stingUntil = Date.now() + 2100; render(); setTimeout(render, 2150);
+  if (!window.TESSAYA_STING || matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)/.test(document.documentElement.className)) return;
+  stingUntil = Date.now() + 3000; render(); setTimeout(render, 3050);
 }
 function markHtml() {
   if (Date.now() < stingUntil && window.TESSAYA_STING) { const dark = document.documentElement.dataset.theme === 'dark'; return '<img alt="" style="width:100%;height:100%;display:block" src="data:image/webp;base64,' + (dark ? TESSAYA_STING.dark : TESSAYA_STING.light) + '">'; }

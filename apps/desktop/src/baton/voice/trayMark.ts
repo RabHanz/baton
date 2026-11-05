@@ -15,12 +15,21 @@ export interface MarkOptions {
   readonly badge?: boolean;
 }
 
+/** The kit's colour mark puts the dye on the left and middle strips: the third and fifth pieces of each drawing. */
+const DYE_PIECES = [2, 4];
+const cut = (path: string, cls: string): string => {
+  const pieces = path.split(/(?=M)/);
+  const part = (dye: boolean) => pieces.filter((_, i) => DYE_PIECES.includes(i) === dye).join("");
+  return `<path class="${cls}" fill="currentColor" d="${part(false)}"/><path class="${cls} dye" fill="currentColor" d="${part(true)}"/>`;
+};
+
 /**
- * The mark for the window, from 48 px up: the master drawing in the page's ink, and its slightly thinner
- * reversed cut for light on dark, shown by theme. Under 48 px the hinted cuts are used instead (tray, pill).
+ * The mark for the window, from 48 px up, as the kit's colour mark: the master drawing in the page's ink with
+ * the dye strips in the page's accent (styled by the page), and its slightly thinner reversed cut for light on
+ * dark, shown by theme. Under 48 px the hinted cuts are used instead (tray, pill).
  */
 export const brandMarkSvg = (): string =>
-  `<svg class="mk" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Tessaya"><path class="on-light" fill="currentColor" fill-rule="evenodd" d="${MARK_MASTER_PATH}"/><path class="on-dark" fill="currentColor" fill-rule="evenodd" d="${MARK_REVERSED_PATH}"/></svg>`;
+  `<svg class="mk" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Tessaya">${cut(MARK_MASTER_PATH, "on-light")}${cut(MARK_REVERSED_PATH, "on-dark")}</svg>`;
 
 const BOX = 32;
 const RADIUS = 8;

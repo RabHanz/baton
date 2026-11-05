@@ -2,9 +2,10 @@
  * The start-up splash, as rules: when to show it, how long it plays and when the app window takes over,
  * and the window's options. Pure. It never holds the app back: the window is shown at the cap whatever happens.
  */
-export const SPLASH_MIN_MS = 1_400;
-export const SPLASH_CAP_MS = 2_500;
-export const SPLASH_FADE_MS = 250;
+/** The window sting runs 3 s and comes to rest at about 2.55 s; the app window takes over once it has. */
+export const SPLASH_MIN_MS = 2_600;
+export const SPLASH_CAP_MS = 3_400;
+export const SPLASH_FADE_MS = 400;
 export const SPLASH_SIZE = 192;
 
 export interface SplashAsk {
@@ -16,7 +17,8 @@ export interface SplashAsk {
   readonly reducedMotion: boolean;
 }
 
-export const shouldSplash = (a: SplashAsk): boolean => a.coldStart && !a.quietLaunch && !a.reducedMotion;
+export const shouldSplash = (a: SplashAsk): boolean =>
+  a.coldStart && !a.quietLaunch && !a.reducedMotion;
 
 export type SplashState =
   | { readonly phase: "idle" }
@@ -34,15 +36,25 @@ export const splashStep = (
   s: SplashState,
   e: SplashEvent,
 ): { readonly state: SplashState; readonly showWindow: boolean } => {
-  if (e.type === "start") return s.phase === "idle" ? { state: { phase: "playing", startedAt: e.at, windowReadyAt: null }, showWindow: false } : { state: s, showWindow: false };
+  if (e.type === "start")
+    return s.phase === "idle"
+      ? { state: { phase: "playing", startedAt: e.at, windowReadyAt: null }, showWindow: false }
+      : { state: s, showWindow: false };
   if (s.phase === "fading") {
-    return { state: e.at - s.fadeStartedAt >= SPLASH_FADE_MS ? { phase: "done" } : s, showWindow: false };
+    return {
+      state: e.at - s.fadeStartedAt >= SPLASH_FADE_MS ? { phase: "done" } : s,
+      showWindow: false,
+    };
   }
   if (s.phase !== "playing") return { state: s, showWindow: false };
-  const next = e.type === "windowReady" && s.windowReadyAt === null ? { ...s, windowReadyAt: e.at } : s;
+  const next =
+    e.type === "windowReady" && s.windowReadyAt === null ? { ...s, windowReadyAt: e.at } : s;
   const played = e.at - next.startedAt;
-  const takeOver = played >= SPLASH_CAP_MS || (next.windowReadyAt !== null && played >= SPLASH_MIN_MS);
-  return takeOver ? { state: { phase: "fading", fadeStartedAt: e.at }, showWindow: true } : { state: next, showWindow: false };
+  const takeOver =
+    played >= SPLASH_CAP_MS || (next.windowReadyAt !== null && played >= SPLASH_MIN_MS);
+  return takeOver
+    ? { state: { phase: "fading", fadeStartedAt: e.at }, showWindow: true }
+    : { state: next, showWindow: false };
 };
 
 export interface SplashWindowOptions {
@@ -61,11 +73,18 @@ export interface SplashWindowOptions {
   readonly show: false;
   readonly alwaysOnTop: true;
   readonly fullscreenable: false;
-  readonly webPreferences: { readonly contextIsolation: true; readonly nodeIntegration: false; readonly sandbox: true };
+  readonly webPreferences: {
+    readonly contextIsolation: true;
+    readonly nodeIntegration: false;
+    readonly sandbox: true;
+  };
 }
 
 /** A small frameless, transparent, click-through-in-spirit window centred on `centre`; no taskbar entry on any system. */
-export const splashWindowOptions = (centre: { readonly x: number; readonly y: number }): SplashWindowOptions => ({
+export const splashWindowOptions = (centre: {
+  readonly x: number;
+  readonly y: number;
+}): SplashWindowOptions => ({
   width: SPLASH_SIZE,
   height: SPLASH_SIZE,
   x: Math.round(centre.x - SPLASH_SIZE / 2),
