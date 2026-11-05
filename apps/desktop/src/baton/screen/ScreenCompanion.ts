@@ -1002,21 +1002,37 @@ export const startScreenCompanion = (input: {
   const capture = (): Promise<ReadonlyArray<CapturedScreen>> =>
     overlay.hiddenFor(() => captureScreens(focus?.centre ?? null));
   const fingerprint = () => overlay.hiddenFor(screenFingerprint);
+  /** The window the last screenshot pictured, when it pictured one window; a click must land on it. */
+  let shotWindow: number | null = null;
+  let shotLabel: string | null = null;
+  /** Tessaya's own windows (the panel, the pill): never the window he is using. */
+  const ownWindow = (handle: number): boolean =>
+    Electron.BrowserWindow.getAllWindows().some((w) => {
+      const raw = w.getNativeWindowHandle();
+      return raw.length >= 8
+        ? Number(raw.readBigUInt64LE()) === handle
+        : raw.readUInt32LE() === handle;
+    });
   /** Images handed to the assistant so far; its session is recycled after a hands task that piled them up. */
   let imagesSent = 0;
   /** The window he is using, drawn by itself at full size (no other windows, no other displays); null off Windows. */
   const windowShot = async (): Promise<CapturedScreen | null> => {
     const hands = actions?.hands?.() ?? null;
-    if (hands === null || focus?.window === undefined) return null;
+    // The window on top now, not the one he spoke over: a dialog or another app may have come forward since.
+    const now = await focusSoon();
+    const handle = now?.window;
+    if (hands === null || handle === undefined || ownWindow(handle)) return null;
     const dir = NodePath.join(input.stateDir, "screen");
     const out = NodePath.join(dir, `window-${Date.now()}.bmp`);
     try {
       NodeFS.mkdirSync(dir, { recursive: true });
-      const done = await hands.captureWindow({ handle: focus.window, out });
+      const done = await hands.captureWindow({ handle, out });
       const { width, height, left, top } = done;
       if (width === undefined || height === undefined || left === undefined || top === undefined)
         return null;
       const bounds = Electron.screen.screenToDipRect(null, { x: left, y: top, width, height });
+      shotWindow = handle;
+      shotLabel = now?.label ?? null;
       return shotOf(bmpImage(NodeFS.readFileSync(out), width, height), bounds);
     } catch {
       return null;
@@ -2093,6 +2109,7 @@ export const startScreenCompanion = (input: {
       }
       const captured = await capture();
       lastShots = captured.map((c) => c.shot);
+      shotWindow = null;
       imagesSent += captured.length;
       const missing = missingDisplaysNote(captured.length, Electron.screen.getAllDisplays().length);
       return {
@@ -2182,7 +2199,21 @@ export const startScreenCompanion = (input: {
       // A name read in the screenshot snaps the click onto that control when the tree finds it near the point.
       const found =
         a.label === undefined ? null : await actions?.locate?.(a.label, point).catch(() => null);
+      if (found?.coveredBy !== undefined) {
+        throw new Error(
+          `"${found.name}" is covered by "${found.coveredBy}", so a click would land there. Take a screenshot, deal with what covers it, then click.`,
+        );
+      }
       const to = found === null || found === undefined ? point : { x: found.x, y: found.y };
+      // A picture of one window says nothing about what is on top of it now: the click must reach that window.
+      if (shotWindow !== null) {
+        const under = await actions?.windowAt?.(to).catch(() => null);
+        if (under !== null && under !== undefined && under.window !== shotWindow) {
+          throw new Error(
+            `The window in the screenshot${shotLabel === null ? "" : ` (${shotLabel})`} is covered there by "${under.label}", so nothing was clicked. Take a screenshot again.`,
+          );
+        }
+      }
       await pointerAction(to, () =>
         driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
       );
