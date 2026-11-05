@@ -236,9 +236,14 @@ const withEffect = (
       after = await read(window).catch(() => null);
       if (after === null || effectLine(before, after).startsWith("Now:")) break;
     }
-    return after === null
-      ? out
-      : { ...out, text: `${out.text ?? ""}\n${effectLine(before, after)}` };
+    if (after === null) return out;
+    const line = effectLine(before, after);
+    // A press by the control's own pattern never moves the keyboard: "no change" there would invite pressing again.
+    const pressed = /no focus change/.test(out.text ?? "") && line.startsWith("No change");
+    return {
+      ...out,
+      text: `${out.text ?? ""}\n${pressed ? "Same window; a press does not move the keyboard, so the control's state above is the check." : line}`,
+    };
   },
 });
 

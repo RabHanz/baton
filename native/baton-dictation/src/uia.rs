@@ -156,11 +156,17 @@ pub fn clip(value: &str) -> String {
     format!("{head} … {tail}")
 }
 
-/// What a control holds and how it stands: ` = "value"` (never a password box's), then its states.
-unsafe fn detail(element: &IUIAutomationElement, cached: bool) -> String {
+/// A box whose name says it holds a secret (a PIN or one-time code box is rarely marked as a password box).
+pub fn secret_name(name: &str) -> bool {
+    tokens(name).iter().any(|t| t.starts_with("pass") || ["pin", "otp", "cvv", "cvc"].contains(&t.as_str()))
+}
+
+/// What a control holds and how it stands: ` = "value"` (never a password box's, nor one named like a secret), then
+/// its states.
+unsafe fn detail(element: &IUIAutomationElement, cached: bool, name: &str) -> String {
     let mut out = String::new();
     let password = if cached { element.CachedIsPassword() } else { element.CurrentIsPassword() };
-    if !password.map(|p| p.as_bool()).unwrap_or(true) {
+    if !password.map(|p| p.as_bool()).unwrap_or(true) && !secret_name(name) {
         let value = if cached {
             element.GetCachedPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId).and_then(|p| p.CachedValue())
         } else {
@@ -330,7 +336,7 @@ unsafe fn act(element: &IUIAutomationElement) -> Option<&'static str> {
 /// Physical pixels in and out. `found: false` means the tree has no such element. `foreground`
 /// searches the window with the keyboard, wherever the pointer is; otherwise the window under (x, y). `reference` is a
 /// line number of the last tree instead of a label: found only while that control still has its name and place.
-pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<usize>) -> Result<Value, String> {
+pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<(u64, usize)>) -> Result<Value, String> {
     if !invoke {
         return locate_here(label, x, y, foreground, window, false, reference);
     }
@@ -346,10 +352,14 @@ pub fn locate(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str
     }
 }
 
-/// The listed control behind a tree line number, or None when there is no such line.
-fn listed(reference: usize) -> Option<(String, RECT, isize)> {
+/// The listed control behind a line number of the numbered tree `tree`, or None when that tree is no longer the
+/// last numbered one (another caller numbered a list since) or has no such line.
+fn listed((tree, line): (u64, usize)) -> Option<(String, RECT, isize)> {
     let kept = LISTED.lock().ok()?;
-    kept.get(reference.checked_sub(1)?).map(|l| (l.name.clone(), l.rect, l.window))
+    if kept.0 != tree {
+        return None;
+    }
+    kept.1.get(line.checked_sub(1)?).map(|l| (l.name.clone(), l.rect, l.window))
 }
 
 /// The control found for a line number must still be where the line said, or it is another control of the same name.
@@ -358,7 +368,7 @@ fn same_place(listed: &RECT, found: &RECT) -> bool {
     x >= listed.left as f32 - 4.0 && x <= listed.right as f32 + 4.0 && y >= listed.top as f32 - 4.0 && y <= listed.bottom as f32 + 4.0
 }
 
-fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<usize>) -> Result<Value, String> {
+fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&str>, invoke: bool, reference: Option<(u64, usize)>) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     let cached = cache_on();
     let line = match reference {
@@ -421,6 +431,8 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
                 if invoke {
                     if let Some(how) = act(&f.element) {
                         out["invoked"] = json!(how);
+                        // A press does not move the keyboard, so the control's own state is the evidence it worked.
+                        out["state"] = json!(detail(&f.element, false, &f.name).trim());
                         return Ok(out);
                     }
                 }
@@ -481,7 +493,9 @@ struct Listed {
     window: isize,
 }
 
-static LISTED: std::sync::Mutex<Vec<Listed>> = std::sync::Mutex::new(Vec::new());
+/// The last numbered tree: its id and its lines. Only a tree read for the model is numbered and kept, so an internal
+/// read (a window check, a browser route) never renumbers what the model is looking at.
+static LISTED: std::sync::Mutex<(u64, Vec<Listed>)> = std::sync::Mutex::new((0, Vec::new()));
 
 /// The visible popups a window has open (menus, flyouts, owned dialogs): their own top-level windows on its thread.
 fn popups_of(top: HWND) -> Vec<HWND> {
@@ -515,7 +529,7 @@ fn popups_of(top: HWND) -> Vec<HWND> {
 /// What the keyboard's window and its open popups offer, one numbered line per named control with its value and
 /// states: the agent reads this before it takes a screenshot, and clicks a line by its number with `locate`. No
 /// coordinates leave here; the numbers stay in the sidecar until the next tree. `find` keeps only names that contain it.
-pub fn tree(max: usize, window: Option<&str>, find: Option<&str>) -> Result<Value, String> {
+pub fn tree(max: usize, window: Option<&str>, find: Option<&str>, numbered: bool) -> Result<Value, String> {
     let err = |e: windows::core::Error| e.to_string();
     let cached = cache_on();
     let want = find.map(|f| f.trim().to_lowercase()).filter(|f| !f.is_empty());
@@ -556,7 +570,7 @@ pub fn tree(max: usize, window: Option<&str>, find: Option<&str>) -> Result<Valu
                     "{}: {}{}{}",
                     s.kind,
                     name.chars().take(80).collect::<String>(),
-                    detail(&element, cached),
+                    detail(&element, cached, &s.name),
                     if s.focused { " (focused)" } else { "" }
                 );
                 if body == last {
@@ -564,16 +578,21 @@ pub fn tree(max: usize, window: Option<&str>, find: Option<&str>) -> Result<Valu
                 }
                 shown += 1;
                 if lines.len() < max {
-                    lines.push(format!("[{}] {body}", lines.len() + 1));
+                    lines.push(if numbered { format!("[{}] {body}", lines.len() + 1) } else { body.clone() });
                     listed.push(Listed { name: s.name.clone(), rect: s.rect, window: hwnd.0 as isize });
                 }
                 last = body;
             }
         }
-        if let Ok(mut kept) = LISTED.lock() {
-            *kept = listed;
+        let mut out = json!({"window": title, "controls": lines, "total": read, "shown": shown});
+        if numbered {
+            if let Ok(mut kept) = LISTED.lock() {
+                let id = kept.0 + 1;
+                *kept = (id, listed);
+                out["tree"] = json!(id);
+            }
         }
-        Ok(json!({"window": title, "controls": lines, "total": read, "shown": shown}))
+        Ok(out)
     }
 }
 
@@ -602,7 +621,7 @@ pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
         };
         let focus = focused.ok().map(|element| {
             let s = snap(&element, true);
-            format!("{}: {}{}", s.kind, s.name.trim().chars().take(80).collect::<String>(), detail(&element, true))
+            format!("{}: {}{}", s.kind, s.name.trim().chars().take(80).collect::<String>(), detail(&element, true, &s.name))
         });
         Ok(json!({"window": title, "handle": top.0 as isize, "focus": focus}))
     }
@@ -610,7 +629,28 @@ pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{clip, name_score};
+    use super::{clip, listed, name_score, secret_name, Listed, LISTED};
+    use windows::Win32::Foundation::RECT;
+
+    #[test]
+    fn a_line_number_holds_only_for_the_tree_that_gave_it() {
+        *LISTED.lock().unwrap() = (7, vec![Listed { name: "Save".into(), rect: RECT::default(), window: 1 }]);
+        assert_eq!(listed((7, 1)).map(|l| l.0), Some("Save".to_string()));
+        assert!(listed((6, 1)).is_none());
+        assert!(listed((7, 2)).is_none());
+        assert!(listed((7, 0)).is_none());
+    }
+
+    #[test]
+    fn boxes_named_like_secrets_hide_their_value() {
+        assert!(secret_name("Password"));
+        assert!(secret_name("Enter PIN"));
+        assert!(secret_name("OTP code"));
+        assert!(secret_name("CVV"));
+        assert!(!secret_name("Shopping list"));
+        assert!(!secret_name("Spinner"));
+        assert!(!secret_name("File name"));
+    }
 
     #[test]
     fn a_long_value_keeps_its_start_and_end_on_one_line() {

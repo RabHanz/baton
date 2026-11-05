@@ -140,13 +140,14 @@ export const makeHost = (outDir: string): Host => {
   NodeFS.mkdirSync(outDir, { recursive: true });
   let shots = 0;
   const here = { x: 512, y: 384 };
+  let lastTree = 0;
   const located = async (target: string | number) => {
     const found = await side({
       cmd: "locate",
       label: typeof target === "number" ? "" : target,
       ...here,
       foreground: true,
-      ...(typeof target === "number" ? { ref: target } : {}),
+      ...(typeof target === "number" ? { ref: target, tree: lastTree } : {}),
     });
     if (found["stale"] === true)
       throw new Error(
@@ -176,9 +177,14 @@ export const makeHost = (outDir: string): Host => {
       };
     },
     uiTree: async (_window, find) => {
-      const tree = await side({ cmd: "ui_tree", ...(find === undefined ? {} : { find }) });
+      const tree = await side({
+        cmd: "ui_tree",
+        number: true,
+        ...(find === undefined ? {} : { find }),
+      });
       if (typeof tree["error"] === "string")
         throw new Error(`The window's controls can't be read: ${tree["error"]}`);
+      lastTree = typeof tree["tree"] === "number" ? tree["tree"] : 0;
       const text = treeText(tree as Parameters<typeof treeText>[0]);
       stats.treeBytes += text.length;
       return text;

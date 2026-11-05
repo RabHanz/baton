@@ -40,7 +40,10 @@ pub fn changes() -> u64 {
         std::thread::spawn(|| unsafe {
             let flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
             let _system = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MENUPOPUPEND, None, Some(on_event), 0, 0, flags);
-            let _object = SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_VALUECHANGE, None, Some(on_event), 0, 0, flags);
+            // Separate ranges, so a location change (every pointer move) never wakes this thread.
+            let _show = SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW, None, Some(on_event), 0, 0, flags);
+            let _focus = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, None, Some(on_event), 0, 0, flags);
+            let _named = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_VALUECHANGE, None, Some(on_event), 0, 0, flags);
             let mut msg = MSG::default();
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
         });

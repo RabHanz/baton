@@ -24,8 +24,9 @@ export interface RemoteHandsDeps {
       window?: string;
       invoke?: boolean;
       ref?: number;
+      tree?: number;
     }) => Promise<LocatedElement>;
-    readonly uiTree: (window?: string, find?: string) => Promise<UiTree>;
+    readonly uiTree: (window?: string, find?: string, number?: boolean) => Promise<UiTree>;
     readonly focusState?: (window?: string) => Promise<FocusState>;
     readonly setValue: (
       window: string,
@@ -69,6 +70,8 @@ const POLL_MS = 150;
 const LOG_TAIL_BYTES = 256_000;
 
 export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<BatonTool> => {
+  // This session's last numbered tree: its numbers are the only ones its clicks may use.
+  let lastTree: number | undefined;
   const located = (label: string | number, window: string | undefined, invoke: boolean) =>
     deps.sidecar.locate({
       label: typeof label === "number" ? "" : label,
@@ -76,7 +79,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
       y: 0,
       ...(window === undefined ? { foreground: true } : { window }),
       ...(invoke ? { invoke: true } : {}),
-      ...(typeof label === "number" ? { ref: label } : {}),
+      ...(typeof label === "number" ? { ref: label, tree: lastTree ?? 0 } : {}),
     });
 
   /** Keys only ever go where the keyboard is, so a named window must be the one that has it. */
@@ -97,9 +100,10 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
       throw new Error("Use window_capture.");
     },
     uiTree: async (window, find) => {
-      const tree = await deps.sidecar.uiTree(window, find);
+      const tree = await deps.sidecar.uiTree(window, find, true);
       if (typeof tree.error === "string")
         throw new Error(`The window's controls can't be read: ${tree.error}`);
+      lastTree = tree.tree;
       return treeText(tree);
     },
     ...(deps.sidecar.focusState === undefined
@@ -124,7 +128,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
           `No control is named "${label}" in ${window === undefined ? "the window with the keyboard" : `the window "${window}"`}.`,
         );
       if (found.invoked !== undefined)
-        return `Pressed ${found.name ?? label} (${found.invoked}, no pointer, no focus change).`;
+        return `Pressed ${found.name ?? label} (${found.invoked}, no pointer, no focus change)${found.state ? `; it now reads ${found.state}` : ""}.`;
       if (found.covered_by !== undefined) {
         throw new Error(
           `"${found.name ?? label}" is covered by "${found.covered_by}", so a click would land there.`,

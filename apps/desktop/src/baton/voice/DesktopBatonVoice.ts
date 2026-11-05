@@ -2069,10 +2069,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       ]).catch(() => null);
       return typeof out?.count === "number" ? out.count : null;
     },
-    uiTree: async (find) => {
+    uiTree: async (find, numbered) => {
       if (sidecar === null) return null;
       const tree = await Promise.race([
-        sidecar.uiTree(undefined, find),
+        sidecar.uiTree(undefined, find, numbered),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS * 2)),
       ]).catch(() => null);
       if (tree === null || tree.controls === undefined) return null;
@@ -2080,6 +2080,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         window: tree.window ?? "",
         controls: tree.controls,
         ...(tree.shown === undefined ? {} : { shown: tree.shown }),
+        ...(tree.tree === undefined ? {} : { tree: tree.tree }),
       };
     },
     focusState: async () => {
@@ -2115,7 +2116,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           y: physical.y,
           ...(anywhere === true ? { foreground: true } : {}),
           ...(invoke === true ? { invoke: true } : {}),
-          ...(ref === undefined ? {} : { ref }),
+          ...(ref === undefined ? {} : { ref: ref.line, tree: ref.tree }),
         }),
         new Promise<"slow">((resolve) =>
           setTimeout(() => resolve("slow"), LOCATE_TIMEOUT_MS * (invoke === true ? 2 : 1)),
@@ -2136,7 +2137,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         );
       }
       if (found?.found === true && found.invoked !== undefined) {
-        return { ...near, name: found.name ?? label, invoked: found.invoked };
+        return {
+          ...near,
+          name: found.name ?? label,
+          invoked: found.invoked,
+          ...(found.state === undefined ? {} : { state: found.state }),
+        };
       }
       if (found?.found !== true || found.x === undefined || found.y === undefined) return null;
       const real = Electron.screen.screenToDipPoint({ x: found.x, y: found.y });

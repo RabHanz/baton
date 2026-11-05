@@ -64,6 +64,8 @@ export interface LocatedElement {
   readonly invoked?: string;
   /** The tree line asked for by number is gone or no longer that control: read the tree again. */
   readonly stale?: boolean;
+  /** After a press by its pattern: the control's own value and states, since the keyboard does not move. */
+  readonly state?: string;
   readonly error?: string;
 }
 
@@ -85,6 +87,8 @@ export interface UiTree {
   readonly total?: number;
   /** How many lines matched before the cut; more than `controls` holds means the list was cut. */
   readonly shown?: number;
+  /** A numbered tree's id: a click by number names it, and is refused once another tree was numbered. */
+  readonly tree?: number;
   readonly error?: string;
 }
 
@@ -155,12 +159,14 @@ export interface DictationSidecar {
     readonly window?: string;
     /** Also act on the control through its own UI Automation pattern: no pointer, no focus change. */
     readonly invoke?: boolean;
-    /** A line number of the last tree, in place of the label. */
+    /** A line number of a numbered tree, in place of the label, and that tree's id. */
     readonly ref?: number;
+    readonly tree?: number;
   }) => Promise<LocatedElement>;
   /** A running count of desktop changes (foreground, menus, focus, values) from WinEvents. */
   readonly uiChanges: () => Promise<{ readonly count?: number; readonly error?: string }>;
-  readonly uiTree: (window?: string, find?: string) => Promise<UiTree>;
+  /** `number`: the model's own read, numbered and kept for clicks by number; other reads leave those numbers alone. */
+  readonly uiTree: (window?: string, find?: string, number?: boolean) => Promise<UiTree>;
   readonly focusState: (window?: string) => Promise<FocusState>;
   readonly input: (input: SidecarInput) => Promise<void>;
   /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
@@ -404,11 +410,12 @@ export const startDictationSidecar = (input: {
     nudge: (dx, dy) => send({ cmd: "nudge", dx, dy }),
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
     uiChanges: () => call<{ count?: number; error?: string }>({ cmd: "ui_changes" }),
-    uiTree: (window, find) =>
+    uiTree: (window, find, number) =>
       call<UiTree>({
         cmd: "ui_tree",
         ...(window === undefined ? {} : { window }),
         ...(find === undefined ? {} : { find }),
+        ...(number === true ? { number: true } : {}),
       }),
     focusState: (window) =>
       call<FocusState>({ cmd: "focus_state", ...(window === undefined ? {} : { window }) }),

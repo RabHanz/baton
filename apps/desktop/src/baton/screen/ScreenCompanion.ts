@@ -254,14 +254,16 @@ export interface AssistantActions {
     anywhere?: boolean,
     /** Also act on it through its UI Automation pattern, so neither his pointer nor the focus moves. */
     invoke?: boolean,
-    /** A line number of the last tree in place of the label; throws when the window changed since. */
-    ref?: number,
+    /** A line number of the numbered tree `tree` in place of the label; throws when the window changed since. */
+    ref?: { readonly line: number; readonly tree: number },
   ) => Promise<{
     readonly x: number;
     readonly y: number;
     readonly name: string;
     /** How it was acted on with no pointer; "pending" while a dialog it opened is up. */
     readonly invoked?: string;
+    /** After a press: its own value and states. */
+    readonly state?: string;
     /** What is on top of it, when a click would land there instead. */
     readonly coveredBy?: string;
     /** The control's size in desktop points, when the tree gave it. */
@@ -280,10 +282,14 @@ export interface AssistantActions {
   /** The sidecar's running count of desktop changes; null where there is none. */
   readonly uiChanges?: () => Promise<number | null>;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
-  readonly uiTree?: (find?: string) => Promise<{
+  readonly uiTree?: (
+    find?: string,
+    numbered?: boolean,
+  ) => Promise<{
     readonly window: string;
     readonly controls: ReadonlyArray<string>;
     readonly shown?: number;
+    readonly tree?: number;
   } | null>;
   /** Where the keyboard is, read cheaply after an action; null when it cannot be read. */
   readonly focusState?: () => Promise<FocusState | null>;
@@ -2020,6 +2026,8 @@ export const startScreenCompanion = (input: {
     hotkeys = bound;
   };
   setTransformHotkeys(transformStore.read().enabled);
+  // The assistant's last numbered tree: a click by number is refused once any other caller numbered a list.
+  let lastTree: number | undefined;
   const toolHost: ToolHost = {
     history: async (ask) => {
       const answer = await askHistory(input.env, ask);
@@ -2054,10 +2062,11 @@ export const startScreenCompanion = (input: {
       if (!(await approveCapture("what is on your screen", null))) {
         throw new Error("He did not allow looking at his screen.");
       }
-      const tree = await actions?.uiTree?.(find);
+      const tree = await actions?.uiTree?.(find, true);
       if (tree === null || tree === undefined) {
         throw new Error("The window's controls can't be read here. Take a screenshot instead.");
       }
+      lastTree = tree.tree;
       return treeText(tree);
     },
     // Quiet: an action's readback never asks, so it is left out while looking needs his yes.
@@ -2141,7 +2150,7 @@ export const startScreenCompanion = (input: {
         Electron.screen.getCursorScreenPoint(),
         true,
         !double,
-        typeof target === "number" ? target : undefined,
+        typeof target === "number" ? { line: target, tree: lastTree ?? 0 } : undefined,
       );
       if (found === null || found === undefined) {
         throw new Error(
@@ -2149,7 +2158,7 @@ export const startScreenCompanion = (input: {
         );
       }
       if (found.invoked !== undefined) {
-        return `Pressed ${found.name} (${found.invoked}, no pointer, no focus change).`;
+        return `Pressed ${found.name} (${found.invoked}, no pointer, no focus change)${found.state ? `; it now reads ${found.state}` : ""}.`;
       }
       if (found.coveredBy !== undefined) {
         throw new Error(

@@ -102,6 +102,21 @@ describe("the assistant's tool table", () => {
     const batch = await run("act_batch", { steps: [{ tool: "type_text", args: { text: "x" } }] });
     expect(batch).not.toContain("Now:");
     expect(states).toHaveLength(2);
+    states.length = 0;
+    // A checkbox pressed by its pattern: the keyboard stays put, which is not "nothing happened".
+    const pressing = buildBatonTools({
+      ...host([]),
+      focusState: read,
+      clickElement: async () =>
+        "Pressed Word wrap (toggle, no pointer, no focus change); it now reads [checked].",
+    });
+    states.push(...[1, 2, 3].map(() => notepad("document: Text")));
+    const pressed = pressing.find((t) => t.name === "click_element")!.run({ id: 4, why: "w" });
+    await vi.runAllTimersAsync();
+    const said = (await pressed).text;
+    expect(said).toContain("[checked]");
+    expect(said).toContain("a press does not move the keyboard");
+    expect(said).not.toContain("No change seen");
   });
 
   describe("act_batch", () => {
