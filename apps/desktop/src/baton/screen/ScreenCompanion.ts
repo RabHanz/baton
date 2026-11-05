@@ -272,6 +272,9 @@ export interface AssistantActions {
   readonly hands?: () =>
     | (RemoteHandsDeps["sidecar"] & {
         readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
+        readonly focusWindowTitled: (
+          title: string,
+        ) => Promise<{ readonly title?: string; readonly error?: string }>;
         readonly input: (input: SidecarInput) => Promise<void>;
         /** False when that window no longer has the keyboard, and nothing was pasted. */
         readonly pasteInto: (text: string, target: number) => Promise<boolean>;
@@ -1948,6 +1951,14 @@ export const startScreenCompanion = (input: {
       }
       lastTree = tree.tree;
       return treeText(tree);
+    },
+    focusWindow: async (title) => {
+      const side = actions?.hands?.() ?? null;
+      if (side === null) throw new Error("The sensing helper is not running.");
+      const done = await side.focusWindowTitled(title);
+      if (done.error !== undefined) throw new Error(done.error);
+      const which = titlesAllowed() ? `"${done.title ?? title}"` : "That window";
+      return `${which} is in front and has the keyboard. Read ui_tree for its controls.`;
     },
     // Quiet: an action's readback never asks, so it is left out while looking needs his yes.
     focusState: async () => (titlesAllowed() ? ((await actions?.focusState?.()) ?? null) : null),

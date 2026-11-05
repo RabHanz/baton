@@ -18,4 +18,4 @@ pnpm tessaya-assistant --out runs/assistant-haiku --model haiku --case needs-me 
 
 ## Add a case
 
-Add an entry to `cases.ts` with an `id`, its `source`, the sentence `said`, and the acceptable `first` tools (`none` for a plain answer). Add `not` for a wrong first move the case guards against. A case with `wake` runs as that persona from the default roster; `says` lists words the reply must contain. `answers` lets named tools run with a fixed text, built from the shipped formatter, so a case can check what the reply says about it.
+Add an entry to `cases.ts` with an `id`, its `source`, the sentence `said`, and the acceptable `first` tools (`none` for a plain answer). Add `not` for a wrong first move the case guards against. A case with `wake` runs as that persona from the default roster; `says` lists words the reply must contain. `answers` lets named tools run with a fixed text, built from the shipped formatter, so a case can check what the reply says about it. `window` is the window he is using (Notepad when left out).

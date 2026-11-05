@@ -708,16 +708,28 @@ fn locate_element(id: Option<u64>, _label: &str, _x: i32, _y: i32, _foreground: 
     json!({"ev": "located", "id": id, "found": false, "error": "not on this platform yet"})
 }
 
+/// `title`: part of a window's title, for the window he named that is open behind another; else the handle.
+/// shortcut: the first window in z-order whose title contains it, so a tab titled like the app can win; match the exe if that bites.
 #[cfg(windows)]
-fn focus_window_event(id: Option<u64>, window: isize) -> Value {
+fn focus_window_event(id: Option<u64>, window: isize, title: Option<&str>) -> Value {
+    let window = match title {
+        Some(t) => match uia::find_window(t) {
+            Some(hwnd) => hwnd.0 as isize,
+            None => return json!({"ev": "focused", "id": id, "error": format!("No open window is titled like \"{t}\".")}),
+        },
+        None => window,
+    };
     let mut v = capture::focus_window(window).unwrap_or_else(|e| json!({"error": e}));
+    if title.is_some() {
+        v["title"] = json!(window_app(window).1);
+    }
     v["ev"] = json!("focused");
     v["id"] = json!(id);
     v
 }
 
 #[cfg(not(windows))]
-fn focus_window_event(id: Option<u64>, _window: isize) -> Value {
+fn focus_window_event(id: Option<u64>, _window: isize, _title: Option<&str>) -> Value {
     json!({"ev": "focused", "id": id, "error": "not on this platform yet"})
 }
 
@@ -1021,7 +1033,8 @@ fn serve() {
                     "focus_window" => {
                         let id = value["id"].as_u64();
                         let window = value["window"].as_i64().unwrap_or(0) as isize;
-                        thread::spawn(move || emit(focus_window_event(id, window)));
+                        let title = value["title"].as_str().map(str::to_string);
+                        thread::spawn(move || emit(focus_window_event(id, window, title.as_deref())));
                     }
                     "capture_window" => {
                         let id = value["id"].as_u64();

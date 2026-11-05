@@ -18,6 +18,8 @@ export interface AssistantCase {
   readonly says?: string;
   /** Tools that run in this case, each answering with this text; every other call is refused. */
   readonly answers?: Readonly<Record<string, string>>;
+  /** The window he is using; Notepad when left out. */
+  readonly window?: string;
 }
 
 const row = (
@@ -149,6 +151,15 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     said: "type hello world into notepad and save it",
     first: ["ui_tree"],
     not: ["Bash", "PowerShell"],
+  },
+  {
+    id: "notepad-behind-chrome",
+    source:
+      "0.1.55 device run: Notepad open behind Chrome took 58 s, 4 screenshots and taskbar clicks before typing",
+    said: "type hello world into notepad",
+    window: "chrome.exe: New Tab - Google Chrome",
+    first: ["window_focus"],
+    not: ["screen_capture", "click", "Bash", "PowerShell"],
   },
   {
     id: "other-monitor",
