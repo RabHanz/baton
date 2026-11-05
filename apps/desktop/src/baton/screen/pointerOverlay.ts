@@ -68,9 +68,9 @@ const placeCard=()=>{const beside=landed!==null;card.classList.toggle('beside',b
  if(beside){x=clamp(landed.x+15,16,innerWidth-w-16);y=landed.y+50;if(y+h>innerHeight-inset)y=Math.max(16,landed.y-h-30);}
  else{x=(innerWidth-w)/2;y=innerHeight-inset-h;}
  card.style.left=x+'px';card.style.top=y+'px';};
-const flight=(to,done)=>{cancelAnimationFrame(anim);const s0={...at},d=Math.hypot(to.x-s0.x,to.y-s0.y);
+const flight=(to,done,ms)=>{cancelAnimationFrame(anim);const s0={...at},d=Math.hypot(to.x-s0.x,to.y-s0.y);
  if(calm||d<1){at={...to};place(to.x,to.y,-35,1);return done();}
- const dur=clamp(d/800,.6,1.4)*1000,c={x:(s0.x+to.x)/2,y:(s0.y+to.y)/2-Math.min(d*.2,80)},t0=performance.now();
+ const dur=ms||clamp(d/800,.6,1.4)*1000,c={x:(s0.x+to.x)/2,y:(s0.y+to.y)/2-Math.min(d*.2,80)},t0=performance.now();
  const step=(now)=>{const p=Math.min((now-t0)/dur,1),t=p*p*(3-2*p),u=1-t,
   x=u*u*s0.x+2*u*t*c.x+t*t*to.x,y=u*u*s0.y+2*u*t*c.y+t*t*to.y,
   tx=2*u*(c.x-s0.x)+2*t*(to.x-c.x),ty=2*u*(c.y-s0.y)+2*t*(to.y-c.y);
@@ -88,6 +88,13 @@ window.fly=(from,to,text)=>{landed=null;if(from)at=from;ptr.classList.add('on');
  const spot={x:clamp(to.x+8,20,innerWidth-20),y:clamp(to.y+12,20,innerHeight-20)};
  trail({...at},spot);
  flight(spot,()=>{landed=spot;label(text);placeCard();setTimeout(fadeTrail,150);});};
+// Her own cursor while she acts: a short glide to the target and its words, no trail and nothing round the control.
+// It answers how long the glide takes, so the action can follow it.
+window.glide=(to,text)=>{landed=null;const spot={x:clamp(to.x+8,20,innerWidth-20),y:clamp(to.y+12,20,innerHeight-20)};
+ if(!ptr.classList.contains('on')){at={x:spot.x-70,y:spot.y+50};place(at.x,at.y,-35,1);ptr.classList.add('on');}
+ hide();const ms=calm?0:Math.round(clamp(Math.hypot(spot.x-at.x,spot.y-at.y)/2200,.16,.4)*1000);
+ flight(spot,()=>label(text),ms);return ms;};
+window.fadeOut=()=>{cancelAnimationFrame(anim);hide();ptr.classList.remove('on');};
 const acts=$('acts'),nextLine=$('next');
 window.card=(c)=>{const on=!!(c&&(c.text||c.kicker));card.classList.toggle('on',on);if(!on)return;
  card.classList.toggle('step',!!(c.dots||c.state));for(const s of['waiting','error','done'])card.classList.toggle(s,c.state===s);
@@ -138,6 +145,8 @@ export interface PointerOverlay {
   readonly timer: (ms: number) => Promise<void>;
   /** Clicky's exit: the words fade and the pointer flies home to his cursor. */
   readonly retreat: () => Promise<void>;
+  /** Her own cursor glides to a desktop point with a few words and fades soon after; answers the glide's length. */
+  readonly glide: (to: { x: number; y: number }, label: string) => Promise<number>;
   readonly clear: () => Promise<void>;
   /** Run `fn` with the layer out of the picture where content protection cannot do it. */
   readonly hiddenFor: <T>(fn: () => Promise<T>) => Promise<T>;
@@ -146,6 +155,8 @@ export interface PointerOverlay {
 
 const IDLE_CLOSE_MS = 120_000;
 const RETREAT_MS = 900;
+/** How long her cursor stays after her last action before it fades. */
+const GLIDE_LINGER_MS = 1_400;
 
 export const createPointerOverlay = (
   platform: string,
@@ -155,6 +166,8 @@ export const createPointerOverlay = (
   let stage: Electron.Display | null = null;
   let shown: OverlayCard | null = null;
   let idle: ReturnType<typeof setTimeout> | null = null;
+  let glideAt: Electron.Display | null = null;
+  let glideFade: ReturnType<typeof setTimeout> | null = null;
 
   const forDisplay = (display: Electron.Display) => {
     const existing = windows.get(display.id);
@@ -260,6 +273,10 @@ export const createPointerOverlay = (
 
   return {
     point: async (to, label) => {
+      // Pointing takes the cursor over from an action's glide, so the glide's fade must not hide it.
+      if (glideFade !== null) clearTimeout(glideFade);
+      glideFade = null;
+      glideAt = null;
       const target = Electron.screen.getDisplayNearestPoint(to);
       const cursor = Electron.screen.getCursorScreenPoint();
       const here = Electron.screen.getDisplayNearestPoint(cursor).id === target.id;
@@ -307,6 +324,30 @@ export const createPointerOverlay = (
       await run(display, `window.back(${JSON.stringify(home)})`);
       await new Promise((r) => setTimeout(r, RETREAT_MS));
       await clear();
+    },
+    glide: async (to, label) => {
+      const target = Electron.screen.getDisplayNearestPoint(to);
+      if (glideAt !== null && glideAt.id !== target.id) {
+        const left = windows.get(glideAt.id);
+        if (left !== undefined && !left.win.isDestroyed())
+          void left.win.webContents.executeJavaScript("window.fadeOut()");
+      }
+      glideAt = target;
+      if (glideFade !== null) clearTimeout(glideFade);
+      stopIdle();
+      const { win, ready } = forDisplay(target);
+      await ready;
+      if (win.isDestroyed()) return 0;
+      const ms: unknown = await win.webContents.executeJavaScript(
+        `window.glide(${JSON.stringify(local(target, to))},${JSON.stringify(label)})`,
+      );
+      glideFade = setTimeout(() => {
+        glideFade = null;
+        if (!win.isDestroyed()) void win.webContents.executeJavaScript("window.fadeOut()");
+        glideAt = null;
+        if (stage === null) idle = setTimeout(closeWindows, IDLE_CLOSE_MS);
+      }, GLIDE_LINGER_MS);
+      return typeof ms === "number" ? ms : 0;
     },
     clear,
     hiddenFor: (fn) => hiddenForCapture(fn, platform),

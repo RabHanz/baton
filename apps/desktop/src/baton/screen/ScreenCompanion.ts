@@ -123,6 +123,7 @@ import { createInputDriver } from "./inputDriver.ts";
 import type { SidecarInput } from "../voice/dictationSidecar.ts";
 import type { HomeControl } from "../home/batonHome.ts";
 import { POCKET_VOICES, type PocketVoice } from "../voice/pocketVoice.ts";
+import { actLabel, actTarget, type Act } from "./actCursor.ts";
 import { createPointerOverlay, type OverlayCard } from "./pointerOverlay.ts";
 import type { EscapeRank } from "./escapeKey.ts";
 import {
@@ -159,6 +160,8 @@ interface ScreenSettings {
   readonly remoteHands: boolean;
   /** He is away: a remote call that would ask him is refused instead, since nobody can answer. */
   readonly remoteHandsAway: boolean;
+  /** Her own cursor glides to where she acts, with a word or two; his pointer never moves. On until he turns it off. */
+  readonly actCursor: boolean;
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
@@ -190,6 +193,7 @@ const DEFAULTS: ScreenSettings = {
   actWithoutAsking: false,
   remoteHands: false,
   remoteHandsAway: false,
+  actCursor: true,
   operator: "claude",
   codexBinary: "codex",
   oneAssistant: true,
@@ -1627,12 +1631,21 @@ export const startScreenCompanion = (input: {
     current.release = input.holdEscape(stopDrive, "drive");
     const d = driverFor();
     const result = await runDrivePlan(plan, shots, {
-      clickAt: d.clickAt,
+      clickAt: async (p, button, count) => {
+        await showAct({ kind: "click", double: count === 2 }, p);
+        await d.clickAt(p, button, count);
+      },
       pressAt: d.pressAt,
       releaseAt: d.releaseAt,
       scrollAt: d.scrollAt,
-      type: d.type,
-      press: d.press,
+      type: async (text) => {
+        await showAct({ kind: "type" });
+        await d.type(text);
+      },
+      press: async (keys) => {
+        await showAct({ kind: "press", keys });
+        await d.press(keys);
+      },
       ...(input.platform === "win32" && actions?.focus !== undefined
         ? { foreground: keyboardWindow }
         : {}),
@@ -1977,6 +1990,16 @@ export const startScreenCompanion = (input: {
     if (shot === null) throw new Error("Take a screenshot first, so I know where things are.");
     return toDesktop(a, shot);
   };
+  /** Where her cursor last went, so typing and keys show where she was working. */
+  let actLast: { x: number; y: number } | null = null;
+  /** Her own cursor glides to the target just before an action and the action follows the glide (never his pointer). */
+  const showAct = async (act: Act, control?: { x: number; y: number } | null) => {
+    if (!settings.actCursor) return;
+    const to = actTarget({ control, last: actLast, window: focus?.centre ?? null });
+    if (to === null) return;
+    actLast = { x: to.x, y: to.y };
+    await sleep(await overlay.glide(actLast, actLabel(act)).catch(() => 0));
+  };
   /** Where Baton last left the pointer this turn; null before its first move. */
   let leftPointer: { x: number; y: number } | null = null;
   const pointerAction = async (to: { x: number; y: number }, act: () => Promise<void>) => {
@@ -2231,6 +2254,7 @@ export const startScreenCompanion = (input: {
           );
         }
       }
+      await showAct({ kind: "click", name: found?.name ?? a.label, double: a.double === true }, to);
       await pointerAction(to, () =>
         driverFor().clickAt(to, a.button ?? "left", a.double === true ? 2 : 1),
       );
@@ -2258,6 +2282,8 @@ export const startScreenCompanion = (input: {
         );
       }
       if (found.invoked !== undefined) {
+        // A press by pattern has already happened: her cursor follows it rather than lead it.
+        void showAct({ kind: "click", name: found.name }, found);
         return `Pressed ${found.name} (${found.invoked}, no pointer, no focus change)${found.state ? `; it now reads ${found.state}` : ""}.`;
       }
       if (found.coveredBy !== undefined) {
@@ -2266,6 +2292,7 @@ export const startScreenCompanion = (input: {
         );
       }
       const to = { x: found.x, y: found.y };
+      await showAct({ kind: "click", name: found.name, double }, to);
       input.onNote?.("hands_pointer", {
         label: found.name,
         why: double ? "double click" : "no pattern",
@@ -2311,10 +2338,12 @@ export const startScreenCompanion = (input: {
       return "Dragged.";
     },
     type: async (text) => {
+      await showAct({ kind: "type" });
       await driverFor().type(text);
       return "Typed.";
     },
     press: async (keys) => {
+      await showAct({ kind: "press", keys });
       await driverFor().press(keys);
       return "Pressed.";
     },
@@ -2879,6 +2908,14 @@ export const startScreenCompanion = (input: {
         on: settings.actWithoutAsking,
       },
       {
+        id: "s.cursor",
+        section: "Working for you",
+        label: "Show my cursor while I work",
+        hint: "When I click or type for you, my own small cursor glides to the spot with a word or two, then fades. Your mouse never moves.",
+        kind: "toggle",
+        on: settings.actCursor,
+      },
+      {
         id: "s.hands",
         section: "Working for you",
         label: "Let a remote session drive this computer",
@@ -2986,6 +3023,7 @@ export const startScreenCompanion = (input: {
       } else if (id === "s.social") save({ socialOn: value === true });
       else if (id === "s.act") save({ actWithoutAsking: value === true });
       else if (id === "s.hands") save({ remoteHands: value === true });
+      else if (id === "s.cursor") save({ actCursor: value === true });
       else if (id === "s.handsAway") save({ remoteHandsAway: value === true });
       else if (id === "s.capture") save({ captureApproval: value === true ? "always" : "ask" });
     },
