@@ -106,6 +106,23 @@ NodeTest.test("a dialog whose question sits in a dashed box is read with its opt
   NodeAssert.deepEqual(answerKeys(prompt, "No"), { keys: ["down", "enter"], text: null });
 });
 
+NodeTest.test(
+  "a held message with no footer and a wrapped option is read with both options",
+  () => {
+    const prompt = parsePanePrompt(fixture("pane-held-message.txt"));
+    NodeAssert.equal(prompt.question, "Held message from another session");
+    NodeAssert.match(prompt.context, /permission mode class/);
+    NodeAssert.deepEqual(
+      prompt.options.map((o) => o.label),
+      ["Deny — drop it and tell the sender it was declined", "Deliver this message to Claude"],
+    );
+    NodeAssert.deepEqual(answerKeys(prompt, "Deliver this message to Claude"), {
+      keys: ["down", "enter"],
+      text: null,
+    });
+  },
+);
+
 NodeTest.test("unnumbered options are read too, and a plain screen has no prompt", () => {
   const trust = parsePanePrompt(fixture("pane-trust.txt"));
   NodeAssert.deepEqual(
