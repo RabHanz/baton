@@ -3118,9 +3118,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     jobsWanted = true;
     void refreshJobs();
   };
-  // Only while T3's window is up: asking opens it, and a background poll must not bring back a window he closed.
+  // Jobs, the watch and memory reach this machine's server directly; without that door, only while T3's window
+  // is up, since asking through it would bring back a window he closed.
+  const serverReachable = () =>
+    input.direct !== undefined || (mainContents !== null && !mainContents.isDestroyed());
   setInterval(() => {
-    if (jobsWanted && mainContents !== null && !mainContents.isDestroyed()) void refreshJobs();
+    if (jobsWanted && serverReachable()) void refreshJobs();
   }, JOBS_REFRESH_MS).unref();
 
   // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
@@ -3137,7 +3140,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   const silenced = (at: Date) => isSilenced(settings, at);
   const checkAttention = async () => {
     // With the direct door the watch is read from this machine's server, so T3's window need not be up.
-    if (input.direct === undefined && (mainContents === null || mainContents.isDestroyed())) return;
+    if (!serverReachable()) return;
     const at = new Date();
     if (silenced(at)) return;
     const found = await watchFindings();
@@ -3225,10 +3228,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     now: () => Date.now(),
     hour: () => new Date().getHours(),
     policy: () =>
-      settings.initiativeMode === "off" ||
-      silenced(new Date()) ||
-      mainContents === null ||
-      mainContents.isDestroyed()
+      settings.initiativeMode === "off" || silenced(new Date()) || !serverReachable()
         ? null
         : {
             ...DEFAULT_POLICY,
@@ -3509,15 +3509,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   let syncNow: SyncState = { localBehind: null, status: null, pr: null };
   const refreshNow = async (): Promise<void> => {
     const at = Date.now();
-    // Asking the server goes through the T3 window and would open it: only while it is already open.
-    const windowUp = mainContents !== null && !mainContents.isDestroyed();
     const jobs = jobsCache ?? [];
     const last = await readLastNightly();
     syncNow = { ...(await readSyncExtra()), status: last.sync };
     const { ranked, unreadable } = await collectNeeds({
       jobs,
       sessions: input.sessions?.rows() ?? [],
-      findings: windowUp ? await watchFindings() : [],
+      findings: serverReachable() ? await watchFindings() : [],
       extra: [
         ...needsFromCommitments(commitments.list(), at),
         ...syncNeeds(syncNow, at),
@@ -3530,7 +3528,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     });
     const day = new Date(at).toDateString();
     const learned = (
-      (windowUp
+      (serverReachable()
         ? await requestKept({ kind: "memory", op: "list", args: { limit: 200 } }).catch(() => null)
         : null) as {
         items?: ReadonlyArray<{ text: string; createdAt: string; proposed: boolean }>;
@@ -3570,8 +3568,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         cloudLoginsRow(cloudNow(), Date.now()),
       ],
       weaves:
+        // Weaves are read only through T3's window, so only while it is up.
         (
-          (windowUp
+          (mainContents !== null && !mainContents.isDestroyed()
             ? await requestKept({ kind: "weave", op: "list", args: { limit: 10 } }).catch(
                 () => null,
               )
