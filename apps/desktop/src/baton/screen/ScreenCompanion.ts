@@ -1875,15 +1875,13 @@ export const startScreenCompanion = (input: {
           input: side.input,
           // Only into the window that has the keyboard now; the sidecar's paste keeps it out of clipboard history.
           paste: async (text) => {
-            const seen = await focusSoon();
-            if (seen?.window === undefined) {
-              throw new Error(
-                "The window with the keyboard can't be told apart, so nothing was typed.",
-              );
-            }
+            // A busy sidecar can miss the short focus read; a longer one follows before giving up on it.
+            const seen = (await focusSoon()) ?? (await keyboardWindow());
+            if (seen?.window === undefined) return false;
             if (!(await side.pasteInto(text, seen.window))) {
               throw new Error("The window with the keyboard changed, so nothing was typed.");
             }
+            return true;
           },
         };
       },
@@ -2121,7 +2119,7 @@ export const startScreenCompanion = (input: {
       return "Clicked.";
     },
     windowKey: async () => {
-      const seen = await focusSoon();
+      const seen = (await focusSoon()) ?? (await keyboardWindow());
       if (seen?.window === undefined)
         throw new Error("The window with the keyboard can't be told apart, so a batch cannot run.");
       return String(seen.window);

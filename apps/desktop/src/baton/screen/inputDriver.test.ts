@@ -79,7 +79,7 @@ describe("the Windows hands through the sidecar", () => {
       },
       sidecar: () => ({
         input: async (command) => void sent.push(command),
-        paste: async (text) => void pasted.push(text),
+        paste: async (text) => (pasted.push(text), true),
       }),
     });
     await driver.clickAt({ x: 10, y: 20 }, "left", 2);
@@ -92,5 +92,23 @@ describe("the Windows hands through the sidecar", () => {
       { op: "keys", vks: [0x11, 0x41] },
     ]);
     expect(pasted).toEqual(["secret"]);
+  });
+
+  it("pastes through the clipboard, as before the sidecar, when the window with the keyboard cannot be told apart", async () => {
+    const sent: SidecarInput[] = [];
+    const clipAtKeys: string[] = [];
+    let clip = "his";
+    const driver = createInputDriver({
+      platform: "win32",
+      toPhysical: (p) => p,
+      clipboard: { readText: () => clip, writeText: (t) => void (clip = t) },
+      sidecar: () => ({
+        input: async (command) => void (sent.push(command), clipAtKeys.push(clip)),
+        paste: async () => false,
+      }),
+    });
+    await driver.type("hello");
+    expect(sent).toEqual([{ op: "keys", vks: [0x11, 0x56] }]);
+    expect(clipAtKeys).toEqual(["hello"]);
   });
 });

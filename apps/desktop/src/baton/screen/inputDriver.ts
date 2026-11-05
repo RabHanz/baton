@@ -238,8 +238,11 @@ export const createPaster = (clipboard: Clipboard, restoreMs = 400) => {
 /** The running sidecar's input; null while it is not running. */
 export interface SidecarHands {
   readonly input: (input: SidecarInput) => Promise<void>;
-  /** Pastes into the window with the keyboard only, with clipboard history and cloud sync kept out. */
-  readonly paste: (text: string) => Promise<void>;
+  /**
+   * Pastes into the window with the keyboard only, with clipboard history and cloud sync kept out. False when that
+   * window cannot be told apart in time: the clipboard paste stands in. Throws when the keyboard moved elsewhere.
+   */
+  readonly paste: (text: string) => Promise<boolean>;
 }
 
 const LEFT = [0x2, 0x4];
@@ -299,9 +302,10 @@ export const createInputDriver = (input: {
         if (isCopyChord(list)) paste.cancelRestore();
         return keys(list);
       },
-      type: (text) => {
+      type: async (text) => {
         const side = input.sidecar?.() ?? null;
-        return side !== null ? side.paste(text) : paste(text, () => keys(["ctrl", "v"]));
+        if (side !== null && (await side.paste(text))) return;
+        await paste(text, () => keys(["ctrl", "v"]));
       },
       dispose: () => ps?.dispose(),
     };
