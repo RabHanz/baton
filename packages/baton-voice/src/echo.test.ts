@@ -301,6 +301,8 @@ describe("a yes or no asked aloud", () => {
     for (const [said, want] of [
       ["Yes.", "yes"],
       ["No.", "no"],
+      // A new sentence instead of an answer lapses the question as a no, so the turn waiting on it ends.
+      ["Explain how a VPN works.", "no"],
     ] as const) {
       const r = asking(said);
       const question = r.core.confirm("Run it?");

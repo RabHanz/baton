@@ -83,6 +83,7 @@ import {
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { createTurnLedger } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
@@ -1099,6 +1100,8 @@ export const startScreenCompanion = (input: {
     // Stopping Baton stops the assistant's turn too; the next one starts a fresh session from the file.
     agent?.dispose();
     agent = null;
+    // A question the stopped turn was waiting on goes with it: no later sentence may answer it.
+    windows.closePrompt(true);
   };
 
   const toolGate = async (call: ToolCall) => {
@@ -1594,19 +1597,11 @@ export const startScreenCompanion = (input: {
     }
   };
   type BatonToolType = ReturnType<typeof buildBatonTools>[number];
-  const agentTools: string[] = [];
+  /** Each turn's tools, results, decisions and routes, kept apart from the next turn's. */
+  const turns = createTurnLedger();
   // Cleared each turn: a tool that failed twice in one turn may work in the next.
   const toolFailures = new Map<string, number>();
-  const agentResults: Array<{
-    readonly tool: string;
-    readonly ok: boolean;
-    readonly error?: string;
-  }> = [];
-  /** Which browser route ran and why, for the turn log. */
-  const agentRoutes: Array<{ readonly route: string; readonly why: string }> = [];
   let chromeRelaunched = false;
-  /** What the gate decided about each call this turn: allowed, he said yes, he said no, refused. */
-  const agentDecisions: Array<{ readonly tool: string; readonly outcome: string }> = [];
   const agentGate = createAgentGate({
     actWithoutAsking: () => settings.actWithoutAsking,
     chrome: {
@@ -1639,8 +1634,10 @@ export const startScreenCompanion = (input: {
     },
     record: (entry) => {
       if (typeof entry["tool"] === "string") {
-        agentTools.push(entry["tool"]);
-        agentDecisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
+        // The tool itself is listed once, by onTool.
+        turns
+          .current()
+          .decisions.push({ tool: entry["tool"], outcome: String(entry["outcome"] ?? "") });
         // Not "Thinking" while it clicks and types: the pill is the one line that says what it is doing.
         input.onActivity?.("Working");
       }
@@ -1677,6 +1674,24 @@ export const startScreenCompanion = (input: {
     record: (entry) => input.onAction?.({ by: "remote-hands", ...entry }),
     keysAllowed: (at) => void (remoteKeysAllowed = at),
   });
+  // Its pointer clicks ask every call, as its taint does not carry over; away, the answer is no (CU-6).
+  const remoteMouse = createMouseConsent(async () =>
+    settings.remoteHandsAway
+      ? false
+      : (await askHandsFree(
+          {
+            title: "Remote: use your mouse?",
+            detail:
+              "A remote session needs to use your mouse: the pointer moves and clicks. Say no and nothing is clicked.",
+            buttons: ["Go ahead", "Not now"],
+            cancel: 1,
+            scoped: true,
+          },
+          "A remote session needs to use your mouse. Is that all right?",
+          0,
+          true,
+        )) === 0,
+  );
   /** A remote session at work shows as one line in the pill, gone a moment after its last call. */
   let remoteQuiet: ReturnType<typeof setTimeout> | null = null;
   const remoteActivity = (tool: string | null) => {
@@ -1700,6 +1715,7 @@ export const startScreenCompanion = (input: {
           ops: input.remoteOps,
           foreground: {
             clickAt: async (to, double) => {
+              await remoteMouse.need();
               const dip = Electron.screen.screenToDipPoint(to);
               await pointerAction(dip, () => driverFor().clickAt(dip, "left", double ? 2 : 1));
             },
@@ -1996,7 +2012,7 @@ export const startScreenCompanion = (input: {
         accessibility,
         relaunchApproved: chromeRelaunched,
       });
-      agentRoutes.push({ route: choice.route, why: choice.why });
+      turns.current().routes.push({ route: choice.route, why: choice.why });
       return [
         `${choice.route}: ${choice.why}`,
         ...choice.steps.map((step) => `- ${step}`),
@@ -2251,7 +2267,7 @@ export const startScreenCompanion = (input: {
       tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
       gate: agentGate,
       scrub: (text) => vaultHost?.scrub(text) ?? text,
-      onResult: (r) => agentResults.push(r),
+      onResult: (r) => turns.current().results.push(r),
     });
     return startVisionSession({
       claudeBinary: settings.claudeBinary,
@@ -2266,7 +2282,7 @@ export const startScreenCompanion = (input: {
       gate: harnessGate,
       mcp: { url: agentMcp.url, token: agentMcp.token },
       chrome: settings.browserChrome,
-      onTool: (call) => agentTools.push(call.tool),
+      onTool: (call) => turns.current().tools.push(call.tool),
     });
   };
   const agentOf = (): AssistantAgent => {
@@ -2299,11 +2315,8 @@ export const startScreenCompanion = (input: {
         agentTaint.reset(said);
         planGrant = null;
         keysAllowed = null;
-        agentTools.length = 0;
+        turns.begin();
         toolFailures.clear();
-        agentResults.length = 0;
-        agentDecisions.length = 0;
-        agentRoutes.length = 0;
         leftPointer = null;
         mouse.reset();
       },
@@ -2318,6 +2331,8 @@ export const startScreenCompanion = (input: {
     focusedSession: string | null,
   ) => {
     answering += 1;
+    const mine = turns.ask();
+    const record = mine.record;
     let firstTokenAt: number | null = null;
     let firstAudioAt: number | null = null;
     try {
@@ -2352,13 +2367,13 @@ export const startScreenCompanion = (input: {
         project,
         said: text,
         reply,
-        decisions: [...agentDecisions],
-        routes: [...agentRoutes],
+        decisions: [...record().decisions],
+        routes: [...record().routes],
         firstTokenMs: firstTokenAt === null ? null : firstTokenAt - started,
         firstAudioMs: firstAudioAt === null ? null : firstAudioAt - started,
         totalMs: Date.now() - started,
-        tools: [...agentTools],
-        toolResults: [...agentResults],
+        tools: [...record().tools],
+        toolResults: [...record().results],
         route: "agent",
       });
     } catch (error) {
@@ -2371,10 +2386,10 @@ export const startScreenCompanion = (input: {
         said: text,
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
-        tools: [...agentTools],
-        toolResults: [...agentResults],
-        decisions: [...agentDecisions],
-        routes: [...agentRoutes],
+        tools: [...record().tools],
+        toolResults: [...record().results],
+        decisions: [...record().decisions],
+        routes: [...record().routes],
         route: "agent",
       });
       // Nothing said or done yet and not stopped by him: hand the sentence to the older router and say so.
@@ -2382,8 +2397,8 @@ export const startScreenCompanion = (input: {
       if (
         error instanceof SessionClosed ||
         firstTokenAt !== null ||
-        agentTools.length > 0 ||
-        agentResults.length > 0
+        record().tools.length > 0 ||
+        record().results.length > 0
       ) {
         return fail(error);
       }
@@ -2409,6 +2424,7 @@ export const startScreenCompanion = (input: {
       }
     } finally {
       answering -= 1;
+      mine.done();
       input.onTurnEnd?.();
     }
   };
@@ -2603,6 +2619,7 @@ export const startScreenCompanion = (input: {
         if (!settings.remoteHands)
           return { ok: false, error: "Remote hands are off on this computer." };
         remoteTaint.reset();
+        remoteMouse.reset();
         remoteActivity(call.tool);
         try {
           const tool = remoteToolsOf().get(call.tool);
