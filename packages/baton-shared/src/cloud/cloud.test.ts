@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { CARD_START, fromSpoken, offerQuestion, reduceCard, type CardState } from "./card.ts";
 import { sshProviders } from "./sshShell.ts";
@@ -519,6 +519,36 @@ describe("transport 1: this computer's own harness", () => {
     expect(during.ok && during.value.find((r) => r.id === "L-2")?.state).toBe("approved");
     release();
     expect((await pending).ok).toBe(true);
+  });
+
+  it("leaves a request another process is still starting, and resets one whose starter is gone or overran", async () => {
+    using _now = vi.spyOn(Date, "now").mockReturnValue(10_000_000);
+    const { store, brief } = memoryStores();
+    const p = localProvider(claudeHarness(fakeExec(() => ({})).exec), store, brief);
+    await p.dispatch(input);
+    await p.dispatch(input);
+    await p.dispatch(input);
+    // The desktop and the server share this list; a fresh start by a live process must survive the other's load.
+    const owners = [
+      { pid: process.pid, at: 10_000_000 },
+      { pid: 2 ** 30, at: 10_000_000 },
+      { pid: process.pid, at: 0 },
+    ];
+    store.save(
+      store.load().map((r, i) => ({
+        ...r,
+        state: "approved" as const,
+        account: "me",
+        startedBy: owners[i]!,
+      })),
+    );
+    const listed = await p.list({});
+    expect(listed.ok && listed.value.map((r) => r.state)).toEqual([
+      "approved",
+      "awaiting-director",
+      "awaiting-director",
+    ]);
+    expect((await p.approve("L-1", "me", "r")).ok).toBe(false);
   });
 
   it("withdraws a waiting request but not a running one, and denies without running", async () => {

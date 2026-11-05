@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 /**
  * The default way (transport 1): Tessaya runs the harness's own program on this computer, with this
  * computer's own login. No server, no keys, nothing to set up. A request waits in a small local list
@@ -53,24 +54,38 @@ export interface LocalHarness {
 
 const fail = <T>(error: string): Outcome<T> => ({ ok: false, error });
 
-/**
- * Starts in flight in this process. A request is `approved` only while its start runs; after a crash or quit none
- * is in flight, so one left `approved` goes back to waiting and can be approved, withdrawn or denied again.
- */
-const starting = new Set<string>();
+/** Longer than any harness's start timeout: a start older than this has died without saying so. */
+const START_LIMIT_MS = 5 * 60_000;
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+};
 
 export const localProvider = (
   h: LocalHarness,
   store: PendingStore,
   briefs: BriefStore,
 ): CloudProvider => {
+  // A request is `approved` only while its start runs. One whose starter has gone (crash, quit) or overran goes back
+  // to waiting; one another process (desktop or server, same list) is still starting is left alone.
   const load = (): ReadonlyArray<CloudRequest> => {
     const list = store.load();
-    const stuck = (r: CloudRequest) => r.state === "approved" && !starting.has(`${h.id}:${r.id}`);
+    const stuck = (r: CloudRequest) =>
+      r.state === "approved" &&
+      (r.startedBy === undefined ||
+        !alive(r.startedBy.pid) ||
+        Date.now() - r.startedBy.at > START_LIMIT_MS);
     if (!list.some(stuck)) return list;
-    const healed = list.map((r) =>
-      stuck(r) ? { ...r, state: "awaiting-director" as const, account: null } : r,
-    );
+    const healed = list.map((r) => {
+      if (!stuck(r)) return r;
+      const { startedBy: _gone, ...rest } = r;
+      return { ...rest, state: "awaiting-director" as const, account: null };
+    });
     store.save(healed);
     return healed;
   };
@@ -162,10 +177,13 @@ export const localProvider = (
       const brief = briefs.get(id);
       if (brief === null) return fail("The brief for that request is gone. Ask again.");
       // Claimed before the start, which can take minutes: a second approval meanwhile finds it no longer waiting.
-      const key = `${h.id}:${id}`;
-      starting.add(key);
-      replace({ ...r, state: "approved", account });
-      const started = await h.start(r, brief, account).finally(() => starting.delete(key));
+      replace({
+        ...r,
+        state: "approved",
+        account,
+        startedBy: { pid: process.pid, at: Date.now() },
+      });
+      const started = await h.start(r, brief, account);
       if (!started.ok) {
         replace(r);
         return started;
