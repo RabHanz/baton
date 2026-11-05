@@ -146,6 +146,8 @@ export interface DictationSidecar {
     readonly invoke?: boolean;
   }) => Promise<LocatedElement>;
   readonly uiTree: (window?: string) => Promise<UiTree>;
+  /** A running count of desktop changes (foreground, menus, focus, values) from WinEvents. */
+  readonly uiChanges: () => Promise<{ readonly count?: number; readonly error?: string }>;
   readonly input: (input: SidecarInput) => Promise<void>;
   /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
   readonly setValue: (
@@ -387,6 +389,7 @@ export const startDictationSidecar = (input: {
       call<{ window: number; label: string } | null>({ cmd: "window_at", x, y }),
     nudge: (dx, dy) => send({ cmd: "nudge", dx, dy }),
     locate: (input) => call<LocatedElement>({ cmd: "locate", ...input }),
+    uiChanges: () => call<{ count?: number; error?: string }>({ cmd: "ui_changes" }),
     uiTree: (window) =>
       call<UiTree>({ cmd: "ui_tree", ...(window === undefined ? {} : { window }) }),
     input: (input) => call<void>({ cmd: "input", ...input }),

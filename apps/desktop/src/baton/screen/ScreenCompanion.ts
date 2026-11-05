@@ -40,6 +40,7 @@ import {
   planFromReply,
   runDrivePlan,
   screensDifference,
+  teachShouldLook,
   isShellWindow,
   missingDisplaysNote,
   screenLabel,
@@ -274,6 +275,8 @@ export interface AssistantActions {
         readonly pasteInto: (text: string, target: number) => Promise<boolean>;
       })
     | null;
+  /** The sidecar's running count of desktop changes; null where there is none. */
+  readonly uiChanges?: () => Promise<number | null>;
   /** What the window with the keyboard offers, by kind and name; null when the tree cannot be read. */
   readonly uiTree?: () => Promise<{
     readonly window: string;
@@ -1345,24 +1348,32 @@ export const startScreenCompanion = (input: {
     let moved = false;
     let still = 0;
     let polling = false;
+    // Until his step moves the screen, a picture is taken only after the desktop reports a change (CU-10).
+    let quiet: { seen: number | null; quiet: number } = { seen: null, quiet: 0 };
     // A step is never replaced under him: it has been said and could have been read first.
     let armed = false;
     void Promise.all([speech.finished(), sleep(readingMs(step))]).then(() => (armed = true));
     lesson.watcher = setInterval(() => {
       if (polling || !armed || run !== lesson || lesson.busy) return;
       polling = true;
-      void fingerprint()
-        .then((now) => {
-          // shortcut: a video playing on either display reads as change and never settles, so that
-          // lesson waits for "next"; judge only the step's own display if he hits it.
-          if (!moved && screensDifference(baseline, now, PIXEL) > CHANGED) moved = true;
-          else if (moved && previous !== null) {
-            // Two quiet polls (~2 s), so a pause between typed words is not "done".
-            still = screensDifference(previous, now, PIXEL) < SETTLED ? still + 1 : 0;
-            if (still >= 2) void teachStep("the screen just changed.").catch(fail);
-          }
-          previous = now;
-        })
+      void (async () => {
+        if (!moved) {
+          const count = (await actions?.uiChanges?.().catch(() => null)) ?? null;
+          const next = teachShouldLook(quiet, count);
+          quiet = next;
+          if (!next.look) return;
+        }
+        const now = await fingerprint();
+        // shortcut: a video playing on either display reads as change and never settles, so that
+        // lesson waits for "next"; judge only the step's own display if he hits it.
+        if (!moved && screensDifference(baseline, now, PIXEL) > CHANGED) moved = true;
+        else if (moved && previous !== null) {
+          // Two quiet polls (~2 s), so a pause between typed words is not "done".
+          still = screensDifference(previous, now, PIXEL) < SETTLED ? still + 1 : 0;
+          if (still >= 2) void teachStep("the screen just changed.").catch(fail);
+        }
+        previous = now;
+      })()
         .catch(() => undefined)
         .finally(() => (polling = false));
     }, 900);
