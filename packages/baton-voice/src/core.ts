@@ -299,7 +299,8 @@ export const createVoiceCore = (input: {
         if (answer !== undefined) {
           asked.delete(effect.token);
           answer(
-            effect.kind === "confirmed" ? "yes" : effect.reason === "declined" ? "no" : "expired",
+            // Superseded by another sentence or question is a no: the turn waiting on it must end, not wait on.
+            effect.kind === "confirmed" ? "yes" : effect.reason === "expired" ? "expired" : "no",
           );
           continue;
         }
