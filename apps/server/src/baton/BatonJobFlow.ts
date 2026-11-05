@@ -28,6 +28,7 @@ import {
   retryText,
 } from "@t3tools/baton-shared/jobReport";
 import {
+  jobChanges,
   outboundDecision,
   permissionsSummary,
   workerFirstMessage,
@@ -57,6 +58,7 @@ import { spendOf, type Spend } from "./BatonJobSpend.ts";
 import { planningFrame, readPack, readRouting } from "./OperatingSystemPack.ts";
 import { modelFor } from "@t3tools/baton-shared/costRouting";
 import { BatonJobService } from "./BatonJobService.ts";
+import { BatonRecordService } from "./BatonRecordService.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
@@ -707,4 +709,38 @@ export const postReports = Effect.fn("BatonJobFlow.postReports")(function* (
     wrote.push(card.workSessionId);
   }
   return wrote;
+});
+
+/** Where each job stood when last written to the Record, read back so a restart sees changes made while it was down. */
+export const jobRecordSeed = Effect.fn("BatonJobFlow.jobRecordSeed")(function* () {
+  const seen = new Map<string, string>();
+  const record = yield* Effect.serviceOption(BatonRecordService);
+  if (Option.isNone(record)) return seen;
+  // Newest first, so the first row per job is where it stands.
+  for (const row of yield* record.value.query({ kind: "job", limit: 500 }))
+    if (row.ref !== null && !seen.has(row.ref)) seen.set(row.ref, row.outcome);
+  return seen;
+});
+
+/** Each job whose phase or standing changed, as one Record row. */
+export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(function* (
+  entries: ReadonlyArray<BatonFleetEntry>,
+  seen: Map<string, string>,
+) {
+  const record = yield* Effect.serviceOption(BatonRecordService);
+  if (Option.isNone(record)) return;
+  const changes = jobChanges(yield* (yield* BatonJobService).view({ entries }), seen);
+  if (changes.length === 0) return;
+  const projects = new Map((yield* (yield* BatonEngine).projects).map((p) => [p.id, p.title]));
+  for (const { job, outcome } of changes) {
+    const projectId = entries.find((e) => e.workSessionId === job.workSessionId)?.projectId;
+    yield* record.value.append({
+      kind: "job",
+      actor: "job",
+      project: projectId === undefined ? null : (projects.get(projectId) ?? null),
+      ref: job.workSessionId,
+      subject: job.title,
+      outcome,
+    });
+  }
 });

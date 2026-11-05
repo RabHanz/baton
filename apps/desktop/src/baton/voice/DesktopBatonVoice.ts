@@ -19,6 +19,7 @@ import type {
   BatonWeaveBridgeRequest,
   BatonCloudBridgeRequest,
   BatonMemoryBridgeRequest,
+  BatonRecordEntry,
   WatchFinding,
 } from "@t3tools/baton-contracts";
 import {
@@ -382,6 +383,7 @@ import { computeInsights } from "./insights.ts";
 import { readCaretContext } from "./caretContext.ts";
 import { describeJobs } from "../agent/jobText.ts";
 import { deskCall } from "./deskCall.ts";
+import { buildAuditTrail, describeAuditTrail } from "@t3tools/baton-shared/audit";
 import { describeWatch } from "@t3tools/baton-shared/watch";
 import {
   freshFindings,
@@ -1923,6 +1925,25 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         );
       if (op === "trust_show") return describeTrust(trustData(), Date.now());
       if (op === "activity_today") return describeToday(trustData().entries, new Date());
+      if (op === "record") {
+        // The Record lives on this machine's own server, read directly whether or not T3's window is up.
+        if (input.direct === undefined) return "The Record is not available here.";
+        const hours = typeof args["since_hours"] === "number" ? args["since_hours"] : null;
+        const value = (await input.direct("baton.record.list", {
+          ...(hours === null
+            ? {}
+            : { since: new Date(Date.now() - hours * 3_600_000).toISOString() }),
+          ...(typeof args["project"] === "string" ? { project: args["project"] } : {}),
+          limit: 60,
+        })) as { entries?: ReadonlyArray<BatonRecordEntry> } | null;
+        return describeAuditTrail(buildAuditTrail({ record: value?.entries ?? [] }), (iso) =>
+          new Date(iso).toLocaleString(undefined, {
+            weekday: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        );
+      }
       if (op === "permission_off") {
         const what = permissionFromWords(String(args["what"] ?? ""));
         if (what === null)

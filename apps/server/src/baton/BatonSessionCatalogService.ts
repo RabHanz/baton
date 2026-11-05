@@ -37,6 +37,7 @@ import { retireHandoff, type RetireResult } from "./RetireHandoff.ts";
 import { appendResumeLog } from "./ResumeLog.ts";
 import { AdoptedSessionService } from "./AdoptedSessionService.ts";
 import { BatonEngine } from "./BatonEngine.ts";
+import { BatonRecordService } from "./BatonRecordService.ts";
 import { isTessayaOwnFolder } from "./ClaudeLiveSessions.ts";
 import {
   autoResumeAllowed,
@@ -58,6 +59,8 @@ import { isProviderAvailable } from "@t3tools/baton-contracts";
 import { herdrSend } from "./HerdrSend.ts";
 import {
   OUTCOME_MEMORY_MS,
+  outcomeRecord,
+  outcomesFromRecord,
   watchLiveSessions,
   type WatchdogOutcome,
 } from "@t3tools/baton-shared/watch";
@@ -158,6 +161,7 @@ export const layer = Layer.effect(
     const projects = yield* Effect.serviceOption(ProjectService);
     const importer = yield* Effect.serviceOption(AgentSessionImporter);
     const engine = yield* Effect.serviceOption(BatonEngine);
+    const record = yield* Effect.serviceOption(BatonRecordService);
     const registry = yield* Effect.serviceOption(
       ProviderInstanceRegistryModule.ProviderInstanceRegistry,
     );
@@ -418,8 +422,14 @@ export const layer = Layer.effect(
     const FRESH_MS = 6 * HOUR_MS;
     // What the watchdog did about each session that died mid-turn, for the watch; one per session, kept from its first sighting.
     const outcomes = new Map<string, WatchdogOutcome>();
+    // Read back from the Record, so a death the watchdog saw before a restart is still reported after it.
+    if (Option.isSome(record)) {
+      const since = new Date(Date.now() - OUTCOME_MEMORY_MS).toISOString();
+      const rows = yield* record.value.query({ kind: "session", since, limit: 500 });
+      for (const o of outcomesFromRecord(rows).toReversed()) outcomes.set(o.sessionId, o);
+    }
     const noteOutcome = (
-      t: { sessionId: string; title: string },
+      t: { sessionId: string; title: string; cwd: string | null },
       resumed: boolean,
       why?: string,
     ) => {
@@ -428,6 +438,20 @@ export const layer = Layer.effect(
       for (const [id, o] of outcomes)
         if (Date.now() - o.at > OUTCOME_MEMORY_MS) outcomes.delete(id);
       resumeLog({ event: resumed ? "auto-resumed" : "not-resumed", sessionId: t.sessionId, why });
+      if (Option.isSome(record))
+        void Effect.runPromiseWith(services)(
+          record.value.append({
+            ...outcomeRecord({
+              sessionId: t.sessionId,
+              title: t.title,
+              resumed,
+              ...(why === undefined ? {} : { why }),
+            }),
+            actor: "watchdog",
+            project: t.cwd === null ? null : NodePath.basename(t.cwd),
+            ref: t.sessionId,
+          }),
+        );
       outcomes.set(t.sessionId, {
         sessionId: t.sessionId,
         title: t.title,

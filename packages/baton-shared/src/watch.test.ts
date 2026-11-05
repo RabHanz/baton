@@ -2,7 +2,13 @@ import type { BatonFleetEntry } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { describeWatch, watchFleet, watchLiveSessions } from "./watch.ts";
+import {
+  describeWatch,
+  outcomeRecord,
+  outcomesFromRecord,
+  watchFleet,
+  watchLiveSessions,
+} from "./watch.ts";
 
 const NOW = Date.parse("2026-11-02T12:00:00.000Z");
 const ago = (min: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - min * 60_000));
@@ -96,5 +102,32 @@ describe("watching his terminal sessions", () => {
       at: NOW,
     };
     expect(watchLiveSessions([live("s", "busy", 1)], [outcome], NOW)).toEqual([]);
+  });
+  it("reads what the watchdog did back from the Record, so a server restart still reports it", () => {
+    const died = { sessionId: "s", title: "Fix login", resumed: false, why: "stopped on purpose" };
+    const rows = [
+      { ...outcomeRecord(died), id: 2, at: ago(3), actor: "watchdog", project: null, ref: "s" },
+      {
+        id: 1,
+        at: ago(9),
+        kind: "job",
+        actor: "job",
+        project: null,
+        ref: "j",
+        subject: "J",
+        outcome: "done",
+        detail: "",
+      },
+    ];
+    const found = watchLiveSessions([], outcomesFromRecord(rows), NOW);
+    expect(found).toEqual([
+      {
+        workSessionId: "s",
+        title: "Fix login",
+        kind: "failed",
+        minutes: 3,
+        lastDid: "died mid-turn, not resumed: stopped on purpose",
+      },
+    ]);
   });
 });

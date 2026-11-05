@@ -27,6 +27,7 @@ import * as BatonDatabase from "./BatonDatabase.ts";
 import * as BatonEngine from "./BatonEngine.ts";
 import * as BatonJobReactor from "./BatonJobReactor.ts";
 import * as BatonJobService from "./BatonJobService.ts";
+import * as BatonRecordService from "./BatonRecordService.ts";
 import * as BatonWeaveBoxes from "./BatonWeaveBoxes.ts";
 import * as BatonCloudService from "./BatonCloudService.ts";
 import * as BatonSessionCatalogService from "./BatonSessionCatalogService.ts";
@@ -115,6 +116,8 @@ const servicesInner = IntentService.layer.pipe(
       BatonOneShot.layer,
     ),
   ),
+  // The Record under everything above, so any service can write to it.
+  Layer.provideMerge(BatonRecordService.layer),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.
   Layer.provide(BatonDatabase.layer),
 );

@@ -1,3 +1,4 @@
+import type { BatonJob } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -8,6 +9,7 @@ import {
   workerFirstMessage,
   workerMayExecute,
   type JobLifecycle,
+  jobChanges,
   jobLimits,
   limitReached,
   outboundDecision,
@@ -193,5 +195,36 @@ describe("a job from his words to work", () => {
     expect(text.startsWith("He asked: Rebuild the site, but keep Spotler's old logo.")).toBe(true);
     expect(text).toContain("What you may do: Works in the Site project.");
     expect(text).toContain("Do not start the work.");
+  });
+});
+
+describe("a job's changes for the Record", () => {
+  const job = (id: string, phase: string, group: string, limit: string | null = null) =>
+    ({
+      workSessionId: id,
+      title: `Job ${id}`,
+      phase,
+      group,
+      limitReached: limit,
+    }) as unknown as BatonJob;
+  it("names each change once, and says nothing about a job it is seeing for the first time", () => {
+    const seen = new Map([
+      ["a", "writing its plan"],
+      ["b", "running"],
+    ]);
+    const changes = jobChanges(
+      [
+        job("a", "awaiting_agreement", "needs_you"),
+        job("b", "approved", "failed", "turns"),
+        job("c", "approved", "running"),
+      ],
+      seen,
+    );
+    expect(changes.map((c) => `${c.job.workSessionId}:${c.outcome}`)).toEqual([
+      "a:plan waits for his OK",
+      "b:stopped at its turns limit",
+    ]);
+    expect(seen.get("c")).toBe("running");
+    expect(jobChanges([job("a", "awaiting_agreement", "needs_you")], seen)).toEqual([]);
   });
 });
