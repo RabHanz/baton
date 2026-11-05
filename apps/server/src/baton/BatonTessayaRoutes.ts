@@ -6,10 +6,12 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { BatonRpcGroup } from "@t3tools/baton-contracts";
 import { buildPhoneState } from "@t3tools/baton-shared/phone";
 import { watchFleet } from "@t3tools/baton-shared/watch";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
@@ -17,7 +19,9 @@ import * as ServerConfig from "../config.ts";
 import * as JobFlow from "./BatonJobFlow.ts";
 import { BatonWeaveService } from "./BatonWeaveService.ts";
 import { BatonSessionCatalogService } from "./BatonSessionCatalogService.ts";
+import * as BatonRpcHandlers from "./BatonRpcHandlers.ts";
 import { BatonRuntime } from "./BatonRpcHandlers.ts";
+import { DESK_METHODS, missingBatonScope } from "./BatonRpcAuthorization.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { BatonPhoneInbox } from "./BatonPhoneInbox.ts";
 import { createHandsBroker } from "@t3tools/baton-shared/remoteHands";
@@ -25,6 +29,19 @@ import { handleHands } from "./BatonHandsApi.ts";
 import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./BatonTessayaApi.ts";
 import { transcribeWav } from "./BatonPhoneVoice.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./BatonTessayaPage.ts";
+
+/** Each direct-door method's payload decoder and result encoder, compiled once. */
+const DESK_CODECS = new Map(
+  [...DESK_METHODS].flatMap((tag) => {
+    const rpc = BatonRpcGroup.requests.get(tag);
+    if (rpc === undefined) return [];
+    const payload = rpc.payloadSchema as Schema.Codec<unknown>;
+    const success = rpc.successSchema as Schema.Codec<unknown>;
+    return [
+      [tag, { decode: Schema.decodeEffect(payload), encode: Schema.encodeUnknownEffect(success) }],
+    ];
+  }),
+);
 
 const PAGE_HEADERS = {
   "cache-control": "no-store",
@@ -227,6 +244,61 @@ export const routes = HttpRouter.use((router) =>
         ),
       ),
     );
+    // The desktop's own door to Tessaya's job, watch and memory methods while T3's window is closed: the same
+    // handlers, schemas and scopes as the WS RPC, for a fixed set of methods.
+    const handlers = yield* BatonRpcHandlers.makeHandlers;
+    const desk = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const session = yield* auth.authenticateHttpRequest(request).pipe(Effect.option);
+      if (session._tag === "None") {
+        return HttpServerResponse.jsonUnsafe({ message: "Not paired." }, { status: 401 });
+      }
+      const tag = new URL(request.url, "http://local").pathname.replace(/^\/tessaya\/desk\//, "");
+      const codec = DESK_CODECS.get(tag);
+      if (codec === undefined) {
+        return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 404 });
+      }
+      const missing = missingBatonScope(tag, session.value.scopes);
+      if (missing !== null) {
+        return HttpServerResponse.jsonUnsafe({ message: `Needs ${missing}.` }, { status: 403 });
+      }
+      const payload = yield* codec
+        .decode(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))))
+        .pipe(Effect.option);
+      if (payload._tag === "None") {
+        return HttpServerResponse.jsonUnsafe(
+          { message: "That request is not valid." },
+          { status: 400 },
+        );
+      }
+      const handler = (handlers as Record<string, (input: unknown, options: never) => unknown>)[
+        tag
+      ]!;
+      const result = yield* (
+        handler(payload.value, {} as never) as Effect.Effect<
+          unknown,
+          { reason?: unknown; message?: unknown }
+        >
+      ).pipe(Effect.flatMap(codec.encode), Effect.result);
+      if (result._tag === "Failure") {
+        const failure: { reason?: unknown; message?: unknown } = result.failure;
+        const reason =
+          typeof failure.reason === "string"
+            ? failure.reason
+            : typeof failure.message === "string"
+              ? failure.message
+              : "That could not be done. Nothing changed.";
+        return HttpServerResponse.jsonUnsafe({ message: reason }, { status: 422 });
+      }
+      return HttpServerResponse.jsonUnsafe({ value: result.success });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe({ message: "That did not work." }, { status: 500 }),
+        ),
+      ),
+    );
+    yield* router.add("POST", "/tessaya/desk/*", desk);
     yield* router.add("GET", "/tessaya/hands/*", handsApi);
     yield* router.add("POST", "/tessaya/hands/*", handsApi);
     yield* router.add("GET", "/tessaya/api/*", api);

@@ -158,6 +158,34 @@ export const BATON_RPC_REQUIRED_SCOPES = {
 >;
 
 /** The scope a caller lacks for this method, or null when it may call it. */
+/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, and memory. */
+export const DESK_METHODS: ReadonlySet<string> = new Set([
+  BATON_JOB_WS_METHODS.jobList,
+  BATON_JOB_WS_METHODS.jobAgree,
+  BATON_JOB_WS_METHODS.jobRefine,
+  BATON_JOB_WS_METHODS.jobStop,
+  BATON_JOB_WS_METHODS.jobSchedule,
+  BATON_JOB_WS_METHODS.jobGrant,
+  BATON_JOB_WS_METHODS.jobRevoke,
+  BATON_JOB_WS_METHODS.jobSplit,
+  BATON_WATCH_WS_METHODS.watchGet,
+  ...(
+    [
+      "list",
+      "search",
+      "add",
+      "edit",
+      "pin",
+      "forget",
+      "accept",
+      "recall",
+      "used",
+      "export",
+      "learn",
+    ] as const
+  ).map((op) => BATON_MEMORY_WS_METHODS[op]),
+]);
+
 export const missingBatonScope = (
   tag: string,
   scopes: ReadonlyArray<AuthEnvironmentScope>,

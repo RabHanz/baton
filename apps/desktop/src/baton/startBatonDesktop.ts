@@ -39,6 +39,7 @@ import { createLifecycleLog } from "./lifecycle/lifecycleLog.ts";
 import { markPhase, startStallWatch } from "./lifecycle/mainStall.ts";
 import { createBatonUpdater } from "./update/BatonUpdater.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { startScreenCompanion, type ScreenCompanion } from "./screen/ScreenCompanion.ts";
 import { startDesktopBatonVoice, type DesktopBatonVoice } from "./voice/DesktopBatonVoice.ts";
 import { createBridgeCatalogService } from "./sessions/catalogBridge.ts";
@@ -65,6 +66,7 @@ export const startBatonDesktop = Effect.gen(function* () {
   yield* ipc.handle(getBatonInjectionReport);
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const desktopWindow = yield* DesktopWindow.DesktopWindow;
+  const electronWindow = yield* ElectronWindow.ElectronWindow;
   const hostEnvironment = yield* HostProcess.Environment;
   const hostArchitecture = yield* HostProcess.Architecture;
   const context = yield* Effect.context<never>();
@@ -434,8 +436,33 @@ export const startBatonDesktop = Effect.gen(function* () {
           : mockCatalogService(),
       onChange: () => voice?.refresh(),
     }));
-    setTimeout(() => void catalog.refresh(), 8_000).unref();
-    setInterval(() => void catalog.refresh(), 45_000).unref();
+    // Asking the sidebar opens T3's window: a background refresh only runs while it is already up, or a closed T3 comes back.
+    const t3Up = () =>
+      run(electronWindow.main).then((main) => main._tag === "Some" && !main.value.isDestroyed());
+    const refreshIfT3Up = () =>
+      void t3Up().then((up) => {
+        if (up) void catalog.refresh();
+      });
+    // This machine's own server, with the desktop's local token, as the remote-hands loop calls it.
+    const direct = async (method: string, body: unknown): Promise<unknown> => {
+      const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
+      const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
+      if (config._tag === "None") throw new Error("The local server is not ready.");
+      const response = await fetch(new URL(`/tessaya/desk/${method}`, config.value.httpBaseUrl), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        value?: unknown;
+        message?: string;
+      };
+      if (!response.ok) throw new Error(json.message ?? "That could not be done. Nothing changed.");
+      return json.value;
+    };
+    setTimeout(refreshIfT3Up, 8_000).unref();
+    setInterval(refreshIfT3Up, 45_000).unref();
     markPhase("voice-start:begin");
     voice = startDesktopBatonVoice({
       loginEntry: environment.appUserModelId,
@@ -447,6 +474,8 @@ export const startBatonDesktop = Effect.gen(function* () {
       platform: environment.platform,
       env: hostEnvironment,
       ensureMainWindow: () => Effect.runPromiseWith(context)(desktopWindow.ensureMain),
+      mainWindowUp: t3Up,
+      direct,
       ...(screen === null ? {} : { extras: screen }),
       sessions,
       catalog,

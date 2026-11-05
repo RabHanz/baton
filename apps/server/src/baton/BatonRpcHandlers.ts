@@ -46,6 +46,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -199,12 +200,13 @@ const handoff = Effect.fn("fabric.workSession.handoff")(function* (input: WorkSe
   return { workSession: yield* workSessions.get(input.id) };
 });
 
-export const make = Effect.gen(function* () {
+/** The handler functions themselves, for the WS group and for the desktop's own direct door (BatonTessayaRoutes). */
+export const makeHandlers = Effect.gen(function* () {
   const context = yield* BatonRuntime;
   const run = <A, E>(effect: Effect.Effect<A, E, BatonServices>): Effect.Effect<A, E> =>
     context === null ? Effect.die(unavailable()) : Effect.provideContext(effect, context);
 
-  return yield* BatonRpcGroup.toHandlers({
+  return {
     [BATON_ACCOUNT_WS_METHODS.accountPool]: (input) =>
       run(
         Effect.flatMap(AccountPoolService, (pool) =>
@@ -657,5 +659,7 @@ export const make = Effect.gen(function* () {
       context === null
         ? Stream.die(unavailable())
         : workSessionStream(Context.get(context, WorkSessionService)),
-  });
+  } satisfies RpcGroup.HandlersFrom<RpcGroup.Rpcs<typeof BatonRpcGroup>>;
 });
+
+export const make = Effect.flatMap(makeHandlers, (handlers) => BatonRpcGroup.toHandlers(handlers));
