@@ -12,7 +12,7 @@ export const DARK_TOKENS = `[data-theme=dark]{
   --warn:#e3a553;--warn-wash:#33270f;--bad:#f08a80;--bad-wash:#3b1f1c;
   --hover:rgba(255,255,255,.055);--row-hover:rgba(255,255,255,.035);--quiet:#2a2c32;--accent-edge:#2D5A5F;--accent-text:#5FB3B3;
   --focus:#5FB3B3;--on-ink:#15161a;--on-deep:#EEEDE4;--on-deep-soft:#9FD0D0;--btn-deep-bg:#EEEDE4;--btn-deep-fg:#0F1B1E;
-  --card:#1e1f24;--field:#141518;--hl:rgba(227,165,83,.4);--indigo:#9DB0FF;--damson:#CBA3DD;--lichen:#B9D075;--leaf:#6CCB9A;
+  --card:#1e1f24;--field:#141518;--indigo:#9DB0FF;--damson:#CBA3DD;--lichen:#B9D075;--leaf:#6CCB9A;
   --card-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 28px -18px rgba(0,0,0,.7);--field-shadow:inset 0 1px 2px rgba(0,0,0,.4);
   --edge:rgba(255,255,255,.09);--panel-shadow:inset 0 1px 0 rgba(255,255,255,.05);--veil:rgba(0,0,0,.6);
   --modal-shadow:0 0 0 1px rgba(255,255,255,.08),0 30px 80px -20px rgba(0,0,0,.7);--arrow:%23a6a8b0;color-scheme:dark;
@@ -39,7 +39,7 @@ ${FONT_FACES}
   --ease:cubic-bezier(.2,.8,.2,1);--r:20px;--rc:18px;
   --hover:rgba(23,24,27,.05);--row-hover:rgba(248,247,244,.7);--quiet:#e6e4de;--accent-edge:#B7D2D5;--accent-text:#14505A;
   --focus:#14505A;--on-ink:#ffffff;--on-deep:#EEEDE4;--on-deep-soft:#BFD6D8;--btn-deep-bg:#f8f7f4;--btn-deep-fg:#17181b;
-  --card:#fffdf9;--field:#f4f0e7;--hl:#f2dd9a;--indigo:#2F4A9E;--damson:#6A2F7E;--lichen:#4F6B1F;--leaf:#1F7A4D;
+  --card:#fffdf9;--field:#f4f0e7;--indigo:#2F4A9E;--damson:#6A2F7E;--lichen:#4F6B1F;--leaf:#1F7A4D;
   --card-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(23,40,45,.05),0 10px 26px -18px rgba(23,40,45,.28);
   --field-shadow:inset 0 1px 2px rgba(23,40,45,.07);--edge:rgba(255,255,255,.7);
   --panel-shadow:0 1px 0 rgba(255,255,255,.8) inset,0 16px 44px -30px rgba(23,40,45,.4);--veil:rgba(23,24,27,.38);
@@ -140,7 +140,6 @@ html.live #navind.go{transition:transform var(--dur-slow) var(--ease-settle),opa
 /* Type: a serif for what is said, a sans for what is operated; the hue marks each section. */
 h1{font:400 42px/1.06 var(--serif);letter-spacing:-.025em;margin:0 0 6px}
 h1 em{font-style:italic;color:var(--hue-text)}
-.hl{background:linear-gradient(transparent 60%,var(--hl) 60% 90%,transparent 90%);padding:0 .1em;margin:0 -.1em;border-radius:4px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .lede{font:italic 400 17px/1.5 var(--serif);color:var(--soft);margin:0 0 26px;max-width:58ch}
 .dateline{font:600 12px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--hue-text);margin:0 0 10px}
 h2{display:flex;align-items:center;gap:10px;font:600 12px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin:38px 0 12px}
