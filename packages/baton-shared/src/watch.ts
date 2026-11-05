@@ -4,7 +4,12 @@
  * model's guess: a session is failed because its state says so, stalled because it says "working"
  * and nothing has happened for a long time.
  */
-import type { BatonFleetEntry, WatchFinding } from "@t3tools/baton-contracts";
+import {
+  WorkSessionId,
+  type BatonFleetEntry,
+  type ClaudeLiveSession,
+  type WatchFinding,
+} from "@t3tools/baton-contracts";
 
 export const WATCH_LIMITS = {
   /** Working, and no activity at all for this long. */
@@ -71,6 +76,77 @@ export const watchFleet = (
       }
     })
     .toSorted((a, b) => SEVERITY[a.kind] - SEVERITY[b.kind] || b.minutes - a.minutes);
+
+/** What the auto-resume watchdog did about a session that died mid-turn. */
+export interface WatchdogOutcome {
+  readonly sessionId: string;
+  readonly title: string;
+  readonly resumed: boolean;
+  /** Why it was not resumed, in words; absent when it was. */
+  readonly why?: string;
+  readonly at: number;
+}
+
+/** Outcomes are reported for this long, so "did anything fail overnight" still sees them in the morning. */
+export const OUTCOME_MEMORY_MS = 12 * 3_600_000;
+
+/**
+ * His terminal sessions, which are not work sessions: one waiting on him too long, and what the watchdog did
+ * about one that died (resumed, or why not). The session id stands where a work session's id would.
+ */
+export const watchLiveSessions = (
+  sessions: ReadonlyArray<
+    Pick<ClaudeLiveSession, "sessionId" | "name" | "cwd" | "status" | "updatedAt">
+  >,
+  outcomes: ReadonlyArray<WatchdogOutcome>,
+  now: number,
+  limits: typeof WATCH_LIMITS = WATCH_LIMITS,
+): ReadonlyArray<WatchFinding> => {
+  const minutesSince = (at: number) => Math.max(0, Math.floor((now - at) / 60_000));
+  const waiting = sessions.flatMap((s): ReadonlyArray<WatchFinding> => {
+    const at = Date.parse(s.updatedAt ?? "");
+    if (s.status !== "waiting" || Number.isNaN(at)) return [];
+    const minutes = minutesSince(at);
+    return minutes < limits.unansweredMinutes
+      ? []
+      : [
+          {
+            workSessionId: WorkSessionId.make(s.sessionId),
+            title:
+              (s.name ?? "").trim() || s.cwd.split(/[\\/]/).filter(Boolean).at(-1) || s.sessionId,
+            kind: "unanswered",
+            minutes,
+          },
+        ];
+  });
+  // The newest outcome per session: a later resume replaces an earlier "not resumed".
+  const latest = new Map<string, WatchdogOutcome>();
+  for (const o of outcomes) {
+    if (now - o.at <= OUTCOME_MEMORY_MS && (latest.get(o.sessionId)?.at ?? -1) <= o.at)
+      latest.set(o.sessionId, o);
+  }
+  const live = new Set(sessions.map((s) => s.sessionId));
+  const died = [...latest.values()].flatMap((o): ReadonlyArray<WatchFinding> =>
+    // A session not resumed that is running again was brought back some other way.
+    !o.resumed && live.has(o.sessionId)
+      ? []
+      : [
+          {
+            workSessionId: WorkSessionId.make(o.sessionId),
+            title: o.title.trim() || o.sessionId,
+            // "unseen", not a new kind: an older client fails to decode the whole answer on a literal it lacks.
+            kind: o.resumed ? "unseen" : "failed",
+            minutes: minutesSince(o.at),
+            lastDid: o.resumed
+              ? "resumed by itself after dying mid-turn"
+              : `died mid-turn, not resumed: ${o.why ?? "unknown"}`,
+          },
+        ],
+  );
+  return [...waiting, ...died].toSorted(
+    (a, b) => SEVERITY[a.kind] - SEVERITY[b.kind] || b.minutes - a.minutes,
+  );
+};
 
 const WORDS: Record<WatchFinding["kind"], string> = {
   failed: "failed",

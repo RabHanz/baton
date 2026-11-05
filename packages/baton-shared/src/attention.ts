@@ -60,6 +60,26 @@ const VERB: Record<WatchFinding["kind"], string> = {
   unseen: "finished",
 };
 
+/**
+ * A job whose plan is written and waits for his yes: said once, briefly, pointing at its thread. `told` is the
+ * set already said; a plan that is agreed or rewritten and ready again is said again.
+ */
+export const planReadyLine = (
+  jobs: ReadonlyArray<Pick<BatonJob, "workSessionId" | "title" | "phase">>,
+  told: ReadonlySet<string>,
+): { readonly line: string | null; readonly next: ReadonlySet<string> } => {
+  const ready = jobs.filter((j) => j.phase === "awaiting_agreement");
+  const fresh = ready.filter((j) => !told.has(j.workSessionId));
+  const first = fresh[0];
+  return {
+    line:
+      first === undefined
+        ? null
+        : `The plan for ${first.title} is ready in its thread${fresh.length > 1 ? `, and ${fresh.length - 1} more plans wait for you` : ""}.`,
+    next: new Set(ready.map((j) => j.workSessionId)),
+  };
+};
+
 /** One line, whatever the number: the first, and how many more. */
 export const noticeLine = (fresh: ReadonlyArray<WatchFinding>): string | null => {
   const first = fresh[0];

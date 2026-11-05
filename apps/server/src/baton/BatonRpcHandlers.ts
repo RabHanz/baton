@@ -360,7 +360,10 @@ export const make = Effect.gen(function* () {
       run(
         Effect.gen(function* () {
           const fleet = yield* FleetQuery.getFleet({});
-          return { findings: watchFleet(fleet.entries, yield* Clock.currentTimeMillis) };
+          const live = yield* (yield* BatonSessionCatalogService).watchFindings;
+          return {
+            findings: [...watchFleet(fleet.entries, yield* Clock.currentTimeMillis), ...live],
+          };
         }),
       ),
     [BATON_JOB_WS_METHODS.jobList]: () => run(Effect.map(JobFlow.listJobs(), (jobs) => ({ jobs }))),

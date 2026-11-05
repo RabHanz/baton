@@ -131,7 +131,7 @@ export const autoResumeAllowed = (input: {
   /** How long ago its transcript was last written; a very fresh stop is still inside the grace. */
   readonly idleMs?: number;
   readonly graceMs?: number;
-}): { readonly resume: boolean; readonly why: string } => {
+}): { readonly resume: boolean; readonly why: string; readonly capped?: true } => {
   if (!input.enabled) return { resume: false, why: "auto-resume is off here" };
   if (input.verdict !== "unfinished")
     return { resume: false, why: "its last turn finished or cannot be read" };
@@ -148,6 +148,6 @@ export const autoResumeAllowed = (input: {
     (t) => input.now - t < HOUR_MS,
   ).length;
   if (recent >= MAX_PER_HOUR)
-    return { resume: false, why: "already resumed three times this hour" };
+    return { resume: false, why: "already resumed three times this hour", capped: true };
   return { resume: true, why: "its last turn was cut off" };
 };

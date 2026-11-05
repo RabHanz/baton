@@ -385,6 +385,7 @@ import {
   isSilenced,
   morningBrief,
   noticeLine,
+  planReadyLine,
 } from "@t3tools/baton-shared/attention";
 import { contextFromLastInsert, fitInsertion } from "@t3tools/baton-shared/dictationFit";
 import { loginItemOn, setLoginItem } from "./loginItem.ts";
@@ -3068,6 +3069,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Unprompted lines (D146): only once T3's window exists (nothing is opened for this), never in quiet hours.
   let announced: ReadonlySet<string> = new Set();
+  let plansTold: ReadonlySet<string> = new Set();
   const watchFindings = async () =>
     (
       (await requestKept({ kind: "job", op: "watch", args: {} })) as {
@@ -3087,6 +3089,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       announced = next;
       const line = noticeLine(fresh);
       if (line !== null) input.extras?.announce(line, settings.noticeMode === "spoken");
+      const plans = (await requestKept({ kind: "job", op: "list", args: {} })) as {
+        jobs?: ReadonlyArray<BatonJob>;
+      } | null;
+      const ready = planReadyLine(plans?.jobs ?? [], plansTold);
+      plansTold = ready.next;
+      if (ready.line !== null) input.extras?.announce(ready.line, settings.noticeMode === "spoken");
     }
     const today = `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`;
     if (

@@ -3,7 +3,14 @@ import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { freshFindings, inQuietHours, isSilenced, morningBrief, noticeLine } from "./attention.ts";
+import {
+  freshFindings,
+  inQuietHours,
+  isSilenced,
+  morningBrief,
+  noticeLine,
+  planReadyLine,
+} from "./attention.ts";
 
 const f = (id: string, kind: WatchFinding["kind"]) =>
   ({ workSessionId: id, title: `Work ${id}`, kind, minutes: 40 }) as unknown as WatchFinding;
@@ -66,5 +73,23 @@ describe("being silenced", () => {
     expect(isSilenced({ quietHours: "none", doNotDisturb: true }, at)).toBe(true);
     expect(isSilenced({ quietHours: "none", snoozeUntil: at.getTime() + 1 }, at)).toBe(true);
     expect(isSilenced({ quietHours: "none", snoozeUntil: at.getTime() }, at)).toBe(false);
+  });
+});
+
+describe("a plan ready for his yes", () => {
+  const job = (id: string, phase: "drafting_plan" | "awaiting_agreement" | "approved") => ({
+    workSessionId: id as never,
+    title: `Job ${id}`,
+    phase,
+  });
+  it("is said once, pointing at its thread, and again only when it is ready again", () => {
+    const first = planReadyLine(
+      [job("a", "awaiting_agreement"), job("b", "drafting_plan")],
+      new Set(),
+    );
+    expect(first.line).toBe("The plan for Job a is ready in its thread.");
+    expect(planReadyLine([job("a", "awaiting_agreement")], first.next).line).toBeNull();
+    const agreed = planReadyLine([job("a", "approved")], first.next);
+    expect(planReadyLine([job("a", "awaiting_agreement")], agreed.next).line).not.toBeNull();
   });
 });
