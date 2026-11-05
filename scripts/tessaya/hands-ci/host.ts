@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
 // The real hands on a Windows desktop, without Electron: the same tool table the assistant uses
 // (batonTools.ts), the same input driver (inputDriver.ts) and the same UI Automation sidecar
 // (native/baton-dictation) behind it. Used by the hands-loop CI run (scripts/tessaya/hands-ci/run.ts).

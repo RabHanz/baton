@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off globalDate:off nodeBuiltinImport:off
 /* oxlint-disable t3code/namespace-node-imports -- Baton file predating the rule (D82) */
 // Builds nightly.json for the status branch from the nightly workflow's results (see .github/workflows/baton-nightly.yml).
 // Env: NEEDS (JSON of the needs context), RESULTS_DIR (one folder per ref holding result.json), MAIN_SHA, RELEASE_TAG, RUN_URL.

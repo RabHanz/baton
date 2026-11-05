@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * Puts the pill's sounds through the product's own wake scorer and Silero, at normal level and
  * louder, so "the chime cannot wake it" is a measurement. Prints the peak score per sound and gain.

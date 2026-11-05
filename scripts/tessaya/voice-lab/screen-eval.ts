@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /* oxlint-disable t3code/no-global-process-runtime, t3code/no-low-value-comments -- Baton file predating the rule (D82) */
 /**
  * Screen-context eval on a real capture of his desktop, with the real prompts and his claude. It

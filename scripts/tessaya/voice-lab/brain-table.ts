@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 /**
  * The intent table: real sentences through the real brain, on his own claude, with the real

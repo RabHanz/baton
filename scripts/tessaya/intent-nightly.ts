@@ -1,3 +1,4 @@
+// @effect-diagnostics globalConsole:off
 /* oxlint-disable t3code/no-global-process-runtime -- Baton file predating the rule (D82) */
 // @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**

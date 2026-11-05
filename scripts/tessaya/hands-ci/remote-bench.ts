@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off globalConsole:off globalRandom:off
 // Remote hands latency on a real Windows desktop: the remote tool table over ONE long-lived sidecar (as the app runs it), called
 // through the broker exactly as a remote session's call would be (call, take, run, reply). No network hop is included: add the
 // round trip of the connection. Prints a table and writes remote-bench.json.
@@ -84,7 +84,13 @@ await measure("click_element by pattern (Calculator, no focus)", 20, () => [
 ]);
 {
   // Why a pattern click can fail: what the tree holds and what a plain locate finds for "1".
-  const where = await call<Record<string, unknown>>({ cmd: "locate", label: "1", x: 0, y: 0, window: "Calculator" });
+  const where = await call<Record<string, unknown>>({
+    cmd: "locate",
+    label: "1",
+    x: 0,
+    y: 0,
+    window: "Calculator",
+  });
   const tree = await call<{ controls?: string[] }>({ cmd: "ui_tree", window: "Calculator" });
   console.log(`  locate "1": ${JSON.stringify(where)}`);
   console.log(`  tree: ${(tree.controls ?? []).slice(0, 40).join(" | ")}`);
@@ -122,7 +128,9 @@ for (const r of rows)
   console.log(`| ${r.step} | ${r.n} | ${r.ok} | ${r.p50} | ${r.p90} | ${r.max} |`);
 NodeFS.writeFileSync(NodePath.join(OUT, "remote-bench.json"), JSON.stringify(rows, null, 2));
 try {
-  ps("Get-Process -Name CalculatorApp,Calculator,win32calc,calc,notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue");
+  ps(
+    "Get-Process -Name CalculatorApp,Calculator,win32calc,calc,notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
+  );
 } catch {
   // best effort: nothing to stop is not a failure
 }
