@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { PILL_DOCUMENT } from "../voice/voicePill.ts";
 import { APP_CSS } from "./appStyle.ts";
 import { APP_SCRIPT } from "./appScript.ts";
+import { openWindowPage } from "./fakeDom.ts";
 import { HOME_DOCUMENT } from "./homeDocument.ts";
 
 describe("the window's accessibility", () => {
@@ -66,14 +67,25 @@ describe("the mark shows once", () => {
   });
 });
 
-describe("the mark breathes only while the window is in front", () => {
-  it("animates transform and opacity only, behind the live gate, and the gate follows focus and visibility", () => {
+describe("the mark breathes while the window can be seen", () => {
+  it("animates transform and opacity only, behind the live gate", () => {
     expect(APP_CSS).toMatch(/@keyframes breathe\{[^@]*transform:scale\(1\.03\)/);
     expect(APP_CSS).not.toMatch(/(?<!html\.live )\.brand #mark\{[^}]*animation:/);
     expect(APP_CSS).toMatch(/html\.live \.brand #mark\{animation:breathe 7s/);
-    for (const event of ["'focus'", "'blur'", "'visibilitychange'"])
-      expect(APP_SCRIPT).toContain(event);
     expect(APP_CSS).toMatch(/prefers-reduced-motion:reduce\)\{\*\{[^}]*animation:none/);
+  });
+
+  it("keeps breathing when the window loses focus, and stops when it is minimised or hidden", async () => {
+    const page = await openWindowPage(APP_SCRIPT, {
+      status: { label: "Listening", tone: "good", device: "", mark: "" },
+      controls: [],
+    });
+    const live = () => page.elements()[0]!.classList.contains("live");
+    page.exec("document.hasFocus = () => false; syncBreath()");
+    expect(live()).toBe(true);
+    page.exec("document.hidden = true; syncBreath()");
+    expect(live()).toBe(false);
+    expect(page.errors).toEqual([]);
   });
 });
 
