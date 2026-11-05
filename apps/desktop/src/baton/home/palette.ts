@@ -137,3 +137,23 @@ export const publishPaletteThemes = (stateDir: string): void => {
     if (old !== text) NodeFS.writeFileSync(file, text);
   }
 };
+
+/** The T3 window's own keys for its chosen theme and its light/dark mix (apps/web useTheme.ts, themePalette.ts). */
+export const T3_THEME_KEY = "t3code:theme";
+export const T3_THEME_HALVES_KEY = "t3code:theme-halves:v1";
+
+/**
+ * The T3 theme to select when he picks a palette here, or null to leave the T3 window alone. It follows while the
+ * T3 window wears one of Tessaya's themes, or while it is still on T3's untouched default and Tessaya has never set
+ * it. A theme he picked there himself, or a light/dark mix, is his: it is never replaced.
+ */
+export const linkedT3Theme = (
+  palette: Palette,
+  t3: { readonly theme: string | null; readonly halves: string | null },
+  linkedBefore: boolean,
+): string | null => {
+  const ours = t3.theme !== null && t3.theme.startsWith("tessaya-");
+  const untouched = (t3.theme === null || t3.theme === "system") && !linkedBefore;
+  const mixed = t3.halves !== null && t3.halves !== "null";
+  return !mixed && (ours || untouched) ? `tessaya-${palette}` : null;
+};

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { APP_CSS } from "./appStyle.ts";
 import {
+  linkedT3Theme,
   PALETTES,
   paletteThemeFile,
   parsePalette,
@@ -35,6 +36,20 @@ describe("the palettes", () => {
       ])
         expect(APP_CSS).toContain(half);
     expect(APP_CSS).not.toContain("palette-woad");
+  });
+
+  it("selects the matching T3 theme only while the T3 window is on Tessaya's or untouched", () => {
+    const t3 = (theme: string | null, halves: string | null = null) => ({ theme, halves });
+    expect(linkedT3Theme("damson", t3(null), false)).toBe("tessaya-damson");
+    expect(linkedT3Theme("damson", t3("system"), false)).toBe("tessaya-damson");
+    expect(linkedT3Theme("woad", t3("tessaya-damson"), true)).toBe("tessaya-woad");
+    // He went back to T3's default after a link, or picked his own: both are left alone.
+    expect(linkedT3Theme("madder", t3("system"), true)).toBeNull();
+    expect(linkedT3Theme("madder", t3("ocean"), false)).toBeNull();
+    expect(linkedT3Theme("madder", t3("dark"), false)).toBeNull();
+    expect(
+      linkedT3Theme("madder", t3("tessaya-woad", '{"light":"iris","dark":"tessaya-woad"}'), true),
+    ).toBeNull();
   });
 
   it("publishes theme files the T3 server accepts, and rewrites none that did not change", () => {
