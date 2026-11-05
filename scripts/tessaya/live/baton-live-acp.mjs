@@ -713,8 +713,13 @@ async function drainLocked(dir, sessionId, deps) {
   }
   const items = readQueue(dir, sessionId);
   if (items.length === 0) return;
-  if (items[0].held) return;
   const live = deps.findLive(sessionId);
+  if (items[0].held) {
+    // A failed resume's hold ends once the session is back in a pane by any route; "resuming" ends with its resume.
+    if (items[0].held === "resuming" || live === null || live.pane === null) return;
+    releaseQueue(dir, sessionId);
+    return drainLocked(dir, sessionId, deps);
+  }
   // Running in a plain terminal: it is not gone, so what waits is kept until it has a pane.
   if (live !== null && live.pane === null) return;
   if (live === null) {
