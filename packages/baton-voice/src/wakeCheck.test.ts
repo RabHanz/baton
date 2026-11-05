@@ -10,6 +10,7 @@ const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>)
   let fire = false;
   let speech = false;
   const heard: number[] = [];
+  const loud: number[] = [];
   const events: VoiceCoreEvent[] = [];
   const core = createVoiceCore({
     waitMs: () => 0,
@@ -29,19 +30,22 @@ const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>)
       name: "fake",
       transcribe: async (pcm) => {
         heard.push(pcm.length);
+        loud.push(pcm.filter((v) => v !== 0).length);
         return "what time is it";
       },
     },
   });
   core.subscribe((event) => events.push(event));
   const push = (seconds: number) => {
-    for (let i = 0; i < frames(seconds); i += 1) core.pushAudio(new Int16Array(FRAME));
+    for (let i = 0; i < frames(seconds); i += 1)
+      core.pushAudio(new Int16Array(FRAME).fill(speech ? 1_000 : 0));
   };
   return {
     core,
     push,
     events,
     heard,
+    loud,
     wake: () => (fire = true),
     speak: (on: boolean) => (speech = on),
   };
@@ -85,6 +89,24 @@ describe("the second check before a wake from sleep", () => {
     // The utterance reaches recognition with the speech that began during the check.
     expect(r.heard.length).toBeGreaterThan(0);
     expect(Math.max(...r.heard)).toBeGreaterThan(16_000 * 0.6);
+  });
+
+  it("keeps the whole command when the first check after launch is slower than the sentence", async () => {
+    let confirm: (ok: boolean) => void = () => {};
+    const r = rig(() => new Promise((resolve) => (confirm = resolve)));
+    r.push(1);
+    r.wake();
+    r.speak(true);
+    r.push(2);
+    r.speak(false);
+    r.push(5);
+    confirm(true);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(1.2);
+    await r.core.idle();
+    expect(r.events.some((e) => e.type === "wake")).toBe(true);
+    // All two seconds he spoke reach recognition, not the last three seconds of silence.
+    expect(Math.max(0, ...r.loud)).toBeGreaterThanOrEqual(16_000 * 2);
   });
 
   it("checks a wake that fires in an open window too, so a false fire cannot flash the pill or extend it", async () => {

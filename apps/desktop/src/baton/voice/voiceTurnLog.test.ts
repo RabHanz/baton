@@ -46,6 +46,14 @@ describe("the voice log", () => {
     expect(lines[0]).toMatchObject({ text: "Yeah.", reason: "filler" });
   });
 
+  it("does not report a wake that heard nothing as a wake-only at the next wake", () => {
+    const { lines, log } = rig();
+    log.event({ type: "wake", word: "Freya", score: 1.05, at: 1 });
+    log.event({ type: "nothing" });
+    log.event({ type: "wake", word: "Alfred", score: 0.97, at: 2 });
+    expect(lines.map((line) => line["kind"])).toEqual(["nothing_heard"]);
+  });
+
   it("never writes dictated words", () => {
     const { lines, log } = rig();
     log.event({ type: "transcript", text: "the private letter", at: 1 });
