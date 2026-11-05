@@ -15,7 +15,11 @@ const job = (over: Record<string, unknown>) =>
     limitReached: null,
     permissionsSummary: "Edit files in the shop",
     lastActivityAt: "2026-11-02T11:59:00Z",
-    terms: { limits: { wallClockMinutes: 120, workerTurns: 40, dollars: null }, revisions: [] },
+    terms: {
+      limits: { wallClockMinutes: 120, workerTurns: 40, dollars: null },
+      revisions: [],
+      permissions: { projects: [] },
+    },
     ...over,
   }) as unknown as BatonJob;
 

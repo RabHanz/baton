@@ -26,7 +26,8 @@ export interface PhoneJobRow {
   readonly canRetry: boolean;
 }
 
-export interface PhoneApproval extends Omit<Approval, "kind"> {
+// A mirrored prompt names who asks in its own title and detail (the gate's card).
+export interface PhoneApproval extends Omit<Approval, "kind" | "agent" | "project"> {
   /** A "prompt" is a question the desktop is asking him right now, mirrored here. */
   readonly kind: Approval["kind"] | "prompt";
   /** A job's plan or a mirrored question can be answered here; a session's question is answered in its thread. */
