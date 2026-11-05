@@ -139,10 +139,15 @@ const SECRET_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bbearer\s+[A-Za-z0-9._~+/=-]{16,}/i, "a token"],
   [/\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i, "a connection string with a password"],
   [
-    /\b(?:password|passcode|passphrase|passwd|pin|secret|api[ _-]?key|token)\s*(?:is|=|:)\s*\S{4,}/i,
+    /\b(?:password|passcode|passphrase|passwd|pin|secret|api[ _-]?key|token)\s*[=:]\s*\S{4,}/i,
     "a password or key",
   ],
-  [/\b(?:seed|recovery)\s+phrase\b/i, "a recovery phrase"],
+  // After "is" the value needs a digit or symbol, so "the password is wrong" stays an ordinary sentence.
+  [
+    /\b(?:password|passcode|passphrase|passwd|pin|secret|api[ _-]?key|token)\s+is\s+(?=[^\s.,!?;:'"()]*[\d_@#$%^&*+=~/\\|<>{}[\]-])\S{4,}/i,
+    "a password or key",
+  ],
+  [/\b(?:seed|recovery)\s+phrase\s*(?:is|=|:)\s*(?:[a-z]+[\s,]+){11}[a-z]+/i, "a recovery phrase"],
   [/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/, "a bank account number"],
   [
     /\b(?:account|routing|sort)\s*(?:number|no\.?|code)?\s*(?:is|=|:)?\s*\d{6,}/i,

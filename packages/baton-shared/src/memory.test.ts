@@ -51,6 +51,23 @@ describe("refuseToStore", () => {
     expect(refuseToStore("order 1234 5678 9012 3456")).toBeNull();
   });
 
+  it("keeps sentences that only mention a password or token", () => {
+    for (const text of [
+      "the password is wrong",
+      "my token is expired.",
+      "the pin is broken!",
+      "where did I put my recovery phrase?",
+    ])
+      expect(refuseToStore(text), text).toBeNull();
+    expect(refuseToStore("the pin is 4821")).toContain("password");
+    expect(refuseToStore("password: sunshine")).toContain("password");
+    expect(
+      refuseToStore(
+        "my recovery phrase is apple river stone cloud mango tiger piano lemon frost candle orbit maple",
+      ),
+    ).toContain("recovery phrase");
+  });
+
   it("keeps private pack text out", () => {
     const pack = "always frame the job as a job to be done before you brief any worker";
     expect(
