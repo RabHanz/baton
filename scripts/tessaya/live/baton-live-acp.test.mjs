@@ -619,6 +619,26 @@ NodeTest.test(
 );
 
 NodeTest.test(
+  "a queue held by a failed resume is delivered once the session is back in a pane",
+  async () => {
+    const dir = queueDir();
+    const back = harness({ live: { pane: "w1:p1", status: "idle" }, failure: null });
+    enqueue(dir, "s12", msg("first"));
+    holdQueue(dir, "s12", "Herdr would not start it: no answer.");
+    enqueue(dir, "s12", msg("second"));
+    await drainSession(dir, "s12", back.deps);
+    NodeAssert.deepEqual(back.typed, ["first", "second"]);
+    NodeAssert.equal(readQueue(dir, "s12").length, 0);
+    // A resume still under way keeps its hold even if the pane shows up first.
+    const during = harness({ live: { pane: "w1:p1", status: "idle" }, failure: null });
+    enqueue(dir, "s13", msg("wait"));
+    holdQueue(dir, "s13", "resuming");
+    await drainSession(dir, "s13", during.deps);
+    NodeAssert.deepEqual(during.typed, []);
+  },
+);
+
+NodeTest.test(
   "resuming says plainly when the folder is unknown or gone, and times out readably",
   async () => {
     const none = stoppedMachine({ cwdOf: () => null });
