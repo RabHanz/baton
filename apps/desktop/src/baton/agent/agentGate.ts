@@ -5,6 +5,7 @@
  */
 import * as DateTime from "effect/DateTime";
 import {
+  BATON_TOOL_PREFIX,
   batchSteps,
   batonToolName,
   describeToolCall,
@@ -74,17 +75,27 @@ export const fieldOf = (input: Readonly<Record<string, unknown>>): string =>
       ? `element:#${input["id"]}`
       : `point:${Math.round(Number(input["x"]) / 60)},${Math.round(Number(input["y"]) / 60)}`;
 
-/** The hands steps a plan he approved can cover. */
-const PLAN_ACTS: ReadonlySet<string> = new Set([
-  "click",
-  "click_element",
-  "type_text",
-  "press_keys",
-  "act_batch",
-  "scroll",
-  "drag",
-]);
-const SENSITIVE_WHY = /deletes, sends, pays or publishes/;
+/**
+ * The only reasons a plan he approved may skip, and for which steps: typing after a read, and a drag. Keys never (Enter
+ * sends; Win, Alt and other chords open things), nor what deletes, sends, pays, publishes or reaches a command line.
+ */
+const PLAN_SKIPS: Readonly<Record<string, ReadonlySet<string>>> = {
+  type_text: new Set(["It follows something it read."]),
+  drag: new Set(["It wants to drag something."]),
+};
+
+/** Whether a hands step is one he approved: the text it types is in a step, and a drag is a step of its own. */
+export const inApprovedSteps = (
+  steps: ReadonlyArray<string>,
+  tool: string,
+  args: Readonly<Record<string, unknown>>,
+): boolean => {
+  const words = steps.join("\n").toLowerCase();
+  if (tool === "type_text")
+    return typeof args["text"] === "string" && words.includes(args["text"].trim().toLowerCase());
+  if (tool === "drag") return /\b(drag|move)\b/.test(words);
+  return false;
+};
 
 export interface ConfirmPrompt {
   readonly title: string;
@@ -109,7 +120,7 @@ export const createAgentGate = (input: {
   readonly confirm: (prompt: ConfirmPrompt) => Promise<boolean>;
   readonly record: (entry: Readonly<Record<string, unknown>>) => void;
   /** He approved a plan for this turn (plan_show): its hands steps need no box each, except what stays risky. */
-  readonly inPlan?: () => boolean;
+  readonly inPlan?: () => ReadonlyArray<string> | null;
   /** Keys were allowed for this window (a command line only when `shell` and he agreed); checked again when sent. */
   readonly keysAllowed?: (at: {
     readonly window?: number;
@@ -159,7 +170,7 @@ export const createAgentGate = (input: {
     const social = callHost !== null && isSocialHost(callHost);
     const now = input.chrome?.now() ?? 0;
     const recent = socialAt.filter((t) => now - t < HOUR).length;
-    const judged = judgeToolCall(call, {
+    const context = {
       ...(chromeCall
         ? {
             chrome: {
@@ -185,7 +196,8 @@ export const createAgentGate = (input: {
           name === "weave_send" ||
           chromeCall) &&
         input.textIsHis(text),
-    });
+    };
+    const judged = judgeToolCall(call, context);
     const action = describeToolCall(call);
     /** A click names the box that typing goes to; Enter or a send ends any yes given to typing. */
     const after = () => {
@@ -223,25 +235,38 @@ export const createAgentGate = (input: {
       logSocial("refused");
       return { allow: false, reason: `${judged.why} Tell him why and stop.` };
     }
-    const allowKeys = () => {
+    /** `agreed`: he said yes to this call, so a command line it judged is one he agreed to. */
+    const allowKeys = (agreed: boolean) => {
       if (focus !== null)
         input.keysAllowed?.({
           ...(focus.window === undefined ? {} : { window: focus.window }),
           label: focus.label,
-          shell: focus.shell,
+          shell: focus.shell && agreed,
         });
     };
-    // His yes to the plan covers its steps; what deletes, sends, pays or publishes, and a command line, still ask.
+    // His yes to the plan covers a step only for a reason on its list, and only when the step is one he approved; a
+    // batch only when every step is, each judged alone (a batch's own verdict keeps one reason of several).
+    const plan = judged.verdict === "ask" && focus?.shell !== true ? input.inPlan?.() : null;
+    const covered = (tool: string, args: Readonly<Record<string, unknown>>) => {
+      const one = judgeToolCall({ tool: `${BATON_TOOL_PREFIX}${tool}`, input: args }, context);
+      return (
+        one.verdict === "allow" ||
+        (one.verdict === "ask" &&
+          one.risky !== true &&
+          PLAN_SKIPS[tool]?.has(one.why) === true &&
+          inApprovedSteps(plan ?? [], tool, args))
+      );
+    };
     const planCovers =
-      judged.verdict === "ask" &&
-      judged.risky !== true &&
-      focus?.shell !== true &&
-      PLAN_ACTS.has(name) &&
-      !SENSITIVE_WHY.test(judged.why) &&
-      input.inPlan?.() === true;
+      plan !== null &&
+      plan !== undefined &&
+      call.tool.startsWith(BATON_TOOL_PREFIX) &&
+      (name === "act_batch"
+        ? steps.length > 0 && steps.every((s) => covered(s.tool, s.input))
+        : covered(name, call.input));
     if (judged.verdict === "allow" || planCovers) {
       noteNavigation();
-      allowKeys();
+      allowKeys(false);
       if (chromeReads(call.tool, call.input)) input.taint.mark();
       logSocial("allowed");
       after();
@@ -282,7 +307,7 @@ export const createAgentGate = (input: {
     }
     if (social) socialAt.push(now);
     noteNavigation();
-    allowKeys();
+    allowKeys(true);
     after();
     if (scope !== null && judged.risky !== true) input.taint.allowTyping(scope);
     if (READS_OUTSIDE.has(name) || READS_OUTSIDE.has(call.tool)) input.taint.mark();

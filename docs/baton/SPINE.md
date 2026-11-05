@@ -56,7 +56,7 @@ no regressions, and one spine with memory and tools. This is the reconciliation,
 
 8. **Update prompt and vocabulary toast: decided, not folded.** The "this version failed to start twice" prompt (`startBatonDesktop.ts`) is a system dialog on purpose: it runs when the app is crash-looping, before the companion's windows exist, and must not depend on them. It is the one allowed exception (the matrix scans `screen/` and `agent/` only). The vocabulary toast is a non-focus, six-second notice with Keep or Discard; as a `windows.ask` it would take focus and hold the prompt queue for a minute, so it stays a toast and shares the pill's look.
 9. **One stack at the bottom.** Cards and prompts clear the pill by one shared constant (`CARD_ABOVE_WORK_AREA`); the Planning card is cleared while the plan box is up.
-10. **An approved plan covers its own keys.** `shellCheck` no longer asks again for keys that follow the plan's own click; keys with no click before them, and shell-looking text, still ask.
+10. **An approved plan covers only its own steps.** `plan_show`'s yes skips a box only for typing that follows a read when the typed text is in an approved step, and for a drag (`PLAN_SKIPS`, `inApprovedSteps` in `agentGate.ts`); a batch is covered only when each step is, judged alone. Keys (Enter, Win, Alt, any chord) and what deletes, sends, pays, publishes or reaches a command line always ask. A new plan_show cancels the earlier yes, and the yes ends with the turn.
 
 ## 5. Regression matrix
 

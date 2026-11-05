@@ -345,7 +345,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "plan_show",
       description:
-        "He wants you to DO something on his screen for him ('do it for me'). First show him the plan: a short title and each step in plain words, as he would say them. He can say go ahead, change a step, or no. After go ahead, do the steps with the hands tools in this same turn; his yes covers them, except what deletes, sends, pays, publishes or reaches a command line, which still asks.",
+        "He wants you to DO something on his screen for him ('do it for me'). First show him the plan: a short title and each step in plain words, as he would say them. Put any text you will type in its step, in quotes. He can say go ahead, change a step, or no. After go ahead, do the steps with the hands tools in this same turn; his yes covers typing that is in a step and a drag, while keys like Enter, and what deletes, sends, pays, publishes or reaches a command line, still ask.",
       inputSchema: object(
         {
           title: { type: "string", description: "What you will do, a few words." },
@@ -494,7 +494,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "press_keys",
       description:
-        'Press a key or a chord, such as ["ctrl","a"]. Enter, which may send, asks him first.',
+        'Press a key or a chord, such as ["ctrl","a"]. Enter (it may send) asks him first, even inside a plan he approved; so do Win, Alt and other chords after you read something.',
       inputSchema: object(
         {
           keys: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4 },

@@ -1545,14 +1545,21 @@ export const startScreenCompanion = (input: {
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   /** The plan he approved this turn (plan_show): its steps run without a box each, and pastes keep its clipboard. */
-  let planGrant: { readonly title: string; readonly clipboard: string } | null = null;
-  /** Where keys were last allowed (the gate's window, moved along by her own clicks); checked again as they are sent. */
-  let keysAllowed: {
+  let planGrant: {
+    readonly title: string;
+    readonly steps: ReadonlyArray<string>;
+    readonly clipboard: string;
+  } | null = null;
+  type KeysAllowed = {
     window?: number;
     label: string;
     readonly shell: boolean;
     readonly clipboard?: string;
-  } | null = null;
+  };
+  /** Where keys were last allowed (the gate's window, moved along by her own clicks); checked again as they are sent. */
+  let keysAllowed: KeysAllowed | null = null;
+  /** The same for a remote session's last call, judged by its own gate. */
+  let remoteKeysAllowed: KeysAllowed | null = null;
   /** Her own click may rightly move the keyboard (a dialog it opened): the next keys follow it, the agreement does not. */
   const followOwnClick = async () => {
     if (keysAllowed === null) return;
@@ -1565,11 +1572,14 @@ export const startScreenCompanion = (input: {
       };
   };
   /** Drive's checks, at the moment keys are sent (keysRefusal): same window, no command line nobody agreed to, the clipboard he saw. */
-  const checkKeys = async (keys: ReadonlyArray<string> | null) => {
-    if (actions?.focus === undefined) return;
-    const seen = await keyboardWindow();
+  const checkKeys = async (
+    keys: ReadonlyArray<string> | null,
+    allowed: KeysAllowed | null = keysAllowed,
+  ) => {
+    // Where the keyboard is cannot be read here: that is a refusal, not a pass.
+    const seen = actions?.focus === undefined ? null : await keyboardWindow();
     const refusal = keysRefusal({
-      allowed: keysAllowed,
+      allowed,
       now: seen,
       paste: keys !== null && isPasteKeys(keys),
       clipboard: await Electron.clipboard.readText(),
@@ -1617,7 +1627,7 @@ export const startScreenCompanion = (input: {
         0,
         p.noOnExpiry,
       )) === 0,
-    inPlan: () => planGrant !== null,
+    inPlan: () => planGrant?.steps ?? null,
     keysAllowed: (at) => {
       const plan = planGrant;
       // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
@@ -1661,6 +1671,7 @@ export const startScreenCompanion = (input: {
             p.noOnExpiry,
           )) === 0,
     record: (entry) => input.onAction?.({ by: "remote-hands", ...entry }),
+    keysAllowed: (at) => void (remoteKeysAllowed = at),
   });
   /** A remote session at work shows as one line in the pill, gone a moment after its last call. */
   let remoteQuiet: ReturnType<typeof setTimeout> | null = null;
@@ -1688,8 +1699,14 @@ export const startScreenCompanion = (input: {
               const dip = Electron.screen.screenToDipPoint(to);
               await pointerAction(dip, () => driverFor().clickAt(dip, "left", double ? 2 : 1));
             },
-            type: (text) => driverFor().type(text),
-            press: (keys) => driverFor().press(keys),
+            type: async (text) => {
+              await checkKeys(null, remoteKeysAllowed);
+              await driverFor().type(text);
+            },
+            press: async (keys) => {
+              await checkKeys(keys, remoteKeysAllowed);
+              await driverFor().press(keys);
+            },
             keyboardIn: async (window) =>
               (await focusSoon())?.label.toLowerCase().includes(window.toLowerCase()) === true,
             // A pointer click brings its window forward; the window he was using gets the keyboard back afterwards.
@@ -1990,6 +2007,8 @@ export const startScreenCompanion = (input: {
       return "The lesson has started and its first step is on his screen. Say nothing more.";
     },
     planShow: async (plan) => {
+      // A new plan replaces any earlier yes, whatever he answers to this one.
+      planGrant = null;
       const title = plan.title.replace(/[.?!]$/, "");
       const response = await askHandsFree(
         {
@@ -2004,7 +2023,11 @@ export const startScreenCompanion = (input: {
       const answer = response === 0 ? "approved" : response === 1 ? "change" : "declined";
       input.onNote?.("plan", { title: plan.title, steps: plan.steps, answer });
       if (response === 0) {
-        planGrant = { title: plan.title, clipboard: await Electron.clipboard.readText() };
+        planGrant = {
+          title: plan.title,
+          steps: plan.steps,
+          clipboard: await Electron.clipboard.readText(),
+        };
         return "He said go ahead. Do these steps now with the hands tools; what still asks will ask him.";
       }
       return response === 1
