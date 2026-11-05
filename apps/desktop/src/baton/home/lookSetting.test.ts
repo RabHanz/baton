@@ -18,7 +18,11 @@ describe("the Motion and Glass settings are wired end to end", () => {
     expect(voice).toContain("save({ motion: parseMotion(value) })");
     expect(voice).toContain("save({ glass: parseGlass(value) })");
     expect(voice).toContain("look: () => ({ motion: settings.motion, glass: settings.glass })");
-    expect(APP_SCRIPT).toContain("rows(['v.appearance', 'v.motion', 'v.glass', 'v.login'])");
+    expect(voice).toContain("save({ palette: parsePalette(value) })");
+    expect(voice).toContain("palette: settings.palette })");
+    expect(APP_SCRIPT).toContain(
+      "rows(['v.appearance', 'v.palette', 'v.motion', 'v.glass', 'v.login'])",
+    );
     expect(tabOf("v.motion")).toBe("settings");
     expect(tabOf("v.glass")).toBe("settings");
     // Each push applies the look when it changed, so a change shows without a reload.

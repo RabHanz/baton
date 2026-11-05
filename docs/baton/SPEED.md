@@ -7,7 +7,7 @@ laptop is still to be taken.
 | What                                                    | Before                                                       | After                                                                        | Budget (test) |
 | ------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------- |
 | Page script                                             | 82,761 characters                                            | same                                                                         | under 112,000 |
-| Stylesheet without the three embedded fonts             | 27,719                                                       | same                                                                         | under 40,000  |
+| Stylesheet without the three embedded fonts             | 27,719                                                       | same                                                                         | under 41,500  |
 | Whole document (fonts and the logo animation included)  | 525,549                                                      | same                                                                         | under 690,000 |
 | Text given to the window as a `data:` URL               | 603,348 characters, percent-encoded and parsed on every open | none: the page is a file in the state folder, rewritten only when it changes |               |
 | Elements built for the first draw (Home)                | 218                                                          | same                                                                         | under 300     |
@@ -21,6 +21,8 @@ assets and belong to the visual-tokens owner; shrinking them (subsetting the fon
 the animation after the first paint) is the next real saving and is not done here.
 
 The page script budget is 112,000 since 2026-11-05: the greeting picker and its 50 lines added about 4,400 characters.
+
+The stylesheet budget is 41,500 since 2026-11-05: the Damson and Madder palettes add a light and a dark accent rule each.
 
 `speedBudget.test.ts` fails when a number goes over its budget. Raise a budget only with a reason
 written in this table.

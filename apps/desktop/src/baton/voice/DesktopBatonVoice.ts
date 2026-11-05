@@ -282,9 +282,16 @@ import { TRAY_PNG, TRAY_SIZES } from "./trayArt.ts";
 import { setHideFromCapture } from "../captureProtection.ts";
 import { brandMarkSvg, markSvg, withTrayState, type MarkOptions } from "./trayMark.ts";
 import { parseGlass, parseMotion, type Glass, type Motion } from "../home/look.ts";
+import {
+  linkedT3Theme,
+  parsePalette,
+  T3_THEME_HALVES_KEY,
+  T3_THEME_KEY,
+  type Palette,
+} from "../home/palette.ts";
 import { parseAppearance, type Appearance } from "../home/theme.ts";
 import { createBatonHome, type HomeControl, type HomeState } from "../home/batonHome.ts";
-import { keepRunningForTray } from "../lastAppWindow.ts";
+import { isCompanionWindow, keepRunningForTray } from "../lastAppWindow.ts";
 import * as Electron from "electron";
 
 import {
@@ -427,6 +434,10 @@ interface VoiceSettings {
   /** "wispr": Baton holds no dictation key and leaves Wispr Flow to do it. */
   /** Baton's window: System follows Windows. */
   readonly appearance: Appearance;
+  /** The kit palette the window wears (Settings, General): Woad unless he picks another. */
+  readonly palette: Palette;
+  /** Tessaya has set the T3 window's theme to match its palette at least once. */
+  readonly t3ThemeLinked: boolean;
   /** Motion and glass (Settings, General); the system can ask for less on top of this. */
   readonly motion: Motion;
   readonly glass: Glass;
@@ -535,6 +546,8 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   // Empty on purpose: a machine lists the interfaces it prefers in its own settings file.
   micOrder: [],
   appearance: "system",
+  palette: "woad",
+  t3ThemeLinked: false,
   motion: "full",
   glass: "on",
   hideFromCapture: false,
@@ -636,6 +649,8 @@ export const readSettings = (path: string): VoiceSettings => {
       voiceBargeIn: saved["voiceBargeIn"] === true,
       doubleTap: saved["doubleTap"] !== false,
       appearance: parseAppearance(saved["appearance"]),
+      palette: parsePalette(saved["palette"]),
+      t3ThemeLinked: saved["t3ThemeLinked"] === true,
       motion: parseMotion(saved["motion"]),
       glass: parseGlass(saved["glass"]),
       hideFromCapture: saved["hideFromCapture"] === true,
@@ -4104,6 +4119,19 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         ],
       },
       {
+        id: "v.palette",
+        section: "Appearance",
+        label: "Palette",
+        hint: "The logo's colours for this window, in light and dark. Woad is the default. The app window follows with the matching theme unless you picked another one there.",
+        kind: "choice",
+        value: settings.palette,
+        options: [
+          { value: "woad", label: "Woad" },
+          { value: "damson", label: "Damson" },
+          { value: "madder", label: "Madder" },
+        ],
+      },
+      {
         id: "v.motion",
         section: "Appearance",
         label: "Motion",
@@ -4428,6 +4456,31 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Idle, sleep and screen-lock all end here: the window must show locked at once.
   vaultState.onLock(() => vaultTab.onLock());
+
+  /** Picks the T3 window's matching theme when it should follow (see `linkedT3Theme`); its own storage event repaints it live. */
+  const linkT3Theme = async (palette: Palette): Promise<void> => {
+    const t3 = Electron.BrowserWindow.getAllWindows().filter(
+      (w) =>
+        !w.isDestroyed() && !isCompanionWindow(w) && !w.webContents.getURL().startsWith("data:"),
+    );
+    // shortcut: with no T3 window open nothing is linked; the next palette change links it.
+    const first = t3[0];
+    if (first === undefined) return;
+    try {
+      const now = (await first.webContents.executeJavaScript(
+        `({ theme: localStorage.getItem(${JSON.stringify(T3_THEME_KEY)}), halves: localStorage.getItem(${JSON.stringify(T3_THEME_HALVES_KEY)}) })`,
+      )) as { theme: string | null; halves: string | null };
+      const next = linkedT3Theme(palette, now, settings.t3ThemeLinked);
+      if (next === null) return;
+      const set = `localStorage.setItem(${JSON.stringify(T3_THEME_KEY)}, ${JSON.stringify(next)})`;
+      const tell = `window.dispatchEvent(new StorageEvent("storage", { key: ${JSON.stringify(T3_THEME_KEY)}, newValue: ${JSON.stringify(next)} }))`;
+      await first.webContents.executeJavaScript(set);
+      for (const w of t3) await w.webContents.executeJavaScript(tell);
+      if (!settings.t3ThemeLinked) save({ t3ThemeLinked: true });
+    } catch {
+      // A T3 window that is loading or gone keeps its theme; the palette here is already applied.
+    }
+  };
 
   const applyHome = (id: string, value: string | boolean | null) => {
     const on = value === true;
@@ -5017,7 +5070,10 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     } else if (id === "v.pillMove") pill.showMove();
     else if (id === "v.appearance") save({ appearance: parseAppearance(value) });
-    else if (id === "v.motion") save({ motion: parseMotion(value) });
+    else if (id === "v.palette") {
+      save({ palette: parsePalette(value) });
+      void linkT3Theme(settings.palette);
+    } else if (id === "v.motion") save({ motion: parseMotion(value) });
     else if (id === "v.glass") save({ glass: parseGlass(value) });
     else if (id === "v.hideFromCapture") {
       save({ hideFromCapture: on });
@@ -5110,7 +5166,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
     },
     appearance: () => settings.appearance,
-    look: () => ({ motion: settings.motion, glass: settings.glass }),
+    look: () => ({ motion: settings.motion, glass: settings.glass, palette: settings.palette }),
     quietLaunch: () => Electron.app.getLoginItemSettings().wasOpenedAtLogin === true,
     level: () => micNow,
   });

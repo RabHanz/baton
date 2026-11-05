@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { applyLookScript, effectiveGlass, effectiveMotion, lookClasses, materialFor, parseGlass, parseMotion, windowsBuild } from "./look.ts";
+import {
+  applyLookScript,
+  effectiveGlass,
+  effectiveMotion,
+  lookClasses,
+  materialFor,
+  parseGlass,
+  parseMotion,
+  windowsBuild,
+} from "./look.ts";
 
 const calm = { reducedMotion: false, reducedTransparency: false };
 
@@ -26,11 +35,15 @@ describe("motion and glass", () => {
     expect(lookClasses("reduced", "on")).toEqual(["motion-reduced"]);
     expect(lookClasses("off", "off")).toEqual(["motion-off", "glass-off"]);
     expect(lookClasses("reduced", "reduced")).toEqual(["motion-reduced", "glass-reduced"]);
+    expect(lookClasses("full", "on", "damson")).toEqual(["palette-damson"]);
+    expect(lookClasses("full", "on", "woad")).toEqual([]);
   });
 
   it("builds a script that removes every look class and adds only known ones", () => {
-    const script = applyLookScript(["motion-off", "evil\");alert(1);//"]);
-    expect(script).toContain('["motion-reduced","motion-off","glass-reduced","glass-off"].forEach');
+    const script = applyLookScript(["motion-off", 'evil");alert(1);//']);
+    expect(script).toContain(
+      '["motion-reduced","motion-off","glass-reduced","glass-off","palette-damson","palette-madder"].forEach',
+    );
     expect(script).toContain('["motion-off"].forEach(x=>c.add(x))');
     expect(script).not.toContain("alert");
   });
@@ -46,7 +59,10 @@ describe("the window's material", () => {
   });
 
   it("uses vibrancy on macOS, nothing on Linux, and drops the material when glass is reduced or off", () => {
-    expect(materialFor("darwin", "24.0.0", "on")).toEqual({ vibrancy: "under-window", visualEffectState: "followWindow" });
+    expect(materialFor("darwin", "24.0.0", "on")).toEqual({
+      vibrancy: "under-window",
+      visualEffectState: "followWindow",
+    });
     expect(materialFor("linux", "6.8.0", "on")).toEqual({});
     expect(materialFor("win32", "10.0.22631", "reduced")).toEqual({ backgroundMaterial: "none" });
     expect(materialFor("win32", "10.0.22631", "off")).toEqual({ backgroundMaterial: "none" });

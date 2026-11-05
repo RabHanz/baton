@@ -1,4 +1,5 @@
 import { FONT_FACES } from "./fonts.ts";
+import { PALETTE_CSS } from "./palette.ts";
 
 /**
  * Woad (#14505A, #5FB3B3 on dark) is the one primary accent; each page group adds a hint dye and three semantic colours say state.
@@ -51,6 +52,7 @@ ${FONT_FACES}
   --ease-out:cubic-bezier(.16,1,.3,1);--ease-settle:linear(0,.38 7%,.68 15%,.86 25%,.95 38%,.99 55%,1);
 }
 ${DARK_TOKENS}
+${PALETTE_CSS}
 [data-g=voice]{--hue:var(--indigo);--hue-text:var(--indigo)}
 [data-g=knowledge]{--hue:var(--damson);--hue-text:var(--damson)}
 [data-g=settings]{--hue:var(--lichen);--hue-text:var(--lichen)}
