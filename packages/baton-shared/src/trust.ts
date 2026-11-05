@@ -1,0 +1,112 @@
+/**
+ * One Trust: the one function that answers "may this agent do this now?". The base rules are `judgeToolCall`; a plan
+ * he approved may lift only the asks `PLAN_SKIPS` names, for its own steps; a persona's tool list can only narrow
+ * what is left. Nothing here widens the base rules.
+ */
+import {
+  BATON_TOOL_PREFIX,
+  batchSteps,
+  batonToolName,
+  judgeToolCall,
+  type JudgeContext,
+  type ToolCall,
+  type ToolVerdict,
+} from "./operator.ts";
+
+/** Who is asking: a persona from the roster. `tools: null` is no list of its own, so only the base rules apply. */
+export interface TrustAgent {
+  readonly name: string;
+  readonly tools: ReadonlyArray<string> | null;
+}
+
+export interface TrustAsk {
+  readonly call: ToolCall;
+  readonly context: JudgeContext;
+  readonly agent?: TrustAgent;
+  /** The steps of a plan he approved this turn (plan_show). */
+  readonly plan?: ReadonlyArray<string> | null;
+}
+
+export type TrustVerdict = ToolVerdict | { readonly verdict: "allow"; readonly inPlan: true };
+
+/**
+ * The only reasons a plan he approved may skip, and for which steps: typing after a read, and a drag. Keys never (Enter
+ * sends; Win, Alt and other chords open things), nor what deletes, sends, pays, publishes or reaches a command line.
+ */
+const PLAN_SKIPS: Readonly<Record<string, ReadonlySet<string>>> = {
+  type_text: new Set(["It follows something it read."]),
+  drag: new Set(["It wants to drag something."]),
+};
+
+/**
+ * Whether a hands step is one he approved: the text it types is a step's quoted text, or a whole phrase of a step at
+ * least three characters long (a letter at a time, or a word inside another, would smuggle text past the plan); a drag
+ * only where a step says drag.
+ */
+export const inApprovedSteps = (
+  steps: ReadonlyArray<string>,
+  tool: string,
+  args: Readonly<Record<string, unknown>>,
+): boolean => {
+  const words = steps.join("\n").toLowerCase();
+  if (tool === "drag") return /\bdrag\b/.test(words);
+  if (tool !== "type_text" || typeof args["text"] !== "string") return false;
+  const text = args["text"].trim().toLowerCase();
+  if (text === "") return false;
+  const quoted = [...words.matchAll(/["“”]([^"“”]+)["“”]/g)].some((m) => m[1]!.trim() === text);
+  if (quoted) return true;
+  const phrase = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (
+    text.length >= 3 &&
+    new RegExp(`(^|[^\\p{L}\\p{N}])${phrase}($|[^\\p{L}\\p{N}])`, "u").test(words)
+  );
+};
+
+/** A batch is covered only when every step is, each judged alone (a batch's own verdict keeps one reason of several). */
+const planCovers = (
+  call: ToolCall,
+  context: JudgeContext,
+  plan: ReadonlyArray<string>,
+): boolean => {
+  if (!call.tool.startsWith(BATON_TOOL_PREFIX) || context.focusedShell === true) return false;
+  const covered = (tool: string, args: Readonly<Record<string, unknown>>) => {
+    const one = judgeToolCall({ tool: `${BATON_TOOL_PREFIX}${tool}`, input: args }, context);
+    return (
+      one.verdict === "allow" ||
+      (one.verdict === "ask" &&
+        one.risky !== true &&
+        PLAN_SKIPS[tool]?.has(one.why) === true &&
+        inApprovedSteps(plan, tool, args))
+    );
+  };
+  const name = batonToolName(call.tool);
+  if (name !== "act_batch") return covered(name, call.input);
+  const steps = batchSteps(call.input) ?? [];
+  return steps.length > 0 && steps.every((s) => covered(s.tool, s.input));
+};
+
+/** The tools a call uses: a batch uses itself and each of its steps. */
+const toolsUsed = (call: ToolCall): ReadonlyArray<string> => {
+  const name = batonToolName(call.tool);
+  return name === "act_batch" && call.tool.startsWith(BATON_TOOL_PREFIX)
+    ? [name, ...(batchSteps(call.input) ?? []).map((s) => s.tool)]
+    : [name];
+};
+
+export const decideTrust = (ask: TrustAsk): TrustVerdict => {
+  const base = judgeToolCall(ask.call, ask.context);
+  const verdict: TrustVerdict =
+    base.verdict === "ask" &&
+    ask.plan !== null &&
+    ask.plan !== undefined &&
+    planCovers(ask.call, ask.context, ask.plan)
+      ? { verdict: "allow", inPlan: true }
+      : base;
+  const agent = ask.agent;
+  if (verdict.verdict === "deny" || agent === undefined || agent.tools === null) return verdict;
+  const mine = new Set(agent.tools.map((t) => t.toLowerCase()));
+  const outside = toolsUsed(ask.call).find((t) => !mine.has(t.toLowerCase()));
+  return outside === undefined
+    ? verdict
+    : { verdict: "deny", why: `${outside} is not one of ${agent.name}'s tools.` };
+};

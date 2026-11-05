@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { createAgentGate, createTaint, inApprovedSteps } from "./agentGate.ts";
+import { inApprovedSteps } from "@t3tools/baton-shared/trust";
+
+import { createAgentGate, createTaint } from "./agentGate.ts";
 
 const STEPS = ['type "hello world" into the note', "drag the file into the folder", "press Enter"];
 

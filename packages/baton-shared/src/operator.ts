@@ -502,16 +502,24 @@ export const announceTool = (ran: number, tool: string) => ({
   ran: tool === "WebSearch" ? ran : ran + 1,
 });
 
-/** What the gate says out loud and shows. A risky call's question that runs out is a no. */
-export const gatePrompt = (judged: Extract<ToolVerdict, { verdict: "ask" }>, action: string) => ({
-  title: judged.risky ? "This one is risky" : "Tessaya wants to do this",
-  detail: `${action}\n\n${judged.why}`,
-  spoken:
-    judged.risky === true
-      ? `${judged.why} Do you want me to do it? Say yes or no.`
-      : `${judged.why} Shall I go ahead? Yes or no.`,
-  noOnExpiry: judged.risky === true,
-});
+/** What the gate says out loud and shows, naming who asks and for which project. A risky call's question that runs out is a no. */
+export const gatePrompt = (
+  judged: Extract<ToolVerdict, { verdict: "ask" }>,
+  action: string,
+  who: { readonly agent?: string; readonly project?: string } = {},
+) => {
+  const agent = who.agent ?? "Tessaya";
+  const asks = `${agent} wants to do this${who.project === undefined ? "" : ` in ${who.project}`}`;
+  return {
+    title: judged.risky ? "This one is risky" : `${agent} wants to do this`,
+    detail: `${asks}: ${action}\n\n${judged.why}`,
+    spoken:
+      judged.risky === true
+        ? `${asks}. ${judged.why} Do you want it done? Say yes or no.`
+        : `${asks}. ${judged.why} Go ahead? Yes or no.`,
+    noOnExpiry: judged.risky === true,
+  };
+};
 
 /** What a spoken answer decides: the button index, or null to go on waiting for the box. */
 export const spokenOutcome = (

@@ -50,11 +50,11 @@ import {
 import {
   describeToolCall,
   gatePrompt,
-  judgeToolCall,
   spokenOutcome,
   announceTool,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
+import { decideTrust } from "@t3tools/baton-shared/trust";
 import * as Electron from "electron";
 
 import {
@@ -1105,9 +1105,10 @@ export const startScreenCompanion = (input: {
   };
 
   const toolGate = async (call: ToolCall) => {
-    const judged = judgeToolCall(call, {
-      actWithoutAsking: settings.actWithoutAsking,
-      tainted,
+    const judged = decideTrust({
+      call,
+      context: { actWithoutAsking: settings.actWithoutAsking, tainted },
+      agent: { name: face.name, tools: face.tools },
     });
     const action = describeToolCall(call);
     const record = (outcome: string) =>
@@ -1120,7 +1121,7 @@ export const startScreenCompanion = (input: {
       record("allowed");
       return { allow: true as const };
     }
-    const prompt = gatePrompt(judged, action);
+    const prompt = gatePrompt(judged, action, { agent: face.name });
     const response = await askHandsFree(
       {
         title: prompt.title,
@@ -1627,6 +1628,7 @@ export const startScreenCompanion = (input: {
         p.noOnExpiry,
       )) === 0,
     inPlan: () => planGrant?.steps ?? null,
+    agent: () => ({ name: face.name, tools: face.tools }),
     keysAllowed: (at) => {
       const plan = planGrant;
       // Inside a plan, a paste may only paste what the clipboard held when he said go ahead.
@@ -1649,7 +1651,7 @@ export const startScreenCompanion = (input: {
     call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call);
 
   // Remote hands: its own gate and taint. The caller is a session the Director gave baton:hands, so what it read is not
-  // carried from one call to the next; every rule judgeToolCall has still applies to each call. Away, a question is a no.
+  // carried from one call to the next; every rule One Trust has still applies to each call. Away, a question is a no.
   const remoteTaint = createTaint();
   const remoteGate = createAgentGate({
     actWithoutAsking: () => false,

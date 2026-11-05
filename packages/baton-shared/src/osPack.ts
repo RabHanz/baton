@@ -26,6 +26,8 @@ export interface Persona {
   /** One line of who it is and how it sounds, for its turns. */
   readonly role: string;
   readonly lead: boolean;
+  /** Its own tool list (`tools:`, comma separated), which only narrows the gate; null when it has none. */
+  readonly tools: ReadonlyArray<string> | null;
 }
 
 /** The pack's files as they ship: front-matter for the face, then the brief. */
@@ -88,6 +90,7 @@ const face = (
   const name = fields["name"] ?? "";
   if (name === "" && !lead) return null;
   const wake = fields["wake"] ?? "";
+  const tools = fields["tools"];
   return {
     id,
     name: name === "" ? "Tessaya" : name,
@@ -95,6 +98,13 @@ const face = (
     voice: (fields["voice"] ?? "").toLowerCase(),
     role: fields["role"] ?? "",
     lead,
+    tools:
+      tools === undefined || tools.trim() === ""
+        ? null
+        : tools
+            .split(",")
+            .map((t) => t.trim())
+            .filter((t) => t !== ""),
   };
 };
 
