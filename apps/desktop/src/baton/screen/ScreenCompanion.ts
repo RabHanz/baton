@@ -136,7 +136,7 @@ interface ScreenSettings {
   readonly claudeBinary: string;
   /** Answers, teaching and driving. Chosen by evals/tessaya-assistant; a default, not his choice, until he edits it. */
   readonly model: string;
-  /** The one assistant's `--effort`: low passed every case of evals/tessaya-assistant that medium did, on fewer thinking tokens. */
+  /** The one assistant's `--effort`: medium by his standing order (Opus at medium unless he changes it). */
   readonly effort: string;
   /** The alias that routes: every sentence, so the fast one. */
   readonly routerModel: string;
@@ -175,7 +175,7 @@ const DEFAULTS: ScreenSettings = {
   captureApproval: "ask",
   claudeBinary: "claude",
   model: "claude-opus-5-5",
-  effort: "low",
+  effort: "medium",
   routerModel: "haiku",
   output: "spoken",
   voice: "anna",
