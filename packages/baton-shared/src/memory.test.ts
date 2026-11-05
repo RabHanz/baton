@@ -59,7 +59,23 @@ describe("refuseToStore", () => {
       "where did I put my recovery phrase?",
     ])
       expect(refuseToStore(text), text).toBeNull();
-    expect(refuseToStore("the pin is 4821")).toContain("password");
+    for (const text of [
+      "the pin is 4821",
+      "my password is sunshine",
+      "the pin is 4471",
+      "my password is now sunshine",
+    ])
+      expect(refuseToStore(text), text).toContain("password");
+    for (const text of [
+      "my password is not working",
+      "the password is still incorrect",
+      "the token is on the sticky note",
+      "my password is too short",
+      "the pin is locked",
+      "my password is the same as before",
+      "the api key is in the vault",
+    ])
+      expect(refuseToStore(text), text).toBeNull();
     expect(refuseToStore("password: sunshine")).toContain("password");
     expect(
       refuseToStore(
