@@ -85,7 +85,7 @@ const sample = async (c: AssistantCase): Promise<Sample> => {
         ? undefined
         : personaFor(DEFAULT_OS_PACK.personas, { wake: c.wake, text: c.said });
     const reply = await agent.say(c.said, {
-      window: "Notepad",
+      window: c.window ?? "Notepad",
       session: null,
       ...(face === undefined
         ? {}

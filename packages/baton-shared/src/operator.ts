@@ -120,6 +120,8 @@ const BATON_QUIET = new Set([
   "dictation_stop",
   "screen_capture",
   "ui_tree",
+  // Brings his own open window forward: local, and he can switch back.
+  "window_focus",
   // Drawing on the screen, a lesson, and a plan's card: each asks for its own consent where it runs (capture, Go ahead).
   "point_at",
   "teach_start",

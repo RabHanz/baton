@@ -20,6 +20,8 @@ export interface ToolHost {
   /** `window`: a window by part of its title, for remote hands; the assistant's own tools leave it out. `find` keeps
    * only the controls whose name contains it. */
   readonly uiTree: (window?: string, find?: string) => Promise<string>;
+  /** Brings an open window to the front with the keyboard, by part of its title; says which window it was. */
+  readonly focusWindow?: (title: string) => Promise<string>;
   /** `target`: a control's name, or its line number in the last ui_tree. */
   readonly clickElement: (
     target: string | number,
@@ -305,6 +307,20 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
         ...win,
       }),
       run: async (a) => ({ text: await host.uiTree(optStr(a, "window"), optStr(a, "find")) }),
+    },
+    {
+      name: "window_focus",
+      description:
+        "Bring an open window to the front and give it the keyboard, by part of its title or the app's name (such as Notepad). No pointer and no taskbar. Use it first when the app he names is open but is not the window he is using, then ui_tree.",
+      inputSchema: object(
+        { title: { type: "string", description: "Part of the window's title." } },
+        ["title"],
+      ),
+      run: async (a) => {
+        if (host.focusWindow === undefined)
+          throw new Error("Windows can't be brought forward here.");
+        return { text: await host.focusWindow(str(a, "title", 200)) };
+      },
     },
     {
       name: "point_at",

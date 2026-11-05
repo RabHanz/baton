@@ -99,6 +99,7 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
 /** Tools that exist for the assistant's own steps and are not something to say. */
 export const INTERNAL = new Set([
   "ui_tree",
+  "window_focus",
   "click",
   "wait_for",
   "scroll",

@@ -2124,6 +2124,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             focusState: sidecar.focusState,
             captureWindow: sidecar.captureWindow,
             focusWindow: sidecar.focusWindow,
+            focusWindowTitled: sidecar.focusWindowTitled,
             input: sidecar.input,
             pasteInto: sidecar.pasteInto,
             paste: sidecar.paste,

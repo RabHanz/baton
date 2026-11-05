@@ -186,6 +186,10 @@ export interface DictationSidecar {
   /** A picture of one window (PrintWindow, so covered or in the background) written as a BMP at `out`. */
   /** Gives the keyboard back to a window by the handle `foreground` reported. */
   readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
+  /** Brings an open window to the front with the keyboard, by part of its title; no pointer. */
+  readonly focusWindowTitled: (
+    title: string,
+  ) => Promise<{ readonly title?: string; readonly error?: string }>;
   readonly captureWindow: (input: {
     readonly window?: string;
     /** The window exactly, by the handle `foreground` reported. */
@@ -434,6 +438,8 @@ export const startDictationSidecar = (input: {
     setValue: (window, text) =>
       call<{ set: boolean; name?: string; error?: string }>({ cmd: "set_value", window, text }),
     focusWindow: (window) => call<{ error?: string }>({ cmd: "focus_window", window }),
+    focusWindowTitled: (title) =>
+      call<{ title?: string; error?: string }>({ cmd: "focus_window", title }),
     captureWindow: (input) => call<WindowPicture>({ cmd: "capture_window", ...input }),
     dispose: () => {
       disposed = true;
