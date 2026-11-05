@@ -38,7 +38,7 @@ export const BatonRecordAppendInput = Schema.Struct({
   actor: Line(60),
   project: Schema.optionalKey(Line(200)),
   subject: Line(300),
-  outcome: Line(60),
+  outcome: Schema.Literals(["answered", "failed"]),
   detail: Line(1000),
 });
 export const BatonRecordAppendResult = Schema.Struct({});
