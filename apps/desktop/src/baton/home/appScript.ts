@@ -361,7 +361,8 @@ function greetContext(now, saved, waiting) {
 }
 function greetLine(c, recent, rand) {
   const h = c.now.getHours(), d = c.now.getDay(), late = h < 5 || h >= 23, pools = [];
-  if (c.waiting > 0) pools.push(c.waiting === 1 ? 'waiting1' : 'waiting');
+  // The banner below carries the count, so these lines never repeat it.
+  if (c.waiting > 0) pools.push('waiting');
   if (c.daysAway >= 2) pools.push('away');
   if (late && c.lateNights >= 3) pools.push('lateRun');
   if (c.firstToday && !late && [0, 1, 5, 6].indexOf(d) >= 0) pools.push(d === 1 ? 'monday' : d === 5 ? 'friday' : 'weekend');
@@ -371,7 +372,7 @@ function greetLine(c, recent, rand) {
   for (const p of pools) { keys = keysOf(p).filter(k => recent.indexOf(k) < 0); if (keys.length) break; }
   if (!keys.length) keys = keysOf(pools[pools.length - 1]);
   const key = keys[Math.floor(rand() * keys.length)];
-  return { key, text: L(key, { n: c.waiting > 0 ? c.waiting : c.lateNights, days: c.daysAway }) };
+  return { key, text: L(key, { n: c.lateNights, days: c.daysAway }) };
 }
 let greet = null, hiddenAt = 0;
 function greeting() {

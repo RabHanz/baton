@@ -62,8 +62,8 @@ describe("the greeting", () => {
   const first = () => 0;
   const at = (iso: string) => new Date(iso);
   const fresh: Saved = { last: null, recent: [], nights: [] };
-  const line = (iso: string, saved: Saved = fresh, waiting = 0, recent: string[] = []) =>
-    page.greetLine(page.greetContext(at(iso), saved, waiting).ctx, recent, first);
+  const line = (iso: string, saved: Saved = fresh, waiting = 0, recent: string[] = [], r = 0) =>
+    page.greetLine(page.greetContext(at(iso), saved, waiting).ctx, recent, () => r);
 
   it("follows the time of day on an ordinary open (Thursday)", () => {
     const seen = { last: "2026-11-05T07:00:00", recent: [], nights: [] };
@@ -76,8 +76,10 @@ describe("the greeting", () => {
   });
 
   it("puts sessions waiting first, then a long absence, then the day of the week on its first open", () => {
-    expect(line("2026-11-09T09:00:00", fresh, 3).text).toBe("3 sessions are waiting on you.");
-    expect(line("2026-11-09T09:00:00", fresh, 1).key).toMatch(/^greet\.waiting1\./);
+    expect(line("2026-11-09T09:00:00", fresh, 3).text).toBe("You're in demand.");
+    // The banner says how many; the greeting never repeats the count.
+    for (const n of [1, 3])
+      expect(line("2026-11-09T09:00:00", fresh, n, [], 0.99).text).not.toMatch(/\d/);
     const away = { last: "2026-11-01T18:00:00", recent: [], nights: [] };
     expect(line("2026-11-05T09:00:00", away).key).toMatch(/^greet\.away\./);
     expect(
@@ -116,7 +118,7 @@ describe("the greeting", () => {
       expect(recent.slice(-4)).not.toContain(pick.key);
       recent.push(pick.key);
     }
-    const spent = ["greet.waiting1.1", "greet.waiting1.2", "greet.waiting1.3"];
+    const spent = ["greet.waiting.1", "greet.waiting.2", "greet.waiting.3", "greet.waiting.4"];
     expect(
       line("2026-11-05T09:00:00", { last: "2026-11-05T08:00:00", recent: [], nights: [] }, 1, spent)
         .key,
