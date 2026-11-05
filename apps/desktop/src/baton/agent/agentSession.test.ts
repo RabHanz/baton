@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createConversationLog } from "../conversation/conversationLog.ts";
 import { SessionClosed, type VisionSession } from "../screen/claudeVision.ts";
@@ -189,6 +189,39 @@ describe("the one assistant's session", () => {
     release();
     await Promise.all([a, b]);
     expect(events).toEqual(["begin", "answered 1", "begin", "answered 2"]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("drops the sentences still queued when he says stop", async () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
+    const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });
+    const asked: string[] = [];
+    let release = () => undefined as void;
+    const first = new Promise<void>((resolve) => (release = resolve));
+    const agent = createAssistantAgent({
+      start: async () => ({
+        ask: async (content) => {
+          asked.push(content.map((c) => (c.type === "text" ? c.text : "")).join(""));
+          if (asked.length === 1) await first;
+          return "ok";
+        },
+        alive: () => true,
+        dispose: () => undefined,
+      }),
+      conversation,
+      clockLine: () => "now",
+      beginTurn: () => undefined,
+    });
+    const a = agent.say("type hello", { window: null, session: null });
+    const b = agent.say("and press enter", { window: null, session: null });
+    await vi.waitFor(() => expect(asked).toHaveLength(1));
+    agent.dispose();
+    release();
+    await a;
+    await expect(b).rejects.toBeInstanceOf(SessionClosed);
+    expect(asked).toHaveLength(1);
+    const after = await agent.say("what's the time", { window: null, session: null });
+    expect(after).toBe("ok");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });
