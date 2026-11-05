@@ -347,9 +347,48 @@ function sections(items) {
 function tabControls(tab) { return S.controls.filter(c => c.tab === tab); }
 function find(id) { return S.controls.find(c => c.id === id); }
 
-function greeting() { const h = new Date().getHours(); return h < 5 ? 'Still up' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
+// The greeting is picked here from what the page already knows, never by a model, so it is instant; the last few are not repeated.
+const NIGHT_MS = 5 * 3600000;
+function greetContext(now, saved, waiting) {
+  const day = (t) => new Date(t).toDateString(), h = now.getHours(), late = h < 5 || h >= 23;
+  const last = saved.last ? new Date(saved.last) : null;
+  const daysAway = last ? Math.floor((now - last) / 86400000) : 0;
+  const night = day(now.getTime() - NIGHT_MS);
+  const nights = late && saved.nights.indexOf(night) < 0 ? saved.nights.concat(night).slice(-7) : saved.nights;
+  let lateNights = 0;
+  if (late) while (nights.indexOf(day(now.getTime() - NIGHT_MS - lateNights * 86400000)) >= 0) lateNights++;
+  return { ctx: { now, waiting, daysAway, firstToday: !last || day(last) !== day(now), lateNights }, nights };
+}
+function greetLine(c, recent, rand) {
+  const h = c.now.getHours(), d = c.now.getDay(), late = h < 5 || h >= 23, pools = [];
+  if (c.waiting > 0) pools.push(c.waiting === 1 ? 'waiting1' : 'waiting');
+  if (c.daysAway >= 2) pools.push('away');
+  if (late && c.lateNights >= 3) pools.push('lateRun');
+  if (c.firstToday && !late && [0, 1, 5, 6].indexOf(d) >= 0) pools.push(d === 1 ? 'monday' : d === 5 ? 'friday' : 'weekend');
+  pools.push(late ? 'small' : h < 8 ? 'early' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening');
+  const keysOf = (p) => Object.keys(STR).filter(k => k.indexOf('greet.' + p + '.') === 0);
+  let keys = [];
+  for (const p of pools) { keys = keysOf(p).filter(k => recent.indexOf(k) < 0); if (keys.length) break; }
+  if (!keys.length) keys = keysOf(pools[pools.length - 1]);
+  const key = keys[Math.floor(rand() * keys.length)];
+  return { key, text: L(key, { n: c.waiting > 0 ? c.waiting : c.lateNights, days: c.daysAway }) };
+}
+let greet = null, hiddenAt = 0;
+function greeting() {
+  if (greet) return greet;
+  let saved = { last: null, recent: [], nights: [] };
+  try { saved = Object.assign(saved, JSON.parse(localStorage.getItem('tessaya.greet') || '{}')); } catch (e) {}
+  const now = new Date(), x = S.extra || {};
+  const g = greetContext(now, saved, (x.stats && x.stats.needYou) || 0);
+  const pick = greetLine(g.ctx, saved.recent, Math.random);
+  greet = pick.text;
+  try { localStorage.setItem('tessaya.greet', JSON.stringify({ last: now.toISOString(), recent: saved.recent.concat(pick.key).slice(-4), nights: g.nights })); } catch (e) {}
+  return greet;
+}
+// Back after half an hour away is a new open, so it gets a new greeting.
+document.addEventListener('visibilitychange', () => { if (document.hidden) hiddenAt = Date.now(); else if (hiddenAt && Date.now() - hiddenAt > 1800000) { greet = null; hiddenAt = 0; render(); } });
 function chipEl(t, plain) { return $('span', 'chip' + (plain ? ' plain' : ''), t); }
-function pageHead(title, lede) { const f = document.createDocumentFragment(); const h1 = $('h1'); h1.appendChild($('span', 'hl', title)); f.appendChild(h1); if (lede) f.appendChild($('p', 'lede', lede)); return f; }
+function pageHead(title, lede) { const f = document.createDocumentFragment(); f.appendChild($('h1', null, title)); if (lede) f.appendChild($('p', 'lede', lede)); return f; }
 function banner(kind, em, title, text, btn, onclick) {
   const b = $('div', 'banner' + (kind ? ' ' + kind : '')); const d = $('div'); const h = $('h3'); h.append(document.createTextNode(title + ' ')); h.appendChild($('em', null, em)); d.append(h, $('p', null, text)); b.appendChild(d);
   if (btn) { const x = $('button', 'btn', btn); x.onclick = onclick; b.appendChild(x); }
@@ -373,7 +412,7 @@ function wakeLine(words) { return words.length ? words.join(', ') : 'Off'; }
 function home(p) {
   const x = S.extra || {}; const words = x.wakeWords || [];
   p.appendChild($('div', 'dateline', new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })));
-  const h = $('h1'); h.append($('span', 'hl', greeting()), document.createTextNode('.')); p.appendChild(h);
+  p.appendChild($('h1', null, greeting()));
   const sub = $('p', 'lede');
   sub.textContent = sayWords(words);
   p.appendChild(sub);
