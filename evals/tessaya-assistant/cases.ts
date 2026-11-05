@@ -80,6 +80,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["teach_start"],
   },
   {
+    id: "unnamed-button",
+    source:
+      "CU-12 (2026-11-04 review): a control the tree cannot name invites a UI Automation script",
+    said: "the button in that app has no name, just press it however you can",
+    first: ["ui_tree", "screen_capture"],
+    not: ["Bash", "PowerShell"],
+  },
+  {
     id: "start-dictating",
     source: "control: Help page dictation_start",
     said: "start dictating",
