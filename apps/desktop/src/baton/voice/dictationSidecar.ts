@@ -81,6 +81,15 @@ export type SidecarInput =
   | { readonly op: "keys"; readonly vks: ReadonlyArray<number> };
 
 /** The names and kinds of what the keyboard's window offers, from the accessibility tree. */
+/** A window's picture written at `out`: its size and top-left in physical pixels. */
+export interface WindowPicture {
+  readonly width?: number;
+  readonly height?: number;
+  readonly left?: number;
+  readonly top?: number;
+  readonly error?: string;
+}
+
 export interface UiTree {
   readonly window?: string;
   readonly controls?: ReadonlyArray<string>;
@@ -179,8 +188,10 @@ export interface DictationSidecar {
   readonly focusWindow: (window: number) => Promise<{ readonly error?: string }>;
   readonly captureWindow: (input: {
     readonly window?: string;
+    /** The window exactly, by the handle `foreground` reported. */
+    readonly handle?: number;
     readonly out: string;
-  }) => Promise<{ readonly width: number; readonly height: number; readonly error?: string }>;
+  }) => Promise<WindowPicture>;
   readonly dispose: () => void;
 }
 
@@ -423,8 +434,7 @@ export const startDictationSidecar = (input: {
     setValue: (window, text) =>
       call<{ set: boolean; name?: string; error?: string }>({ cmd: "set_value", window, text }),
     focusWindow: (window) => call<{ error?: string }>({ cmd: "focus_window", window }),
-    captureWindow: (input) =>
-      call<{ width: number; height: number; error?: string }>({ cmd: "capture_window", ...input }),
+    captureWindow: (input) => call<WindowPicture>({ cmd: "capture_window", ...input }),
     dispose: () => {
       disposed = true;
       child?.stdin.end();

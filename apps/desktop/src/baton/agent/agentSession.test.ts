@@ -81,6 +81,8 @@ describe("the one assistant's session", () => {
     expect(shouldRecycle({ alive: false, turns: 0, idleMs: 0 })).toBe(true);
     expect(shouldRecycle({ alive: true, turns: 40, idleMs: 0 })).toBe(true);
     expect(shouldRecycle({ alive: true, turns: 1, idleMs: 7 * 3_600_000 })).toBe(true);
+    expect(shouldRecycle({ alive: true, turns: 1, idleMs: 0, images: 11 })).toBe(false);
+    expect(shouldRecycle({ alive: true, turns: 1, idleMs: 0, images: 12 })).toBe(true);
 
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-agent-"));
     const conversation = createConversationLog({ file: NodePath.join(dir, "c.ndjson") });

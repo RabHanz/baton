@@ -722,15 +722,15 @@ fn focus_window_event(id: Option<u64>, _window: isize) -> Value {
 }
 
 #[cfg(windows)]
-fn capture_window_event(id: Option<u64>, window: Option<&str>, out: &str) -> Value {
-    let mut v = capture::capture_window(window, out).unwrap_or_else(|e| json!({"error": e}));
+fn capture_window_event(id: Option<u64>, window: Option<&str>, handle: Option<isize>, out: &str) -> Value {
+    let mut v = capture::capture_window(window, handle, out).unwrap_or_else(|e| json!({"error": e}));
     v["ev"] = json!("captured");
     v["id"] = json!(id);
     v
 }
 
 #[cfg(not(windows))]
-fn capture_window_event(id: Option<u64>, _window: Option<&str>, _out: &str) -> Value {
+fn capture_window_event(id: Option<u64>, _window: Option<&str>, _handle: Option<isize>, _out: &str) -> Value {
     json!({"ev": "captured", "id": id, "error": "not on this platform yet"})
 }
 
@@ -1026,8 +1026,9 @@ fn serve() {
                     "capture_window" => {
                         let id = value["id"].as_u64();
                         let window = value["window"].as_str().map(str::to_string);
+                        let handle = value["handle"].as_i64().map(|h| h as isize);
                         let out = value["out"].as_str().unwrap_or("").to_string();
-                        thread::spawn(move || emit(capture_window_event(id, window.as_deref(), &out)));
+                        thread::spawn(move || emit(capture_window_event(id, window.as_deref(), handle, &out)));
                     }
                     "toggle" => {
                         if recording.is_some() {

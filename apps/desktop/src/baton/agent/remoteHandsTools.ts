@@ -9,7 +9,12 @@ import * as NodePath from "node:path";
 
 import { REMOTE_HANDS_TOOLS, createHandleRegistry } from "@t3tools/baton-shared/remoteHands";
 
-import type { FocusState, LocatedElement, UiTree } from "../voice/dictationSidecar.ts";
+import type {
+  FocusState,
+  LocatedElement,
+  UiTree,
+  WindowPicture,
+} from "../voice/dictationSidecar.ts";
 import type { BatonTool } from "./batonMcp.ts";
 import { bmpToPng } from "./bmpToPng.ts";
 import { buildBatonTools, treeText, type ToolHost } from "./batonTools.ts";
@@ -34,8 +39,9 @@ export interface RemoteHandsDeps {
     ) => Promise<{ readonly set: boolean; readonly name?: string; readonly error?: string }>;
     readonly captureWindow: (input: {
       window?: string;
+      handle?: number;
       out: string;
-    }) => Promise<{ error?: string }>;
+    }) => Promise<WindowPicture>;
   };
   /** Where window pictures are written before they become PNGs. */
   readonly scratchDir: string;

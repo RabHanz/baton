@@ -13,11 +13,13 @@ use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect
 /// PW_RENDERFULLCONTENT: also captures windows drawn by DirectComposition (modern apps, browsers).
 const RENDER_FULL_CONTENT: u32 = 2;
 
-pub fn capture_window(window: Option<&str>, out: &str) -> Result<Value, String> {
+/// `handle` names the window exactly (the one he was using when he spoke); else `window` by title; else the foreground.
+pub fn capture_window(window: Option<&str>, handle: Option<isize>, out: &str) -> Result<Value, String> {
     unsafe {
-        let hwnd: HWND = match window {
-            Some(title) => crate::uia::find_window(title).ok_or_else(|| format!("No window is titled like \"{title}\"."))?,
-            None => GetForegroundWindow(),
+        let hwnd: HWND = match (handle, window) {
+            (Some(h), _) => HWND(h as *mut _),
+            (None, Some(title)) => crate::uia::find_window(title).ok_or_else(|| format!("No window is titled like \"{title}\"."))?,
+            (None, None) => GetForegroundWindow(),
         };
         let mut rect = RECT::default();
         GetWindowRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
@@ -66,7 +68,7 @@ pub fn capture_window(window: Option<&str>, out: &str) -> Result<Value, String> 
         head.extend_from_slice(&32u16.to_le_bytes());
         head.extend_from_slice(&[0u8; 24]);
         file.write_all(&head).and_then(|_| file.write_all(&pixels)).map_err(|e| e.to_string())?;
-        Ok(json!({"path": out, "width": w, "height": h}))
+        Ok(json!({"path": out, "width": w, "height": h, "left": rect.left, "top": rect.top}))
     }
 }
 
