@@ -185,7 +185,12 @@ export const routerLines = (recent: ReadonlyArray<ConversationTurn>): ReadonlyAr
 export const withConversation = (request: string, block: string): string =>
   block === "" ? request : `${block}\n\nhis request now:\n${request}`;
 
-const squash = (text: string): string => text.replace(/\s+/g, " ").trim().toLowerCase();
+// Case and punctuation differ between what the recogniser wrote down and what the model types.
+const squash = (text: string): string =>
+  text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 
 /**
  * Is this text his own words, or Baton's own earlier reply, as found in the conversation? Typing it
@@ -194,7 +199,7 @@ const squash = (text: string): string => text.replace(/\s+/g, " ").trim().toLowe
  */
 export const textIsFromConversation = (
   text: string,
-  turns: ReadonlyArray<ConversationTurn>,
+  turns: ReadonlyArray<Pick<ConversationTurn, "said" | "reply">>,
 ): boolean => {
   const wanted = squash(text);
   if (wanted.length < 3) return false;

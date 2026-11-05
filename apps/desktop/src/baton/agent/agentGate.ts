@@ -14,6 +14,7 @@ import {
   READS_OUTSIDE,
   type ToolCall,
 } from "@t3tools/baton-shared/operator";
+import { textIsFromConversation } from "@t3tools/baton-shared/conversation";
 import {
   chromeReads,
   hostForCall,
@@ -43,13 +44,16 @@ export interface TurnTaint {
   /** The box last clicked this turn: a control's name, or a coarse place. */
   readonly noteField: (field: string) => void;
   readonly field: () => string;
-  readonly reset: () => void;
+  /** What he said to start this turn: typing his own words is not following something it read. */
+  readonly said: () => string;
+  readonly reset: (said?: string) => void;
 }
 
 export const createTaint = (): TurnTaint => {
   let tainted = false;
   let scope: TypingScope | null = null;
   let field = "";
+  let said = "";
   return {
     mark: () => void (tainted = true),
     on: () => tainted,
@@ -59,7 +63,9 @@ export const createTaint = (): TurnTaint => {
     clearTyping: () => void (scope = null),
     noteField: (next) => void (field = next),
     field: () => field,
-    reset: () => {
+    said: () => said,
+    reset: (next = "") => {
+      said = next;
       tainted = false;
       scope = null;
       field = "";
@@ -206,7 +212,8 @@ export const createAgentGate = (input: {
           name === "memory_remember" ||
           name === "weave_send" ||
           chromeCall) &&
-        input.textIsHis(text),
+        (input.textIsHis(text) ||
+          textIsFromConversation(text, [{ said: input.taint.said(), reply: "" }])),
     };
     const judged = judgeToolCall(call, context);
     const action = describeToolCall(call);

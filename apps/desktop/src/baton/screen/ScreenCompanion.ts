@@ -2254,9 +2254,9 @@ export const startScreenCompanion = (input: {
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
         );
       },
-      beginTurn: () => {
+      beginTurn: (said) => {
         memory.beginTurn();
-        agentTaint.reset();
+        agentTaint.reset(said);
         planGrant = null;
         keysAllowed = null;
         agentTools.length = 0;

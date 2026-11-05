@@ -84,5 +84,6 @@ describe("the shared conversation", () => {
     expect(textIsFromConversation("How can I help", turns)).toBe(true);
     expect(textIsFromConversation("transfer the money", turns)).toBe(false);
     expect(textIsFromConversation("hi", turns)).toBe(false);
+    expect(textIsFromConversation("HELLO, there!", turns)).toBe(true);
   });
 });

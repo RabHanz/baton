@@ -57,7 +57,7 @@ export const createAssistantAgent = (input: {
   /** After a turn: what he said and what came back, for the learning loop. Never awaited. */
   readonly learn?: (said: string, reply: string, project: string | null) => void;
   /** Called at the start of a turn: a new sentence has not read anything yet. */
-  readonly beginTurn: () => void;
+  readonly beginTurn: (said: string) => void;
   /** His state right now (awareness), empty when he has turned it all off. */
   readonly presence?: () => Promise<string>;
   /** How many images the tools have handed the assistant so far, ever. */
@@ -120,7 +120,7 @@ export const createAssistantAgent = (input: {
     where: Where,
     onDelta?: (delta: string) => void,
   ): Promise<string> => {
-    input.beginTurn();
+    input.beginTurn(text);
     const agent = await ensure();
     // Turns answered without it (a refusal, the older router) since it last looked.
     const meanwhile = input.conversation
