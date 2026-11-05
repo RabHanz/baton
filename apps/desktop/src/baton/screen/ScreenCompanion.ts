@@ -344,8 +344,12 @@ export interface AssistantActions {
       | "rule_run",
     args: Readonly<Record<string, unknown>>,
   ) => Promise<string>;
-  /** A session by id or name: what it is called, for the intent path. Null when none matches. */
-  readonly sessionName?: (idOrName: string) => string | null;
+  /** One session's state in a sentence, by id or name; null when none matches. */
+  readonly sessionShow?: (idOrName: string) => string | null;
+  /** Type a message into a session's pane, by id or name, word for word; null when none matches. */
+  readonly sessionSend?: (idOrName: string, text: string) => Promise<string> | null;
+  /** Every session's state and what is being left alone, from state. */
+  readonly fleetStatus?: () => Promise<string>;
   /** Start or stop dictation into the focused field. */
   readonly dictation?: (on: boolean) => Promise<string>;
   /** The server's memory (D150), through the window; rejects with a reason in plain words. */
@@ -2187,22 +2191,11 @@ export const startScreenCompanion = (input: {
     },
     sessions: async () => actions?.sessionsList?.() ?? "No sessions are listed here yet.",
     ...(input.catalog === undefined ? {} : { catalog: lateCatalog(input.catalog) }),
-    session: async (id) => {
-      const name = actions?.sessionName?.(id) ?? null;
-      if (name === null || actions === null)
-        return "There is no session by that id. Use sessions_list.";
-      return actions.act(`What's ${name} doing?`);
-    },
-    send: async (id, text) => {
-      const name = actions?.sessionName?.(id) ?? null;
-      if (name === null || actions === null)
-        return "There is no session by that id. Use sessions_list.";
-      return actions.act(`Tell ${name}: ${text}`);
-    },
-    fleet: async () =>
-      actions === null
-        ? "Sessions are not reachable from here yet."
-        : actions.act("What needs me?"),
+    session: async (id) =>
+      actions?.sessionShow?.(id) ?? "There is no session by that id. Use sessions_list.",
+    send: async (id, text) =>
+      actions?.sessionSend?.(id, text) ?? "There is no session by that id. Use sessions_list.",
+    fleet: async () => actions?.fleetStatus?.() ?? "Sessions are not reachable from here yet.",
     dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
     memory: async (query) => {
       const hits = conversation.search(query);

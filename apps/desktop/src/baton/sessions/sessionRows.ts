@@ -69,3 +69,43 @@ export const requestFor = (
         text: body,
       } as const);
 };
+
+/** A session by the id the assistant was given, or by its name. */
+export const findSession = (
+  rows: ReadonlyArray<BatonSessionSummary>,
+  idOrName: string,
+): BatonSessionSummary | null => {
+  const wanted = idOrName.trim().toLowerCase();
+  return rows.find((r) => r.key === idOrName || r.session.toLowerCase() === wanted) ?? null;
+};
+
+/** One session's state in a sentence, for the assistant: read from the row, never by asking the session. */
+export const describeSession = (row: BatonSessionSummary, now: number): string => {
+  const doing = row.urgent
+    ? "is waiting for him (a question or an approval)"
+    : row.state === "working"
+      ? "is working"
+      : row.state === "waiting"
+        ? "is waiting for his next message"
+        : "is idle";
+  const at = Date.parse(row.updatedAt ?? "");
+  const minutes = Number.isNaN(at) ? null : Math.max(0, Math.round((now - at) / 60_000));
+  const since =
+    minutes === null
+      ? ""
+      : minutes < 1
+        ? ", active just now"
+        : minutes < 120
+          ? `, last active ${minutes} min ago`
+          : `, last active ${Math.round(minutes / 60)} h ago`;
+  return `${row.session} (${row.project}, on ${row.box}) ${doing}${since}.`;
+};
+
+/**
+ * Why a message must not be typed into this row's pane now, or null. A session waiting on him shows a question or
+ * an approval, and keys typed there answer it; Herdr's own refusal only covers panes it knows run an agent.
+ */
+export const sendRefusal = (row: BatonSessionSummary): string | null =>
+  row.urgent
+    ? `${row.session} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
+    : null;

@@ -266,7 +266,12 @@ import { nightlyRow } from "@t3tools/baton-shared/nightly";
 import { createVaultTab } from "../vault/vaultTab.ts";
 import { vaultFor } from "../vault/vaultInstance.ts";
 import { noteAction } from "../memory/noteRows.ts";
-import { sessionControls } from "../sessions/sessionRows.ts";
+import {
+  describeSession,
+  findSession,
+  orderSessions,
+  sessionControls,
+} from "../sessions/sessionRows.ts";
 import type { SessionsBridge } from "../sessions/sessionsBridge.ts";
 import type { BatonUpdates } from "../update/BatonUpdater.ts";
 import { FRESH_WAKE_WORDS, modelShipped, wakeWordsFor } from "./wakeDefaults.ts";
@@ -1992,12 +1997,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }
       return op === "refine" ? "Passed on. The worker will make the plan again." : "Done.";
     },
-    sessionName: (idOrName) => {
-      const rows = input.sessions?.rows() ?? [];
-      const wanted = idOrName.trim().toLowerCase();
-      return (
-        rows.find((r) => r.key === idOrName || r.session.toLowerCase() === wanted)?.session ?? null
-      );
+    sessionShow: (idOrName) => {
+      const row = findSession(input.sessions?.rows() ?? [], idOrName);
+      return row === null ? null : describeSession(row, Date.now());
+    },
+    sessionSend: (idOrName, text) => {
+      const row = findSession(input.sessions?.rows() ?? [], idOrName);
+      if (row === null || input.sessions === undefined) return null;
+      if (row.pane === null)
+        return Promise.resolve(
+          `${row.session} has no terminal pane here to type into. Nothing was sent.`,
+        );
+      return input.sessions.act(`n:${row.key}`, text);
+    },
+    fleetStatus: async () => {
+      const rows = orderSessions(input.sessions?.rows() ?? []);
+      const now = Date.now();
+      const sessions =
+        rows.length === 0
+          ? "No sessions are loaded yet."
+          : rows.map((r) => `${describeSession(r, now)} [id: ${r.key}]`).join("\n");
+      return `${sessions}\n${describeWatch(await watchFindings())}`;
     },
     dictation: async (on) => {
       if (binary === null || sidecar === null)

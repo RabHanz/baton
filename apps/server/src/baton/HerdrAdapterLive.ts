@@ -527,6 +527,20 @@ export const make = Effect.gen(function* () {
       const pane = ref.pane;
       const prefix = sessionArgs(ref.session);
 
+      // An agent pane takes the message through Herdr's own prompt, which refuses while the agent
+      // waits on a question: blind keys there would answer the question ("1 more thing" picks option 1).
+      if (input.session.agentKind !== null && input.submit) {
+        const prompted = yield* cli.run([...prefix, "agent", "prompt", pane, input.text]);
+        if (prompted.exitCode === 0)
+          return { delivered: true, detail: `sent to ${input.session.label} and submitted.` };
+        return {
+          delivered: false,
+          detail: /agent_blocked/.test(prompted.stdout + prompted.stderr)
+            ? `${input.session.label} is waiting on a question or an approval in its terminal, so nothing was sent. Answer it there first, then send again.`
+            : describeFailure(prompted),
+        };
+      }
+
       const typed = yield* cli.run([...prefix, "pane", "send-text", pane, input.text]);
       if (typed.exitCode !== 0) return { delivered: false, detail: describeFailure(typed) };
 
