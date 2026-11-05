@@ -10,6 +10,10 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   screen_capture: ["Look at my screen", "Takes a screenshot (asks first unless you allowed it)."],
   point_at: ["Show me where the save button is", "Draws a pointer on your screen."],
   teach_start: ["Teach me how to export a PDF", "A step-by-step lesson with a pointer."],
+  rule_create: [
+    "When the shop session finishes, have Codex review it and tell me",
+    "Sets a standing rule; it reads the rule back for your yes first.",
+  ],
   plan_show: [
     "Do this for me: turn on word wrap in Notepad",
     "Shows the steps first; once you say go ahead it does them while you watch.",
