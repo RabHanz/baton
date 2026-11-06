@@ -66,7 +66,7 @@ export const BatonMemoryQuery = Schema.Struct({
   limit: Schema.optionalKey(Schema.Number),
   /** The persona asking (its pack id); a walled project's items then only reach its team. */
   agent: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
-  /** His own view (the Memory page): sees walled projects without a persona. */
+  /** His own view: sees walled projects without a persona. Only the desktop app's own session may set it. */
   admin: Schema.optionalKey(Schema.Boolean),
 });
 export type BatonMemoryQuery = typeof BatonMemoryQuery.Type;

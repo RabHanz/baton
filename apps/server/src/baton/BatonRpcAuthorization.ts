@@ -9,6 +9,7 @@
  */
 import {
   AuthBatonCloudApproveScope,
+  AuthBatonHandsHostScope,
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -193,10 +194,11 @@ export const DESK_METHODS: ReadonlySet<string> = new Set([
   ).map((op) => BATON_MEMORY_WS_METHODS[op]),
 ]);
 
-/** The scope a caller lacks for this method, or null when it may call it. */
+/** The scope a caller lacks for this method and payload, or null when it may call it. */
 export const missingBatonScope = (
   tag: string,
   scopes: ReadonlyArray<AuthEnvironmentScope>,
+  payload?: unknown,
 ): AuthEnvironmentScope | null => {
   const required = (
     BATON_RPC_REQUIRED_SCOPES as Record<
@@ -207,11 +209,19 @@ export const missingBatonScope = (
   if (required === undefined) return AuthOrchestrationOperateScope;
   const all: ReadonlyArray<AuthEnvironmentScope> =
     typeof required === "string" ? [required] : required;
-  return all.find((scope) => !scopes.includes(scope)) ?? null;
+  // Seeing through memory walls is his own view: only the desktop app's own session holds hands-host, and no grant can.
+  const walls =
+    tag === BATON_MEMORY_WS_METHODS.search &&
+    typeof payload === "object" &&
+    payload !== null &&
+    (payload as { admin?: unknown }).admin === true
+      ? [AuthBatonHandsHostScope]
+      : [];
+  return [...all, ...walls].find((scope) => !scopes.includes(scope)) ?? null;
 };
 
 export const layer = (scopes: ReadonlyArray<AuthEnvironmentScope>) =>
-  Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc }) => {
-    const missing = missingBatonScope(rpc._tag, scopes);
+  Layer.succeed(BatonRpcScopeAuthorization)((effect, { rpc, payload }) => {
+    const missing = missingBatonScope(rpc._tag, scopes, payload);
     return missing === null ? effect : Effect.fail(rpcAuthorizationError(missing));
   });
