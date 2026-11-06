@@ -113,7 +113,7 @@ describe("a live transcript read as messages", () => {
 
   it("names Claude Code's project folder the way Claude Code does", () => {
     expect(claudeProjectSlug("/srv/work/projects-00001/dev/baton-autosync")).toBe(
-      "-mnt-HC-Volume-106652742-dev-baton-autosync",
+      "-srv-work-projects-00001-dev-baton-autosync",
     );
     expect(claudeProjectSlug("/home/orbit/VantageOS/.worktrees/x")).toBe(
       "-home-orbit-VantageOS--worktrees-x",

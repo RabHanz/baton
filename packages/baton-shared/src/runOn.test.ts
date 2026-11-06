@@ -20,7 +20,7 @@ describe("run on", () => {
       label: "sablebox",
     });
     expect(resolveRunOn("  ORBIT ", targets, "e1")).toMatchObject({ ok: true, id: "e3" });
-    expect(resolveRunOn("sign", targets, "e1")).toMatchObject({ ok: true, id: "e2" });
+    expect(resolveRunOn("sable", targets, "e1")).toMatchObject({ ok: true, id: "e2" });
   });
   it("says which are connected when the name matches none", () => {
     const r = resolveRunOn("mars", targets, "e1");

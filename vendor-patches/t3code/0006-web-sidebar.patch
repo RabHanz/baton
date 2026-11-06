@@ -8166,7 +8166,7 @@ index 1207b5017100d7300d7a161e676531d145f45a75..8af922b99d46d5555b41b74d820ce536
          <ConfirmDialogHost />
          <CustomSnoozeDialogHost />
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
-index 4ac36acedf761847ea5db4db237120aaa0da9939..747db6b9d44b02a34f7afac88ff99bd5e4a27a7b 100644
+index 4ac36acedf761847ea5db4db237120aaa0da9939..6000541e431ca46a1dbcb5774da2c9511c1f2583 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 +++ b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 @@ -2,6 +2,7 @@ import { ProviderDriverKind } from "@t3tools/contracts";
@@ -8196,7 +8196,7 @@ index 4ac36acedf761847ea5db4db237120aaa0da9939..747db6b9d44b02a34f7afac88ff99bd5
 +    // Rendered from the live picker: the default Claude instance and claudeAgent_robin share a label.
 +    expect(
 +      distinctInstanceInitials(["Codex", "Robin", "Optima", "Robin", "Sablebox", "Live session"]),
-+    ).toEqual(["CO", "R1", "OP", "R2", "SI", "LS"]);
++    ).toEqual(["CO", "R1", "OP", "R2", "SA", "LS"]);
 +  });
 +
 +  it("numbers instances whose labels are identical", () => {

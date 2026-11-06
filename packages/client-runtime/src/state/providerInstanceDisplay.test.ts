@@ -99,7 +99,7 @@ describe("distinctInstanceInitials", () => {
     // Rendered from the live picker: the default Claude instance and claudeAgent_robin share a label.
     expect(
       distinctInstanceInitials(["Codex", "Robin", "Optima", "Robin", "Sablebox", "Live session"]),
-    ).toEqual(["CO", "R1", "OP", "R2", "SI", "LS"]);
+    ).toEqual(["CO", "R1", "OP", "R2", "SA", "LS"]);
   });
 
   it("numbers instances whose labels are identical", () => {
