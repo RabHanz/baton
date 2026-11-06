@@ -62,7 +62,7 @@ ${FONT_FACES}
 }
 ${DARK_TOKENS}
 ${PALETTE_CSS}
-[data-g=voice]{--hue:var(--indigo);--hue-text:var(--indigo)}
+[data-g=dictation]{--hue:var(--indigo);--hue-text:var(--indigo)}
 [data-g=knowledge]{--hue:var(--damson);--hue-text:var(--damson)}
 [data-g=settings]{--hue:var(--lichen);--hue-text:var(--lichen)}
 #app,:root,.nav,.glabel,#navind,.log .tag{--hue-wash:color-mix(in srgb,var(--hue) 11%,var(--panel));--hue-edge:color-mix(in srgb,var(--hue) 34%,var(--panel))}
@@ -274,7 +274,7 @@ kbd{font:600 12px var(--sans);border:1px solid var(--line-strong);border-bottom-
 .radio{flex:none;width:18px;height:18px;margin-top:2px;border-radius:50%;border:2px solid var(--line-strong);background:var(--card)}
 .pick.on .radio{border-color:var(--accent);background:radial-gradient(var(--accent) 0 4px,var(--card) 5px)}
 .tag2{margin-left:8px;font:600 11px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px}
-.voices{display:grid;gap:6px;width:100%}
+.voices{display:grid;gap:6px}
 .voice{display:flex;align-items:center;gap:10px;padding:2px 4px 2px 0}
 .pickv{flex:1;text-align:left;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:500 13px var(--sans);color:var(--ink)}
 .pickv:hover{border-color:var(--hue)}
@@ -316,7 +316,7 @@ button.sname:hover{color:var(--hue-text)}
 /* Dialogs: the settings sheet, the palette and the popovers are glass over a dimmed page. */
 #veil{position:fixed;inset:0;background:var(--veil);-webkit-backdrop-filter:var(--scrim);backdrop-filter:var(--scrim);display:none;place-items:center;z-index:5}
 #veil.on{display:grid}
-#modal{width:min(820px,calc(100vw - 48px));height:min(560px,calc(100vh - 48px));background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--edge);border-radius:20px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden}
+#modal{width:min(980px,calc(100vw - 48px));height:min(760px,calc(100vh - 48px));background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--edge);border-radius:20px;box-shadow:var(--modal-shadow);display:grid;grid-template-columns:210px 1fr;overflow:hidden}
 #mnav{background:color-mix(in srgb,var(--sunk) 60%,transparent);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;overflow:auto}
 #mnav h4{font:600 11px var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:10px 10px 6px}
 #mnav .nav{padding:7px 10px}

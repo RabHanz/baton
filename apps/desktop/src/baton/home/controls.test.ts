@@ -2,9 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { FakeElement } from "./fakeDom.ts";
 import { openState, STATES } from "./pageStates.ts";
-import { TABS } from "./tabs.ts";
+import { SETTINGS, TABS } from "./tabs.ts";
 
-const MODALS = ["general", "system", "keys", "account", "updates", "about", "setup"];
+const MODALS = [...SETTINGS.map((s) => s.id), "setup"];
 const HANDLERS = ["onclick", "onchange", "oninput", "onkeydown", "onsubmit", "onmousedown"];
 
 /** What an element does when used, from the way the page script wired it. */

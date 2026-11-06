@@ -37,6 +37,8 @@ export interface HomeOption {
   readonly label: string;
   /** One line saying what choosing it does. */
   readonly note?: string;
+  /** The voice this option speaks in, for a Play button beside it. */
+  readonly voice?: string;
 }
 
 interface HomeControlBase {

@@ -6,15 +6,15 @@ voice is in the microphone.
 
 ## What exists now
 
-| Path | Over speakers | On headphones |
-| --- | --- | --- |
-| Wake word, stop phrase | as before | as before |
-| Esc, the pill's stop, the hotkey (the pill builder's) | always | always |
-| Talking over her | the echo guard (setting "Cut in by talking over her", **off by default**) | on: the mic cannot hear her, so speech over her voice cuts in |
+| Path                                                  | Over speakers                                                             | On headphones                                                 |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Wake word, stop phrase                                | as before                                                                 | as before                                                     |
+| Esc, the pill's stop, the hotkey (the pill builder's) | always                                                                    | always                                                        |
+| Talking over her                                      | the echo guard (setting "Cut in by talking over her", **off by default**) | on: the mic cannot hear her, so speech over her voice cuts in |
 
 On a cut-in the voice **ducks to 25% at 40 ms** of his speech and **stops at 120 ms**, well inside 300 ms, and the core listens from the
 moment he started (the words since the onset are kept, as for a late wake). If it was only a blip the voice comes back up. Settings, on the
-Voice page: "I am wearing headphones" and "Cut in by talking over her (speakers, experimental)".
+Settings, Voice and wake words: "I am wearing headphones" and "Cut in by talking over her (speakers, experimental)".
 
 ## How the echo guard hears him (`packages/baton-voice/src/echoGuard.ts`)
 
@@ -28,11 +28,11 @@ of her speech) it says nothing and the fallbacks are what is left.
 
 Speech-like audio through a room (delay 60 to 200 ms, reverberant tail up to 400 ms), echo and his voice mixed at the mic, confirmation 120 ms.
 
-| | Result | Target |
-| --- | --- | --- |
-| False barge-ins on her own voice | **16.7 per 10 minutes** of continuous speech | under 1 |
-| Recall when he is 12 dB over the echo | 0.90 | 0.9 |
-| Recall at +6 dB / 0 dB / -6 dB | 0.88 / 0.69 / 0.44 | 0.9 |
+|                                       | Result                                       | Target  |
+| ------------------------------------- | -------------------------------------------- | ------- |
+| False barge-ins on her own voice      | **16.7 per 10 minutes** of continuous speech | under 1 |
+| Recall when he is 12 dB over the echo | 0.90                                         | 0.9     |
+| Recall at +6 dB / 0 dB / -6 dB        | 0.88 / 0.69 / 0.44                           | 0.9     |
 
 **It does not meet the target**, which is why the speaking-over-speakers path is off by default. Trade-offs seen in sweeps (60 s per room): a
 stricter threshold cut false barge-ins to 3 per 10 minutes and recall at 0 dB to 0.33. The statistic (residual over reference energy) is not

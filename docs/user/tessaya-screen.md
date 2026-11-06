@@ -12,6 +12,6 @@ Press **Ctrl+Alt+Shift+B**, type, press Enter (Esc closes it), or say a wake wor
 
 ## Good to know
 
-- It sees the screen only when you ask, and asks for consent the first time (Screen page). "Always allow screen capture" is off by default.
+- It sees the screen only when you ask, and asks for consent the first time (Settings, Working for you). "Always allow screen capture" is off by default.
 - Say "stop" or use **Clear the screen** in the tray to take everything down.
 - The pointer and card stay until you have had time to read them.

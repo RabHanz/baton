@@ -93,7 +93,7 @@ describe("a refresh keeps the breathing mark", () => {
   it("leaves the brand in the page across a sidebar rebuild so its animation does not restart", () => {
     expect(APP_SCRIPT).toContain("fresh.remove(); el.append(...next.childNodes)");
     expect(APP_SCRIPT).toMatch(
-      /foot\.append\(t3, st\); side\.appendChild\(foot\);\s*\}, 'brand'\);/,
+      /foot\.append\(t3, hp, st\); side\.appendChild\(foot\);\s*\}, 'brand'\);/,
     );
   });
 });
