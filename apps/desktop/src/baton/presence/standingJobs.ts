@@ -188,20 +188,41 @@ export const runStandingJobs = async (
  * Reads the state, moving an older `playbooks.json` over once. The brief used to have its own switch
  * besides the playbook: a brief he was getting either way stays on.
  */
-export const migrateStanding = (raw: unknown, briefOn: boolean): StandingState => {
+export const migrateStanding = (
+  raw: unknown,
+  briefOn: boolean,
+  /** The day (as `Date.toDateString`) the old switch last gave the brief, so today's is not given twice. */
+  briefGivenOn: string | null = null,
+): StandingState => {
   const value = (raw ?? {}) as Partial<StandingState>;
   const on = { ...value.on };
   if (raw === null || on.morning_brief !== true) on.morning_brief = briefOn;
+  const given: ReadonlyArray<StandingRun> =
+    briefGivenOn === null
+      ? []
+      : [
+          {
+            id: "morning_brief",
+            key: briefGivenOn,
+            at: 0,
+            outcome: "ran",
+            text: "Given before the update.",
+          },
+        ];
   return {
     ...EMPTY_STANDING,
     ...value,
     on,
-    runs: (value.runs ?? []).map((r) => ({ ...r, outcome: r.outcome ?? "ran" })),
+    runs: [...(value.runs ?? []).map((r) => ({ ...r, outcome: r.outcome ?? "ran" })), ...given],
     counts: value.counts ?? {},
   };
 };
 
-export const createStandingStore = (dir: string, briefOn: () => boolean) => {
+export const createStandingStore = (
+  dir: string,
+  /** The old brief switch, read once when the state is first moved over. */
+  legacy: () => { readonly briefOn: boolean; readonly briefGivenOn: string | null },
+) => {
   const file = NodePath.join(dir, "standing-jobs.json");
   const read = (name: string): unknown => {
     try {
@@ -213,7 +234,8 @@ export const createStandingStore = (dir: string, briefOn: () => boolean) => {
   const load = (): StandingState => {
     const current = read("standing-jobs.json");
     if (current !== undefined) return { ...EMPTY_STANDING, ...(current as Partial<StandingState>) };
-    return migrateStanding(read("playbooks.json") ?? null, briefOn());
+    const old = legacy();
+    return migrateStanding(read("playbooks.json") ?? null, old.briefOn, old.briefGivenOn);
   };
   const save = (state: StandingState): void => {
     NodeFS.mkdirSync(dir, { recursive: true });
@@ -222,7 +244,8 @@ export const createStandingStore = (dir: string, briefOn: () => boolean) => {
   };
   return {
     load,
-    save,
+    /** A pass's runs, keeping the switches as they are now: he may have flipped one while it ran. */
+    saveRun: (state: StandingState): void => save({ ...state, on: load().on }),
     setOn: (id: BuiltInId, on: boolean): void => {
       const state = load();
       save({ ...state, on: { ...state.on, [id]: on } });

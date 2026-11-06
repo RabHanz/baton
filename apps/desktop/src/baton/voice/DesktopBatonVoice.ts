@@ -3368,7 +3368,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   // Standing jobs (each off until he turns it on in Trust, the brief on as it was): counted, logged in
   // the Record under their owner, and never send, post or spend. Rules and schedules run on the server.
-  const standingStore = createStandingStore(input.stateDir, () => settings.briefMode !== "off");
+  const standingStore = createStandingStore(input.stateDir, () => {
+    // The old switch's last brief day (`y-m-d`, local), so an upgrade after six does not brief twice.
+    const old = (settings as { briefDay?: unknown }).briefDay;
+    const at = new Date();
+    return {
+      briefOn: settings.briefMode !== "off",
+      briefGivenOn:
+        old === `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`
+          ? at.toDateString()
+          : null,
+    };
+  });
   const ownerOf = (job: StandingJobDef) => {
     const personas = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas;
     return personas.find((p) => p.id === job.owner) ?? personas.find((p) => p.lead) ?? personas[0]!;
@@ -3382,7 +3393,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .catch(() => null)) as { rules?: ReadonlyArray<OrchestrationRuleWithFirings> } | null;
     if (value?.rules !== undefined) rulesCache = value.rules;
   };
+  let standingRunning = false;
+  /** One pass at a time: the two-minute tick and "Run now" must not both run a job for the same thing. */
   const standingTick = async (): Promise<void> => {
+    if (standingRunning) return;
+    standingRunning = true;
+    try {
+      await standingPass();
+    } finally {
+      standingRunning = false;
+    }
+  };
+  const standingPass = async (): Promise<void> => {
     void refreshRules();
     const state = standingStore.load();
     if (!Object.values(state.on).some(Boolean)) return;
@@ -3437,7 +3459,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         },
       },
     );
-    standingStore.save(result.state);
+    standingStore.saveRun(result.state);
     for (const run of result.did) {
       input.onNote?.("playbook", { playbook: run.id, text: run.text });
       const job = BUILT_INS.find((j) => j.id === run.id)!;
@@ -5214,6 +5236,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       save({ noticeMode: value });
     } else if (id === "v.brief" && (value === "off" || value === "written" || value === "spoken")) {
       save({ briefMode: value });
+      // The brief is the lead's standing job: this setting switches it too.
+      standingStore.setOn("morning_brief", value !== "off");
     } else if (
       id === "v.quiet" &&
       typeof value === "string" &&

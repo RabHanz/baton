@@ -1,7 +1,13 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  createStandingStore,
   EMPTY_STANDING,
   migrateStanding,
   runStandingJobs,
@@ -125,6 +131,27 @@ describe("standing jobs", () => {
     expect(moved.runs[0]?.outcome).toBe("ran");
     expect(migrateStanding(null, false).on).toEqual({ morning_brief: false });
     expect(migrateStanding({ on: { morning_brief: true } }, false).on.morning_brief).toBe(true);
+  });
+
+  it("does not give a second brief on the day of the upgrade when the old switch already gave one", async () => {
+    const { log, ops } = fakes();
+    const state = migrateStanding(null, true, "Tue");
+    await runStandingJobs(input({ state }), ops);
+    expect(log.briefs).toBe(0);
+    await runStandingJobs(input({ state, day: "Wed" }), ops);
+    expect(log.briefs).toBe(1);
+  });
+
+  it("a pass saves its runs but never undoes a switch he flipped while it ran", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "baton-standing-"));
+    const store = createStandingStore(dir, () => ({ briefOn: false, briefGivenOn: null }));
+    store.setOn("job_summary", true);
+    const started = store.load();
+    store.setOn("job_summary", false);
+    store.saveRun({ ...started, counts: { job_summary: 1 } });
+    expect(store.load().on.job_summary).toBe(false);
+    expect(store.load().counts.job_summary).toBe(1);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 
   it("records a failing op and still runs the others", async () => {
