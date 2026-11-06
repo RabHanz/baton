@@ -492,3 +492,19 @@ describe("sendOutcome", () => {
     expect(sendOutcome(result)).toBe(expected);
   });
 });
+
+describe("listing sessions by words", () => {
+  it("searches the history index only when asked to, so an agent cannot test words against every transcript", async () => {
+    const searched: string[] = [];
+    const { catalog } = machine({
+      history: async (q) => (
+        searched.push(q),
+        [{ sessionId: "gone-1", project: "-work-shop", at: null }]
+      ),
+    });
+    await catalog.list({ query: "deploy key", history: false });
+    expect(searched).toEqual([]);
+    await catalog.list({ query: "deploy key" });
+    expect(searched).toEqual(["deploy key"]);
+  });
+});

@@ -78,6 +78,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
 import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as McpHttpServer from "./mcp/McpHttpServer.ts";
+import * as TessayaHandlers from "./mcp/toolkits/tessaya/handlers.ts";
+import { TessayaToolkit } from "./mcp/toolkits/tessaya/tools.ts";
 import * as PeerForwarding from "./peer/PeerForwarding.ts";
 import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
 import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
@@ -792,7 +794,13 @@ const layerMakeRoutes = Layer.mergeAll(
     Ws.layer,
     speechStreamRouteLayer,
   ),
-  McpHttpServer.layer.pipe(
+  // T3's tools, plus Tessaya's reads for agents signed in from outside (docs/user/tessaya-agents.md).
+  McpHttpServer.layerMcpTransport(
+    Layer.merge(
+      McpHttpServer.layerTools,
+      McpHttpServer.toolkitRegistration(TessayaToolkit, TessayaHandlers.layer),
+    ),
+  ).pipe(
     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
   ),

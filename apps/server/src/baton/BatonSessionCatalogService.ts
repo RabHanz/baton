@@ -76,6 +76,7 @@ export class BatonSessionCatalogService extends Context.Service<
       limit?: number;
       before?: string;
       background?: boolean;
+      history?: boolean;
     }) => Effect.Effect<{
       readonly machine: string;
       readonly sessions: ReadonlyArray<BatonCatalogSession>;
@@ -565,6 +566,7 @@ export const layer = Layer.effect(
         limit?: number;
         before?: string;
         background?: boolean;
+        history?: boolean;
       }) {
         const result = yield* Effect.promise(() => catalog.list(input));
         if (Option.isNone(engine)) return result;

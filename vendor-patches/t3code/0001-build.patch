@@ -139,7 +139,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..051b135b003470597ad866dea4e6ceb2
      "test": "vp test run --config ../vite.config.ts --dir ."
    },
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4286525d1 100644
+index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..158c6b6a7fe884de8775b4b76115d3204b06ef47 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -36,6 +36,9 @@
@@ -161,7 +161,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4
          "scripts/fetch-expo-schema.ts",
          "scripts/probe-claude-fork-local-rollback-replay.ts",
          "scripts/update-test-shard-weights.ts",
-@@ -58,7 +63,12 @@
+@@ -58,7 +63,14 @@
          "graphql.config.ts",
        ],
        // The generated operations export every selection's class.
@@ -171,11 +171,13 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4
 +        // Baton's modules export for their tests and for the vendor patches that import them.
 +        "src/baton/**": ["exports"],
 +        "src/provider/Drivers/ClaudeAccountHome.ts": ["exports"],
++        // server.ts mounts the transport with Tessaya's toolkit added; upstream's own `layer` stays as upstream has it.
++        "src/mcp/McpHttpServer.ts": ["exports"],
 +      },
        // Keep the transitive Effect runtime pinned for standalone npm installs.
        // The Vite+ web build prerequisite.
        // Native and disk-loaded provider packages stay external to the bundle; the
-@@ -72,13 +82,19 @@
+@@ -72,13 +84,19 @@
        ],
      },
      "apps/desktop": {
@@ -195,7 +197,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -91,7 +107,8 @@
+@@ -91,7 +109,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -205,7 +207,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -100,13 +117,20 @@
+@@ -100,13 +119,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -227,7 +229,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +176,9 @@
+@@ -152,6 +178,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },

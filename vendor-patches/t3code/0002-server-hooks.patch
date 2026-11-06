@@ -640,7 +640,7 @@ index dc67bd9387e04b91fa61d34ea47929c056256796..93263b7b064ba3389f92c2f5935bd6a2
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f5671e1d698 100644
+index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..3a7d3fb4970e41f1f3ccc29a09751ee02c76c81a 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -6,6 +6,7 @@ import * as AssetSigner from "./assets/AssetSigner.ts";
@@ -651,7 +651,16 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f56
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  // Effect wraps this raw Node HTTP server after its startup and write-error guards attach.
-@@ -667,7 +668,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -77,6 +78,8 @@ import * as ProviderInstanceRegistryHydration from "./provider/ProviderInstanceR
+ import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
+ import * as TerminalManager from "./terminal/Manager.ts";
+ import * as McpHttpServer from "./mcp/McpHttpServer.ts";
++import * as TessayaHandlers from "./mcp/toolkits/tessaya/handlers.ts";
++import { TessayaToolkit } from "./mcp/toolkits/tessaya/tools.ts";
+ import * as PeerForwarding from "./peer/PeerForwarding.ts";
+ import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
+ import * as PeerLinkRequests from "./peer/PeerLinkRequests.ts";
+@@ -667,7 +670,12 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    layerProviderInstallationRefresh,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -664,7 +673,7 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f56
    Layer.provideMerge(layerOrchestrationApplication),
    Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
    Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-@@ -781,6 +787,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -781,11 +789,18 @@ const layerMakeRoutes = Layer.mergeAll(
      GuestHttp.layer,
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
@@ -672,6 +681,18 @@ index 5c9ab9c433ffc56e8536f7d0b3ce7da440777ad2..778262f9628a2f209289d6054ef24f56
      ServerHttp.layerStaticAndDevRoute,
      Ws.layer,
      speechStreamRouteLayer,
+   ),
+-  McpHttpServer.layer.pipe(
++  // T3's tools, plus Tessaya's reads for agents signed in from outside (docs/user/tessaya-agents.md).
++  McpHttpServer.layerMcpTransport(
++    Layer.merge(
++      McpHttpServer.layerTools,
++      McpHttpServer.toolkitRegistration(TessayaToolkit, TessayaHandlers.layer),
++    ),
++  ).pipe(
+     Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
+     Layer.provide(McpOAuth.layerMcpClientAuthenticator),
+   ),
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
 index 035f8b1688d44a9c4ff39ebad30099fffdc3a9d2..52a48d55b3a64d3fcc3a61d707336d2739f6511f 100644
 --- a/apps/server/src/ws.ts

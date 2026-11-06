@@ -68,6 +68,8 @@
         // Baton's modules export for their tests and for the vendor patches that import them.
         "src/baton/**": ["exports"],
         "src/provider/Drivers/ClaudeAccountHome.ts": ["exports"],
+        // server.ts mounts the transport with Tessaya's toolkit added; upstream's own `layer` stays as upstream has it.
+        "src/mcp/McpHttpServer.ts": ["exports"],
       },
       // Keep the transitive Effect runtime pinned for standalone npm installs.
       // The Vite+ web build prerequisite.
