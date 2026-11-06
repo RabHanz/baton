@@ -52,6 +52,7 @@ import { createPocketEngine, type PocketVoice } from "./voice/pocketVoice.ts";
 import { createSpeaker, type VoiceChoice } from "./voice/voiceSpeaker.ts";
 import { createDesktopVoiceCore, resolveVoiceAssets } from "./voice/desktopVoiceCore.ts";
 import { makeVoiceTurnLog } from "./voice/voiceTurnLog.ts";
+import { createOnnxHost, type OnnxReply } from "./voice/onnxHost.ts";
 import { publishPaletteThemes } from "./home/palette.ts";
 import { makeRotatingLogFileWriter } from "../app/DesktopObservability.ts";
 
@@ -335,6 +336,29 @@ export const startBatonDesktop = Effect.gen(function* () {
       onUnavailable: () =>
         voice?.onNote("The voice is not ready, so replies show as text. Voice tab: Voice."),
     });
+    // Wake and speech models run in a utility process: onnxruntime-node blocks the thread it runs on.
+    const onnx = createOnnxHost({
+      fork: () => {
+        const child = Electron.utilityProcess.fork(
+          NodePath.join(__dirname, "baton", "voice", "onnxWorker.cjs"),
+          [],
+          { serviceName: "Tessaya voice models", stdio: "ignore" },
+        );
+        return {
+          postMessage: (request) => child.postMessage(request),
+          onMessage: (listener) => child.on("message", (reply: OnnxReply) => listener(reply)),
+          onExit: (listener) => child.once("exit", listener),
+          kill: () => child.kill(),
+        };
+      },
+      onCrash: (code) => {
+        lifecycle.note("voice-models-restarted", { exitCode: code });
+        void speaker
+          .speak("My hearing stopped for a moment. It is coming back now.")
+          .catch(() => undefined);
+      },
+    });
+    Electron.app.on("will-quit", onnx.close);
     // Remote hands (docs/baton/REMOTE_HANDS.md): the app's own operations a remote session may ask for.
     const remoteOps = {
       version: () => environment.appVersion,
@@ -613,6 +637,7 @@ export const startBatonDesktop = Effect.gen(function* () {
             verifyWake,
             ...(echo === undefined ? {} : { echo }),
             speakerMode,
+            scorers: onnx,
             ...(screen === null ? {} : { brain: screen }),
           })
         ).core,

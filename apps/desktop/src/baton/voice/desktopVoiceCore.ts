@@ -22,6 +22,9 @@ import {
   DEFAULT_TIMINGS,
   type BatonVoiceCore,
   type EchoGuard,
+  type OpenWakeWordPaths,
+  type OpenWakeWordScorer,
+  type SileroScorer,
   type SttProvider,
   type TtsProvider,
   type VoiceCoreEvent,
@@ -298,6 +301,11 @@ export const createDesktopVoiceCore = async (input: {
   /** Hears him over Baton's own voice through the speakers. */
   readonly echo?: EchoGuard;
   readonly speakerMode?: () => "speakers" | "headphones";
+  /** Where the wake and speech models run; in this process when absent (tests, scripts). */
+  readonly scorers?: {
+    readonly wake: (paths: OpenWakeWordPaths) => Promise<OpenWakeWordScorer>;
+    readonly vad: (path: string) => Promise<SileroScorer>;
+  };
 }): Promise<{ readonly core: BatonVoiceCore; readonly drain: () => Promise<void> }> => {
   const missing = missingVoiceAssets(input.assets);
   if (missing.length > 0) {
@@ -314,12 +322,15 @@ export const createDesktopVoiceCore = async (input: {
     );
   }
   const at = (file: string) => NodePath.join(input.assets.modelsDir, file);
-  const wake = await createOpenWakeWordProvider({
-    melspectrogram: at("melspectrogram.onnx"),
-    embedding: at("embedding_model.onnx"),
-    wakes: models,
-  });
-  const vad = await createSileroVad(at("silero_vad.onnx"));
+  const wake = await createOpenWakeWordProvider(
+    {
+      melspectrogram: at("melspectrogram.onnx"),
+      embedding: at("embedding_model.onnx"),
+      wakes: models,
+    },
+    input.scorers?.wake,
+  );
+  const vad = await createSileroVad(at("silero_vad.onnx"), undefined, input.scorers?.vad);
   const core = createVoiceCore({
     wake,
     vad,

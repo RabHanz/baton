@@ -26,6 +26,7 @@ import {
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
 import { loadDocument } from "./loadDocument.ts";
+import { onAudioServiceGone } from "./voicePlayer.ts";
 import { applyLookScript, lookClasses, type Glass, type Motion } from "../home/look.ts";
 import { LISTENING_WEBP, STING_WEBP } from "./pillMotionArt.ts";
 import { TRAY_PNG } from "./trayArt.ts";
@@ -541,6 +542,7 @@ export const createVoicePill = (input: {
     }
   };
 
+  onAudioServiceGone(() => call("try{ctx&&ctx.close()}catch{}ctx=null"));
   const sound = (name: PillSound) => {
     const gain = input.cueGain();
     if (gain <= 0) return;

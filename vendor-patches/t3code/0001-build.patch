@@ -49,6 +49,18 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
    !ifndef DO_NOT_CREATE_START_MENU_SHORTCUT
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
+diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
+index d06efd4d9d7bbf43d8076d1f61e31b1857231a75..800be59e6cdc4ab8c3ade0c6fc0bbdb84f9db983 100644
+--- a/apps/desktop/vite.config.ts
++++ b/apps/desktop/vite.config.ts
+@@ -78,6 +78,7 @@ export default defineConfig({
+         "src/snapShot/GlobalShiftShortcutWorker.ts",
+         "src/snapShot/RegionSnapShotWorker.ts",
+         "src/snapShot/SnapShotAccessibilityWorker.ts",
++        "src/baton/voice/onnxWorker.ts",
+       ],
+       clean: false,
+       deps: {
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
 index e93c0733fa09a82d359454200b420d18c0a0a1b5..be7e3863a5e15337aefa4f475be6cc21e9500890 100644
 --- a/apps/mobile/package.json
@@ -127,7 +139,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..051b135b003470597ad866dea4e6ceb2
      "test": "vp test run --config ../vite.config.ts --dir ."
    },
 diff --git a/knip.jsonc b/knip.jsonc
-index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..45bc9c3ab41cf517a6288b1a03cef6c489867e5e 100644
+index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..ea65a2c0ec040c1a021c046c47bd9be4286525d1 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -36,6 +36,9 @@
@@ -163,7 +175,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..45bc9c3ab41cf517a6288b1a03cef6c4
        // Keep the transitive Effect runtime pinned for standalone npm installs.
        // The Vite+ web build prerequisite.
        // Native and disk-loaded provider packages stay external to the bundle; the
-@@ -72,8 +82,13 @@
+@@ -72,13 +82,19 @@
        ],
      },
      "apps/desktop": {
@@ -177,7 +189,13 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..45bc9c3ab41cf517a6288b1a03cef6c4
          "gnome-extension/extension.js!",
          "src/electron/WindowsForegroundFocusWorker.ts!",
          "src/snapShot/GlobalShiftShortcutWorker.ts!",
-@@ -91,7 +106,8 @@
+         "src/snapShot/RegionSnapShotWorker.ts!",
+         "src/snapShot/SnapShotAccessibilityWorker.ts!",
++        "src/baton/voice/onnxWorker.ts!",
+         "src/boot.ts!",
+         "src/compileCache.ts!",
+         "src/serverCompileCache.ts!",
+@@ -91,7 +107,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -187,7 +205,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..45bc9c3ab41cf517a6288b1a03cef6c4
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -100,13 +116,20 @@
+@@ -100,13 +117,20 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -209,7 +227,7 @@ index ed4bf19129645d1f2abf8f83a95c6a8f076aed88..45bc9c3ab41cf517a6288b1a03cef6c4
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -152,6 +175,9 @@
+@@ -152,6 +176,9 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },

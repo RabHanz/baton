@@ -117,10 +117,14 @@ it("rejects a second capture while one is in flight", async () => {
 });
 
 it("closes the standby and the in-flight child", async () => {
+  vi.useFakeTimers();
   const { pool, processes } = fakePool();
   pool.warm();
+  assert.lengthOf(processes, 0);
   const capture = pool.capture(region);
   pool.warm();
+  vi.runAllTimers();
+  vi.useRealTimers();
   assert.lengthOf(processes, 2);
 
   pool.close();

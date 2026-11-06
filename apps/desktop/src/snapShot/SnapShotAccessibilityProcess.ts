@@ -10,6 +10,7 @@ import type {
 
 const START_TIMEOUT_MS = 1_000;
 const RESULT_TIMEOUT_MS = 4_000;
+const HELPER_WARM_DELAY_MS = 2_000;
 
 export type AccessibilityRead = {
   readonly started: Promise<void>;
@@ -136,12 +137,20 @@ export function makeSnapShotAccessibilityProcessPool(workerPath: string): Access
   let standby: AccessibilityProcess | undefined;
   const active = new Set<AccessibilityProcess>();
   let closed = false;
+  let warmTimer: ReturnType<typeof setTimeout> | undefined;
 
+  // Spawning blocks the main thread, so the standby starts once things settle, not mid-read or at startup.
   const warm = () => {
-    if (closed || standby?.alive) return;
-    standby = startSnapShotAccessibilityProcess(workerPath);
+    if (closed || standby?.alive || warmTimer !== undefined) return;
+    warmTimer = setTimeout(() => {
+      warmTimer = undefined;
+      if (!closed && !standby?.alive) standby = startSnapShotAccessibilityProcess(workerPath);
+    }, HELPER_WARM_DELAY_MS);
+    warmTimer.unref?.();
   };
   const cool = () => {
+    clearTimeout(warmTimer);
+    warmTimer = undefined;
     standby?.close();
     standby = undefined;
   };

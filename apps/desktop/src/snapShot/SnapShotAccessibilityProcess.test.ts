@@ -70,9 +70,12 @@ it("replaces a warm helper that exits before capture", async () => {
     .mockReturnValueOnce(exitedWorker)
     .mockReturnValueOnce(captureWorker)
     .mockReturnValueOnce(replacementWorker);
+  vi.useFakeTimers();
   const pool = makeSnapShotAccessibilityProcessPool("accessibility.cjs");
 
   pool.warm();
+  assert.lengthOf(forkMock.mock.calls, 0);
+  vi.advanceTimersByTime(2_000);
   exitedWorker.emit("exit", 1);
   const read = pool.read(request);
   captureWorker.emit("message", "ready");
@@ -80,6 +83,8 @@ it("replaces a warm helper that exits before capture", async () => {
   captureWorker.emit("message", { type: "result", context: { accessibleText: "Recovered" } });
 
   assert.deepEqual(await read.result, { accessibleText: "Recovered" });
+  vi.advanceTimersByTime(2_000);
+  vi.useRealTimers();
   assert.lengthOf(forkMock.mock.calls, 3);
   assert.deepEqual(captureWorker.send.mock.calls[0]?.[0], request);
   pool.close();

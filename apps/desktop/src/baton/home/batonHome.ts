@@ -14,6 +14,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
+import { markPhase } from "../lifecycle/mainStall.ts";
 import { homeDocumentFor } from "./homeDocument.ts";
 import { THEME_GROUND, resolveTheme, type Appearance } from "./theme.ts";
 import { tabOf, type TabId } from "./tabs.ts";
@@ -377,7 +378,7 @@ const GET = "baton-home:get";
 const SET = "baton-home:set";
 const SESSIONS = "baton-home:sessions";
 const PUSH = "baton-home:state";
-const PUSH_MS = 100;
+const PUSH_MS = 250;
 const THEME = "baton-home:theme";
 const LEVEL = "baton-home:level";
 
@@ -526,12 +527,26 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   // and the trailing one builds the state when it is sent, so the window always ends on the latest.
   let pushedAt = 0;
   let pushTimer: ReturnType<typeof setTimeout> | null = null;
+  // A window nobody can see is not rebuilt for: it is marked stale and gets the latest when it shows again.
+  let stale = false;
   const push = () => {
     pushTimer = null;
+    const open = live();
+    if (open === null) return;
+    if (!open.isVisible() || open.isMinimized()) {
+      stale = true;
+      return;
+    }
+    stale = false;
     pushedAt = Date.now();
-    live()?.webContents.send(PUSH, withTabs(input.state()));
+    markPhase("home-push:begin");
+    open.webContents.send(PUSH, withTabs(input.state()));
     applyTheme();
     applyLook(false);
+    markPhase("home-push:end");
+  };
+  const showing = () => {
+    if (stale && pushTimer === null) push();
   };
   return {
     applyLook: () => applyLook(),
@@ -617,6 +632,8 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
           splash.fade((o) => created.isDestroyed() || created.setOpacity(o), 0, 1);
         });
       });
+      created.on("show", showing);
+      created.on("restore", showing);
       created.on("closed", () => {
         if (win === created) win = null;
       });

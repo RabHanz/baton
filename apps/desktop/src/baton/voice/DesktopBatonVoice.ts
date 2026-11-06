@@ -1601,12 +1601,15 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   };
   // The taskbar's theme changes the tray mark's colour (white on dark, black on light).
   Electron.nativeTheme.on("updated", () => render());
+  // Each tray call is synchronous on Windows: only when the image or text changed.
+  let trayImage: Electron.NativeImage | null = null;
+  let trayTip = "";
   const renderNow = () => {
     pill.setReason(loop === null ? "off" : state === "muted" ? "muted" : "sleeping");
-    tray.setImage(trayIcon(markOptions()));
-    tray.setToolTip(
-      `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`,
-    );
+    const image = trayIcon(markOptions());
+    if (image !== trayImage) tray.setImage((trayImage = image));
+    const tip = `Tessaya: ${hudView(state).label} · ${deviceName()}${note ? ` · ${note}` : ""}`;
+    if (tip !== trayTip) tray.setToolTip((trayTip = tip));
     rebuildMenu();
   };
   // Several changes in a burst (a state, a note, a reply) repaint the tray, rebuild its menu and push the whole
@@ -5355,68 +5358,72 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
 
   let speakingNow = false;
 
+  // Building a native menu is a synchronous call into the OS: only when what it shows changed, not per render.
+  let menuShown = "";
   const rebuildMenu = () => {
     home.refresh();
-    tray.setContextMenu(
-      Electron.Menu.buildFromTemplate([
-        { label: `Tessaya: ${hudView(state).label}`, enabled: false },
-        ...(note ? [{ label: note, enabled: false }] : []),
-        { type: "separator" },
-        {
-          label: "Always listening",
-          type: "checkbox",
-          enabled: binary !== null,
-          checked: settings.enabled,
-          click: (item) => {
-            save({ enabled: item.checked });
-            void (item.checked ? start().catch(failed) : stop());
+    const template: Electron.MenuItemConstructorOptions[] = [
+      { label: `Tessaya: ${hudView(state).label}`, enabled: false },
+      ...(note ? [{ label: note, enabled: false }] : []),
+      { type: "separator" },
+      {
+        label: "Always listening",
+        type: "checkbox",
+        enabled: binary !== null,
+        checked: settings.enabled,
+        click: (item) => {
+          save({ enabled: item.checked });
+          void (item.checked ? start().catch(failed) : stop());
+        },
+      },
+      {
+        label: "Mute",
+        type: "checkbox",
+        accelerator: VOICE_HOTKEYS[2]!.accelerator,
+        checked: loop?.isMuted() ?? false,
+        enabled: loop !== null,
+        click: () => toggleMute(),
+      },
+      { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
+      {
+        label: "Microphone",
+        submenu: [
+          {
+            label: "Automatic (system default)",
+            type: "checkbox",
+            checked: settings.pinnedLabel === null,
+            click: () => pickMic(null),
           },
+          { type: "separator" },
+          ...realDevices(devices).map((d) => ({
+            label: d.label || "Unnamed microphone",
+            type: "checkbox" as const,
+            checked: d.label === choiceSummary(choice).mic,
+            click: () => pickMic(d.label),
+          })),
+        ],
+      },
+      {
+        label: "Copy last transcript or reply",
+        enabled: (lastReply ?? lastDictation) !== null,
+        click: () => {
+          const last = lastReply ?? lastDictation;
+          if (last !== null) Electron.clipboard.writeText(last);
         },
-        {
-          label: "Mute",
-          type: "checkbox",
-          accelerator: VOICE_HOTKEYS[2]!.accelerator,
-          checked: loop?.isMuted() ?? false,
-          enabled: loop !== null,
-          click: () => toggleMute(),
-        },
-        { label: "Wake now", enabled: loop !== null, click: () => loop?.activate("wake") },
-        {
-          label: "Microphone",
-          submenu: [
-            {
-              label: "Automatic (system default)",
-              type: "checkbox",
-              checked: settings.pinnedLabel === null,
-              click: () => pickMic(null),
-            },
-            { type: "separator" },
-            ...realDevices(devices).map((d) => ({
-              label: d.label || "Unnamed microphone",
-              type: "checkbox" as const,
-              checked: d.label === choiceSummary(choice).mic,
-              click: () => pickMic(d.label),
-            })),
-          ],
-        },
-        {
-          label: "Copy last transcript or reply",
-          enabled: (lastReply ?? lastDictation) !== null,
-          click: () => {
-            const last = lastReply ?? lastDictation;
-            if (last !== null) Electron.clipboard.writeText(last);
-          },
-        },
-        { type: "separator" },
-        ...(input.extras?.menuItems() ?? []),
-        ...(input.extras ? [{ type: "separator" as const }] : []),
-        ...(input.updates?.ready() === true
-          ? [{ label: "● Update ready: Install and restart", click: input.updates.install }]
-          : []),
-        { label: "Open Tessaya", click: () => home.open() },
-        { label: "Quit", click: () => Electron.app.quit() },
-      ]),
-    );
+      },
+      { type: "separator" },
+      ...(input.extras?.menuItems() ?? []),
+      ...(input.extras ? [{ type: "separator" as const }] : []),
+      ...(input.updates?.ready() === true
+        ? [{ label: "● Update ready: Install and restart", click: input.updates.install }]
+        : []),
+      { label: "Open Tessaya", click: () => home.open() },
+      { label: "Quit", click: () => Electron.app.quit() },
+    ];
+    const shown = JSON.stringify(template);
+    if (shown === menuShown) return;
+    menuShown = shown;
+    tray.setContextMenu(Electron.Menu.buildFromTemplate(template));
   };
 
   const failed = (error: unknown) => {

@@ -21,6 +21,8 @@ const OWW_CHUNK = 1280;
 const MEL_HISTORY = 480;
 const MEL_WINDOW = 76;
 const EMBED_WINDOW = 16;
+const SILERO_WINDOW = 512;
+const SILERO_CONTEXT = 64;
 /** Quiet audio further behind the newest frame than this is not scored. */
 const MAX_BEHIND = 4 * 16_000;
 /** Room tone, about -48 dBFS: no name in it. */
@@ -216,8 +218,13 @@ export const streamingScorer = (input: {
   };
 };
 
+/** What a wake scorer is behind the provider: in this process, or in a worker that owns the ONNX sessions. */
+export type OpenWakeWordScorer = Awaited<ReturnType<typeof createOpenWakeWordScorer>>;
+export type SileroScorer = Awaited<ReturnType<typeof createSileroScorer>>;
+
 export const createOpenWakeWordProvider = async (
   paths: OpenWakeWordPaths,
+  makeScorer: (paths: OpenWakeWordPaths) => Promise<OpenWakeWordScorer> = createOpenWakeWordScorer,
 ): Promise<
   WakeProvider & {
     readonly drain: () => Promise<void>;
@@ -225,7 +232,7 @@ export const createOpenWakeWordProvider = async (
     readonly lastWord: () => string | null;
   }
 > => {
-  const scorer = await createOpenWakeWordScorer(paths);
+  const scorer = await makeScorer(paths);
   let word: string | null = null;
   // Each word has its own threshold; scored as a fraction of it, 1 means that word fired.
   const s = streamingScorer({
@@ -264,39 +271,44 @@ export const createOpenWakeWordProvider = async (
  * Silero VAD (v5/v6 ONNX): 512-sample windows at 16 kHz with 64 samples of
  * context prepended, recurrent state [2,1,128].
  */
-export const createSileroVad = async (
-  modelPath: string,
-  threshold = 0.5,
-): Promise<VadProvider & { readonly drain: () => Promise<void> }> => {
+export const createSileroScorer = async (modelPath: string) => {
   const ort = await loadOrt();
   const session = await open(modelPath);
-  const WINDOW = 512;
-  const CONTEXT = 64;
   let state = new Float32Array(2 * 128);
-  let context = new Float32Array(CONTEXT);
+  let context = new Float32Array(SILERO_CONTEXT);
   const sr = new ort.Tensor("int64", BigInt64Array.from([16000n]), []);
 
   const score = async (chunk: Int16Array): Promise<number> => {
-    const x = new Float32Array(CONTEXT + WINDOW);
+    const x = new Float32Array(SILERO_CONTEXT + SILERO_WINDOW);
     x.set(context);
-    for (let i = 0; i < WINDOW; i++) x[CONTEXT + i] = chunk[i]! / 32768;
-    context = x.slice(-CONTEXT);
+    for (let i = 0; i < SILERO_WINDOW; i++) x[SILERO_CONTEXT + i] = chunk[i]! / 32768;
+    context = x.slice(-SILERO_CONTEXT);
     const out = await session.run({
-      input: new ort.Tensor("float32", x, [1, CONTEXT + WINDOW]),
+      input: new ort.Tensor("float32", x, [1, SILERO_CONTEXT + SILERO_WINDOW]),
       state: new ort.Tensor("float32", state, [2, 1, 128]),
       sr,
     });
     state = new Float32Array(out["stateN"]!.data as Float32Array);
     return (out["output"]!.data as Float32Array)[0] ?? 0;
   };
+  const reset = () => {
+    state = new Float32Array(2 * 128);
+    context = new Float32Array(SILERO_CONTEXT);
+  };
+  return { score, reset, chunkSamples: SILERO_WINDOW };
+};
+
+export const createSileroVad = async (
+  modelPath: string,
+  threshold = 0.5,
+  makeScorer: (modelPath: string) => Promise<SileroScorer> = createSileroScorer,
+): Promise<VadProvider & { readonly drain: () => Promise<void> }> => {
+  const scorer = await makeScorer(modelPath);
   const s = streamingScorer({
     name: "silero",
-    chunkSamples: WINDOW,
-    score,
-    reset: () => {
-      state = new Float32Array(2 * 128);
-      context = new Float32Array(CONTEXT);
-    },
+    chunkSamples: scorer.chunkSamples,
+    score: scorer.score,
+    reset: scorer.reset,
     threshold,
     refractoryChunks: 0,
   });
