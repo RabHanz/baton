@@ -20,7 +20,13 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/baton-contracts";
 import { homeOf, resolveRunOn } from "@t3tools/baton-shared/runOn";
-import type { ThreadId } from "@t3tools/contracts";
+import {
+  AuthAccessTokenType,
+  AuthBatonMemorySyncScope,
+  AuthEnvironmentBootstrapTokenType,
+  AuthTokenExchangeGrantType,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -39,6 +45,8 @@ import { environmentServerConfigsAtom } from "../../state/server";
 import { useBatonFleets } from "../../state/batonWorkSessions";
 import { batonWorkSessions } from "../../state/batonWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { authEnvironment } from "../../state/auth";
+import { readPreparedConnection } from "../../state/session";
 import { BatonIntentBar } from "./BatonIntentBar";
 import { BatonProjectsBlock } from "./BatonProjectsBlock";
 
@@ -114,6 +122,7 @@ export function BatonSidebarSection(props: {
   const memorySyncHello = useAtomCommand(batonWorkSessions.memorySyncHello, quiet);
   const memorySyncPull = useAtomCommand(batonWorkSessions.memorySyncPull, quiet);
   const memorySyncPush = useAtomCommand(batonWorkSessions.memorySyncPush, quiet);
+  const createPairingCredential = useAtomCommand(authEnvironment.createPairingCredential, quiet);
   const jobList = useAtomCommand(batonWorkSessions.jobList, quiet);
   const jobStart = useAtomCommand(batonWorkSessions.jobStart, quiet);
   const jobAgree = useAtomCommand(batonWorkSessions.jobAgree, quiet);
@@ -341,13 +350,36 @@ export function BatonSidebarSection(props: {
    * Memory between the servers this window is connected to (MEMORY.md section 6): for each pair, ask
    * the one what the other has not seen and hand it over. Last writer wins; the servers keep the cursors.
    */
-  const syncMemory = async (): Promise<unknown> => {
+  const syncMemory = async (tokens: Readonly<Record<string, string>>): Promise<unknown> => {
     type Reply<V> = { readonly _tag: "Success"; readonly value: V } | { readonly _tag: "Failure" };
-    const call = async <V,>(run: unknown, environmentId: EnvironmentId, input: unknown) =>
-      await (run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>)({
-        environmentId,
-        input: input as never,
-      });
+    const methods = new Map<unknown, string>([
+      [memorySyncHello, "baton.memory.syncHello"],
+      [memorySyncPull, "baton.memory.syncPull"],
+      [memorySyncPush, "baton.memory.syncPush"],
+    ]);
+    // This app's own server answers its own session; any other syncs only with the sync credential it issued.
+    const call = async <V,>(
+      run: unknown,
+      environmentId: EnvironmentId,
+      input: unknown,
+    ): Promise<Reply<V>> => {
+      if (environmentId === memoryHome)
+        return await (
+          run as (c: { environmentId: EnvironmentId; input: never }) => Promise<Reply<V>>
+        )({ environmentId, input: input as never });
+      const token = tokens[environmentId];
+      const base = readPreparedConnection(environmentId)?.httpBaseUrl;
+      if (token === undefined || base === undefined) return { _tag: "Failure" };
+      const response = await fetch(new URL(`/tessaya/desk/${methods.get(run)}`, base), {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(input),
+      }).catch(() => null);
+      const json = (await response?.json().catch(() => null)) as { value?: V } | null;
+      return response?.ok === true && json?.value !== undefined
+        ? { _tag: "Success", value: json.value }
+        : { _tag: "Failure" };
+    };
     const hellos = (
       await Promise.all(
         fleet.environmentIds.map(async (environmentId) => {
@@ -444,7 +476,45 @@ export function BatonSidebarSection(props: {
     );
   };
   const onMemory = async (request: BatonMemoryBridgeRequest): Promise<unknown> => {
-    if (request.op === "sync") return syncMemory();
+    if (request.op === "sync")
+      return syncMemory((request.args["tokens"] ?? {}) as Readonly<Record<string, string>>);
+    if (request.op === "syncPeers")
+      return fleet.environmentIds.map((environmentId) => ({
+        environmentId,
+        label: fleet.resolveEnvironmentLabel(environmentId) ?? environmentId,
+        local: environmentId === memoryHome,
+      }));
+    if (request.op === "syncPair") {
+      if (memoryHome === undefined) throw new Error("This app's own server is not connected.");
+      // A one-time code that another machine trades for a credential which can only sync this server's memory.
+      const made = await createPairingCredential({
+        environmentId: memoryHome,
+        input: { label: "Tessaya memory sync", scopes: [AuthBatonMemorySyncScope] },
+      });
+      if (made._tag !== "Success") throw new Error("Could not make a pairing code here.");
+      return { code: made.value.credential };
+    }
+    if (request.op === "syncLink") {
+      const environmentId = String(request.args["environmentId"]) as EnvironmentId;
+      const base = readPreparedConnection(environmentId)?.httpBaseUrl;
+      if (base === undefined) throw new Error("That server is not connected.");
+      const response = await fetch(new URL("/oauth/token", base), {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: AuthTokenExchangeGrantType,
+          subject_token: String(request.args["code"]).trim(),
+          subject_token_type: AuthEnvironmentBootstrapTokenType,
+          requested_token_type: AuthAccessTokenType,
+          scope: AuthBatonMemorySyncScope,
+          client_label: "Tessaya memory sync",
+        }),
+      });
+      const json = (await response.json().catch(() => null)) as { access_token?: string } | null;
+      if (!response.ok || typeof json?.access_token !== "string")
+        throw new Error("That code did not work. Make a new one on that machine and try again.");
+      return { token: json.access_token };
+    }
     const commands = {
       list: memoryList,
       search: memorySearch,

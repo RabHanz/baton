@@ -674,6 +674,15 @@ export const startScreenCompanion = (input: {
   let stopMemorySync: (() => void) | null = null;
   const memorySync = createMemorySync({
     file: NodePath.join(input.stateDir, "baton-memory.json"),
+    peersFile: NodePath.join(input.stateDir, "memory-sync-peers.json"),
+    protect: (plain) =>
+      Electron.safeStorage.isEncryptionAvailable()
+        ? Electron.safeStorage.encryptString(plain).toString("base64")
+        : plain,
+    unprotect: (wrapped) =>
+      Electron.safeStorage.isEncryptionAvailable()
+        ? Electron.safeStorage.decryptString(Buffer.from(wrapped, "base64"))
+        : wrapped,
     call: (op, args) =>
       actions?.memory === undefined
         ? Promise.reject(new Error("Memory is not reachable yet."))

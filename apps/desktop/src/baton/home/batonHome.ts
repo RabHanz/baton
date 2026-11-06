@@ -191,6 +191,13 @@ export type HomeControl =
       readonly usedOnly: boolean;
       readonly usedCount: number;
       readonly syncOn: boolean;
+      /** Each connected server; one that is not paired for sync keeps its walled memory to itself. */
+      readonly peers: ReadonlyArray<{
+        readonly environmentId: string;
+        readonly label: string;
+        readonly local: boolean;
+        readonly paired: boolean;
+      }>;
       /** The daily pull of learnings from the history index (held for his yes). */
       readonly pullOn: boolean;
       readonly status: string;

@@ -11,7 +11,7 @@ import type { MemoryItem } from "@t3tools/baton-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
 import type { MemoryCall } from "./memoryClient.ts";
-import type { MemorySync } from "./memorySync.ts";
+import type { MemorySync, SyncPeer } from "./memorySync.ts";
 import { memoryControls, memoryIdOf } from "./memoryRows.ts";
 import { noteControls } from "./noteRows.ts";
 import type { NotesStore } from "./memoryNotes.ts";
@@ -36,6 +36,7 @@ export const createMemoryTab = (input: {
   let status = "";
   let loading = false;
   let pullOn = false;
+  let peers: ReadonlyArray<SyncPeer> = [];
 
   const load = async (): Promise<void> => {
     if (loading) return;
@@ -53,6 +54,7 @@ export const createMemoryTab = (input: {
         items?: ReadonlyArray<MemoryItem>;
       } | null;
       usedIds = new Set((used?.items ?? []).map((i) => i.id));
+      peers = input.sync.enabled() ? await input.sync.peers().catch(() => []) : [];
       pullOn =
         (
           (await input.call("pull", { action: "status" }).catch(() => null)) as {
@@ -129,6 +131,27 @@ export const createMemoryTab = (input: {
         .then((out) => void (status = (out as { message: string }).message))
         .catch((e: unknown) => void (status = reason(e)))
         .then(load);
+    } else if (id === "m.syncPair") {
+      void input.sync
+        .issue()
+        .then(
+          (code) =>
+            void (status = `On the other machine, in its Memory tab, enter ${code} in this server's row. It works once, within five minutes.`),
+        )
+        .catch((error: unknown) => void (status = reason(error)))
+        .finally(input.refresh);
+    } else if ((target = memoryIdOf(id, "m.syncLink")) !== null) {
+      if (text.trim() === "") return true;
+      void input.sync
+        .link(target, text.trim())
+        .then(() => void (status = "Paired: its walled memory now syncs too."))
+        .catch((error: unknown) => void (status = reason(error)))
+        .then(load);
+    } else if ((target = memoryIdOf(id, "m.syncForget")) !== null) {
+      input.sync.forget(target);
+      status =
+        'Stopped here. To end it there too, revoke "Tessaya memory sync" in that server\'s Sharing & access.';
+      void load();
     } else if (id === "m.sync") {
       void input.sync
         .run()
@@ -164,6 +187,7 @@ export const createMemoryTab = (input: {
             usedIds,
             usedOnly,
             syncOn: input.sync.enabled(),
+            peers,
             pullOn,
             status,
           }),

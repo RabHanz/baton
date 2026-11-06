@@ -2,6 +2,7 @@
 import { whyRemembered, type MemoryItem, type MemoryKind } from "@t3tools/baton-shared/memory";
 
 import type { HomeControl } from "../home/batonHome.ts";
+import type { SyncPeer } from "./memorySync.ts";
 
 export interface MemoryTabState {
   readonly items: ReadonlyArray<MemoryItem>;
@@ -11,6 +12,8 @@ export interface MemoryTabState {
   readonly usedIds: ReadonlySet<string>;
   readonly usedOnly: boolean;
   readonly syncOn: boolean;
+  /** The servers the window is connected to, each with whether its walled memory syncs. */
+  readonly peers: ReadonlyArray<SyncPeer>;
   readonly pullOn: boolean;
   readonly status: string;
 }
@@ -69,6 +72,7 @@ export const memoryControls = (s: MemoryTabState): ReadonlyArray<HomeControl> =>
     usedOnly: s.usedOnly,
     usedCount: s.usedIds.size,
     syncOn: s.syncOn,
+    peers: s.peers,
     pullOn: s.pullOn,
     status: s.status,
   };
