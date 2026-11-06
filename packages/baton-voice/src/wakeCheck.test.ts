@@ -8,6 +8,7 @@ const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
 
 const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>) => {
   let fire = false;
+  let firedAgo = 0;
   let speech = false;
   const heard: number[] = [];
   const loud: number[] = [];
@@ -24,6 +25,7 @@ const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>)
         return score;
       },
       lastWord: () => "Sebastian",
+      firedAgo: () => firedAgo,
     },
     vad: { name: "fake", reset: () => {}, isSpeech: () => speech },
     stt: {
@@ -46,7 +48,10 @@ const rig = (verify: (pcm: Int16Array, word: string | null) => Promise<boolean>)
     events,
     heard,
     loud,
-    wake: () => (fire = true),
+    wake: (agoSeconds = 0) => {
+      fire = true;
+      firedAgo = Math.round(agoSeconds * 16_000);
+    },
     speak: (on: boolean) => (speech = on),
   };
 };
@@ -99,7 +104,8 @@ describe("the second check before a wake from sleep", () => {
     r.speak(true);
     r.push(2);
     r.speak(false);
-    r.push(5);
+    // 0.1.56's first command: the check took 18 s, longer than the longest sentence.
+    r.push(18);
     confirm(true);
     await new Promise((resolve) => setImmediate(resolve));
     r.push(1.2);
@@ -107,6 +113,30 @@ describe("the second check before a wake from sleep", () => {
     expect(r.events.some((e) => e.type === "wake")).toBe(true);
     // All two seconds he spoke reach recognition, not the last three seconds of silence.
     expect(Math.max(0, ...r.loud)).toBeGreaterThanOrEqual(16_000 * 2);
+  });
+
+  it("places a wake the scorer reports late at the name, not at the moment the report arrives", async () => {
+    const checked: number[] = [];
+    const r = rig(async (pcm) => {
+      checked.push(pcm.filter((v) => v !== 0).length);
+      return true;
+    });
+    r.push(1);
+    r.speak(true);
+    r.push(2);
+    r.speak(false);
+    r.push(16);
+    // The scorer was behind on the frames after launch: the name ended at 1.5 s, 17.5 s before this report.
+    r.wake(17.5);
+    r.push(0.1);
+    await new Promise((resolve) => setImmediate(resolve));
+    r.push(1.2);
+    await r.core.idle();
+    // The check heard the name, and recognition got the command said right after it.
+    expect(checked[0]).toBeGreaterThan(0);
+    expect(Math.max(0, ...r.loud)).toBeGreaterThanOrEqual(16_000 * 1.5);
+    const wake = r.events.find((e) => e.type === "wake");
+    expect(wake?.type === "wake" ? wake.lateMs : 0).toBeGreaterThanOrEqual(17_000);
   });
 
   it("checks a wake that fires in an open window too, so a false fire cannot flash the pill or extend it", async () => {

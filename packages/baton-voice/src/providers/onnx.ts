@@ -139,9 +139,12 @@ export const streamingScorer = (input: {
   let pending = new Int16Array(0);
   let queue: Promise<void> = Promise.resolve();
   let fired: number | null = null;
+  let fed = 0;
+  let firedEnd = 0;
   let cooldown = 0;
   let last = 0;
   const feed = (frame: Int16Array) => {
+    fed += frame.length;
     const joined = new Int16Array(pending.length + frame.length);
     joined.set(pending);
     joined.set(frame, pending.length);
@@ -149,6 +152,7 @@ export const streamingScorer = (input: {
     while (pending.length >= input.chunkSamples) {
       const chunk = pending.slice(0, input.chunkSamples);
       pending = pending.slice(input.chunkSamples);
+      const end = fed - pending.length;
       queue = queue.then(async () => {
         const s = await input.score(chunk);
         last = s;
@@ -158,6 +162,7 @@ export const streamingScorer = (input: {
         }
         if (s >= input.threshold) {
           fired = s;
+          firedEnd = end;
           cooldown = input.refractoryChunks ?? 12;
         }
       });
@@ -173,6 +178,7 @@ export const streamingScorer = (input: {
       return f;
     },
     last: () => last,
+    firedAgo: () => fed - firedEnd,
     reset: () => {
       pending = new Int16Array(0);
       fired = null;
@@ -222,6 +228,7 @@ export const createOpenWakeWordProvider = async (
     reset: s.reset,
     drain: s.drain,
     lastWord: () => word,
+    firedAgo: s.firedAgo,
   };
 };
 

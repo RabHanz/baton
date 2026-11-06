@@ -70,6 +70,9 @@ export type VoiceCoreEvent =
       readonly at: number;
       /** Null for a hotkey, or a provider with one word. */
       readonly word: string | null;
+      /** How long after the name the wake was accepted, and how much of that was the second check. */
+      readonly lateMs?: number;
+      readonly checkMs?: number;
     }
   /** His speech ended (silence long enough): from here the pill must not say Listening. */
   | { readonly type: "speech_end"; readonly at: number }
@@ -147,6 +150,8 @@ const ECHO_TAIL_MS = 500;
 const WAKE_LOOKBACK_MS = 1_600;
 /** The wake word's own tail reads as speech: it opens no turn by itself. */
 const WAKE_TAIL_MS = 200;
+/** Audio kept behind the newest frame, so a wake scored late (a busy computer just after launch) still finds the name and what followed. */
+const RECENT_MS = 30_000;
 const STOP_MIN_SPEECH_MS = 120;
 const STOP_END_SILENCE_MS = 350;
 /** Over the speakers his voice never falls silent to the VAD, so a window this long is cut. */
@@ -615,7 +620,13 @@ export const createVoiceCore = (input: {
   /** Should speech be segmented right now? Only when something will listen. */
   const listening = () => machine.mode !== "sleeping" || segment !== null;
 
-  const acceptWake = (score: number, firedAt: number, word: string | null, late: boolean) => {
+  const acceptWake = (
+    score: number,
+    firedAt: number,
+    word: string | null,
+    late: boolean,
+    checkMs?: number,
+  ) => {
     if (speaking || hearingItself()) {
       speaking = false;
       echoUntil = 0;
@@ -623,12 +634,22 @@ export const createVoiceCore = (input: {
       clearStop();
       emit({ type: "barge_in" });
     }
-    emit({ type: "wake", score, at: now(), word });
+    emit({
+      type: "wake",
+      score,
+      at: now(),
+      word,
+      lateMs: Math.round(((samples - firedAt) * 1000) / VOICE_SAMPLE_RATE),
+      ...(checkMs === undefined ? {} : { checkMs }),
+    });
     // Start the utterance at the wake: "hey jarvis, what's…" is one breath. A wake confirmed late keeps
     // everything said since it fired, so the first words after the name are not lost to the check.
     if (segment === null) {
       const from = firedAt - msToSamples(seg.preRollMs);
-      const kept = late ? recent.filter((r) => r.end > from).map((r) => r.frame) : [...preRoll];
+      const upTo = from + msToSamples(seg.maxUtteranceMs);
+      const kept = late
+        ? recent.filter((r) => r.end > from && r.end <= upTo).map((r) => r.frame)
+        : [...preRoll];
       segment = kept;
       segmentSamples = late ? kept.reduce((n, f) => n + f.length, 0) : preRollSamples;
       // The detector did not run while asleep, so what came after the name counts as speech until it says
@@ -662,17 +683,18 @@ export const createVoiceCore = (input: {
       emit({ type: "dropped", text: wakeWord, reason: "own voice" });
     } else if (score !== null) {
       // Over its own voice too: a barge-in needs the recogniser to hear the name, not just the model.
+      const firedAt = samples - Math.min(samples, input.wake.firedAgo?.() ?? 0);
       if (input.verifyWake !== undefined && machine.mode !== "dictation") {
         // The model alone is not enough, asleep or in a follow-up window (where a false fire would play the
         // cue, flash the pill and extend the window): recognise what was just said first.
         if (!verifying) {
           verifying = true;
-          const firedAt = samples;
+          const checkFrom = samples;
           verifyFrom = firedAt - msToSamples(Math.max(seg.preRollMs, WAKE_LOOKBACK_MS));
           const word = input.wake.lastWord?.() ?? null;
           const heard = joined(
             recent
-              .filter((r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS))
+              .filter((r) => r.end > firedAt - msToSamples(WAKE_LOOKBACK_MS) && r.end <= firedAt)
               .map((r) => r.frame),
           );
           void input
@@ -681,11 +703,13 @@ export const createVoiceCore = (input: {
             .then((ok) => {
               verifying = false;
               if (disposed) return;
-              if (ok) acceptWake(score, firedAt, word, true);
-              else emit({ type: "dropped", text: "", reason: "wake not confirmed" });
+              if (ok) {
+                const checkMs = Math.round(((samples - checkFrom) * 1000) / VOICE_SAMPLE_RATE);
+                acceptWake(score, firedAt, word, true, checkMs);
+              } else emit({ type: "dropped", text: "", reason: "wake not confirmed" });
             });
         }
-      } else acceptWake(score, samples, input.wake.lastWord?.() ?? null, false);
+      } else acceptWake(score, firedAt, input.wake.lastWord?.() ?? null, firedAt < samples);
     } else if (machine.deadline !== null || machine.pending !== null) {
       const at = now();
       // The window waits only for speech to START. Words that have begun, or are being recognised, are never
@@ -756,12 +780,10 @@ export const createVoiceCore = (input: {
     }
 
     recent.push({ frame, end: samples });
+    // A slow check keeps everything since the name, however long it takes: the command is in there.
     const keepFrom = verifying
-      ? Math.max(
-          Math.min(verifyFrom, samples - msToSamples(3_000)),
-          samples - msToSamples(seg.maxUtteranceMs),
-        )
-      : samples - msToSamples(3_000);
+      ? Math.min(verifyFrom, samples - msToSamples(RECENT_MS))
+      : samples - msToSamples(RECENT_MS);
     while (recent.length > 0 && recent[0]!.end < keepFrom) recent.shift();
     preRoll.push(frame);
     preRollSamples += frame.length;
@@ -826,6 +848,9 @@ export const createVoiceCore = (input: {
       bus = next;
     },
     hear,
-    idle: () => work,
+    idle: async () => {
+      await Promise.all([input.wake.drain?.(), input.vad.drain?.()]);
+      await work;
+    },
   };
 };
