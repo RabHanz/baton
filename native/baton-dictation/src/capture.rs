@@ -8,7 +8,12 @@ use windows::Win32::Graphics::Gdi::{
     BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ, RGBQUAD,
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    BringWindowToTop, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic, SetForegroundWindow, ShowWindow,
+    SwitchToThisWindow, SW_RESTORE,
+};
 
 /// PW_RENDERFULLCONTENT: also captures windows drawn by DirectComposition (modern apps, browsers).
 const RENDER_FULL_CONTENT: u32 = 2;
@@ -72,17 +77,40 @@ pub fn capture_window(window: Option<&str>, handle: Option<isize>, out: &str) ->
     }
 }
 
-/// Gives the keyboard back to a window (after foreground input into another one). A minimised window is restored first.
+/// Gives a window the keyboard, within Windows' foreground lock: a background process may only take the foreground right
+/// after input of its own, or while joined to the foreground thread's input. Each way is tried in turn and checked;
+/// `how` says which one worked. A minimised window is restored first.
 pub fn focus_window(window: isize) -> Result<Value, String> {
     unsafe {
         let hwnd = HWND(window as *mut _);
         if IsIconic(hwnd).as_bool() {
             let _ = ShowWindow(hwnd, SW_RESTORE);
         }
-        if SetForegroundWindow(hwnd).as_bool() {
-            Ok(json!({"focused": true}))
-        } else {
-            Err("Windows would not give that window the keyboard.".into())
+        let landed = || GetForegroundWindow() == hwnd;
+        if SetForegroundWindow(hwnd).as_bool() && landed() {
+            return Ok(json!({"focused": true, "how": "direct"}));
         }
+        // A mouse event that moves nothing and presses nothing makes this process the last to send input.
+        let nothing = INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi: MOUSEINPUT::default() } };
+        SendInput(&[nothing], std::mem::size_of::<INPUT>() as i32);
+        if SetForegroundWindow(hwnd).as_bool() && landed() {
+            return Ok(json!({"focused": true, "how": "input"}));
+        }
+        let me = GetCurrentThreadId();
+        let front = GetWindowThreadProcessId(GetForegroundWindow(), None);
+        let joined = front != 0 && front != me && AttachThreadInput(me, front, true).as_bool();
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        if joined {
+            let _ = AttachThreadInput(me, front, false);
+        }
+        if landed() {
+            return Ok(json!({"focused": true, "how": "attach"}));
+        }
+        SwitchToThisWindow(hwnd, true);
+        if landed() {
+            return Ok(json!({"focused": true, "how": "switch"}));
+        }
+        Err("Windows would not give that window the keyboard.".into())
     }
 }

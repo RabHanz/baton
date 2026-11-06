@@ -190,6 +190,21 @@ const WINDOW = {
   description:
     "Part of a window's title, to work on it without bringing it forward (remote hands only).",
 };
+/** Adds text to a named window's box by its UI Automation value, so a window behind another needs no focus; null when it has no such box. */
+export const typeByValue = async (
+  setValue: (
+    window: string,
+    text: string,
+  ) => Promise<{ readonly set: boolean; readonly name?: string; readonly error?: string }>,
+  window: string,
+  text: string,
+): Promise<string | null> => {
+  const set = await setValue(window, text);
+  if (typeof set.error === "string") throw new Error(set.error);
+  return set.set
+    ? `Added at the end of ${set.name ? `"${set.name}"` : "the text box"} in "${window}" by its value: no keyboard, no focus change.`
+    : null;
+};
 const optStr = (a: Args, key: string): string | undefined =>
   a[key] === undefined ? undefined : str(a, key, 200);
 const WHY = { type: "string", description: "A few words: what this is for, shown to him." };
@@ -311,7 +326,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
     {
       name: "window_focus",
       description:
-        "Bring an open window to the front and give it the keyboard, by part of its title or the app's name (such as Notepad). No pointer and no taskbar. Use it first when the app he names is open but is not the window he is using, then ui_tree.",
+        "Bring an open window to the front and give it the keyboard, by part of its title or the app's name (such as Notepad). No pointer and no taskbar. Use it when the app he names is open but is not the window he is using and you need its keys or controls, then ui_tree. Text into it needs no focus: type_text with window.",
       inputSchema: object(
         { title: { type: "string", description: "Part of the window's title." } },
         ["title"],
@@ -502,10 +517,20 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<BatonToo
       name: "type_text",
       description:
         "Type plain text where the keyboard is, one line. Click the box first. Plain text into a box he named needs no question; a command line or secrets do.",
-      inputSchema: object({ text: { type: "string", maxLength: 4000 }, ...win, why: WHY }, [
-        "text",
-        "why",
-      ]),
+      inputSchema: object(
+        {
+          text: { type: "string", maxLength: 4000 },
+          window: remote
+            ? WINDOW
+            : {
+                type: "string",
+                description:
+                  "Part of the title or the app's name of an open window that is not the one he is using (such as Notepad): the text is added to its text box by value, without bringing it forward.",
+              },
+          why: WHY,
+        },
+        ["text", "why"],
+      ),
       run: async (a) => ({ text: await host.type(str(a, "text", 4_000), optStr(a, "window")) }),
     },
     {

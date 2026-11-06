@@ -155,10 +155,10 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
   {
     id: "notepad-behind-chrome",
     source:
-      "0.1.55 device run: Notepad open behind Chrome took 58 s, 4 screenshots and taskbar clicks before typing",
+      "0.1.55/0.1.56 device runs: Notepad behind Chrome took 58 s of screenshots, then Windows refused window_focus twice; typing by value needs no focus",
     said: "type hello world into notepad",
     window: "chrome.exe: New Tab - Google Chrome",
-    first: ["window_focus"],
+    first: ["type_text"],
     not: ["screen_capture", "click", "Bash", "PowerShell"],
   },
   {

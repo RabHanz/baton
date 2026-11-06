@@ -17,7 +17,7 @@ import type {
 } from "../voice/dictationSidecar.ts";
 import type { BatonTool } from "./batonMcp.ts";
 import { bmpToPng } from "./bmpToPng.ts";
-import { buildBatonTools, treeText, type ToolHost } from "./batonTools.ts";
+import { buildBatonTools, treeText, typeByValue, type ToolHost } from "./batonTools.ts";
 
 export interface RemoteHandsDeps {
   readonly sidecar: {
@@ -171,12 +171,9 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
       throw new Error("Dragging is not a remote hands tool.");
     },
     type: async (text, window) => {
-      if (window !== undefined) {
-        const set = await deps.sidecar.setValue(window, text);
-        if (typeof set.error === "string") throw new Error(set.error);
-        if (set.set)
-          return `Added at the end of ${set.name ? `"${set.name}"` : "the text box"} in "${window}" by its value: no keyboard, no focus change.`;
-      }
+      const added =
+        window === undefined ? null : await typeByValue(deps.sidecar.setValue, window, text);
+      if (added !== null) return added;
       const fg = await keyboard("Typing", window);
       await fg.type(text);
       return window === undefined ? "Typed where the keyboard is." : `Typed into "${window}".`;
