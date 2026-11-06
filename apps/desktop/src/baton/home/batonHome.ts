@@ -27,7 +27,7 @@ import {
   type Motion,
 } from "./look.ts";
 import type { Palette } from "./palette.ts";
-import { shouldSplash } from "./splash.ts";
+import { shouldSplash, splashCentre } from "./splash.ts";
 import { startSplash } from "./splashWindow.ts";
 
 export interface HomeOption {
@@ -389,8 +389,10 @@ const withTabs = (state: HomeState): HomeState => ({
 export const createBatonHome = (input: BatonHomeInput): BatonHome => {
   let win: Electron.BrowserWindow | null = null;
   const live = () => (win !== null && !win.isDestroyed() ? win : null);
+  // The splash was this window's opening sting: the page then rests instead of playing a second one beside it.
+  let splashed = false;
 
-  Electron.ipcMain.handle(GET, () => withTabs(input.state()));
+  Electron.ipcMain.handle(GET, () => ({ ...withTabs(input.state()), splashed }));
   Electron.ipcMain.handle(SET, (_event, id: unknown, value: unknown) => {
     if (
       typeof id === "string" &&
@@ -591,7 +593,7 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       // The page is ours alone: it never navigates, and a link opens nothing.
       created.webContents.on("will-navigate", (event) => event.preventDefault());
       created.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-      // The splash plays on a cold start the person made; it never holds the window past its own 2.5 s cap.
+      // The splash plays on a cold start the person made; it never holds the window past its own cap.
       const coldStart = !opened && process.uptime() < 20;
       opened = true;
       const wanted = shouldSplash({
@@ -601,13 +603,11 @@ export const createBatonHome = (input: BatonHomeInput): BatonHome => {
       });
       const splash = wanted
         ? startSplash(
-            (() => {
-              const b = created.getBounds();
-              return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-            })(),
+            splashCentre(Electron.screen.getDisplayMatching(created.getBounds()).workArea),
             theme(),
           )
         : null;
+      splashed = splash !== null;
       created.webContents.on("did-finish-load", () => applyLook());
       created.once("ready-to-show", () => {
         if (splash === null) return created.show();

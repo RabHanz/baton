@@ -3,9 +3,9 @@ one WebP for a dark ground and one for a light one, recoloured from the kit's Da
 
   python scripts/tessaya/pack-window-motion.py <films> apps/desktop/src/baton/home/windowMotionArt.ts
 
-<films> holds sting-alpha-dark.apng and sting-alpha-light.apng with 90 frames each: the kit's
-motion/colour/sting-alpha-<ground>/index.html drawn with draw(t) at t = i * 2 / 89. Played at 30 fps the
-2 s film runs 3 s: slower, and every frame is a real one (the kit's 60-frame film would repeat frames).
+<films> holds sting-alpha-dark.apng and sting-alpha-light.apng with 108 frames each: the kit's
+motion/colour/sting-alpha-<ground>/index.html drawn with draw(t) at t = i * 2 / 107. Played at 30 fps the
+2 s film runs 3.6 s and comes to rest at about 3 s; every frame is a real one, so it never steps.
 
 Dark: paper white (the mark) stays, the Damson dye #BC96CE becomes Woad's #5FB3B3.
 Light: the Damson ink #151019 becomes Woad's #0F1B1E and the dye #4A205E becomes #14505A.
@@ -19,7 +19,7 @@ from PIL import Image, ImageSequence
 
 folder, out = sys.argv[1], sys.argv[2]
 SIZE = 128
-FRAMES = 90
+FRAMES = 108
 FPS = 30
 
 

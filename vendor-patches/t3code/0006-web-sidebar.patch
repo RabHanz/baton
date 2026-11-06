@@ -45,7 +45,7 @@ index 7e1ae602f979db00d082c795aee4973f39cbd30f..dff188ea1988f4db03047d56f9268d9a
      const actions: string[] = [];
      return Effect.gen(function* () {
 diff --git a/apps/web/index.html b/apps/web/index.html
-index a7a5e7450b3debd171a2d4334a9df4b81edbcbfb..9421d4cbd3617b22d4ecbdec10ff0d4df17a2142 100644
+index a7a5e7450b3debd171a2d4334a9df4b81edbcbfb..226fa2661e6de763ae90ac05372da80817b593ee 100644
 --- a/apps/web/index.html
 +++ b/apps/web/index.html
 @@ -8,6 +8,7 @@
@@ -56,15 +56,17 @@ index a7a5e7450b3debd171a2d4334a9df4b81edbcbfb..9421d4cbd3617b22d4ecbdec10ff0d4d
      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
      <link rel="manifest" href="/manifest.webmanifest" />
      <script>
-@@ -674,7 +675,7 @@
+@@ -673,9 +674,7 @@
+   <body>
      <div id="root">
        <div id="boot-shell">
-         <div id="boot-shell-card" aria-label="T3 Code splash screen">
+-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
 -          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
-+          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="Tessaya" />
-         </div>
+-        </div>
++        <div id="boot-shell-card" aria-label="Tessaya is starting"></div>
        </div>
      </div>
+     <script type="module" src="/src/bootstrap.ts"></script>
 diff --git a/apps/web/public/apple-touch-icon.png b/apps/web/public/apple-touch-icon.png
 index 3eed25ea6b7850fc2594ac509e91c29f1710f708..a74f1e70bf6f95920aa59d46c5516d5cafff5f0b 100644
 GIT binary patch
