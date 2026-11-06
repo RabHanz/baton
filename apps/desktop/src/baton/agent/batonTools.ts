@@ -220,6 +220,21 @@ export interface FocusState {
   readonly focus: string | null;
 }
 
+const FIELD_LINE = /^\[(\d+)\] (?:edit|document|combo box): (.*?)(?: \(focused\))?$/i;
+
+/** A click_element or labelled click whose control is a text box in this tree's lines: it only focuses. */
+export const clickTargetsField = (
+  controls: ReadonlyArray<string>,
+  call: Readonly<Record<string, unknown>>,
+): boolean =>
+  controls.some((line) => {
+    const field = FIELD_LINE.exec(line);
+    if (field === null) return false;
+    if (typeof call["id"] === "number") return Number(field[1]) === call["id"];
+    const label = typeof call["label"] === "string" ? call["label"].trim().toLowerCase() : "";
+    return label !== "" && field[2]!.toLowerCase().startsWith(label);
+  });
+
 /** A tree as the model reads it, saying so when the list was cut. */
 export const treeText = (tree: {
   readonly window?: string | undefined;

@@ -127,6 +127,8 @@ export interface BatonVoiceCore extends VoiceCore {
   readonly snapshot: () => VoiceCoreSnapshot;
   readonly subscribe: (listener: (event: VoiceCoreEvent) => void) => () => void;
   readonly setDirectSession: (enabled: boolean) => void;
+  /** Start or stop dictation as "Tessaya, dictate" does; resolves with whether it is now dictating. */
+  readonly setDictation: (on: boolean) => Promise<boolean>;
   /**
    * Baton's voice started or stopped, wherever it came from. While it plays, and for a moment
    * after, the mic hears Baton: only a wake word gets through.
@@ -972,6 +974,11 @@ export const createVoiceCore = (input: {
     },
     setDirectSession: (enabled) =>
       enqueue(() => dispatch({ type: "set_direct_session", enabled, at: now() })),
+    setDictation: async (on) => {
+      enqueue(() => dispatch({ type: "set_dictation", on, at: now() }));
+      await work;
+      return machine.mode === "dictation";
+    },
     setContext: (next) => {
       bus = next;
     },

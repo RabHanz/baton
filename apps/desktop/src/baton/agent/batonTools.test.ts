@@ -1,7 +1,13 @@
 import { BATON_TOOLS, REMOTE_ONLY_TOOLS } from "@t3tools/baton-shared/operator";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { buildBatonTools, treeText, type FocusState, type ToolHost } from "./batonTools.ts";
+import {
+  buildBatonTools,
+  clickTargetsField,
+  treeText,
+  type FocusState,
+  type ToolHost,
+} from "./batonTools.ts";
 
 const host = (log: string[], windows: string[] = ["w1"]): ToolHost => ({
   windowKey: async () => windows.shift() ?? "w1",
@@ -71,6 +77,19 @@ describe("the assistant's tool table", () => {
     );
     await typeText.run({ text: "hello world", window: "Notepad", why: "w" });
     expect(typed).toEqual([["hello world", "Notepad"]]);
+  });
+
+  it("knows a click on a text box from the last tree", () => {
+    const tree = [
+      "[1] button: Send",
+      "[2] edit: Message t3code-a2 (focused)",
+      "[3] document: Notes",
+    ];
+    expect(clickTargetsField(tree, { id: 2 })).toBe(true);
+    expect(clickTargetsField(tree, { label: "Message t3code-a2" })).toBe(true);
+    expect(clickTargetsField(tree, { id: 1 })).toBe(false);
+    expect(clickTargetsField(tree, { label: "Send" })).toBe(false);
+    expect(clickTargetsField(tree, { x: 1, y: 2 })).toBe(false);
   });
 
   it("clicks a tree line by its number and says when the tree was cut", async () => {

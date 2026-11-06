@@ -245,6 +245,13 @@ describe("Baton's own tools (D143)", () => {
         off,
       ).verdict,
     ).toBe("ask");
+    // Putting the cursor in a message box only focuses it; the same words on a button still ask.
+    const focusBox = {
+      tool: "mcp__baton__click_element",
+      input: { id: 7, why: "Put the cursor in the middle pane's message box" },
+    };
+    expect(judgeToolCall(focusBox, { ...off, pointerField: true }).verdict).toBe("allow");
+    expect(judgeToolCall(focusBox, off).verdict).toBe("ask");
     expect(
       judgeToolCall(
         { tool: "mcp__baton__click_element", input: { label: "Save", why: "save the note" } },

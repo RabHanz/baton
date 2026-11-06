@@ -263,6 +263,23 @@ describe("voice mode machine (§12.3)", () => {
 });
 
 describe("stop while dictating", () => {
+  it("starts and stops from the assistant the way his own words do", () => {
+    const asked = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "type into that box", at: 10 },
+      { type: "set_dictation", on: true, at: 20 },
+    ]);
+    expect(asked.state.mode).toBe("dictation");
+    const typed = reduceVoice(asked.state, {
+      type: "utterance",
+      text: "This is a test of dictation.",
+      at: 30,
+    });
+    expect(typed.effects).toContainEqual({ kind: "dictate", text: "This is a test of dictation." });
+    const off = reduceVoice(typed.state, { type: "set_dictation", on: false, at: 40 });
+    expect(off.state.mode).toBe("conversation");
+  });
+
   it("is the wake word and stop, or 'stop dictating'; a bare 'Stop.' is a word he dictates", () => {
     const timings = { ...DEFAULT_TIMINGS, wakeWords: ["Freya"] };
     const start = play([

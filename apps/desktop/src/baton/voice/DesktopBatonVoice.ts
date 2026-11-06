@@ -347,7 +347,7 @@ import { mouseHookConfig } from "../bindings/inputConfig.ts";
 import { VOICE_HOTKEYS } from "./voiceActivation.ts";
 import { ensureModel, modelPresent, PARAKEET_FAST_MODEL, PARAKEET_MODEL } from "./voiceModels.ts";
 import { hudView, utteranceCaption } from "./voiceHud.ts";
-import type { AssistantActions, PhoneMirror } from "../screen/ScreenCompanion.ts";
+import type { AssistantActions, AssistantFocus, PhoneMirror } from "../screen/ScreenCompanion.ts";
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, type VoicePill } from "./voicePill.ts";
 import { frameLevel, isCancelPhrase, type TurnEvent } from "@t3tools/baton-shared/voiceTurn";
@@ -1473,7 +1473,30 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   // Spoken dictation, all at once: the chunks wait here, on disk too, until one clean paste.
   const pendingFile = NodePath.join(input.stateDir, "voice", "dictation-pending.json");
   let collecting = false;
-  let flushApp: { readonly exe: string; readonly title: string } = { exe: "", title: "" };
+  /** The window and field he was in at the wake word: dictation and the turn's focus go there. */
+  let wakeTarget: Promise<FocusedApp | null> | null = null;
+  /** A window as the assistant is told of it. */
+  const asFocus = (app: FocusedApp | null | undefined): AssistantFocus | null => {
+    if (app == null || app.exe.length === 0) return null;
+    const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
+    // Tessaya's sessions window is his workspace; only the pill, cards and Home are hers.
+    const own = Electron.BrowserWindow.getAllWindows().find((w) => {
+      const raw = w.getNativeWindowHandle();
+      return (raw.length >= 8 ? Number(raw.readBigUInt64LE()) : raw.readUInt32LE()) === app.window;
+    });
+    const label =
+      own === undefined
+        ? `${app.exe}: ${app.title}`
+        : isCompanionWindow(own)
+          ? `Tessaya's own window (${app.title}), not one of his`
+          : `his sessions window, where his session panes and their message boxes are: ${app.title}`;
+    return {
+      label,
+      ...(app.window === undefined ? {} : { window: app.window }),
+      centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
+    };
+  };
+  let flushApp: FocusedApp = { exe: "", title: "" };
   const restored = ((): Array<string> => {
     try {
       return JSON.parse(NodeFS.readFileSync(pendingFile, "utf8")) as Array<string>;
@@ -1515,10 +1538,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             )
           : sidecar === null
             ? Promise.resolve(false)
-            : sidecar.paste(text).then(
-                () => true,
-                () => false,
-              ),
+            : flushApp.window !== undefined
+              ? sidecar.pasteInto(text, flushApp.window).catch(() => false)
+              : sidecar.paste(text).then(
+                  () => true,
+                  () => false,
+                ),
     },
     restored,
   );
@@ -1527,7 +1552,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     collecting = false;
     if (oneShot.pending().length === 0 || sidecar === null) return;
     pill.on({ type: "thinking" });
-    flushApp = await sidecar.foreground().catch(() => focusedApp);
+    flushApp = (await wakeTarget) ?? (await sidecar.foreground().catch(() => null)) ?? focusedApp;
     const raw = oneShot.pending().join(" ");
     const turnId = openTurn;
     openTurn = null;
@@ -1587,9 +1612,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         return;
       }
       // Wake-word dictation takes the same path as the hold key, so the same text comes out.
-      const app = await sidecar.foreground().catch(() => focusedApp);
+      const app =
+        (await wakeTarget) ?? (await sidecar.foreground().catch(() => null)) ?? focusedApp;
       const { text } = await writeClean(request.text, app);
-      return sidecar.paste(await fitToCaret(text, app));
+      const fitted = await fitToCaret(text, app);
+      if (app.window !== undefined) return void (await sidecar.pasteInto(fitted, app.window));
+      return sidecar.paste(fitted);
     },
   };
   // Only where this desktop can paste is the focused field a dictation target.
@@ -2142,20 +2170,14 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         requestDictation();
         return "The speech model is not downloaded yet; I started fetching it.";
       }
-      const recording = releaseRecordingEscape !== null;
-      if (on !== recording) sidecar.toggle();
-      return on ? "Dictating. He says stop dictating to end it." : "Stopped dictating.";
+      // The same dictating mode as "Tessaya, dictate": his next words are typed, not answered.
+      if (core === null) return "Dictation needs the voice to be on.";
+      const dictating = await core.setDictation(on);
+      if (on && !dictating) return "Dictation did not start.";
+      return dictating ? "Dictating. He says stop dictating to end it." : "Stopped dictating.";
     },
-    focus: async () => {
-      const app = await sidecar?.foreground();
-      if (app === undefined || app.exe.length === 0) return null;
-      const rect = app.rect == null ? null : Electron.screen.screenToDipRect(null, app.rect);
-      return {
-        label: `${app.exe}: ${app.title}`,
-        ...(app.window === undefined ? {} : { window: app.window }),
-        centre: rect === null ? null : { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 },
-      };
-    },
+    focus: async () => asFocus(await sidecar?.foreground()),
+    wakeFocus: async () => asFocus((await wakeTarget) ?? undefined),
     windowAt: async (point) => {
       if (sidecar === null) return null;
       const physical = Electron.screen.dipToScreenPoint(point);
@@ -2705,6 +2727,9 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const turn = ((): TurnEvent | null => {
       switch (event.type) {
         case "wake":
+          // Read before anything of ours shows: what he had in front of him when he said the name.
+          if (!dictatingByVoice && sidecar !== null)
+            wakeTarget = sidecar.foreground().catch(() => null);
           return { type: "wake", word: wordName(event.word) };
         case "speech_end":
           return null;

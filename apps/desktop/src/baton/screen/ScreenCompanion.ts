@@ -99,6 +99,7 @@ import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
 import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import {
   buildBatonTools,
+  clickTargetsField,
   treeText,
   typeByValue,
   type FocusState,
@@ -256,6 +257,8 @@ export interface AssistantFocus {
 export interface AssistantActions {
   /** Which window has the keyboard right now. */
   readonly focus?: () => Promise<AssistantFocus | null>;
+  /** The window he was in when he said the name, before anything of Tessaya's showed. */
+  readonly wakeFocus?: () => Promise<AssistantFocus | null>;
   /** The real element for a label near a point, from the accessibility tree. */
   readonly locate?: (
     label: string,
@@ -1633,6 +1636,8 @@ export const startScreenCompanion = (input: {
   // Cleared each turn: a tool that failed twice in one turn may work in the next.
   const toolFailures = new Map<string, number>();
   let chromeRelaunched = false;
+  /** The last ui_tree's lines: a click on a text box there only moves the cursor. */
+  let lastControls: ReadonlyArray<string> = [];
   const agentGate = createAgentGate({
     actWithoutAsking: () => settings.actWithoutAsking,
     chrome: {
@@ -1649,6 +1654,7 @@ export const startScreenCompanion = (input: {
       ),
     outside: () => outsideTurn,
     focusedWindow: gateWindow,
+    pointerField: (call) => clickTargetsField(lastControls, call),
     confirm: async (p) =>
       (await askHandsFree(
         {
@@ -2021,6 +2027,7 @@ export const startScreenCompanion = (input: {
         throw new Error("The window's controls can't be read here. Take a screenshot instead.");
       }
       lastTree = tree.tree;
+      lastControls = tree.controls;
       return treeText(tree);
     },
     focusWindow: async (title) => {
@@ -2169,12 +2176,17 @@ export const startScreenCompanion = (input: {
     },
     clickElement: async (target, double) => {
       const label = typeof target === "number" ? `line ${target}` : target;
+      // A text box is clicked to put the cursor in it, which a press by its pattern never does.
+      const field = clickTargetsField(
+        lastControls,
+        typeof target === "number" ? { id: target } : { label: target },
+      );
       // Its own pattern first: his pointer and the focus stay where they are (CU-6).
       const found = await actions?.locate?.(
         label,
         Electron.screen.getCursorScreenPoint(),
         true,
-        !double,
+        !double && !field,
         typeof target === "number" ? { line: target, tree: lastTree ?? 0 } : undefined,
       );
       if (found === null || found === undefined) {
@@ -2201,6 +2213,16 @@ export const startScreenCompanion = (input: {
         why: double ? "double click" : "no pattern",
       });
       await pointerAction(to, () => driverFor().clickAt(to, "left", double ? 2 : 1));
+      if (field) {
+        const inBox = async () =>
+          (await actions?.focusState?.().catch(() => null))?.focus?.includes(found.name) === true;
+        // Once more if the first click did not take: a box that was still drawing misses it.
+        if (!(await inBox())) await pointerAction(to, () => driverFor().clickAt(to, "left", 1));
+        await followOwnClick();
+        return (await inBox())
+          ? `The cursor is in ${found.name}.`
+          : `Clicked ${found.name} twice, but the cursor is not in it.`;
+      }
       await followOwnClick();
       return `Clicked ${found.name} (pointer: it has no pattern to act on).`;
     },
@@ -2584,7 +2606,7 @@ export const startScreenCompanion = (input: {
     // A stop never waits on the sidecar, and needs no window.
     const busy = runningMode() !== null || answering > 0 || speech.busy();
     if (instantDecision(text, busy)?.route !== "control") {
-      focus = askFocus ?? (await focusSoon());
+      focus = askFocus ?? (await actions?.wakeFocus?.().catch(() => null)) ?? (await focusSoon());
     }
     askFocus = null;
     // Stop and its kin never wait on a model; everything else goes to the one assistant.
