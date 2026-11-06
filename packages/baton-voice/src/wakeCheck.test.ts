@@ -7,7 +7,7 @@ const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
 
 const rig = (
-  verify: (pcm: Int16Array, word: string | null) => Promise<boolean>,
+  verify: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>,
   trustWake?: (word: string, score: number) => boolean,
   /** The echo guard hears someone over her voice. */
   nearEnd = false,
@@ -74,9 +74,9 @@ const rig = (
 
 describe("the second check before a wake from sleep", () => {
   it("drops a wake the recogniser did not hear, with no wake, no cue and no turn", async () => {
-    const seen: Array<[number, string | null]> = [];
-    const r = rig(async (pcm, word) => {
-      seen.push([pcm.length, word]);
+    const seen: Array<[number, string | null, number]> = [];
+    const r = rig(async (pcm, word, score) => {
+      seen.push([pcm.length, word, score]);
       return false;
     });
     r.push(2);
@@ -87,6 +87,8 @@ describe("the second check before a wake from sleep", () => {
     await r.core.idle();
     expect(seen).toHaveLength(1);
     expect(seen[0]![1]).toBe("Sebastian");
+    // The model's score goes with it, so a sure fire can skip the text check.
+    expect(seen[0]![2]).toBe(1);
     expect(r.events.some((e) => e.type === "wake")).toBe(false);
     expect(r.events.some((e) => e.type === "dropped" && e.reason === "wake not confirmed")).toBe(
       true,

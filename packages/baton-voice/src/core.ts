@@ -213,7 +213,7 @@ export const createVoiceCore = (input: {
    * The second check before a wake from sleep: the audio just before the model fired. False drops the
    * wake as if it never happened. Absent, the model alone decides.
    */
-  readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  readonly verifyWake?: (pcm: Int16Array, word: string | null, score: number) => Promise<boolean>;
   /** The model is sure enough of this word that her saying the name too cannot make it her echo. */
   readonly trustWake?: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
@@ -838,6 +838,7 @@ export const createVoiceCore = (input: {
                   .map((r) => r.frame),
               ),
               wakeWord,
+              score,
             )
             .catch(() => true),
           made: false,
