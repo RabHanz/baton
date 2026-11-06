@@ -130,7 +130,7 @@ describe("One Trust", () => {
       captureAlways: false,
       keysAllowedUntil: 0,
     };
-    const later = Date.now() + 3_600_000;
+    const later = Date.parse("2026-11-06T12:00:00Z");
     // Every combination of what he may have granted in person this session.
     for (const actWithoutAsking of [false, true])
       for (const plan of [null, ['Type "hello" into the chat']])
