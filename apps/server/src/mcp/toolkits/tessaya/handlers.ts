@@ -6,6 +6,7 @@ import {
   BATON_RECORD_WS_METHODS,
   BATON_SESSIONS_WS_METHODS,
   BATON_WATCH_WS_METHODS,
+  BATON_WEAVE_WS_METHODS,
 } from "@t3tools/baton-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -13,6 +14,10 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { recordText } from "@t3tools/baton-shared/audit";
+
+import { clientMessageFrom, withAgentMessageFrom } from "../../../baton/AgentMessageFrom.ts";
+import { gateMessage } from "../../../baton/AgentMessageGate.ts";
 import { AskOwner } from "../../../baton/BatonPhoneInbox.ts";
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -27,6 +32,9 @@ const decodeAsked = Schema.decodeUnknownOption(
     line: Schema.optional(Schema.String),
   }),
 );
+
+/** A name the caller chose, as one capped line, quoted for the Record. */
+const quoted = (text: string): string => JSON.stringify(recordText(text, 100));
 
 const failed = (cause: unknown) =>
   new OrchestratorMcpFailure({
@@ -119,6 +127,46 @@ export const layer = McpToolAccess.toLayer(
               status: asked?.status ?? "unknown",
               line: asked?.line ?? "No such request.",
             }),
+          ),
+        ),
+      ),
+      // Typing into a pane needs full access, here and before a call leaves for a link, within any narrowed modes the
+      // caller passed on. The session reads who sent it, quoted; the limit and the Record key on the client's session,
+      // never its name. Delivering what waits is a write too, so it goes here.
+      weave_send: McpToolAccess.writesEnvironment(
+        (input) =>
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) => {
+              const label = scope.client?.label ?? "an outside agent";
+              return gateMessage(
+                {
+                  sender: `outside:${scope.client?.sessionId ?? "unknown"}`,
+                  ref: input.to,
+                  project: null,
+                  subject: `To session ${quoted(input.to)} from ${quoted(label)}`,
+                },
+                call(
+                  handlers[BATON_WEAVE_WS_METHODS.send]({
+                    to: input.to,
+                    text: withAgentMessageFrom(
+                      clientMessageFrom(scope.client ?? { label }),
+                      input.text,
+                    ),
+                    from: label,
+                    ...(input.job === undefined ? {} : { job: input.job }),
+                  }).pipe(
+                    Effect.tap(() => handlers[BATON_WEAVE_WS_METHODS.tick]().pipe(Effect.ignore)),
+                  ),
+                ),
+              );
+            }),
+          ),
+        { linkedCallers: "allowed" },
+      ),
+      weave_list: McpToolAccess.reads((input) =>
+        call(
+          handlers[BATON_WEAVE_WS_METHODS.list](
+            input.limit === undefined ? {} : { limit: input.limit },
           ),
         ),
       ),
