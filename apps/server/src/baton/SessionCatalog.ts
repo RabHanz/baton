@@ -234,6 +234,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     limit?: number;
     before?: string;
     background?: boolean;
+    history?: boolean;
   }) => {
     const limit = Math.max(1, Math.min(200, input.limit ?? 50));
     const liveSessions = await ports.live();
@@ -257,7 +258,7 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     const q = (input.query ?? "").trim().toLowerCase();
     // Older sessions live in the history index; it is only searched when words are given.
     const hits = new Set<string>();
-    if (q !== "") {
+    if (q !== "" && input.history !== false) {
       for (const hit of await ports.history(q)) {
         hits.add(hit.sessionId);
         if (byId.has(hit.sessionId)) continue;

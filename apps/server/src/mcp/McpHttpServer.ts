@@ -78,8 +78,6 @@ import {
 } from "./toolkits/device/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
-import * as TessayaHandlers from "./toolkits/tessaya/handlers.ts";
-import { TessayaToolkit } from "./toolkits/tessaya/tools.ts";
 import { requestUrl } from "../requestUrl.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
@@ -1245,10 +1243,4 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerMcpTransport(
-  Layer.merge(
-    layerTools,
-    // Tessaya's reads, shown only to agents signed in from outside, so not in T3 threads' budget above.
-    toolkitRegistration(TessayaToolkit, TessayaHandlers.layer),
-  ),
-);
+export const layer = layerMcpTransport(layerTools);

@@ -44,7 +44,7 @@ export const layer = McpToolAccess.toLayer(
       tessaya_jobs: McpToolAccess.reads(() => call(handlers[BATON_JOB_WS_METHODS.jobList]())),
       tessaya_watch: McpToolAccess.reads(() => call(handlers[BATON_WATCH_WS_METHODS.watchGet]())),
       tessaya_record: McpToolAccess.reads((input) =>
-        call(handlers[BATON_RECORD_WS_METHODS.list](input)),
+        call(handlers[BATON_RECORD_WS_METHODS.list]({ ...input, limit: input.limit ?? 30 })),
       ),
       // Read as a client (MemoryViewer's default here): walls hold and no persona can be named.
       tessaya_memory_search: McpToolAccess.reads((input) =>
@@ -55,8 +55,15 @@ export const layer = McpToolAccess.toLayer(
       tessaya_rules: McpToolAccess.reads((input) =>
         call(handlers[BATON_ORCHESTRATION_WS_METHODS.ruleList](input)),
       ),
+      // Titles and folders only: the history index would let an agent test any word against every transcript.
       tessaya_sessions: McpToolAccess.reads((input) =>
-        call(handlers[BATON_SESSIONS_WS_METHODS.list](input)),
+        call(
+          handlers[BATON_SESSIONS_WS_METHODS.list]({
+            ...input,
+            limit: input.limit ?? 30,
+            history: false,
+          }),
+        ),
       ),
     };
   }),

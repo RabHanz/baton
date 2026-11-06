@@ -55,6 +55,8 @@ export const BatonCatalogListInput = Schema.Struct({
   before: Schema.optionalKey(Schema.String),
   /** Include background runs (non-interactive, SDK and Tessaya's own helpers); off by default. */
   background: Schema.optionalKey(Schema.Boolean),
+  /** False: `query` matches titles and folders only, never the history index's transcripts. */
+  history: Schema.optionalKey(Schema.Boolean),
 });
 export const BatonCatalogListResult = Schema.Struct({
   machine: Schema.String,
