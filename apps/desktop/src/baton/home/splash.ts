@@ -2,10 +2,12 @@
  * The start-up splash, as rules: when to show it, how long it plays and when the app window takes over,
  * and the window's options. Pure. It never holds the app back: the window is shown at the cap whatever happens.
  */
-/** The window sting runs 3 s and comes to rest at about 2.55 s; the app window takes over once it has. */
-export const SPLASH_MIN_MS = 2_600;
-export const SPLASH_CAP_MS = 3_400;
-export const SPLASH_FADE_MS = 400;
+/** The window sting runs 3.6 s and comes to rest at about 3 s (`pack-window-motion.py`). */
+export const STING_REST_MS = 3_050;
+/** The app window takes over only once the mark has settled, so nothing else moves while it plays. */
+export const SPLASH_MIN_MS = 3_150;
+export const SPLASH_CAP_MS = 3_900;
+export const SPLASH_FADE_MS = 450;
 export const SPLASH_SIZE = 192;
 
 export interface SplashAsk {
@@ -79,6 +81,17 @@ export interface SplashWindowOptions {
     readonly sandbox: true;
   };
 }
+
+/** The middle of the screen the window opens on: the one mark sits there, whatever size or place the window has. */
+export const splashCentre = (workArea: {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}): { readonly x: number; readonly y: number } => ({
+  x: workArea.x + workArea.width / 2,
+  y: workArea.y + workArea.height / 2,
+});
 
 /** A small frameless, transparent, click-through-in-spirit window centred on `centre`; no taskbar entry on any system. */
 export const splashWindowOptions = (centre: {

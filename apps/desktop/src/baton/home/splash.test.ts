@@ -4,7 +4,9 @@ import {
   SPLASH_CAP_MS,
   SPLASH_FADE_MS,
   SPLASH_MIN_MS,
+  STING_REST_MS,
   shouldSplash,
+  splashCentre,
   splashHtml,
   splashStep,
   splashWindowOptions,
@@ -24,7 +26,13 @@ const run = (events: ReadonlyArray<SplashEvent>) => {
 };
 
 describe("the splash timeline", () => {
-  it("plays at least 1.4 s, then hands over when the window is ready", () => {
+  it("hands over only after the mark has come to rest", () => {
+    expect(SPLASH_MIN_MS).toBeGreaterThan(STING_REST_MS);
+    expect(SPLASH_MIN_MS + SPLASH_FADE_MS).toBeGreaterThanOrEqual(3_500);
+    expect(SPLASH_CAP_MS + SPLASH_FADE_MS).toBeLessThanOrEqual(4_400);
+  });
+
+  it("plays at least the minimum, then hands over when the window is ready", () => {
     const early = run([
       { type: "start", at: 0 },
       { type: "windowReady", at: 300 },
@@ -50,7 +58,7 @@ describe("the splash timeline", () => {
     ).toEqual([SPLASH_MIN_MS + 100]);
   });
 
-  it("never holds the app past 2.5 s, even if the window never reports ready", () => {
+  it("never holds the app past the cap, even if the window never reports ready", () => {
     const r = run([
       { type: "start", at: 0 },
       { type: "tick", at: 2_000 },
@@ -111,6 +119,9 @@ describe("the splash window", () => {
       nodeIntegration: false,
       sandbox: true,
     });
+  });
+  it("sits in the middle of the screen the window opens on, not of the window", () => {
+    expect(splashCentre({ x: 1920, y: 0, width: 2560, height: 1400 })).toEqual({ x: 3200, y: 700 });
   });
   it("holds only the animation, and nothing but base64 can get into the page", () => {
     const html = splashHtml('AAAA"><script>x()</script>');
