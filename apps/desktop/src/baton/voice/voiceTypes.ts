@@ -33,6 +33,8 @@ export const VOICE_STATES: ReadonlyArray<VoiceState> = [
 export interface AudioInputDevice {
   readonly deviceId: string;
   readonly label: string;
+  /** The system's default recording device, when the source says so. */
+  readonly isDefault?: boolean;
 }
 
 /** 16 kHz mono signed 16-bit PCM — what every STT engine worth using takes. */
