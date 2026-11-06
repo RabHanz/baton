@@ -10,7 +10,12 @@ import * as NodePath from "node:path";
 import type { BatonJob, WatchFinding } from "@t3tools/baton-contracts";
 import { triggersFromCi, type CiRun, type Trigger } from "@t3tools/baton-shared/initiative";
 
-export type BuiltInId = "ci_look" | "morning_brief" | "waiting_remind" | "job_summary";
+export type BuiltInId =
+  | "ci_look"
+  | "morning_brief"
+  | "waiting_remind"
+  | "job_summary"
+  | "nightly_learning";
 
 export type StandingTrigger =
   | { readonly kind: "time"; readonly hour: number }
@@ -28,6 +33,7 @@ export interface StandingJobDef {
 }
 
 export const BRIEF_HOUR = 6;
+export const LEARN_HOUR = 2;
 
 export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
   {
@@ -62,6 +68,14 @@ export const BUILT_INS: ReadonlyArray<StandingJobDef> = [
     trigger: { kind: "event", event: "a job finished" },
     tool: "job_refine",
   },
+  {
+    id: "nightly_learning",
+    title: "Every night, learn from the day",
+    what: `Once a day from ${LEARN_HOUR} o'clock, finds the last day's slow or corrected turns, writes a skill for the worst two kinds, and tests each by replaying the turn. A skill that passes waits for your yes under What I've learned; one that fails is logged and not tried again.`,
+    owner: "executive",
+    trigger: { kind: "time", hour: LEARN_HOUR },
+    tool: "skill_draft",
+  },
 ];
 
 export interface StandingRun {
@@ -95,6 +109,8 @@ export interface StandingOps {
   readonly say: (text: string) => void;
   /** Writes into the job's record only; the worker is not woken. */
   readonly note: (jobId: string, text: string) => Promise<void>;
+  /** The nightly learning pass; returns what it did, replays counted. */
+  readonly learn: () => Promise<string>;
 }
 
 export interface StandingInput {
@@ -155,6 +171,7 @@ export const runStandingJobs = async (
       return "Built the morning brief.";
     });
   }
+  if (input.hour >= LEARN_HOUR) await attempt("nightly_learning", input.day, ops.learn);
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
     await attempt("waiting_remind", `wait:${f.workSessionId}`, async () => {

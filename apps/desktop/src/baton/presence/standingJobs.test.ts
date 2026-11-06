@@ -19,7 +19,13 @@ import {
 const NOW = Date.parse("2026-11-03T09:00:00Z");
 const allOn: StandingState = {
   ...EMPTY_STANDING,
-  on: { ci_look: true, morning_brief: true, waiting_remind: true, job_summary: true },
+  on: {
+    ci_look: true,
+    morning_brief: true,
+    waiting_remind: true,
+    job_summary: true,
+    nightly_learning: true,
+  },
 };
 const ci = (runId: number) => ({
   repo: "o/r",
@@ -46,12 +52,19 @@ const done = (id: string, at: string) =>
   }) as unknown as BatonJob;
 
 const fakes = () => {
-  const log = { looked: [] as string[], said: [] as string[], noted: [] as string[], briefs: 0 };
+  const log = {
+    looked: [] as string[],
+    said: [] as string[],
+    noted: [] as string[],
+    briefs: 0,
+    learned: 0,
+  };
   const ops: StandingOps = {
     look: async (t) => (log.looked.push(t.id), "read-only job started"),
     brief: async () => (log.briefs++, "the brief"),
     say: (t) => void log.said.push(t),
     note: async (id) => void log.noted.push(id),
+    learn: async () => (log.learned++, "Learned nothing new; 6 replays."),
   };
   return { log, ops };
 };
@@ -72,7 +85,7 @@ describe("standing jobs", () => {
     const { log, ops } = fakes();
     const r = await runStandingJobs(input({ state: EMPTY_STANDING }), ops);
     expect(r.did).toEqual([]);
-    expect(log).toEqual({ looked: [], said: [], noted: [], briefs: 0 });
+    expect(log).toEqual({ looked: [], said: [], noted: [], briefs: 0, learned: 0 });
   });
 
   it("runs each switched-on playbook once for what it saw, and logs it", async () => {
@@ -82,8 +95,10 @@ describe("standing jobs", () => {
       "ci_look",
       "job_summary",
       "morning_brief",
+      "nightly_learning",
       "waiting_remind",
     ]);
+    expect(log.learned).toBe(1);
     expect(log.noted).toEqual(["j1"]);
     expect(log.said).toHaveLength(1);
     const again = await runStandingJobs(input({ state: first.state }), ops);
@@ -173,6 +188,18 @@ describe("standing jobs", () => {
     expect(quiet.did.some((d) => d.id === "waiting_remind")).toBe(false);
     await runStandingJobs(input({ state: quiet.state }), ops);
     expect(log.said).toHaveLength(1);
+  });
+
+  it("learns once a night, from two o'clock, as the lead's job", async () => {
+    const { log, ops } = fakes();
+    const early = await runStandingJobs(input({ hour: 1 }), ops);
+    expect(log.learned).toBe(0);
+    const night = await runStandingJobs(input({ state: early.state, hour: 2, quiet: true }), ops);
+    expect(night.did.find((d) => d.id === "nightly_learning")?.text).toBe(
+      "Learned nothing new; 6 replays.",
+    );
+    await runStandingJobs(input({ state: night.state, hour: 3 }), ops);
+    expect(log.learned).toBe(1);
   });
 
   it("builds no brief before six, nor in quiet hours", async () => {

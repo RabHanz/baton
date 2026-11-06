@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 
 import {
   matchSkills,
+  nightlyGroups,
   parseLearnedSkill,
   parseSkillStates,
   skillFileText,
@@ -20,6 +21,7 @@ import {
   verdict,
   WRITER_SYSTEM,
   writerInput,
+  type KeptTurn,
   type LearnedSkill,
   type RecordedCase,
   type Replay,
@@ -311,4 +313,79 @@ export const learnFromTurn = async (input: {
     },
   });
   return `I learned a skill for "${skill.when}" and tested it: ${result.evidence}. It waits for your yes under What I've learned.`;
+};
+
+const recentDir = (dir: string) => NodePath.join(dir, ".recent");
+const KEEP_RECENT_MS = 2 * 86_400_000;
+/** The groups the nightly pass learns from; the rest wait for the next night. */
+export const NIGHTLY_LEARN = 2;
+
+/** Keeps a turn on this machine for the nightly pass (its recorded answers never leave it); turns past two days go. */
+export const keepRecentTurn = (dir: string, kept: KeptTurn, now: number): void => {
+  const recent = recentDir(dir);
+  NodeFS.mkdirSync(recent, { recursive: true });
+  NodeFS.writeFileSync(NodePath.join(recent, `${kept.turn}.json`), JSON.stringify(kept));
+  for (const name of NodeFS.readdirSync(recent)) {
+    if (Number(name.replace(/\.json$/, "")) < now - KEEP_RECENT_MS)
+      NodeFS.rmSync(NodePath.join(recent, name), { force: true });
+  }
+};
+
+const readRecent = (dir: string): ReadonlyArray<KeptTurn> => {
+  try {
+    return NodeFS.readdirSync(recentDir(dir)).flatMap((name) => {
+      try {
+        return [
+          JSON.parse(NodeFS.readFileSync(NodePath.join(recentDir(dir), name), "utf8")) as KeptTurn,
+        ];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * The lead's nightly pass: the last day's slow, stopped or corrected turns the Record names, grouped by
+ * kind, and a skill learned from the worst turn of the top two groups, each tested by replay and left
+ * for his yes. A group it tried is dropped whatever the result, so a failed test is logged, not retried.
+ */
+export const learnNightly = async (input: {
+  readonly dir: string;
+  readonly traced: ReadonlySet<number>;
+  readonly ask: (system: string, user: string) => Promise<string>;
+  /** A replay on the model the turn used. */
+  readonly replay: (
+    brain: KeptTurn["brain"],
+  ) => (c: RecordedCase, extra?: string) => Promise<ReadonlyArray<string>>;
+  readonly now: Date;
+}): Promise<{ readonly text: string; readonly replays: number }> => {
+  const groups = nightlyGroups(readRecent(input.dir), input.traced);
+  if (groups.length === 0) return { text: "Nothing in the last day to learn from.", replays: 0 };
+  let replays = 0;
+  const lines: string[] = [];
+  for (const group of groups.slice(0, NIGHTLY_LEARN)) {
+    const worst = group[0]!;
+    const replay = input.replay(worst.brain);
+    lines.push(
+      await learnFromTurn({
+        dir: input.dir,
+        turn: worst,
+        ask: input.ask,
+        replay: (c, extra) => ((replays += 1), replay(c, extra)),
+        now: input.now,
+      }).catch(
+        (error: unknown) =>
+          `I could not learn from "${worst.trace.said.slice(0, 80)}": ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
+    for (const k of group)
+      NodeFS.rmSync(NodePath.join(recentDir(input.dir), `${k.turn}.json`), { force: true });
+  }
+  return {
+    text: `${lines.join(" ")} Looked at ${groups.length} kind${groups.length === 1 ? "" : "s"} of request; ${replays} replays.`,
+    replays,
+  };
 };

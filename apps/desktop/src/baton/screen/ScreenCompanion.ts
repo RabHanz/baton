@@ -5,13 +5,15 @@
  * and every drive plan its own Run it. How each mode runs is in docs/baton/DECISIONS.md.
  */
 import { createModelAsk } from "../writing/modelAsk.ts";
-import { appOf } from "@t3tools/baton-shared/skillLearning";
+import { appOf, tracedTurns } from "@t3tools/baton-shared/skillLearning";
 import { replayTurn } from "../agent/replay.ts";
 import {
   decideSkill,
   learnedAction,
   learnedControls,
+  keepRecentTurn,
   learnFromTurn,
+  learnNightly as learnNightlyFrom,
   readStates,
   skillsDirOf,
   skillsForTurn,
@@ -486,6 +488,10 @@ export interface ScreenCompanion {
   readonly signIn: () => Promise<BrainStatus>;
   readonly applySetting: (id: string, value: string | boolean | null) => void;
   readonly dispose: () => void;
+  /** The lead's nightly learning pass over the turns these Record rows trace; a sentence of what it did. */
+  readonly learnNightly: (
+    rows: ReadonlyArray<{ readonly kind: string; readonly detail: string }>,
+  ) => Promise<string>;
 }
 
 type Run =
@@ -2441,6 +2447,12 @@ export const startScreenCompanion = (input: {
         allowed: face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
         brain: faceModel,
       };
+      // Kept two days on this machine for the nightly pass; the Record's trace names it by `started`.
+      try {
+        keepRecentTurn(skillsDir(), { ...lastTurn, turn: started }, Date.now());
+      } catch {
+        // A turn not kept is only one the nightly pass will not see.
+      }
     };
     try {
       const voice = streamSpeech(() => (firstAudioAt ??= Date.now()));
@@ -2484,6 +2496,7 @@ export const startScreenCompanion = (input: {
       keepTurn(null);
       input.onNote?.("agent_turn", {
         ok: true,
+        turn: started,
         ...who,
         skills: [...record().skills],
         project,
@@ -2503,6 +2516,7 @@ export const startScreenCompanion = (input: {
       // Every turn leaves its line, a failed one too, with what the tools did before it stopped.
       input.onNote?.("agent_turn", {
         ok: false,
+        turn: started,
         skills: [...record().skills],
         stoppedBy: lastTurn?.trace.stoppedBy ?? null,
         wake: woke,
@@ -2742,6 +2756,44 @@ export const startScreenCompanion = (input: {
       input.onChange?.();
     }
   };
+  /** The lead's standing job: replays use each turn's own model, the writer the lead's; nothing is adopted. */
+  const learnNightly: ScreenCompanion["learnNightly"] = async (rows) => {
+    const lead = leadBrain();
+    const out = await learnNightlyFrom({
+      dir: skillsDir(),
+      traced: tracedTurns(rows),
+      ask: createModelAsk({
+        claudeBinary: () => settings.claudeBinary,
+        model: () => lead.model,
+        workDir: NodePath.join(input.stateDir, "edit"),
+        env: claudeEnv,
+        platform: input.platform,
+        timeoutMs: 90_000,
+      }),
+      replay: (brain) => async (c, extra) =>
+        (
+          await replayTurn({
+            claudeBinary: settings.claudeBinary,
+            brain,
+            said: c.said,
+            where: { window: c.window, session: null },
+            answers: c.answers,
+            ...(extra === undefined ? {} : { extra }),
+            env: claudeEnv(),
+            platform: input.platform,
+          })
+        ).calls,
+      now: new Date(),
+    });
+    input.onNote?.("learned", {
+      said: "nightly",
+      reply: out.text,
+      replays: out.replays,
+      model: lead.model,
+    });
+    input.onChange?.();
+    return out.text;
+  };
   const dismissQuietly = () => {
     hush();
     dropOperator();
@@ -2839,6 +2891,7 @@ export const startScreenCompanion = (input: {
       askHandsFree({ inactive: false, ...box }, box.title, 0, false, needs),
     stop,
     dismissQuietly,
+    learnNightly,
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },

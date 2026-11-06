@@ -10,6 +10,8 @@ import {
   learnedAction,
   learnedControls,
   learnFromTurn,
+  keepRecentTurn,
+  learnNightly,
   readSkills,
   skillsForTurn,
   type LastTurn,
@@ -128,6 +130,42 @@ describe("learning from a turn", () => {
       "refused",
     );
     expect(readSkills(dir)).toEqual([]);
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("learning at night", () => {
+  it("learns from the day's slow turn the Record names, counts its replays, leaves it for his yes, and never tries it again", async () => {
+    const dir = tmp();
+    const brain = { model: "sonnet", effort: "medium" };
+    keepRecentTurn(dir, { ...turn, turn: now.getTime() - 3_600_000, brain }, now.getTime());
+    // A turn from three days ago is dropped when the next one is kept.
+    keepRecentTurn(
+      dir,
+      { ...turn, turn: now.getTime() - 3 * 86_400_000, brain },
+      now.getTime() - 3 * 86_400_000,
+    );
+    keepRecentTurn(dir, { ...turn, turn: now.getTime() - 60_000, brain }, now.getTime());
+    const models: string[] = [];
+    const nightly = () =>
+      learnNightly({
+        dir,
+        traced: new Set([now.getTime() - 3_600_000, now.getTime() - 60_000]),
+        ask: async () => SKILL,
+        // Fails its test: the skill does not shorten the turn.
+        replay: (b) => async () => (
+          models.push(b.model),
+          ["mcp__baton__screen_capture", "mcp__baton__type_text"]
+        ),
+        now,
+      });
+    const first = await nightly();
+    expect(first.text).toContain("did not help");
+    expect(first.text).toContain("Looked at 1 kind of request; 6 replays.");
+    expect(first.replays).toBe(6);
+    expect(new Set(models)).toEqual(new Set(["sonnet"]));
+    expect(readSkills(dir)).toEqual([]);
+    expect((await nightly()).text).toBe("Nothing in the last day to learn from.");
     NodeFS.rmSync(dir, { recursive: true, force: true });
   });
 });
