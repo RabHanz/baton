@@ -183,6 +183,7 @@ export const startBatonDesktop = Effect.gen(function* () {
         }
       })();
       lifecycle.note("crash-dumps", { folder: dumps, newDumps: found });
+      // @effect-diagnostics-next-line globalJsonInEffect:off - an array of file names, inside a try.
       NodeFS.writeFileSync(seenFile, JSON.stringify([...seen, ...found]));
     } catch {
       // diagnostics only

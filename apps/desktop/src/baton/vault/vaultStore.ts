@@ -30,6 +30,7 @@ import {
   type Sealed,
 } from "./vaultCrypto.ts";
 
+// @effect-diagnostics-next-line extendsNativeError:off -- a Promise API, never in an Effect failure channel.
 export class VaultError extends Error {
   override readonly name = "VaultError";
 }
