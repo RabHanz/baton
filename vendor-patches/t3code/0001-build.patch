@@ -263,7 +263,7 @@ index 95d8b2d57e09faa9301be955e21e004cd64727e1..090ecfa67b3478d44621b1fce2f9375d
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 02f19b07b4531a4cd2760c99e642f694f56ab138..351641956f1cbba3ab35d76187c49d6810a5fb79 100644
+index 02f19b07b4531a4cd2760c99e642f694f56ab138..10ac17adf8f2a419995c13ee7e20fa85cee57353 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
 @@ -56,6 +56,9 @@ import {
@@ -291,7 +291,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..351641956f1cbba3ab35d76187c49d68
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1292,6 +1303,36 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1292,6 +1303,38 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -315,7 +315,9 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..351641956f1cbba3ab35d76187c49d68
 +          path.join(fixture.packagedAppDir, "resources/baton-voice/tessaya-voice.exe"),
 +          "voice",
 +        );
-+        yield* fs.remove(path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"));
++        yield* fs.remove(
++          path.join(fixture.packagedAppDir, "resources/tessaya/sting-madder-dark.webp"),
++        );
 +        const artError = yield* validateWindowsPackagedPayload({
 +          stageDistDir: fixture.stageDistDir,
 +          appExecutableName: fixture.appExecutableName,
@@ -328,7 +330,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..351641956f1cbba3ab35d76187c49d68
        }),
      ),
    );
-@@ -1828,3 +1869,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1828,3 +1871,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -348,7 +350,7 @@ index 02f19b07b4531a4cd2760c99e642f694f56ab138..351641956f1cbba3ab35d76187c49d68
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 599c6b809a18ff4ce320c9780c87bd244d94dad3..77254636bd27a6de2d8abc44ba1aebd8fbfea7a6 100644
+index 599c6b809a18ff4ce320c9780c87bd244d94dad3..511a535d150bae20ceaa50c0653f4150d547fa52 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -749,6 +749,8 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -568,7 +570,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..77254636bd27a6de2d8abc44ba1aebd8
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3411,6 +3570,32 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3411,6 +3570,33 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -588,7 +590,8 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..77254636bd27a6de2d8abc44ba1aebd8
 +
 +  const missingArt: string[] = [];
 +  for (const file of TESSAYA_ART_PAYLOAD_FILES) {
-+    if (!(yield* isFile(path.join(resourcesDir, "tessaya", file)))) missingArt.push(`tessaya/${file}`);
++    if (!(yield* isFile(path.join(resourcesDir, "tessaya", file))))
++      missingArt.push(`tessaya/${file}`);
 +  }
 +  if (missingArt.length > 0) {
 +    return yield* new WindowsPackagedPayloadValidationError({
@@ -601,7 +604,7 @@ index 599c6b809a18ff4ce320c9780c87bd244d94dad3..77254636bd27a6de2d8abc44ba1aebd8
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3772,6 +3957,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3772,6 +3958,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
