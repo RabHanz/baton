@@ -13,6 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { AskOwner } from "../../../baton/BatonPhoneInbox.ts";
 import * as BatonRpcHandlers from "../../../baton/BatonRpcHandlers.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
@@ -93,7 +94,9 @@ export const layer = McpToolAccess.toLayer(
           Effect.gen(function* () {
             const owner = yield* ownerOf;
             const id = `mcp-${owner}-${yield* random.uuidV4()}`;
-            const asked = yield* phone("ask", { id, text: input.text, owner });
+            const asked = yield* phone("ask", { id, text: input.text }).pipe(
+              Effect.provideService(AskOwner, owner),
+            );
             return {
               id: asked?.ok === false ? null : id,
               status: asked?.status ?? "not asked",

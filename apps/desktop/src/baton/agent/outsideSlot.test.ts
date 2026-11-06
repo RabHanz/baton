@@ -10,6 +10,7 @@ describe("a paired device's turn, overlapping one of his", () => {
   it("keeps its own trust, memory view and tools whatever his turn does meanwhile", async () => {
     const memoryCalls: Array<[string, Record<string, unknown>]> = [];
     const asked: string[] = [];
+    const expiresAsNo: boolean[] = [];
     const host = {
       memory: async () => "he said: the deploy key is in 1Password",
       remember: async () => "",
@@ -27,7 +28,7 @@ describe("a paired device's turn, overlapping one of his", () => {
       },
       notes: { list: () => [] } as never,
       focusedWindow: async () => ({ label: "notepad.exe: notes", shell: false }),
-      confirm: async (p) => (asked.push(p.title), false),
+      confirm: async (p) => (asked.push(p.title), expiresAsNo.push(p.noOnExpiry), false),
       record: () => undefined,
     });
     // His turn: his own gate, which lets a quiet act through.
@@ -48,6 +49,8 @@ describe("a paired device's turn, overlapping one of his", () => {
     expect(hisVerdict.allow).toBe(true);
     expect(deviceVerdict.allow).toBe(false);
     expect(asked).toHaveLength(1);
+    // A device's question that times out is a no.
+    expect(expiresAsNo).toEqual([true]);
 
     // Its memory search names no persona and never reaches his conversation; it has no vault.
     expect(await slot.host.memory("deploy key")).toBe("Nothing earlier matches.");

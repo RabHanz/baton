@@ -55,7 +55,8 @@ export const createOutsideSlot = (input: {
     textIsHis: () => false,
     outside: () => true,
     focusedWindow: input.focusedWindow,
-    confirm: input.confirm,
+    // Nobody answering is never a yes to a device.
+    confirm: (prompt) => input.confirm({ ...prompt, noOnExpiry: true }),
     record: input.record,
     ...(input.jobProjects === undefined ? {} : { jobProjects: input.jobProjects }),
     ...(input.chrome === undefined ? {} : { chrome: input.chrome }),

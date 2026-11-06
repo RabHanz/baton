@@ -1023,6 +1023,8 @@ export const startScreenCompanion = (input: {
     needs?: "cloud-approve",
   ): Promise<number> => {
     // Every confirm, the gate's and the screen's, mouse, Chrome and plan alike, comes through here.
+    // A device's question that nobody answers is a no, on every path.
+    const expiresAsNo = noOnExpiry || turnLock.deviceRunning();
     const { box: shown, spoken: question } = labelPrompt(box, spoken, {
       device: turnLock.deviceRunning(),
       phone: phoneTurn,
@@ -1038,7 +1040,7 @@ export const startScreenCompanion = (input: {
             cancel: box.cancel,
             ...(needs === undefined ? {} : { needs }),
           }) ?? null);
-    const local = askLocal(shown, question, yes, noOnExpiry);
+    const local = askLocal(shown, question, yes, expiresAsNo);
     if (mirrored === null) return local;
     const first = await Promise.race([
       local.then((index) => ({ index })),

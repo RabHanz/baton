@@ -25,6 +25,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -105,10 +106,21 @@ export class BatonPhoneInbox extends Context.Service<
     /** The desktop asks whether the phone answered: the button index, or null. */
     readonly promptAnswer: (id: string) => Effect.Effect<number | null>;
     readonly closePrompt: (id: string) => Effect.Effect<void>;
+    /** Runs agents' check-and-post one at a time, so two at once cannot both pass the cap. */
+    readonly agentsInTurn: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
   }
 >()("t3/baton/BatonPhoneInbox") {}
 
+/**
+ * The outside agent asking (its MCP session, made safe for an id), set only by the MCP toolkit; null for the phone,
+ * the web bar and any client, which cannot name one.
+ */
+export const AskOwner = Context.Reference<string | null>("t3/baton/BatonPhoneInbox/AskOwner", {
+  defaultValue: () => null,
+});
+
 export const make = Effect.gen(function* () {
+  const agentPosts = yield* Semaphore.make(1);
   const sql = yield* SqlClient.SqlClient;
   let lastSeen: number | null = null;
 
@@ -298,6 +310,7 @@ export const make = Effect.gen(function* () {
     answerPrompt,
     promptAnswer,
     closePrompt,
+    agentsInTurn: Semaphore.withPermit(agentPosts),
   });
 });
 
@@ -324,21 +337,33 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (input: Bat
       // Nothing is queued with no desktop to take it, and what is queued expires in minutes, not a day.
       if (!(yield* inbox.connected)) return { value: { ok: false, line: BAR_NOT_CONNECTED } };
       // An outside agent's (tessaya_ask): one open request each and three in all, so agents never fill his queue.
-      const owner = str(a["owner"], 40);
-      if (owner !== null) {
-        const open = (yield* inbox.recent(100)).filter(
-          (ask) => ask.id.startsWith("mcp-") && (ask.status === "queued" || ask.status === "taken"),
-        );
-        if (open.some((ask) => ask.id.startsWith(`mcp-${owner}-`)))
-          return { value: { ok: false, line: AGENT_ASK_OPEN } };
-        if (open.length >= AGENT_ASKS_OPEN_MAX)
-          return { value: { ok: false, line: AGENT_ASKS_FULL } };
-      }
-      const made = yield* inbox.post({
+      // Only the MCP toolkit names an owner; an `mcp-` id from anyone else would count against the agents'.
+      const owner = yield* AskOwner;
+      const asked = id ?? "";
+      if (owner === null ? asked.startsWith("mcp-") : !asked.startsWith(`mcp-${owner}-`))
+        return yield* bad();
+      const post = inbox.post({
         id: id ?? "",
         text: typeof a["text"] === "string" ? a["text"] : "",
         ttlMs: BAR_ASK_TTL_MS,
       });
+      const made =
+        owner === null
+          ? yield* post
+          : yield* inbox.agentsInTurn(
+              Effect.gen(function* () {
+                const open = (yield* inbox.recent(100)).filter(
+                  (ask) =>
+                    ask.id.startsWith("mcp-") &&
+                    (ask.status === "queued" || ask.status === "taken"),
+                );
+                if (open.some((ask) => ask.id.startsWith(`mcp-${owner}-`)))
+                  return { ok: false as const, why: AGENT_ASK_OPEN };
+                if (open.length >= AGENT_ASKS_OPEN_MAX)
+                  return { ok: false as const, why: AGENT_ASKS_FULL };
+                return yield* post;
+              }),
+            );
       if (!made.ok) return { value: { ok: false, line: made.why } };
       return {
         value: {
