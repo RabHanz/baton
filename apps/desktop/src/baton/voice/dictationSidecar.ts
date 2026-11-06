@@ -1,6 +1,6 @@
 // @effect-diagnostics globalDate:off globalTimers:off nodeBuiltinImport:off
 /**
- * `baton-dictation` (native/baton-dictation): Handy's engine stack as a child process. It owns
+ * `tessaya-voice` (native/baton-dictation): Handy's engine stack as a child process. It owns
  * the hold and toggle keys, the recording, Parakeet and the paste; this file is the line protocol.
  * The same binary is the wake path's microphone (`makeSidecarAudioInput`), so what voice-lab
  * measures is exactly what the product hears.
@@ -199,7 +199,7 @@ export interface DictationSidecar {
   readonly dispose: () => void;
 }
 
-/** Packaged next to the app; BATON_DICTATION points a dev build at a local binary. */
+/** Packaged next to the app; BATON_DICTATION points a dev build at a local binary. Builds before the rename ship `baton-dictation`. */
 export const resolveDictationBinary = (input: {
   readonly resourcesPath: string;
   readonly platform: string;
@@ -207,12 +207,11 @@ export const resolveDictationBinary = (input: {
   readonly exists?: (path: string) => boolean;
 }): string | null => {
   const exists = input.exists ?? NodeFS.existsSync;
+  const exe = input.platform === "win32" ? ".exe" : "";
   const candidates = [
     input.env["BATON_DICTATION"],
-    NodePath.join(
-      input.resourcesPath,
-      "baton-voice",
-      input.platform === "win32" ? "baton-dictation.exe" : "baton-dictation",
+    ...["tessaya-voice", "baton-dictation"].map((name) =>
+      NodePath.join(input.resourcesPath, "baton-voice", `${name}${exe}`),
     ),
   ];
   return candidates.find((path): path is string => path !== undefined && exists(path)) ?? null;
@@ -481,7 +480,7 @@ export const makeSidecarStt = (sidecar: DictationSidecar): SttProvider => ({
   },
 });
 
-/** Wake-word capture: `baton-dictation record` piped straight in, with no browser in the path. */
+/** Wake-word capture: `tessaya-voice record` piped straight in, with no browser in the path. */
 export const makeSidecarAudioInput = (input: {
   readonly binary: string;
   readonly listDevices: () => Promise<ReadonlyArray<AudioInputDevice>>;

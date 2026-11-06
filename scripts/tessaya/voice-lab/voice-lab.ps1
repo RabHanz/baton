@@ -22,7 +22,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
-$exe = Join-Path $here 'baton-dictation.exe'
+$exe = Join-Path $here 'tessaya-voice.exe'
 $models = Join-Path $here 'models'
 $gguf = Join-Path $Lab 'models\parakeet-tdt-0.6b-v3-Q8_0.gguf'
 $words = 'sebastian,alfred,freya,onyx'

@@ -3,7 +3,7 @@
  * Baton voice on the desktop: the microphone, the tray, the HUD, the hotkeys
  * and where finished words go (§12.1, §12.3, Phase 5). D65.
  *
- * Windows first (D97, D106): capture, speech and paste are `baton-dictation`, which is packaged
+ * Windows first (D97, D106): capture, speech and paste are `tessaya-voice`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
 import * as NodeChildProcess from "node:child_process";
@@ -838,7 +838,7 @@ export interface DesktopBatonVoiceInput {
   /** The voice core (`@t3tools/baton-voice`); null leaves the tray saying so. */
   readonly makeCore: ((hooks: VoiceCoreHooks) => Promise<BatonVoiceCore>) | null;
   /** His environment, for the `claude` that cleans text up. */
-  /** `baton-dictation`; null only in a build that left it out. */
+  /** `tessaya-voice`; null only in a build that left it out. */
   readonly dictationBinary: string | null;
   /** A wake word cut across Baton's voice. */
   readonly onBargeIn?: () => void;

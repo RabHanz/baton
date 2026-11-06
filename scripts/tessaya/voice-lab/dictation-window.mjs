@@ -2,7 +2,7 @@
 /**
  * Dictation's paste and stop paths against real Windows windows, on his desktop, with no microphone.
  * Only Notepad windows of its own are touched, and it closes them.
- *   node dictation-window.mjs --exe baton-dictation.exe --gguf model.gguf --wav clip.wav --dir workdir [--limit long.wav]
+ *   node dictation-window.mjs --exe tessaya-voice.exe --gguf model.gguf --wav clip.wav --dir workdir [--limit long.wav]
  */
 import { execFileSync, spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";

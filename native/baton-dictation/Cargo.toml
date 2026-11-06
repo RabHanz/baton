@@ -6,7 +6,8 @@ license = "MIT"
 publish = false
 
 [[bin]]
-name = "baton-dictation"
+# What Windows shows for the process (mic-in-use flyout, Task Manager); the crate keeps its old name.
+name = "tessaya-voice"
 path = "src/main.rs"
 
 [dependencies]

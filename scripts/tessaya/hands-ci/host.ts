@@ -89,7 +89,7 @@ const clipboard = {
   },
 };
 
-const sidecarExe = process.env["SIDECAR"] ?? "baton-dictation.exe";
+const sidecarExe = process.env["SIDECAR"] ?? "tessaya-voice.exe";
 // One long-lived sidecar, as the app runs it: tree line numbers live in it from one ui_tree to the next click.
 let served: ReturnType<typeof startSidecar> | null = null;
 const side = (message: Record<string, unknown>): Promise<Record<string, unknown>> =>

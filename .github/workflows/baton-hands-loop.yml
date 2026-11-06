@@ -56,7 +56,7 @@ jobs:
       - name: Run the task set
         shell: bash
         env:
-          SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
+          SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/tessaya-voice.exe
           HANDS_OUT: ${{ github.workspace }}/hands-out
           HANDS_RECORD: "1"
         run: |

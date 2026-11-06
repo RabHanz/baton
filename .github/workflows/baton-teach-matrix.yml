@@ -64,7 +64,7 @@ jobs:
           PROOF_OUT: ${{ github.workspace }}/teach-proof-out
           PROOF_APP: ${{ matrix.app }}
           PROOF_FAKE: ${{ github.workspace }}/scripts/tessaya/teach-proof/fake-claude.mjs
-          SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/baton-dictation.exe
+          SIDECAR: ${{ github.workspace }}/native/baton-dictation/target/release/tessaya-voice.exe
           HANDS_RECORD: "1"
         run: |
           mkdir -p "$PROOF_OUT"

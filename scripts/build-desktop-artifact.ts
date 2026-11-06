@@ -2365,7 +2365,7 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
 });
 
 export const BATON_VOICE_PAYLOAD_FILES = [
-  "baton-dictation.exe",
+  "tessaya-voice.exe",
   "models/melspectrogram.onnx",
   "models/embedding_model.onnx",
   "models/silero_vad.onnx",
@@ -2424,7 +2424,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
   yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
   yield* fs.makeDirectory(destination, { recursive: true });
   yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
-  const exe = input.platform === "win" ? "baton-dictation.exe" : "baton-dictation";
+  const exe = input.platform === "win" ? "tessaya-voice.exe" : "baton-dictation";
   const built: string[] = [];
   for (const build of batonSidecarBuild(input.platform, input.arch ?? "x64")) {
     const spawnCommand = yield* resolveSpawnCommand("cargo", [
@@ -2448,7 +2448,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
         },
       }),
       {
-        label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`,
+        label: `cargo build tessaya-voice${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`,
         verbose: input.verbose,
       },
     );
@@ -2470,7 +2470,7 @@ export const stageBatonVoice = Effect.fn("stageBatonVoice")(function* (input: {
     yield* runCommand(
       ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }),
       {
-        label: "lipo baton-dictation",
+        label: "lipo tessaya-voice",
         verbose: input.verbose,
       },
     );
