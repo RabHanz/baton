@@ -2918,14 +2918,18 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const warmTicker = setInterval(showWarm, 1_000);
     const warming = core;
     const warmSidecar = sidecar;
+    let modelRead = false;
     const warm = startWarmUp({
       pushFrame: (frame) => warming.pushAudio(frame),
       // Read the model first, on its own call that waits as long as the sidecar says it is loading, so the first real
       // phrase never sits behind a load that a fixed timer gave up on.
       transcribe: async (pcm) => {
-        const loadMs = await warmSidecar.preload();
-        step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
-        speechLoadMs = 0;
+        if (!modelRead) {
+          modelRead = true;
+          const loadMs = await warmSidecar.preload();
+          step("speech-model-ready", { loadMs, sinceWarmStartMs: Date.now() - warmStarted });
+          speechLoadMs = 0;
+        }
         return makeSidecarStt(warmSidecar).transcribe(pcm);
       },
       settled: () => warming.idle(),
@@ -2933,6 +2937,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         modelsReady = ready;
         showWarm();
       },
+      onLonger: (seconds, ms) => step("warm-longer", { seconds, ms }),
     });
     const warmed = await warm.result.finally(() => clearInterval(warmTicker));
     note = null;
@@ -2957,6 +2962,26 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       });
     }
     step(warmed ? "warm-done" : "warm-timeout");
+    // What Baton costs while nobody speaks, from the first minute (startup still settling) to five minutes in.
+    for (const afterMs of [0, 4 * 60_000]) {
+      setTimeout(() => {
+        const before = process.cpuUsage();
+        Electron.app.getAppMetrics();
+        setTimeout(() => {
+          const used = process.cpuUsage(before);
+          const others = Electron.app
+            .getAppMetrics()
+            .filter((m) => m.type !== "Browser")
+            .reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0);
+          step("idle-cpu", {
+            sinceWarmMs: afterMs + 60_000,
+            mainPct: Math.round((used.user + used.system) / 6_000) / 100,
+            otherPct: Math.round(others * 100) / 100,
+            state: core?.snapshot().state ?? "stopped",
+          });
+        }, 60_000).unref();
+      }, afterMs).unref();
+    }
     // With BATON_TEST_WAV set, recorded files stand in for the microphone; unset, nothing changes.
     const testSource = process.env["BATON_TEST_WAV"];
     audio =

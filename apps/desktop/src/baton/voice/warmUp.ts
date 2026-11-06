@@ -1,5 +1,5 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating the rule (D82) */
-// @effect-diagnostics globalTimers:off
+// @effect-diagnostics globalTimers:off globalDate:off
 /**
  * Models load on first use: the wake scorer and the speech detector on the first frames, the recogniser on
  * the first transcription. Armed cold, the first phrase after launch waits behind that load and is lost.
@@ -16,8 +16,8 @@ export const WARM_LIMIT_MS = 45_000;
  * A second of quiet noise, not digital silence: a recogniser may decline to answer for silence at all,
  * and then there is nothing to wait for. Deterministic, so a run is repeatable.
  */
-const warmClip = (): Int16Array => {
-  const out = new Int16Array(16_000);
+const warmClip = (seconds = 1): Int16Array => {
+  const out = new Int16Array(16_000 * seconds);
   let seed = 12_345;
   for (let i = 0; i < out.length; i += 1) {
     seed = (seed * 1_103_515_245 + 12_345) & 0x7fffffff;
@@ -25,6 +25,14 @@ const warmClip = (): Int16Array => {
   }
   return out;
 };
+
+/**
+ * After the first second, longer clips, one at a time: the recogniser sizes its working memory for the longest
+ * audio it has seen, so without these the first real sentence (three to eight seconds) pays for that instead.
+ * They run before the microphone opens and none starts after the limit: the sidecar has one engine thread, so a
+ * clip still running would queue his first sentence and the wake check behind it.
+ */
+export const LONGER_WARM_SECONDS: ReadonlyArray<number> = [4, 8];
 
 export interface WarmUpInput {
   readonly pushFrame: (frame: Int16Array) => void;
@@ -35,6 +43,8 @@ export interface WarmUpInput {
   readonly onStage?: (ready: number, total: number) => void;
   /** Resolves after the limit. Real time by default; a test passes its own. */
   readonly limit?: () => Promise<void>;
+  /** Each longer clip as it finishes, for the turn log. */
+  readonly onLonger?: (seconds: number, ms: number) => void;
 }
 
 /**
@@ -48,6 +58,11 @@ export const startWarmUp = (
   const limit =
     input.limit ??
     (() => new Promise<void>((resolve) => setTimeout(resolve, WARM_LIMIT_MS).unref()));
+  let pastLimit = false;
+  const limitPassed = limit().then(() => {
+    pastLimit = true;
+    return false;
+  });
   let ready = 0;
   const stage = () => input.onStage?.((ready += 1), 2);
   let complete: Promise<void>;
@@ -56,7 +71,19 @@ export const startWarmUp = (
     complete = Promise.all([
       input.settled().then(stage),
       input.transcribe(warmClip()).then(stage),
-    ]).then(() => undefined);
+    ]).then(async () => {
+      for (const seconds of LONGER_WARM_SECONDS) {
+        if (pastLimit) return;
+        const started = Date.now();
+        // A failed longer clip only means the first long sentence pays for the sizing, as before.
+        const answered = await input.transcribe(warmClip(seconds)).then(
+          () => true,
+          () => false,
+        );
+        if (!answered) return;
+        input.onLonger?.(seconds, Date.now() - started);
+      }
+    });
   } catch {
     complete = Promise.reject(new Error("warm-up failed to start"));
   }
@@ -66,7 +93,7 @@ export const startWarmUp = (
   );
   return {
     // Never wait on it for good: the recogniser may not answer for silence at all (0.1.30 hung here).
-    result: Promise.race([done, limit().then(() => false)]),
+    result: Promise.race([done, limitPassed]),
     complete: done.then(() => undefined),
   };
 };
