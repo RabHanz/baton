@@ -461,6 +461,34 @@ describe("kept messages", () => {
     expect(box.all).toEqual({ [ID]: ["hi"] });
   });
 
+  it("can be read and discarded one at a time, by place and text, but not while they are being sent", async () => {
+    const { box, kept } = disk({ [ID]: ["one", "two", "three"] });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    let typing: () => void = () => undefined;
+    const started = new Promise<void>((r) => (typing = r));
+    const { catalog } = machine({
+      kept,
+      live: async () => [live()],
+      type: async () => (typing(), await gate, "sent" as const),
+    });
+    expect(catalog.waitingFor(ID)).toEqual({ messages: ["one", "two", "three"], sending: false });
+    // A stale view (the text at that place changed) drops nothing.
+    expect(catalog.waitingFor(ID, { index: 1, text: "three" }).messages).toHaveLength(3);
+    expect(catalog.waitingFor(ID, { index: 1, text: "two" })).toEqual({
+      messages: ["one", "three"],
+      sending: false,
+    });
+    expect(box.all).toEqual({ [ID]: ["one", "three"] });
+    const sent = catalog.send({ sessionId: ID, text: "four" });
+    await started;
+    expect(catalog.waitingFor(ID, { index: 1, text: "three" })).toMatchObject({ sending: true });
+    expect(box.all[ID]).toContain("three");
+    release();
+    await sent;
+    expect(catalog.waitingFor(ID)).toEqual({ messages: [], sending: false });
+  });
+
   it("are dropped, and no longer counted, once the session's transcript is gone", async () => {
     const { box, kept } = disk({ [ID]: ["keep me"], gone: ["lost"] });
     const { catalog } = machine({ kept, hasTranscript: (id) => id === ID });

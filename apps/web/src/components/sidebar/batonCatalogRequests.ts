@@ -15,6 +15,8 @@ import type {
   BatonCatalogListResult,
   BatonCatalogResumeInput,
   BatonCatalogResumeResult,
+  BatonCatalogWaitingInput,
+  BatonCatalogWaitingResult,
   BatonReattachInput,
   BatonReattachResult,
   BatonSessionRequest,
@@ -45,6 +47,10 @@ export interface CatalogCommands {
   readonly folders: Command<
     typeof BatonCatalogFoldersInput.Type,
     typeof BatonCatalogFoldersResult.Type
+  >;
+  readonly waiting: Command<
+    typeof BatonCatalogWaitingInput.Type,
+    typeof BatonCatalogWaitingResult.Type
   >;
 }
 
@@ -185,6 +191,18 @@ export const answerCatalogRequest = async (
       .catch(() => null);
     const folders = answer?._tag === "Success" ? (answer.value?.folders ?? []) : [];
     return { ok: true, detail: JSON.stringify(folders.map((f) => f.cwd)) };
+  }
+  if (request.kind === "catalogWaiting") {
+    const answer = await commands.waiting({
+      environmentId: env(request.environmentId),
+      input: {
+        sessionId: request.sessionId,
+        ...(request.discard === undefined ? {} : { discard: request.discard }),
+      },
+    });
+    if (answer._tag !== "Success" || answer.value === undefined)
+      return NO(`Its kept messages could not be read: ${describeFailure(answer)}`);
+    return { ok: true, detail: JSON.stringify(answer.value) };
   }
   return null;
 };

@@ -162,6 +162,10 @@ export function createBatonWorkSessionAtoms<R, E>(
       label: "environment-data:baton:sessions-kept",
       tag: BATON_SESSIONS_WS_METHODS.kept,
     }),
+    sessionsWaiting: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:baton:sessions-waiting",
+      tag: BATON_SESSIONS_WS_METHODS.waiting,
+    }),
     sessionsCreate: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:sessions-create",
       tag: BATON_SESSIONS_WS_METHODS.create,

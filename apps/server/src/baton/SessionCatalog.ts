@@ -587,6 +587,18 @@ export const createSessionCatalog = (ports: CatalogPorts) => {
     }
   };
 
-  return { list, folders, resume, send, create };
+  /** What a session keeps, and a way to drop one; refused mid-send, since the loop removes its head by position. */
+  const waitingFor = (sessionId: string, discard?: { index: number; text: string }) => {
+    const sending = flushing.has(sessionId) || resuming.has(sessionId);
+    const messages = waiting.get(sessionId) ?? [];
+    if (discard !== undefined && !sending && messages[discard.index] === discard.text)
+      keep(
+        sessionId,
+        messages.filter((_, i) => i !== discard.index),
+      );
+    return { messages: [...(waiting.get(sessionId) ?? [])], sending };
+  };
+
+  return { list, folders, resume, send, create, waitingFor };
 };
 export type SessionCatalog = ReturnType<typeof createSessionCatalog>;

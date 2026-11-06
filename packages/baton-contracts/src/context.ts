@@ -266,6 +266,12 @@ export type BatonSessionRequest =
     }
   | { readonly kind: "catalogFolders"; readonly environmentId: string }
   | {
+      readonly kind: "catalogWaiting";
+      readonly environmentId: string;
+      readonly sessionId: string;
+      readonly discard?: { readonly index: number; readonly text: string };
+    }
+  | {
       readonly kind: "send";
       readonly environmentId: string;
       readonly pane: string;

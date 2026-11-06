@@ -140,6 +140,48 @@ describe("a resume shows Importing history... until the thread is live", () => {
   });
 });
 
+describe("kept messages on a row", () => {
+  it("opens them, discards one by place and text, and never resumes the session", async () => {
+    const stopped = rows.find((r) => r.state === "stopped")!;
+    let held = ["first", "second"];
+    const asked: unknown[] = [];
+    let pending: Promise<unknown> = Promise.resolve();
+    const resumed: string[] = [];
+    const service: CatalogService = {
+      list: async () => rows.map((r) => (r.id === stopped.id ? { ...r, waiting: 2 } : r)),
+      resume: async (row) => void resumed.push(row.id),
+      create: async () => undefined,
+      folders: async () => [],
+      open: () => undefined,
+      kept: (_row, discard) => {
+        asked.push(discard);
+        if (discard !== undefined) held = held.filter((_, i) => i !== discard.index);
+        const answer = Promise.resolve({ messages: held, sending: false });
+        pending = answer;
+        return answer;
+      },
+    };
+    const catalog = createCatalog({ service, onChange: () => undefined, now: () => NOW });
+    await catalog.refresh();
+    const row = () =>
+      catalog.controls().find((c) => c.id === `c:${stopped.id}`) as never as {
+        keptLabel: string | null;
+        kept: ReadonlyArray<string> | null;
+      };
+    expect(row()).toMatchObject({ keptLabel: "2 kept messages", kept: null });
+    catalog.apply(`c:${stopped.id}`, "kept");
+    await pending;
+    expect(row().kept).toEqual(["first", "second"]);
+    catalog.apply(`c:${stopped.id}`, "discard:0");
+    await pending;
+    expect(row()).toMatchObject({ keptLabel: "1 kept message", kept: ["second"] });
+    expect(asked).toEqual([undefined, { index: 0, text: "first" }]);
+    catalog.apply(`c:${stopped.id}`, "kept");
+    expect(row().kept).toBeNull();
+    expect(resumed).toEqual([]);
+  });
+});
+
 describe("New session", () => {
   it("passes the folder, model, effort and first message to the service", async () => {
     const created: unknown[] = [];

@@ -174,6 +174,12 @@ export type HomeControl =
       readonly binding: string;
       /** Reattach, on a thread a handoff session answers; "Reattach to <pane>?" once it found one to offer. */
       readonly reattachLabel: string | null;
+      /** "2 kept messages", which opens them; null when it keeps none. */
+      readonly keptLabel: string | null;
+      /** The kept messages, when open. */
+      readonly kept: ReadonlyArray<string> | null;
+      readonly keptNote: string;
+      readonly discardLabel: string;
     })
   /** The Memory area's bar: search, the kinds to browse, export, import and sync. */
   | (HomeControlBase & {
