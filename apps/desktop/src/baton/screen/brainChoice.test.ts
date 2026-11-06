@@ -20,9 +20,9 @@ describe("brain choice", () => {
     expect(parseCodexStatus("Not logged in", 1).state).toBe("signed-out");
   });
   it("reads claude's status", () => {
-    expect(parseClaudeStatus('{"loggedIn":true,"email":"r@x.com"}')).toEqual({
+    expect(parseClaudeStatus('{"loggedIn":true,"email":"r@example.com"}')).toEqual({
       state: "ready",
-      email: "r@x.com",
+      email: "r@example.com",
     });
     expect(parseClaudeStatus('{"loggedIn":false}').state).toBe("signed-out");
     expect(parseClaudeStatus("oops").state).toBe("signed-out");

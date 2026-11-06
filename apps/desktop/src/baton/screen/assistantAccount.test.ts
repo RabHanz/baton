@@ -10,7 +10,7 @@ import {
 } from "./assistantAccount.ts";
 
 const base = { PATH: "x", CLAUDE_CODE_OAUTH_TOKEN: "tok", ANTHROPIC_API_KEY: "k" };
-const a: AssistantAccount = { key: "/h/.claude-a", email: "robin@x.com", loggedIn: true };
+const a: AssistantAccount = { key: "/h/.claude-a", email: "robin@example.com", loggedIn: true };
 
 describe("assistant account", () => {
   it("leaves his environment alone when nothing is chosen", () => {
@@ -32,9 +32,9 @@ describe("assistant account", () => {
     expect(pickEnv(a.key, null, base).env["CLAUDE_CONFIG_DIR"]).toBe(a.key);
   });
   it("reads claude's status, with or without a banner", () => {
-    expect(parseAuthStatus('banner\n{"loggedIn":true,"email":"r@x.com"}')).toEqual({
+    expect(parseAuthStatus('banner\n{"loggedIn":true,"email":"r@example.com"}')).toEqual({
       loggedIn: true,
-      email: "r@x.com",
+      email: "r@example.com",
     });
     expect(parseAuthStatus("not json")).toBeNull();
   });
@@ -52,6 +52,6 @@ describe("assistant account", () => {
     ]);
   });
   it("hides the address until asked", () => {
-    expect(maskEmail("robin@x.com")).toBe("r•••@x.com");
+    expect(maskEmail("robin@example.com")).toBe("r•••@example.com");
   });
 });

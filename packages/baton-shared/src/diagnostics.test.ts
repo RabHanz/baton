@@ -34,7 +34,7 @@ describe("diagnostics", () => {
     const settings = JSON.parse(
       scrubSettings({
         claudeToken: "abc",
-        accountEmail: "a@b.co",
+        accountEmail: "a@example.com",
         appearance: "dark",
         waitMs: 800,
       }),

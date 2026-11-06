@@ -450,7 +450,7 @@ describe("transport 1: this computer's own harness", () => {
     const made = await p.dispatch(input);
     expect(made.ok && made.value.state).toBe("awaiting-director");
     expect(calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(0);
-    expect((await p.approve("L-1", "someone@else.org", "r")).ok).toBe(false);
+    expect((await p.approve("L-1", "someone@example.net", "r")).ok).toBe(false);
     const done = await p.approve("L-1", "me@example.org", "r");
     expect(done.ok && done.value).toMatchObject({
       state: "running",

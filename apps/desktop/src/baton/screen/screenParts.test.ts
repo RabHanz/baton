@@ -112,7 +112,7 @@ describe("claudeVision", () => {
   });
 
   // The real thing, on the subscription: BATON_REAL_CLAUDE=1 with `claude` signed in (Linux/macOS).
-  // BATON_REAL_SCREENSHOT: a screenshot of a page with a visible YouTube logo.
+  // BATON_REAL_SCREENSHOT: a 900x506 PNG of YouTube's home page, its search box where the bounds below say.
   it.runIf(
     process.env["BATON_REAL_CLAUDE"] === "1" && process.env["BATON_REAL_SCREENSHOT"] !== undefined,
   )("answers a screenshot question with a point on the right element", async () => {

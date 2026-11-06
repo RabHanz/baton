@@ -11,9 +11,17 @@ Tessaya is open core, and this repository holds the product: everything a person
 Two licences apply, by who wrote the code:
 
 - **T3 Code**, the base this is built on, stays under its MIT licence (`LICENSE` at the root). That covers every upstream file, including the ones our patch series (`vendor-patches/t3code/`) edits.
-- **Tessaya's own code** is under the [Functional Source License 1.1, Apache 2.0 future licence](https://fsl.software) (FSL-1.1-ALv2). You may use, change and share it for anything except a product that competes with Tessaya, and each version becomes Apache 2.0 two years after its release. It covers the folders that carry their own `LICENSE`: `packages/baton-contracts`, `packages/baton-shared`, `packages/baton-voice`, `apps/desktop/src/baton`, `apps/server/src/baton`, `native/baton-dictation`, `scripts/tessaya` and `assets/baton`, plus Tessaya's files elsewhere (the `Baton*` and `baton*` files under `apps/web` and `apps/mobile`).
-
-Third-party notices are in `docs/baton/THIRD_PARTY_NOTICES.md`.
+- **Tessaya's own code** is under the [Functional Source License 1.1, Apache 2.0 future licence](https://fsl.software) (FSL-1.1-ALv2). You may use, change and share it for anything except a product that competes with Tessaya, and each version becomes Apache 2.0 two years after its release. It covers every file T3 Code does not have at the commit named in `vendor-patches/t3code/PIN`, and the lines our patch series adds. Most of it is in the folders that carry their own `LICENSE`: `packages/baton-contracts`, `packages/baton-shared`, `packages/baton-voice`, `apps/desktop/src/baton`, `apps/server/src/baton`, `native/baton-dictation`, `scripts/tessaya` and `assets/baton`. Elsewhere it is:
+  - the `Baton*` and `baton*` files under `apps/web` and `apps/mobile`;
+  - the Baton database migrations (`apps/server/src/persistence/BatonMigrations.ts`, `apps/server/src/persistence/Migrations/Baton/`);
+  - `apps/server/src/mentionedMedia.ts`, `apps/server/src/orchestration-v2/StoppedSessions.ts`, `apps/server/src/provider/Drivers/ClaudeAccountHome.ts`, `packages/shared/src/mediaPolicy.ts` and `packages/shared/src/mediaMentions.ts`;
+  - `apps/web/src/components/chat/ModelPickerAccountLine.tsx` and `apps/web/src/components/chat/workGroupPreference.ts`;
+  - `apps/server/scripts/baton-*`, `evals/tessaya-assistant/` and `scripts/baton/`;
+  - the tests beside all of these.
+- **Third-party files** keep their own licences, even inside the folders above. Each is listed with its licence in `docs/baton/THIRD_PARTY_NOTICES.md`. The wake and voice-activity models in `native/baton-dictation/models/`, for example, are not FSL:
+  - `silero_vad.onnx` is MIT;
+  - the openWakeWord feature models are CC BY-NC-SA 4.0;
+  - our own wake models are treated as CC BY-NC-SA 4.0, because they were trained on non-commercial data.
 
 ## Install
 

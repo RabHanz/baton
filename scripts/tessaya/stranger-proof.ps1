@@ -22,7 +22,7 @@ function Note([string]$line) { Write-Host $line; Add-Content $report $line }
 function Fail([string]$line) { Note "FAIL $line"; $failures.Add($line) }
 
 # What a default install is allowed to say. Names of the maintainer's machines and accounts are not.
-$private = 'signzart|onnyx|ventureos|venture-os|xiaomi|rabee|hetzner'
+$private = 'signzart|onnyx|ventureos|venture-os|xiaomi|rabee|hanzla|hetzner'
 $defaultWakeWords = @('tessaya', 'sebastian', 'alfred', 'freya', 'onyx')
 
 if ($Phase -eq 'first') {

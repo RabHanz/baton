@@ -34,32 +34,56 @@ const SHIPPED = [
 ];
 
 const PRIVATE = [
-  ["a host or account of the maintainer", /signzart|onnyx|ventureos|venture-os|xiaomi|rabee/i],
+  ["a host or account of the maintainer", /signzart|onnyx|ventureos|venture-os|xiaomi|rabee|hanzla/i],
   ["a cloud provider's name used as a machine", /\bhetzner\b/i],
   [
     "a key or token",
-    /sk-ant-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[bp]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    /sk-ant-[A-Za-z0-9_-]{20,}|sk-proj-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|gh[opsu]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[bp]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   ],
-  ["a tailnet address", /\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+\b/],
+  ["a tailnet address", /\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+\b|\.ts\.net\b/],
   ["a path on the maintainer's machines", /\/mnt\/HC_Volume_\d+/],
+  [
+    "an email address",
+    /[A-Za-z0-9._%+-]+@(?!example\.|[A-Za-z0-9.-]*\.(invalid|test|example|local)\b|users\.noreply\.github\.com|anthropic\.com)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/,
+  ],
 ];
 
-// Where a private name stays for now, and why. Each is an operator step for the maintainer's own
-// machines, not a default for anyone else; the list only shrinks.
+// Where a private name stays for now, and why: only the named text is excused, the rest of the
+// file is still checked. Each is an operator step for the maintainer's own machines, not a
+// default for anyone else; the list only shrinks.
 const ALLOWED = {
-  "apps/server/src/baton/ClaudeAccountInstances.ts":
+  "apps/server/src/baton/ClaudeAccountInstances.ts": [
+    /claudeAgent_(rabee|signzart)\b/g,
     "compat table for the maintainer's two boxes until BATON_CLAUDE_ACCOUNT_INSTANCES is set on them (D135)",
-  "apps/server/src/baton/ClaudeAccountInstances.test.ts": "tests that compat table",
-  "scripts/tessaya/apply-release-branding.sh":
+  ],
+  "apps/server/src/baton/ClaudeAccountInstances.test.ts": [
+    /claudeAgent_rabee\b/g,
+    "tests that compat table",
+  ],
+  "scripts/tessaya/apply-release-branding.sh": [
+    /dev\\?\.rabee\\?\.baton/g,
     "the installed app's id; it stays until the public release (D8), or existing installs stop upgrading",
-  "scripts/tessaya/upgrade-proof.ps1": "finds the installed app by that same id (D8)",
-  "scripts/tessaya/stranger-proof.ps1":
+  ],
+  "scripts/tessaya/upgrade-proof.ps1": [
+    /dev\\\.rabee\\\.baton/g,
+    "finds the installed app by that same id (D8)",
+  ],
+  "scripts/tessaya/stranger-proof.ps1": [
+    /^\$private = '[^']*'$/gm,
     "carries this guard's own pattern, to check a built installer",
-  "apps/desktop/src/baton/backup/backup.test.ts":
+  ],
+  "apps/desktop/src/baton/backup/backup.test.ts": [
+    /sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789/g,
     "a made-up key, to prove a backup leaves secrets out",
-  "apps/desktop/src/baton/cloud/vaultKey.test.ts":
+  ],
+  "apps/desktop/src/baton/cloud/vaultKey.test.ts": [
+    /-----BEGIN OPENSSH PRIVATE KEY-----/g,
     "a made-up key header, to prove the vault hands it over",
-  "packages/baton-shared/src/memory.test.ts": "a made-up token, to prove memory refuses secrets",
+  ],
+  "packages/baton-shared/src/memory.test.ts": [
+    /ghp_abcdefghijklmnopqrstuvwxyz0123/g,
+    "a made-up token, to prove memory refuses secrets",
+  ],
 };
 
 const WINDOW = 4;
@@ -122,6 +146,9 @@ export const run = () => {
   const problems = [];
   const files = tracked();
   const upstream = upstreamPaths();
+  // In CI the narrower fallback would pass silently: patches.sh verify fetches the pin first.
+  if (upstream === null && process.env.CI)
+    return [`${PIN_FILE}: the pin's tree is missing; run scripts/tessaya/patches.sh verify first`];
   const scanned = files.filter(
     (f) =>
       !SKIPPED.some((r) => r.test(f)) &&
@@ -129,8 +156,9 @@ export const run = () => {
   );
   for (const file of scanned) {
     const text = read(file);
-    if (text === null || text.includes("\u0000") || ALLOWED[file] !== undefined) continue;
-    const body = ours(file, text);
+    if (text === null || text.includes("\u0000")) continue;
+    const allowed = ALLOWED[file]?.[0];
+    const body = allowed ? ours(file, text).replace(allowed, "") : ours(file, text);
     for (const [what, pattern] of PRIVATE)
       if (pattern.test(body)) problems.push(`${file}: ${what}`);
   }
@@ -142,9 +170,9 @@ export const run = () => {
     if (text !== null && /^(<<<<<<< |>>>>>>> )/m.test(text))
       problems.push(`${file}: an unfinished merge (conflict marker)`);
   }
-  for (const file of Object.keys(ALLOWED)) {
+  for (const [file, [pattern]] of Object.entries(ALLOWED)) {
     const text = read(file);
-    if (text === null || !PRIVATE.some(([, p]) => p.test(text)))
+    if (text === null || text.match(pattern) === null)
       problems.push(`${file}: no longer needs its allow-list entry`);
   }
   const markers = new Set(

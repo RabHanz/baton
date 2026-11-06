@@ -93,7 +93,7 @@ describe("cloud tasks in the desktop", () => {
     expect(no.asked[0]).toContain("Approve a cloud task?");
     const yes = rig({}, 0);
     await yes.cloud.tool.dispatch(task);
-    expect(await yes.cloud.tool.approve("L-1", "someone@else.org")).toContain("I cannot approve on someone@else.org");
+    expect(await yes.cloud.tool.approve("L-1", "someone@example.net")).toContain("I cannot approve on someone@example.net");
     expect(await yes.cloud.tool.approve("L-1", "me@example.org")).toBe("Approved on me@example.org.");
     expect(yes.calls.filter((c) => c.args[0] === "--cloud")).toHaveLength(1);
   });

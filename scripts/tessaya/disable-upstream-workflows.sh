@@ -4,7 +4,7 @@
 # Blacksmith runners this repository does not have (they queue forever, D77) or deploy and publish
 # with upstream's secrets. An allowlist rather than a denylist, so a workflow upstream adds later is
 # off by default. Tessaya's own (baton*.yml) are always kept, and switched back on if found off.
-# Idempotent; upstream-sync.sh and auto-sync.sh run it after every sync.
+# Idempotent; upstream-sync.sh runs it after every sync.
 set -euo pipefail
 . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/tessaya-env.sh" 2> /dev/null || true
 

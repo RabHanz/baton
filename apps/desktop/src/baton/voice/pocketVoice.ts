@@ -26,7 +26,7 @@ const TOKENIZER = "00eac05ed3d16bdc3f6b5d598874019c34a89214";
 const TOKENIZER_QUICK = "08ffc58775e62aad9409511b9591c9af626270f3";
 const VOICES = "a3055dcb533cf2ec90458008a01e7cef550bae2a";
 
-/** Only the Windows build has run here; the others are queued (TEST_MATRIX). */
+/** Only the Windows build has been run; the others are untested. */
 const BINARIES: Record<string, { readonly asset: string; readonly sha256: string }> = {
   "win32-x64": {
     asset: "pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip",

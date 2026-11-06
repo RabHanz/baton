@@ -21,7 +21,7 @@ WORDS = {
                      "just say yeah", "say aye", "says yeah", "to say yes", "say a word"],
     },
     "onyx": {
-        # ON-iks. He owns the name Orbit, so it can come up when he is not addressing Baton.
+        # ON-iks. A common word and name, so it can come up when nobody is addressing Tessaya.
         "target": ["onyx"],
         "negative": ["on it", "on x", "honest", "on the", "unix", "phoenix", "onions", "only",
                      "tonics", "antics", "on its", "and it's"],
