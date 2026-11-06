@@ -222,11 +222,14 @@ import {
 import { buildBatonTools, type ToolHost } from "../agent/batonTools.ts";
 import { helpControls } from "../help/helpRows.ts";
 import {
-  createPlaybookStore,
-  PLAYBOOKS,
-  runPlaybooks,
-  type PlaybookId,
-} from "../presence/playbooks.ts";
+  BUILT_INS,
+  createStandingStore,
+  runStandingJobs,
+  type BuiltInId,
+  type StandingJobDef,
+} from "../presence/standingJobs.ts";
+import { standingVerdict } from "@t3tools/baton-shared/trust";
+import type { OrchestrationRuleWithFirings } from "@t3tools/baton-contracts";
 import { nodeExec } from "@t3tools/baton-shared/cloud/nodeExec";
 import { terminalPlan } from "../cloud/terminal.ts";
 import { useVaultKey } from "../cloud/vaultKey.ts";
@@ -246,6 +249,7 @@ import {
   fileToEdit,
   PACK_FOLDER,
   packAction,
+  readPack,
   packControls,
   packEdit,
   rosterControls,
@@ -506,8 +510,6 @@ interface VoiceSettings {
   readonly needsFeeds: ReadonlyArray<string>;
   /** Sources he expects; one with no readable feed is listed as not connected. */
   readonly needsExpect: ReadonlyArray<string>;
-  /** The day (local) the morning brief was last given, so it comes once. */
-  readonly briefDay: string | null;
   readonly pillEdge: "bottom" | "top";
   readonly dictation: "baton" | "wispr";
   /** "v3" is many languages at 740 MB; "fast" is English only, 229 MB, 3.4x quicker. */
@@ -586,7 +588,6 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   needsDeadlinesFile: null,
   needsFeeds: [],
   needsExpect: [],
-  briefDay: null,
   pillEdge: "bottom",
   dictation: "baton",
   speechModel: "v3",
@@ -698,7 +699,6 @@ const cachedFor = <T>(ms: number, make: () => T) => {
 /** The choices for how long it listens. Eight seconds and 30 s are the defaults; the wait covers only the start of speech. */
 export const LISTEN_AFTER_WAKE_MS: ReadonlyArray<number> = [4_000, 6_000, 8_000, 12_000];
 export const CONVERSATION_MS: ReadonlyArray<number> = [15_000, 30_000, 60_000, 120_000];
-const BRIEF_HOUR = 8;
 const MIC_TEST_MS = 4_000;
 const PILL_TEXT_CHARS = 90;
 const STOP_DICTATING_HINT = "Say “stop dictating” when you're done";
@@ -3227,27 +3227,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       plansTold = ready.next;
       if (ready.line !== null) input.extras?.announce(ready.line, settings.noticeMode === "spoken");
     }
-    const today = `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`;
-    if (
-      settings.briefMode !== "off" &&
-      at.getHours() >= BRIEF_HOUR &&
-      settings.briefDay !== today
-    ) {
-      const jobs = (await requestKept({ kind: "job", op: "list", args: {} })) as {
-        jobs?: ReadonlyArray<BatonJob>;
-      } | null;
-      save({ briefDay: today });
-      input.extras?.announce(
-        morningBrief({
-          jobs: jobs?.jobs ?? [],
-          findings: found,
-          now: Date.now(),
-          guide: await guideNotes(),
-          extra: briefExtra(),
-        }),
-        settings.briefMode === "spoken",
-      );
-    }
   };
   setInterval(() => void checkAttention().catch(() => undefined), ATTENTION_MS).unref();
 
@@ -3387,31 +3366,67 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   setTimeout(() => beatNow(true), 10_000).unref();
   Electron.app.on("will-quit", () => beatNow(false));
 
-  // Playbooks (all off until he turns one on in Trust): narrow, budgeted, logged, and never send, post or spend.
-  const playbookStore = createPlaybookStore(input.stateDir);
-  const playbookTick = async (): Promise<void> => {
-    const state = playbookStore.load();
+  // Standing jobs (each off until he turns it on in Trust, the brief on as it was): counted, logged in
+  // the Record under their owner, and never send, post or spend. Rules and schedules run on the server.
+  const standingStore = createStandingStore(input.stateDir, () => settings.briefMode !== "off");
+  const ownerOf = (job: StandingJobDef) => {
+    const personas = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas;
+    return personas.find((p) => p.id === job.owner) ?? personas.find((p) => p.lead) ?? personas[0]!;
+  };
+  const leadName = () => ownerOf({ ...BUILT_INS[0]!, owner: "executive" }).name;
+  /** His rules, read from this machine's server for the Trust page; none when it cannot be reached. */
+  let rulesCache: ReadonlyArray<OrchestrationRuleWithFirings> = [];
+  const refreshRules = async () => {
+    const value = (await input
+      .direct?.("fabric.orchestration.rule.list", { includeDisabled: true })
+      .catch(() => null)) as { rules?: ReadonlyArray<OrchestrationRuleWithFirings> } | null;
+    if (value?.rules !== undefined) rulesCache = value.rules;
+  };
+  const standingTick = async (): Promise<void> => {
+    void refreshRules();
+    const state = standingStore.load();
     if (!Object.values(state.on).some(Boolean)) return;
-    // Reading jobs and findings goes through the T3 window, which would open it: only while it is already up.
-    const windowUp = mainContents !== null && !mainContents.isDestroyed();
+    // Jobs and the watch come from this machine's server, so T3's window need not be up (nor is it opened).
+    if (!serverReachable()) return;
     const now = Date.now();
-    const jobs = windowUp ? (jobsCache ?? []) : [];
-    const findings = windowUp ? await watchFindings() : [];
-    const result = await runPlaybooks(
+    const jobs =
+      (
+        (await requestKept({ kind: "job", op: "list", args: {} })) as {
+          jobs?: ReadonlyArray<BatonJob>;
+        } | null
+      )?.jobs ?? [];
+    const findings = await watchFindings();
+    const result = await runStandingJobs(
       {
         state,
         now,
         day: new Date(now).toDateString(),
         hour: new Date(now).getHours(),
         quiet: silenced(new Date(now)),
+        refusal: (job) => {
+          const owner = ownerOf(job);
+          const verdict = standingVerdict(job.tool, owner);
+          return verdict.verdict === "allow" ? null : verdict.why;
+        },
         findings,
-        ci: windowUp ? await ciRuns() : [],
+        ci: await ciRuns(),
         jobs,
       },
       {
         look: (offer) => startLook(offer, true),
-        brief: async () =>
-          morningBrief({ jobs, findings, now, guide: await guideNotes(), extra: briefExtra() }),
+        // The lead's standing job: kept on the Now page, and shown or said as the brief setting says.
+        brief: async () => {
+          const text = morningBrief({
+            jobs,
+            findings,
+            now,
+            guide: await guideNotes(),
+            extra: briefExtra(),
+          });
+          if (settings.briefMode !== "off")
+            input.extras?.announce(text, settings.briefMode === "spoken");
+          return text;
+        },
         say: (text) => input.extras?.announce(text, true),
         note: async (id, text) => {
           await requestKept({
@@ -3422,11 +3437,23 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         },
       },
     );
-    playbookStore.save(result.state);
-    for (const run of result.did) input.onNote?.("playbook", { playbook: run.id, text: run.text });
+    standingStore.save(result.state);
+    for (const run of result.did) {
+      input.onNote?.("playbook", { playbook: run.id, text: run.text });
+      const job = BUILT_INS.find((j) => j.id === run.id)!;
+      void input
+        .direct?.("baton.record.append", {
+          kind: "standing_job",
+          actor: ownerOf(job).name,
+          subject: job.title,
+          outcome: run.outcome,
+          detail: run.text,
+        })
+        .catch(() => undefined);
+    }
     if (result.did.length > 0) void refreshNow().catch(() => undefined);
   };
-  setInterval(() => void playbookTick().catch(() => undefined), INITIATIVE_MS).unref();
+  setInterval(() => void standingTick().catch(() => undefined), INITIATIVE_MS).unref();
 
   /** The tail of a log, cached until the file changes: Home redraws often, the log does not. */
   const tails = new Map<string, { stamp: string; text: string }>();
@@ -3615,7 +3642,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     const state = initiative.state();
     nowData = {
       loaded: true,
-      brief: playbookStore.load().brief?.text ?? null,
+      brief: standingStore.load().brief?.text ?? null,
       interrupted: interruptedNow,
       needs: ranked,
       unreadable,
@@ -3788,7 +3815,39 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
             since: g.grantedAt,
           })),
       ),
-      playbooks: PLAYBOOKS.map((p) => ({ ...p, on: playbookStore.load().on[p.id] === true })),
+      standing: [
+        ...BUILT_INS.map((j) => ({
+          kind: "built_in" as const,
+          id: j.id,
+          title: j.title,
+          what: j.what,
+          owner: ownerOf(j).name,
+          on: standingStore.load().on[j.id] === true,
+          count: standingStore.load().counts[j.id] ?? 0,
+        })),
+        // A rule and a schedule hand work out, which only the lead does: they are the lead's.
+        ...rulesCache.map(({ rule }) => ({
+          kind: "rule" as const,
+          id: rule.id,
+          title: rule.source === "" ? "A rule" : rule.source,
+          what:
+            rule.status === "exhausted" ? `It has run all ${rule.maxFirings} times it may.` : "",
+          owner: leadName(),
+          on: rule.status === "enabled",
+          count: rule.firedCount,
+        })),
+        ...(jobsCache ?? [])
+          .filter((j) => j.terms.scheduleTaskId !== null)
+          .map((j) => ({
+            kind: "schedule" as const,
+            id: j.workSessionId,
+            title: `${j.title} (scheduled)`,
+            what: "Runs again on its schedule and reports in its own thread.",
+            owner: leadName(),
+            on: null,
+            count: j.usage?.turns ?? 0,
+          })),
+      ],
       weaveHosts: parseWeaveHosts(input.env["BATON_WEAVE_HOSTS"]).hosts.map((h) => h.name),
       entries: parseTrustLogs({
         turns: tailOf(NodePath.join(input.logDir, "voice-turns.ndjson")),
@@ -4916,14 +4975,27 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
           applyBindings();
         }
       }
-    } else if (id === "trust.playbooks-run") {
-      void playbookTick().catch(() => undefined);
+    } else if (id === "trust.standing-run") {
+      void standingTick().catch(() => undefined);
     } else if (id.startsWith("trust.")) {
       const act = trustAction(id, value);
       if (act?.kind === "filter") trustFilter = act.filter;
-      else if (act?.kind === "playbook") {
-        if (PLAYBOOKS.some((p) => p.id === act.id))
-          playbookStore.setOn(act.id as PlaybookId, act.on);
+      else if (act?.kind === "standing") {
+        if (BUILT_INS.some((j) => j.id === act.id))
+          standingStore.setOn(act.id as BuiltInId, act.on);
+      } else if (act?.kind === "rule") {
+        void input
+          .direct?.(`fabric.orchestration.rule.${act.on ? "enable" : "disable"}`, { id: act.id })
+          .then(refreshRules)
+          .catch(() => undefined);
+      } else if (act?.kind === "unschedule") {
+        void requestKept({
+          kind: "job",
+          op: "schedule",
+          args: { id: act.jobId, everyMinutes: null },
+        })
+          .then(() => refreshJobs())
+          .catch(() => undefined);
       } else if (act?.kind === "revoke") {
         if (act.what === "vault") vaultState.vault.lock();
         else {

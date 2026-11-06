@@ -160,8 +160,11 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   Record<BatonRpcMethod, AuthEnvironmentScope | ReadonlyArray<AuthEnvironmentScope>>
 >;
 
-/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, and memory. */
+/** What the desktop may call while T3's window is closed: jobs it does not have to place, the watch, the Record, rules (standing jobs) and memory. */
 export const DESK_METHODS: ReadonlySet<string> = new Set([
+  BATON_ORCHESTRATION_WS_METHODS.ruleList,
+  BATON_ORCHESTRATION_WS_METHODS.ruleEnable,
+  BATON_ORCHESTRATION_WS_METHODS.ruleDisable,
   BATON_JOB_WS_METHODS.jobList,
   BATON_JOB_WS_METHODS.jobAgree,
   BATON_JOB_WS_METHODS.jobRefine,

@@ -8,7 +8,7 @@ import {
   type ToolVerdict,
 } from "./operator.ts";
 import { DEFAULT_OS_PACK, mergePack } from "./osPack.ts";
-import { decideTrust, type TrustVerdict } from "./trust.ts";
+import { decideTrust, standingVerdict, type TrustVerdict } from "./trust.ts";
 
 const CONTEXTS: ReadonlyArray<JudgeContext> = [
   { actWithoutAsking: false, tainted: false },
@@ -100,6 +100,20 @@ describe("One Trust", () => {
     expect(decideTrust({ call: look, context: ctx, agent: freya })).toEqual(
       judgeToolCall(look, ctx),
     );
+  });
+
+  it("a standing job runs unattended only on what its owner may do without asking", () => {
+    const lead = DEFAULT_OS_PACK.personas.find((p) => p.lead)!;
+    const freya = DEFAULT_OS_PACK.personas.find((p) => p.name === "Freya")!;
+    expect(standingVerdict("morning_brief", lead)).toEqual({ verdict: "allow" });
+    expect(standingVerdict("job_start", lead)).toEqual({ verdict: "allow" });
+    expect(standingVerdict("job_start", freya).verdict).toBe("deny");
+    // A standing permission still asks him every time.
+    expect(standingVerdict("job_grant", lead).verdict).toBe("ask");
+    expect(standingVerdict("job_refine", { ...lead, tools: ["morning_brief"] })).toEqual({
+      verdict: "deny",
+      why: `job_refine is not one of ${lead.name}'s tools.`,
+    });
   });
 
   it("a project's own lead hands out only that project's work, and never to the cloud", () => {

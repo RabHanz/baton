@@ -168,3 +168,14 @@ export const decideTrust = (ask: TrustAsk): TrustVerdict => {
     ? verdict
     : { verdict: "deny", why: `${outside} is not one of ${agent.name}'s tools.` };
 };
+
+/**
+ * A standing job (a rule, a playbook, a schedule) runs by itself only where its one tool is allowed for its
+ * owner with nobody there to ask: reading and reporting. Anything that would ask waits for his yes.
+ */
+export const standingVerdict = (tool: string, agent: TrustAgent): TrustVerdict =>
+  decideTrust({
+    call: { tool: `${BATON_TOOL_PREFIX}${tool}`, input: {} },
+    context: { actWithoutAsking: false, tainted: false },
+    agent,
+  });

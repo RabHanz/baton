@@ -66,7 +66,35 @@ const data = (over: Partial<TrustData> = {}): TrustData => ({
   vault: "unlocked",
   grants: [{ jobId: "j1", title: "Site", channel: "retry", since: "2026-11-01T00:00:00Z" }],
   weaveHosts: ["office"],
-  playbooks: [{ id: "ci_look", title: "When a build fails", what: "Looks.", perDay: 3, on: false }],
+  standing: [
+    {
+      kind: "built_in",
+      id: "ci_look",
+      title: "When a build fails",
+      what: "Looks.",
+      owner: "Tessaya",
+      on: false,
+      count: 0,
+    },
+    {
+      kind: "rule",
+      id: "r-1",
+      title: "when build finishes, have Codex review it",
+      what: "",
+      owner: "Tessaya",
+      on: true,
+      count: 2,
+    },
+    {
+      kind: "schedule",
+      id: "job-9",
+      title: "Nightly report",
+      what: "",
+      owner: "Tessaya",
+      on: null,
+      count: 4,
+    },
+  ],
   entries: parseTrustLogs({ turns: `${turns}\n${play}`, social: `${social}\ngarbage{`, vault }),
   filter: "all",
   ...over,
@@ -106,13 +134,23 @@ describe("trust page", () => {
     expect(ids).not.toContain("action:trust.revoke:chrome");
   });
 
-  it("lists each playbook as a toggle that is off until turned on", () => {
-    const row = trustControls(data(), NOW).find((c) => c.id === "trust.playbook:ci_look");
-    expect(row?.kind === "toggle" && row.on).toBe(false);
-    expect(trustAction("trust.playbook:ci_look", true)).toEqual({
-      kind: "playbook",
+  it("lists built-in jobs, his rules and schedules as one kind of standing job, each with its owner and count", () => {
+    const rows = trustControls(data(), NOW);
+    const builtIn = rows.find((c) => c.id === "trust.standing:ci_look");
+    expect(builtIn?.kind === "toggle" && builtIn.on).toBe(false);
+    expect(rows.find((c) => c.id === "trust.rule:r-1")?.hint).toContain(
+      "Tessaya's standing job. Ran 2 times.",
+    );
+    expect(rows.find((c) => c.id === "trust.schedule:job-9")?.kind).toBe("action");
+    expect(trustAction("trust.standing:ci_look", true)).toEqual({
+      kind: "standing",
       id: "ci_look",
       on: true,
+    });
+    expect(trustAction("trust.rule:r-1", false)).toEqual({ kind: "rule", id: "r-1", on: false });
+    expect(trustAction("trust.schedule:job-9", null)).toEqual({
+      kind: "unschedule",
+      jobId: "job-9",
     });
   });
 
@@ -144,7 +182,9 @@ describe("trust by voice", () => {
     const said = describeTrust(data(), NOW);
     expect(said).toContain("Your Chrome: off.");
     expect(said).toContain("Looking at your screen without asking: on (last used");
-    expect(said).toContain("nothing, all playbooks are off");
+    expect(said).toContain(
+      "Standing jobs: when build finishes, have Codex review it (Tessaya, ran 2); Nightly report (Tessaya, 4 turns).",
+    );
     expect(describeToday([], new Date(NOW))).toContain("Nothing yet today");
     expect(describeToday(data().entries, new Date("2026-11-03T12:00:00Z"))).toContain("Today:");
     expect(permissionFromWords("turn off Chrome")).toBe("chrome");
