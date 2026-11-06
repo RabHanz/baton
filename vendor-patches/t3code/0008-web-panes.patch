@@ -137,7 +137,7 @@ index 1ed3065a92c0d09b07ca67d9399df73d366f3358..148f26d25ce20b9debf0d4c6a1ce0fd5
            {isSearchingThreads ? (
              threadSearchResults.length > 0 ? (
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index 30ab2465a9dec7bb0184c9488a3b3bb1aa8e686f..cb2295c6cd362e145ca845a1b4209d9d6ad9c89b 100644
+index 30ab2465a9dec7bb0184c9488a3b3bb1aa8e686f..47e70cb42223609586ceeb3b5ed3e587471184ce 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
 @@ -7,7 +7,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
@@ -149,12 +149,44 @@ index 30ab2465a9dec7bb0184c9488a3b3bb1aa8e686f..cb2295c6cd362e145ca845a1b4209d9d
  import { SidebarInset } from "./ui/sidebar";
  import { useComposerDraftStore } from "../composerDraftStore";
  import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-@@ -208,7 +208,7 @@ export function ThreadRouteView({
+@@ -208,7 +208,12 @@ export function ThreadRouteView({
        className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
        inert={background}
      >
 -      <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
-+      <BatonPanes route={target} background={background} view={view} />
++      <BatonPanes
++        route={target}
++        background={background}
++        pending={renderState === "loading"}
++        view={view}
++      />
        {background ? null : redirect}
      </SidebarInset>
    );
+diff --git a/apps/web/src/routes/_chat.index.tsx b/apps/web/src/routes/_chat.index.tsx
+index b511be0fa9255d329937ee997809af7c3b687b06..99f03845ea1c190ef82d6209053142883ce31c42 100644
+--- a/apps/web/src/routes/_chat.index.tsx
++++ b/apps/web/src/routes/_chat.index.tsx
+@@ -12,6 +12,8 @@ import { HostedEmptyState } from "../components/HostedEmptyState";
+ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
+ import { SidebarInset } from "../components/ui/sidebar";
+ import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
++import { BatonPaneRestore } from "../components/panes/BatonPanes";
++import { useBatonPanesStore } from "../components/panes/batonPanesStore";
+ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+ import {
+   readProject,
+@@ -24,11 +26,13 @@ import { useEnvironments } from "../state/environments";
+ function ChatIndexRouteView() {
+   const { authGateState } = Route.useRouteContext();
+   const { environments, isReady } = useEnvironments();
++  const restorePending = useBatonPanesStore((state) => state.restorePending);
+ 
+   if (authGateState.status === "hosted-static") {
+     if (!isReady) return null;
+     if (environments.length === 0) return <HostedEmptyState />;
+   }
++  if (restorePending) return <BatonPaneRestore />;
+ 
+   return <IndexDraftLanding />;
+ }

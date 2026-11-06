@@ -1,3 +1,4 @@
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 
 import type { ThreadRouteTarget } from "../../threadRoutes";
@@ -75,6 +76,71 @@ export function closePane(
     layout: { slots, focusedSlotId: neighbour.id },
     next: neighbour.target,
   };
+}
+
+/** What a pane's environment can do for it now: still coming up, usable, or not there at all. */
+export type PaneEnvironmentState = "connecting" | "ready" | "unreachable";
+
+export function paneEnvironmentState(input: {
+  readonly catalogReady: boolean;
+  /** The catalog lists saved environments first; the local one joins after a fetch. */
+  readonly localListed: boolean;
+  /** Null when the environment is not in the catalog. */
+  readonly phase: EnvironmentConnectionPhase | null;
+  readonly shellLive: boolean;
+}): PaneEnvironmentState {
+  if (!input.catalogReady || !input.localListed) return "connecting";
+  // Only a first try is worth waiting on; "reconnecting" can retry forever.
+  if (input.phase === "connecting") return "connecting";
+  if (input.phase !== "connected") return "unreachable";
+  return input.shellLive ? "ready" : "connecting";
+}
+
+/** A pane with nothing to show waits only while something is actually on its way. */
+export function paneFallback(input: {
+  readonly environment: PaneEnvironmentState | null;
+  /** The route still looking its thread up on a usable environment. */
+  readonly threadPending: boolean;
+}): "loading" | "unavailable" {
+  if (input.environment === "connecting") return "loading";
+  return input.environment === "ready" && input.threadPending ? "loading" : "unavailable";
+}
+
+/** Whether a saved pane can be resumed. A draft passes its project's environment. */
+export function paneRestoreState(input: {
+  readonly heldElsewhere: boolean;
+  /** Null when the pane has no environment left, such as a draft whose session is gone. */
+  readonly environment: PaneEnvironmentState | null;
+  readonly exists: boolean;
+}): "ready" | "waiting" | "gone" {
+  if (input.heldElsewhere) return "gone";
+  if (input.environment === "connecting") return "waiting";
+  return input.environment === "ready" && input.exists ? "ready" : "gone";
+}
+
+export type PaneRestore =
+  | { readonly kind: "wait" }
+  | { readonly kind: "stay" }
+  | { readonly kind: "go"; readonly target: ThreadRouteTarget };
+
+/**
+ * Where a window opened at home resumes: its focused pane, else the next pane in order, skipping
+ * threads that are gone or on environments it cannot reach. Waits while a better pane may load.
+ */
+export function resolvePaneRestore(
+  layout: PaneLayout,
+  inspect: (target: ThreadRouteTarget) => "ready" | "waiting" | "gone",
+): PaneRestore {
+  const focused = layout.slots.find((slot) => slot.id === layout.focusedSlotId);
+  const ordered = focused
+    ? [focused, ...layout.slots.filter((slot) => slot !== focused)]
+    : layout.slots;
+  for (const slot of ordered) {
+    const state = inspect(slot.target);
+    if (state === "waiting") return { kind: "wait" };
+    if (state === "ready") return { kind: "go", target: slot.target };
+  }
+  return { kind: "stay" };
 }
 
 /**

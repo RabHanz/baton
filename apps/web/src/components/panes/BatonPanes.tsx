@@ -3,11 +3,15 @@
  * BackgroundThreadContext, so their shortcuts and window-level controls stand down. Panes are flat
  * siblings keyed by slot and placed by rects, so neither focus nor a rearrange remounts a ChatView.
  */
+import { useAtomValue } from "@effect/atom-react";
+import { threadKey } from "@t3tools/client-runtime/state/entities";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { ExternalLinkIcon, GripVerticalIcon, PanelLeftCloseIcon, XIcon } from "lucide-react";
 import {
   cloneElement,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -18,10 +22,18 @@ import {
 } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { isElectron } from "../../env";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
-import { useQuietThreadShell } from "../../state/entities";
-import { useEnvironments } from "../../state/environments";
+import { workspaceAreaProps } from "../../lib/workspaceFocus";
+import { isLocalEnvironmentDisabled } from "../../localEnvironment";
+import {
+  useHiddenThreadKeys,
+  useQuietThreadShell,
+  useQuietThreadShells,
+} from "../../state/entities";
+import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
+import { liveShellEnvironmentIdsAtom } from "../../state/shell";
 import {
   buildDraftThreadRouteParams,
   buildThreadRouteParams,
@@ -30,6 +42,8 @@ import {
 import ChatView from "../ChatView";
 import { BackgroundThreadContext } from "../chat/backgroundThread";
 import { Button } from "../ui/button";
+import { SidebarInset } from "../ui/sidebar";
+import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { toastManager } from "../ui/toast";
 import {
   closePane,
@@ -37,10 +51,14 @@ import {
   MIN_PANE_FRACTION,
   paneDividers,
   paneDropZone,
+  paneEnvironmentState,
+  paneFallback,
   paneNeighbour,
+  paneRestoreState,
   paneRects,
   paneTargetKey,
   resolvePaneLayout,
+  resolvePaneRestore,
   type PaneBox,
   type PaneDivider,
   type PaneDropZone,
@@ -204,6 +222,92 @@ function usePaneThread(target: ThreadRouteTarget) {
   return { shell, draftSession, draftRedirect };
 }
 
+function usePaneEnvironments() {
+  const { isReady, presentationById } = useEnvironments();
+  const primaryId = usePrimaryEnvironmentId();
+  const live = useAtomValue(liveShellEnvironmentIdsAtom);
+  return (environmentId: EnvironmentId) =>
+    paneEnvironmentState({
+      catalogReady: isReady,
+      localListed: primaryId !== null || isLocalEnvironmentDisabled(),
+      phase: presentationById.get(environmentId)?.connection.phase ?? null,
+      shellLive: live.has(environmentId),
+    });
+}
+
+function usePaneEnvironmentState(environmentId: EnvironmentId | null) {
+  const stateOf = usePaneEnvironments();
+  return environmentId === null ? null : stateOf(environmentId);
+}
+
+/** Home in a window just opened: resumes its panes once their environment can say what exists. */
+export function BatonPaneRestore() {
+  const navigate = useNavigate();
+  const slots = useBatonPanesStore((state) => state.slots);
+  const focusedSlotId = useBatonPanesStore((state) => state.focusedSlotId);
+  const ceded = useBatonPanesStore((state) => state.ceded);
+  const environmentState = usePaneEnvironments();
+  const shells = useQuietThreadShells();
+  const hidden = useHiddenThreadKeys();
+  const decision = resolvePaneRestore({ slots, focusedSlotId }, (target) => {
+    const heldElsewhere = ceded.includes(paneTargetKey(target));
+    if (target.kind === "draft") {
+      const session = useComposerDraftStore.getState().getDraftSession(target.draftId);
+      return paneRestoreState({
+        heldElsewhere,
+        environment: session === null ? null : environmentState(session.environmentId),
+        exists: session !== null,
+      });
+    }
+    const shell = shells.find(
+      (entry) =>
+        entry.environmentId === target.threadRef.environmentId &&
+        entry.id === target.threadRef.threadId,
+    );
+    return paneRestoreState({
+      heldElsewhere,
+      environment: environmentState(target.threadRef.environmentId),
+      exists:
+        shell !== undefined &&
+        shell.deletedAt == null &&
+        shell.archivedAt == null &&
+        !hidden.has(threadKey(target.threadRef)),
+    });
+  });
+  const goKey = decision.kind === "go" ? paneTargetKey(decision.target) : decision.kind;
+  const settle = useEffectEvent(() => {
+    if (decision.kind === "wait") return;
+    // A "go" stays pending until noteLocation sees the thread, so home never starts a draft first.
+    if (decision.kind === "stay") return useBatonPanesStore.getState().settleRestore();
+    const { target } = decision;
+    void (target.kind === "server"
+      ? navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(target.threadRef),
+          replace: true,
+        })
+      : navigate({
+          to: "/draft/$draftId",
+          params: buildDraftThreadRouteParams(target.draftId),
+          replace: true,
+        }));
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles the one restore and routes to the resumed thread
+  useEffect(() => {
+    if (goKey !== "wait") settle();
+  }, [goKey]);
+  return (
+    <SidebarInset
+      {...workspaceAreaProps("home", 1, "Home")}
+      role="main"
+      className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
+    >
+      {isElectron ? <WorkspacePageHeader electron /> : null}
+      <PaneLoading />
+    </SidebarInset>
+  );
+}
+
 function BatonPane(props: {
   readonly slot: PaneSlot;
   readonly box: PaneBox;
@@ -213,6 +317,9 @@ function BatonPane(props: {
   readonly elsewhere: boolean;
   readonly detached: boolean;
   readonly view: ChatViewElement | null;
+  /** The route is still looking up the focused pane's thread. */
+  readonly pending: boolean;
+  readonly onNewChat: () => void;
   readonly onFocusPane: (target: ThreadRouteTarget) => void;
   readonly onClosePane: (id: PaneSlotId) => void;
   readonly onDetachPane: (slot: PaneSlot) => void;
@@ -226,6 +333,9 @@ function BatonPane(props: {
   const { target } = slot;
   const { shell, draftSession, draftRedirect } = usePaneThread(target);
   const { environments } = useEnvironments();
+  const environmentState = usePaneEnvironmentState(
+    target.kind === "server" ? target.threadRef.environmentId : null,
+  );
   const split = count > 1;
   const environmentId =
     target.kind === "server"
@@ -272,7 +382,14 @@ function BatonPane(props: {
     );
   }
 
-  const title = shell?.title ?? (target.kind === "draft" ? "New thread" : "Thread not available");
+  const loading =
+    paneFallback({
+      environment: environmentState,
+      threadPending: focused && props.pending,
+    }) === "loading";
+  const title =
+    shell?.title ??
+    (target.kind === "draft" ? "New thread" : loading ? "Loading thread" : "Thread not available");
   return (
     <section
       aria-label={title}
@@ -289,7 +406,16 @@ function BatonPane(props: {
     >
       <BackgroundThreadContext value={background || !focused}>
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          {view ?? (focused ? null : <PaneUnavailable title={title} />)}
+          {view ??
+            (loading ? (
+              <PaneLoading />
+            ) : (
+              <PaneUnavailable
+                title={title}
+                onNewChat={focused ? props.onNewChat : null}
+                onClose={split ? () => onClosePane(slot.id) : null}
+              />
+            ))}
         </div>
       </BackgroundThreadContext>
       {split || detached ? (
@@ -390,19 +516,50 @@ function PaneElsewhere(props: { readonly onBringHere: () => void }) {
   );
 }
 
-function PaneUnavailable(props: { readonly title: string }) {
+function PaneLoading() {
   return (
-    <p className="m-auto px-4 text-center text-sm text-muted-foreground">
-      {props.title === "Thread not available"
-        ? "This thread is on an environment that is not connected, or it was removed."
-        : props.title}
+    <p
+      role="status"
+      data-testid="baton-pane-loading"
+      className="m-auto px-4 text-center text-sm text-muted-foreground"
+    >
+      Loading thread…
     </p>
+  );
+}
+
+function PaneUnavailable(props: {
+  readonly title: string;
+  readonly onNewChat: (() => void) | null;
+  readonly onClose: (() => void) | null;
+}) {
+  return (
+    <div className="m-auto flex flex-col items-center gap-2 px-4 text-center text-sm text-muted-foreground">
+      <p>
+        {props.title === "Thread not available"
+          ? "This thread is on an environment that is not connected, or it was removed."
+          : props.title}
+      </p>
+      <div className="flex gap-2">
+        {props.onNewChat ? (
+          <Button size="xs" variant="outline" onClick={props.onNewChat}>
+            New chat
+          </Button>
+        ) : null}
+        {props.onClose ? (
+          <Button size="xs" variant="ghost" onClick={props.onClose}>
+            Close pane
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
 export function BatonPanes(props: {
   readonly route: ThreadRouteTarget;
   readonly background: boolean;
+  readonly pending: boolean;
   readonly view: ReactNode;
 }) {
   const { route, background } = props;
@@ -510,6 +667,8 @@ export function BatonPanes(props: {
           elsewhere={ceded.includes(paneTargetKey(slot.target))}
           detached={detached}
           view={props.view as ChatViewElement | null}
+          pending={props.pending}
+          onNewChat={() => void navigate({ to: "/" })}
           onFocusPane={(target) => void goTo(target)}
           onClosePane={closeSlot}
           onDetachPane={detachSlot}

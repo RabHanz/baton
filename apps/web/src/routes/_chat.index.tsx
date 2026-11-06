@@ -12,6 +12,8 @@ import { HostedEmptyState } from "../components/HostedEmptyState";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
+import { BatonPaneRestore } from "../components/panes/BatonPanes";
+import { useBatonPanesStore } from "../components/panes/batonPanesStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import {
   readProject,
@@ -24,11 +26,13 @@ import { useEnvironments } from "../state/environments";
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments, isReady } = useEnvironments();
+  const restorePending = useBatonPanesStore((state) => state.restorePending);
 
   if (authGateState.status === "hosted-static") {
     if (!isReady) return null;
     if (environments.length === 0) return <HostedEmptyState />;
   }
+  if (restorePending) return <BatonPaneRestore />;
 
   return <IndexDraftLanding />;
 }

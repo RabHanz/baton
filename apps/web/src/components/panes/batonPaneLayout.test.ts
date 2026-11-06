@@ -10,7 +10,10 @@ import {
   fitPaneTree,
   MIN_PANE_FRACTION,
   openPane,
+  paneEnvironmentState,
+  paneFallback,
   paneDividers,
+  paneRestoreState,
   paneDropZone,
   paneLeaves,
   paneNeighbour,
@@ -18,6 +21,7 @@ import {
   presetPaneTree,
   resizePaneTree,
   resolvePaneLayout,
+  resolvePaneRestore,
   type PaneLayout,
   type PaneSlotId,
   type PaneTree,
@@ -98,6 +102,79 @@ describe("closePane", () => {
   it("never closes the last pane", () => {
     const one = resolvePaneLayout(empty, t1);
     expect(closePane(one, "a").layout).toBe(one);
+  });
+});
+
+describe("reopening a window", () => {
+  const layout: PaneLayout = {
+    slots: [
+      { id: "a", target: t1 },
+      { id: "b", target: t2 },
+      { id: "c", target: t3 },
+    ],
+    focusedSlotId: "b",
+  };
+  const states = (entries: ReadonlyArray<readonly [ThreadRouteTarget, string]>) => {
+    const map = new Map(entries);
+    return (target: ThreadRouteTarget) =>
+      (map.get(target) ?? "ready") as "ready" | "waiting" | "gone";
+  };
+
+  it("resumes the focused pane, waiting while its environment connects", () => {
+    expect(resolvePaneRestore(layout, states([]))).toEqual({ kind: "go", target: t2 });
+    expect(resolvePaneRestore(layout, states([[t2, "waiting"]]))).toEqual({ kind: "wait" });
+  });
+
+  it("skips a gone thread for the next pane, and stays home when none is left", () => {
+    expect(resolvePaneRestore(layout, states([[t2, "gone"]]))).toEqual({ kind: "go", target: t1 });
+    const allGone = states([
+      [t1, "gone"],
+      [t2, "gone"],
+      [t3, "gone"],
+    ]);
+    expect(resolvePaneRestore(layout, allGone)).toEqual({ kind: "stay" });
+    expect(resolvePaneRestore(empty, allGone)).toEqual({ kind: "stay" });
+  });
+
+  it("waits only for an environment that is on its way", () => {
+    const state = (phase: Parameters<typeof paneEnvironmentState>[0]["phase"], shellLive = false) =>
+      paneEnvironmentState({ catalogReady: true, localListed: true, phase, shellLive });
+    const listing = { phase: null, shellLive: false };
+    expect(paneEnvironmentState({ ...listing, catalogReady: false, localListed: true })).toBe(
+      "connecting",
+    );
+    // Saved environments are listed before the local one is fetched.
+    expect(paneEnvironmentState({ ...listing, catalogReady: true, localListed: false })).toBe(
+      "connecting",
+    );
+    expect(state("connecting")).toBe("connecting");
+    // A remote that keeps retrying must not hold the restore forever.
+    expect(state("reconnecting")).toBe("unreachable");
+    expect(state("connected")).toBe("connecting");
+    expect(state("connected", true)).toBe("ready");
+    // Removed, offline or failed: nothing is coming.
+    expect(state(null)).toBe("unreachable");
+    expect(state("offline")).toBe("unreachable");
+    expect(state("error")).toBe("unreachable");
+  });
+
+  it("resumes a pane only when no other window holds it and its environment has it", () => {
+    const ready = { heldElsewhere: false, environment: "ready", exists: true } as const;
+    expect(paneRestoreState(ready)).toBe("ready");
+    expect(paneRestoreState({ ...ready, heldElsewhere: true })).toBe("gone");
+    expect(paneRestoreState({ ...ready, environment: "connecting" })).toBe("waiting");
+    expect(paneRestoreState({ ...ready, environment: "unreachable" })).toBe("gone");
+    // A draft whose session is gone has no environment to wait for.
+    expect(paneRestoreState({ ...ready, environment: null })).toBe("gone");
+    expect(paneRestoreState({ ...ready, exists: false })).toBe("gone");
+  });
+
+  it("shows a pane as loading only while something is on its way", () => {
+    expect(paneFallback({ environment: "connecting", threadPending: false })).toBe("loading");
+    expect(paneFallback({ environment: "ready", threadPending: true })).toBe("loading");
+    expect(paneFallback({ environment: "ready", threadPending: false })).toBe("unavailable");
+    expect(paneFallback({ environment: "unreachable", threadPending: true })).toBe("unavailable");
+    expect(paneFallback({ environment: null, threadPending: true })).toBe("unavailable");
   });
 });
 
