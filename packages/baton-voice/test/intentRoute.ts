@@ -1,28 +1,20 @@
-/** The cheap, model-free part of routing a spoken sentence: what the rules decide before any model is asked. */
-import { decide } from "@t3tools/baton-shared/brain";
-import { resolveBatonIntent } from "@t3tools/baton-shared/intentParser";
+/** The cheap, model-free part of routing a spoken sentence: what the rules decide before the assistant is asked. */
+import { guardDecision, instantDecision } from "@t3tools/baton-shared/brain";
 import { isCancelPhrase, isDismissPhrase } from "@t3tools/baton-shared/voiceTurn";
 
 import { stripWake } from "../src/modeMachine.ts";
 
-import { fleet } from "./grammarClient.ts";
-
 /**
- * "cancel" and "dismiss" are the two spoken endings; "<route>:instant|grammar|guard" is a rule that
- * placed the sentence; "model" means no rule did, so a model has to decide.
+ * "cancel" and "dismiss" are the two spoken endings; "<route>:instant|guard" is a rule that placed the
+ * sentence; "model" means no rule did, so the one assistant decides, behind One Trust.
  */
 export const ruleRoute = async (said: string): Promise<string> => {
   // The voice core strips the wake word before either check, so the rows can say one.
   const words = stripWake(said, ["baton", "jarvis", "alfred", "freya", "tessaya"]);
   if (isCancelPhrase(words)) return "cancel";
   if (isDismissPhrase(said)) return "dismiss";
-  const decision = await decide(
-    said,
-    { running: null, direct: false, recent: [] },
-    {
-      ask: () => Promise.reject(new Error("no model")),
-      grammarPlaces: async () => resolveBatonIntent(said, fleet).outcome === "resolved",
-    },
-  );
-  return decision.source === "fallback" ? "model" : `${decision.route}:${decision.source}`;
+  const instant = instantDecision(said, false);
+  if (instant === null) return "model";
+  const decision = guardDecision(instant, said);
+  return `${decision.route}:${decision.source}`;
 };

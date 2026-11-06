@@ -6,7 +6,6 @@ import {
   currentTarget,
   followUpSession,
   parseTurn,
-  routerLines,
   searchTurns,
   withConversation,
   type ConversationTurn,
@@ -50,11 +49,7 @@ describe("the shared conversation", () => {
     expect(searchTurns(turns, "the Focusrite gain", { exclude: new Set([1]) })).toEqual([]);
     expect(searchTurns(turns, "the and of", { exclude: new Set() })).toEqual([]);
   });
-  it("hands the router whole thoughts, clipped, and reads a saved line without trusting it", () => {
-    expect(routerLines([turn(1, "hi", "Hello there.")])).toEqual([
-      "He said: hi",
-      "You answered: Hello there.",
-    ]);
+  it("reads a saved line without trusting it", () => {
     expect(parseTurn('{"id":1,"at":"x","route":"answer","said":"a","reply":"b"}')).toMatchObject({
       id: 1,
     });
@@ -75,7 +70,6 @@ describe("the shared conversation", () => {
     expect(followUpSession("tell it to rerun the tests", currentTarget(turns))).toBe("ws-1");
     expect(followUpSession("show the one on Hetzner", currentTarget(turns))).toBeNull();
     expect(conversationBlock({ recent: turns, earlier: [] })).toContain("Claude on Scheduler");
-    expect(routerLines(turns).at(-1)).toContain("Claude on Scheduler");
     expect(parseTurn(JSON.stringify(turns[0]))?.target?.workSessionId).toBe("ws-1");
   });
   it("knows text that came from the conversation, whole or in part", () => {

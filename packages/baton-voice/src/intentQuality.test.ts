@@ -17,7 +17,6 @@ const rows = JSON.parse(
 /**
  * Labelled sentences of the kind he actually says. The model is stubbed out, so this pins the cheap
  * rule layer: when a rule changes what a sentence does, a row here changes with it and says so.
- * The nightly job (scripts/tessaya/intent-nightly.ts) runs the `assistant` labels through the real one.
  */
 describe("intent quality", () => {
   it("is a real spread of what he says", () => {
@@ -44,12 +43,12 @@ describe("intent quality", () => {
     expect(wrong).toEqual([]);
   });
 
-  it("never lets a dismissal word swallow a real ask, and never lets a risky order past the guard it reaches", async () => {
+  it("never lets a dismissal word swallow a real ask, and no rule runs a risky order past One Trust", async () => {
     for (const r of rows.filter((x) => x.tag === "near-miss ask")) {
       expect(["cancel", "dismiss"]).not.toContain(await ruleRoute(r.say));
     }
     for (const r of rows.filter((x) => x.tag === "high risk" && x.assistant === "refused")) {
-      expect(await ruleRoute(r.say)).toBe("refused:guard");
+      expect(await ruleRoute(r.say)).toBe("model");
     }
   });
 });

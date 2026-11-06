@@ -10,7 +10,6 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-import { fallbackDecision } from "@t3tools/baton-shared/brain";
 import * as Electron from "electron";
 
 import { startDictationSidecar } from "../../voice/dictationSidecar.ts";
@@ -34,7 +33,6 @@ const REQUESTS = (process.env["LAB_REQUESTS"] ?? "")
 
 const main = async () => {
   await Electron.app.whenReady();
-  void fallbackDecision;
   const sidecar = startDictationSidecar({
     binary: process.env["LAB_SIDECAR"]!,
     onEvent: () => {},
@@ -55,8 +53,6 @@ const main = async () => {
   } as never);
   write({ askChordHeld: Electron.globalShortcut.isRegistered(ASK_HOTKEY) });
   companion.setActions({
-    grammarPlaces: async () => false,
-    act: async (command) => `(would run: ${command})`,
     focus: async () => {
       const asked = Date.now();
       const app = await sidecar.foreground();

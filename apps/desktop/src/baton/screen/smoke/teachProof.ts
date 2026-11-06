@@ -224,8 +224,6 @@ void Electron.app.whenReady().then(async () => {
     Promise.race([work.catch(() => null), sleep(ms).then(() => null)]);
   if (sidecar !== null) {
     companion.setActions({
-      act: async () => "",
-      grammarPlaces: async () => false,
       focus: async () => {
         const app = await within(sidecar.foreground());
         if (app === null || app.exe.length === 0) return null;
