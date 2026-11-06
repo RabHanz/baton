@@ -38,7 +38,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: sidecar
-          path: native/baton-dictation/target/release/baton-dictation.exe
+          path: native/baton-dictation/target/release/tessaya-voice.exe
 
   run:
     needs: sidecar
@@ -65,7 +65,7 @@ jobs:
       - name: Run the task set
         shell: bash
         env:
-          SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
+          SIDECAR: ${{ github.workspace }}/sidecar/tessaya-voice.exe
           HANDS_OUT: ${{ github.workspace }}/hands-${{ matrix.variant }}-${{ matrix.rep }}
           HANDS_GUARD: ${{ matrix.variant == 'guard' && '1' || '0' }}
         run: |
@@ -112,7 +112,7 @@ jobs:
       - name: Remote hands latency
         shell: bash
         env:
-          SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
+          SIDECAR: ${{ github.workspace }}/sidecar/tessaya-voice.exe
           HANDS_OUT: ${{ github.workspace }}/remote-out
         run: |
           mkdir -p remote-out
@@ -120,7 +120,7 @@ jobs:
       - name: Remote caller drives Notepad through the hub (end to end)
         shell: bash
         env:
-          SIDECAR: ${{ github.workspace }}/sidecar/baton-dictation.exe
+          SIDECAR: ${{ github.workspace }}/sidecar/tessaya-voice.exe
           HANDS_OUT: ${{ github.workspace }}/remote-out
         run: |
           node scripts/tessaya/hands-ci/remote-e2e.ts 2>&1 | tee remote-out/e2e.log | tee -a "$GITHUB_STEP_SUMMARY"

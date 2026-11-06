@@ -4,7 +4,7 @@
  * The whole voice path on real parts, from a WAV instead of the mic: openWakeWord, Silero, Parakeet
  * in the sidecar, the one brain on his claude, the real router and grammar. Nothing here opens a
  * microphone. Speech is logged instead of played.
- *   node pipeline.mjs --models DIR --gguf FILE --exe baton-dictation.exe --wavs DIR
+ *   node pipeline.mjs --models DIR --gguf FILE --exe tessaya-voice.exe --wavs DIR
  */
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";

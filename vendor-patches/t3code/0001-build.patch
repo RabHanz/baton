@@ -241,7 +241,7 @@ index be4d3c29ea763a8294a8ab765fcc46abd5096003..2a19711255896c99c97f0f757a8dd988
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-29ddd424.tgz": true
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5bc6897b0a 100644
+index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..35431d61cda1c84775a17a6fbff008402e6589e4 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
 @@ -55,6 +55,8 @@ import {
@@ -272,7 +272,7 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +        yield* fs.remove(resourceMonitorPath, { recursive: true });
 +        yield* fs.writeFileString(resourceMonitorPath, "monitor");
 +        yield* fs.remove(
-+          path.join(fixture.packagedAppDir, "resources/baton-voice/baton-dictation.exe"),
++          path.join(fixture.packagedAppDir, "resources/baton-voice/tessaya-voice.exe"),
 +        );
 +        const voiceError = yield* validateWindowsPackagedPayload({
 +          stageDistDir: fixture.stageDistDir,
@@ -282,11 +282,11 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +        }).pipe(Effect.flip);
 +        assert.instanceOf(voiceError, WindowsPackagedPayloadValidationError);
 +        assert.equal(voiceError.reason, "baton-voice-missing");
-+        assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/baton-dictation.exe"]);
++        assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/tessaya-voice.exe"]);
        }),
      ),
    );
-@@ -1803,3 +1824,15 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -1803,3 +1824,18 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -295,7 +295,10 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +  const targets = (platform: "win" | "linux" | "mac", arch: "arm64" | "x64" | "universal") =>
 +    batonSidecarBuild(platform, arch).map((b) => b.rustTarget);
 +  assert.deepEqual(targets("win", "x64"), [null]);
-+  assert.strictEqual(batonSidecarBuild("win", "x64")[0]!.rustflags, "-C target-feature=+crt-static");
++  assert.strictEqual(
++    batonSidecarBuild("win", "x64")[0]!.rustflags,
++    "-C target-feature=+crt-static",
++  );
 +  assert.deepEqual(targets("linux", "x64"), [null]);
 +  assert.deepEqual(targets("mac", "arm64"), ["aarch64-apple-darwin"]);
 +  assert.deepEqual(targets("mac", "x64"), ["x86_64-apple-darwin"]);
@@ -303,7 +306,7 @@ index aa04d9bfbf17d9891c21f0a6280a3326f0b01a40..a97f4715fe6495e51b14ad05fbe83b5b
 +  assert.include(batonSidecarBuild("mac", "x64")[0]!.cmake, "CMAKE_OSX_ARCHITECTURES=x86_64");
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..701c9bd4be2bb4d596bfb0d16b2c6e7c48ab635b 100644
+index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..cc814540a4390cd242d981b723b9e28e8ceacb40 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -740,6 +740,7 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
@@ -381,7 +384,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..701c9bd4be2bb4d596bfb0d16b2c6e7c
  });
  
 +export const BATON_VOICE_PAYLOAD_FILES = [
-+  "baton-dictation.exe",
++  "tessaya-voice.exe",
 +  "models/melspectrogram.onnx",
 +  "models/embedding_model.onnx",
 +  "models/silero_vad.onnx",
@@ -440,7 +443,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..701c9bd4be2bb4d596bfb0d16b2c6e7c
 +  yield* fs.remove(destination, { recursive: true, force: true }).pipe(Effect.ignore);
 +  yield* fs.makeDirectory(destination, { recursive: true });
 +  yield* fs.copy(path.join(crate, "models"), path.join(destination, "models"));
-+  const exe = input.platform === "win" ? "baton-dictation.exe" : "baton-dictation";
++  const exe = input.platform === "win" ? "tessaya-voice.exe" : "baton-dictation";
 +  const built: string[] = [];
 +  for (const build of batonSidecarBuild(input.platform, input.arch ?? "x64")) {
 +    const spawnCommand = yield* resolveSpawnCommand("cargo", [
@@ -464,7 +467,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..701c9bd4be2bb4d596bfb0d16b2c6e7c
 +        },
 +      }),
 +      {
-+        label: `cargo build baton-dictation${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`,
++        label: `cargo build tessaya-voice${build.rustTarget === null ? "" : ` (${build.rustTarget})`}`,
 +        verbose: input.verbose,
 +      },
 +    );
@@ -486,7 +489,7 @@ index 5de3c068fc6c6345963bef019e1e9eadb4faf08e..701c9bd4be2bb4d596bfb0d16b2c6e7c
 +    yield* runCommand(
 +      ChildProcess.make(lipo.command, lipo.args, { cwd: input.repoRoot, shell: lipo.shell }),
 +      {
-+        label: "lipo baton-dictation",
++        label: "lipo tessaya-voice",
 +        verbose: input.verbose,
 +      },
 +    );

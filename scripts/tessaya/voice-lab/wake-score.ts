@@ -3,7 +3,7 @@
 /**
  * Scores audio with the product's own openWakeWord code. Two ways in:
  *   node wake-score.mjs --models DIR --words a,b,c --list files.txt --out scores.jsonl
- *   baton-dictation record ... | node wake-score.mjs --models DIR --words a,b,c --stdin --label X --out f.jsonl
+ *   tessaya-voice record ... | node wake-score.mjs --models DIR --words a,b,c --stdin --label X --out f.jsonl
  * Audio is never written anywhere. One JSON line per file, or per minute on stdin.
  * Events are counted the way `streamingScorer` fires: over the threshold, then 12 chunks of rest.
  */

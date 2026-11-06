@@ -69,7 +69,7 @@ const post = async (token: string, path: string, body: unknown) => {
 };
 
 // The desktop: sidecar, tools, gate (away: a question is a no), loop.
-const { call, kill, sidecar } = startSidecar(process.env["SIDECAR"] ?? "baton-dictation.exe");
+const { call, kill, sidecar } = startSidecar(process.env["SIDECAR"] ?? "tessaya-voice.exe");
 void call;
 const tools = new Map(
   buildRemoteHandsTools({

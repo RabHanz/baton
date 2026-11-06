@@ -53,8 +53,8 @@ printf 'wake.wav 4000\n30000\n' > "$out/wav/list.txt"; cp "$wav" "$out/wav/wake.
 # The sidecar on its own first, so a crash in it is told apart from a crash in the app.
 sidecar=""
 case "$platform" in
-  macos) sidecar="$HOME/Tessaya.app/Contents/Resources/baton-voice/baton-dictation" ;;
-  linux) sidecar="$(find "$HOME" -name baton-dictation -type f 2>/dev/null | head -1)" ;;
+  macos) sidecar="$HOME/Tessaya.app/Contents/Resources/baton-voice/tessaya-voice" ;;
+  linux) sidecar="$(find "$HOME" -name tessaya-voice -type f 2>/dev/null | head -1)" ;;
 esac
 if [ -n "$sidecar" ] && [ -x "$sidecar" ]; then
   echo "--- sidecar alone: $sidecar ---"

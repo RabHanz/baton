@@ -34,8 +34,20 @@ describe("resolveDictationBinary", () => {
   it("names the binary for the platform", () => {
     const found = (platform: string) =>
       resolveDictationBinary({ resourcesPath: "/r", platform, env: {}, exists: () => true });
-    expect(found("win32")?.endsWith("baton-dictation.exe")).toBe(true);
-    expect(found("darwin")?.endsWith("baton-dictation")).toBe(true);
+    expect(found("win32")?.endsWith("tessaya-voice.exe")).toBe(true);
+    expect(found("darwin")?.endsWith("tessaya-voice")).toBe(true);
+  });
+
+  it("still finds an install that ships the old name", () => {
+    const old = NodePath.join("/r", "baton-voice", "baton-dictation.exe");
+    expect(
+      resolveDictationBinary({
+        resourcesPath: "/r",
+        platform: "win32",
+        env: {},
+        exists: (path) => path === old,
+      }),
+    ).toBe(old);
   });
 });
 
@@ -50,7 +62,7 @@ describe("the keyboard's window, through the real parser", () => {
 });
 
 describe("a slow model load, through a real child process", () => {
-  // A stand-in for baton-dictation: it answers `load` with a few "loading" lines and then model_ready, and answers a
+  // A stand-in for tessaya-voice: it answers `load` with a few "loading" lines and then model_ready, and answers a
   // `transcribe` that arrived during the load only after it, as the real engine thread does.
   const fake = () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "fake-sidecar-"));

@@ -96,7 +96,7 @@ function Stop-Tree($proc) {
   $ids = Get-Tree $proc.Id
   foreach ($id in $ids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 3
-  Get-Process Tessaya, baton-dictation -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  Get-Process Tessaya, tessaya-voice, baton-dictation -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 function Start-App([string]$list) {
   Remove-Item $log -ErrorAction SilentlyContinue

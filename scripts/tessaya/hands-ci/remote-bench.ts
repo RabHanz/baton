@@ -12,7 +12,7 @@ import { buildRemoteHandsTools } from "../../../apps/desktop/src/baton/agent/rem
 
 const OUT = process.env["HANDS_OUT"] ?? NodePath.join(process.cwd(), "remote-out");
 NodeFS.mkdirSync(OUT, { recursive: true });
-const { call, kill, sidecar } = startSidecar(process.env["SIDECAR"] ?? "baton-dictation.exe");
+const { call, kill, sidecar } = startSidecar(process.env["SIDECAR"] ?? "tessaya-voice.exe");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const tools = new Map(

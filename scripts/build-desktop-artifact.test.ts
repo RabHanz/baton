@@ -1277,7 +1277,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         yield* fs.remove(resourceMonitorPath, { recursive: true });
         yield* fs.writeFileString(resourceMonitorPath, "monitor");
         yield* fs.remove(
-          path.join(fixture.packagedAppDir, "resources/baton-voice/baton-dictation.exe"),
+          path.join(fixture.packagedAppDir, "resources/baton-voice/tessaya-voice.exe"),
         );
         const voiceError = yield* validateWindowsPackagedPayload({
           stageDistDir: fixture.stageDistDir,
@@ -1287,7 +1287,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         }).pipe(Effect.flip);
         assert.instanceOf(voiceError, WindowsPackagedPayloadValidationError);
         assert.equal(voiceError.reason, "baton-voice-missing");
-        assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/baton-dictation.exe"]);
+        assert.deepStrictEqual(voiceError.missingFiles, ["baton-voice/tessaya-voice.exe"]);
       }),
     ),
   );
@@ -1829,7 +1829,10 @@ it("batonSidecarBuild builds the sidecar for each platform and arch, joining a u
   const targets = (platform: "win" | "linux" | "mac", arch: "arm64" | "x64" | "universal") =>
     batonSidecarBuild(platform, arch).map((b) => b.rustTarget);
   assert.deepEqual(targets("win", "x64"), [null]);
-  assert.strictEqual(batonSidecarBuild("win", "x64")[0]!.rustflags, "-C target-feature=+crt-static");
+  assert.strictEqual(
+    batonSidecarBuild("win", "x64")[0]!.rustflags,
+    "-C target-feature=+crt-static",
+  );
   assert.deepEqual(targets("linux", "x64"), [null]);
   assert.deepEqual(targets("mac", "arm64"), ["aarch64-apple-darwin"]);
   assert.deepEqual(targets("mac", "x64"), ["x86_64-apple-darwin"]);

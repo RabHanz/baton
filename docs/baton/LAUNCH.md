@@ -70,7 +70,7 @@ not installed"). That keeps a copyleft licence, if one applied, from reaching Te
 ## 4. Voice is local by default
 
 - Wake word and voice-activity detection: ONNX models on the user's computer (`packages/baton-voice`).
-- Dictation: the Parakeet model runs in the local `baton-dictation` sidecar. Its model file downloads once
+- Dictation: the Parakeet model runs in the local `tessaya-voice` sidecar. Its model file downloads once
   (pinned, checksummed) from Hugging Face. Dictation clean-up defaults to `local`; the `claude` option, which
   sends flagged text to Anthropic, is opt-in (D105).
 - Speech out: Pocket TTS on this computer (voices download once) or the operating system voice.
