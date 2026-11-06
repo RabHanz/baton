@@ -30,6 +30,7 @@ import {
   isAffirmative,
   isFiller,
   isStopPhrase,
+  namedWake,
   plainWords,
   stripWake,
 } from "./modeMachine.ts";
@@ -379,7 +380,8 @@ export const createVoiceCore = (input: {
           bus,
           now: now(),
           mostRecentWorkSessionId: lastTarget,
-          wake: addressee,
+          // "Tessaya, …" said in Freya's open window is for Tessaya: the name he says beats the one remembered.
+          wake: namedWake(current.text, timings.wakeWords ?? []) ?? addressee,
         }),
         ...(turn ? [dropped] : []),
       ]);

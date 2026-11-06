@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
+import { DEFAULT_TIMINGS } from "./modeMachine.ts";
 
 const FRAME = 320;
 const frames = (seconds: number) => Math.round((seconds * 16_000) / FRAME);
@@ -309,9 +310,11 @@ const launch = () => {
     1_000: "what time is it",
     2_000: "what is the weather",
     3_000: "what needs me",
+    4_000: "Alfred, what needs me",
   };
   const core = createVoiceCore({
     waitMs: () => 0,
+    timings: { ...DEFAULT_TIMINGS, wakeWords: ["Freya", "Alfred"] },
     verifyWake: (_pcm, w) => new Promise((answer) => checks.push({ word: w, answer })),
     wake: {
       name: "fake",
@@ -409,6 +412,24 @@ describe("right after launch, when the wake check is slow", () => {
       { text: "what time is it", wake: "Freya" },
       { text: "what is the weather", wake: "Alfred" },
     ]);
+  });
+
+  it("answers as the name he starts his sentence with, in another persona's open window", async () => {
+    const r = launch();
+    r.quiet(1);
+    r.name("Freya", 1_000);
+    r.say(1_000, 1.4);
+    r.quiet(3);
+    r.confirm("Freya");
+    await r.settle();
+    r.quiet(1);
+    // No model fires for this one (0.1.63: "Tessaya, …" in Freya's window): only the words name him.
+    r.say(4_000, 1.4);
+    r.quiet(2);
+    await r.settle();
+    r.quiet(2);
+    await r.core.idle();
+    expect(r.routed.at(-1)).toEqual({ text: "what needs me", wake: "Alfred" });
   });
 
   it("answers each sentence once, as the name said before it, when a name lands in the last one's open window", async () => {
