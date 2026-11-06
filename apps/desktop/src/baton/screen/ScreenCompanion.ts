@@ -3121,7 +3121,7 @@ export const startScreenCompanion = (input: {
     openAskBox,
     askAbout: (text) => {
       rememberOutside(outsideSaid, text);
-      void typed(text, true).catch(fail);
+      void typed(text).catch(fail);
     },
     askFromPhone,
     setPhoneMirror: (mirror) => {
