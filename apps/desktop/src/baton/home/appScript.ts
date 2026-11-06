@@ -407,16 +407,25 @@ function startSting(where) {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   if (stingSrc) URL.revokeObjectURL(stingSrc);
   stingSrc = URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
-  stingAt = where || 'side'; stingUntil = Date.now() + 3600; render(); setTimeout(render, 3650);
+  stingAt = where || 'side'; stingUntil = Date.now() + 3600; redrawMark(); setTimeout(redrawMark, 3650);
 }
+const stillMotion = () => matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)/.test(document.documentElement.className);
+// A redraw replaces the mark's element: the keyboard focus goes back onto it.
+function redrawMark() { const f = document.activeElement && document.activeElement.id; render(); if (f === 'mark' || f === 'aboutmark') { const n = document.getElementById(f); if (n) n.focus(); } }
 // A mark is a button: a click, Enter or Space plays it now. The sting where it can play, else one deep breath.
+let deepUntil = 0, deepAt = 'side';
 function playMark(where) {
-  if (matchMedia('(prefers-reduced-motion:reduce)').matches || /motion-(reduced|off)/.test(document.documentElement.className)) return;
+  if (stillMotion()) return;
   if (window.TESSAYA_STING && !/palette-/.test(document.documentElement.className)) { if (Date.now() >= stingUntil) startSting(where); return; }
-  const el = document.getElementById(where === 'about' ? 'aboutmark' : 'mark'); if (!el) return;
-  el.classList.remove('deep'); void el.offsetWidth; el.classList.add('deep'); setTimeout(() => el.classList.remove('deep'), 1700);
+  if (Date.now() < deepUntil) return;
+  deepAt = where; deepUntil = Date.now() + 1600; redrawMark(); setTimeout(redrawMark, 1650);
 }
-function markButton(el, where) { el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', 'Play the Tessaya mark'); el.onclick = () => playMark(where); el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playMark(where); } }; }
+// With motion off a mark does nothing, so it is not offered as a button. A deep breath survives a redraw: it resumes where it was.
+function markButton(el, where) {
+  if (Date.now() < deepUntil && where === deepAt) { el.classList.add('deep'); el.style.animationDelay = (Date.now() - deepUntil + 1600) * -1 + 'ms'; }
+  if (stillMotion()) return;
+  el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', 'Play the Tessaya mark'); el.onclick = () => playMark(where); el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playMark(where); } };
+}
 function markHtml(where) {
   if (Date.now() < stingUntil && where === stingAt && stingSrc) return '<img alt="" style="width:140.9%;height:140.9%;margin:-20.45%;display:block;max-width:none" src="' + stingSrc + '">';
   return S.status.brandMark || S.status.mark;

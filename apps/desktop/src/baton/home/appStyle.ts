@@ -392,8 +392,8 @@ button.sname:hover{color:var(--hue-text)}
 @keyframes ripple{from{opacity:.55;transform:scale(1)}to{opacity:0;transform:scale(3)}}
 @keyframes focusPop{from{transform:scale(.985)}to{transform:none}}
 html.live .brand #mark{animation:breathe 7s ease-in-out infinite;will-change:transform,opacity}
-/* Hover brings the breath closer and quicker, only while the pointer is on it; a click plays it (playMark). */
-html.live .brand #mark:hover,html.live .aboutmark:hover,html.live .brand #mark:focus-visible,html.live .aboutmark:focus-visible{animation:breathe-near 2.6s ease-in-out infinite}
+html.live .brand #mark:hover,html.live .aboutmark:hover{animation:breathe-near 2.6s ease-in-out infinite}
+html.live .brand #mark:focus-visible,html.live .aboutmark:focus-visible{animation:breathe-near 2.6s ease-in-out 2}
 html.live #mark.deep,html.live .aboutmark.deep{animation:breathe-deep 1.6s cubic-bezier(.37,0,.2,1)}
 html.live #page.enter>*:nth-child(-n+${STAGGER_BLOCKS}){animation:rise var(--dur-base) var(--ease-out) backwards}
 html.live #page.enter>.group:nth-of-type(1)>*:nth-child(-n+${STAGGER_ROWS}){animation:rise-s var(--dur-base) var(--ease-out) backwards}

@@ -45,9 +45,12 @@ describe("the window's motion is cheap and bounded", () => {
     expect(ungated.map((r) => r.selector)).toEqual([]);
   });
 
-  it("repeats one animation only: the mark's breathing", () => {
+  it("repeats one animation only: the mark's breathing, and its closer breath only while the pointer is on it", () => {
     const endless = rules.filter((r) => /animation:[^;]*infinite/.test(r.body));
-    expect(endless.map((r) => r.selector)).toEqual(["html.live .brand #mark"]);
+    expect(endless.map((r) => r.selector)).toEqual([
+      "html.live .brand #mark",
+      "html.live .brand #mark:hover,html.live .aboutmark:hover",
+    ]);
     expect(css.match(/will-change:/g)?.length ?? 0).toBeLessThanOrEqual(2);
   });
 
