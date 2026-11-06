@@ -13,7 +13,7 @@ import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
 import { outsideLanguages } from "@t3tools/baton-shared/dictationLanguages";
-import { encodeWav, type SttProvider } from "@t3tools/baton-voice";
+import { encodeWav, SET_ASIDE, type SttProvider } from "@t3tools/baton-voice";
 
 import { makeFramer } from "./pcm.ts";
 import type { AudioInputDevice, AudioInputProvider } from "./voiceTypes.ts";
@@ -484,7 +484,7 @@ export const makeSidecarStt = (
       const outside = outsideLanguages(text, languages());
       if (outside === null) return text;
       onOutside?.(outside);
-      return "";
+      return SET_ASIDE;
     } finally {
       await NodeFSP.rm(dir, { recursive: true, force: true });
     }

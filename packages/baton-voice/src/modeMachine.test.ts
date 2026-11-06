@@ -312,6 +312,24 @@ describe("a name recognition wrote as other words", () => {
     for (const said of ["To see you later, call me", "Nice to see you", "Free, you know"])
       expect(stripWake(said, ["Tessaya", "Freya"])).toBe(said);
     expect(stripWake("To say yeah, dictate.", ["Tessaya"])).toBe("dictate.");
+    // One word must be the name or a listed spelling, not merely sound like it.
+    const names = ["Tessaya", "Freya", "Alfred"];
+    for (const said of ["Prayer time", "Frayed", "Fryer", "Alfred's car", "Half red"])
+      expect(stripWake(said, names)).toBe(said);
+    expect(stripWake("al fred, open it", names)).toBe("open it");
+  });
+
+  it("keeps a first word that only sounds like a name when dictation stops", () => {
+    const start = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "dictate", at: 10 },
+    ]);
+    const { effects } = reduceVoice(
+      start.state,
+      { type: "utterance", text: "Frayed edges, stop dictating", at: 20 },
+      { ...DEFAULT_TIMINGS, wakeWords: ["Freya"] },
+    );
+    expect(effects).toContainEqual({ kind: "dictate", text: "Frayed edges" });
   });
 
   it("is never cut from what he dictates", () => {

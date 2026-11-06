@@ -127,7 +127,8 @@ const wakePrefix = (words: ReadonlyArray<string>): RegExp => {
     .join("|");
   return names === ""
     ? /(?!)/
-    : new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b[\\s,.:!?-]*`, "iu");
+    : // Not "Alfred's car": a name with 's on it is a word of the sentence.
+      new RegExp(`^(?:hey |ok |okay )?(?:${names})\\b(?!['’])[\\s,.:!?-]*`, "iu");
 };
 export const isAffirmative = (text: string): boolean => answerOf(text) === "yes";
 const SLEEP =

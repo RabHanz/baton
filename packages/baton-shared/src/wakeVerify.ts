@@ -61,16 +61,22 @@ const keyOf = (words: ReadonlyArray<string>): string =>
 /** A name split into words is trusted by sound only when it ends on its "-ya" ("to say yeah", "the saya"), never "you". */
 const YA_ENDING = /y(?:a|ah|eah)$/;
 
-/** The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". */
-const matches = (words: ReadonlyArray<string>, target: string): boolean => {
-  if (keyOf(words) === keyOf([target]) && (words.length === 1 || YA_ENDING.test(words.at(-1)!)))
+/**
+ * The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". Not `close`:
+ * only the name, its listed spellings, or a split ending on "-ya", for words that are not a wake clip.
+ */
+const matches = (words: ReadonlyArray<string>, target: string, close = true): boolean => {
+  if (
+    keyOf(words) === keyOf([target]) &&
+    (words.length === 1 ? close : YA_ENDING.test(words.at(-1)!))
+  )
     return true;
   // Spelling closeness only within two words: across three, "to say a" is a letter away from "tesaya".
   if (words.length > 2) return false;
   const piece = words.join("");
   return [target, ...(ALIASES[target] ?? [])].some((c) => {
     const flat = letters(c).replace(/ /g, "");
-    return piece === flat || similar(piece, flat) >= 0.72;
+    return piece === flat || (close && similar(piece, flat) >= 0.72);
   });
 };
 
@@ -105,7 +111,7 @@ export const wakeWordLead = (
   const heard = words.map((w) => letters(w).replace(/ /g, ""));
   for (let n = 1; n <= Math.min(MAX_WORDS, heard.length); n += 1) {
     const lead = heard.slice(0, n);
-    if (lead.every(Boolean) && targets.some((t) => matches(lead, t))) return n;
+    if (lead.every(Boolean) && targets.some((t) => matches(lead, t, false))) return n;
   }
   return 0;
 };

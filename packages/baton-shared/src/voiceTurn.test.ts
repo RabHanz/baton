@@ -134,6 +134,15 @@ describe("the pill while a window is open", () => {
     expect(play([...open, { type: "resume" }]).phase).toBe("listening");
   });
 
+  it("says Didn't catch that for an unconfirmed wake only while Listening", () => {
+    const listening = play([{ type: "wake", word: "Tessaya" }, { type: "unconfirmed" }]);
+    expect(turnView(listening)).toMatchObject({ label: "Didn't catch that" });
+    expect(play([...open, { type: "unconfirmed" }]).phase).toBe("listening");
+    const speaking = play([...open, { type: "speaking", active: true }, { type: "unconfirmed" }]);
+    expect(speaking.phase).toBe("speaking");
+    expect(play([{ type: "unconfirmed" }]).phase).toBe("idle");
+  });
+
   it("holds Dictating through each chunk, and leaves after", () => {
     let state = play([...open, { type: "dictating", caption: "Say stop dictating" }]);
     state = play(

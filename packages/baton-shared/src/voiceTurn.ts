@@ -50,6 +50,8 @@ export type TurnEvent =
   | { readonly type: "window_open" }
   /** Words were heard and set aside, so nothing is being worked out. */
   | { readonly type: "resume" }
+  /** A wake the second check did not confirm: worth saying only while the pill says Listening. */
+  | { readonly type: "unconfirmed" }
   /** The wake or conversation window closed. */
   | { readonly type: "window_closed" }
   /** The turn's words have been dealt with and nothing more is coming. */
@@ -105,6 +107,16 @@ export const reduceTurn = (state: TurnState, event: TurnEvent): TurnState => {
       return state.phase === "idle" || state.phase === "ended"
         ? { ...IDLE_TURN, phase: "listening", heard: true, open: true }
         : { ...state, open: true, closing: false };
+    case "unconfirmed":
+      if (state.phase === "listening")
+        return {
+          ...IDLE_TURN,
+          phase: "error",
+          caption: NOTHING_HEARD,
+          open: state.open,
+          closing: state.closing,
+        };
+      return state.phase === "thinking" ? settle(state) : state;
     case "resume":
       return state.phase === "thinking" ? settle(state) : state;
     case "heard":

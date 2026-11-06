@@ -2701,10 +2701,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         case "nothing":
           return { type: "failed", message: "Didn't catch that" };
         case "dropped":
-          // Shown only where the pill was already up (it ignores this while idle), so a TV never flashes it.
-          return event.reason === "wake not confirmed"
-            ? { type: "failed", message: "Didn't catch that" }
-            : { type: "resume" };
+          return { type: event.reason === "wake not confirmed" ? "unconfirmed" : "resume" };
         case "stop_heard":
           input.onSpokenStop?.();
           return null;
@@ -2878,7 +2875,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;
         try {
-          const heard = await makeSidecarStt(sidecar, () => settings.languages).transcribe(pcm);
+          const heard = await makeSidecarStt(sidecar).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);
           if (!ok) input.onNote?.("wake_check", { word, heard });
           return ok;
