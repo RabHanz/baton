@@ -73,6 +73,52 @@ layer("the agent-message gate", (it) => {
       const refused = results.filter((r) => r._tag === "Failure");
       assert.strictEqual(refused.length, 1);
       assert.include(String(refused[0]), "30 messages in the last minute");
+      // A flood is refused every time and recorded once a minute.
+      for (let i = 0; i < 3; i += 1)
+        yield* gateThreadSend({ threadId: TARGET }, Effect.void).pipe(
+          fromLink("link-race"),
+          Effect.flip,
+        );
+      const record = yield* BatonRecordService;
+      const rows = yield* record.query({ kind: "agent_message", actor: "link:link-race" });
+      assert.strictEqual(rows.filter((r) => r.outcome === "refused").length, 1);
+      assert.strictEqual(rows.filter((r) => r.outcome === "sent").length, 30);
+    }),
+  );
+
+  it.effect("a send within one delegation tree is not gated or recorded", () =>
+    Effect.gen(function* () {
+      const record = yield* BatonRecordService;
+      const shell = (id: string) =>
+        ({
+          id,
+          title: id,
+          projectId: "project:shop",
+          deletedAt: null,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          lineage: { rootThreadId: "thread:root-tree" },
+        }) as never;
+      let sent = 0;
+      yield* gateThreadSend(
+        { threadId: ThreadId.make("thread:child") },
+        Effect.sync(() => (sent += 1)),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(McpInvocationContext.McpInvocationContext, {
+              thread: { threadId: "thread:parent" },
+              client: undefined,
+            } as never),
+            Layer.succeed(ThreadManagement.ThreadManagementService, {
+              getThreadShell: (id: string) => Effect.succeed(shell(id)),
+            } as never),
+          ),
+        ),
+      );
+      assert.strictEqual(sent, 1);
+      const rows = yield* record.query({ kind: "agent_message", actor: "thread:thread:root-tree" });
+      assert.strictEqual(rows.length, 0);
     }),
   );
 });
