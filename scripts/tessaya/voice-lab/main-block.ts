@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalConsole:off globalRandom:off
 /**
  * How long the wake and speech models block the thread that loads and feeds them: the five shipped wake words
  * plus Silero are loaded, then fed 10 s of audio at the microphone's pace. Fails above 100 ms. With
