@@ -50,12 +50,12 @@ test("a new npm package, crate or model without an entry fails", () => {
       '[dependencies]\nnew-crate = "1"\n',
     ),
   );
-  r.put("native/baton-dictation/models/tessaya.onnx", "");
+  r.put("native/baton-dictation/models/newword.onnx", "");
   const problems = check(r.dir);
   assert.equal(problems.length, 3);
   assert.ok(problems.some((p) => p.startsWith("npm:some-new-lib")));
   assert.ok(problems.some((p) => p.startsWith("crate:new-crate")));
-  assert.ok(problems.some((p) => p.startsWith("model:tessaya.onnx")));
+  assert.ok(problems.some((p) => p.startsWith("model:newword.onnx")));
 });
 
 test("an entry the notices never mention, or with no licence text, fails", () => {
