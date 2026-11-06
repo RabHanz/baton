@@ -197,6 +197,8 @@ export const createVoiceCore = (input: {
    * wake as if it never happened. Absent, the model alone decides.
    */
   readonly verifyWake?: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  /** The model is sure enough of this word that her saying the name too cannot make it her echo. */
+  readonly trustWake?: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). Absent: only a wake or stop phrase gets through. */
   readonly echo?: EchoGuard;
   /** Headphones: the mic cannot hear the voice, so it listens all the time and his speech over it is a barge-in. */
@@ -630,13 +632,19 @@ export const createVoiceCore = (input: {
       .transcribe(joined(parts))
       .then((text) => {
         // Over speakers the window starts inside her sentence, so his stop is at the end of it.
-        const words = text.trim().split(/\s+/);
+        const words = text.trim().split(/\s+/).filter(Boolean);
         const said = [1, 2, 3, 4]
           .map((n) => stripWake(words.slice(-n).join(" "), timings.wakeWords))
           .find(isStopPhrase);
-        if (said === undefined) return;
-        // Only the sentence she is saying (or just said) can have put the word there.
-        if (echoesSpeech(said, spokenLately.slice(-2))) {
+        if (said === undefined) {
+          if (words.length > 0)
+            emit({ type: "dropped", text: text.trim(), reason: "not a stop, said over her voice" });
+          return;
+        }
+        // Only the sentence she is saying (or just said) can have put the word there; a clip that is
+        // nothing but the command ("Stop.", "Tessaya, stop") is his, whatever her sentence holds.
+        const whole = isStopPhrase(stripWake(words.join(" "), timings.wakeWords));
+        if (!whole && echoesSpeech(said, spokenLately.slice(-2))) {
           return emit({ type: "dropped", text: said, reason: "own voice" });
         }
         emit({ type: "stop_heard", text: said, at: now() });
@@ -776,7 +784,8 @@ export const createVoiceCore = (input: {
       score !== null &&
       heardItselfAt(firedAt) &&
       wakeWord !== null &&
-      echoesSpeech(wakeWord, spokenLately)
+      echoesSpeech(wakeWord, spokenLately) &&
+      input.trustWake?.(wakeWord, score) !== true
     ) {
       // The reply itself says the name: it is its own voice, never a barge-in.
       emit({ type: "dropped", text: wakeWord, reason: "own voice" });

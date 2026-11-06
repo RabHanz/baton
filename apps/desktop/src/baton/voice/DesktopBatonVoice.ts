@@ -377,7 +377,7 @@ import {
 } from "./audioKeep.ts";
 import { createVocabToast } from "./vocabToast.ts";
 import { WAIT_DEFAULT_MS, clampWait } from "@t3tools/baton-shared/endOfTurn";
-import { wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
+import { wakeTrusted, wakeWordHeard } from "@t3tools/baton-shared/wakeVerify";
 import { CUE_GAIN, CUE_WAIT_MS, parseCueLevel, type CueLevel } from "./pillSounds.ts";
 import { openHistory, type HistoryTurn, type TidyStatus } from "./history.ts";
 import {
@@ -765,6 +765,8 @@ export interface VoiceCoreHooks {
   readonly listening: () => { readonly commandWindowMs: number; readonly conversationMs: number };
   /** The second check before a wake from sleep: was the wake word really said. */
   readonly verifyWake: (pcm: Int16Array, word: string | null) => Promise<boolean>;
+  /** The model is sure of this word past any doubt (see `wakeTrusted`). */
+  readonly trustWake: (word: string, score: number) => boolean;
   /** Hears him over Baton's own voice through the speakers (docs/baton/BARGE_IN.md). */
   readonly echo: EchoGuard | undefined;
   readonly speakerMode: () => "speakers" | "headphones";
@@ -2886,6 +2888,7 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       }),
       echo: settings.voiceBargeIn ? echoGuard : undefined,
       speakerMode: () => (settings.headphones ? "headphones" : "speakers"),
+      trustWake: (word, score) => wakeTrusted(settings.wakeWords, word, score),
       verifyWake: async (pcm, word) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;

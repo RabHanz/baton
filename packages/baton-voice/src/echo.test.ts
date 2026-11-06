@@ -254,6 +254,7 @@ describe("silence after a wake word", () => {
         "That's enough.",
         "Cancel.",
         "Shut up.",
+        "Wait.",
         "Jarvis, stop.",
       ]) {
         const r = await talking(said, "A sentence about reports.");
@@ -262,9 +263,24 @@ describe("silence after a wake word", () => {
     });
 
     it("ignores the same word coming back through his speakers", async () => {
-      const r = await talking("Stop.", "The next step is to stop the service.");
+      const r = await talking("is to stop.", "The next step is to stop.");
       expect(r.events.some((e) => e.type === "stop_heard")).toBe(false);
       expect(r.events.find((e) => e.type === "dropped")).toMatchObject({ reason: "own voice" });
+    });
+
+    it("takes a clip that is only the command, even when her sentence has the word", async () => {
+      for (const said of ["Stop.", "Jarvis, stop."]) {
+        const r = await talking(said, "The next step is to stop the service.");
+        expect(r.events.some((e) => e.type === "stop_heard")).toBe(true);
+      }
+    });
+
+    it("logs what it heard over her voice and did not act on", async () => {
+      const r = await talking("Can you hear me", "A sentence about reports.");
+      expect(r.events.find((e) => e.type === "dropped")).toMatchObject({
+        text: "Can you hear me",
+        reason: "not a stop, said over her voice",
+      });
     });
 
     it("hears his stop at the end of a window that caught her voice first", async () => {

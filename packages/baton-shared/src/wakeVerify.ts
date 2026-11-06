@@ -115,3 +115,19 @@ export const wakeWordLead = (
   }
   return 0;
 };
+
+/**
+ * The model's own output (score × the word's threshold) at its ceiling. His real "Tessaya" in the 0.1.61
+ * logs scored 1.0518–1.0525 at threshold 0.95, an output of 0.9992–0.9999; a borderline fire sits near 1×.
+ */
+const TRUSTED_OUTPUT = 0.999;
+
+/** The wake model is sure enough of `word` to need no second opinion. */
+export const wakeTrusted = (
+  words: ReadonlyArray<{ readonly word: string; readonly threshold: number }>,
+  word: string,
+  score: number,
+): boolean => {
+  const setting = words.find((w) => w.word.toLowerCase() === word.toLowerCase());
+  return setting !== undefined && score * setting.threshold >= TRUSTED_OUTPUT;
+};

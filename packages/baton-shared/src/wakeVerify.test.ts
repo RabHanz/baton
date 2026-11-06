@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { wakeWordHeard } from "./wakeVerify.ts";
+import { wakeTrusted, wakeWordHeard } from "./wakeVerify.ts";
 
 describe("the second check before a wake", () => {
+  it("trusts the model only at its ceiling, by the word's own threshold", () => {
+    const words = [
+      { word: "Tessaya", threshold: 0.95 },
+      { word: "Alfred", threshold: 0.9 },
+    ];
+    // His real passes in the 0.1.61 logs.
+    expect(wakeTrusted(words, "Tessaya", 1.0518)).toBe(true);
+    expect(wakeTrusted(words, "tessaya", 1.0525)).toBe(true);
+    expect(wakeTrusted(words, "Tessaya", 1.03)).toBe(false);
+    expect(wakeTrusted(words, "Alfred", 1.05)).toBe(false);
+    expect(wakeTrusted(words, "Freya", 2)).toBe(false);
+  });
+
   it("accepts the wake word and the ways recognition spells it", () => {
     // The clip ends where the model fired, just after the name.
     expect(wakeWordHeard("Sebastian.", "Sebastian")).toBe(true);
