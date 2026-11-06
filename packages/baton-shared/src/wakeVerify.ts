@@ -15,7 +15,7 @@ const ALIASES: Readonly<Record<string, ReadonlyArray<string>>> = {
   onyx: ["onix", "onyks", "onicks", "onyx"],
 };
 
-/** Recognition sometimes writes the name in Cyrillic or Greek ("Тесая"): read it in Latin letters. */
+/** Recognition sometimes writes the name in Cyrillic or Greek ("Тесая"): read it in Latin letters (after NFD, so й is и). */
 const LATIN: Readonly<Record<string, string>> = {
   а: "a",
   б: "b",
@@ -23,11 +23,11 @@ const LATIN: Readonly<Record<string, string>> = {
   г: "g",
   д: "d",
   е: "e",
-  ё: "yo",
+
   ж: "zh",
   з: "z",
   и: "i",
-  й: "y",
+
   к: "k",
   л: "l",
   м: "m",
@@ -127,6 +127,8 @@ const keyOf = (words: ReadonlyArray<string>): string =>
 
 /** A name split into words is trusted by sound only when it ends on its "-ya" ("to say yeah", "the saya"), never "you". */
 const YA_ENDING = /y(?:a|ah|eah)$/;
+/** "To say you." as the whole clip is how recognition writes his "Tessaya"; "Do say you", "To see you" are not. */
+const SAY_YOU = /^t\w* say you$/;
 
 /**
  * The name said in one, two or three recognised words: "Tessaia", "al fred", "to say yeah". Not `close`:
@@ -143,11 +145,12 @@ const matches = (
     keyOf(words) === keyOf([target]) &&
     (words.length === 1
       ? close
-      : YA_ENDING.test(words.at(-1)!) || (whole && words.at(-1) === "you"))
+      : YA_ENDING.test(words.at(-1)!) || (whole && SAY_YOU.test(words.join(" "))))
   )
     return true;
   // Spelling closeness only within two words: across three, "to say a" is a letter away from "tesaya".
-  if (words.length > 2) return false;
+  // Never a split ending on "you": "tessa you" is a letter or two from "tessaya" and is Tessa.
+  if (words.length > 2 || (words.length === 2 && words[1] === "you")) return false;
   const piece = words.join("");
   return [target, ...(ALIASES[target] ?? [])].some((c) => {
     const flat = letters(c).replace(/ /g, "");

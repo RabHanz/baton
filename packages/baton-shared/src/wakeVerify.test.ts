@@ -51,6 +51,10 @@ describe("the second check before a wake", () => {
       "To say you can see that.",
       "So to say you",
       "Yeah.",
+      // The clip ends where the model fired, so near misses arrive cut short.
+      "Tessa, you.",
+      "To see you.",
+      "Do say you.",
       "I desire nothing",
       "the desired outcome",
       "Desiree called",
@@ -59,6 +63,8 @@ describe("the second check before a wake", () => {
     for (const [text, word] of [
       ["Set them free, you know", "Freya"],
       ["Set them free, you", "Freya"],
+      ["Free you.", "Freya"],
+      ["Fray you.", "Freya"],
       ["all fret", "Alfred"],
       ["I'll fret", "Alfred"],
     ] as const)

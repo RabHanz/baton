@@ -2962,8 +2962,6 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       verifyWake: async (pcm, word, score) => {
         // Unsure is a wake: the check only ever removes wakes it is sure were not the name.
         if (!settings.verifyWake || word === null || sidecar === null) return true;
-        // The model at its ceiling needs no second opinion: recognition writes his "Tessaya" too many ways.
-        if (wakeTrusted(settings.wakeWords, word, score)) return true;
         try {
           const heard = await makeSidecarStt(sidecar).transcribe(pcm);
           const ok = wakeWordHeard(heard, word);

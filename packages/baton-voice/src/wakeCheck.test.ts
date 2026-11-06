@@ -73,6 +73,23 @@ const rig = (
 };
 
 describe("the second check before a wake from sleep", () => {
+  it("takes a wake the model is sure of without asking the recogniser, when she is not speaking", async () => {
+    let checks = 0;
+    const r = rig(
+      async () => {
+        checks += 1;
+        return false;
+      },
+      () => true,
+    );
+    r.push(2);
+    r.wake();
+    r.push(0.1);
+    await r.core.idle();
+    expect(checks).toBe(0);
+    expect(r.events.some((e) => e.type === "wake")).toBe(true);
+  });
+
   it("drops a wake the recogniser did not hear, with no wake, no cue and no turn", async () => {
     const seen: Array<[number, string | null, number]> = [];
     const r = rig(async (pcm, word, score) => {
