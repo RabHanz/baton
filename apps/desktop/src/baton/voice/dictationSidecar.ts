@@ -29,6 +29,8 @@ export interface DictationConfig {
   readonly channel: number | null;
   readonly paste: PasteMethod;
   readonly language: string | null;
+  /** Cloud recognition: each recording is written as a WAV into this private folder and handed back, not recognised here. */
+  readonly external?: string | null;
   /** The sidecar leaves the paste to the desktop, which cleans the text up first. */
   readonly cleanup: boolean;
   /** Two quick taps of the hold key keep the microphone open until the next press. */
@@ -125,6 +127,9 @@ export type DictationEvent =
   | {
       readonly ev: "text";
       readonly id: number | null;
+      /** Cloud recognition: the recording for the desktop to recognise, deleted once it has; the text is then empty. */
+      readonly wav?: string | null;
+      readonly audioMs?: number;
       readonly text?: string;
       readonly error?: string;
       readonly pasteError?: string | null;
@@ -473,14 +478,20 @@ export const makeSidecarStt = (
   /** His languages; what reads as another one is not heard, and `onOutside` is told which. */
   languages: () => ReadonlyArray<string> = () => [],
   onOutside?: (code: string) => void,
+  /** His cloud recogniser when he chose one: it gets the clip and falls back to `local` itself. */
+  recognise?: (wav: Uint8Array, audioMs: number, local: () => Promise<string>) => Promise<string>,
 ): SttProvider => ({
   name: "parakeet",
   transcribe: async (pcm) => {
     const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "baton-voice-"));
     const file = NodePath.join(dir, "utterance.wav");
     try {
-      await NodeFSP.writeFile(file, encodeWav(pcm));
-      const text = await sidecar.transcribe(file);
+      const wav = encodeWav(pcm);
+      await NodeFSP.writeFile(file, wav);
+      const local = () => sidecar.transcribe(file);
+      const text = await (recognise === undefined
+        ? local()
+        : recognise(wav, pcm.length / 16, local));
       const outside = outsideLanguages(text, languages());
       if (outside === null) return text;
       onOutside?.(outside);

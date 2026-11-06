@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVoiceCore, type VoiceCoreEvent } from "./core.ts";
-import { SET_ASIDE } from "./types.ts";
+import { SET_ASIDE, type SttProvider } from "./types.ts";
 
 /** The stop path runs beside the core's queue, a few promise turns away. */
 const settled = async () => {
@@ -86,7 +86,7 @@ describe("Baton hearing itself", () => {
 
 describe("silence after a wake word", () => {
   /** The rig, with the VAD and the recogniser under the test's control. */
-  const scripted = (transcript = "Yeah.") => {
+  const scripted = (transcript = "Yeah.", stopStt?: SttProvider) => {
     let failing = false;
     let fire = false;
     let speech = false;
@@ -116,6 +116,7 @@ describe("silence after a wake word", () => {
           return transcript;
         },
       },
+      ...(stopStt === undefined ? {} : { stopStt }),
       router: {
         route: async (effect) => {
           if ("text" in effect) routed.push(`${effect.kind}:${effect.text}`);
@@ -235,8 +236,8 @@ describe("silence after a wake word", () => {
   });
 
   describe("a stop said over Baton's voice", () => {
-    const talking = async (said: string, speaking: string) => {
-      const r = scripted(said);
+    const talking = async (said: string, speaking: string, stopStt?: SttProvider) => {
+      const r = scripted(said, stopStt);
       r.core.noteSpoken(speaking);
       r.core.setSpeaking(true);
       r.push(0.5);
@@ -248,6 +249,17 @@ describe("silence after a wake word", () => {
       await r.core.idle();
       return r;
     };
+
+    it("hears it on this computer's recogniser, never the cloud one, since it hears the room", async () => {
+      const local: string[] = [];
+      const r = await talking("Stop.", "The folder holds three reports.", {
+        name: "local",
+        transcribe: async () => (local.push("heard"), "Stop."),
+      });
+      expect(r.events.find((e) => e.type === "stop_heard")).toMatchObject({ text: "Stop." });
+      expect(local).toEqual(["heard"]);
+      expect(r.heard).toEqual([]);
+    });
 
     it("works with no wake word and no open window", async () => {
       const r = await talking("Stop.", "The folder holds three reports.");

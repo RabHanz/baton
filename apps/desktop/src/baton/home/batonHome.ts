@@ -120,6 +120,8 @@ export type HomeControl =
       readonly items: ReadonlyArray<string>;
       readonly placeholder: string;
       readonly addLabel?: string;
+      /** The line is typed like a password and never shown back (a cloud key). */
+      readonly secret?: boolean;
     })
   /** One memory (D150): its text is the label, `hint` says where it came from. Edit, pin and forget are the page's. */
   | (HomeControlBase & {

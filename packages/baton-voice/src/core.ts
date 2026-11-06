@@ -200,6 +200,8 @@ export const createVoiceCore = (input: {
   readonly wake: WakeProvider;
   readonly vad: VadProvider;
   readonly stt: SttProvider;
+  /** The stop listener's recogniser: always this computer's, since it hears the room while she talks. `stt` when absent. */
+  readonly stopStt?: SttProvider;
   readonly tts?: TtsProvider | null;
   /** Absent: the core only emits utterances and the host routes them. */
   readonly router?: VoiceRouter | null;
@@ -646,7 +648,7 @@ export const createVoiceCore = (input: {
     if (spoken < msToSamples(STOP_MIN_SPEECH_MS)) return;
     if (stopBusy) return emit({ type: "dropped", text: "", reason: "recogniser busy" });
     stopBusy = true;
-    void input.stt
+    void (input.stopStt ?? input.stt)
       .transcribe(joined(parts))
       .then((text) => {
         // Over speakers the window starts inside her sentence, so his stop is at the end of it.

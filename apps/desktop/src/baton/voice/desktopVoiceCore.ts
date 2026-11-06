@@ -260,6 +260,8 @@ export const createDesktopVoiceCore = async (input: {
   readonly wakeWords: ReadonlyArray<WakeWordSetting>;
   /** Parakeet in the desktop's dictation sidecar; a test can pass anything. */
   readonly stt: SttProvider;
+  /** The stop listener's recogniser: this computer's, since it hears the room while she talks. */
+  readonly stopStt?: SttProvider;
   readonly platform: NodeJS.Platform;
   readonly intent: VoiceIntentClient;
   /** Replies and confirmation prompts, for the HUD's line. */
@@ -329,6 +331,7 @@ export const createDesktopVoiceCore = async (input: {
     wake,
     vad,
     stt: input.stt,
+    ...(input.stopStt === undefined ? {} : { stopStt: input.stopStt }),
     timings: liveTimings(
       { ...DEFAULT_TIMINGS, wakeWords: models.map((model) => model.word) },
       input.listening,
