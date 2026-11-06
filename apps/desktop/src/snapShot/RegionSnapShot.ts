@@ -7,6 +7,7 @@ import * as Electron from "electron";
 import type { ActiveWindow } from "./ActiveWindow.ts";
 
 const CAPTURE_TIMEOUT_MS = 15_000;
+const HELPER_WARM_DELAY_MS = 2_000;
 
 export type RegionSnapShotRequest = { readonly region: Electron.Rectangle };
 export type RegionSnapShotResult =
@@ -138,11 +139,19 @@ export function makeRegionSnapShotPool(
   let standby: RegionSnapShotProcess | undefined;
   let inFlight: RegionSnapShotProcess | undefined;
   let closed = false;
+  let warmTimer: ReturnType<typeof setTimeout> | undefined;
+  // Spawning blocks the main thread, so the standby starts once things settle, not mid-capture or at startup.
   const warm = () => {
-    if (closed || standby?.alive) return;
-    standby = start(workerPath);
+    if (closed || standby?.alive || warmTimer !== undefined) return;
+    warmTimer = setTimeout(() => {
+      warmTimer = undefined;
+      if (!closed && !standby?.alive) standby = start(workerPath);
+    }, HELPER_WARM_DELAY_MS);
+    warmTimer.unref?.();
   };
   const cool = () => {
+    clearTimeout(warmTimer);
+    warmTimer = undefined;
     standby?.close();
     standby = undefined;
   };

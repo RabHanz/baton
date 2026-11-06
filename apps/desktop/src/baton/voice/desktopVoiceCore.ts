@@ -22,6 +22,9 @@ import {
   DEFAULT_TIMINGS,
   type BatonVoiceCore,
   type EchoGuard,
+  type OpenWakeWordPaths,
+  type OpenWakeWordScorer,
+  type SileroScorer,
   type SttProvider,
   type TtsProvider,
   type VoiceCoreEvent,
@@ -276,6 +279,13 @@ export const createDesktopVoiceCore = async (input: {
   /** Hears him over Baton's own voice through the speakers. */
   readonly echo?: EchoGuard;
   readonly speakerMode?: () => "speakers" | "headphones";
+  /** Where the wake and speech models run; in this process when absent (tests, scripts). */
+  readonly scorers?: {
+    readonly wake: (
+      paths: OpenWakeWordPaths,
+    ) => Promise<OpenWakeWordScorer & { readonly close: () => void }>;
+    readonly vad: (path: string) => Promise<SileroScorer & { readonly close: () => void }>;
+  };
 }): Promise<{ readonly core: BatonVoiceCore; readonly drain: () => Promise<void> }> => {
   const missing = missingVoiceAssets(input.assets);
   if (missing.length > 0) {
@@ -292,12 +302,28 @@ export const createDesktopVoiceCore = async (input: {
     );
   }
   const at = (file: string) => NodePath.join(input.assets.modelsDir, file);
-  const wake = await createOpenWakeWordProvider({
-    melspectrogram: at("melspectrogram.onnx"),
-    embedding: at("embedding_model.onnx"),
-    wakes: models,
-  });
-  const vad = await createSileroVad(at("silero_vad.onnx"));
+  // Voice off disposes the core; its models are then released, so a worker crash does not reload them.
+  const releases: Array<() => void> = [];
+  const hosted =
+    <A, T extends { readonly close: () => void }>(make: (arg: A) => Promise<T>) =>
+    async (arg: A) => {
+      const scorer = await make(arg);
+      releases.push(scorer.close);
+      return scorer;
+    };
+  const wake = await createOpenWakeWordProvider(
+    {
+      melspectrogram: at("melspectrogram.onnx"),
+      embedding: at("embedding_model.onnx"),
+      wakes: models,
+    },
+    input.scorers === undefined ? undefined : hosted(input.scorers.wake),
+  );
+  const vad = await createSileroVad(
+    at("silero_vad.onnx"),
+    undefined,
+    input.scorers === undefined ? undefined : hosted(input.scorers.vad),
+  );
   const core = createVoiceCore({
     wake,
     vad,
@@ -318,6 +344,13 @@ export const createDesktopVoiceCore = async (input: {
     ...(input.verifyWake === undefined ? {} : { verifyWake: input.verifyWake }),
     ...(input.echo === undefined ? {} : { echo: input.echo }),
     ...(input.speakerMode === undefined ? {} : { speakerMode: input.speakerMode }),
+  });
+  const dispose = core.dispose;
+  Object.assign(core, {
+    dispose: () => {
+      dispose();
+      for (const release of releases) release();
+    },
   });
   if (input.onEvent !== undefined) core.subscribe(input.onEvent);
   if (input.onReply !== undefined) {

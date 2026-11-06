@@ -24,6 +24,18 @@ window.finish=()=>new Promise(r=>{if(!live.length)return r();done=r;});
 window.halt=()=>{for(const s of live){try{s.onended=null;s.stop();}catch{}}live=[];done&&done();};
 </script>`;
 
+/**
+ * Chromium restarts its audio service after a crash, but every AudioContext made before it stays silent. The
+ * pages drop theirs so the next sound makes a new one.
+ */
+export const onAudioServiceGone = (listener: () => void): void => {
+  Electron.app.on("child-process-gone", (_event, details) => {
+    if (details.serviceName === "audio.mojom.AudioService" || details.name === "Audio Service") {
+      listener();
+    }
+  });
+};
+
 /** The share of the voice's volume left while someone may be talking over it. */
 const DUCK_LEVEL = 0.25;
 
@@ -58,6 +70,11 @@ export const createVoicePlayer = (
     return created;
   };
 
+  onAudioServiceGone(() => {
+    stamp += 1;
+    close();
+  });
+
   return {
     play: async (wav) => {
       const mine = ++stamp;
@@ -80,7 +97,9 @@ export const createVoicePlayer = (
             if (format === null && head.length < HEADER_BYTES) continue;
             if (format === null) return false;
             await run(`window.open_(${format.rate})`);
-            await run(`window.setVolume(${Math.min(1, Math.max(0.1, volume())) * (ducked ? DUCK_LEVEL : 1)})`);
+            await run(
+              `window.setVolume(${Math.min(1, Math.max(0.1, volume())) * (ducked ? DUCK_LEVEL : 1)})`,
+            );
             rate = format.rate;
             opened = true;
             pcm = head.subarray(format.start);
@@ -93,7 +112,9 @@ export const createVoicePlayer = (
           bytes += even;
           const delay = await run(`window.push("${samples.toString("base64")}")`);
           onReference?.(
-            new Int16Array(samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.length)),
+            new Int16Array(
+              samples.buffer.slice(samples.byteOffset, samples.byteOffset + samples.length),
+            ),
             rate,
             Date.now() + delay,
           );
