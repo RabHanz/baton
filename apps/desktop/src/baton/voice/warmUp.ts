@@ -100,7 +100,7 @@ export const compactQuiet = (frames: ReadonlyArray<Int16Array>): ReadonlyArray<I
 
 /**
  * The core, except that audio arriving before `ready` is kept (the newest `maxFrames`, about 5 min) and played in once it
- * is ready. Played in at the speed it was said, not all at once: the wake check, the command window and the recogniser
+ * is ready. Played in at twice the speed it was said, not all at once: the wake check, the command window and the recogniser
  * all follow the clock, so a phrase pushed in a burst finishes before the window that waits for it has opened.
  */
 export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => void }>(
@@ -128,7 +128,8 @@ export const holdFramesUntil = <T extends { pushAudio: (frame: Int16Array) => vo
       const frame = backlog[next++] ?? held.shift();
       if (frame === undefined) break;
       core.pushAudio(frame);
-      await sleep(frame.length / FRAME_SAMPLES_PER_MS);
+      // Twice the speed it was said, so the frames that arrive meanwhile are caught up with, not trailed for good.
+      await sleep(frame.length / FRAME_SAMPLES_PER_MS / 2);
     }
     open = true;
   });

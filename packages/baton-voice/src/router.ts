@@ -53,6 +53,8 @@ export interface RouteContext {
   readonly bus: ContextBusState;
   readonly now: number;
   readonly mostRecentWorkSessionId?: string | null;
+  /** The wake word this sentence answers to (the last one said before it); null for a hotkey or none. */
+  readonly wake?: string | null;
 }
 
 export type RouteOutcome =
