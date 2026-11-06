@@ -36,6 +36,7 @@ import * as BatonWeaveService from "./BatonWeaveService.ts";
 import * as BatonCommitmentService from "./BatonCommitmentService.ts";
 import * as BatonMemoryLearning from "./BatonMemoryLearning.ts";
 import * as BatonMemoryReactor from "./BatonMemoryReactor.ts";
+import * as BatonMemoryEmbedder from "./BatonMemoryEmbedder.ts";
 import * as BatonMemoryService from "./BatonMemoryService.ts";
 import { packFileTexts } from "./OperatingSystemPack.ts";
 import * as BatonOneShot from "./BatonOneShot.ts";
@@ -70,6 +71,8 @@ const readClaudeAccountInstances = Layer.effectDiscard(
 
 // His private pack's text is refused by memory's door (D148); read fresh, so an edit counts at once.
 const memoryLayer = BatonMemoryService.layer.pipe(
+  // Recall by meaning, when this server has the model (MEM-13); keyword recall otherwise.
+  Layer.provide(BatonMemoryEmbedder.layer),
   Layer.provide(
     Layer.effect(
       BatonMemoryService.MemoryPrivateTexts,

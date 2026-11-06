@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import { findEsmImportsOfExternalPackages } from "./cli-executable-imports.ts";
 
 import {
+  INSTALL_ONLY_DEPENDENCIES,
   isRuntimeExternalCliDependency,
   findInlinedExternalPackages,
   selectCliRuntimeExternalDependencies,
@@ -113,6 +114,7 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
           ...manifest.peerDependencies,
         };
         for (const dependency of Object.keys(declared)) {
+          if (INSTALL_ONLY_DEPENDENCIES[name]?.includes(dependency) === true) continue;
           if (!isRuntimeExternal(dependency)) {
             violations.push(`${name} -> ${dependency}`);
           }

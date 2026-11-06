@@ -36,7 +36,11 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as SqlClient from "effect/sql/SqlClient";
+
+import { BatonMemoryEmbedder } from "./BatonMemoryEmbedder.ts";
+import { nearest, rrf, vectorFromBytes, vectorToBytes } from "./memoryVectors.ts";
 
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -84,6 +88,25 @@ const DEFAULT_LIMIT = 50;
 const CANDIDATES = 200;
 /** A sentence's recall leaves out hits weaker than this: one shared word in a long sentence. */
 const RECALL_FLOOR = 0.25;
+/** Recall by meaning: the nearest items at or above this cosine join the keyword hits (MiniLM: unrelated text sits below 0.3). */
+const MEANING_FLOOR = 0.35;
+const MEANING_TOP = 20;
+/** The query's vector must come quickly: the desktop gives the whole recall 800 ms. */
+const QUERY_EMBED_MS = 300;
+/** Embedding waits this long after start (the first minute belongs to voice), then paces itself between items. */
+const EMBED_START_DELAY = "60 seconds";
+const EMBED_PACE = "250 millis";
+const EMBED_IDLE = "10 minutes";
+
+/** Which text a vector was made from: a changed item is embedded again. FNV-1a, enough to notice an edit. */
+const textHash = (text: string): string => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+};
 
 /** The loaded private pack files, so their text is never copied into memory (D148). Default: none. */
 export const MemoryPrivateTexts = Context.Reference<() => ReadonlyArray<string>>(
@@ -183,6 +206,12 @@ export class BatonMemoryService extends Context.Service<
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const privateTexts = yield* MemoryPrivateTexts;
+  // Absent or without a model: recall stays on keywords, as before MEM-13.
+  const embedder = Option.getOrNull(yield* Effect.serviceOption(BatonMemoryEmbedder));
+  const model = embedder?.model ?? null;
+  const wakeups = yield* Queue.sliding<void>(1);
+  /** After a write commits: the background pass embeds what changed. Never in the write's own path. */
+  const poke = model === null ? Effect.void : Queue.offer(wakeups, undefined).pipe(Effect.asVoid);
   const nowMs = Clock.currentTimeMillis;
   const nowIso = Effect.map(nowMs, (ms) => DateTime.formatIso(DateTime.makeUnsafe(ms)));
 
@@ -448,6 +477,32 @@ export const make = Effect.gen(function* () {
     }
   });
 
+  /** The items nearest the sentence in meaning, among those this reader may see: walls apply before ranking. */
+  const nearestSeen = Effect.fn("BatonMemoryService.nearestSeen")(function* (
+    text: string,
+    visible: (item: MemoryItem) => boolean,
+  ) {
+    if (embedder === null || model === null) return [];
+    const query = yield* embedder
+      .embed(text)
+      .pipe(Effect.timeoutOption(QUERY_EMBED_MS), Effect.map(Option.getOrNull));
+    if (query === null) return [];
+    const rows = yield* sql<ItemRow & { vector: Uint8Array }>`
+      SELECT i.*, v.vector AS vector FROM fabric_memory_vectors v
+      JOIN fabric_memory_items i ON i.id = v.item_id
+      WHERE v.model = ${model}
+    `.pipe(Effect.orDie);
+    const candidates = rows
+      .map((row) => ({ item: fromRow(row), vector: vectorFromBytes(row.vector) }))
+      .filter(({ item }) => matches(item, {}) && visible(item));
+    return nearest(
+      query,
+      candidates.map(({ item, vector }) => ({ key: item, vector })),
+      MEANING_TOP,
+      MEANING_FLOOR,
+    ).map(({ key }) => key);
+  });
+
   const recall = Effect.fn("BatonMemoryService.recall")(function* (context: {
     readonly text?: string | undefined;
     readonly scopeRef?: string | null | undefined;
@@ -459,7 +514,7 @@ export const make = Effect.gen(function* () {
     const seen = yield* viewFor(context.agent, false);
     const words = context.text === undefined ? [] : tokens(context.text);
     // A sentence gets what matches it: the standing set is already in the session's system prompt.
-    const hits =
+    const keyword =
       words.length > 0
         ? (yield* search({
             text: context.text!,
@@ -467,6 +522,22 @@ export const make = Effect.gen(function* () {
             ...(context.agent === undefined ? {} : { agent: context.agent }),
             limit: 40,
           })).filter((hit) => hit.score >= RECALL_FLOOR)
+        : null;
+    // By meaning as well as by words, blended by rank; without a model this adds nothing.
+    const meaning =
+      keyword === null || context.text === undefined ? [] : yield* nearestSeen(context.text, seen);
+    const blended =
+      keyword === null || meaning.length === 0
+        ? keyword
+        : (() => {
+            const fused = rrf([keyword.map((h) => h.item.id), meaning.map((item) => item.id)]);
+            const byId = new Map<string, MemoryItem>();
+            for (const item of [...keyword.map((h) => h.item), ...meaning]) byId.set(item.id, item);
+            return [...byId.values()].map((item) => ({ item, score: fused.get(item.id) ?? 0 }));
+          })();
+    const hits =
+      blended !== null
+        ? blended
         : (yield* listAll({ kinds: ["note", "preference", "correction", "decision"] }))
             .filter((item) => item.pinned || item.source === "user" || item.confidence >= 0.6)
             .slice(0, 40)
@@ -679,13 +750,69 @@ export const make = Effect.gen(function* () {
     return applied;
   });
 
+  /** One pass: every item without a current vector (none, another model's, or older text), paced, then wait for a write. */
+  const embedPass = Effect.gen(function* () {
+    if (embedder === null || model === null) return;
+    const rows = yield* sql<{
+      id: string;
+      text: string;
+      model: string | null;
+      text_hash: string | null;
+    }>`
+      SELECT i.id, i.text, v.model AS model, v.text_hash AS text_hash
+      FROM fabric_memory_items i LEFT JOIN fabric_memory_vectors v ON v.item_id = i.id
+    `.pipe(Effect.orDie);
+    for (const row of rows) {
+      const hash = textHash(row.text);
+      if (row.model === model && row.text_hash === hash) continue;
+      const vector = yield* embedder.embed(row.text);
+      // The model failed: leave the rest for the next pass rather than spin on it.
+      if (vector === null) return;
+      const at = yield* nowIso;
+      yield* sql`
+        INSERT INTO fabric_memory_vectors (item_id, model, text_hash, vector, updated_at)
+        VALUES (${row.id}, ${model}, ${hash}, ${vectorToBytes(vector)}, ${at})
+        ON CONFLICT(item_id) DO UPDATE SET
+          model = excluded.model, text_hash = excluded.text_hash, vector = excluded.vector, updated_at = excluded.updated_at
+      `.pipe(Effect.orDie);
+      // Paced: one item at a time with a pause, so a backfill of thousands never crowds the machine.
+      yield* Effect.sleep(EMBED_PACE);
+    }
+  });
+  if (model !== null) {
+    yield* Effect.gen(function* () {
+      yield* Effect.sleep(EMBED_START_DELAY);
+      for (;;) {
+        yield* embedPass.pipe(
+          Effect.catchCause((cause) => Effect.logWarning("memory embedding pass failed", cause)),
+        );
+        yield* Queue.take(wakeups).pipe(Effect.timeoutOption(EMBED_IDLE), Effect.asVoid);
+      }
+    }).pipe(Effect.forkScoped);
+  }
+
   return BatonMemoryService.of({
     origin,
     list,
     search,
-    add,
-    edit,
-    rewrite,
+    add: Effect.fn("BatonMemoryService.addThenEmbed")(function* (draft: MemoryDraft) {
+      const item = yield* add(draft);
+      yield* poke;
+      return item;
+    }),
+    edit: Effect.fn("BatonMemoryService.editThenEmbed")(function* (
+      id: string,
+      patch: { readonly text?: string | undefined; readonly kind?: MemoryKind | undefined },
+    ) {
+      const item = yield* edit(id, patch);
+      yield* poke;
+      return item;
+    }),
+    rewrite: Effect.fn("BatonMemoryService.rewriteThenEmbed")(function* (id: string, text: string) {
+      const item = yield* rewrite(id, text);
+      yield* poke;
+      return item;
+    }),
     pin,
     forget,
     accept,
@@ -701,7 +828,15 @@ export const make = Effect.gen(function* () {
     talks,
     syncHello,
     changesSince,
-    applyChanges,
+    applyChanges: Effect.fn("BatonMemoryService.applyChangesThenEmbed")(function* (
+      from: string,
+      changes: ReadonlyArray<MemoryChange>,
+      upTo: string,
+    ) {
+      const applied = yield* applyChanges(from, changes, upTo);
+      yield* poke;
+      return applied;
+    }),
   });
 });
 
