@@ -67,7 +67,7 @@ layer("BatonPhoneInbox", (it) => {
   );
 
   it.effect(
-    "an ask waits while the desktop is away, then expires; a taken one comes back after its lease",
+    "an ask waits while the desktop is away, then expires; a taken one the desktop stops renewing is dropped, never run twice",
     () =>
       Effect.gen(function* () {
         const inbox = yield* BatonPhoneInbox;
@@ -88,8 +88,10 @@ layer("BatonPhoneInbox", (it) => {
         assert.isTrue(yield* inbox.connected);
         yield* TestClock.adjust(CONNECTED_MS + 1);
         assert.isFalse(yield* inbox.connected);
+        // A phone ask keeps its day-long deadline, but a lapsed lease means the desktop left mid-turn.
         yield* TestClock.adjust(ASK_LEASE_MS);
-        assert.strictEqual((yield* inbox.get("client-dddd-0002"))?.status, "queued");
+        assert.strictEqual((yield* inbox.get("client-dddd-0002"))?.status, "expired");
+        assert.isNull(yield* inbox.take);
       }),
   );
 
@@ -114,6 +116,28 @@ layer("BatonPhoneInbox", (it) => {
         assert.isFalse(yield* inbox.answerPrompt("prompt-1", 1));
         assert.strictEqual(yield* inbox.promptAnswer("prompt-1"), 0);
         assert.lengthOf(yield* inbox.pending, 0);
+      }),
+  );
+
+  it.effect(
+    "an ask the desktop keeps renewing is neither taken twice nor expired, and is dropped once it stops",
+    () =>
+      Effect.gen(function* () {
+        const inbox = yield* BatonPhoneInbox;
+        while ((yield* inbox.take) !== null);
+        yield* inbox.post({ id: "long-aaaa-0001", text: "check every job", ttlMs: 60_000 });
+        assert.strictEqual((yield* inbox.take)?.id, "long-aaaa-0001");
+        for (let minute = 0; minute < 8; minute += 1) {
+          yield* TestClock.adjust(60_000);
+          yield* inbox.renew("long-aaaa-0001");
+        }
+        // Earlier cases' asks come back as their leases run out; this one never does while renewed.
+        for (let next = yield* inbox.take; next !== null; next = yield* inbox.take)
+          assert.notStrictEqual(next.id, "long-aaaa-0001");
+        assert.strictEqual((yield* inbox.get("long-aaaa-0001"))?.status, "taken");
+        // Once it stops renewing, its deadline passes too: it is dropped, never run a second time.
+        yield* TestClock.adjust(ASK_LEASE_MS + 1);
+        assert.strictEqual((yield* inbox.get("long-aaaa-0001"))?.status, "expired");
       }),
   );
 

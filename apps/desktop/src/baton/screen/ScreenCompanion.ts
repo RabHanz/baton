@@ -37,6 +37,7 @@ import {
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -89,7 +90,6 @@ import {
 import {
   SessionClosed,
   startVisionSession,
-  type ToolGate,
   type VisionContent,
   type VisionSession,
 } from "./claudeVision.ts";
@@ -100,11 +100,18 @@ import { detectBrains } from "./brainDetect.ts";
 import { textIsFromConversation, type ConversationRoute } from "@t3tools/baton-shared/conversation";
 import { BATON_TOOL_PREFIX } from "@t3tools/baton-shared/operator";
 import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
-import { createAgentGate, createTaint } from "../agent/agentGate.ts";
+import { createAgentGate, createTaint, type Gate } from "../agent/agentGate.ts";
+import { createOutsideSlot } from "../agent/outsideSlot.ts";
+import { createTurnLock, INTERRUPTED, labelPrompt } from "./turnLock.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
-import { sessionWithOwnMcp, startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
+import {
+  sessionWithOwnMcp,
+  startBatonMcp,
+  type BatonMcp,
+  type BatonTool,
+} from "../agent/batonMcp.ts";
 import {
   buildBatonTools,
   clickTargetsField,
@@ -530,6 +537,11 @@ export type PhoneMirror = (question: {
 }) => { readonly answer: Promise<number>; readonly close: () => void } | null;
 const PHONE_SETTLE_STEPS = 40;
 
+const DEVICE_INTERRUPTED =
+  "Interrupted: the Director started talking to Tessaya, and he comes first. Ask again.";
+const DEVICE_BUSY =
+  "Tessaya is in the middle of something with the Director (a lesson, a drive or a look). Ask again later.";
+
 const lateCatalog = (get: () => ToolHost["catalog"]): NonNullable<ToolHost["catalog"]> => {
   const NOT_READY = "The session list is not ready yet.";
   return {
@@ -632,9 +644,10 @@ export const startScreenCompanion = (input: {
   let spokenFrom: number | null = null;
   /** While the phone's ask runs, what the assistant says and shows is kept for the phone as well. */
   let phoneCapture: { readonly spoken: string[]; card: string | null } | null = null;
+  // A device's turn never overlaps his (turnLock.ts), so while one holds the lock every prompt is labelled as its.
+  const turnLock = createTurnLock();
   let phoneTurn = false;
   /** Whether the running turn's words are a device's, and every such sentence, so none counts as his. */
-  let outsideTurn = false;
   const outsideSaid = new Set<string>();
   let phoneMirror: PhoneMirror | null = null;
   /** False when nothing goes to the voice (written answers, nothing to say). */
@@ -692,8 +705,8 @@ export const startScreenCompanion = (input: {
         ? Promise.reject(new Error("Memory is not reachable yet."))
         : actions.memory(op, args),
     notes,
-    // A device's turn names no persona, so it gets the walled view (the lead's would see through every wall).
-    agent: () => (outsideTurn ? undefined : face.id),
+    // His slot only: a device's turn has its own memory client with no persona (outsideSlot.ts).
+    agent: () => face.id,
   });
   let stopMemorySync: (() => void) | null = null;
   const memorySync = createMemorySync({
@@ -945,7 +958,7 @@ export const startScreenCompanion = (input: {
   const setModelByName = (model: string | null, effort: string | null): string => {
     const now = manual();
     if (model === null && effort === null) return `Model: ${manualLabel(now)}.`;
-    if (outsideTurn)
+    if (turnLock.deviceRunning())
       throw new Error("Only he can change his model, not a paired device or an agent.");
     const m = MODELS.find((x) => x === model);
     const e = EFFORTS.find((x) => x === effort);
@@ -1009,11 +1022,11 @@ export const startScreenCompanion = (input: {
     noOnExpiry = false,
     needs?: "cloud-approve",
   ): Promise<number> => {
-    const shown = !phoneTurn
-      ? box
-      : outsideTurn
-        ? { ...box, detail: `${box.detail}\n\n(A paired device asked this, not you.)` }
-        : { ...box, detail: `${box.detail}\n\n(You asked this from your phone.)` };
+    // Every confirm, the gate's and the screen's, mouse, Chrome and plan alike, comes through here.
+    const { box: shown, spoken: question } = labelPrompt(box, spoken, {
+      device: turnLock.deviceRunning(),
+      phone: phoneTurn,
+    });
     const mirrored =
       box.buttons.length < 2
         ? null
@@ -1025,7 +1038,7 @@ export const startScreenCompanion = (input: {
             cancel: box.cancel,
             ...(needs === undefined ? {} : { needs }),
           }) ?? null);
-    const local = askLocal(shown, spoken, yes, noOnExpiry);
+    const local = askLocal(shown, question, yes, noOnExpiry);
     if (mirrored === null) return local;
     const first = await Promise.race([
       local.then((index) => ({ index })),
@@ -1040,7 +1053,9 @@ export const startScreenCompanion = (input: {
 
   /** His yes for a capture, or false. `forWhat` names the lesson or drive the yes covers. */
   const approveCapture = async (question: string, forWhat: string | null): Promise<boolean> => {
+    // His standing yes (always, or for an hour) is his; a device's turn is always asked.
     if (
+      !turnLock.deviceRunning() &&
       !needsCaptureApproval({
         policy: settings.captureApproval,
         allowedUntil,
@@ -1049,21 +1064,29 @@ export const startScreenCompanion = (input: {
       })
     )
       return true;
+    // A paired device's turn may get one look, never an hour or always.
+    const lasting = !turnLock.deviceRunning();
     const response = await askHandsFree(
       {
         title: "Let Tessaya see your screen?",
         detail: `To answer: “${question}”\n\n${forWhat === null ? "One screenshot of each display goes to Claude on your subscription." : `Screenshots are taken during this ${forWhat}, after each step, until it ends.`} Nothing is stored after the answer.`,
-        buttons: [
-          forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
-          "Allow for an hour",
-          "Always allow",
-          "Not now",
-        ],
-        cancel: 3,
+        buttons: lasting
+          ? [
+              forWhat === null ? "Allow" : `Allow for this ${forWhat}`,
+              "Allow for an hour",
+              "Always allow",
+              "Not now",
+            ]
+          : [forWhat === null ? "Allow" : `Allow for this ${forWhat}`, "Not now"],
+        cancel: lasting ? 3 : 1,
         scoped: true,
       },
       "Can I see your screen? Yes or no.",
     );
+    if (!lasting) {
+      await new Promise((r) => setTimeout(r, 300));
+      return response === 0;
+    }
     if (response === 1) allowedUntil = Date.now() + 60 * 60_000;
     if (response === 2) save({ captureApproval: "always" });
     // The box must be off the screen before the screenshot is taken.
@@ -1650,6 +1673,16 @@ export const startScreenCompanion = (input: {
   /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
   /** Each warm session's own tool server (one per model), closed with that session. */
   const agentMcps = new Set<BatonMcp>();
+  // Each device turn's own tool server, closed when its turn ends; any still open close with the companion.
+  const outsideServers = new Set<BatonMcp>();
+  // A device turn's conversation file goes with its turn; any left by a crash go now.
+  try {
+    for (const name of NodeFS.readdirSync(NodePath.join(input.stateDir, "screen")))
+      if (/^outside-turn.*\.ndjson$/.test(name))
+        NodeFS.rmSync(NodePath.join(input.stateDir, "screen", name), { force: true });
+  } catch {
+    // No screen folder yet: nothing was left.
+  }
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   /** The plan he approved this turn (plan_show): its steps run without a box each, and pastes keep its clipboard. */
@@ -1719,7 +1752,6 @@ export const startScreenCompanion = (input: {
         text,
         conversation.recent(12).filter((t) => !outsideSaid.has(t.said)),
       ),
-    outside: () => outsideTurn,
     focusedWindow: gateWindow,
     pointerField: (tool, call) => tool === "click_element" && clickTargetsField(lastControls, call),
     confirm: async (p) =>
@@ -1758,9 +1790,6 @@ export const startScreenCompanion = (input: {
       input.onAction?.({ by: "assistant", persona: face.name, ...entry });
     },
   });
-  /** Built-in tools go through the gate here; Baton's own run it inside the tool server. */
-  const harnessGate: ToolGate = async (call) =>
-    call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call);
 
   // Remote hands: its own gate and taint. The caller is a session the Director gave baton:hands, so what it read is not
   // carried from one call to the next; every rule One Trust has still applies to each call. Away, a question is a no.
@@ -1950,7 +1979,8 @@ export const startScreenCompanion = (input: {
       write: (text) => Electron.clipboard.writeText(text),
       clear: () => Electron.clipboard.clear(),
     },
-    tainted: () => outsideTurn || agentTaint.on(),
+    // A device's turn has no vault tools at all (outsideSlot.ts).
+    tainted: () => agentTaint.on(),
     audit: vaultState.audit,
     hello: (message) => windowsHello(message, input.platform),
     askToUnlock: () => input.onOpenTab?.("vault"),
@@ -2427,23 +2457,69 @@ export const startScreenCompanion = (input: {
           env: claudeEnv(),
           platform: input.platform,
           timeoutMs: OPERATOR_TURN_MS,
-          gate: harnessGate,
+          gate: async (call) =>
+            call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : agentGate(call),
           mcp: { url: mcp.url, token: mcp.token },
           chrome: settings.browserChrome,
           onTool: (call) => turns.current().tools.push(call.tool),
         }),
       agentMcps,
     );
-  const beginTurn = (said: string, outside: boolean) => {
-    memory.beginTurn();
-    outsideTurn = outside;
-    agentTaint.reset(said);
+  /** A device turn's session: its slot's tool server and harness gate (outsideSlot.ts). */
+  const sessionStart = async (
+    systemPrompt: string,
+    chosen: Brain,
+    slot: {
+      readonly host: ToolHost;
+      readonly gate: Gate;
+      readonly failures: Map<string, number>;
+      readonly keep: (mcp: BatonMcp) => Promise<void>;
+      readonly wrap?: (tools: ReadonlyArray<BatonTool>) => ReadonlyArray<BatonTool>;
+      readonly onResult?: Parameters<typeof startBatonMcp>[0]["onResult"];
+    },
+  ): Promise<VisionSession> => {
+    const mcp = await startBatonMcp({
+      tools: (slot.wrap ?? ((tools) => tools))(
+        withFailureGuard(buildBatonTools(slot.host), slot.failures),
+      ),
+      gate: slot.gate,
+      scrub: (text) => vaultHost?.scrub(text) ?? text,
+      ...(slot.onResult === undefined ? {} : { onResult: slot.onResult }),
+    });
+    await slot.keep(mcp);
+    return startVisionSession({
+      claudeBinary: settings.claudeBinary,
+      model: chosen.model,
+      effort: chosen.effort,
+      systemPrompt,
+      workDir: NodePath.join(input.stateDir, "screen"),
+      cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
+      env: claudeEnv(),
+      platform: input.platform,
+      timeoutMs: OPERATOR_TURN_MS,
+      gate: async (call) =>
+        call.tool.startsWith(BATON_TOOL_PREFIX) ? { allow: true as const } : slot.gate(call),
+      mcp: { url: mcp.url, token: mcp.token },
+      chrome: settings.browserChrome,
+      onTool: (call) => turns.current().tools.push(call.tool),
+    });
+  };
+  /** What one turn may leave the next, his or a device's: nothing. */
+  const freshTurn = () => {
     planGrant = null;
     keysAllowed = null;
     turns.begin();
     toolFailures.clear();
     leftPointer = null;
     mouse.reset();
+    lastShots = [];
+    shotWindow = null;
+    lastTree = undefined;
+  };
+  const beginTurn = (said: string) => {
+    memory.beginTurn();
+    agentTaint.reset(said);
+    freshTurn();
   };
   const agentOf = (): AssistantAgent => {
     agent ??= createAssistantAgent({
@@ -2474,7 +2550,7 @@ export const startScreenCompanion = (input: {
         memory.learn(
           said,
           reply,
-          outsideTurn || agentTaint.on(),
+          agentTaint.on(),
           project,
           before === undefined ? "" : `he said: ${before.said}\nyou replied: ${before.reply}`,
         );
@@ -2487,27 +2563,93 @@ export const startScreenCompanion = (input: {
    * A device's or agent's ask gets a session of its own, started fresh each time: none of his conversation, presence,
    * missed turns or standing memory, so "repeat what you told him" has nothing to repeat. It costs a cold start.
    */
-  const outsideAgentOf = (): AssistantAgent => {
-    const file = NodePath.join(input.stateDir, "screen", "outside-turn.ndjson");
-    NodeFS.rmSync(file, { force: true });
-    return createAssistantAgent({
-      start: agentStart,
+  const outsideAgentOf = () => {
+    const file = NodePath.join(
+      input.stateDir,
+      "screen",
+      `outside-turn-${NodeCrypto.randomUUID()}.ndjson`,
+    );
+    const slot = createOutsideSlot({
+      host: toolHost,
+      memoryCall: (op, args) =>
+        actions?.memory === undefined
+          ? Promise.reject(new Error("Memory is not reachable yet."))
+          : actions.memory(op, args),
+      notes,
+      focusedWindow: gateWindow,
+      confirm: async (p) =>
+        (await askHandsFree(
+          {
+            title: p.title,
+            detail: p.detail,
+            buttons: ["Go ahead", "Not now"],
+            cancel: 1,
+            scoped: true,
+          },
+          p.spoken,
+          0,
+          p.noOnExpiry,
+        )) === 0,
+      record: (entry) =>
+        input.onAction?.({ by: "assistant", persona: "Tessaya, for a paired device", ...entry }),
+      jobProjects: async (id) => (await actions?.jobProjects?.(id)) ?? null,
+    });
+    let mine: BatonMcp | null = null;
+    const agent = createAssistantAgent({
+      start: (systemPrompt, brain = leadBrain()) =>
+        sessionStart(systemPrompt, brain, {
+          host: slot.host,
+          gate: slot.gate,
+          failures: new Map(),
+          wrap: slot.guard,
+          keep: async (mcp) => {
+            await mine?.close();
+            // Cancelled while it was starting: the server that came up late goes at once.
+            if (slot.closed()) {
+              await mcp.close();
+              throw new SessionClosed("The device's turn was stopped.");
+            }
+            mine = mcp;
+            outsideServers.add(mcp);
+          },
+        }),
       conversation: createConversationLog({ file }),
       clockLine: () => clockLine(new Date()),
       notes: () => assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))),
-      recall: (text, project) => memory.forSentence(text, project),
-      beginTurn,
+      recall: (text, project) => slot.memory.forSentence(text, project),
+      beginTurn: slot.beginTurn,
     });
+    let ending: Promise<void> | null = null;
+    return {
+      say: agent.say,
+      /** Stops the turn: its open question closes as a no, and what it was running gets up to 2 s to stop. */
+      end: (): Promise<void> =>
+        (ending ??= (async () => {
+          if (turnLock.deviceRunning()) windows.closePrompt();
+          await slot.close();
+          agent.dispose();
+          if (mine !== null) {
+            outsideServers.delete(mine);
+            await mine.close();
+          }
+          NodeFS.rmSync(file, { force: true });
+        })()),
+    };
   };
-  /** His sentence goes to his session; a device's to a fresh one, ended with the turn. */
-  const sayFor = (outside: boolean): AssistantAgent["say"] =>
+  /** His sentence goes to his session; a device's to a fresh one of its own, ended with the turn. */
+  const sayFor = (
+    outside: boolean,
+    onCancel?: (stop: () => void) => void,
+  ): AssistantAgent["say"] =>
     outside
       ? async (text, where, onDelta) => {
           const once = outsideAgentOf();
+          // He spoke: the device's session closes, and its pending answer fails with SessionClosed.
+          onCancel?.(() => void once.end());
           try {
             return await once.say(text, where, onDelta);
           } finally {
-            once.dispose();
+            await once.end();
           }
         }
       : agentOf().say;
@@ -2518,6 +2660,10 @@ export const startScreenCompanion = (input: {
     direct: boolean,
     focusedSession: string | null,
     outside = false,
+    turn: {
+      readonly onEnd?: () => void;
+      readonly onCancel?: (stop: () => void) => void;
+    } = {},
   ) => {
     answering += 1;
     const brain = chooseTurnBrain(text, faceModel, tierMemory.previous(), manual());
@@ -2534,6 +2680,8 @@ export const startScreenCompanion = (input: {
     const windowLabel = titlesAllowed() && focus !== null ? redactFocusLabel(focus.label) : null;
     /** The turn as the learning loop may see it, for "Learn from that". */
     const keepTurn = (error: unknown) => {
+      // A device's turn is never his to learn from, replay or keep for the nightly pass.
+      if (outside) return;
       const results = record().results;
       lastTurn = {
         trace: {
@@ -2572,7 +2720,7 @@ export const startScreenCompanion = (input: {
       lastFace = face.name;
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       input.onActivity?.("Thinking");
-      const reply = await sayFor(outside)(
+      const reply = await sayFor(outside, turn.onCancel)(
         direct ? `(to the focused session) ${text}` : text,
         {
           outside,
@@ -2639,19 +2787,32 @@ export const startScreenCompanion = (input: {
         routes: [...record().routes],
         route: "agent",
       });
-      fail(error);
+      // A device's turn failing never speaks over him or ends his lesson, drive or look.
+      if (!outside) fail(error);
     } finally {
       tierMemory.settled(brain.tier, outside);
       answering -= 1;
       mine.done();
+      turn.onEnd?.();
       input.onTurnEnd?.();
     }
   };
 
-  const said: ScreenCompanion["said"] = async (
-    text,
-    { direct, typed = false, session = null, wake = null, outside = false },
-  ) => {
+  const saidNow = async (
+    text: string,
+    {
+      direct,
+      typed = false,
+      session = null,
+      wake = null,
+      outside = false,
+    }: Parameters<ScreenCompanion["said"]>[1],
+    turn: {
+      readonly onEnd?: () => void;
+      readonly onCancel?: (stop: () => void) => void;
+      readonly handed?: { done: boolean };
+    } = {},
+  ): ReturnType<ScreenCompanion["said"]> => {
     const started = Date.now();
     voiceTurn = !typed;
     woke = wake;
@@ -2661,6 +2822,12 @@ export const startScreenCompanion = (input: {
     faceModel = modelOf(pack, face.id);
     // VAULT.md section 1: a secret never reaches a prompt, the conversation file, memory or the turn log.
     const secret = redactForHistory(text, null).secret;
+    // A device's words are never held for his vault or offered to it.
+    if (secret !== null && outside)
+      return {
+        kind: "refused",
+        reply: `That looked like ${secret}. A paired device's request never carries one, so nothing was done.`,
+      };
     if (secret !== null) {
       pendingSecret.set(text, started);
       const offer = `That looked like ${secret}, so I kept it out of our conversation. Say "put that in the vault" to keep it safely.`;
@@ -2694,7 +2861,11 @@ export const startScreenCompanion = (input: {
     // A device's words always go to the assistant, whose gate asks; they never pick a mode or a control.
     const instant = outside ? null : instantDecision(text, busy);
     if (instant === null) {
-      void agentTurn(text, started, direct, session, outside);
+      if (outside) await agentTurn(text, started, direct, session, true, turn);
+      else {
+        if (turn.handed !== undefined) turn.handed.done = true;
+        void agentTurn(text, started, direct, session, false, turn);
+      }
       return { kind: "handled" };
     }
     const decision = guardDecision(instant, text);
@@ -2714,9 +2885,47 @@ export const startScreenCompanion = (input: {
     return { kind: "handled" };
   };
 
+  /** A paired device's words, in its place in the lock; `capture` collects what it says for the phone's card. */
+  const deviceTurn = async (
+    text: string,
+    options: Parameters<ScreenCompanion["said"]>[1],
+    capture?: { readonly spoken: string[]; card: string | null },
+  ): ReturnType<ScreenCompanion["said"]> => {
+    // A lesson, a drive or a look is his until it ends; `run` covers all three.
+    if (run !== null) return { kind: "refused", reply: DEVICE_BUSY };
+    const out = await turnLock.device(async (onCancel) => {
+      if (run !== null) return { kind: "refused" as const, reply: DEVICE_BUSY };
+      freshTurn();
+      if (capture !== undefined) {
+        phoneCapture = capture;
+        phoneTurn = true;
+      }
+      try {
+        return await saidNow(text, { ...options, outside: true }, { onCancel });
+      } finally {
+        if (capture !== undefined) {
+          phoneCapture = null;
+          phoneTurn = false;
+        }
+      }
+    });
+    return out === INTERRUPTED ? { kind: "refused", reply: DEVICE_INTERRUPTED } : out;
+  };
+  /** His words: a device turn that is running stops first, and none starts until his turn is over. */
+  const said: ScreenCompanion["said"] = async (text, options) => {
+    if (options.outside === true) return deviceTurn(text, options);
+    const end = await turnLock.his();
+    const handed = { done: false };
+    try {
+      return await saidNow(text, options, { onEnd: end, handed });
+    } finally {
+      if (!handed.done) end();
+    }
+  };
+
   /** Typed asks: the same decision, with the card and the voice standing in for the voice side. */
-  const typed = async (text: string, outside = false) => {
-    const result = await said(text, { direct: false, typed: true, outside });
+  const typed = async (text: string) => {
+    const result = await said(text, { direct: false, typed: true });
     if (result.kind === "handled") return;
     say(result.reply);
     linger("Tessaya", result.reply);
@@ -2724,15 +2933,23 @@ export const startScreenCompanion = (input: {
 
   const askFromPhone = async (text: string, source: "phone" | "device") => {
     const mine: { spoken: string[]; card: string | null } = { spoken: [], card: null };
-    phoneCapture = mine;
-    phoneTurn = true;
     if (source === "device") {
       outsideSaid.add(text);
       // The oldest goes first, so recent device sentences are never forgotten as not his.
       if (outsideSaid.size > 200) outsideSaid.delete(outsideSaid.values().next().value!);
+      // The whole turn runs before the card is read: it may wait for his turn, and he may interrupt it.
+      const result = await deviceTurn(text, { direct: false, typed: true }, mine);
+      if (result.kind !== "handled") return { spoken: result.reply, card: result.reply };
+      const spoken = mine.spoken.join(" ").trim();
+      return {
+        spoken,
+        card: mine.card ?? (spoken === "" ? "Done. There was nothing to say." : spoken),
+      };
     }
+    phoneCapture = mine;
+    phoneTurn = true;
     try {
-      await typed(text, source === "device");
+      await typed(text);
       for (let step = 0; step < PHONE_SETTLE_STEPS && mine.card === null; step += 1)
         await sleep(500);
     } finally {
@@ -3274,6 +3491,7 @@ export const startScreenCompanion = (input: {
       agent?.dispose();
       for (const mcp of agentMcps) void mcp.close();
       agentMcps.clear();
+      for (const server of outsideServers) void server.close();
       end();
       dropSpare();
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);

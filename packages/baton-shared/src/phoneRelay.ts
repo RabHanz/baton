@@ -6,7 +6,7 @@ export const BAR_ASK_TTL_MS = 5 * 60_000;
 /** What the web intent bar says when no desktop is there to answer; nothing is queued. */
 export const BAR_NOT_CONNECTED =
   "No Tessaya desktop is connected to this server, so nothing was asked. Open Tessaya on that computer and try again.";
-/** A taken ask nobody answered goes back in the queue after this (the desktop closed mid-answer). */
+/** A taken ask the desktop stops renewing for this long is dropped (the desktop closed mid-answer); it never runs twice. */
 export const ASK_LEASE_MS = 5 * 60_000;
 /** The desktop counts as connected if it asked for work this recently. */
 export const CONNECTED_MS = 45_000;

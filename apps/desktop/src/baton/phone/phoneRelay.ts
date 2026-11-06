@@ -54,6 +54,11 @@ export const guardedPhoneCall =
     }
   };
 
+/** How often a running ask's lease is renewed: well inside the server's lease. */
+export const RENEW_MS = 60_000;
+/** Device asks the relay holds at once (running or waiting their turn). */
+const MAX_WORKING = 3;
+
 export const createPhoneRelay = (input: {
   readonly call: PhoneCall;
   /** The assistant, as a typed Ask; "device" words are a token's, never his own. */
@@ -63,14 +68,45 @@ export const createPhoneRelay = (input: {
   ) => Promise<{ readonly spoken: string; readonly card: string }>;
   readonly wait?: (ms: number) => Promise<void>;
   readonly newId?: () => string;
+  /** Calls `renew` every so often until stopped; a minute of real time unless a test drives it. */
+  readonly every?: (ms: number, run: () => void) => () => void;
 }) => {
+  const every =
+    input.every ??
+    ((ms: number, run: () => void) => {
+      const timer = setInterval(run, ms);
+      timer.unref?.();
+      return () => clearInterval(timer);
+    });
+  const working = new Set<Promise<unknown>>();
+  /** Runs one taken ask to its answer, keeping its lease while it runs so it is never taken twice. */
+  const handle = async (item: { id: string; text: string; source: AskSource }) => {
+    const stop = every(
+      RENEW_MS,
+      () => void input.call("renew", { id: item.id }).catch(() => undefined),
+    );
+    try {
+      const reply = await input.run(item.text, item.source);
+      await input.call("answer", { id: item.id, spoken: reply.spoken, card: reply.card });
+      return "answered" as const;
+    } catch {
+      await input
+        .call("fail", { id: item.id, message: "Tessaya could not do that just now." })
+        .catch(() => undefined);
+      return "failed" as const;
+    } finally {
+      stop();
+    }
+  };
   const wait = input.wait ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const newId = input.newId ?? (() => `d-${globalThis.crypto.randomUUID()}`);
   let busy = false;
 
   /** One look at the inbox. "away" means the server did not answer. */
-  const tick = async (): Promise<"idle" | "answered" | "failed" | "away" | "busy"> => {
+  const tick = async (): Promise<"idle" | "answered" | "failed" | "away" | "busy" | "started"> => {
     if (busy) return "busy";
+    // A flood of device asks waits on the server, not here, where each would be renewed until its turn.
+    if (working.size >= MAX_WORKING) return "busy";
     busy = true;
     try {
       let item: { id?: unknown; text?: unknown; source?: unknown } | null;
@@ -81,17 +117,15 @@ export const createPhoneRelay = (input: {
       }
       if (item === null || typeof item.id !== "string" || typeof item.text !== "string")
         return "idle";
-      try {
-        // Only the server's "phone" is his; anything else, or an older server's silence, is a device's.
-        const reply = await input.run(item.text, item.source === "phone" ? "phone" : "device");
-        await input.call("answer", { id: item.id, spoken: reply.spoken, card: reply.card });
-        return "answered";
-      } catch {
-        await input
-          .call("fail", { id: item.id, message: "Tessaya could not do that just now." })
-          .catch(() => undefined);
-        return "failed";
-      }
+      // Only the server's "phone" is his; anything else, or an older server's silence, is a device's.
+      const source: AskSource = item.source === "phone" ? "phone" : "device";
+      const ask = { id: item.id, text: item.text, source };
+      if (source === "phone") return await handle(ask);
+      // A device's ask waits its turn behind him (turnLock.ts); his next phone ask is not held behind it.
+      const running = handle(ask);
+      working.add(running);
+      void running.finally(() => working.delete(running));
+      return "started";
     } finally {
       busy = false;
     }
@@ -125,5 +159,12 @@ export const createPhoneRelay = (input: {
     };
   };
 
-  return { tick, mirror };
+  return {
+    tick,
+    mirror,
+    /** Resolves once every device ask the relay started has been answered or failed. */
+    settled: async (): Promise<void> => {
+      await Promise.allSettled(working);
+    },
+  };
 };
