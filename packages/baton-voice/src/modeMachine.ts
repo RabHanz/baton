@@ -168,9 +168,14 @@ export const echoesSpeech = (text: string, spoken: ReadonlyArray<string>): boole
 const stripNamed = (text: string, words: ReadonlyArray<string>): string =>
   text.trim().replace(wakePrefix(words), "").trim();
 
-/** The wake word his sentence starts with, the way recognition may have written it; null when none. */
+/**
+ * The wake word his sentence starts with; null when none. Every name exactly first, then the ways
+ * recognition writes them, so a sound-alike of one cannot win over another said in full.
+ */
 export const namedWake = (text: string, words: ReadonlyArray<string>): string | null =>
-  words.find((word) => stripWake(text, [word]) !== text.trim()) ?? null;
+  words.find((word) => stripNamed(text, [word]) !== text.trim()) ??
+  words.find((word) => stripWake(text, [word]) !== text.trim()) ??
+  null;
 
 export const stripWake = (text: string, words: ReadonlyArray<string> = ["jarvis"]): string => {
   const stripped = stripNamed(text, words);

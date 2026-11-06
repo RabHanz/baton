@@ -423,13 +423,22 @@ describe("right after launch, when the wake check is slow", () => {
     r.confirm("Freya");
     await r.settle();
     r.quiet(1);
-    // No model fires for this one (0.1.63: "Tessaya, …" in Freya's window): only the words name him.
+    // No model fires for this one, only the words name him. (It cannot cover 0.1.63's "Teseat"/"SA":
+    // recognition wrote those too far from the name to trust as one.)
     r.say(4_000, 1.4);
+    r.quiet(2);
+    await r.settle();
+    r.quiet(1);
+    // The next sentence has no name: it stays with the one he named.
+    r.say(3_000, 1.4);
     r.quiet(2);
     await r.settle();
     r.quiet(2);
     await r.core.idle();
-    expect(r.routed.at(-1)).toEqual({ text: "what needs me", wake: "Alfred" });
+    expect(r.routed.slice(-2)).toEqual([
+      { text: "what needs me", wake: "Alfred" },
+      { text: "what needs me", wake: "Alfred" },
+    ]);
   });
 
   it("answers each sentence once, as the name said before it, when a name lands in the last one's open window", async () => {

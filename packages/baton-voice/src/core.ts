@@ -375,13 +375,15 @@ export const createVoiceCore = (input: {
       });
       const mine: Flight = { text: current.text, endAt: current.endAt, abort };
       if (turn) flight = mine;
+      // "Tessaya, …" said in Freya's open window is for Tessaya, and so is what he says next without a name.
+      const named = namedWake(current.text, timings.wakeWords ?? []);
+      if (named !== null && turn) addressee = named;
       const outcome = await Promise.race([
         input.router.route(effect, {
           bus,
           now: now(),
           mostRecentWorkSessionId: lastTarget,
-          // "Tessaya, …" said in Freya's open window is for Tessaya: the name he says beats the one remembered.
-          wake: namedWake(current.text, timings.wakeWords ?? []) ?? addressee,
+          wake: addressee,
         }),
         ...(turn ? [dropped] : []),
       ]);
