@@ -82,7 +82,10 @@ describe("Tessaya's database", () => {
         }>
       ).map((row) => row.name);
       db.close();
-      expect(tables.every((name) => name.startsWith("fabric_"))).toBe(true);
+      // sqlite_sequence is SQLite's own, made for any AUTOINCREMENT column.
+      expect(tables.every((name) => name.startsWith("fabric_") || name.startsWith("sqlite_"))).toBe(
+        true,
+      );
       expect(tables).toContain(BATON_MIGRATIONS_TABLE);
       expect(tables).not.toContain("projection_threads");
       expect(report.rows[BATON_MIGRATIONS_TABLE]).toBe(batonMigrationManifest.length);
