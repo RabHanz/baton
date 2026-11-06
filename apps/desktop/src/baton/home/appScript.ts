@@ -444,6 +444,8 @@ function home(p) {
   const sub = $('p', 'lede');
   sub.textContent = sayWords(words);
   p.appendChild(sub);
+  const tour = x.setup;
+  if (tour && tour.mode === 'offer') { const o = banner('', L('wizard.offer.em'), L('wizard.offer.title'), L('wizard.offer.text'), L('wizard.offer.start'), tourStart); const later = $('button', 'btn', L('wizard.offer.later')); later.style.marginLeft = '8px'; later.onclick = () => set('q.setupOffered', true); o.appendChild(later); p.appendChild(o); }
   const q = $('div', 'quick');
   const mk = (label, id, pressed) => { const b = $('button', 'pill', label); if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed)); b.onclick = () => set(id, pressed === undefined ? null : !pressed); return b; };
   const en = find('v.enabled'), mu = find('v.muted');
@@ -703,6 +705,7 @@ function tabPage(p) {
   if (query.trim() && !modal) return searchPage(p);
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
+  if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; p.appendChild(tb); }
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
   const items = tabControls(cur);
@@ -784,12 +787,14 @@ function modalPage(b) {
   const x = S.extra || {};
   if (modal === 'setup') return setupPage(b);
   if (modal === 'keys') return bindingsPage(b);
-  if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = () => { setupStep = 0; modal = 'setup'; render(); }; b.appendChild(rr); ; return; }
+  if (modal === 'about') { const am = $('div', 'aboutmark'); am.id = 'aboutmark'; markButton(am, 'about'); am.innerHTML = markHtml('about'); b.appendChild(am); if (!aboutSeen) { aboutSeen = true; setTimeout(() => startSting('about'), 50); } b.appendChild($('h1', null, 'About')); const a = x.about || {}; const g = $('div', 'group'); for (const [l, v] of [['Version', a.version], ['Installed from', a.source], ['Licence', a.licence], ['Third-party notices', a.notices]]) { if (!v) continue; const r = $('div', 'kv'); r.append($('div', 'label', l), $('div', 'hint', v)); g.appendChild(r); } b.appendChild(g); const rr = $('button', 'btn', L('wizard.rerun')); rr.style.marginTop = '14px'; rr.onclick = tourStart; b.appendChild(rr); ; return; }
   b.appendChild(pageHead(L('cat.' + modal), L('cat.' + modal + '.text')));
   const items = catSections(b, modal);
   if (modal === 'general') {
     const ab = x.about || {}; const facts = [['Installed version', ab.version], ['Updates come from', ab.source]].filter(f => f[1]);
     if (facts.length) { b.appendChild($('h2', null, 'Version')); b.appendChild(plainGroup(facts.map(([l, v]) => [l, v]))); }
+    b.appendChild($('h2', null, 'Tour'));
+    b.appendChild(plainGroup([[L('wizard.rerun'), 'Two minutes: microphone, voices, what she may do, privacy, and how to stop her.', 'Start', tourStart]]));
     b.appendChild($('h2', null, 'Quit'));
     b.appendChild(plainGroup([['Quit Tessaya', 'Closing the window keeps Tessaya in the tray. Quit ends it.', 'Quit', 'q.quit']]));
   }
@@ -810,7 +815,9 @@ function modalPage(b) {
 }
 let setupStep = 0, setupAuto = false, meterTimer = null;
 function stopMeter() { if (meterTimer) { clearInterval(meterTimer); meterTimer = null; } }
-function setupFinish() { stopMeter(); const was = S && S.extra && S.extra.setup && S.extra.setup.show; modal = null; setupStep = 0; if (was) set('q.setupDone', true); render(); }
+function setupFinish() { stopMeter(); modal = null; setupStep = 0; set('q.setupDone', true); render(); }
+function setupGo(n) { setupStep = n; set('q.setupStep', String(n)); render(); }
+function tourStart() { const sp = (S.extra || {}).setup; if (!sp) return; setupStep = sp.step || 0; modal = 'setup'; if (sp.mode === 'offer') set('q.setupOffered', true); render(); }
 function setupPage(b) {
   const sp = (S.extra || {}).setup; if (!sp) return;
   const step = sp.steps[setupStep]; if (!step) return;
@@ -827,14 +834,15 @@ function setupPage(b) {
     stopMeter(); meterTimer = setInterval(tick, 120); tick();
     b.appendChild($('p', 'hint', 'If listening is off the bar stays flat. Turn it on above.'));
   } else stopMeter();
+  if (step.facts) { const g = $('div', 'group'); g.style.marginTop = '12px'; for (const f of step.facts) { const r = $('div', 'kv'); const t = $('div'); t.append($('div', 'label', f.label), $('div', 'hint', f.hint)); r.appendChild(t); g.appendChild(r); } b.appendChild(g); }
   if (step.tryBox) {
     const t = $('textarea', 'trybox'); t.setAttribute('aria-label', 'Try dictation here'); t.placeholder = 'Hold ' + (sp.hold || 'your key') + ' and speak'; b.appendChild(t);
   }
   const foot = $('div', 'wizfoot');
-  const back = $('button', 'btn quiet', L('wizard.back')); back.disabled = setupStep === 0; back.onclick = () => { setupStep -= 1; render(); };
+  const back = $('button', 'btn quiet', L('wizard.back')); back.disabled = setupStep === 0; back.onclick = () => setupGo(setupStep - 1);
   const last = setupStep === sp.steps.length - 1;
   const skip = $('button', 'btn quiet', last ? L('wizard.close') : L('wizard.skip')); skip.onclick = setupFinish;
-  const next = $('button', 'btn primary', last ? L('wizard.finish') : L('wizard.next')); next.onclick = () => { if (last) setupFinish(); else { setupStep += 1; render(); } };
+  const next = $('button', 'btn primary', last ? L('wizard.finish') : L('wizard.next')); next.onclick = () => { if (last) setupFinish(); else setupGo(setupStep + 1); };
   const mid = $('div', 'wizmid'); mid.append(back, skip); foot.append(mid, next); b.appendChild(foot);
 }
 /** Swaps a region's contents only when what it would show has changed, so a refresh that changes nothing touches nothing. */
@@ -867,10 +875,10 @@ function syncModal() {
     if (v.classList.contains('on') && !v.classList.contains('out')) { v.classList.add('out'); setTimeout(() => { if (!modal) v.className = ''; }, 170); }
     return;
   }
-  if (shownModal === null && !v.classList.contains('on')) { modalOpener = document.activeElement; setTimeout(() => { const mm = document.getElementById('modal'); const first = mm && (mm.querySelector('button[aria-current], #mnav button') || mm); if (first) first.focus(); }, 0); }
+  if (shownModal === null && !v.classList.contains('on')) { modalOpener = document.activeElement; setTimeout(() => { const mm = document.getElementById('modal'); const first = mm && (mm.querySelector('#mnav button[aria-current]') || mm.querySelector('#mnav button') || mm); if (first) first.focus(); }, 0); }
   v.classList.remove('out'); v.classList.add('on');
   setRegion(document.getElementById('mnav'), nav => {
-    if (modal === 'setup') { nav.appendChild($('h4', null, 'Setup')); const sp = (S.extra || {}).setup; for (const [i, st] of ((sp && sp.steps) || []).entries()) { const b = $('button', 'nav', (i + 1) + '. ' + st.title); if (i === setupStep) b.setAttribute('aria-current', 'step'); b.onclick = () => { setupStep = i; render(); }; nav.appendChild(b); } return; }
+    if (modal === 'setup') { nav.appendChild($('h4', null, 'Setup')); const sp = (S.extra || {}).setup; for (const [i, st] of ((sp && sp.steps) || []).entries()) { const b = $('button', 'nav', (i + 1) + '. ' + st.title); if (i === setupStep) b.setAttribute('aria-current', 'step'); b.onclick = () => setupGo(i); nav.appendChild(b); } return; }
     nav.appendChild($('h4', null, 'Settings'));
     for (const [id, l] of CATS) { const b = $('button', 'nav', l); if (modal === id) b.setAttribute('aria-current', 'page'); b.onclick = () => { modal = id; render(); }; nav.appendChild(b); }
     nav.appendChild($('div', 'ver', 'Tessaya ' + (((S.extra || {}).about || {}).version || '')));
@@ -879,7 +887,7 @@ function syncModal() {
   setRegion(mbody, body => { const cl = $('button', 'ibtn'); cl.id = 'mclose'; cl.setAttribute('aria-label', 'Close'); cl.appendChild(icon('x')); cl.onclick = closeModal; body.appendChild(cl); modalPage(body); });
   if (shownModal !== modal) { mbody.scrollTop = 0; shownModal = modal; }
 }
-function closeModal() { if (modal === 'setup') return setupFinish(); stopMeter(); modal = null; aboutSeen = false; render(); }
+function closeModal() { stopMeter(); modal = null; aboutSeen = false; render(); }
 function go(t) { t = MOVED[t] || t; if (CATS.some(c => c[0] === t)) { modal = t; render(); return; } if (t !== cur) { try { enter(); } catch (e) {} } cur = t; render(); if (real) ipc.send('baton-home:tab', t); document.getElementById('panel').scrollTop = 0; }
 
 /** Ctrl+K: pages, settings, commands and sessions in one list, all by keyboard. */
@@ -909,7 +917,7 @@ function paletteItems() {
   cmd(on('v.dnd') ? 'Turn Do not disturb off' : 'Turn Do not disturb on', '', () => set('v.dnd', !on('v.dnd')));
   cmd('Snooze for an hour', 'No offers or reminders for an hour', () => set('v.snooze', null));
   cmd('Run the standing jobs now', 'The ones you have switched on', () => set('trust.standing-run', null));
-  cmd(L('wizard.rerun'), '', () => { const sp = (S.extra || {}).setup; if (sp) { setupStep = 0; modal = 'setup'; render(); } });
+  cmd(L('wizard.rerun'), 'Two minutes: microphone, voices, what she may do, privacy, how to stop her', tourStart);
   for (const c of S.controls) {
     if (c.id.indexOf('trust.standing:') === 0 || c.id.indexOf('trust.rule:') === 0) cmd((c.on ? 'Turn off standing job: ' : 'Turn on standing job: ') + c.label, 'Unattended work, counted and logged', () => set(c.id, !c.on));
     else if (c.kind === 'session' && c.canOpen) items.push({ kind: 'Session', label: 'Open session ' + c.label, hint: c.project + ' ' + c.box, run: () => set(c.id, null) });
@@ -973,7 +981,7 @@ function syncChrome() {
 let booted = false;
 function render(state) {
   if (state) { const sig = JSON.stringify(state); if (sig === lastSig) return; lastSig = sig; S = state; }
-  if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.show) { setupAuto = true; modal = 'setup'; }
+  if (!setupAuto && S && S.extra && S.extra.setup && S.extra.setup.mode === 'open') { setupAuto = true; setupStep = S.extra.setup.step || 0; modal = 'setup'; }
   const keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
   const app = document.getElementById('app'); app.className = collapsed ? 'collapsed' : ''; app.setAttribute('data-g', GROUP_OF[cur] || 'now');
   const need = (S.extra && S.extra.stats && S.extra.stats.needYou) || 0; const up = find('u.act');

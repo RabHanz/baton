@@ -6,7 +6,7 @@ laptop is still to be taken.
 
 | What                                                    | Before                                                       | After                                                                        | Budget (test) |
 | ------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------- |
-| Page script                                             | 82,761 characters                                            | same                                                                         | under 113,000 |
+| Page script                                             | 82,761 characters                                            | same                                                                         | under 116,000 |
 | Stylesheet without the three embedded fonts             | 27,719                                                       | same                                                                         | under 42,500  |
 | Whole document (fonts and the logo animation included)  | 525,549                                                      | same                                                                         | under 740,000 |
 | Text given to the window as a `data:` URL               | 603,348 characters, percent-encoded and parsed on every open | none: the page is a file in the state folder, rewritten only when it changes |               |
@@ -21,7 +21,7 @@ settles before the window takes over): the animation is 344 KB and the budget 74
 assets and belong to the visual-tokens owner; shrinking them (subsetting the fonts further, loading
 the animation after the first paint) is the next real saving and is not done here.
 
-The page script budget is 112,000 since 2026-11-05: the greeting picker and its 50 lines added about 4,400 characters. It is 113,000 since 2026-11-06: the marks became buttons that play on click, about 900 characters.
+The page script budget is 112,000 since 2026-11-05: the greeting picker and its 50 lines added about 4,400 characters. It was 113,000 from 2026-11-06 for the marks that play on click (about 900 characters), and is 116,000 since the tour (an offer on Home, resuming, facts per step) added about 3,600.
 
 The stylesheet budget is 41,500 since 2026-11-05: the Damson and Madder palettes add a light and a dark accent rule each. It is 42,500 since 2026-11-06: the glass tokens, the marks' hover and click breaths, and the Settings window's larger frame.
 

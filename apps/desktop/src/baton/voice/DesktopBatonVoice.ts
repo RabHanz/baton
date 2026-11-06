@@ -76,9 +76,10 @@ import { describeWeaves, type WeaveRecord } from "@t3tools/baton-shared/weave";
 import { parseWeaveHosts } from "@t3tools/baton-shared/weaveBoxes";
 import {
   HOLD_KEY_CHOICES,
+  resumeStep,
   SETUP_STEPS,
   setupHoldControl,
-  setupShouldShow,
+  setupMode,
 } from "../setup/firstRun.ts";
 import {
   describeToday,
@@ -518,6 +519,10 @@ interface VoiceSettings {
   readonly toggleKey: string;
   /** The first-run guide was finished or skipped. */
   readonly setupDone?: boolean;
+  /** An existing install answered the one offer of the tour on Home. */
+  readonly setupOffered?: boolean;
+  /** The tour step it was left on, to reopen there. */
+  readonly setupStep?: number;
   /** Cloud tasks: off until he turns them on. */
   readonly cloud?: Partial<CloudSettings>;
   readonly paste: PasteMethod;
@@ -921,6 +926,12 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
   /** Written once on a fresh install; the guide is shown while it exists and is not marked done. */
   const setupMarker = NodePath.join(input.stateDir, "baton-setup.pending");
   let settings = readSettings(settingsPath);
+  const tourMemory = () => ({
+    freshInstall: NodeFS.existsSync(setupMarker),
+    ...(settings.setupDone === undefined ? {} : { done: settings.setupDone }),
+    ...(settings.setupOffered === undefined ? {} : { offered: settings.setupOffered }),
+    ...(settings.setupStep === undefined ? {} : { step: settings.setupStep }),
+  });
   setHideFromCapture(settings.hideFromCapture);
   /** The window is told again whenever settings change, so Home never keeps the list it was first built from. */
   const pushHome = () => {
@@ -3651,7 +3662,8 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
       .slice(0, 5);
     return {
       setup: {
-        show: setupShouldShow(NodeFS.existsSync(setupMarker), settings.setupDone),
+        mode: setupMode(tourMemory()),
+        step: resumeStep(tourMemory(), SETUP_STEPS.length),
         steps: SETUP_STEPS,
         hold: settings.holdKey,
       },
@@ -5080,8 +5092,13 @@ export const startDesktopBatonVoice = (input: DesktopBatonVoiceInput): DesktopBa
     } else if (id === "v.dnd") save({ doNotDisturb: on });
     else if (id === "v.snooze") toggleSnooze();
     else if (id === "q.setupDone") {
-      save({ setupDone: true });
+      save({ setupDone: true, setupOffered: true });
       NodeFS.rmSync(setupMarker, { force: true });
+    } else if (id === "q.setupOffered") save({ setupOffered: true });
+    else if (id === "q.setupStep" && typeof value === "string") {
+      const step = Number(value);
+      if (Number.isInteger(step) && step >= 0 && step < SETUP_STEPS.length)
+        save({ setupStep: step });
     } else if (id === "setup.cloud.github") {
       void Electron.shell.openExternal("https://github.com/apps/claude");
     } else if (id.startsWith("cl.signin.")) {
