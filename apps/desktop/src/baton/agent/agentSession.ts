@@ -1,7 +1,7 @@
-// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalDate:off globalTimers:off
 /**
- * The one assistant's session (D143): one long-lived agent, kept warm, that holds the whole
- * conversation. It starts before he speaks, is seeded from the conversation file when it starts or
+ * The one assistant's sessions (D143): a long-lived agent per model in use, kept warm, each holding
+ * the whole conversation, so a turn moved to another model never waits for a start. Each starts before he speaks, is seeded from the conversation file when it starts or
  * is recycled, and puts every turn back into that file. A new session loses nothing.
  */
 import { RECENT_TURNS, conversationBlock } from "@t3tools/baton-shared/conversation";
@@ -16,6 +16,10 @@ export const RECYCLE_TURNS = 40;
 export const RECYCLE_IDLE_MS = 6 * 60 * 60_000;
 /** Every screenshot stays in the session's context; after this many the next sentence starts a fresh one. */
 export const RECYCLE_IMAGES = 12;
+/** Sessions warmed at once, one per tier in use, so a switch of model never waits for a start; a persona on another model adds one more. */
+export const WARM_MAX = 3;
+/** Quiet this long, and only the model he used last keeps its session; his next wake warms the rest. */
+export const WARM_IDLE_MS = 30 * 60_000;
 
 export const shouldRecycle = (state: {
   readonly alive: boolean;
@@ -29,8 +33,8 @@ export const shouldRecycle = (state: {
   (state.images ?? 0) >= RECYCLE_IMAGES;
 
 export interface AssistantAgent {
-  /** Start the session now, so the first sentence does not wait for it. */
-  readonly warm: (brain?: Brain) => void;
+  /** Start a session on each of these models now, so no sentence waits for one. */
+  readonly warm: (brains?: ReadonlyArray<Brain>) => void;
   /** What he said, with where he is; the reply streams to `onDelta` as it is written. */
   readonly say: (text: string, where: Where, onDelta?: (delta: string) => void) => Promise<string>;
   readonly dispose: () => void;
@@ -43,7 +47,7 @@ export interface Where {
   readonly project?: string | null;
   /** The persona he woke: its name and line, and whether this turn is the first under that name. */
   readonly persona?: TurnPersona;
-  /** The persona's own model and effort; a change starts a session on it, seeded like any other. */
+  /** The model and effort for this turn; each has its own warm session on the same conversation. */
   readonly brain?: Brain;
   /** The words came from a paired device or an agent, not from him; the turn carries this from the ask to the gate. */
   readonly outside?: boolean;
@@ -70,60 +74,109 @@ export const createAssistantAgent = (input: {
   readonly images?: () => number;
 }): AssistantAgent => {
   const now = input.now ?? Date.now;
-  let session: Promise<VisionSession> | null = null;
-  let sessionBrain = "";
-  let turns = 0;
-  let lastAt = now();
+  interface Warm {
+    readonly session: Promise<VisionSession>;
+    turns: number;
+    lastAt: number;
+    /** Images its own turns were handed. */
+    images: number;
+    // The newest conversation turn this session has in view, and the turns it wrote itself.
+    seenId: number;
+    readonly own: Set<number>;
+  }
+  /** One session per model, all on the same conversation file. */
+  const pool = new Map<string, Warm>();
+  let lastKey = "";
+  /** The models the last warm asked for: never given back to make room, so a persona on another model cannot evict them. */
+  let kept = new Set<string>();
+  /** Warmed after the next turn's first token, not all at once on a wake. */
+  let later: ReadonlyArray<Brain | undefined> = [];
+  /** The session a turn is using: never given back to make room until that turn ends. */
+  let inUse: string | null = null;
   const imagesNow = () => input.images?.() ?? 0;
-  let imagesAtStart = imagesNow();
-  // The newest conversation turn this session has in view, and the turns it wrote itself.
-  let seenId = 0;
-  let own = new Set<number>();
   // One sentence at a time, so a second one never resets the running turn's state (taint, tools).
   let queue: Promise<unknown> = Promise.resolve();
   // Bumped by a stop: sentences queued before it are dropped, not run on a fresh session.
   let generation = 0;
 
-  const ensure = async (brain?: Brain): Promise<VisionSession> => {
-    const wanted = brain === undefined ? sessionBrain : `${brain.model}/${brain.effort}`;
-    if (session !== null) {
-      const current = await session.catch(() => null);
-      if (
-        current !== null &&
-        wanted === sessionBrain &&
-        !shouldRecycle({
-          alive: current.alive(),
-          turns,
-          idleMs: now() - lastAt,
-          images: imagesNow() - imagesAtStart,
-        })
-      ) {
-        return current;
-      }
-      current?.dispose();
-      session = null;
+  const keyOf = (brain?: Brain) =>
+    brain === undefined ? lastKey : `${brain.model}/${brain.effort}`;
+  const drop = (key: string) => {
+    void pool
+      .get(key)
+      ?.session.then((s) => s.dispose())
+      .catch(() => undefined);
+    pool.delete(key);
+  };
+
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const touch = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => {
+      for (const key of pool.keys()) if (key !== lastKey) drop(key);
+    }, WARM_IDLE_MS);
+    idle.unref?.();
+  };
+
+  /** Starts a session for this model unless one is there, making room by dropping the least recently used. */
+  const open = (key: string, brain?: Brain): Warm => {
+    const found = pool.get(key);
+    if (found !== undefined) return found;
+    while (pool.size >= WARM_MAX) {
+      const oldest = [...pool]
+        .filter(([k]) => !kept.has(k) && k !== inUse)
+        .toSorted((x, y) => x[1].lastAt - y[1].lastAt)[0];
+      // Every one is a warmed tier: this extra model sits beside them rather than evict one.
+      if (oldest === undefined) break;
+      drop(oldest[0]);
     }
-    turns = 0;
-    sessionBrain = wanted;
-    imagesAtStart = imagesNow();
     // A new session gets as much as the old one held: the latest turns in full, the rest clipped.
     const window = input.conversation.recent(RECYCLE_TURNS);
-    seenId = window.at(-1)?.id ?? 0;
-    own = new Set();
-    // Assigned before any await, so a second caller finds this session instead of starting another.
-    session = Promise.resolve(input.notes?.() ?? "")
-      .catch(() => "")
-      .then((notes) =>
-        input.start(
-          agentSystemPrompt({
-            recent: window.slice(-RECENT_TURNS),
-            earlier: window.slice(0, -RECENT_TURNS),
-            notes,
-          }),
-          brain,
+    const warm: Warm = {
+      // Set before any await, so a second caller finds this session instead of starting another.
+      session: Promise.resolve(input.notes?.() ?? "")
+        .catch(() => "")
+        .then((notes) =>
+          input.start(
+            agentSystemPrompt({
+              recent: window.slice(-RECENT_TURNS),
+              earlier: window.slice(0, -RECENT_TURNS),
+              notes,
+            }),
+            brain,
+          ),
         ),
-      );
-    return session;
+      turns: 0,
+      lastAt: now(),
+      images: 0,
+      seenId: window.at(-1)?.id ?? 0,
+      own: new Set(),
+    };
+    pool.set(key, warm);
+    return warm;
+  };
+
+  const ensure = async (brain?: Brain): Promise<{ agent: VisionSession; warm: Warm }> => {
+    const key = keyOf(brain);
+    lastKey = key;
+    const found = pool.get(key);
+    if (found !== undefined) {
+      const current = await found.session.catch(() => null);
+      if (
+        current !== null &&
+        !shouldRecycle({
+          alive: current.alive(),
+          turns: found.turns,
+          idleMs: now() - found.lastAt,
+          images: found.images,
+        })
+      ) {
+        return { agent: current, warm: found };
+      }
+      drop(key);
+    }
+    const warm = open(key, brain);
+    return { agent: await warm.session, warm };
   };
 
   const turn = async (
@@ -132,12 +185,21 @@ export const createAssistantAgent = (input: {
     onDelta?: (delta: string) => void,
   ): Promise<string> => {
     input.beginTurn(text, where.outside === true);
-    const agent = await ensure(where.brain);
-    // Turns answered without it (a refusal, the older router) since it last looked.
+    const asked = generation;
+    const { agent, warm } = await ensure(where.brain);
+    inUse = keyOf(where.brain);
+    const warmLater = () => {
+      // Stopped meanwhile: nothing is warmed for a turn he took back.
+      if (asked !== generation) return;
+      const rest = later;
+      later = [];
+      for (const brain of rest) open(keyOf(brain), brain);
+    };
+    // Turns answered without it (another model, a refusal, the older router) since it last looked.
     const meanwhile = input.conversation
       .recent(RECYCLE_TURNS)
-      .filter((t) => t.id > seenId && !own.has(t.id));
-    seenId = meanwhile.at(-1)?.id ?? seenId;
+      .filter((t) => t.id > warm.seenId && !warm.own.has(t.id));
+    warm.seenId = meanwhile.at(-1)?.id ?? warm.seenId;
     const target = input.conversation.target();
     const project = where.project ?? null;
     const [presence, remembered] = await Promise.all([
@@ -157,7 +219,7 @@ export const createAssistantAgent = (input: {
         ? ""
         : `said and answered outside this chat since your last reply:\n${conversationBlock({ recent: meanwhile, earlier: [] })}`;
     const record = (reply: string, note?: string) =>
-      own.add(
+      warm.own.add(
         input.conversation.add({
           route: "answer",
           said: text,
@@ -168,6 +230,7 @@ export const createAssistantAgent = (input: {
       );
     let partial = "";
     let reply: string;
+    const imagesBefore = imagesNow();
     try {
       reply = await agent.ask(
         [
@@ -184,11 +247,15 @@ export const createAssistantAgent = (input: {
           },
         ],
         (delta) => {
+          if (partial === "") warmLater();
           partial += delta;
           onDelta?.(delta);
         },
       );
     } catch (error) {
+      warmLater();
+      inUse = null;
+      warm.images += imagesNow() - imagesBefore;
       // His sentence is kept even when the answer never finished, so "what did I just say" works.
       record(
         partial,
@@ -198,18 +265,29 @@ export const createAssistantAgent = (input: {
       );
       throw error;
     }
-    turns += 1;
-    lastAt = now();
+    warmLater();
+    inUse = null;
+    warm.images += imagesNow() - imagesBefore;
+    warm.turns += 1;
+    warm.lastAt = now();
+    touch();
     input.learn?.(text, reply, project);
     record(reply);
     return reply;
   };
 
   return {
-    // In line with the sentences, and only when there is no session: a live one (any persona's) is never replaced.
-    warm: (brain) => {
+    // In line with the sentences, never waiting on a start, and never replacing a live session.
+    warm: (brains) => {
       queue = queue
-        .then(() => (session === null ? ensure(brain) : undefined))
+        .then(() => {
+          const wanted = (brains ?? [undefined]).slice(0, WARM_MAX);
+          if (lastKey === "") lastKey = keyOf(wanted[0]);
+          kept = new Set(wanted.map(keyOf));
+          open(keyOf(wanted[0]), wanted[0]);
+          later = wanted.slice(1);
+          touch();
+        })
         .catch(() => undefined);
     },
     say: (text, where, onDelta) => {
@@ -223,8 +301,9 @@ export const createAssistantAgent = (input: {
     },
     dispose: () => {
       generation += 1;
-      void session?.then((s) => s.dispose()).catch(() => undefined);
-      session = null;
+      later = [];
+      clearTimeout(idle);
+      for (const key of pool.keys()) drop(key);
     },
   };
 };

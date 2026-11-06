@@ -38,6 +38,10 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
   fleet_status: ["What is everyone working on?", "A summary across machines."],
   dictation_stop: ["Stop dictating", "Ends dictation."],
   dictation_start: ["Start dictating", "Your words are typed into the app you are in."],
+  assistant_model: [
+    "Use Opus for this conversation",
+    "Picks the model and effort that answer you, until you say back to normal.",
+  ],
   memory_search: [
     "What do you remember about the site?",
     "Searches your notes and past conversations.",

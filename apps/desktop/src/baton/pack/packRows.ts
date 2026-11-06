@@ -192,7 +192,7 @@ export const rosterControls = (dir: string): ReadonlyArray<HomeControl> => {
       id: `v.persona:${persona.id}`,
       section: "Personas",
       label: persona.lead ? `${persona.name} (lead)` : persona.name,
-      hint: `${persona.wake === null ? "No wake word yet: say or type the name." : `Wake word: ${persona.wake}.`} Runs on ${model.model}, ${model.effort} effort. ${persona.role}`.trim(),
+      hint: `${persona.wake === null ? "No wake word yet: say or type the name." : `Wake word: ${persona.wake}.`} Thinks on ${model.model} at most, ${model.effort} effort. ${persona.role}`.trim(),
       kind: "choice",
       value: own === undefined || own === "" ? "default" : own.toLowerCase(),
       options: [

@@ -10,6 +10,8 @@ export interface Sample {
   /** Each call's arguments, in the order of `calls`. */
   readonly inputs?: ReadonlyArray<unknown>;
   readonly reply: string;
+  /** The model the sample ran on. */
+  readonly model?: string;
 }
 
 /** The arguments of the first call to the goal tool, as lower-case JSON. */
@@ -22,6 +24,7 @@ export const passes = (c: AssistantCase, sample: Sample): boolean => {
   const first = firstTool(sample.calls);
   return (
     c.first.includes(first) &&
+    (c.model === undefined || sample.model === c.model) &&
     !(c.not ?? []).includes(first) &&
     (c.says === undefined || sample.reply.toLowerCase().includes(c.says.toLowerCase())) &&
     (c.goal === undefined ||

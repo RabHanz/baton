@@ -118,6 +118,8 @@ const BATON_QUIET = new Set([
   "open_page",
   "dictation_start",
   "dictation_stop",
+  // His own choice of model for chat turns: local, and "back to normal" undoes it.
+  "assistant_model",
   "screen_capture",
   "ui_tree",
   // Brings his own open window forward: local, and he can switch back.

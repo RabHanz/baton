@@ -24,6 +24,12 @@ describe("the assistant eval's grader", () => {
     expect(passes(c, s())).toBe(false);
   });
 
+  it("fails a turn run on another model than the case's", () => {
+    const fast = { ...c, model: "haiku" };
+    expect(passes(fast, { ...s("mcp__baton__sessions_list"), model: "haiku" })).toBe(true);
+    expect(passes(fast, { ...s("mcp__baton__sessions_list"), model: "opus" })).toBe(false);
+  });
+
   it("fails a reply that leaves out the words the case needs", () => {
     const named = { ...c, first: ["none"], says: "Freya" };
     expect(passes(named, { calls: [], reply: "Freya here. It's ten." })).toBe(true);

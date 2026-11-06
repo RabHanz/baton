@@ -188,6 +188,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Bato
     send: async () => "none",
     fleet: async () => "none",
     dictation: async () => "none",
+    assistantModel: async () => "none",
     memory: async () => "none",
     remember: async () => "none",
     forget: async () => "none",

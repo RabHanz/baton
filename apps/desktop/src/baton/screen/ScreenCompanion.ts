@@ -26,6 +26,14 @@ import { createTransformStore } from "../writing/transformStore.ts";
 import { changedFrom, writeJsonFile } from "../writing/jsonStore.ts";
 import { PACK_FOLDER, readPack } from "../pack/packRows.ts";
 import { DEFAULT_ROUTING, parseRouting } from "@t3tools/baton-shared/costRouting";
+import {
+  chooseTurnBrain,
+  createTierMemory,
+  manualLabel,
+  modelCommand,
+  tierBrains,
+  type ManualBrain,
+} from "@t3tools/baton-shared/turnTier";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/baton-shared/awareness";
 import { detectSecret } from "@t3tools/baton-shared/memory";
@@ -96,7 +104,7 @@ import { createAgentGate, createTaint } from "../agent/agentGate.ts";
 import { createTurnLedger, stoppedBy, traceCalls } from "../agent/turnLedger.ts";
 import { buildRemoteHandsTools, type RemoteHandsDeps } from "../agent/remoteHandsTools.ts";
 import type { HandsResult } from "@t3tools/baton-shared/remoteHands";
-import { startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
+import { sessionWithOwnMcp, startBatonMcp, type BatonMcp } from "../agent/batonMcp.ts";
 import {
   buildBatonTools,
   treeText,
@@ -188,6 +196,9 @@ interface ScreenSettings {
   readonly brainChosen: boolean;
   /** The config directory of the Claude login the assistant uses; null follows his `claude`. */
   readonly assistantAccount: string | null;
+  /** His own choice of model and effort for chat turns; "auto" leaves it to the turn rules. Holds until he resets it. */
+  readonly assistantModel: "auto" | "haiku" | "sonnet" | "opus";
+  readonly assistantEffort: "auto" | "low" | "medium" | "high";
 }
 
 const UNKNOWN_BRAINS: BrainStatus = { claude: { state: "missing" }, codex: { state: "missing" } };
@@ -210,6 +221,8 @@ const DEFAULTS: ScreenSettings = {
   socialOn: true,
   brainChosen: false,
   assistantAccount: null,
+  assistantModel: "auto",
+  assistantEffort: "auto",
 };
 
 /** Defaults that older releases wrote into every settings file; he never chose them, so they give way. */
@@ -900,6 +913,40 @@ export const startScreenCompanion = (input: {
   let faceModel: Brain = modelOf(DEFAULT_OS_PACK, "executive");
   const leadBrain = () =>
     modelOf(readPack(NodePath.join(input.stateDir, PACK_FOLDER)), "executive");
+  /** The last chat turn's tier, so a bare "go ahead" right after it is carried out on the same model. */
+  const tierMemory = createTierMemory();
+  const manual = (): ManualBrain => ({
+    model: settings.assistantModel === "auto" ? null : settings.assistantModel,
+    effort: settings.assistantEffort === "auto" ? null : settings.assistantEffort,
+  });
+  const warmTiers = () =>
+    agentOf().warm(tierBrains(leadBrain(), manual(), tierMemory.previous() ?? "default"));
+  /** Voice, tray, settings and the assistant_model tool all land here; the next turn uses it, and its session is warmed now. */
+  const chooseModel = (choice: ManualBrain): string => {
+    save({ assistantModel: choice.model ?? "auto", assistantEffort: choice.effort ?? "auto" });
+    input.onNote?.("model_choice", { model: choice.model, effort: choice.effort });
+    warmTiers();
+    return manualLabel(choice);
+  };
+  const MODELS = ["haiku", "sonnet", "opus"] as const;
+  const EFFORTS = ["low", "medium", "high"] as const;
+  /** The assistant_model tool's way in: names checked here, since they come from the model. */
+  const setModelByName = (model: string | null, effort: string | null): string => {
+    const now = manual();
+    if (model === null && effort === null) return `Model: ${manualLabel(now)}.`;
+    if (outsideTurn)
+      throw new Error("Only he can change his model, not a paired device or an agent.");
+    const m = MODELS.find((x) => x === model);
+    const e = EFFORTS.find((x) => x === effort);
+    if (model !== null && model !== "auto" && m === undefined)
+      throw new Error(`No model is named ${model}.`);
+    if (effort !== null && effort !== "auto" && e === undefined)
+      throw new Error(`No effort is named ${effort}.`);
+    return `Model: ${chooseModel({
+      model: model === null ? now.model : (m ?? null),
+      effort: effort === null ? now.effort : (e ?? null),
+    })}.`;
+  };
   /** Whose name the last answer carried, so a change of persona says its name. */
   let lastFace = face.name;
   let leadName = face.name;
@@ -1590,8 +1637,8 @@ export const startScreenCompanion = (input: {
   };
 
   /** One assistant (D143): one warm session, Baton's tools, the same gate on every call. */
-  let agentMcp: BatonMcp | null = null;
-  let outsideMcp: BatonMcp | null = null;
+  /** Each warm session's own tool server (one per model), closed with that session. */
+  const agentMcps = new Set<BatonMcp>();
   let lastShots: ReadonlyArray<ScreenShot> = [];
   const agentTaint = createTaint();
   /** The plan he approved this turn (plan_show): its steps run without a box each, and pastes keep its clipboard. */
@@ -2282,6 +2329,7 @@ export const startScreenCompanion = (input: {
       actions?.sessionSend?.(id, text) ?? "There is no session by that id. Use sessions_list.",
     fleet: async () => actions?.fleetStatus?.() ?? "Sessions are not reachable from here yet.",
     dictation: async (on) => actions?.dictation?.(on) ?? "Dictation is not available here.",
+    assistantModel: async (model, effort) => setModelByName(model, effort),
     memory: async (query) => {
       const hits = conversation.search(query);
       const kept = await memory.search(query);
@@ -2326,41 +2374,38 @@ export const startScreenCompanion = (input: {
       return "Noted.";
     },
   };
-  const agentStart = async (
-    systemPrompt: string,
-    chosen = leadBrain(),
-    slot: "his" | "outside" = "his",
-  ): Promise<VisionSession> => {
-    await (slot === "his" ? agentMcp : outsideMcp)?.close();
-    const mcp = await startBatonMcp({
-      tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
-      gate: agentGate,
-      scrub: (text) => vaultHost?.scrub(text) ?? text,
-      onResult: ({ text, ...r }) => {
-        const record = turns.current();
-        record.results.push(r);
-        // The answer stays on this machine, only for replaying the turn if he asks to learn from it.
-        if (r.ok && text !== undefined) record.answers[r.tool] ??= text.slice(0, 2_000);
-      },
-    });
-    if (slot === "his") agentMcp = mcp;
-    else outsideMcp = mcp;
-    return startVisionSession({
-      claudeBinary: settings.claudeBinary,
-      model: chosen.model,
-      effort: chosen.effort,
-      systemPrompt,
-      workDir: NodePath.join(input.stateDir, "screen"),
-      cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
-      env: claudeEnv(),
-      platform: input.platform,
-      timeoutMs: OPERATOR_TURN_MS,
-      gate: harnessGate,
-      mcp: { url: mcp.url, token: mcp.token },
-      chrome: settings.browserChrome,
-      onTool: (call) => turns.current().tools.push(call.tool),
-    });
-  };
+  const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
+    sessionWithOwnMcp(
+      () =>
+        startBatonMcp({
+          tools: withFailureGuard(buildBatonTools(toolHost), toolFailures),
+          gate: agentGate,
+          scrub: (text) => vaultHost?.scrub(text) ?? text,
+          onResult: ({ text, ...r }) => {
+            const record = turns.current();
+            record.results.push(r);
+            // The answer stays on this machine, only for replaying the turn if he asks to learn from it.
+            if (r.ok && text !== undefined) record.answers[r.tool] ??= text.slice(0, 2_000);
+          },
+        }),
+      (mcp) =>
+        startVisionSession({
+          claudeBinary: settings.claudeBinary,
+          model: chosen.model,
+          effort: chosen.effort,
+          systemPrompt,
+          workDir: NodePath.join(input.stateDir, "screen"),
+          cwd: input.env["USERPROFILE"] ?? input.env["HOME"] ?? input.stateDir,
+          env: claudeEnv(),
+          platform: input.platform,
+          timeoutMs: OPERATOR_TURN_MS,
+          gate: harnessGate,
+          mcp: { url: mcp.url, token: mcp.token },
+          chrome: settings.browserChrome,
+          onTool: (call) => turns.current().tools.push(call.tool),
+        }),
+      agentMcps,
+    );
   const beginTurn = (said: string, outside: boolean) => {
     memory.beginTurn();
     outsideTurn = outside;
@@ -2418,7 +2463,7 @@ export const startScreenCompanion = (input: {
     const file = NodePath.join(input.stateDir, "screen", "outside-turn.ndjson");
     NodeFS.rmSync(file, { force: true });
     return createAssistantAgent({
-      start: (systemPrompt, brain) => agentStart(systemPrompt, brain, "outside"),
+      start: agentStart,
       conversation: createConversationLog({ file }),
       clockLine: () => clockLine(new Date()),
       notes: () => assistantFrame(readPack(NodePath.join(input.stateDir, PACK_FOLDER))),
@@ -2435,8 +2480,6 @@ export const startScreenCompanion = (input: {
             return await once.say(text, where, onDelta);
           } finally {
             once.dispose();
-            void outsideMcp?.close();
-            outsideMcp = null;
           }
         }
       : agentOf().say;
@@ -2449,6 +2492,7 @@ export const startScreenCompanion = (input: {
     outside = false,
   ) => {
     answering += 1;
+    const brain = chooseTurnBrain(text, faceModel, tierMemory.previous(), manual());
     const mine = turns.ask();
     const record = mine.record;
     let firstTokenAt: number | null = null;
@@ -2475,7 +2519,7 @@ export const startScreenCompanion = (input: {
         window: windowLabel,
         answers: { ...record().answers },
         allowed: face.tools ?? buildBatonTools(toolHost).map((t) => t.name),
-        brain: faceModel,
+        brain: brain.brain,
       };
       // Kept two days on this machine for the nightly pass, only while it is on; the trace names it by `started`.
       try {
@@ -2490,8 +2534,10 @@ export const startScreenCompanion = (input: {
         wake: woke,
         persona: face.name,
         voice: voiceNow(),
-        model: faceModel.model,
-        effort: faceModel.effort,
+        model: brain.brain.model,
+        effort: brain.brain.effort,
+        tier: brain.tier,
+        why: brain.why,
       };
       input.onNote?.("agent_turn_start", { said: text, ...who });
       const introduce = face.name !== lastFace;
@@ -2514,7 +2560,7 @@ export const startScreenCompanion = (input: {
               ? {}
               : { lead: leadName }),
           },
-          brain: faceModel,
+          brain: brain.brain,
         },
         (delta) => {
           firstTokenAt ??= Date.now();
@@ -2553,8 +2599,9 @@ export const startScreenCompanion = (input: {
         wake: woke,
         persona: face.name,
         voice: voiceNow(),
-        model: faceModel.model,
-        effort: faceModel.effort,
+        model: brain.brain.model,
+        effort: brain.brain.effort,
+        tier: brain.tier,
         said: text,
         error: error instanceof Error ? error.message : String(error),
         totalMs: Date.now() - started,
@@ -2566,6 +2613,7 @@ export const startScreenCompanion = (input: {
       });
       fail(error);
     } finally {
+      tierMemory.settled(brain.tier, outside);
       answering -= 1;
       mine.done();
       input.onTurnEnd?.();
@@ -2591,6 +2639,18 @@ export const startScreenCompanion = (input: {
       say(offer);
       linger("Tessaya", offer);
       input.onNote?.("secret_held", { kind: secret });
+      return { kind: "handled" };
+    }
+    // "Use Opus", "think harder", "go faster", "back to normal": a choice, not a question for the model.
+    const choice = modelCommand(text, manual(), outside);
+    if (choice !== null) {
+      const label = chooseModel(choice);
+      const reply =
+        label === "Automatic"
+          ? "Back to normal: I'll pick the model for each question."
+          : `${label} from now on, until you say back to normal.`;
+      say(reply);
+      linger("Tessaya", reply);
       return { kind: "handled" };
     }
     // A stop never waits on the sidecar, and needs no window.
@@ -2804,7 +2864,7 @@ export const startScreenCompanion = (input: {
           );
         });
       }
-      agentOf().warm(leadBrain());
+      warmTiers();
       if (run?.mode !== "look" && spareLook?.alive() !== true) {
         spareLook?.dispose();
         spareLook = visionFor("look");
@@ -2873,6 +2933,28 @@ export const startScreenCompanion = (input: {
     menuItems: () => [
       { label: "Ask Tessaya…", accelerator: ASK_HOTKEY, click: openAskBox },
       { label: "Clear the screen", click: dismiss },
+      {
+        label: `Model: ${manualLabel(manual())}`,
+        submenu: [
+          ...(["auto", "haiku", "sonnet", "opus"] as const).map((model) => ({
+            label: model === "auto" ? "Automatic" : model.charAt(0).toUpperCase() + model.slice(1),
+            type: "radio" as const,
+            checked: settings.assistantModel === model,
+            click: () => void chooseModel({ ...manual(), model: model === "auto" ? null : model }),
+          })),
+          { type: "separator" as const },
+          ...(["auto", "low", "medium", "high"] as const).map((effort) => ({
+            label:
+              effort === "auto"
+                ? "Automatic effort"
+                : `${effort.charAt(0).toUpperCase()}${effort.slice(1)} effort`,
+            type: "radio" as const,
+            checked: settings.assistantEffort === effort,
+            click: () =>
+              void chooseModel({ ...manual(), effort: effort === "auto" ? null : effort }),
+          })),
+        ],
+      },
       ...(run !== null && run.mode !== "look"
         ? [
             {
@@ -2888,6 +2970,33 @@ export const startScreenCompanion = (input: {
         busy: learning,
         now: new Date(),
       }),
+      {
+        id: "s.assistantModel",
+        section: "Answers and voice",
+        label: "Model for conversation",
+        hint: `Now: ${manualLabel(manual())}. Automatic picks per question: Haiku for quick ones, Sonnet by default, the persona's model for planning. Or say "use Opus", "think harder", "go faster", "back to normal".`,
+        kind: "choice",
+        value: settings.assistantModel,
+        options: [
+          { value: "auto", label: "Automatic" },
+          { value: "haiku", label: "Haiku" },
+          { value: "sonnet", label: "Sonnet" },
+          { value: "opus", label: "Opus" },
+        ],
+      },
+      {
+        id: "s.assistantEffort",
+        section: "Answers and voice",
+        label: "Thinking effort",
+        kind: "choice",
+        value: settings.assistantEffort,
+        options: [
+          { value: "auto", label: "Automatic" },
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+        ],
+      },
       {
         id: "s.output",
         section: "Answers and voice",
@@ -3064,6 +3173,20 @@ export const startScreenCompanion = (input: {
       return brains ?? UNKNOWN_BRAINS;
     },
     applySetting: (id, value) => {
+      if (
+        id === "s.assistantModel" &&
+        (value === "auto" || value === "haiku" || value === "sonnet" || value === "opus")
+      ) {
+        chooseModel({ ...manual(), model: value === "auto" ? null : value });
+        return;
+      }
+      if (
+        id === "s.assistantEffort" &&
+        (value === "auto" || value === "low" || value === "medium" || value === "high")
+      ) {
+        chooseModel({ ...manual(), effort: value === "auto" ? null : value });
+        return;
+      }
       if (id === "s.output" && (value === "spoken" || value === "written")) {
         if (value === "written") hush();
         save({ output: value });
@@ -3117,8 +3240,8 @@ export const startScreenCompanion = (input: {
     dispose: () => {
       stopMemorySync?.();
       agent?.dispose();
-      void agentMcp?.close();
-      void outsideMcp?.close();
+      for (const mcp of agentMcps) void mcp.close();
+      agentMcps.clear();
       end();
       dropSpare();
       if (askKey !== null) Electron.globalShortcut.unregister(askKey);
