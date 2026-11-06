@@ -29,7 +29,10 @@ export const createDesktopMemory = (input: {
   readonly notes: NotesStore;
   /** A secret was about to be remembered: keep it out of memory and return the offer to put it in the vault. */
   readonly onSecret?: ((text: string, what: string) => string | null) | undefined;
+  /** The persona answering (its pack id), so a walled project's memories reach only its team. */
+  readonly agent?: (() => string) | undefined;
 }) => {
+  const agent = () => (input.agent === undefined ? {} : { agent: input.agent() });
   let turn = 0;
   let lastTurnRef: string | null = null;
   let notesMoved = false;
@@ -62,7 +65,7 @@ export const createDesktopMemory = (input: {
       lastTurnRef = `turn-${Date.now()}-${turn}`;
       return lastTurnRef;
     },
-    /** Standing memory for the first prompt: pinned and what he told it about working with him. */
+    /** Standing memory for the first prompt: pinned and what he told it about working with him. Shared by every persona, so no walled project's items. */
     standing: async (): Promise<string> => {
       const out = await ask<{ block: string }>("recall", { budgetTokens: 600 });
       return out?.block ?? "";
@@ -72,6 +75,7 @@ export const createDesktopMemory = (input: {
       const call = ask<{ block: string }>("recall", {
         text,
         budgetTokens: 300,
+        ...agent(),
         ...(project === null ? {} : { scopeRef: project }),
         ...(lastTurnRef === null ? {} : { turnRef: lastTurnRef }),
       });
@@ -89,6 +93,7 @@ export const createDesktopMemory = (input: {
       const out = await ask<{ hits: ReadonlyArray<MemoryHit> }>("search", {
         text: query,
         limit: 12,
+        ...agent(),
       });
       if (out !== null) return out.hits.map((h) => line(h.item));
       return input.notes.search(query).map((n) => `his note [id: ${n.id}]: ${n.text}`);

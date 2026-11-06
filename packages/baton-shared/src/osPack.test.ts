@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   DEFAULT_OS_PACK,
+  leadsHere,
   mergePack,
   modelOf,
   packPrompt,
@@ -61,6 +62,19 @@ describe("the roster", () => {
     expect(who(pack, "Onyx")).toBe("Lex/paul");
     // A file with no front-matter keeps the default face.
     expect(who(mergePack({ roles: { engineering: "Mine." } }), "Alfred")).toBe("Alfred/charles");
+  });
+  it("reads each persona's team and the projects it leads; a project's lead hands out its work there", () => {
+    const pack = mergePack({
+      executive: "---\nwalled: shop, tax\n---\n",
+      roles: { engineering: "---\nprojects: shop, site\nleads: Site\n---\n" },
+    });
+    const alfred = pack.personas.find((p) => p.name === "Alfred")!;
+    expect(pack.walled).toEqual(["shop", "tax"]);
+    expect(alfred.projects).toEqual(["shop", "site"]);
+    expect(leadsHere(alfred, "site")).toBe(true);
+    expect(leadsHere(alfred, "shop")).toBe(false);
+    expect(leadsHere(alfred, null)).toBe(false);
+    expect(leadsHere(pack.personas[0]!, "tax")).toBe(true);
   });
   it("runs each persona on the model and effort its file names: the lead on Opus, specialists on Sonnet", () => {
     const opus = { model: "opus", effort: "medium" };

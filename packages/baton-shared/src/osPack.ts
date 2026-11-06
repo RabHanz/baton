@@ -12,6 +12,8 @@ export interface OsPack {
   readonly personas: ReadonlyArray<Persona>;
   /** The model and effort each file names, by id ("executive" or a role's file stem). */
   readonly models: Readonly<Record<string, Brain>>;
+  /** Projects whose memories only their team recalls (`walled:` in the lead's file). */
+  readonly walled: ReadonlyArray<string>;
 }
 
 /** A model alias the Claude command line accepts, and its `--effort`. */
@@ -55,6 +57,10 @@ export interface Persona {
   readonly lead: boolean;
   /** Its own tool list (`tools:`, comma separated), which only narrows the gate; null when it has none. */
   readonly tools: ReadonlyArray<string> | null;
+  /** The projects whose team it is on (`projects:`). */
+  readonly projects: ReadonlyArray<string>;
+  /** The projects it leads (`leads:`): it hands out their work and is on their team. */
+  readonly leads: ReadonlyArray<string>;
 }
 
 /** The pack's files as they ship: front-matter for the face, then the brief. */
@@ -111,6 +117,12 @@ export const splitFront = (
   return { fields, body: text.slice(m[0].length).trim() };
 };
 
+const listOf = (field: string | undefined): ReadonlyArray<string> =>
+  (field ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
+
 const face = (
   id: string,
   fields: Readonly<Record<string, string>>,
@@ -121,19 +133,15 @@ const face = (
   const wake = fields["wake"] ?? "";
   const tools = fields["tools"];
   return {
+    projects: listOf(fields["projects"]),
+    leads: listOf(fields["leads"]),
     id,
     name: name === "" ? "Tessaya" : name,
     wake: wake === "" ? null : wake,
     voice: (fields["voice"] ?? "").toLowerCase(),
     role: fields["role"] ?? "",
     lead,
-    tools:
-      tools === undefined || tools.trim() === ""
-        ? null
-        : tools
-            .split(",")
-            .map((t) => t.trim())
-            .filter((t) => t !== ""),
+    tools: tools === undefined || tools.trim() === "" ? null : listOf(tools),
   };
 };
 
@@ -165,7 +173,13 @@ export const mergePack = (
     const persona = face(name, role.fields, false);
     if (persona !== null) personas.push(persona);
   }
-  return { executive: executive.body, roles, personas, models };
+  return {
+    executive: executive.body,
+    roles,
+    personas,
+    models,
+    walled: listOf(executive.fields["walled"]),
+  };
 };
 
 export const DEFAULT_OS_PACK: OsPack = mergePack({});
@@ -184,6 +198,24 @@ export const personaFor = (
   if (woken !== undefined) return woken;
   const first = /^\s*(?:hey\s+)?([a-z]+)/i.exec(said.text)?.[1]?.toLowerCase();
   return personas.find((p) => p.name.toLowerCase() === first) ?? lead;
+};
+
+const named = (list: ReadonlyArray<string>, project: string) =>
+  list.some((p) => p.toLowerCase() === project.toLowerCase());
+
+/** The lead of everything, or of this project (a project may name its own lead). */
+export const leadsHere = (persona: Persona, project: string | null): boolean =>
+  persona.lead || (project !== null && named(persona.leads, project));
+
+/**
+ * Whether an agent may recall a memory about this project (decision 6): any project that is not walled;
+ * a walled one only for its team and its lead, and the overall lead sees through every wall. No agent
+ * (a block shared by every persona) recalls nothing walled.
+ */
+export const mayRecall = (pack: OsPack, agent: string | undefined, project: string): boolean => {
+  if (!named(pack.walled, project)) return true;
+  const persona = pack.personas.find((p) => p.id === agent);
+  return persona !== undefined && (leadsHere(persona, project) || named(persona.projects, project));
 };
 
 /** The planning turn's frame, capped so a large personal pack cannot swamp the job. */

@@ -69,6 +69,8 @@ export interface MemoryQuery {
   readonly includeSuperseded?: boolean;
   readonly includeProposed?: boolean;
   readonly limit?: number;
+  /** The persona asking (its pack id); a walled project's items then only reach its team. */
+  readonly agent?: string;
 }
 
 export interface MemoryHit {
